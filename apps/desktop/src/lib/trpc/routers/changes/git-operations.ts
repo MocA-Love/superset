@@ -796,47 +796,186 @@ export const createGitOperationsRouter = () => {
 
 				const git = await getGitWithShellPath(input.worktreePath);
 
-				// Gather context from all available sources:
-				// 1. Staged diff (tracked files added to index)
-				// 2. Unstaged diff (tracked files with modifications)
-				// 3. Status summary (includes untracked files)
-				const [stagedDiff, unstagedDiff, statusSummary] =
-					await Promise.all([
-						git.diff(["--cached"]),
-						git.diff(),
-						git.status(),
-					]);
+				// ---------------------------------------------------------------------------
+				// Hierarchical summarization (gptcommit-style):
+				//   Phase 1 — Summarize each changed file independently (parallel)
+				//   Phase 2 — Combine all summaries into a single commit message
+				// This avoids token-limit issues with large diffs and produces the
+				// most accurate results because no file content is truncated.
+				// ---------------------------------------------------------------------------
 
-				const parts: string[] = [];
-				if (stagedDiff.trim()) {
-					parts.push(`Staged changes:\n${stagedDiff}`);
+				// Collect per-file diffs from staged, unstaged, and untracked sources
+				const [stagedStat, unstagedStat, statusSummary] = await Promise.all([
+					git.diff(["--cached", "--stat", "--stat-width=200"]),
+					git.diff(["--stat", "--stat-width=200"]),
+					git.status(),
+				]);
+
+				interface FileChange {
+					path: string;
+					source: "staged" | "unstaged" | "untracked";
+					diff: string | null; // null for untracked / binary
 				}
-				if (unstagedDiff.trim()) {
-					parts.push(`Unstaged changes:\n${unstagedDiff}`);
-				}
-				if (statusSummary.not_added.length > 0) {
-					parts.push(
-						`New untracked files:\n${statusSummary.not_added.join("\n")}`,
+
+				const files: FileChange[] = [];
+
+				// Staged files
+				const stagedFiles = statusSummary.staged;
+				if (stagedFiles.length > 0) {
+					const diffs = await Promise.all(
+						stagedFiles.map((f) =>
+							git
+								.diff(["--cached", "--", f])
+								.then((d) => d.trim() || null)
+								.catch(() => null),
+						),
 					);
+					for (let i = 0; i < stagedFiles.length; i++) {
+						files.push({
+							path: stagedFiles[i],
+							source: "staged",
+							diff: diffs[i],
+						});
+					}
 				}
 
-				if (parts.length === 0) {
+				// Unstaged files (modified tracked files)
+				const unstagedFiles = statusSummary.modified.filter(
+					(f) => !stagedFiles.includes(f),
+				);
+				if (unstagedFiles.length > 0) {
+					const diffs = await Promise.all(
+						unstagedFiles.map((f) =>
+							git
+								.diff(["--", f])
+								.then((d) => d.trim() || null)
+								.catch(() => null),
+						),
+					);
+					for (let i = 0; i < unstagedFiles.length; i++) {
+						files.push({
+							path: unstagedFiles[i],
+							source: "unstaged",
+							diff: diffs[i],
+						});
+					}
+				}
+
+				// Untracked files (new, not yet added)
+				for (const f of statusSummary.not_added) {
+					files.push({ path: f, source: "untracked", diff: null });
+				}
+
+				if (files.length === 0) {
 					throw new TRPCError({
 						code: "BAD_REQUEST",
 						message: "No changes to generate a commit message for.",
 					});
 				}
 
-				// Truncate to avoid token limits
-				const maxLength = 8000;
-				let combined = parts.join("\n\n");
-				if (combined.length > maxLength) {
-					combined = `${combined.slice(0, maxLength)}\n\n... (truncated)`;
+				// Skip patterns — files that waste tokens without useful context
+				const SKIP_PATTERNS = [
+					/\.lock$/,
+					/package-lock\.json$/,
+					/bun\.lock(b)?$/,
+					/yarn\.lock$/,
+					/pnpm-lock\.yaml$/,
+					/\.min\.(js|css)$/,
+				];
+				const isBinary = (path: string) =>
+					/\.(png|jpe?g|gif|ico|svg|webp|woff2?|ttf|eot|mp[34]|mov|zip|tar|gz|pdf)$/i.test(
+						path,
+					);
+
+				const summarizableFiles: FileChange[] = [];
+				const skippedFileNames: string[] = [];
+
+				for (const f of files) {
+					if (
+						SKIP_PATTERNS.some((p) => p.test(f.path)) ||
+						isBinary(f.path)
+					) {
+						skippedFileNames.push(f.path);
+					} else {
+						summarizableFiles.push(f);
+					}
 				}
 
-				const prompt = `以下の変更に対して、簡潔なconventional commitメッセージを日本語で生成してください。フォーマット: type(scope): 日本語の説明。typeは feat, fix, refactor, chore, docs, test, style, perf のいずれか。72文字以内。コミットメッセージのみを返してください。\n\n${combined}`;
+				// ---- Phase 1: Summarize each file in parallel -------------------------
 
-				const instructions =
+				const PHASE1_INSTRUCTIONS =
+					"与えられたdiffを1行の日本語で要約してください。何が変わったかを簡潔に。要約のみを返してください。";
+				const PER_FILE_MAX_CHARS = 4000;
+
+				const summarizeFile = async (
+					f: FileChange,
+				): Promise<string> => {
+					// Files without diff (untracked) — just report the file name
+					if (!f.diff) {
+						return `${f.path}: 新規ファイル`;
+					}
+
+					// Small diffs — no need to call LLM, include directly
+					if (f.diff.length < 300) {
+						return `${f.path}: ${f.diff}`;
+					}
+
+					const truncatedDiff =
+						f.diff.length > PER_FILE_MAX_CHARS
+							? `${f.diff.slice(0, PER_FILE_MAX_CHARS)}\n... (truncated)`
+							: f.diff;
+
+					const { result } = await callSmallModel<string>({
+						invoke: async ({
+							model,
+							credentials,
+							providerId,
+							providerName,
+						}) => {
+							if (
+								providerId === "openai" &&
+								credentials.kind === "oauth"
+							) {
+								return generateTitleFromMessageWithStreamingModel(
+									{
+										message: `File: ${f.path}\n\n${truncatedDiff}`,
+										model: model as never,
+										instructions: PHASE1_INSTRUCTIONS,
+									},
+								);
+							}
+							return generateTitleFromMessage({
+								message: `File: ${f.path}\n\n${truncatedDiff}`,
+								agentModel: model,
+								agentId: `commit-file-summary-${providerId}`,
+								agentName: "File Summarizer",
+								instructions: PHASE1_INSTRUCTIONS,
+								tracingContext: {
+									surface: "commit-file-summary",
+									provider: providerName,
+								},
+							});
+						},
+					});
+
+					return `${f.path}: ${result ?? "変更あり"}`;
+				};
+
+				const fileSummaries = await Promise.all(
+					summarizableFiles.map(summarizeFile),
+				);
+
+				// ---- Phase 2: Generate final commit message from summaries ------------
+
+				let phase2Input = "変更されたファイルの要約:\n";
+				phase2Input += fileSummaries.join("\n");
+				if (skippedFileNames.length > 0) {
+					phase2Input += `\n\nその他の変更ファイル（依存関係・バイナリ）:\n${skippedFileNames.join("\n")}`;
+				}
+				phase2Input += `\n\n変更の統計:\n${stagedStat || unstagedStat || "(統計なし)"}`;
+
+				const PHASE2_PROMPT = `以下のファイル変更要約に基づいて、簡潔なconventional commitメッセージを日本語で生成してください。\nフォーマット: type(scope): 日本語の説明\ntypeは feat, fix, refactor, chore, docs, test, style, perf のいずれか。\n72文字以内。コミットメッセージのみを返してください。\n\n${phase2Input}`;
+				const PHASE2_INSTRUCTIONS =
 					"日本語で簡潔なconventional commitメッセージを生成してください。コミットメッセージの行のみを返してください。";
 
 				const { result, attempts } = await callSmallModel<string>({
@@ -848,18 +987,18 @@ export const createGitOperationsRouter = () => {
 					}) => {
 						if (providerId === "openai" && credentials.kind === "oauth") {
 							return generateTitleFromMessageWithStreamingModel({
-								message: prompt,
+								message: PHASE2_PROMPT,
 								model: model as never,
-								instructions,
+								instructions: PHASE2_INSTRUCTIONS,
 							});
 						}
 
 						return generateTitleFromMessage({
-							message: prompt,
+							message: PHASE2_PROMPT,
 							agentModel: model,
 							agentId: `commit-message-${providerId}`,
 							agentName: "Commit Message Generator",
-							instructions,
+							instructions: PHASE2_INSTRUCTIONS,
 							tracingContext: {
 								surface: "commit-message-generation",
 								provider: providerName,
