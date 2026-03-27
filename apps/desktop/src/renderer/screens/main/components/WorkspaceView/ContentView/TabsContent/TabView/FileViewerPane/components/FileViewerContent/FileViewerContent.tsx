@@ -18,6 +18,7 @@ import { detectLanguage } from "shared/detect-language";
 import { isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
+import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
 import { DiffScrollbarDecorations } from "../DiffScrollbarDecorations";
 import { DiffViewerContextMenu } from "../DiffViewerContextMenu";
 import { FileEditorContextMenu } from "../FileEditorContextMenu";
@@ -316,6 +317,20 @@ export function FileViewerContent({
 				<div className="flex h-full items-center justify-center text-muted-foreground">
 					No diff available
 				</div>
+			);
+		}
+
+		const totalLines =
+			diffData.original.split("\n").length +
+			diffData.modified.split("\n").length;
+		if (totalLines > 2000) {
+			return (
+				<CodeMirrorDiffViewer
+					original={diffData.original}
+					modified={diffData.modified}
+					language={diffData.language}
+					viewMode={diffViewMode}
+				/>
 			);
 		}
 
