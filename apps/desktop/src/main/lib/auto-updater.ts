@@ -84,7 +84,7 @@ export function getUpdateStatus(): AutoUpdateStatusEvent {
 	return { status: currentStatus, version: currentVersion };
 }
 
-const FORK_RELEASES_URL = "https://github.com/MocA-Love/superset/releases";
+const FORK_RELEASES_URL = "https://github.com/MocA-Love/superset";
 
 export function installUpdate(): void {
 	import("electron")
