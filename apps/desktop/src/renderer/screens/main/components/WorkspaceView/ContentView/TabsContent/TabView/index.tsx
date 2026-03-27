@@ -295,7 +295,7 @@ export function TabView({ tab }: TabViewProps) {
 	return (
 		<div className="relative w-full h-full mosaic-container">
 			<Mosaic<string>
-				mosaicId={MOSAIC_ID}
+				mosaicId={`${MOSAIC_ID}-${tab.id}`}
 				renderTile={renderPane}
 				value={cleanedLayout}
 				onChange={handleLayoutChange}
