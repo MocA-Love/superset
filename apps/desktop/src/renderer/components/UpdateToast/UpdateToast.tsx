@@ -74,11 +74,8 @@ export function UpdateToast({
 						<span className="font-medium text-sm">Update available</span>
 						<span className="text-sm text-muted-foreground">
 							{version
-								? `Version ${version} is ready to install`
-								: "Ready to install"}
-						</span>
-						<span className="text-xs text-muted-foreground/70">
-							Your terminal sessions won't be interrupted.
+								? `Version ${version} is available upstream`
+								: "A new version is available"}
 						</span>
 					</>
 				)}
@@ -88,12 +85,8 @@ export function UpdateToast({
 					<Button variant="ghost" size="sm" onClick={handleSeeChanges}>
 						See changes
 					</Button>
-					<Button
-						size="sm"
-						onClick={handleInstall}
-						disabled={installMutation.isPending}
-					>
-						{installMutation.isPending ? "Installing..." : "Install"}
+					<Button size="sm" onClick={handleInstall}>
+						Open releases
 					</Button>
 				</div>
 			)}

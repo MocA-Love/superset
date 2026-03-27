@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { app, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import { env } from "main/env.main";
-import { setSkipQuitConfirmation } from "main/index";
 import { prerelease } from "semver";
 import { AUTO_UPDATE_STATUS, type AutoUpdateStatus } from "shared/auto-update";
 import { PLATFORM } from "shared/constants";
@@ -85,15 +84,13 @@ export function getUpdateStatus(): AutoUpdateStatusEvent {
 	return { status: currentStatus, version: currentVersion };
 }
 
+const FORK_RELEASES_URL = "https://github.com/MocA-Love/superset/releases";
+
 export function installUpdate(): void {
-	if (env.NODE_ENV === "development") {
-		console.info("[auto-updater] Install skipped in dev mode");
-		emitStatus(AUTO_UPDATE_STATUS.IDLE);
-		return;
-	}
-	// Skip confirmation dialog - quitAndInstall internally calls app.quit()
-	setSkipQuitConfirmation();
-	autoUpdater.quitAndInstall(false, true);
+	import("electron")
+		.then(({ shell }) => shell.openExternal(FORK_RELEASES_URL))
+		.catch(() => {});
+	emitStatus(AUTO_UPDATE_STATUS.IDLE);
 }
 
 export function dismissUpdate(): void {
@@ -204,8 +201,8 @@ export function setupAutoUpdater(): void {
 		return;
 	}
 
-	autoUpdater.autoDownload = true;
-	autoUpdater.autoInstallOnAppQuit = true;
+	autoUpdater.autoDownload = false;
+	autoUpdater.autoInstallOnAppQuit = false;
 	autoUpdater.disableDifferentialDownload = true;
 
 	// Allow downgrade for prerelease builds so users can switch back to stable
