@@ -1,5 +1,6 @@
 import { Outlet, useMatchRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { WorkspacePage } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/page";
 
 /**
@@ -9,6 +10,9 @@ import { WorkspacePage } from "renderer/routes/_authenticated/_dashboard/workspa
  *
  * For non-workspace routes (settings, welcome, etc.) it renders the normal
  * <Outlet />.
+ *
+ * Automatically evicts deleted workspaces from the keep-alive list by comparing
+ * visited IDs against the current workspace list from the database.
  */
 export function KeepAliveWorkspaces() {
 	const matchRoute = useMatchRoute();
@@ -29,6 +33,35 @@ export function KeepAliveWorkspaces() {
 			setVisitedIds(Array.from(visitedSetRef.current));
 		}
 	}, [activeWorkspaceId]);
+
+	// Evict deleted workspaces: compare visited IDs against the live list.
+	const { data: workspaceGroups } =
+		electronTrpc.workspaces.getAllGrouped.useQuery();
+
+	const existingWorkspaceIds = useMemo(() => {
+		if (!workspaceGroups) return null;
+		const ids = new Set<string>();
+		for (const group of workspaceGroups) {
+			for (const ws of group.workspaces) {
+				ids.add(ws.id);
+			}
+		}
+		return ids;
+	}, [workspaceGroups]);
+
+	useEffect(() => {
+		if (!existingWorkspaceIds) return;
+		let changed = false;
+		for (const id of visitedSetRef.current) {
+			if (!existingWorkspaceIds.has(id)) {
+				visitedSetRef.current.delete(id);
+				changed = true;
+			}
+		}
+		if (changed) {
+			setVisitedIds(Array.from(visitedSetRef.current));
+		}
+	}, [existingWorkspaceIds]);
 
 	// Non-workspace route — fall through to the normal Outlet.
 	if (!activeWorkspaceId) {

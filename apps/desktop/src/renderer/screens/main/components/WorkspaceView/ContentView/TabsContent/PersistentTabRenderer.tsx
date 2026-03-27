@@ -1,4 +1,7 @@
+import { useMemo } from "react";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
+import { extractPaneIdsFromLayout } from "renderer/stores/tabs/utils";
 import { TabView } from "./TabView";
 
 interface PersistentTabRendererProps {
@@ -7,26 +10,41 @@ interface PersistentTabRendererProps {
 }
 
 /**
- * Renders all workspace tabs simultaneously, hiding inactive ones with CSS.
+ * Renders workspace tabs, keeping only those that contain a browser (webview)
+ * pane mounted when inactive. Tabs without webviews are unmounted normally.
  *
  * Electron's <webview> tag reloads its content whenever it is reparented in the
- * DOM (moved from one parent element to another). The previous approach rendered
- * only the active tab, which caused BrowserPane to unmount on every tab switch
- * and park the webview in a hidden container (DOM reparent) — triggering a hard
- * reload each time the user switched back.
- *
- * By keeping every tab mounted and toggling visibility via `display`, webview
- * elements stay in their original DOM parent and never reparent, eliminating the
- * reload.
+ * DOM. By keeping webview-containing tabs mounted (but off-screen), webview
+ * elements stay in their original DOM parent and never reparent, eliminating
+ * the reload. Non-webview tabs (terminals, chat, files) can safely unmount and
+ * remount without data loss.
  */
 export function PersistentTabRenderer({
 	tabs,
 	activeTabId,
 }: PersistentTabRendererProps) {
+	const panes = useTabsStore((s) => s.panes);
+
+	const tabsWithWebview = useMemo(() => {
+		const ids = new Set<string>();
+		for (const tab of tabs) {
+			const paneIds = extractPaneIdsFromLayout(tab.layout);
+			if (paneIds.some((id) => panes[id]?.type === "webview")) {
+				ids.add(tab.id);
+			}
+		}
+		return ids;
+	}, [tabs, panes]);
+
 	return (
 		<>
 			{tabs.map((tab) => {
 				const isActive = tab.id === activeTabId;
+				const hasWebview = tabsWithWebview.has(tab.id);
+
+				// Tabs without webviews: only render when active (original behavior)
+				if (!hasWebview && !isActive) return null;
+
 				return (
 					<div
 						key={tab.id}
