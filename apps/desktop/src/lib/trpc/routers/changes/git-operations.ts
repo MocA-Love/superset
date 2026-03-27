@@ -1,4 +1,9 @@
+import {
+	generateTitleFromMessage,
+	generateTitleFromMessageWithStreamingModel,
+} from "@superset/chat/server/desktop";
 import { TRPCError } from "@trpc/server";
+import { callSmallModel } from "lib/ai/call-small-model";
 import type { RemoteWithRefs, SimpleGit } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
@@ -783,5 +788,94 @@ export const createGitOperationsRouter = () => {
 					}
 				},
 			),
+
+		generateCommitMessage: publicProcedure
+			.input(z.object({ worktreePath: z.string() }))
+			.mutation(async ({ input }): Promise<{ message: string | null }> => {
+				assertRegisteredWorktree(input.worktreePath);
+
+				const git = await getGitWithShellPath(input.worktreePath);
+
+				// Gather context from all available sources:
+				// 1. Staged diff (tracked files added to index)
+				// 2. Unstaged diff (tracked files with modifications)
+				// 3. Status summary (includes untracked files)
+				const [stagedDiff, unstagedDiff, statusSummary] =
+					await Promise.all([
+						git.diff(["--cached"]),
+						git.diff(),
+						git.status(),
+					]);
+
+				const parts: string[] = [];
+				if (stagedDiff.trim()) {
+					parts.push(`Staged changes:\n${stagedDiff}`);
+				}
+				if (unstagedDiff.trim()) {
+					parts.push(`Unstaged changes:\n${unstagedDiff}`);
+				}
+				if (statusSummary.not_added.length > 0) {
+					parts.push(
+						`New untracked files:\n${statusSummary.not_added.join("\n")}`,
+					);
+				}
+
+				if (parts.length === 0) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "No changes to generate a commit message for.",
+					});
+				}
+
+				// Truncate to avoid token limits
+				const maxLength = 8000;
+				let combined = parts.join("\n\n");
+				if (combined.length > maxLength) {
+					combined = `${combined.slice(0, maxLength)}\n\n... (truncated)`;
+				}
+
+				const prompt = `以下の変更に対して、簡潔なconventional commitメッセージを日本語で生成してください。フォーマット: type(scope): 日本語の説明。typeは feat, fix, refactor, chore, docs, test, style, perf のいずれか。72文字以内。コミットメッセージのみを返してください。\n\n${combined}`;
+
+				const instructions =
+					"日本語で簡潔なconventional commitメッセージを生成してください。コミットメッセージの行のみを返してください。";
+
+				const { result, attempts } = await callSmallModel<string>({
+					invoke: async ({
+						model,
+						credentials,
+						providerId,
+						providerName,
+					}) => {
+						if (providerId === "openai" && credentials.kind === "oauth") {
+							return generateTitleFromMessageWithStreamingModel({
+								message: prompt,
+								model: model as never,
+								instructions,
+							});
+						}
+
+						return generateTitleFromMessage({
+							message: prompt,
+							agentModel: model,
+							agentId: `commit-message-${providerId}`,
+							agentName: "Commit Message Generator",
+							instructions,
+							tracingContext: {
+								surface: "commit-message-generation",
+								provider: providerName,
+							},
+						});
+					},
+				});
+
+				if (!result) {
+					console.warn(
+						"[generateCommitMessage] All providers failed:",
+						JSON.stringify(attempts, null, 2),
+					);
+				}
+
+				return { message: result };
+			}),
 	});
 };
