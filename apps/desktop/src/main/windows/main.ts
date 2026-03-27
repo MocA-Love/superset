@@ -282,12 +282,9 @@ export async function MainWindow() {
 		console.error(`  Error:`, error);
 	});
 
-	// Handle mouse back/forward buttons for webview panes.
-	// When the cursor is inside a <webview>, mouse events are consumed by the
-	// guest process and never reach the host renderer's event listeners.
-	// Electron fires `app-command` on the BrowserWindow regardless of which
-	// process has focus, so we can intercept navigation commands here and
-	// forward them to the focused webview.
+	// Handle mouse back/forward buttons for webview panes (Windows/Linux).
+	// `app-command` is not supported on macOS; macOS mouse buttons are handled
+	// via executeJavaScript injection in usePersistentWebview's dom-ready handler.
 	window.on("app-command", (_event, command) => {
 		const focusedGuest = webContents
 			.getAllWebContents()

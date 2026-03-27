@@ -242,6 +242,22 @@ export function usePersistentWebview({
 				registeredWebContentsIds.set(paneId, webContentsId);
 				registerBrowser({ paneId, webContentsId });
 			}
+
+			// Inject mouse back/forward button support into the guest page.
+			// Electron's <webview> consumes mouse events in the guest process,
+			// so the host renderer never sees button 3/4 (back/forward).
+			// We inject a listener that calls history.back()/forward() directly
+			// inside the guest page. Re-injected on every dom-ready since the
+			// guest page may navigate to a new document.
+			wv.executeJavaScript(`
+				if (!window.__supersetMouseNavInstalled) {
+					window.__supersetMouseNavInstalled = true;
+					window.addEventListener('mouseup', function(e) {
+						if (e.button === 3) { e.preventDefault(); history.back(); }
+						if (e.button === 4) { e.preventDefault(); history.forward(); }
+					}, true);
+				}
+			`).catch(() => {});
 		};
 
 		const handleDidStartLoading = () => {
