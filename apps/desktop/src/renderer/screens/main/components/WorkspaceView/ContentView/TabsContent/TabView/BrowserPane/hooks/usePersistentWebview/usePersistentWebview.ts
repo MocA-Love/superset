@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { PLATFORM } from "shared/constants";
 
 // ---------------------------------------------------------------------------
 // Module-level singletons
@@ -246,18 +247,19 @@ export function usePersistentWebview({
 			// Inject mouse back/forward button support into the guest page.
 			// Electron's <webview> consumes mouse events in the guest process,
 			// so the host renderer never sees button 3/4 (back/forward).
-			// We inject a listener that calls history.back()/forward() directly
-			// inside the guest page. Re-injected on every dom-ready since the
-			// guest page may navigate to a new document.
-			wv.executeJavaScript(`
-				if (!window.__supersetMouseNavInstalled) {
-					window.__supersetMouseNavInstalled = true;
-					window.addEventListener('mouseup', function(e) {
-						if (e.button === 3) { e.preventDefault(); history.back(); }
-						if (e.button === 4) { e.preventDefault(); history.forward(); }
-					}, true);
-				}
-			`).catch(() => {});
+			// Only needed on macOS — Windows/Linux use the `app-command` event
+			// handler in the main process instead.
+			if (PLATFORM.IS_MAC) {
+				wv.executeJavaScript(`
+					if (!window.__supersetMouseNavInstalled) {
+						window.__supersetMouseNavInstalled = true;
+						window.addEventListener('mouseup', function(e) {
+							if (e.button === 3) { e.preventDefault(); history.back(); }
+							if (e.button === 4) { e.preventDefault(); history.forward(); }
+						}, true);
+					}
+				`).catch(() => {});
+			}
 		};
 
 		const handleDidStartLoading = () => {

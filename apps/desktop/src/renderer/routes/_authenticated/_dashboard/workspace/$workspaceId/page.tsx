@@ -115,7 +115,6 @@ export function WorkspacePage({
 		enabled: Boolean(workspace?.worktreePath),
 	});
 	const navigate = useNavigate();
-	const genericNavigate = useNavigate();
 	const searchParams = useSearch({ strict: false }) as Partial<WorkspaceSearchParams>;
 	const searchTabId = searchParams?.tabId;
 	const searchPaneId = searchParams?.paneId;
@@ -139,13 +138,13 @@ export function WorkspacePage({
 			state.setFocusedPane(searchTabId, searchPaneId);
 		}
 
-		genericNavigate({
+		navigate({
 			to: "/workspace/$workspaceId",
 			params: { workspaceId },
 			search: {},
 			replace: true,
 		});
-	}, [searchTabId, searchPaneId, workspaceId, genericNavigate]);
+	}, [searchTabId, searchPaneId, workspaceId, navigate]);
 
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
