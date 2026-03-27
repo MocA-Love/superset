@@ -1,5 +1,5 @@
-import { useParams } from "@tanstack/react-router";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useGitChangesStatus } from "renderer/screens/main/hooks/useGitChangesStatus";
 import {
 	RightSidebarTab,
@@ -8,7 +8,7 @@ import {
 import { InfiniteScrollView } from "./components/InfiniteScrollView";
 
 export function ChangesContent() {
-	const { workspaceId } = useParams({ strict: false });
+	const workspaceId = useWorkspaceId();
 	const isChangesSidebarVisible = useSidebarStore(
 		(s) => s.isSidebarOpen && s.rightSidebarTab === RightSidebarTab.Changes,
 	);

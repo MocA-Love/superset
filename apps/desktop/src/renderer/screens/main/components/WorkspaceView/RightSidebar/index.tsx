@@ -1,6 +1,5 @@
 import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { useParams } from "@tanstack/react-router";
 import { useCallback } from "react";
 import {
 	LuExpand,
@@ -11,6 +10,7 @@ import {
 } from "react-icons/lu";
 import { HotkeyTooltipContent } from "renderer/components/HotkeyTooltipContent";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import {
 	RightSidebarTab,
 	SidebarMode,
@@ -72,7 +72,7 @@ function TabButton({
 }
 
 export function RightSidebar() {
-	const { workspaceId } = useParams({ strict: false });
+	const workspaceId = useWorkspaceId();
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },
 		{ enabled: !!workspaceId },

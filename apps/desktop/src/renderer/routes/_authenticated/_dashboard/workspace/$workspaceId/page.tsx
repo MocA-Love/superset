@@ -30,6 +30,7 @@ import { UnsavedChangesDialog } from "renderer/screens/main/components/Workspace
 import { useWorkspaceFileEventBridge } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceRenameReconciliation } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceRenameReconciliation";
 import { WorkspaceInitializingView } from "renderer/screens/main/components/WorkspaceView/WorkspaceInitializingView";
+import { WorkspaceIdProvider } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { WorkspaceLayout } from "renderer/screens/main/components/WorkspaceView/WorkspaceLayout";
 import { useCreateOrOpenPR, usePRStatus } from "renderer/screens/main/hooks";
 import {
@@ -94,7 +95,8 @@ export const Route = createFileRoute(
 
 export function WorkspacePage({
 	workspaceIdOverride,
-}: { workspaceIdOverride?: string } = {}) {
+	isActive = true,
+}: { workspaceIdOverride?: string; isActive?: boolean } = {}) {
 	const routeParams = useParams({ strict: false }) as {
 		workspaceId?: string;
 	};
@@ -231,11 +233,12 @@ export function WorkspacePage({
 		[presets, workspaceId, addTab, openPreset],
 	);
 
-	useAppHotkey("NEW_GROUP", () => addTab(workspaceId), undefined, [
+	const hotkeyOptions = { enabled: isActive };
+	useAppHotkey("NEW_GROUP", () => addTab(workspaceId), hotkeyOptions, [
 		workspaceId,
 		addTab,
 	]);
-	useAppHotkey("NEW_CHAT", () => addChatTab(workspaceId), undefined, [
+	useAppHotkey("NEW_CHAT", () => addChatTab(workspaceId), hotkeyOptions, [
 		workspaceId,
 		addChatTab,
 	]);
@@ -246,16 +249,16 @@ export function WorkspacePage({
 				addChatTab(workspaceId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, reopenClosedTab, addChatTab],
 	);
-	useAppHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), undefined, [
+	useAppHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), hotkeyOptions, [
 		workspaceId,
 		addBrowserTab,
 	]);
-	usePresetHotkeys(openTabWithPreset);
+	usePresetHotkeys(openTabWithPreset, hotkeyOptions);
 
-	useAppHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), undefined, [
+	useAppHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), hotkeyOptions, [
 		toggleWorkspaceRun,
 	]);
 
@@ -266,7 +269,7 @@ export function WorkspacePage({
 				requestPaneClose(focusedPaneId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[focusedPaneId],
 	);
 	useAppHotkey(
@@ -276,7 +279,7 @@ export function WorkspacePage({
 				requestTabClose(activeTabId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId],
 	);
 
@@ -288,7 +291,7 @@ export function WorkspacePage({
 			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
 			setActiveTab(workspaceId, tabs[prevIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -301,7 +304,7 @@ export function WorkspacePage({
 				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
 			setActiveTab(workspaceId, tabs[nextIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -313,7 +316,7 @@ export function WorkspacePage({
 			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
 			setActiveTab(workspaceId, tabs[prevIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -326,7 +329,7 @@ export function WorkspacePage({
 				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
 			setActiveTab(workspaceId, tabs[nextIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -340,15 +343,15 @@ export function WorkspacePage({
 		[tabs, workspaceId, setActiveTab],
 	);
 
-	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), undefined, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), hotkeyOptions, [switchToTab]);
 
 	useAppHotkey(
 		"PREV_PANE",
@@ -359,7 +362,7 @@ export function WorkspacePage({
 				setFocusedPane(activeTabId, prevPaneId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
 	);
 
@@ -372,7 +375,7 @@ export function WorkspacePage({
 				setFocusedPane(activeTabId, nextPaneId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
 	);
 
@@ -401,7 +404,7 @@ export function WorkspacePage({
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useAppHotkey("OPEN_IN_APP", handleOpenInApp, undefined, [handleOpenInApp]);
+	useAppHotkey("OPEN_IN_APP", handleOpenInApp, hotkeyOptions, [handleOpenInApp]);
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
@@ -412,7 +415,7 @@ export function WorkspacePage({
 				copyToClipboard(workspace.worktreePath);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[workspace?.worktreePath],
 	);
 
@@ -430,7 +433,7 @@ export function WorkspacePage({
 				createOrOpenPR();
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[pr?.url, createOrOpenPR],
 	);
 
@@ -449,13 +452,13 @@ export function WorkspacePage({
 		commandPalette.handleOpenChange(false);
 		keywordSearch.toggle();
 	}, [commandPalette.handleOpenChange, keywordSearch.toggle]);
-	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
-	useAppHotkey("KEYWORD_SEARCH", handleKeywordSearch, undefined, [
+	useAppHotkey("QUICK_OPEN", handleQuickOpen, hotkeyOptions, [handleQuickOpen]);
+	useAppHotkey("KEYWORD_SEARCH", handleKeywordSearch, hotkeyOptions, [
 		handleKeywordSearch,
 	]);
 
 	// Toggle changes sidebar (⌘L)
-	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), undefined, [
+	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), hotkeyOptions, [
 		toggleSidebar,
 	]);
 
@@ -471,7 +474,7 @@ export function WorkspacePage({
 				setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[isSidebarOpen, setSidebarOpen, setSidebarMode, currentSidebarMode],
 	);
 
@@ -506,7 +509,7 @@ export function WorkspacePage({
 				}
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, focusedPaneId, activeTab, splitPaneAuto, resolveSplitTarget],
 	);
 
@@ -523,7 +526,7 @@ export function WorkspacePage({
 				splitPaneVertical(activeTabId, target.paneId, target.path);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -546,7 +549,7 @@ export function WorkspacePage({
 				splitPaneHorizontal(activeTabId, target.paneId, target.path);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -571,7 +574,7 @@ export function WorkspacePage({
 				});
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -596,7 +599,7 @@ export function WorkspacePage({
 				});
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -614,7 +617,7 @@ export function WorkspacePage({
 				equalizePaneSplits(activeTabId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, equalizePaneSplits],
 	);
 
@@ -632,7 +635,7 @@ export function WorkspacePage({
 				navigateToWorkspace(prevWorkspaceId, navigate);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[getPreviousWorkspace.data, navigate],
 	);
 
@@ -649,11 +652,12 @@ export function WorkspacePage({
 				navigateToWorkspace(nextWorkspaceId, navigate);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[getNextWorkspace.data, navigate],
 	);
 
 	return (
+		<WorkspaceIdProvider value={workspaceId}>
 		<div className="flex-1 h-full flex flex-col overflow-hidden">
 			<div className="flex-1 min-h-0 flex overflow-hidden">
 				{showInitView ? (
@@ -743,5 +747,6 @@ export function WorkspacePage({
 				saveLabel="Save & Close Tab"
 			/>
 		</div>
+		</WorkspaceIdProvider>
 	);
 }

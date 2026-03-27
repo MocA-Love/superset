@@ -56,7 +56,7 @@ export function KeepAliveWorkspaces() {
 									}
 						}
 					>
-						<WorkspacePage workspaceIdOverride={id} />
+						<WorkspacePage workspaceIdOverride={id} isActive={isActive} />
 					</div>
 				);
 			})}
