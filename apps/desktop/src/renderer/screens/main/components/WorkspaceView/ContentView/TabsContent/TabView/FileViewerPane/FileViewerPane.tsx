@@ -676,6 +676,10 @@ export function FileViewerPane({
 					)}
 					<div className="min-h-0 flex-1">
 						<FileViewerContent
+							workspaceId={normalizedWorkspaceId}
+							worktreePath={worktreePath}
+							diffCategory={diffCategory}
+							commitHash={commitHash}
 							viewMode={viewMode}
 							filePath={filePath}
 							isLoadingRaw={isLoadingRaw}

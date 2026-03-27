@@ -15,13 +15,14 @@ import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/compo
 import type { Tab } from "renderer/stores/tabs/types";
 import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
-import { isImageFile } from "shared/file-types";
+import { isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
 import { DiffScrollbarDecorations } from "../DiffScrollbarDecorations";
 import { DiffViewerContextMenu } from "../DiffViewerContextMenu";
 import { FileEditorContextMenu } from "../FileEditorContextMenu";
 import { MarkdownSearch } from "../MarkdownSearch";
+import { SpreadsheetDiffViewer, SpreadsheetViewer } from "../SpreadsheetViewer";
 import {
 	type DiffDomLocation,
 	getColumnFromDiffPoint,
@@ -101,6 +102,10 @@ interface TextSearchState {
 }
 
 interface FileViewerContentProps {
+	workspaceId?: string;
+	worktreePath?: string;
+	diffCategory?: import("shared/changes-types").ChangeCategory;
+	commitHash?: string;
 	viewMode: FileViewerMode;
 	filePath: string;
 	isLoadingRaw: boolean;
@@ -136,6 +141,10 @@ interface FileViewerContentProps {
 }
 
 export function FileViewerContent({
+	workspaceId,
+	worktreePath,
+	diffCategory,
+	commitHash,
 	viewMode,
 	filePath,
 	isLoadingRaw,
@@ -275,6 +284,23 @@ export function FileViewerContent({
 		isLoadingRaw,
 		rawFileData,
 	]);
+
+	if (
+		viewMode === "diff" &&
+		isSpreadsheetFile(filePath) &&
+		workspaceId &&
+		worktreePath
+	) {
+		return (
+			<SpreadsheetDiffViewer
+				workspaceId={workspaceId}
+				worktreePath={worktreePath}
+				filePath={filePath}
+				diffCategory={diffCategory}
+				commitHash={commitHash}
+			/>
+		);
+	}
 
 	if (viewMode === "diff") {
 		if (isLoadingDiff) {
@@ -420,6 +446,15 @@ export function FileViewerContent({
 				Loading...
 			</div>
 		);
+	}
+
+	if (
+		rawFileData?.ok === false &&
+		rawFileData.reason === "binary" &&
+		isSpreadsheetFile(filePath) &&
+		workspaceId
+	) {
+		return <SpreadsheetViewer workspaceId={workspaceId} filePath={filePath} />;
 	}
 
 	if (!rawFileData?.ok) {

@@ -27,6 +27,9 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 	ico: "image/x-icon",
 };
 
+/** Spreadsheet extensions */
+const SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods"]);
+
 /** Markdown extensions */
 const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "mdx"]);
 
@@ -58,6 +61,13 @@ export function getImageMimeType(filePath: string): string | null {
  */
 export function isMarkdownFile(filePath: string): boolean {
 	return MARKDOWN_EXTENSIONS.has(getExtension(filePath));
+}
+
+/**
+ * Checks if a file is a spreadsheet based on extension
+ */
+export function isSpreadsheetFile(filePath: string): boolean {
+	return SPREADSHEET_EXTENSIONS.has(getExtension(filePath));
 }
 
 /**

@@ -1,4 +1,6 @@
 import { useFileDocument } from "@superset/workspace-client";
+import { SpreadsheetViewer } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/FileViewerPane/components/SpreadsheetViewer";
+import { isSpreadsheetFile } from "shared/file-types";
 
 interface WorkspaceFilePreviewContentProps {
 	selectedFilePath: string;
@@ -32,6 +34,14 @@ export function WorkspaceFilePreviewContent({
 	}
 
 	if (document.state.kind === "binary") {
+		if (isSpreadsheetFile(selectedFilePath)) {
+			return (
+				<SpreadsheetViewer
+					workspaceId={workspaceId}
+					filePath={selectedFilePath}
+				/>
+			);
+		}
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
 				Binary files are not previewed yet
