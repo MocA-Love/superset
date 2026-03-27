@@ -1,5 +1,11 @@
 import type { ExternalApp } from "@superset/local-db";
-import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	notFound,
+	useNavigate,
+	useParams,
+	useSearch,
+} from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
@@ -86,8 +92,13 @@ export const Route = createFileRoute(
 	},
 });
 
-function WorkspacePage() {
-	const { workspaceId } = Route.useParams();
+export function WorkspacePage({
+	workspaceIdOverride,
+}: { workspaceIdOverride?: string } = {}) {
+	const routeParams = useParams({ strict: false }) as {
+		workspaceId?: string;
+	};
+	const workspaceId = workspaceIdOverride ?? routeParams.workspaceId ?? "";
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery({
 		id: workspaceId,
 	});
@@ -102,8 +113,10 @@ function WorkspacePage() {
 		enabled: Boolean(workspace?.worktreePath),
 	});
 	const navigate = useNavigate();
-	const routeNavigate = Route.useNavigate();
-	const { tabId: searchTabId, paneId: searchPaneId } = Route.useSearch();
+	const genericNavigate = useNavigate();
+	const searchParams = useSearch({ strict: false }) as Partial<WorkspaceSearchParams>;
+	const searchTabId = searchParams?.tabId;
+	const searchPaneId = searchParams?.paneId;
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
@@ -124,8 +137,13 @@ function WorkspacePage() {
 			state.setFocusedPane(searchTabId, searchPaneId);
 		}
 
-		routeNavigate({ search: {}, replace: true });
-	}, [searchTabId, searchPaneId, workspaceId, routeNavigate]);
+		genericNavigate({
+			to: "/workspace/$workspaceId",
+			params: { workspaceId },
+			search: {},
+			replace: true,
+		});
+	}, [searchTabId, searchPaneId, workspaceId, genericNavigate]);
 
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
@@ -646,6 +664,7 @@ function WorkspacePage() {
 					/>
 				) : (
 					<WorkspaceLayout
+						workspaceId={workspaceId}
 						defaultExternalApp={resolvedDefaultApp}
 						onOpenInApp={handleOpenInApp}
 						onOpenQuickOpen={handleQuickOpen}

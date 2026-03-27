@@ -1,7 +1,6 @@
 import { FEATURE_FLAGS } from "@superset/shared/constants";
 import {
 	createFileRoute,
-	Outlet,
 	useMatchRoute,
 	useNavigate,
 } from "@tanstack/react-router";
@@ -18,6 +17,7 @@ import {
 	MAX_WORKSPACE_SIDEBAR_WIDTH,
 	useWorkspaceSidebarStore,
 } from "renderer/stores/workspace-sidebar-state";
+import { KeepAliveWorkspaces } from "./components/KeepAliveWorkspaces";
 import { TopBar } from "./components/TopBar";
 
 export const Route = createFileRoute("/_authenticated/_dashboard")({
@@ -123,7 +123,7 @@ function DashboardLayout() {
 					</ResizablePanel>
 				)}
 				<div className="flex flex-1 min-h-0 min-w-0">
-					<Outlet />
+					<KeepAliveWorkspaces />
 				</div>
 			</div>
 		</div>

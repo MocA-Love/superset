@@ -13,12 +13,14 @@ import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
 import { RightSidebar } from "../RightSidebar";
 
 interface WorkspaceLayoutProps {
+	workspaceId: string;
 	defaultExternalApp?: ExternalApp | null;
 	onOpenInApp: () => void;
 	onOpenQuickOpen: () => void;
 }
 
 export function WorkspaceLayout({
+	workspaceId,
 	defaultExternalApp,
 	onOpenInApp,
 	onOpenQuickOpen,
@@ -40,6 +42,7 @@ export function WorkspaceLayout({
 					<ChangesContent />
 				) : (
 					<ContentView
+						workspaceId={workspaceId}
 						defaultExternalApp={defaultExternalApp}
 						onOpenInApp={onOpenInApp}
 						onOpenQuickOpen={onOpenQuickOpen}

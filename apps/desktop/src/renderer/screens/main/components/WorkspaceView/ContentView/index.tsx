@@ -8,12 +8,14 @@ import { TabsContent } from "./TabsContent";
 import { GroupStrip } from "./TabsContent/GroupStrip";
 
 interface ContentViewProps {
+	workspaceId: string;
 	defaultExternalApp?: ExternalApp | null;
 	onOpenInApp: () => void;
 	onOpenQuickOpen: () => void;
 }
 
 export function ContentView({
+	workspaceId,
 	defaultExternalApp,
 	onOpenInApp,
 	onOpenQuickOpen,
@@ -31,6 +33,7 @@ export function ContentView({
 			</ContentHeader>
 			{showPresetsBar && <PresetsBar />}
 			<TabsContent
+				workspaceId={workspaceId}
 				defaultExternalApp={defaultExternalApp}
 				onOpenInApp={onOpenInApp}
 				onOpenQuickOpen={onOpenQuickOpen}
