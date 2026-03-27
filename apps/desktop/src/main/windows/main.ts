@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { workspaces, worktrees } from "@superset/local-db";
 import { eq } from "drizzle-orm";
 import type { BrowserWindow } from "electron";
-import { app, Notification, nativeTheme } from "electron";
+import { app, Notification, nativeTheme, webContents } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
 import { createAppRouter } from "lib/trpc/routers";
 import { localDb } from "main/lib/local-db";
@@ -280,6 +280,25 @@ export async function MainWindow() {
 		console.error("[main-window] Preload script error:");
 		console.error(`  Path: ${preloadPath}`);
 		console.error(`  Error:`, error);
+	});
+
+	// Handle mouse back/forward buttons for webview panes.
+	// When the cursor is inside a <webview>, mouse events are consumed by the
+	// guest process and never reach the host renderer's event listeners.
+	// Electron fires `app-command` on the BrowserWindow regardless of which
+	// process has focus, so we can intercept navigation commands here and
+	// forward them to the focused webview.
+	window.on("app-command", (_event, command) => {
+		const focusedGuest = webContents
+			.getAllWebContents()
+			.find((wc) => wc.getType() === "webview" && wc.isFocused());
+		if (!focusedGuest) return;
+
+		if (command === "browser-backward") {
+			focusedGuest.navigationHistory.goBack();
+		} else if (command === "browser-forward") {
+			focusedGuest.navigationHistory.goForward();
+		}
 	});
 
 	window.on("close", () => {
