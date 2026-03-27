@@ -36,6 +36,40 @@ Works with any CLI agent. Built for local worktree-based development.
 | **ブラウザ webview リロード防止** | タブ/ワークスペース切り替え時に Electron の webview がリロードされる問題を修正。webview を含むタブを keep-alive し、ワークスペースページをルーター上位で保持。WorkspaceIdContext による正しいコンテキスト分離、ホットキーの active-only 制御も実装 | [#2](https://github.com/MocA-Love/superset/pull/2) | 2026-03-28 |
 | **マウス戻る/進むボタン対応** | ブラウザ webview 内でマウスの戻る/進むボタンが動作するように対応。macOS は guest ページへのスクリプト注入、Windows/Linux は app-command イベントで処理 | [#2](https://github.com/MocA-Love/superset/pull/2) | 2026-03-28 |
 
+## Fork のビルド方法 (macOS)
+
+### 前提条件
+
+- [Bun](https://bun.sh/) v1.0+
+- Git 2.20+
+- Xcode Command Line Tools (`xcode-select --install`)
+
+### 手順
+
+```bash
+# 1. リポジトリをクローン
+git clone https://github.com/MocA-Love/superset.git
+cd superset
+
+# 2. 依存関係のインストール
+bun install
+
+# 3. デスクトップアプリをビルド
+bun run build --filter=@superset/desktop
+
+# 4. ビルド成果物を開く
+open apps/desktop/release
+```
+
+`release` フォルダ内の `.dmg` ファイルを開き、Superset.app を Applications にドラッグしてインストールしてください。
+
+### 開発モードで実行
+
+```bash
+bun install
+bun run dev --filter=@superset/desktop
+```
+
 ---
 
 ## Code 10x Faster With No Switching Cost
