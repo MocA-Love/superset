@@ -1,10 +1,10 @@
 import { Alert, AlertDescription, AlertTitle } from "@superset/ui/alert";
 import { Button } from "@superset/ui/button";
 import { Collapsible, CollapsibleContent } from "@superset/ui/collapsible";
-import { useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuFileCode, LuLoader } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import { FileSaveConflictDialog } from "renderer/screens/main/components/WorkspaceView/components/FileSaveConflictDialog";
 import { useChangesStore } from "renderer/stores/changes";
@@ -79,7 +79,7 @@ export function FileDiffSection({
 	onDiscard,
 	isActioning = false,
 }: FileDiffSectionProps) {
-	const { workspaceId } = useParams({ strict: false });
+	const workspaceId = useWorkspaceId();
 	const sectionRef = useRef<HTMLDivElement>(null);
 	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const {

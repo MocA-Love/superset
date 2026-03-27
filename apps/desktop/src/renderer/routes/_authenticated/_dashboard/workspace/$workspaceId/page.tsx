@@ -1,5 +1,11 @@
 import type { ExternalApp } from "@superset/local-db";
-import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	notFound,
+	useNavigate,
+	useParams,
+	useSearch,
+} from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
@@ -24,6 +30,7 @@ import { UnsavedChangesDialog } from "renderer/screens/main/components/Workspace
 import { useWorkspaceFileEventBridge } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceRenameReconciliation } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceRenameReconciliation";
 import { WorkspaceInitializingView } from "renderer/screens/main/components/WorkspaceView/WorkspaceInitializingView";
+import { WorkspaceIdProvider } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { WorkspaceLayout } from "renderer/screens/main/components/WorkspaceView/WorkspaceLayout";
 import { useCreateOrOpenPR, usePRStatus } from "renderer/screens/main/hooks";
 import {
@@ -86,8 +93,14 @@ export const Route = createFileRoute(
 	},
 });
 
-function WorkspacePage() {
-	const { workspaceId } = Route.useParams();
+export function WorkspacePage({
+	workspaceIdOverride,
+	isActive = true,
+}: { workspaceIdOverride?: string; isActive?: boolean } = {}) {
+	const routeParams = useParams({ strict: false }) as {
+		workspaceId?: string;
+	};
+	const workspaceId = workspaceIdOverride ?? routeParams.workspaceId ?? "";
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery({
 		id: workspaceId,
 	});
@@ -102,8 +115,9 @@ function WorkspacePage() {
 		enabled: Boolean(workspace?.worktreePath),
 	});
 	const navigate = useNavigate();
-	const routeNavigate = Route.useNavigate();
-	const { tabId: searchTabId, paneId: searchPaneId } = Route.useSearch();
+	const searchParams = useSearch({ strict: false }) as Partial<WorkspaceSearchParams>;
+	const searchTabId = searchParams?.tabId;
+	const searchPaneId = searchParams?.paneId;
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
@@ -124,8 +138,13 @@ function WorkspacePage() {
 			state.setFocusedPane(searchTabId, searchPaneId);
 		}
 
-		routeNavigate({ search: {}, replace: true });
-	}, [searchTabId, searchPaneId, workspaceId, routeNavigate]);
+		navigate({
+			to: "/workspace/$workspaceId",
+			params: { workspaceId },
+			search: {},
+			replace: true,
+		});
+	}, [searchTabId, searchPaneId, workspaceId, navigate]);
 
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
@@ -213,11 +232,12 @@ function WorkspacePage() {
 		[presets, workspaceId, addTab, openPreset],
 	);
 
-	useAppHotkey("NEW_GROUP", () => addTab(workspaceId), undefined, [
+	const hotkeyOptions = { enabled: isActive };
+	useAppHotkey("NEW_GROUP", () => addTab(workspaceId), hotkeyOptions, [
 		workspaceId,
 		addTab,
 	]);
-	useAppHotkey("NEW_CHAT", () => addChatTab(workspaceId), undefined, [
+	useAppHotkey("NEW_CHAT", () => addChatTab(workspaceId), hotkeyOptions, [
 		workspaceId,
 		addChatTab,
 	]);
@@ -228,16 +248,16 @@ function WorkspacePage() {
 				addChatTab(workspaceId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, reopenClosedTab, addChatTab],
 	);
-	useAppHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), undefined, [
+	useAppHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), hotkeyOptions, [
 		workspaceId,
 		addBrowserTab,
 	]);
-	usePresetHotkeys(openTabWithPreset);
+	usePresetHotkeys(openTabWithPreset, hotkeyOptions);
 
-	useAppHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), undefined, [
+	useAppHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), hotkeyOptions, [
 		toggleWorkspaceRun,
 	]);
 
@@ -248,7 +268,7 @@ function WorkspacePage() {
 				requestPaneClose(focusedPaneId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[focusedPaneId],
 	);
 	useAppHotkey(
@@ -258,7 +278,7 @@ function WorkspacePage() {
 				requestTabClose(activeTabId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId],
 	);
 
@@ -270,7 +290,7 @@ function WorkspacePage() {
 			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
 			setActiveTab(workspaceId, tabs[prevIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -283,7 +303,7 @@ function WorkspacePage() {
 				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
 			setActiveTab(workspaceId, tabs[nextIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -295,7 +315,7 @@ function WorkspacePage() {
 			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
 			setActiveTab(workspaceId, tabs[prevIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -308,7 +328,7 @@ function WorkspacePage() {
 				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
 			setActiveTab(workspaceId, tabs[nextIndex].id);
 		},
-		undefined,
+		hotkeyOptions,
 		[workspaceId, activeTabId, tabs, setActiveTab],
 	);
 
@@ -322,15 +342,15 @@ function WorkspacePage() {
 		[tabs, workspaceId, setActiveTab],
 	);
 
-	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), undefined, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), undefined, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), hotkeyOptions, [switchToTab]);
 
 	useAppHotkey(
 		"PREV_PANE",
@@ -341,7 +361,7 @@ function WorkspacePage() {
 				setFocusedPane(activeTabId, prevPaneId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
 	);
 
@@ -354,7 +374,7 @@ function WorkspacePage() {
 				setFocusedPane(activeTabId, nextPaneId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
 	);
 
@@ -383,7 +403,7 @@ function WorkspacePage() {
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useAppHotkey("OPEN_IN_APP", handleOpenInApp, undefined, [handleOpenInApp]);
+	useAppHotkey("OPEN_IN_APP", handleOpenInApp, hotkeyOptions, [handleOpenInApp]);
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
@@ -394,7 +414,7 @@ function WorkspacePage() {
 				copyToClipboard(workspace.worktreePath);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[workspace?.worktreePath],
 	);
 
@@ -412,7 +432,7 @@ function WorkspacePage() {
 				createOrOpenPR();
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[pr?.url, createOrOpenPR],
 	);
 
@@ -431,13 +451,13 @@ function WorkspacePage() {
 		commandPalette.handleOpenChange(false);
 		keywordSearch.toggle();
 	}, [commandPalette.handleOpenChange, keywordSearch.toggle]);
-	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
-	useAppHotkey("KEYWORD_SEARCH", handleKeywordSearch, undefined, [
+	useAppHotkey("QUICK_OPEN", handleQuickOpen, hotkeyOptions, [handleQuickOpen]);
+	useAppHotkey("KEYWORD_SEARCH", handleKeywordSearch, hotkeyOptions, [
 		handleKeywordSearch,
 	]);
 
 	// Toggle changes sidebar (⌘L)
-	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), undefined, [
+	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), hotkeyOptions, [
 		toggleSidebar,
 	]);
 
@@ -453,7 +473,7 @@ function WorkspacePage() {
 				setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[isSidebarOpen, setSidebarOpen, setSidebarMode, currentSidebarMode],
 	);
 
@@ -488,7 +508,7 @@ function WorkspacePage() {
 				}
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, focusedPaneId, activeTab, splitPaneAuto, resolveSplitTarget],
 	);
 
@@ -505,7 +525,7 @@ function WorkspacePage() {
 				splitPaneVertical(activeTabId, target.paneId, target.path);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -528,7 +548,7 @@ function WorkspacePage() {
 				splitPaneHorizontal(activeTabId, target.paneId, target.path);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -553,7 +573,7 @@ function WorkspacePage() {
 				});
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -578,7 +598,7 @@ function WorkspacePage() {
 				});
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[
 			activeTabId,
 			focusedPaneId,
@@ -596,7 +616,7 @@ function WorkspacePage() {
 				equalizePaneSplits(activeTabId);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[activeTabId, equalizePaneSplits],
 	);
 
@@ -614,7 +634,7 @@ function WorkspacePage() {
 				navigateToWorkspace(prevWorkspaceId, navigate);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[getPreviousWorkspace.data, navigate],
 	);
 
@@ -631,11 +651,12 @@ function WorkspacePage() {
 				navigateToWorkspace(nextWorkspaceId, navigate);
 			}
 		},
-		undefined,
+		hotkeyOptions,
 		[getNextWorkspace.data, navigate],
 	);
 
 	return (
+		<WorkspaceIdProvider value={workspaceId}>
 		<div className="flex-1 h-full flex flex-col overflow-hidden">
 			<div className="flex-1 min-h-0 flex overflow-hidden">
 				{showInitView ? (
@@ -646,6 +667,7 @@ function WorkspacePage() {
 					/>
 				) : (
 					<WorkspaceLayout
+						workspaceId={workspaceId}
 						defaultExternalApp={resolvedDefaultApp}
 						onOpenInApp={handleOpenInApp}
 						onOpenQuickOpen={handleQuickOpen}
@@ -724,5 +746,6 @@ function WorkspacePage() {
 				saveLabel="Save & Close Tab"
 			/>
 		</div>
+		</WorkspaceIdProvider>
 	);
 }

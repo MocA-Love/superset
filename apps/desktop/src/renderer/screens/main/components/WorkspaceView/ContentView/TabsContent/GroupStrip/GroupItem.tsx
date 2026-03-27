@@ -88,7 +88,9 @@ export function GroupItem({
 		return {
 			type: MosaicDragType.WINDOW,
 			item: {
-				mosaicId: canDropOntoActiveTab ? MOSAIC_ID : TAB_DRAG_NO_MATCH_ID,
+				mosaicId: canDropOntoActiveTab
+					? `${MOSAIC_ID}-${activeTabId}`
+					: TAB_DRAG_NO_MATCH_ID,
 				hideTimer: 0,
 				tabId: tab.id,
 				index,

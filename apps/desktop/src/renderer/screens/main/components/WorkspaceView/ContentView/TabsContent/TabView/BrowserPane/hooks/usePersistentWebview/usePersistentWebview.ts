@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { PLATFORM } from "shared/constants";
 
 // ---------------------------------------------------------------------------
 // Module-level singletons
 // ---------------------------------------------------------------------------
 
 const webviewRegistry = new Map<string, Electron.WebviewTag>();
+/**
+ * A persistent wrapper div per pane that ALWAYS contains its webview.
+ *
+ * Electron's <webview> tag reloads its content whenever the element is
+ * reparented (moved from one parent to another). The previous approach moved
+ * the webview itself between a visible container and a hidden one — each move
+ * was a reparent that triggered a reload.
+ *
+ * By wrapping the webview in a persistent div and only ever moving that
+ * wrapper, the webview's parentNode never changes, so Electron never sees a
+ * reparent. The wrapper moves between React's container div (visible) and a
+ * hidden parking container, but the webview inside is untouched.
+ */
+const wrapperRegistry = new Map<string, HTMLDivElement>();
 /** Tracks paneId → last-registered webContentsId so we can re-register if it changes. */
 const registeredWebContentsIds = new Map<string, number>();
 let hiddenContainer: HTMLDivElement | null = null;
@@ -58,6 +73,11 @@ window.addEventListener("drop", () => setWebviewsDragPassthrough(false), true);
 
 /** Call from useBrowserLifecycle when a pane is removed. */
 export function destroyPersistentWebview(paneId: string): void {
+	const wrapper = wrapperRegistry.get(paneId);
+	if (wrapper) {
+		wrapper.remove();
+		wrapperRegistry.delete(paneId);
+	}
 	const webview = webviewRegistry.get(paneId);
 	if (webview) {
 		webview.remove();
@@ -171,19 +191,27 @@ export function usePersistentWebview({
 		[paneId],
 	);
 
-	// Main lifecycle effect: create or reclaim webview, attach events, park on unmount
+	// Main lifecycle effect: create or reclaim wrapper+webview, attach events, park on unmount
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
 
+		let wrapper = wrapperRegistry.get(paneId);
 		let webview = webviewRegistry.get(paneId);
 
-		if (webview) {
-			// Reclaim from hidden container
-			container.appendChild(webview);
+		if (wrapper && webview) {
+			// Reclaim: move the wrapper (with webview inside) into React's container.
+			// The webview's parentNode stays as `wrapper` — no reparent, no reload.
+			container.appendChild(wrapper);
 			syncStoreFromWebview(webview);
 		} else {
-			// Create new webview
+			// First time: create a persistent wrapper div and a webview inside it.
+			wrapper = document.createElement("div");
+			wrapper.style.display = "flex";
+			wrapper.style.flex = "1";
+			wrapper.style.width = "100%";
+			wrapper.style.height = "100%";
+
 			webview = document.createElement("webview") as Electron.WebviewTag;
 			webview.setAttribute("partition", "persist:superset");
 			webview.setAttribute("allowpopups", "");
@@ -193,8 +221,11 @@ export function usePersistentWebview({
 			webview.style.height = "100%";
 			webview.style.border = "none";
 
+			// webview goes into wrapper, wrapper goes into container
+			wrapper.appendChild(webview);
+			wrapperRegistry.set(paneId, wrapper);
 			webviewRegistry.set(paneId, webview);
-			container.appendChild(webview);
+			container.appendChild(wrapper);
 
 			const finalUrl = sanitizeUrl(initialUrlRef.current);
 			webview.src = finalUrl;
@@ -207,10 +238,27 @@ export function usePersistentWebview({
 		const handleDomReady = () => {
 			const webContentsId = wv.getWebContentsId();
 			const previousId = registeredWebContentsIds.get(paneId);
-			// Register on first load, or re-register if webContentsId changed (e.g. after DOM reparenting)
+			// Register on first load, or re-register if webContentsId changed
 			if (previousId !== webContentsId) {
 				registeredWebContentsIds.set(paneId, webContentsId);
 				registerBrowser({ paneId, webContentsId });
+			}
+
+			// Inject mouse back/forward button support into the guest page.
+			// Electron's <webview> consumes mouse events in the guest process,
+			// so the host renderer never sees button 3/4 (back/forward).
+			// Only needed on macOS — Windows/Linux use the `app-command` event
+			// handler in the main process instead.
+			if (PLATFORM.IS_MAC) {
+				wv.executeJavaScript(`
+					if (!window.__supersetMouseNavInstalled) {
+						window.__supersetMouseNavInstalled = true;
+						window.addEventListener('mouseup', function(e) {
+							if (e.button === 3) { e.preventDefault(); history.back(); }
+							if (e.button === 4) { e.preventDefault(); history.forward(); }
+						}, true);
+					}
+				`).catch(() => {});
 			}
 		};
 
@@ -340,7 +388,7 @@ export function usePersistentWebview({
 		);
 		wv.addEventListener("did-fail-load", handleDidFailLoad as EventListener);
 
-		// -- Cleanup: park in hidden container -----------------------------
+		// -- Cleanup: park the wrapper (not the webview) in hidden container -
 
 		return () => {
 			wv.removeEventListener("dom-ready", handleDomReady);
@@ -367,7 +415,13 @@ export function usePersistentWebview({
 				handleDidFailLoad as EventListener,
 			);
 
-			getHiddenContainer().appendChild(wv);
+			// Park the WRAPPER (which contains the webview) in the hidden
+			// container. The webview's parentNode remains `wrapper` throughout
+			// — no reparent, no reload.
+			const w = wrapperRegistry.get(paneId);
+			if (w) {
+				getHiddenContainer().appendChild(w);
+			}
 		};
 		// paneId is stable for the lifetime of a pane; initialUrlRef only used on first create.
 	}, [paneId, registerBrowser, syncStoreFromWebview, upsertHistory]);
