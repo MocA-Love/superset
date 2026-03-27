@@ -24,6 +24,18 @@ Works with any CLI agent. Built for local worktree-based development.
 
 </div>
 
+## Fork 固有の変更点
+
+このリポジトリは [superset-sh/superset](https://github.com/superset-sh/superset) のフォークです。以下の独自変更が含まれています。
+
+| 変更 | 概要 |
+|:-----|:-----|
+| **Excel/スプレッドシート ビューア** | .xlsx/.xls/.ods ファイルを書式付きで表示。罫線・結合セル・テーマカラー・リッチテキスト対応。複数シートタブ切り替え、コンテナ幅への自動フィット |
+| **Excel diff ビューア** | スプレッドシートのサイドバイサイド差分表示。セル単位の変更ハイライト、Prev/Next ナビゲーション、左右同期スクロール |
+| **自動更新の無効化** | 本家リリースによるフォーク変更の上書きを防止。「Install」ボタンをフォークリポジトリへのリンクに変更 |
+
+---
+
 ## Code 10x Faster With No Switching Cost
 
 Superset orchestrates CLI-based coding agents across isolated git worktrees, with built-in terminal, review, and open-in-editor workflows.
