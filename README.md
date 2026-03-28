@@ -36,6 +36,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **ブラウザ webview リロード防止** | タブ/ワークスペース切り替え時に Electron の webview がリロードされる問題を修正。webview を含むタブを keep-alive し、ワークスペースページをルーター上位で保持。WorkspaceIdContext による正しいコンテキスト分離、ホットキーの active-only 制御も実装 | [#2](https://github.com/MocA-Love/superset/pull/2) | 2026-03-28 |
 | **マウス戻る/進むボタン対応** | ブラウザ webview 内でマウスの戻る/進むボタンが動作するように対応。macOS は guest ページへのスクリプト注入、Windows/Linux は app-command イベントで処理 | [#2](https://github.com/MocA-Love/superset/pull/2) | 2026-03-28 |
 | **AI コミットメッセージ生成** | コミットメッセージ入力欄のスパークルボタンで AI が conventional commit メッセージを日本語で自動生成。階層的要約方式（gptcommit 式）により大量差分でも高精度。staged/unstaged/untracked 全対応、lock ファイル・バイナリ自動スキップ | [#4](https://github.com/MocA-Love/superset/pull/4) | 2026-03-28 |
+| **ポートリストのリサイズ・フィルタ** | サイドバーの Ports セクションの高さをドラッグでリサイズ可能に（80–600px、永続化）。フィルタトグルで ports.json に定義されたポートのみ表示し、自動検出ポートを非表示にできる | [#6](https://github.com/MocA-Love/superset/pull/6) | 2026-03-28 |
 | **大規模ファイル diff 高速化** | 2000行超のファイルで CodeMirror 6 ベースの仮想化 diff ビューアに自動切替。ビューポート分のDOMのみ描画し、15000行でもスムーズ表示。既存テーマ・シンタックスハイライト再利用、未変更領域の自動折りたたみ | [#5](https://github.com/MocA-Love/superset/pull/5) | 2026-03-28 |
 
 ## Fork のビルド方法 (macOS)
