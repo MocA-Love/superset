@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { usePortsStore } from "renderer/stores";
 import type { EnrichedPort } from "shared/types";
 
 const PORTS_FALLBACK_REFETCH_INTERVAL_MS = 10_000;
@@ -29,7 +30,13 @@ export function usePortsData() {
 		},
 	});
 
-	const ports = detectedPorts ?? [];
+	const showConfiguredOnly = usePortsStore((s) => s.showConfiguredOnly);
+
+	const ports = useMemo(() => {
+		const all = detectedPorts ?? [];
+		if (!showConfiguredOnly) return all;
+		return all.filter((p) => p.label != null);
+	}, [detectedPorts, showConfiguredOnly]);
 
 	const workspaceNames = useMemo(() => {
 		if (!allWorkspaces) return {};
