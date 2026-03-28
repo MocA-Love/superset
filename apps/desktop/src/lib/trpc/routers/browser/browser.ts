@@ -150,22 +150,6 @@ export const createBrowserRouter = () => {
 				};
 			}),
 
-		setZoomLevel: publicProcedure
-			.input(z.object({ paneId: z.string(), level: z.number() }))
-			.mutation(({ input }) => {
-				const wc = browserManager.getWebContents(input.paneId);
-				if (!wc) return { success: false, level: 0 };
-				wc.setZoomLevel(input.level);
-				return { success: true, level: input.level };
-			}),
-
-		getZoomLevel: publicProcedure
-			.input(z.object({ paneId: z.string() }))
-			.query(({ input }) => {
-				const wc = browserManager.getWebContents(input.paneId);
-				return { level: wc?.getZoomLevel() ?? 0 };
-			}),
-
 		clearBrowsingData: publicProcedure
 			.input(
 				z.object({

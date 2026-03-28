@@ -459,6 +459,22 @@ export function usePersistentWebview({
 		[paneId],
 	);
 
+	// -- Zoom (CSS zoom injected into guest page — guaranteed host-safe) ----
+
+	const setGuestZoom = useCallback(
+		(factor: number) => {
+			const webview = webviewRegistry.get(paneId);
+			if (webview) {
+				webview
+					.executeJavaScript(
+						`document.documentElement.style.zoom = '${factor}'`,
+					)
+					.catch(() => {});
+			}
+		},
+		[paneId],
+	);
+
 	return {
 		containerRef,
 		goBack,
@@ -467,5 +483,6 @@ export function usePersistentWebview({
 		navigateTo,
 		canGoBack,
 		canGoForward,
+		setGuestZoom,
 	};
 }

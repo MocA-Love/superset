@@ -45,8 +45,6 @@ export function BrowserPane({
 	const isBlankPage = currentUrl === "about:blank";
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
-	const { mutate: setZoomLevel } =
-		electronTrpc.browser.setZoomLevel.useMutation();
 
 	const {
 		containerRef,
@@ -56,37 +54,37 @@ export function BrowserPane({
 		navigateTo,
 		canGoBack,
 		canGoForward,
+		setGuestZoom,
 	} = usePersistentWebview({
 		paneId,
 		initialUrl: currentUrl,
 	});
 
-	// -- Zoom state (managed via tRPC to main process) ----------------------
+	// -- Zoom state (CSS zoom injected into guest page) ---------------------
 
-	const ZOOM_STEP = 0.5;
-	const ZOOM_MIN = -3;
-	const ZOOM_MAX = 3;
+	const ZOOM_STEP = 10;
+	const ZOOM_MIN = 50;
+	const ZOOM_MAX = 200;
 
-	const [zoomLevel, setZoomLevelLocal] = useState(0);
-	const zoomPercent = Math.round(1.2 ** zoomLevel * 100);
+	const [zoomPercent, setZoomPercent] = useState(100);
 
 	const applyZoom = useCallback(
-		(level: number) => {
-			setZoomLevelLocal(level);
-			setZoomLevel({ paneId, level });
+		(percent: number) => {
+			setZoomPercent(percent);
+			setGuestZoom(percent / 100);
 		},
-		[paneId, setZoomLevel],
+		[setGuestZoom],
 	);
 
 	const zoomIn = useCallback(
-		() => applyZoom(Math.min(ZOOM_MAX, zoomLevel + ZOOM_STEP)),
-		[applyZoom, zoomLevel],
+		() => applyZoom(Math.min(ZOOM_MAX, zoomPercent + ZOOM_STEP)),
+		[applyZoom, zoomPercent],
 	);
 	const zoomOut = useCallback(
-		() => applyZoom(Math.max(ZOOM_MIN, zoomLevel - ZOOM_STEP)),
-		[applyZoom, zoomLevel],
+		() => applyZoom(Math.max(ZOOM_MIN, zoomPercent - ZOOM_STEP)),
+		[applyZoom, zoomPercent],
 	);
-	const resetZoom = useCallback(() => applyZoom(0), [applyZoom]);
+	const resetZoom = useCallback(() => applyZoom(100), [applyZoom]);
 
 	const handleOpenDevTools = useCallback(() => {
 		openDevTools({ paneId });
