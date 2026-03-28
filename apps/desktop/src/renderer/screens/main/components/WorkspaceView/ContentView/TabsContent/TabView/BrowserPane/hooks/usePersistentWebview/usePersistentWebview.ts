@@ -24,6 +24,8 @@ const webviewRegistry = new Map<string, Electron.WebviewTag>();
 const wrapperRegistry = new Map<string, HTMLDivElement>();
 /** Tracks paneId → last-registered webContentsId so we can re-register if it changes. */
 const registeredWebContentsIds = new Map<string, number>();
+/** Tracks paneId → current CSS zoom factor so it can be re-applied after page loads. */
+const zoomFactorRegistry = new Map<string, number>();
 let hiddenContainer: HTMLDivElement | null = null;
 
 function getHiddenContainer(): HTMLDivElement {
@@ -84,6 +86,7 @@ export function destroyPersistentWebview(paneId: string): void {
 		webviewRegistry.delete(paneId);
 	}
 	registeredWebContentsIds.delete(paneId);
+	zoomFactorRegistry.delete(paneId);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,24 +278,31 @@ export function usePersistentWebview({
 
 			if (isHistoryNavigation.current) {
 				isHistoryNavigation.current = false;
-				return;
+			} else {
+				const url = wv.getURL();
+				const title = wv.getTitle();
+				store.updateBrowserUrl(
+					paneId,
+					url ?? "",
+					title ?? "",
+					faviconUrlRef.current,
+				);
+
+				if (url && url !== "about:blank") {
+					upsertHistory({
+						url,
+						title: title ?? "",
+						faviconUrl: faviconUrlRef.current ?? null,
+					});
+				}
 			}
 
-			const url = wv.getURL();
-			const title = wv.getTitle();
-			store.updateBrowserUrl(
-				paneId,
-				url ?? "",
-				title ?? "",
-				faviconUrlRef.current,
-			);
-
-			if (url && url !== "about:blank") {
-				upsertHistory({
-					url,
-					title: title ?? "",
-					faviconUrl: faviconUrlRef.current ?? null,
-				});
+			// Re-apply CSS zoom after page load (zoom is lost on navigation/reload)
+			const factor = zoomFactorRegistry.get(paneId);
+			if (factor != null && factor !== 1) {
+				wv.executeJavaScript(
+					`document.documentElement.style.zoom = '${factor}'`,
+				).catch(() => {});
 			}
 		};
 
@@ -463,6 +473,7 @@ export function usePersistentWebview({
 
 	const setGuestZoom = useCallback(
 		(factor: number) => {
+			zoomFactorRegistry.set(paneId, factor);
 			const webview = webviewRegistry.get(paneId);
 			if (webview) {
 				webview
