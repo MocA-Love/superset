@@ -136,6 +136,32 @@ export const createBrowserRouter = () => {
 				return { success: true };
 			}),
 
+		setZoomLevel: publicProcedure
+			.input(z.object({ paneId: z.string(), level: z.number() }))
+			.mutation(({ input }) => {
+				const wc = browserManager.getWebContents(input.paneId);
+				if (!wc) return { success: false };
+				wc.setZoomLevel(input.level);
+				return { success: true };
+			}),
+
+		onZoomChanged: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ zoomLevel: number }>((emit) => {
+					const handler = () => {
+						const wc = browserManager.getWebContents(input.paneId);
+						if (wc) {
+							emit.next({ zoomLevel: wc.getZoomLevel() });
+						}
+					};
+					browserManager.on(`zoom-changed:${input.paneId}`, handler);
+					return () => {
+						browserManager.off(`zoom-changed:${input.paneId}`, handler);
+					};
+				});
+			}),
+
 		getPageInfo: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.query(({ input }) => {
