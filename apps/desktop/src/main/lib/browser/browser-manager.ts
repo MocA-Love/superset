@@ -49,6 +49,7 @@ class BrowserManager extends EventEmitter {
 			wc.setWindowOpenHandler(({ url }) => {
 				if (url && url !== "about:blank") {
 					this.emit(`new-window:${paneId}`, url);
+					this.emit("new-window", { paneId, url });
 				}
 				return { action: "deny" as const };
 			});

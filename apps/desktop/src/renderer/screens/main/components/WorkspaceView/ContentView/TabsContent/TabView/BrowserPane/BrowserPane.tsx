@@ -1,6 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -44,6 +45,8 @@ export function BrowserPane({
 	const isBlankPage = currentUrl === "about:blank";
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
+	const { mutate: setZoomLevel } =
+		electronTrpc.browser.setZoomLevel.useMutation();
 
 	const {
 		containerRef,
@@ -57,6 +60,34 @@ export function BrowserPane({
 		paneId,
 		initialUrl: currentUrl,
 	});
+
+	// -- Zoom (synced with Electron's built-in Cmd+/- zoom) -----------------
+
+	const ZOOM_STEP = 1;
+	const ZOOM_MIN = -3;
+	const ZOOM_MAX = 5;
+
+	const [zoomLevel, setZoomLevelLocal] = useState(0);
+	const zoomPercent = Math.round(1.2 ** zoomLevel * 100);
+
+	// Sync when Cmd+/- changes zoom from keyboard
+	electronTrpc.browser.onZoomChanged.useSubscription(
+		{ paneId },
+		{
+			onData: ({ zoomLevel: level }) => {
+				setZoomLevelLocal(level);
+			},
+		},
+	);
+
+	const applyZoom = useCallback(
+		(level: number) => {
+			const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
+			setZoomLevelLocal(clamped);
+			setZoomLevel({ paneId, level: clamped });
+		},
+		[paneId, setZoomLevel],
+	);
 
 	const handleOpenDevTools = useCallback(() => {
 		openDevTools({ paneId });
@@ -92,6 +123,52 @@ export function BrowserPane({
 							closeHotkeyId="CLOSE_TERMINAL"
 							leadingActions={
 								<>
+									<div className="flex items-center gap-0.5">
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={() => applyZoom(zoomLevel - ZOOM_STEP)}
+													disabled={zoomLevel <= ZOOM_MIN}
+													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-30"
+												>
+													<LuMinus className="size-3.5" />
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Zoom Out
+											</TooltipContent>
+										</Tooltip>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={() => applyZoom(0)}
+													className="rounded px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+												>
+													{zoomPercent}%
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Reset Zoom
+											</TooltipContent>
+										</Tooltip>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={() => applyZoom(zoomLevel + ZOOM_STEP)}
+													disabled={zoomLevel >= ZOOM_MAX}
+													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-30"
+												>
+													<LuPlus className="size-3.5" />
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Zoom In
+											</TooltipContent>
+										</Tooltip>
+									</div>
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<button

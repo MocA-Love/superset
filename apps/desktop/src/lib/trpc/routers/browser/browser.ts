@@ -115,6 +115,19 @@ export const createBrowserRouter = () => {
 				});
 			}),
 
+		/** Global subscription for new-window events from any browser pane. */
+		onAnyNewWindow: publicProcedure.subscription(() => {
+			return observable<{ paneId: string; url: string }>((emit) => {
+				const handler = (data: { paneId: string; url: string }) => {
+					emit.next(data);
+				};
+				browserManager.on("new-window", handler);
+				return () => {
+					browserManager.off("new-window", handler);
+				};
+			});
+		}),
+
 		onContextMenuAction: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
@@ -134,6 +147,33 @@ export const createBrowserRouter = () => {
 			.mutation(({ input }) => {
 				browserManager.openDevTools(input.paneId);
 				return { success: true };
+			}),
+
+		setZoomLevel: publicProcedure
+			.input(z.object({ paneId: z.string(), level: z.number() }))
+			.mutation(({ input }) => {
+				const wc = browserManager.getWebContents(input.paneId);
+				if (!wc) return { success: false };
+				wc.setZoomLevel(input.level);
+				return { success: true };
+			}),
+
+		onZoomChanged: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ zoomLevel: number }>((emit) => {
+					let lastLevel: number | null = null;
+					const interval = setInterval(() => {
+						const wc = browserManager.getWebContents(input.paneId);
+						if (!wc) return;
+						const level = wc.getZoomLevel();
+						if (level !== lastLevel) {
+							lastLevel = level;
+							emit.next({ zoomLevel: level });
+						}
+					}, 300);
+					return () => clearInterval(interval);
+				});
 			}),
 
 		getPageInfo: publicProcedure

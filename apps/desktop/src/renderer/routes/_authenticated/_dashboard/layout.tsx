@@ -5,6 +5,7 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { useFeatureFlagEnabled } from "posthog-js/react";
+import { useBrowserNewWindowHandler } from "renderer/hooks/useBrowserNewWindowHandler";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
@@ -92,6 +93,11 @@ function DashboardLayout() {
 		undefined,
 		[openNewWorkspaceModal, currentWorkspace?.projectId],
 	);
+
+	// Global listener for target="_blank" / window.open in any browser pane.
+	// Must live here (always-mounted) because webviews persist in a hidden
+	// container even when their BrowserPane component is unmounted.
+	useBrowserNewWindowHandler();
 
 	return (
 		<div className="flex flex-col h-full w-full">
