@@ -71,6 +71,7 @@ export function CodeMirrorDiffViewer({
 		const mergeView = new MergeView({
 			parent: containerRef.current,
 			collapseUnchanged: { margin: 3, minSize: 4 },
+			diffConfig: { scanLimit: 50000, timeout: 5000 },
 			a: {
 				doc: original,
 				extensions: [
