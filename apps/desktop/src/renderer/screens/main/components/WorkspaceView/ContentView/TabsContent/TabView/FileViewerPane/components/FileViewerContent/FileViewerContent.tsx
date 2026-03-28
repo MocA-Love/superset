@@ -323,16 +323,7 @@ export function FileViewerContent({
 		const totalLines =
 			diffData.original.split("\n").length +
 			diffData.modified.split("\n").length;
-		if (totalLines > 2000) {
-			return (
-				<CodeMirrorDiffViewer
-					original={diffData.original}
-					modified={diffData.modified}
-					language={diffData.language}
-					viewMode={diffViewMode}
-				/>
-			);
-		}
+		const useLargeDiffViewer = totalLines > 2000;
 
 		return (
 			<DiffViewerContextMenu
@@ -362,18 +353,20 @@ export function FileViewerContent({
 				}}
 			>
 				<div className="relative h-full">
-					<MarkdownSearch
-						isOpen={diffSearch.isSearchOpen}
-						query={diffSearch.query}
-						caseSensitive={diffSearch.caseSensitive}
-						matchCount={diffSearch.matchCount}
-						activeMatchIndex={diffSearch.activeMatchIndex}
-						onQueryChange={diffSearch.setQuery}
-						onCaseSensitiveChange={diffSearch.setCaseSensitive}
-						onFindNext={diffSearch.findNext}
-						onFindPrevious={diffSearch.findPrevious}
-						onClose={diffSearch.closeSearch}
-					/>
+					{!useLargeDiffViewer && (
+						<MarkdownSearch
+							isOpen={diffSearch.isSearchOpen}
+							query={diffSearch.query}
+							caseSensitive={diffSearch.caseSensitive}
+							matchCount={diffSearch.matchCount}
+							activeMatchIndex={diffSearch.activeMatchIndex}
+							onQueryChange={diffSearch.setQuery}
+							onCaseSensitiveChange={diffSearch.setCaseSensitive}
+							onFindNext={diffSearch.findNext}
+							onFindPrevious={diffSearch.findPrevious}
+							onClose={diffSearch.closeSearch}
+						/>
+					)}
 					<div
 						ref={diffContainerRef}
 						className="h-full min-h-0 overflow-auto bg-background select-text"
@@ -383,6 +376,7 @@ export function FileViewerContent({
 							}
 						}}
 						onContextMenuCapture={(event) => {
+							if (useLargeDiffViewer) return;
 							const location = getDiffLocationFromEvent(event.nativeEvent);
 							if (!location) {
 								return;
@@ -401,16 +395,27 @@ export function FileViewerContent({
 							};
 						}}
 					>
-						<LightDiffViewer
-							key={filePath}
-							contents={diffData}
-							viewMode={diffViewMode}
-							hideUnchangedRegions={hideUnchangedRegions}
-							filePath={filePath}
-							className="min-h-full"
-						/>
+						{useLargeDiffViewer ? (
+							<CodeMirrorDiffViewer
+								original={diffData.original}
+								modified={diffData.modified}
+								language={diffData.language}
+								viewMode={diffViewMode}
+							/>
+						) : (
+							<LightDiffViewer
+								key={filePath}
+								contents={diffData}
+								viewMode={diffViewMode}
+								hideUnchangedRegions={hideUnchangedRegions}
+								filePath={filePath}
+								className="min-h-full"
+							/>
+						)}
 					</div>
-					<DiffScrollbarDecorations scrollContainerRef={diffContainerRef} />
+					{!useLargeDiffViewer && (
+						<DiffScrollbarDecorations scrollContainerRef={diffContainerRef} />
+					)}
 				</div>
 			</DiffViewerContextMenu>
 		);
