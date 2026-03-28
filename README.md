@@ -57,13 +57,18 @@ cd superset
 bun install
 
 # 3. デスクトップアプリをビルド
-bun run build --filter=@superset/desktop
+cd apps/desktop
+SUPERSET_WORKSPACE_NAME=superset bun run build
 
 # 4. ビルド成果物を開く
-open apps/desktop/release
+open release
 ```
 
 `release` フォルダ内の `.dmg` ファイルを開き、Superset.app を Applications にドラッグしてインストールしてください。
+
+> **⚠️ ビルド時の注意**: `bun dev` でアプリを起動中にビルドすると、開発用の環境変数（`SUPERSET_WORKSPACE_NAME=default` 等）がバイナリに焼き込まれ、本番データ（`~/.superset/`）が参照されなくなります。ビルド時は必ず `SUPERSET_WORKSPACE_NAME=superset` を明示的に指定してください。
+
+> **📦 上書きインストールについて**: 公式版の `.dmg` をフォーク版で上書きしても、ワークスペース・ターミナル履歴・設定はすべて `~/.superset/` に保持されるため、データが消えることはありません。
 
 ### 開発モードで実行
 
