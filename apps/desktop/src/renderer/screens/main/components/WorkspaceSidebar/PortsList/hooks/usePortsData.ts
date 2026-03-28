@@ -11,8 +11,44 @@ export interface WorkspacePortGroup {
 	ports: EnrichedPort[];
 }
 
+/**
+ * Build a display-friendly name for each workspace.
+ * Uses the worktree directory basename to distinguish workspaces
+ * that share the same user-facing name (e.g. multiple "default" worktrees).
+ */
+function buildWorkspaceDisplayNames(
+	groups: {
+		workspaces: { id: string; name: string; worktreePath: string }[];
+		sections: {
+			workspaces: { id: string; name: string; worktreePath: string }[];
+		}[];
+	}[],
+): Record<string, string> {
+	const names: Record<string, string> = {};
+
+	for (const group of groups) {
+		const allWs = [
+			...group.workspaces,
+			...group.sections.flatMap((s) => s.workspaces),
+		];
+		for (const ws of allWs) {
+			if (ws.worktreePath) {
+				const basename = ws.worktreePath.split("/").pop() || ws.name;
+				names[ws.id] =
+					basename !== ws.name ? `${basename} (${ws.name})` : ws.name;
+			} else {
+				names[ws.id] = ws.name;
+			}
+		}
+	}
+
+	return names;
+}
+
 export function usePortsData() {
-	const { data: allWorkspaces } = electronTrpc.workspaces.getAll.useQuery();
+	// getAllGrouped is already cached by the sidebar, so this is zero-cost.
+	const { data: allWorkspaceGroups } =
+		electronTrpc.workspaces.getAllGrouped.useQuery();
 
 	const utils = electronTrpc.useUtils();
 
@@ -39,15 +75,9 @@ export function usePortsData() {
 	}, [detectedPorts, showConfiguredOnly]);
 
 	const workspaceNames = useMemo(() => {
-		if (!allWorkspaces) return {};
-		return allWorkspaces.reduce(
-			(acc, ws) => {
-				acc[ws.id] = ws.name;
-				return acc;
-			},
-			{} as Record<string, string>,
-		);
-	}, [allWorkspaces]);
+		if (!allWorkspaceGroups) return {};
+		return buildWorkspaceDisplayNames(allWorkspaceGroups);
+	}, [allWorkspaceGroups]);
 
 	const workspacePortGroups = useMemo(() => {
 		const groupMap = new Map<string, EnrichedPort[]>();
