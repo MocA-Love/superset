@@ -1,6 +1,5 @@
 import { workspaces } from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
-import { eq } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import { loadStaticPorts } from "main/lib/static-ports";
 import { portManager } from "main/lib/terminal/port-manager";
@@ -24,30 +23,80 @@ function getLabelsForPath(worktreePath: string): Map<number, string> | null {
 	return labels;
 }
 
+/** Cache structure for workspace path + labels lookup. */
+interface WorkspaceLabelInfo {
+	labels: Map<number, string> | null;
+	workspaceId: string;
+}
+
+function buildLabelCache(): Map<string, WorkspaceLabelInfo> {
+	const cache = new Map<string, WorkspaceLabelInfo>();
+	const allWs = localDb.select().from(workspaces).all();
+
+	for (const ws of allWs) {
+		const wsPath = getWorkspacePath(ws);
+		if (!wsPath) continue;
+		const labels = getLabelsForPath(wsPath);
+		if (labels) {
+			cache.set(ws.id, { labels, workspaceId: ws.id });
+		}
+	}
+
+	return cache;
+}
+
 export const createPortsRouter = () => {
 	return router({
 		getAll: publicProcedure.query((): EnrichedPort[] => {
 			const detectedPorts = portManager.getAllPorts();
+			const labelCache = buildLabelCache();
 
-			const labelCache = new Map<string, Map<number, string> | null>();
+			// Track which static ports have been matched with detected ports
+			// key: "workspaceId:port"
+			const matchedStaticPorts = new Set<string>();
 
-			return detectedPorts.map((port) => {
-				if (!labelCache.has(port.workspaceId)) {
-					const ws = localDb
-						.select()
-						.from(workspaces)
-						.where(eq(workspaces.id, port.workspaceId))
-						.get();
-					const wsPath = ws ? getWorkspacePath(ws) : null;
-					labelCache.set(
-						port.workspaceId,
-						wsPath ? getLabelsForPath(wsPath) : null,
-					);
+			// Enrich detected ports with labels
+			const enriched: EnrichedPort[] = detectedPorts.map((port) => {
+				const info = labelCache.get(port.workspaceId);
+				const label = info?.labels.get(port.port) ?? null;
+				if (label != null) {
+					matchedStaticPorts.add(`${port.workspaceId}:${port.port}`);
 				}
-
-				const labels = labelCache.get(port.workspaceId);
-				return { ...port, label: labels?.get(port.port) ?? null };
+				return {
+					port: port.port,
+					workspaceId: port.workspaceId,
+					label,
+					detected: true,
+					pid: port.pid,
+					processName: port.processName,
+					paneId: port.paneId,
+					detectedAt: port.detectedAt,
+					address: port.address,
+				};
 			});
+
+			// Add static ports that were NOT detected
+			for (const [wsId, info] of labelCache) {
+				if (!info.labels) continue;
+				for (const [portNum, label] of info.labels) {
+					const key = `${wsId}:${portNum}`;
+					if (matchedStaticPorts.has(key)) continue;
+
+					enriched.push({
+						port: portNum,
+						workspaceId: wsId,
+						label,
+						detected: false,
+						pid: null,
+						processName: null,
+						paneId: null,
+						detectedAt: null,
+						address: null,
+					});
+				}
+			}
+
+			return enriched;
 		}),
 
 		subscribe: publicProcedure.subscription(() => {

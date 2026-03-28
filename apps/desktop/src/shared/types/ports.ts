@@ -20,6 +20,16 @@ export interface StaticPortsResult {
 	error: string | null;
 }
 
-export interface EnrichedPort extends DetectedPort {
+export interface EnrichedPort {
+	port: number;
+	workspaceId: string;
 	label: string | null;
+	/** Whether this port is currently detected as listening. */
+	detected: boolean;
+	/** Detection info — only present when `detected` is true. */
+	pid: number | null;
+	processName: string | null;
+	paneId: string | null;
+	detectedAt: number | null;
+	address: string | null;
 }

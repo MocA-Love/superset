@@ -6,6 +6,7 @@ export function useKillPort() {
 	const killMutation = electronTrpc.ports.kill.useMutation();
 
 	const killPort = async (port: EnrichedPort) => {
+		if (!port.paneId) return;
 		const result = await killMutation.mutateAsync({
 			paneId: port.paneId,
 			port: port.port,
@@ -18,12 +19,13 @@ export function useKillPort() {
 	};
 
 	const killPorts = async (ports: EnrichedPort[]) => {
-		if (ports.length === 0) return;
+		const killable = ports.filter((p) => p.paneId != null);
+		if (killable.length === 0) return;
 
 		const results = await Promise.all(
-			ports.map((port) =>
+			killable.map((port) =>
 				killMutation.mutateAsync({
-					paneId: port.paneId,
+					paneId: port.paneId as string,
 					port: port.port,
 				}),
 			),

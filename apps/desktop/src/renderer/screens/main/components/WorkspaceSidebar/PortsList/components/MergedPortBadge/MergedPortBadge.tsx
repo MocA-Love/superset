@@ -22,10 +22,14 @@ export function MergedPortBadge({ port }: MergedPortBadgeProps) {
 	const openUrl = electronTrpc.external.openUrl.useMutation();
 	const { killPort } = useKillPort();
 
+	const isDetected = port.detected;
+
 	const displayContent = port.label ? (
 		<>
 			{port.label}{" "}
-			<span className="font-mono font-normal text-muted-foreground">
+			<span
+				className={`font-mono font-normal ${isDetected ? "text-muted-foreground" : "text-muted-foreground/50"}`}
+			>
 				{port.port}
 			</span>
 		</>
@@ -65,7 +69,13 @@ export function MergedPortBadge({ port }: MergedPortBadgeProps) {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<div className="group relative inline-flex items-center gap-1 rounded-md text-xs transition-colors mb-1 bg-primary/10 text-primary hover:bg-primary/20">
+				<div
+					className={`group relative inline-flex items-center gap-1 rounded-md text-xs transition-colors mb-1 ${
+						isDetected
+							? "bg-primary/10 text-primary hover:bg-primary/20"
+							: "bg-muted/40 text-muted-foreground/60"
+					}`}
+				>
 					<button
 						type="button"
 						onClick={handleClick}
@@ -74,22 +84,29 @@ export function MergedPortBadge({ port }: MergedPortBadgeProps) {
 					>
 						{displayContent}
 					</button>
-					<button
-						type="button"
-						onClick={handleOpenInBrowser}
-						aria-label={`Open ${port.label || `port ${port.port}`} in browser`}
-						className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary focus-visible:opacity-100 focus-visible:outline-none"
-					>
-						<LuExternalLink className="size-3.5" strokeWidth={STROKE_WIDTH} />
-					</button>
-					<button
-						type="button"
-						onClick={handleClose}
-						aria-label={`Close ${port.label || `port ${port.port}`}`}
-						className="opacity-0 group-hover:opacity-100 pr-1 transition-opacity text-muted-foreground hover:text-primary focus-visible:opacity-100 focus-visible:outline-none"
-					>
-						<LuX className="size-3.5" strokeWidth={STROKE_WIDTH} />
-					</button>
+					{isDetected && (
+						<>
+							<button
+								type="button"
+								onClick={handleOpenInBrowser}
+								aria-label={`Open ${port.label || `port ${port.port}`} in browser`}
+								className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary focus-visible:opacity-100 focus-visible:outline-none"
+							>
+								<LuExternalLink
+									className="size-3.5"
+									strokeWidth={STROKE_WIDTH}
+								/>
+							</button>
+							<button
+								type="button"
+								onClick={handleClose}
+								aria-label={`Close ${port.label || `port ${port.port}`}`}
+								className="opacity-0 group-hover:opacity-100 pr-1 transition-opacity text-muted-foreground hover:text-primary focus-visible:opacity-100 focus-visible:outline-none"
+							>
+								<LuX className="size-3.5" strokeWidth={STROKE_WIDTH} />
+							</button>
+						</>
+					)}
 				</div>
 			</TooltipTrigger>
 			<TooltipContent side="top" sideOffset={6} showArrow={false}>
@@ -100,10 +117,15 @@ export function MergedPortBadge({ port }: MergedPortBadgeProps) {
 					>
 						localhost:{port.port}
 					</div>
-					{(port.processName || port.pid != null) && (
+					{isDetected && (port.processName || port.pid != null) && (
 						<div className="text-muted-foreground">
 							{port.processName}
 							{port.pid != null && ` (pid ${port.pid})`}
+						</div>
+					)}
+					{!isDetected && (
+						<div className="text-muted-foreground/70 text-[10px]">
+							Not detected
 						</div>
 					)}
 					{canJumpToTerminal && (

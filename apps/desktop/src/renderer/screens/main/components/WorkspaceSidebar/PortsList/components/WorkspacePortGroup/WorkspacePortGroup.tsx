@@ -19,8 +19,10 @@ export function WorkspacePortGroup({ group }: WorkspacePortGroupProps) {
 		navigateToWorkspace(group.workspaceId, navigate);
 	};
 
+	const detectedPorts = group.ports.filter((p) => p.detected);
+
 	const handleCloseAll = () => {
-		killPorts(group.ports);
+		killPorts(detectedPorts);
 	};
 
 	return (
