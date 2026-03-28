@@ -1,6 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
@@ -45,6 +45,8 @@ export function BrowserPane({
 	const isBlankPage = currentUrl === "about:blank";
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
+	const { mutate: setZoomLevel } =
+		electronTrpc.browser.setZoomLevel.useMutation();
 
 	const {
 		containerRef,
@@ -54,16 +56,37 @@ export function BrowserPane({
 		navigateTo,
 		canGoBack,
 		canGoForward,
-		zoomIn,
-		zoomOut,
-		resetZoom,
-		zoomLevel,
 	} = usePersistentWebview({
 		paneId,
 		initialUrl: currentUrl,
 	});
 
+	// -- Zoom state (managed via tRPC to main process) ----------------------
+
+	const ZOOM_STEP = 0.5;
+	const ZOOM_MIN = -3;
+	const ZOOM_MAX = 3;
+
+	const [zoomLevel, setZoomLevelLocal] = useState(0);
 	const zoomPercent = Math.round(1.2 ** zoomLevel * 100);
+
+	const applyZoom = useCallback(
+		(level: number) => {
+			setZoomLevelLocal(level);
+			setZoomLevel({ paneId, level });
+		},
+		[paneId, setZoomLevel],
+	);
+
+	const zoomIn = useCallback(
+		() => applyZoom(Math.min(ZOOM_MAX, zoomLevel + ZOOM_STEP)),
+		[applyZoom, zoomLevel],
+	);
+	const zoomOut = useCallback(
+		() => applyZoom(Math.max(ZOOM_MIN, zoomLevel - ZOOM_STEP)),
+		[applyZoom, zoomLevel],
+	);
+	const resetZoom = useCallback(() => applyZoom(0), [applyZoom]);
 
 	const handleOpenDevTools = useCallback(() => {
 		openDevTools({ paneId });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { PLATFORM } from "shared/constants";
@@ -459,37 +459,6 @@ export function usePersistentWebview({
 		[paneId],
 	);
 
-	// -- Zoom methods -------------------------------------------------------
-
-	const ZOOM_STEP = 0.5;
-	const ZOOM_MIN = -3;
-	const ZOOM_MAX = 3;
-
-	const [zoomLevel, setZoomLevelState] = useState(0);
-
-	const zoomIn = useCallback(() => {
-		const webview = webviewRegistry.get(paneId);
-		if (!webview) return;
-		const next = Math.min(ZOOM_MAX, webview.getZoomLevel() + ZOOM_STEP);
-		webview.setZoomLevel(next);
-		setZoomLevelState(next);
-	}, [paneId]);
-
-	const zoomOut = useCallback(() => {
-		const webview = webviewRegistry.get(paneId);
-		if (!webview) return;
-		const next = Math.max(ZOOM_MIN, webview.getZoomLevel() - ZOOM_STEP);
-		webview.setZoomLevel(next);
-		setZoomLevelState(next);
-	}, [paneId]);
-
-	const resetZoom = useCallback(() => {
-		const webview = webviewRegistry.get(paneId);
-		if (!webview) return;
-		webview.setZoomLevel(0);
-		setZoomLevelState(0);
-	}, [paneId]);
-
 	return {
 		containerRef,
 		goBack,
@@ -498,9 +467,5 @@ export function usePersistentWebview({
 		navigateTo,
 		canGoBack,
 		canGoForward,
-		zoomIn,
-		zoomOut,
-		resetZoom,
-		zoomLevel,
 	};
 }
