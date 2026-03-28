@@ -215,8 +215,10 @@ export function BrowserToolbar({
 									<button
 										type="button"
 										onClick={() => {
-											navigator.clipboard.writeText(currentUrl);
-											toast.success("URL copied");
+											navigator.clipboard.writeText(currentUrl).then(
+												() => toast.success("URL copied"),
+												() => toast.error("Failed to copy URL"),
+											);
 										}}
 										className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition-all hover:text-muted-foreground group-hover:opacity-100"
 									>
