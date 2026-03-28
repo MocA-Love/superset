@@ -1,6 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
 import { useCallback } from "react";
+import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -53,10 +54,16 @@ export function BrowserPane({
 		navigateTo,
 		canGoBack,
 		canGoForward,
+		zoomIn,
+		zoomOut,
+		resetZoom,
+		zoomLevel,
 	} = usePersistentWebview({
 		paneId,
 		initialUrl: currentUrl,
 	});
+
+	const zoomPercent = Math.round(1.2 ** zoomLevel * 100);
 
 	const handleOpenDevTools = useCallback(() => {
 		openDevTools({ paneId });
@@ -92,6 +99,50 @@ export function BrowserPane({
 							closeHotkeyId="CLOSE_TERMINAL"
 							leadingActions={
 								<>
+									<div className="flex items-center gap-0.5">
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={zoomOut}
+													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+												>
+													<LuMinus className="size-3.5" />
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Zoom Out
+											</TooltipContent>
+										</Tooltip>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={resetZoom}
+													className="rounded px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+												>
+													{zoomPercent}%
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Reset Zoom
+											</TooltipContent>
+										</Tooltip>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={zoomIn}
+													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+												>
+													<LuPlus className="size-3.5" />
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Zoom In
+											</TooltipContent>
+										</Tooltip>
+									</div>
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<button
