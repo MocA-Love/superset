@@ -133,21 +133,9 @@ export function usePersistentWebview({
 	const { mutate: upsertHistory } =
 		electronTrpc.browserHistory.upsert.useMutation();
 
-	// Subscribe to new-window events (target="_blank" links, window.open)
-	// handled via setWindowOpenHandler in the main process
-	electronTrpc.browser.onNewWindow.useSubscription(
-		{ paneId },
-		{
-			onData: ({ url }: { url: string }) => {
-				const state = useTabsStore.getState();
-				const pane = state.panes[paneId];
-				if (!pane) return;
-				const tab = state.tabs.find((t) => t.id === pane.tabId);
-				if (!tab) return;
-				state.openInBrowserPane(tab.workspaceId, url);
-			},
-		},
-	);
+	// New-window events (target="_blank", window.open) are handled globally
+	// by useBrowserNewWindowHandler in the dashboard layout, so webviews that
+	// are parked in the hidden container still get their events handled.
 
 	// Subscribe to context menu actions (e.g. "Open Link as New Split")
 	electronTrpc.browser.onContextMenuAction.useSubscription(
@@ -260,6 +248,26 @@ export function usePersistentWebview({
 					}
 				`).catch(() => {});
 			}
+
+			// Cmd/Ctrl+click on links opens in a new browser tab.
+			// Chromium may not always trigger setWindowOpenHandler for modifier
+			// clicks, so we intercept them in the guest page and call window.open
+			// which is reliably caught by the handler.
+			wv.executeJavaScript(`
+				if (!window.__supersetCmdClickInstalled) {
+					window.__supersetCmdClickInstalled = true;
+					document.addEventListener('click', function(e) {
+						if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
+						var el = e.target;
+						while (el && el.tagName !== 'A') el = el.parentElement;
+						if (el && el.href && !el.href.startsWith('javascript:')) {
+							e.preventDefault();
+							e.stopPropagation();
+							window.open(el.href, '_blank');
+						}
+					}, true);
+				}
+			`).catch(() => {});
 		};
 
 		const handleDidStartLoading = () => {

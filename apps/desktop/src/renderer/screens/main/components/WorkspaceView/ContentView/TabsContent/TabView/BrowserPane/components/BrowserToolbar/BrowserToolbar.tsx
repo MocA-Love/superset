@@ -1,5 +1,7 @@
+import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LuLink } from "react-icons/lu";
 import {
 	TbArrowLeft,
 	TbArrowRight,
@@ -184,28 +186,49 @@ export function BrowserToolbar({
 						/>
 					</form>
 				) : (
-					<button
-						type="button"
-						onClick={enterEditMode}
-						className="group flex w-full min-w-0 items-baseline rounded-sm border border-transparent px-2 py-0.5 text-left text-xs"
-					>
-						{isBlank ? (
-							<span className="text-muted-foreground/40">
-								Enter URL or search...
-							</span>
-						) : (
-							<>
-								<span className="min-w-0 truncate text-muted-foreground/60 transition-colors group-hover:text-foreground">
-									{url}
+					<div className="group flex w-full min-w-0 items-center">
+						<button
+							type="button"
+							onClick={enterEditMode}
+							className="flex flex-1 min-w-0 items-baseline rounded-sm border border-transparent px-2 py-0.5 text-left text-xs"
+						>
+							{isBlank ? (
+								<span className="text-muted-foreground/40">
+									Enter URL or search...
 								</span>
-								{pageTitle && (
-									<span className="min-w-0 ml-1 truncate text-muted-foreground/40 transition-opacity group-hover:opacity-0">
-										/ {pageTitle}
+							) : (
+								<>
+									<span className="min-w-0 truncate text-muted-foreground/60 transition-colors group-hover:text-foreground">
+										{url}
 									</span>
-								)}
-							</>
+									{pageTitle && (
+										<span className="min-w-0 ml-1 truncate text-muted-foreground/40 transition-opacity group-hover:opacity-0">
+											/ {pageTitle}
+										</span>
+									)}
+								</>
+							)}
+						</button>
+						{!isBlank && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										type="button"
+										onClick={() => {
+											navigator.clipboard.writeText(currentUrl);
+											toast.success("URL copied");
+										}}
+										className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition-all hover:text-muted-foreground group-hover:opacity-100"
+									>
+										<LuLink className="size-3" />
+									</button>
+								</TooltipTrigger>
+								<TooltipContent side="bottom" showArrow={false}>
+									Copy URL
+								</TooltipContent>
+							</Tooltip>
 						)}
-					</button>
+					</div>
 				)}
 				{isEditing && autocomplete.isOpen && (
 					<UrlSuggestions

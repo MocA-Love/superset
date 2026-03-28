@@ -27,17 +27,12 @@ class BrowserManager extends EventEmitter {
 	private consoleLogs = new Map<string, ConsoleEntry[]>();
 	private consoleListeners = new Map<string, () => void>();
 	private contextMenuListeners = new Map<string, () => void>();
-	private zoomListeners = new Map<string, () => void>();
 
 	register(paneId: string, webContentsId: number): void {
 		// Clean up previous listeners if re-registering with a new webContentsId
 		const prevId = this.paneWebContentsIds.get(paneId);
 		if (prevId != null && prevId !== webContentsId) {
-			for (const map of [
-				this.consoleListeners,
-				this.contextMenuListeners,
-				this.zoomListeners,
-			]) {
+			for (const map of [this.consoleListeners, this.contextMenuListeners]) {
 				const cleanup = map.get(paneId);
 				if (cleanup) {
 					cleanup();
@@ -54,21 +49,17 @@ class BrowserManager extends EventEmitter {
 			wc.setWindowOpenHandler(({ url }) => {
 				if (url && url !== "about:blank") {
 					this.emit(`new-window:${paneId}`, url);
+					this.emit("new-window", { paneId, url });
 				}
 				return { action: "deny" as const };
 			});
 			this.setupConsoleCapture(paneId, wc);
 			this.setupContextMenu(paneId, wc);
-			this.setupZoomListener(paneId, wc);
 		}
 	}
 
 	unregister(paneId: string): void {
-		for (const map of [
-			this.consoleListeners,
-			this.contextMenuListeners,
-			this.zoomListeners,
-		]) {
+		for (const map of [this.consoleListeners, this.contextMenuListeners]) {
 			const cleanup = map.get(paneId);
 			if (cleanup) {
 				cleanup();
@@ -227,20 +218,6 @@ class BrowserManager extends EventEmitter {
 		this.contextMenuListeners.set(paneId, () => {
 			try {
 				wc.off("context-menu", handler);
-			} catch {
-				// webContents may be destroyed
-			}
-		});
-	}
-
-	private setupZoomListener(paneId: string, wc: Electron.WebContents): void {
-		const handler = () => {
-			this.emit(`zoom-changed:${paneId}`);
-		};
-		wc.on("zoom-changed", handler);
-		this.zoomListeners.set(paneId, () => {
-			try {
-				wc.off("zoom-changed", handler);
 			} catch {
 				// webContents may be destroyed
 			}
