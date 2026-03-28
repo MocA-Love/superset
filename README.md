@@ -38,6 +38,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **AI コミットメッセージ生成** | コミットメッセージ入力欄のスパークルボタンで AI が conventional commit メッセージを日本語で自動生成。階層的要約方式（gptcommit 式）により大量差分でも高精度。staged/unstaged/untracked 全対応、lock ファイル・バイナリ自動スキップ | [#4](https://github.com/MocA-Love/superset/pull/4) | 2026-03-28 |
 | **ポートリストのリサイズ・フィルタ** | サイドバーの Ports セクションの高さをドラッグでリサイズ可能に（80–600px、永続化）。フィルタトグルで ports.json に定義されたポートのみ表示し、自動検出ポートを非表示にできる | [#6](https://github.com/MocA-Love/superset/pull/6) | 2026-03-28 |
 | **大規模ファイル diff 高速化** | 2000行超のファイルで CodeMirror 6 ベースの仮想化 diff ビューアに自動切替。ビューポート分のDOMのみ描画し、15000行でもスムーズ表示。既存テーマ・シンタックスハイライト再利用、未変更領域の自動折りたたみ | [#5](https://github.com/MocA-Love/superset/pull/5) | 2026-03-28 |
+| **ports.json ポートの常時表示** | ports.json に定義されたポートをプロセス検出の有無にかかわらず常にサイドバーに表示。Docker 等で検知できないポートもラベル付きで一覧に出る。検出済みポートは従来通りアクティブ表示、未検出は グレー表示で区別 | [#7](https://github.com/MocA-Love/superset/pull/7) | 2026-03-28 |
 
 ## Fork のビルド方法 (macOS)
 
