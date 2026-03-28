@@ -5,11 +5,13 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { useFeatureFlagEnabled } from "posthog-js/react";
+import { useState } from "react";
 import { useBrowserNewWindowHandler } from "renderer/hooks/useBrowserNewWindowHandler";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
 import { WorkspaceSidebar } from "renderer/screens/main/components/WorkspaceSidebar";
+import { DeleteWorkspaceDialog } from "renderer/screens/main/components/WorkspaceSidebar/WorkspaceListItem/components";
 import { useAppHotkey } from "renderer/stores/hotkeys";
 import { useOpenNewWorkspaceModal } from "renderer/stores/new-workspace-modal";
 import {
@@ -99,6 +101,27 @@ function DashboardLayout() {
 	// container even when their BrowserPane component is unmounted.
 	useBrowserNewWindowHandler();
 
+	const [deleteTarget, setDeleteTarget] = useState<{
+		workspaceId: string;
+		workspaceName: string;
+		workspaceType: "worktree" | "branch";
+	} | null>(null);
+
+	useAppHotkey(
+		"CLOSE_WORKSPACE",
+		() => {
+			if (currentWorkspaceId && currentWorkspace) {
+				setDeleteTarget({
+					workspaceId: currentWorkspaceId,
+					workspaceName: currentWorkspace.name,
+					workspaceType: currentWorkspace.type,
+				});
+			}
+		},
+		{ enabled: !!currentWorkspaceId },
+		[currentWorkspaceId, currentWorkspace],
+	);
+
 	return (
 		<div className="flex flex-col h-full w-full">
 			<TopBar />
@@ -131,6 +154,17 @@ function DashboardLayout() {
 				<div className="flex flex-1 min-h-0 min-w-0">
 					<KeepAliveWorkspaces />
 				</div>
+				{deleteTarget && (
+					<DeleteWorkspaceDialog
+						workspaceId={deleteTarget.workspaceId}
+						workspaceName={deleteTarget.workspaceName}
+						workspaceType={deleteTarget.workspaceType}
+						open={true}
+						onOpenChange={(open) => {
+							if (!open) setDeleteTarget(null);
+						}}
+					/>
+				)}
 			</div>
 		</div>
 	);
