@@ -41,6 +41,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **ports.json ポートの常時表示** | ports.json に定義されたポートをプロセス検出の有無にかかわらず常にサイドバーに表示。Docker 等で検知できないポートもラベル付きで一覧に出る。検出済みポートは従来通りアクティブ表示、未検出は グレー表示で区別 | [#7](https://github.com/MocA-Love/superset/pull/7) | 2026-03-28 |
 | **Ports ワークスペース名の改善** | Ports セクションのワークスペース名をワークツリーのディレクトリ名ベースに変更。同名ワークスペースが複数ある場合でもどのワークツリーか一目で区別可能 | [#8](https://github.com/MocA-Love/superset/pull/8) | 2026-03-28 |
 | **ブラウザタブ機能強化** | ズーム倍率表示と [-]/[+] ボタン（Cmd+/- と同期）、target="_blank" リンクや Cmd+click を新しいブラウザタブで開く機能、URL コピーボタンを追加。タブが非表示中でもリンクイベントを正しく処理するグローバルハンドラ実装 | [#10](https://github.com/MocA-Love/superset/pull/10) | 2026-03-29 |
+| **タブカラー設定** | タブを右クリック → Set Color で13色から背景色を設定可能。ワークスペースセクションと同じカラーパレットを再利用。アクティブ/非アクティブで濃淡が変化し、設定は自動永続化 | — | 2026-03-29 |
 
 ## Fork のビルド方法 (macOS)
 

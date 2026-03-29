@@ -224,6 +224,7 @@ export interface BaseTab {
 	userTitle?: string;
 	workspaceId: string;
 	createdAt: number;
+	color?: string | null;
 }
 
 /**

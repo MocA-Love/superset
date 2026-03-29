@@ -424,6 +424,14 @@ export const useTabsStore = create<TabsStore>()(
 					}));
 				},
 
+				setTabColor: (tabId, color) => {
+					set((state) => ({
+						tabs: state.tabs.map((t) =>
+							t.id === tabId ? { ...t, color } : t,
+						),
+					}));
+				},
+
 				setTabAutoTitle: (tabId, title) => {
 					set((state) => {
 						const tab = state.tabs.find((t) => t.id === tabId);
