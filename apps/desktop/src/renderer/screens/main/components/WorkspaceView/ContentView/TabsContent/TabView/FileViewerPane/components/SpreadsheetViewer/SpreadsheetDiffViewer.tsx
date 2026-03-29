@@ -2,7 +2,11 @@ import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
 import type { ChangeCategory } from "shared/changes-types";
 import useResizeObserver from "use-resize-observer";
 import type { ParsedCell, RichTextPart } from "./parseWorkbook";
-import { type DiffParsedRow, useSpreadsheetDiff } from "./useSpreadsheetDiff";
+import {
+	type DiffParsedRow,
+	type DiffSegment,
+	useSpreadsheetDiff,
+} from "./useSpreadsheetDiff";
 
 interface SpreadsheetDiffViewerProps {
 	workspaceId: string;
@@ -46,6 +50,45 @@ function RichTextContent({ parts }: { parts: RichTextPart[] }) {
 function CellContent({ cell }: { cell: ParsedCell }) {
 	if (cell.richText) return <RichTextContent parts={cell.richText} />;
 	return <>{cell.value}</>;
+}
+
+function InlineDiffContent({ segments }: { segments: DiffSegment[] }) {
+	return (
+		<>
+			{segments.map((seg, i) => {
+				const key = `${i}-${seg.type}-${seg.text.slice(0, 8)}`;
+				switch (seg.type) {
+					case "added":
+						return (
+							<span
+								key={key}
+								style={{
+									backgroundColor: "rgba(34, 197, 94, 0.35)",
+									borderRadius: 2,
+								}}
+							>
+								{seg.text}
+							</span>
+						);
+					case "removed":
+						return (
+							<span
+								key={key}
+								style={{
+									backgroundColor: "rgba(239, 68, 68, 0.3)",
+									textDecoration: "line-through",
+									borderRadius: 2,
+								}}
+							>
+								{seg.text}
+							</span>
+						);
+					default:
+						return <span key={key}>{seg.text}</span>;
+				}
+			})}
+		</>
+	);
 }
 
 function DiffTable({
@@ -185,7 +228,11 @@ function DiffTable({
 										colSpan={cell.colSpan}
 										rowSpan={cell.rowSpan}
 									>
-										<CellContent cell={cell} />
+										{cell.diffSegments ? (
+											<InlineDiffContent segments={cell.diffSegments} />
+										) : (
+											<CellContent cell={cell} />
+										)}
 									</td>
 								);
 							})}
