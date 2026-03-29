@@ -1,0 +1,1 @@
+export { ExtensionsSettings } from "./ExtensionsSettings";

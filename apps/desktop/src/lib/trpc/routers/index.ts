@@ -28,6 +28,7 @@ import { createTerminalRouter } from "./terminal";
 import { createUiStateRouter } from "./ui-state";
 import { createWindowRouter } from "./window";
 import { createTabTearoffRouter } from "./tab-tearoff";
+import { createExtensionsRouter } from "./extensions";
 import { createWorkspacesRouter } from "./workspaces";
 
 export const createAppRouter = (
@@ -63,6 +64,7 @@ export const createAppRouter = (
 		ringtone: createRingtoneRouter(getWindow),
 		hostServiceManager: createHostServiceManagerRouter(),
 		tabTearoff: createTabTearoffRouter(wm),
+		extensions: createExtensionsRouter(),
 	});
 };
 

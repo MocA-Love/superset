@@ -28,6 +28,7 @@ import { setupAutoUpdater } from "./lib/auto-updater";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
+import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
 import { getHostServiceManager } from "./lib/host-service-manager";
 import { localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
@@ -334,6 +335,7 @@ if (!gotTheLock) {
 		await initAppState();
 
 		await loadWebviewBrowserExtension();
+		await loadInstalledExtensions();
 
 		// Must happen before renderer restore runs
 		await reconcileDaemonSessions();
