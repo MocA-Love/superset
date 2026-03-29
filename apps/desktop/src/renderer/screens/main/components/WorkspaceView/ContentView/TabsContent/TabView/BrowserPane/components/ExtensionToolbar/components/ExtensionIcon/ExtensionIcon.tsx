@@ -22,7 +22,8 @@ export function ExtensionIcon({ extension }: ExtensionIconProps) {
 		const rect = el.getBoundingClientRect();
 
 		openPopupMutation.mutate({
-			extensionId: extension.id,
+			// Use the Electron-assigned ID for the chrome-extension:// URL
+			extensionId: extension.electronId,
 			popupPath: extension.popupPath,
 			anchorRect: {
 				x: Math.round(rect.left),
@@ -33,6 +34,7 @@ export function ExtensionIcon({ extension }: ExtensionIconProps) {
 		});
 	}, [extension, openPopupMutation]);
 
+	// Use the Chrome Web Store ID for the icon protocol (directory name)
 	const iconUrl = `superset-ext-icon://${extension.id}/32`;
 	const title = extension.actionTitle ?? extension.name;
 

@@ -1,12 +1,11 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app, session } from "electron";
 import type { CompatibilityReport } from "./compatibility-checker";
 import { checkCompatibility } from "./compatibility-checker";
 import {
 	type ChromeManifest,
-	type CrxDownloadResult,
 	downloadAndExtractExtension,
 	getExtensionsDir,
 	parseExtensionId,
@@ -16,6 +15,8 @@ const APP_PARTITION = "persist:superset";
 
 export interface InstalledExtension {
 	id: string;
+	/** Extension ID assigned by Electron (derived from path, may differ from Chrome Web Store ID) */
+	electronId?: string;
 	name: string;
 	version: string;
 	description: string;
@@ -57,7 +58,6 @@ function resolveIconPath(
 ): string | undefined {
 	if (!manifest.icons) return undefined;
 
-	// Prefer larger icons
 	const sizes = Object.keys(manifest.icons)
 		.map(Number)
 		.sort((a, b) => b - a);
@@ -80,6 +80,7 @@ function resolveIconPath(
 export async function loadInstalledExtensions(): Promise<void> {
 	const store = await readStore();
 	const ses = session.fromPartition(APP_PARTITION);
+	let storeUpdated = false;
 
 	for (const ext of store.extensions) {
 		if (!ext.enabled) continue;
@@ -93,23 +94,33 @@ export async function loadInstalledExtensions(): Promise<void> {
 		}
 
 		try {
-			// Skip if already loaded
-			if (ses.extensions.getExtension(ext.id)) continue;
-
-			await ses.extensions.loadExtension(extensionDir);
-			console.log(`[extensions] Loaded: ${ext.name} v${ext.version}`);
+			const loaded = await ses.extensions.loadExtension(extensionDir);
+			// Persist the Electron-assigned ID (may differ from Chrome Web Store ID)
+			if (loaded.id !== ext.electronId) {
+				ext.electronId = loaded.id;
+				storeUpdated = true;
+			}
+			console.log(
+				`[extensions] Loaded: ${ext.name} v${ext.version} (electronId=${loaded.id})`,
+			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			if (message.includes("already loaded")) continue;
 			console.error(`[extensions] Failed to load ${ext.name}:`, error);
 		}
 	}
+
+	if (storeUpdated) {
+		await writeStore(store);
+	}
 }
 
 /**
  * Install an extension from the Chrome Web Store.
  */
-export async function installExtension(input: string): Promise<InstalledExtension> {
+export async function installExtension(
+	input: string,
+): Promise<InstalledExtension> {
 	const extensionId = parseExtensionId(input);
 	if (!extensionId) {
 		throw new Error(
@@ -146,12 +157,13 @@ export async function installExtension(input: string): Promise<InstalledExtensio
 		iconPath,
 	};
 
-	// Load into session
+	// Load into session and capture Electron-assigned ID
 	const ses = session.fromPartition(APP_PARTITION);
 	try {
-		await ses.extensions.loadExtension(result.extensionDir);
+		const loaded = await ses.extensions.loadExtension(result.extensionDir);
+		installed.electronId = loaded.id;
 		console.log(
-			`[extensions] Installed and loaded: ${installed.name} v${installed.version}`,
+			`[extensions] Installed and loaded: ${installed.name} v${installed.version} (electronId=${loaded.id})`,
 		);
 	} catch (error) {
 		console.error(
@@ -178,12 +190,18 @@ export async function uninstallExtension(extensionId: string): Promise<void> {
 		throw new Error("Extension not found.");
 	}
 
-	// Unload from session
+	const ext = store.extensions[idx];
+
+	// Unload from session (try both IDs)
 	const ses = session.fromPartition(APP_PARTITION);
-	try {
-		ses.extensions.removeExtension(extensionId);
-	} catch {
-		// May not be loaded
+	for (const id of [ext.electronId, ext.id]) {
+		if (!id) continue;
+		try {
+			ses.extensions.removeExtension(id);
+			break;
+		} catch {
+			// May not be loaded with this ID
+		}
 	}
 
 	// Remove files
@@ -220,19 +238,23 @@ export async function toggleExtension(
 			throw new Error("Extension files are missing. Please reinstall.");
 		}
 		try {
-			if (!ses.extensions.getExtension(extensionId)) {
-				await ses.extensions.loadExtension(extensionDir);
-			}
+			const loaded = await ses.extensions.loadExtension(extensionDir);
+			ext.electronId = loaded.id;
 		} catch (error) {
-			throw new Error(
-				`Failed to enable extension: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			const message = error instanceof Error ? error.message : String(error);
+			if (!message.includes("already loaded")) {
+				throw new Error(`Failed to enable extension: ${message}`);
+			}
 		}
 	} else {
-		try {
-			ses.extensions.removeExtension(extensionId);
-		} catch {
-			// Already unloaded
+		for (const id of [ext.electronId, ext.id]) {
+			if (!id) continue;
+			try {
+				ses.extensions.removeExtension(id);
+				break;
+			} catch {
+				// Already unloaded or wrong ID
+			}
 		}
 	}
 
@@ -252,6 +274,8 @@ export async function listExtensions(): Promise<InstalledExtension[]> {
 
 export interface ExtensionToolbarInfo {
 	id: string;
+	/** Electron-assigned extension ID (used for chrome-extension:// URLs) */
+	electronId: string;
 	name: string;
 	enabled: boolean;
 	hasPopup: boolean;
@@ -266,6 +290,7 @@ export async function getExtensionsWithToolbarInfo(): Promise<
 	ExtensionToolbarInfo[]
 > {
 	const store = await readStore();
+	const ses = session.fromPartition(APP_PARTITION);
 	const results: ExtensionToolbarInfo[] = [];
 
 	for (const ext of store.extensions) {
@@ -289,8 +314,19 @@ export async function getExtensionsWithToolbarInfo(): Promise<
 
 		if (!hasPopup) continue;
 
+		// Resolve the Electron-assigned ID.
+		// If not cached, look it up from the session's loaded extensions.
+		let electronId = ext.electronId;
+		if (!electronId) {
+			const loaded = ses.extensions
+				.getAllExtensions()
+				.find((e) => e.path === extensionDir || e.name === ext.name);
+			electronId = loaded?.id ?? ext.id;
+		}
+
 		results.push({
 			id: ext.id,
+			electronId,
 			name: ext.name,
 			enabled: ext.enabled,
 			hasPopup,
