@@ -1,8 +1,17 @@
-import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
+import {
+	type RefObject,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { createPortal } from "react-dom";
 import type { ChangeCategory } from "shared/changes-types";
 import useResizeObserver from "use-resize-observer";
 import type { ParsedCell, RichTextPart } from "./parseWorkbook";
 import {
+	type DiffParsedCell,
 	type DiffParsedRow,
 	type DiffSegment,
 	useSpreadsheetDiff,
@@ -88,6 +97,108 @@ function InlineDiffContent({ segments }: { segments: DiffSegment[] }) {
 				}
 			})}
 		</>
+	);
+}
+
+function DiffCellTooltip({
+	segments,
+	anchorEl,
+}: {
+	segments: DiffSegment[];
+	anchorEl: HTMLElement;
+}) {
+	const [pos, setPos] = useState({ top: 0, left: 0 });
+	const tooltipRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const rect = anchorEl.getBoundingClientRect();
+		const top = rect.top - 6;
+		const left = Math.min(rect.left, window.innerWidth - 500);
+		setPos({ top, left: Math.max(4, left) });
+	}, [anchorEl]);
+
+	return createPortal(
+		<div
+			ref={tooltipRef}
+			style={{
+				position: "fixed",
+				left: pos.left,
+				top: pos.top,
+				transform: "translateY(-100%)",
+				maxWidth: 480,
+				minWidth: 120,
+				padding: "8px 12px",
+				backgroundColor: "#1e1e2e",
+				color: "#cdd6f4",
+				borderRadius: 8,
+				boxShadow: "0 4px 24px rgba(0,0,0,0.28)",
+				fontSize: "11px",
+				lineHeight: 1.6,
+				whiteSpace: "pre-wrap",
+				wordBreak: "break-all",
+				zIndex: 9999,
+				pointerEvents: "none",
+				border: "1px solid rgba(255,255,255,0.08)",
+			}}
+		>
+			<InlineDiffContent segments={segments} />
+		</div>,
+		document.body,
+	);
+}
+
+interface DiffCellProps {
+	cell: DiffParsedCell;
+	cellKey: string;
+}
+
+function DiffCell({ cell, cellKey }: DiffCellProps) {
+	const [hovered, setHovered] = useState(false);
+	const tdRef = useRef<HTMLTableCellElement>(null);
+
+	const cellStyle: React.CSSProperties = {
+		overflow: "hidden",
+		padding: "1px 2px",
+		whiteSpace: "nowrap",
+		lineHeight: "normal",
+		boxSizing: "border-box",
+		...cell.style,
+	};
+	if (cell.diffStatus) {
+		cellStyle.backgroundColor = DIFF_BG[cell.diffStatus];
+		cellStyle.outline = DIFF_BORDER[cell.diffStatus];
+		cellStyle.outlineOffset = "-2px";
+	}
+	if (cell.wrapText) {
+		cellStyle.whiteSpace = "pre-wrap";
+		cellStyle.wordBreak = "break-all";
+	}
+	if (cell.diffSegments) {
+		cellStyle.cursor = "default";
+	}
+
+	return (
+		<td
+			ref={tdRef}
+			key={cellKey}
+			style={cellStyle}
+			colSpan={cell.colSpan}
+			rowSpan={cell.rowSpan}
+			onMouseEnter={cell.diffSegments ? () => setHovered(true) : undefined}
+			onMouseLeave={cell.diffSegments ? () => setHovered(false) : undefined}
+		>
+			{cell.diffSegments ? (
+				<InlineDiffContent segments={cell.diffSegments} />
+			) : (
+				<CellContent cell={cell} />
+			)}
+			{hovered && cell.diffSegments && tdRef.current && (
+				<DiffCellTooltip
+					segments={cell.diffSegments}
+					anchorEl={tdRef.current}
+				/>
+			)}
+		</td>
 	);
 }
 
@@ -203,37 +314,12 @@ function DiffTable({
 							</td>
 							{row.cells.map((cell, colIdx) => {
 								if (cell.hidden) return null;
-								const cellStyle: React.CSSProperties = {
-									overflow: "hidden",
-									padding: "1px 2px",
-									whiteSpace: "nowrap",
-									lineHeight: "normal",
-									boxSizing: "border-box",
-									...cell.style,
-								};
-								if (cell.diffStatus) {
-									cellStyle.backgroundColor = DIFF_BG[cell.diffStatus];
-									cellStyle.outline = DIFF_BORDER[cell.diffStatus];
-									cellStyle.outlineOffset = "-2px";
-								}
-								if (cell.wrapText) {
-									cellStyle.whiteSpace = "pre-wrap";
-									cellStyle.wordBreak = "break-all";
-								}
-
 								return (
-									<td
+									<DiffCell
 										key={`${rowIdx + 1}-${getColumnLabel(colIdx)}`}
-										style={cellStyle}
-										colSpan={cell.colSpan}
-										rowSpan={cell.rowSpan}
-									>
-										{cell.diffSegments ? (
-											<InlineDiffContent segments={cell.diffSegments} />
-										) : (
-											<CellContent cell={cell} />
-										)}
-									</td>
+										cell={cell}
+										cellKey={`${rowIdx + 1}-${getColumnLabel(colIdx)}`}
+									/>
 								);
 							})}
 						</tr>
