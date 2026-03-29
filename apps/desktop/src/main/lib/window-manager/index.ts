@@ -90,7 +90,7 @@ export class WindowManager {
 		const { windowId } = options;
 
 		const window = createWindow({
-			id: "main",
+			id: "tearoff",
 			title: "Superset",
 			width: options.width ?? 900,
 			height: options.height ?? 600,
