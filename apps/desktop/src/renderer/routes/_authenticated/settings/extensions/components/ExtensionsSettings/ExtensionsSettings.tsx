@@ -13,7 +13,7 @@ import {
 	HiOutlinePuzzlePiece,
 	HiOutlineTrash,
 } from "react-icons/hi2";
-import { LuLoader2 } from "react-icons/lu";
+import { LuLoaderCircle } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
 export function ExtensionsSettings() {
@@ -112,7 +112,7 @@ export function ExtensionsSettings() {
 						>
 							{isInstalling ? (
 								<>
-									<LuLoader2 className="size-4 animate-spin mr-1" />
+									<LuLoaderCircle className="size-4 animate-spin mr-1" />
 									Installing...
 								</>
 							) : (
@@ -129,7 +129,7 @@ export function ExtensionsSettings() {
 			{/* Installed extensions list */}
 			{isLoading ? (
 				<div className="flex items-center justify-center py-8 text-muted-foreground">
-					<LuLoader2 className="size-5 animate-spin mr-2" />
+					<LuLoaderCircle className="size-5 animate-spin mr-2" />
 					Loading extensions...
 				</div>
 			) : extensions && extensions.length > 0 ? (
