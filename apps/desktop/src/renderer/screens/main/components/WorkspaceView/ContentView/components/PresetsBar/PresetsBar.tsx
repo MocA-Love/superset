@@ -24,6 +24,7 @@ import {
 import { HotkeyMenuShortcut } from "renderer/components/HotkeyMenuShortcut";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { usePresets } from "renderer/react-query/presets";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { WorkspaceRunButton } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/WorkspaceRunButton";
 import { PRESET_HOTKEY_IDS } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
@@ -357,12 +358,14 @@ export function PresetsBar() {
 		[presets, localPinnedPresetIds, reorderPresets],
 	);
 
+	const isTearoff = isTearoffWindow();
+
 	return (
 		<div
 			className="flex items-center h-8 border-b border-border bg-background px-2 gap-0.5 overflow-x-auto shrink-0"
 			style={{ scrollbarWidth: "none" }}
 		>
-			<DropdownMenu>
+			{!isTearoff && (<DropdownMenu>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<DropdownMenuTrigger asChild>
@@ -452,9 +455,9 @@ export function PresetsBar() {
 						<span>Manage Presets</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
-			</DropdownMenu>
-			<div className="h-4 w-px bg-border mx-1 shrink-0" />
-			{pinnedPresets.map(({ preset, index }, pinnedIndex) => {
+			</DropdownMenu>)}
+			{!isTearoff && <div className="h-4 w-px bg-border mx-1 shrink-0" />}
+			{!isTearoff && pinnedPresets.map(({ preset, index }, pinnedIndex) => {
 				const hotkeyId = PRESET_HOTKEY_IDS[index];
 				return (
 					<PresetBarItem

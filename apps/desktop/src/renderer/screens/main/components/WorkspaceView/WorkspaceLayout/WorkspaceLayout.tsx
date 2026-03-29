@@ -6,6 +6,7 @@ import {
 	SidebarMode,
 	useSidebarStore,
 } from "renderer/stores/sidebar-state";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { ResizablePanel } from "../../ResizablePanel";
 import { ChangesContent, ScrollProvider } from "../ChangesContent";
 import { ContentView } from "../ContentView";
@@ -49,7 +50,7 @@ export function WorkspaceLayout({
 					/>
 				)}
 			</div>
-			{isSidebarOpen && (
+			{!isTearoffWindow() && isSidebarOpen && (
 				<ResizablePanel
 					width={sidebarWidth}
 					onWidthChange={setSidebarWidth}

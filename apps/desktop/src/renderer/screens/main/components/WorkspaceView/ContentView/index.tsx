@@ -1,4 +1,5 @@
 import type { ExternalApp } from "@superset/local-db";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useSidebarStore } from "renderer/stores/sidebar-state";
 import { SidebarControl } from "../../SidebarControl";
@@ -27,7 +28,7 @@ export function ContentView({
 	return (
 		<div className="h-full flex flex-col overflow-hidden">
 			<ContentHeader
-				trailingAction={!isSidebarOpen ? <SidebarControl /> : undefined}
+				trailingAction={!isSidebarOpen && !isTearoffWindow() ? <SidebarControl /> : undefined}
 			>
 				<GroupStrip />
 			</ContentHeader>
