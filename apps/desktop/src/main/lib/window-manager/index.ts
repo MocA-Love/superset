@@ -43,10 +43,13 @@ export class WindowManager {
 			event.returnValue = data ?? null;
 		});
 
-		// Tearoff window closing: return tab to main window
+		// Tearoff window closing: return all tabs to main window (single message)
 		ipcMain.on(
-			"tearoff-return-tab",
-			(_event, data: { tab: unknown; panes: Record<string, unknown> }) => {
+			"tearoff-return-tabs",
+			(
+				_event,
+				data: Array<{ tab: unknown; panes: Record<string, unknown> }>,
+			) => {
 				const mainWindow = this.getMain();
 				if (mainWindow && !mainWindow.isDestroyed()) {
 					mainWindow.webContents.send("tearoff-tab-returned", data);

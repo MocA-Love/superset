@@ -29,20 +29,26 @@ export function useTearoffInit() {
 		navigate({ to: `/workspace/${tab.workspaceId}`, replace: true });
 	}, [tabs, navigate]);
 
-	// Return tab to main window when this tearoff window closes
+	// Return ALL tabs to main window when this tearoff window closes
 	useEffect(() => {
 		if (!_cachedWindowId) return;
 		const handleBeforeUnload = () => {
 			const state = useTabsStore.getState();
 			if (state.tabs.length === 0) return;
-			const tab = state.tabs[0];
-			const panes: Record<string, Pane> = {};
-			for (const [id, pane] of Object.entries(state.panes)) {
-				if (pane.tabId === tab.id) {
-					panes[id] = pane;
+
+			// Collect all tabs + their panes into a single message
+			const tabsWithPanes = state.tabs.map((tab) => {
+				const panes: Record<string, Pane> = {};
+				for (const [id, pane] of Object.entries(state.panes)) {
+					if (pane.tabId === tab.id) {
+						panes[id] = pane;
+					}
 				}
-			}
-			window.ipcRenderer.send("tearoff-return-tab", { tab, panes });
+				return { tab, panes };
+			});
+
+			// Send as ONE message to avoid race conditions
+			window.ipcRenderer.send("tearoff-return-tabs", tabsWithPanes);
 		};
 		window.addEventListener("beforeunload", handleBeforeUnload);
 		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -52,10 +58,20 @@ export function useTearoffInit() {
 export function useReturnedTabListener() {
 	useEffect(() => {
 		if (isTearoffWindow()) return;
-		const handler = (data: { tab: unknown; panes: Record<string, unknown> }) => {
-			const tab = data.tab as Tab;
-			const panes = data.panes as Record<string, Pane>;
-			useTabsStore.getState().hydrateReturnedTab(tab, panes);
+		const handler = (
+			entries: Array<{ tab: unknown; panes: Record<string, unknown> }>,
+		) => {
+			const store = useTabsStore.getState();
+			const existingTabIds = new Set(store.tabs.map((t) => t.id));
+
+			for (const entry of entries) {
+				const tab = entry.tab as Tab;
+				// Skip if tab already exists (prevent duplicates)
+				if (existingTabIds.has(tab.id)) continue;
+				const panes = entry.panes as Record<string, Pane>;
+				store.hydrateReturnedTab(tab, panes);
+				existingTabIds.add(tab.id);
+			}
 		};
 		window.ipcRenderer.on("tearoff-tab-returned", handler);
 		return () => {
