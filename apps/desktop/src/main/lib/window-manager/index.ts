@@ -53,6 +53,11 @@ export class WindowManager {
 				const mainWindow = this.getMain();
 				if (mainWindow && !mainWindow.isDestroyed()) {
 					mainWindow.webContents.send("tearoff-tab-returned", data);
+				} else {
+					console.warn(
+						"[window-manager] Main window unavailable; returned tabs lost:",
+						data.length,
+					);
 				}
 			},
 		);

@@ -40,6 +40,7 @@ export function PaneToolbarActions({
 						<button
 							type="button"
 							onClick={onPopOut}
+							aria-label="Pop out to new window"
 							className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
 						>
 							<LuArrowUpRight className="size-3.5" />

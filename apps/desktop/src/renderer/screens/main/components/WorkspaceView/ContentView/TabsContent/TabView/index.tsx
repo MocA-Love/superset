@@ -73,14 +73,24 @@ export function TabView({ tab }: TabViewProps) {
 						tabPanesData[id] = pane;
 					}
 				}
-				tearoffMutation.mutate({
-					tab: freshTab,
-					panes: tabPanesData,
-					workspaceId: freshTab.workspaceId,
-					screenX: window.screenX + window.innerWidth / 2,
-					screenY: window.screenY + window.innerHeight / 2,
-				});
-				state.detachTabForTearoff(tab.id);
+				const tabIdToDetach = tab.id;
+				tearoffMutation.mutate(
+					{
+						tab: freshTab,
+						panes: tabPanesData,
+						workspaceId: freshTab.workspaceId,
+						screenX: window.screenX + window.innerWidth / 2,
+						screenY: window.screenY + window.innerHeight / 2,
+					},
+					{
+						onSuccess: () => {
+							useTabsStore.getState().detachTabForTearoff(tabIdToDetach);
+						},
+						onError: (error) => {
+							console.error("[tearoff] Failed to create window:", error);
+						},
+					},
+				);
 			} else {
 				// Multiple panes: extract just the clicked pane into a new tab, then pop it out
 				const result = movePaneToNewTab(paneId);
@@ -99,14 +109,23 @@ export function TabView({ tab }: TabViewProps) {
 					newTabPanes[paneId] = pane;
 				}
 
-				tearoffMutation.mutate({
-					tab: newTab,
-					panes: newTabPanes,
-					workspaceId: newTab.workspaceId,
-					screenX: window.screenX + window.innerWidth / 2,
-					screenY: window.screenY + window.innerHeight / 2,
-				});
-				updated.detachTabForTearoff(newTabId);
+				tearoffMutation.mutate(
+					{
+						tab: newTab,
+						panes: newTabPanes,
+						workspaceId: newTab.workspaceId,
+						screenX: window.screenX + window.innerWidth / 2,
+						screenY: window.screenY + window.innerHeight / 2,
+					},
+					{
+						onSuccess: () => {
+							useTabsStore.getState().detachTabForTearoff(newTabId);
+						},
+						onError: (error) => {
+							console.error("[tearoff] Failed to create window:", error);
+						},
+					},
+				);
 			}
 		},
 		[tab.id, tearoffMutation, movePaneToNewTab],
