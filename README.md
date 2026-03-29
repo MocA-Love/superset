@@ -32,7 +32,7 @@ Works with any CLI agent. Built for local worktree-based development.
 |:-----|:-----|:--:|:------:|
 | **Excel/スプレッドシート ビューア** | .xlsx/.xls/.ods ファイルを書式付きで表示。罫線・結合セル・テーマカラー・リッチテキスト対応。複数シートタブ切り替え、コンテナ幅への自動フィット | [#1](https://github.com/MocA-Love/superset/pull/1) | 2026-03-27 |
 | **Excel diff ビューア** | スプレッドシートのサイドバイサイド差分表示。セル単位の変更ハイライト、Prev/Next ナビゲーション、左右同期スクロール | [#1](https://github.com/MocA-Love/superset/pull/1) | 2026-03-27 |
-| **自動更新の無効化** | 本家リリースによるフォーク変更の上書きを防止。「Install」ボタンをフォークリポジトリへのリンクに変更 | [#3](https://github.com/MocA-Love/superset/pull/3) | 2026-03-27 |
+| **フォーク版アップデート通知** | 本家 electron-updater を無効化し、GitHub API でフォークリリースをチェックする方式に変更。新バージョン検出時にトースト通知を表示し「Open releases」からダウンロードページへ遷移。4時間ごと＋起動時に自動チェック | [#3](https://github.com/MocA-Love/superset/pull/3) [#17](https://github.com/MocA-Love/superset/pull/17) | 2026-03-29 |
 | **ブラウザ webview リロード防止** | タブ/ワークスペース切り替え時に Electron の webview がリロードされる問題を修正。webview を含むタブを keep-alive し、ワークスペースページをルーター上位で保持。WorkspaceIdContext による正しいコンテキスト分離、ホットキーの active-only 制御も実装 | [#2](https://github.com/MocA-Love/superset/pull/2) | 2026-03-28 |
 | **マウス戻る/進むボタン対応** | ブラウザ webview 内でマウスの戻る/進むボタンが動作するように対応。macOS は guest ページへのスクリプト注入、Windows/Linux は app-command イベントで処理 | [#2](https://github.com/MocA-Love/superset/pull/2) | 2026-03-28 |
 | **AI コミットメッセージ生成** | コミットメッセージ入力欄のスパークルボタンで AI が conventional commit メッセージを日本語で自動生成。階層的要約方式（gptcommit 式）により大量差分でも高精度。staged/unstaged/untracked 全対応、lock ファイル・バイナリ自動スキップ | [#4](https://github.com/MocA-Love/superset/pull/4) | 2026-03-28 |
