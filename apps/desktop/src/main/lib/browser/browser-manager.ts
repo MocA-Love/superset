@@ -226,6 +226,14 @@ class BrowserManager extends EventEmitter {
 				);
 			}
 
+			menuItems.push(
+				{ type: "separator" },
+				{
+					label: "Inspect Element",
+					click: () => wc.inspectElement(params.x, params.y),
+				},
+			);
+
 			const menu = Menu.buildFromTemplate(menuItems);
 			menu.popup();
 		};
