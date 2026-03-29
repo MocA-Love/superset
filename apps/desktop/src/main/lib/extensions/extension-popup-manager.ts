@@ -1,4 +1,6 @@
+import path from "node:path";
 import { BrowserWindow, screen, session } from "electron";
+import { getExtensionsDir } from "./crx-downloader";
 
 const APP_PARTITION = "persist:superset";
 
@@ -44,12 +46,7 @@ export class ExtensionPopupManager {
 		this.closePopup();
 
 		// Convert content-relative coordinates to screen coordinates
-		const parentBounds = parentWindow.getBounds();
 		const contentBounds = parentWindow.getContentBounds();
-
-		// Content area offset from window frame (accounts for titlebar/frame)
-		const frameOffsetX = contentBounds.x - parentBounds.x;
-		const frameOffsetY = contentBounds.y - parentBounds.y;
 
 		const screenAnchor = {
 			x: contentBounds.x + anchorRect.x,
@@ -109,7 +106,9 @@ export class ExtensionPopupManager {
 				session: session.fromPartition(APP_PARTITION),
 				nodeIntegration: false,
 				contextIsolation: true,
-				sandbox: true,
+				// sandbox must be false — sandboxed renderers cannot load
+				// chrome-extension:// URLs (ERR_BLOCKED_BY_CLIENT)
+				sandbox: false,
 				enablePreferredSizeMode: true,
 			},
 		});
@@ -170,14 +169,30 @@ export class ExtensionPopupManager {
 			}
 		});
 
-		// Load the extension's popup page
+		// Load the extension's popup page.
+		// Try chrome-extension:// first (enables full chrome.* API access).
+		// Fall back to loading from the local file path if blocked.
 		const popupUrl = `chrome-extension://${extensionId}/${popupPath}`;
 		popup.webContents.loadURL(popupUrl).catch((error) => {
-			console.error(
-				`[extensions] Failed to load popup for ${extensionId}:`,
-				error,
+			const msg = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`[extensions] chrome-extension:// load failed for ${extensionId}, trying file:// fallback:`,
+				msg,
 			);
-			this.closePopup();
+
+			// Fallback: load the popup HTML directly from disk
+			const filePath = path.join(
+				getExtensionsDir(),
+				extensionId,
+				popupPath,
+			);
+			popup.webContents.loadFile(filePath).catch((fileError) => {
+				console.error(
+					`[extensions] Failed to load popup for ${extensionId}:`,
+					fileError,
+				);
+				this.closePopup();
+			});
 		});
 	}
 
