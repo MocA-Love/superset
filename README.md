@@ -47,6 +47,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **Excel 描画オブジェクト・斜線表示** | Excel ファイルの描画オブジェクト（線・矩形）とセル斜線を表示。xlsx ZIP から drawing XML を直接パースし、CSS transform 方式の SVG オーバーレイで正確に配置 | [#16](https://github.com/MocA-Love/superset/pull/16) | 2026-03-29 |
 | **Chrome 拡張機能インストール** | Chrome Web Store の URL または拡張 ID からブラウザ拡張機能をインストール。CRX ダウンロード・展開、互換性チェック（Electron 非対応 API 検出）、設定画面での管理（有効/無効/削除）。BrowserPane ツールバーに拡張アイコンを表示し、クリックでポップアップウィンドウを表示。GPL ライブラリ不使用、Electron 標準 API のみで自前実装 | [#20](https://github.com/MocA-Love/superset/pull/20) | 2026-03-29 |
 | **Excel diff インラインハイライト** | Excel 差分表示で変更セル内のテキスト差分を文字レベルでインライン表示。追加部分は緑、削除部分は赤+取り消し線。セルからはみ出る場合はホバーでツールチップにフル差分を表示 | [#19](https://github.com/MocA-Love/superset/pull/19) | 2026-03-29 |
+| **Files タブのツールチップ** | ファイルツリーのファイル/フォルダ名にホバーで相対パスをツールチップ表示。ツールバーのトグルボタンで ON/OFF 切り替え、設定は永続化 | [#22](https://github.com/MocA-Love/superset/pull/22) | 2026-03-29 |
 
 ## Fork のビルド方法 (macOS)
 

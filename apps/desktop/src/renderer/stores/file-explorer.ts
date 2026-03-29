@@ -10,6 +10,7 @@ interface FileExplorerState {
 	searchTerm: Record<string, string>;
 	sortBy: SortBy;
 	sortDirection: SortDirection;
+	showFileTooltips: boolean;
 	toggleFolder: (worktreePath: string, folderId: string) => void;
 	setExpandedFolders: (worktreePath: string, folderIds: string[]) => void;
 	expandFolder: (worktreePath: string, folderId: string) => void;
@@ -22,6 +23,7 @@ interface FileExplorerState {
 	setSearchTerm: (worktreePath: string, term: string) => void;
 	setSortBy: (sortBy: SortBy) => void;
 	setSortDirection: (direction: SortDirection) => void;
+	toggleFileTooltips: () => void;
 }
 
 export const useFileExplorerStore = create<FileExplorerState>()(
@@ -33,6 +35,7 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 				searchTerm: {},
 				sortBy: "name",
 				sortDirection: "asc",
+				showFileTooltips: false,
 
 				toggleFolder: (worktreePath, folderId) => {
 					const current = get().expandedFolders[worktreePath] || [];
@@ -143,6 +146,10 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 				setSortDirection: (direction) => {
 					set({ sortDirection: direction });
 				},
+
+				toggleFileTooltips: () => {
+					set({ showFileTooltips: !get().showFileTooltips });
+				},
 			}),
 			{
 				name: "file-explorer-store",
@@ -150,6 +157,7 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 					sortBy: state.sortBy,
 					sortDirection: state.sortDirection,
 					expandedFolders: state.expandedFolders,
+					showFileTooltips: state.showFileTooltips,
 				}),
 			},
 		),
