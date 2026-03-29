@@ -71,12 +71,23 @@ const getWindow = () => currentWindow;
 const forceRepaint = (win: BrowserWindow) => {
 	if (win.isDestroyed()) return;
 	win.webContents.invalidate();
-	if (win.isMaximized() || win.isFullScreen()) return;
-	const [width, height] = win.getSize();
-	win.setSize(width + 1, height);
-	setTimeout(() => {
-		if (!win.isDestroyed()) win.setSize(width, height);
-	}, 32);
+	if (win.isFullScreen()) {
+		win.setFullScreen(false);
+		setTimeout(() => {
+			if (!win.isDestroyed()) win.setFullScreen(true);
+		}, 100);
+	} else if (win.isMaximized()) {
+		win.unmaximize();
+		setTimeout(() => {
+			if (!win.isDestroyed()) win.maximize();
+		}, 100);
+	} else {
+		const [width, height] = win.getSize();
+		win.setSize(width + 1, height);
+		setTimeout(() => {
+			if (!win.isDestroyed()) win.setSize(width, height);
+		}, 32);
+	}
 };
 
 // GPU process restarts don't repaint existing compositor layers automatically.
@@ -277,6 +288,14 @@ export async function MainWindow() {
 
 	window.webContents.on("render-process-gone", (_event, details) => {
 		console.error("[main-window] Renderer process gone:", details);
+		if (window.isDestroyed()) return;
+
+		if (details.reason === "oom") {
+			app.relaunch();
+			app.exit(0);
+		} else if (details.reason !== "clean-exit") {
+			window.webContents.reload();
+		}
 	});
 
 	window.webContents.on("preload-error", (_event, preloadPath, error) => {
