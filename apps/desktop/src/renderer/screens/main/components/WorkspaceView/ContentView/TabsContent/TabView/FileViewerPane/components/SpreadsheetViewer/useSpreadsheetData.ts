@@ -3,9 +3,12 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { ParsedSheet } from "./parseWorkbook";
 
 export type {
+	DiagonalBorder,
 	ParsedCell,
 	ParsedRow,
 	ParsedSheet,
+	RenderAnchor,
+	RenderShape,
 	RichTextPart,
 } from "./parseWorkbook";
 

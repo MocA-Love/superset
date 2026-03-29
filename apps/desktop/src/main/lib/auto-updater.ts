@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { app, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import { env } from "main/env.main";
-import { prerelease } from "semver";
+import { gt, prerelease, valid } from "semver";
 import { AUTO_UPDATE_STATUS, type AutoUpdateStatus } from "shared/auto-update";
 import { PLATFORM } from "shared/constants";
 
@@ -21,6 +21,17 @@ function isPrereleaseBuild(): boolean {
 
 const IS_PRERELEASE = isPrereleaseBuild();
 const IS_AUTO_UPDATE_PLATFORM = PLATFORM.IS_MAC || PLATFORM.IS_LINUX;
+
+// Fork builds use GitHub API to check for new releases instead of electron-updater.
+// electron-updater's feed URL points to superset-sh/superset which doesn't
+// distribute binaries for this fork, causing the UI to get stuck on
+// "Downloading update..." indefinitely.
+const IS_FORK = true;
+
+const FORK_OWNER = "MocA-Love";
+const FORK_REPO = "superset";
+const FORK_RELEASES_URL = `https://github.com/${FORK_OWNER}/${FORK_REPO}/releases`;
+const FORK_API_URL = `https://api.github.com/repos/${FORK_OWNER}/${FORK_REPO}/releases/latest`;
 
 // Use explicit feed URLs to ensure we always fetch platform-specific manifests
 // (for example latest-mac.yml and latest-linux.yml) from the correct release.
@@ -84,13 +95,15 @@ export function getUpdateStatus(): AutoUpdateStatusEvent {
 	return { status: currentStatus, version: currentVersion };
 }
 
-const FORK_RELEASES_URL = "https://github.com/MocA-Love/superset";
-
 export function installUpdate(): void {
-	import("electron")
-		.then(({ shell }) => shell.openExternal(FORK_RELEASES_URL))
-		.catch(() => {});
-	emitStatus(AUTO_UPDATE_STATUS.IDLE);
+	if (IS_FORK) {
+		import("electron")
+			.then(({ shell }) => shell.openExternal(FORK_RELEASES_URL))
+			.catch(() => {});
+		emitStatus(AUTO_UPDATE_STATUS.IDLE);
+		return;
+	}
+	autoUpdater.quitAndInstall(false, true);
 }
 
 export function dismissUpdate(): void {
@@ -98,8 +111,124 @@ export function dismissUpdate(): void {
 	autoUpdateEmitter.emit("status-changed", { status: AUTO_UPDATE_STATUS.IDLE });
 }
 
+// ── Fork: GitHub API release check ──────────────────────────────────────────
+
+async function fetchLatestForkRelease(): Promise<string | null> {
+	const { net } = await import("electron");
+	return new Promise((resolve, reject) => {
+		const request = net.request({ url: FORK_API_URL, method: "GET" });
+		request.setHeader("Accept", "application/vnd.github+json");
+		request.setHeader("User-Agent", "Superset-Desktop");
+
+		let data = "";
+		request.on("response", (response) => {
+			if (response.statusCode !== 200) {
+				reject(
+					new Error(`GitHub API returned ${response.statusCode}`),
+				);
+				return;
+			}
+			response.on("data", (chunk) => {
+				data += chunk.toString();
+			});
+			response.on("end", () => {
+				try {
+					const release = JSON.parse(data) as { tag_name: string };
+					// Strip "v" or "desktop-v" prefix from tag
+					const version = release.tag_name.replace(/^(desktop-)?v/, "");
+					resolve(valid(version) ? version : null);
+				} catch {
+					reject(new Error("Failed to parse GitHub API response"));
+				}
+			});
+		});
+		request.on("error", reject);
+		request.end();
+	});
+}
+
+async function checkForkForUpdates(interactive: boolean): Promise<void> {
+	emitStatus(AUTO_UPDATE_STATUS.CHECKING);
+
+	try {
+		const latestVersion = await fetchLatestForkRelease();
+		const currentAppVersion = app.getVersion();
+
+		if (!latestVersion) {
+			console.info("[auto-updater:fork] Could not determine latest version");
+			emitStatus(AUTO_UPDATE_STATUS.IDLE);
+			if (interactive) {
+				dialog.showMessageBox({
+					type: "info",
+					title: "Updates",
+					message: "Could not determine the latest version.",
+				});
+			}
+			return;
+		}
+
+		console.info(
+			`[auto-updater:fork] Current: ${currentAppVersion}, Latest: ${latestVersion}`,
+		);
+
+		if (gt(latestVersion, currentAppVersion)) {
+			console.info(
+				`[auto-updater:fork] Update available: ${currentAppVersion} → ${latestVersion}`,
+			);
+			emitStatus(AUTO_UPDATE_STATUS.READY, latestVersion);
+		} else {
+			console.info("[auto-updater:fork] Already up to date");
+			emitStatus(AUTO_UPDATE_STATUS.IDLE);
+			if (interactive) {
+				dialog.showMessageBox({
+					type: "info",
+					title: "No Updates",
+					message: "You're up to date!",
+					detail: `Version ${currentAppVersion} is the latest version.`,
+				});
+			}
+		}
+	} catch (error) {
+		const err = error instanceof Error ? error : new Error(String(error));
+		if (isNetworkError(err)) {
+			console.info("[auto-updater:fork] Network unavailable, will retry later");
+			emitStatus(AUTO_UPDATE_STATUS.IDLE);
+			if (interactive) {
+				dialog.showMessageBox({
+					type: "info",
+					title: "No Internet Connection",
+					message:
+						"Unable to check for updates. Please check your internet connection.",
+				});
+			}
+			return;
+		}
+		console.error("[auto-updater:fork] Failed to check for updates:", err.message);
+		emitStatus(AUTO_UPDATE_STATUS.ERROR, undefined, err.message);
+		if (interactive) {
+			dialog.showMessageBox({
+				type: "error",
+				title: "Update Error",
+				message: "Failed to check for updates. Please try again later.",
+			});
+		}
+	}
+}
+
+// ── Public check functions ──────────────────────────────────────────────────
+
 export function checkForUpdates(): void {
-	if (env.NODE_ENV === "development" || !IS_AUTO_UPDATE_PLATFORM) {
+	if (env.NODE_ENV === "development") {
+		return;
+	}
+
+	if (IS_FORK) {
+		isDismissed = false;
+		void checkForkForUpdates(false);
+		return;
+	}
+
+	if (!IS_AUTO_UPDATE_PLATFORM) {
 		return;
 	}
 	isDismissed = false;
@@ -124,6 +253,13 @@ export function checkForUpdatesInteractive(): void {
 		});
 		return;
 	}
+
+	if (IS_FORK) {
+		isDismissed = false;
+		void checkForkForUpdates(true);
+		return;
+	}
+
 	if (!IS_AUTO_UPDATE_PLATFORM) {
 		dialog.showMessageBox({
 			type: "info",
@@ -174,6 +310,8 @@ export function checkForUpdatesInteractive(): void {
 		});
 }
 
+// ── Dev simulation helpers ──────────────────────────────────────────────────
+
 export function simulateUpdateReady(): void {
 	if (env.NODE_ENV !== "development") return;
 	isDismissed = false;
@@ -196,8 +334,37 @@ export function simulateError(): void {
 	);
 }
 
+// ── Setup ───────────────────────────────────────────────────────────────────
+
 export function setupAutoUpdater(): void {
-	if (env.NODE_ENV === "development" || !IS_AUTO_UPDATE_PLATFORM) {
+	if (env.NODE_ENV === "development") {
+		return;
+	}
+
+	// Fork builds: periodic GitHub API check (no electron-updater)
+	if (IS_FORK) {
+		console.info(
+			`[auto-updater:fork] Initialized: version=${app.getVersion()}, checking ${FORK_API_URL}`,
+		);
+
+		const interval = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+		interval.unref();
+
+		if (app.isReady()) {
+			void checkForUpdates();
+		} else {
+			app
+				.whenReady()
+				.then(() => checkForUpdates())
+				.catch((error) => {
+					console.error("[auto-updater:fork] Failed to start update checks:", error);
+				});
+		}
+		return;
+	}
+
+	// Upstream builds: electron-updater (macOS / Linux only)
+	if (!IS_AUTO_UPDATE_PLATFORM) {
 		return;
 	}
 

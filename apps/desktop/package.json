@@ -187,6 +187,7 @@
 		"os-locale": "^6.0.2",
 		"pidtree": "^0.6.0",
 		"pidusage": "^4.0.1",
+		"jszip": "^3.10.1",
 		"posthog-js": "1.310.1",
 		"posthog-node": "^5.24.7",
 		"prebuild-install": "^7.1.1",
