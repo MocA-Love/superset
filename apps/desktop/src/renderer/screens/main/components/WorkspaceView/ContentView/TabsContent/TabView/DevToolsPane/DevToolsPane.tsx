@@ -16,6 +16,7 @@ interface DevToolsPaneProps {
 	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
+	onPopOut?: () => void;
 }
 
 export function DevToolsPane({
@@ -26,6 +27,7 @@ export function DevToolsPane({
 	splitPaneAuto,
 	removePane,
 	setFocusedPane,
+	onPopOut,
 }: DevToolsPaneProps) {
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
@@ -42,6 +44,7 @@ export function DevToolsPane({
 			splitPaneAuto={splitPaneAuto}
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
+			onPopOut={onPopOut}
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between">
 					<div className="flex h-full items-center px-2">
@@ -52,6 +55,7 @@ export function DevToolsPane({
 						onSplitPane={handlers.onSplitPane}
 						onClosePane={handlers.onClosePane}
 						closeHotkeyId="CLOSE_TERMINAL"
+						onPopOut={handlers.onPopOut}
 					/>
 				</div>
 			)}

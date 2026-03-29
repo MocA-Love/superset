@@ -7,6 +7,7 @@ import {
 	type MosaicBranch,
 	type MosaicNode,
 } from "react-mosaic-component";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { dragDropManager } from "renderer/lib/dnd";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { requestPaneClose } from "renderer/stores/editor-state/editorCoordinator";
@@ -51,6 +52,65 @@ export function TabView({ tab }: TabViewProps) {
 	const { splitPaneAuto, splitPaneHorizontal, splitPaneVertical } =
 		useTabsWithPresets(workspace?.projectId);
 	const worktreePath = workspace?.worktreePath ?? "";
+
+	// Pop-out: tear off this tab into a new window (hidden in tearoff windows)
+	const isTearoff = isTearoffWindow();
+	const tearoffMutation = electronTrpc.tabTearoff.create.useMutation();
+	const handlePopOut = useCallback(
+		(paneId: string) => {
+			const state = useTabsStore.getState();
+			const freshTab = state.tabs.find((t) => t.id === tab.id);
+			if (!freshTab) return;
+
+			const tabPaneIds = extractPaneIdsFromLayout(freshTab.layout);
+			const isSinglePane = tabPaneIds.length <= 1;
+
+			if (isSinglePane) {
+				// Single pane: pop out the entire tab
+				const tabPanesData: Record<string, (typeof state.panes)[string]> = {};
+				for (const [id, pane] of Object.entries(state.panes)) {
+					if (pane.tabId === tab.id) {
+						tabPanesData[id] = pane;
+					}
+				}
+				tearoffMutation.mutate({
+					tab: freshTab,
+					panes: tabPanesData,
+					workspaceId: freshTab.workspaceId,
+					screenX: window.screenX + window.innerWidth / 2,
+					screenY: window.screenY + window.innerHeight / 2,
+				});
+				state.detachTabForTearoff(tab.id);
+			} else {
+				// Multiple panes: extract just the clicked pane into a new tab, then pop it out
+				const result = movePaneToNewTab(paneId);
+				if (!result) return;
+				const newTabId = result;
+
+				// Re-read state after movePaneToNewTab
+				const updated = useTabsStore.getState();
+				const newTab = updated.tabs.find((t) => t.id === newTabId);
+				if (!newTab) return;
+
+				const newTabPanes: Record<string, (typeof updated.panes)[string]> =
+					{};
+				const pane = updated.panes[paneId];
+				if (pane) {
+					newTabPanes[paneId] = pane;
+				}
+
+				tearoffMutation.mutate({
+					tab: newTab,
+					panes: newTabPanes,
+					workspaceId: newTab.workspaceId,
+					screenX: window.screenX + window.innerWidth / 2,
+					screenY: window.screenY + window.innerHeight / 2,
+				});
+				updated.detachTabForTearoff(newTabId);
+			}
+		},
+		[tab.id, tearoffMutation, movePaneToNewTab],
+	);
 
 	// Get tabs in the same workspace for move targets
 	const workspaceTabs = useMemo(
@@ -193,6 +253,7 @@ export function TabView({ tab }: TabViewProps) {
 						availableTabs={workspaceTabs}
 						onMoveToTab={(targetTabId) => movePaneToTab(paneId, targetTabId)}
 						onMoveToNewTab={() => movePaneToNewTab(paneId)}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);
 			}
@@ -213,6 +274,7 @@ export function TabView({ tab }: TabViewProps) {
 						availableTabs={workspaceTabs}
 						onMoveToTab={(targetTabId) => movePaneToTab(paneId, targetTabId)}
 						onMoveToNewTab={() => movePaneToNewTab(paneId)}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);
 			}
@@ -227,6 +289,7 @@ export function TabView({ tab }: TabViewProps) {
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);
 			}
@@ -242,6 +305,7 @@ export function TabView({ tab }: TabViewProps) {
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);
 			}
@@ -261,6 +325,7 @@ export function TabView({ tab }: TabViewProps) {
 					availableTabs={workspaceTabs}
 					onMoveToTab={(targetTabId) => movePaneToTab(paneId, targetTabId)}
 					onMoveToNewTab={() => movePaneToNewTab(paneId)}
+					onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 				/>
 			);
 		},
@@ -277,6 +342,7 @@ export function TabView({ tab }: TabViewProps) {
 			workspaceTabs,
 			movePaneToTab,
 			movePaneToNewTab,
+			handlePopOut,
 		],
 	);
 

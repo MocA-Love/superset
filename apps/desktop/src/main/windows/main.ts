@@ -15,6 +15,7 @@ import type { AgentLifecycleEvent } from "shared/notification-types";
 import { createIPCHandler } from "trpc-electron/main";
 import { productName } from "~/package.json";
 import { appState } from "../lib/app-state";
+import { windowManager } from "../lib/window-manager";
 import { browserManager } from "../lib/browser/browser-manager";
 import { createApplicationMenu, registerMenuHotkeyUpdates } from "../lib/menu";
 import { playNotificationSound } from "../lib/notification-sound";
@@ -129,6 +130,7 @@ export async function MainWindow() {
 	registerMenuHotkeyUpdates();
 
 	currentWindow = window;
+	windowManager.register("main", window);
 
 	// macOS Sequoia+: background throttling can corrupt GPU compositor layers
 	if (PLATFORM.IS_MAC) {
@@ -139,9 +141,10 @@ export async function MainWindow() {
 		ipcHandler.attachWindow(window);
 	} else {
 		ipcHandler = createIPCHandler({
-			router: createAppRouter(getWindow),
+			router: createAppRouter(getWindow, windowManager),
 			windows: [window],
 		});
+		windowManager.setIpcHandler(ipcHandler);
 	}
 
 	const server = notificationsApp.listen(
@@ -320,6 +323,7 @@ export async function MainWindow() {
 		getWorkspaceRuntimeRegistry().getDefault().terminal.detachAllListeners();
 		// Detach window from IPC handler (handler stays alive for window reopen)
 		ipcHandler?.detachWindow(window);
+		windowManager.unregister("main");
 		currentWindow = null;
 	});
 

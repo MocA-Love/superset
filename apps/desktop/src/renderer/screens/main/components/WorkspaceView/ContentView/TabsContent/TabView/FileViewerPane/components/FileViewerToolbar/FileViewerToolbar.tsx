@@ -35,6 +35,7 @@ interface FileViewerToolbarProps {
 	/** Pin this pane (convert from preview to permanent) */
 	onPin: () => void;
 	onClosePane: (e: React.MouseEvent) => void;
+	onPopOut?: (e: React.MouseEvent) => void;
 }
 
 export function FileViewerToolbar({
@@ -54,6 +55,7 @@ export function FileViewerToolbar({
 	onSplitPane,
 	onPin,
 	onClosePane,
+	onPopOut,
 }: FileViewerToolbarProps) {
 	const { copyToClipboard, copied } = useCopyToClipboard(1500);
 
@@ -168,6 +170,7 @@ export function FileViewerToolbar({
 					splitOrientation={splitOrientation}
 					onSplitPane={onSplitPane}
 					onClosePane={onClosePane}
+					onPopOut={onPopOut}
 					leadingActions={
 						!isPinned ? (
 							<Tooltip>
