@@ -2,7 +2,7 @@ import type { BrowserWindow } from "electron";
 import { env } from "shared/env.shared";
 
 /** Window IDs defined in the router configuration */
-type WindowId = "main" | "about";
+type WindowId = "main" | "about" | "tearoff";
 
 /**
  * Load an Electron window with the appropriate URL for TanStack Router.

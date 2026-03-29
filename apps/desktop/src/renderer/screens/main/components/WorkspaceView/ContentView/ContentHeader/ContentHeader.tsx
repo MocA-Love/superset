@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 
 interface ContentHeaderProps {
 	/** Optional leading action */
@@ -14,8 +15,13 @@ export function ContentHeader({
 	children,
 	trailingAction,
 }: ContentHeaderProps) {
+	const isTearoff = isTearoffWindow();
+
 	return (
-		<div className="flex items-end bg-background shrink-0 h-10 border-b">
+		<div
+			className="flex items-end bg-background shrink-0 h-10 border-b"
+			style={isTearoff ? { paddingLeft: 88 } : undefined}
+		>
 			{leadingAction && (
 				<div className="flex items-center h-10 pl-2">{leadingAction}</div>
 			)}

@@ -10,6 +10,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { usePresets } from "renderer/react-query/presets";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -382,6 +383,12 @@ export function GroupStrip() {
 						<div className="shrink-0">{plusControl}</div>
 					)}
 				</div>
+				{isTearoffWindow() && (
+					<div
+						className="flex-1 h-full"
+						style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+					/>
+				)}
 			</div>
 			{hasHorizontalOverflow && (
 				<div className="shrink-0 bg-background/95 pr-1">{plusControl}</div>

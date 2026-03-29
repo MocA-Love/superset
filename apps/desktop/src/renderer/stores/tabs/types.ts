@@ -235,6 +235,12 @@ export interface TabsStore extends TabsState {
 		launchConfig: AddChatTabOptions["launchConfig"],
 	) => void;
 
+	// Tearoff operations
+	/** Remove tab from store without killing terminal sessions (for pop-out). */
+	detachTabForTearoff: (tabId: string) => void;
+	hydrateFromTearoff: (tab: Tab, panes: Record<string, Pane>) => void;
+	hydrateReturnedTab: (tab: Tab, panes: Record<string, Pane>) => void;
+
 	// Query helpers
 	getTabsByWorkspace: (workspaceId: string) => Tab[];
 	getActiveTab: (workspaceId: string) => Tab | null;

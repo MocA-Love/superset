@@ -13,6 +13,7 @@ import {
 } from "shared/absolute-paths";
 import { acknowledgedStatus } from "shared/tabs-types";
 import { create } from "zustand";
+import { tearoffPaneIds } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/pane-guards";
 import { devtools, persist } from "zustand/middleware";
 import {
 	mergeTabIntoTab,
@@ -187,15 +188,29 @@ const cleanupEditorPaneState = (paneId: string): void => {
 	deleteDocumentBuffer(session.documentKey);
 };
 
+// biome-ignore lint/suspicious/noExplicitAny: preload injects untyped data
+const _tearoffData: any =
+	typeof window !== "undefined" ? window.App?.tearoffData : null;
+
 export const useTabsStore = create<TabsStore>()(
 	devtools(
 		persist(
 			(set, get) => ({
-				tabs: [],
-				panes: {},
-				activeTabIds: {},
-				focusedPaneIds: {},
-				tabHistoryStacks: {},
+				tabs: _tearoffData ? [_tearoffData.tab] : [],
+				panes: _tearoffData?.panes ?? {},
+				activeTabIds: _tearoffData
+					? { [_tearoffData.tab.workspaceId]: _tearoffData.tab.id }
+					: {},
+				focusedPaneIds: _tearoffData
+					? {
+							[_tearoffData.tab.id]: getFirstPaneId(
+								_tearoffData.tab.layout,
+							),
+						}
+					: {},
+				tabHistoryStacks: _tearoffData
+					? { [_tearoffData.tab.workspaceId]: [] }
+					: {},
 				closedTabsStack: [],
 
 				// Tab operations
@@ -2116,6 +2131,78 @@ export const useTabsStore = create<TabsStore>()(
 									launchConfig: launchConfig ?? null,
 								},
 							},
+						},
+					});
+				},
+
+				// Tearoff operations
+				/** Remove a tab from the store WITHOUT killing terminal sessions. */
+				detachTabForTearoff: (tabId) => {
+					const state = get();
+					const tabToRemove = state.tabs.find((t) => t.id === tabId);
+					if (!tabToRemove) return;
+
+					const paneIds = getPaneIdsForTab(state.panes, tabId);
+
+					// Mark panes as "tearing off" so terminal cleanup skips killing them
+					for (const paneId of paneIds) {
+						tearoffPaneIds.add(paneId);
+					}
+					// Clean up flags after a delay (tearoff window should be ready by then)
+					setTimeout(() => {
+						for (const paneId of paneIds) {
+							tearoffPaneIds.delete(paneId);
+						}
+					}, 5000);
+
+					const newPanes = { ...state.panes };
+					for (const paneId of paneIds) {
+						delete newPanes[paneId];
+					}
+
+					const workspaceId = tabToRemove.workspaceId;
+					const newActiveTabIds = { ...state.activeTabIds };
+					if (state.activeTabIds[workspaceId] === tabId) {
+						newActiveTabIds[workspaceId] = findNextTab(state, tabId);
+					}
+
+					const newFocusedPaneIds = { ...state.focusedPaneIds };
+					delete newFocusedPaneIds[tabId];
+
+					set({
+						tabs: state.tabs.filter((t) => t.id !== tabId),
+						panes: newPanes,
+						activeTabIds: newActiveTabIds,
+						focusedPaneIds: newFocusedPaneIds,
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: (
+								state.tabHistoryStacks[workspaceId] || []
+							).filter((id) => id !== tabId),
+						},
+					});
+				},
+
+				hydrateFromTearoff: (tab, panes) => {
+					set({
+						tabs: [tab],
+						panes,
+						activeTabIds: { [tab.workspaceId]: tab.id },
+						focusedPaneIds: { [tab.id]: getFirstPaneId(tab.layout) },
+						tabHistoryStacks: { [tab.workspaceId]: [] },
+						closedTabsStack: [],
+					});
+				},
+
+				hydrateReturnedTab: (tab, panes) => {
+					const state = get();
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, ...panes },
+						activeTabIds: { ...state.activeTabIds, [tab.workspaceId]: tab.id },
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: getFirstPaneId(tab.layout),
 						},
 					});
 				},
