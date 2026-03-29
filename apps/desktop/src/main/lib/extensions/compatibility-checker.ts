@@ -152,18 +152,6 @@ function checkManifest(manifest: ChromeManifest): CompatibilityIssue[] {
 		}
 	}
 
-	// Check popup UI
-	const action = manifest.action ?? manifest.browser_action;
-	if (action?.default_popup) {
-		issues.push({
-			type: "unsupported_feature",
-			severity: "warning",
-			message: "Popup UI (browser_action/action popup) is not supported",
-			detail:
-				"The extension's popup window will not be displayed in Electron",
-		});
-	}
-
 	// Check chrome_url_overrides
 	if (manifest.chrome_url_overrides) {
 		issues.push({

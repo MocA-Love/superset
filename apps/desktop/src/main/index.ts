@@ -28,6 +28,7 @@ import { setupAutoUpdater } from "./lib/auto-updater";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
+import { createExtensionIconProtocolHandler } from "./lib/extensions/extension-icon-protocol";
 import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
 import { getHostServiceManager } from "./lib/host-service-manager";
 import { localDb } from "./lib/local-db";
@@ -263,6 +264,15 @@ protocol.registerSchemesAsPrivileged([
 			supportFetchAPI: true,
 		},
 	},
+	{
+		scheme: "superset-ext-icon",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
 ]);
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -328,6 +338,13 @@ if (!gotTheLock) {
 				.fromPartition("persist:superset")
 				.protocol.handle("superset-font", fontProtocolHandler);
 		}
+
+		// Serve extension icons via custom protocol
+		const extIconHandler = createExtensionIconProtocolHandler();
+		protocol.handle("superset-ext-icon", extIconHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-ext-icon", extIconHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();
