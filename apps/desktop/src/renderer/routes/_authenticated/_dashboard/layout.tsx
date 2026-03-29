@@ -7,6 +7,11 @@ import {
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useState } from "react";
 import { useBrowserNewWindowHandler } from "renderer/hooks/useBrowserNewWindowHandler";
+import {
+	isTearoffWindow,
+	useReturnedTabListener,
+	useTearoffInit,
+} from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
@@ -100,6 +105,9 @@ function DashboardLayout() {
 	// Must live here (always-mounted) because webviews persist in a hidden
 	// container even when their BrowserPane component is unmounted.
 	useBrowserNewWindowHandler();
+	useTearoffInit();
+	useReturnedTabListener();
+	const isTearoff = isTearoffWindow();
 
 	const [deleteTarget, setDeleteTarget] = useState<{
 		workspaceId: string;
@@ -124,9 +132,9 @@ function DashboardLayout() {
 
 	return (
 		<div className="flex flex-col h-full w-full">
-			<TopBar />
+			{!isTearoff && <TopBar />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-				{isWorkspaceSidebarOpen && (
+				{!isTearoff && isWorkspaceSidebarOpen && (
 					<ResizablePanel
 						width={workspaceSidebarWidth}
 						onWidthChange={setWorkspaceSidebarWidth}

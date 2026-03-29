@@ -1,4 +1,5 @@
 import type { BrowserWindow } from "electron";
+import type { WindowManager } from "main/lib/window-manager";
 import { router } from "..";
 import { createAnalyticsRouter } from "./analytics";
 import { createAuthRouter } from "./auth";
@@ -26,9 +27,13 @@ import { createSettingsRouter } from "./settings";
 import { createTerminalRouter } from "./terminal";
 import { createUiStateRouter } from "./ui-state";
 import { createWindowRouter } from "./window";
+import { createTabTearoffRouter } from "./tab-tearoff";
 import { createWorkspacesRouter } from "./workspaces";
 
-export const createAppRouter = (getWindow: () => BrowserWindow | null) => {
+export const createAppRouter = (
+	getWindow: () => BrowserWindow | null,
+	wm: WindowManager,
+) => {
 	return router({
 		chatRuntimeService: createChatRuntimeServiceRouter(),
 		chatService: createChatServiceRouter(),
@@ -57,6 +62,7 @@ export const createAppRouter = (getWindow: () => BrowserWindow | null) => {
 		uiState: createUiStateRouter(),
 		ringtone: createRingtoneRouter(getWindow),
 		hostServiceManager: createHostServiceManagerRouter(),
+		tabTearoff: createTabTearoffRouter(wm),
 	});
 };
 

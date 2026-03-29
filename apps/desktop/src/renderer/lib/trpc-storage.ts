@@ -2,6 +2,10 @@ import type { HotkeysState } from "shared/hotkeys";
 import { createJSONStorage, type StateStorage } from "zustand/middleware";
 import { electronTrpcClient } from "./trpc-client";
 
+/** Cached at module load: true if the current window is a tear-off window. */
+const _isTearoffWindow =
+	typeof window !== "undefined" && !!window.App?.tearoffWindowId;
+
 /**
  * Flag to skip the next hotkeys persist operation.
  * Used when syncing from remote to avoid echo writes.
@@ -150,6 +154,8 @@ function createTrpcStorageAdapter(config: TrpcStorageConfig): StateStorage {
 
 	return {
 		getItem: async (name: string): Promise<string | null> => {
+			// Tear-off windows skip persist hydration entirely
+			if (_isTearoffWindow) return null;
 			try {
 				const state = await config.get();
 				const version = Number.parseInt(
@@ -206,6 +212,8 @@ function createTrpcStorageAdapter(config: TrpcStorageConfig): StateStorage {
 			}
 		},
 		setItem: async (name: string, value: string): Promise<void> => {
+			// Tear-off windows must not persist
+			if (_isTearoffWindow) return;
 			if (value === pendingValue || value === lastFlushedValue) {
 				return;
 			}

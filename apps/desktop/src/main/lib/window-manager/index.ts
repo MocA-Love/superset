@@ -1,0 +1,146 @@
+import { join } from "node:path";
+import { BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { createWindow } from "lib/electron-app/factories/windows/create";
+
+interface TearoffWindowOptions {
+	windowId: string;
+	screenX: number;
+	screenY: number;
+	width?: number;
+	height?: number;
+}
+
+interface TearoffTabData {
+	tab: unknown;
+	panes: Record<string, unknown>;
+	workspaceId: string;
+}
+
+type IpcHandler = {
+	attachWindow: (window: BrowserWindow) => void;
+	detachWindow: (window: BrowserWindow) => void;
+};
+
+export class WindowManager {
+	private windows = new Map<string, BrowserWindow>();
+	private ipcHandler: IpcHandler | null = null;
+	private ipcRegistered = false;
+	private pendingTearoffData = new Map<string, TearoffTabData>();
+
+	setIpcHandler(handler: IpcHandler): void {
+		this.ipcHandler = handler;
+		this.registerIpcHandlers();
+	}
+
+	private registerIpcHandlers(): void {
+		if (this.ipcRegistered) return;
+		this.ipcRegistered = true;
+
+		// Synchronous IPC: preload fetches tearoff data before React starts
+		ipcMain.on("get-tearoff-data", (event, windowId: string) => {
+			const data = this.pendingTearoffData.get(windowId);
+			if (data) this.pendingTearoffData.delete(windowId);
+			event.returnValue = data ?? null;
+		});
+
+		// Tearoff window closing: return all tabs to main window (single message)
+		ipcMain.on(
+			"tearoff-return-tabs",
+			(
+				_event,
+				data: Array<{ tab: unknown; panes: Record<string, unknown> }>,
+			) => {
+				const mainWindow = this.getMain();
+				if (mainWindow && !mainWindow.isDestroyed()) {
+					mainWindow.webContents.send("tearoff-tab-returned", data);
+				} else {
+					console.warn(
+						"[window-manager] Main window unavailable; returned tabs lost:",
+						data.length,
+					);
+				}
+			},
+		);
+	}
+
+	setPendingTearoffData(windowId: string, data: TearoffTabData): void {
+		this.pendingTearoffData.set(windowId, data);
+		setTimeout(() => this.pendingTearoffData.delete(windowId), 30_000);
+	}
+
+	register(windowId: string, window: BrowserWindow): void {
+		this.windows.set(windowId, window);
+	}
+
+	unregister(windowId: string): void {
+		this.windows.delete(windowId);
+	}
+
+	get(windowId: string): BrowserWindow | null {
+		return this.windows.get(windowId) ?? null;
+	}
+
+	getMain(): BrowserWindow | null {
+		return this.windows.get("main") ?? null;
+	}
+
+	getAll(): Map<string, BrowserWindow> {
+		return new Map(this.windows);
+	}
+
+	createTearoffWindow(options: TearoffWindowOptions): {
+		windowId: string;
+		window: BrowserWindow;
+	} {
+		const { windowId } = options;
+
+		const window = createWindow({
+			id: "tearoff",
+			title: "Superset",
+			width: options.width ?? 900,
+			height: options.height ?? 600,
+			x: Math.round(options.screenX - 100),
+			y: Math.round(options.screenY - 20),
+			minWidth: 400,
+			minHeight: 400,
+			show: false,
+			backgroundColor: nativeTheme.shouldUseDarkColors ? "#252525" : "#ffffff",
+			frame: false,
+			titleBarStyle: "hidden",
+			trafficLightPosition: { x: 16, y: 16 },
+			webPreferences: {
+				preload: join(__dirname, "../preload/index.js"),
+				webviewTag: true,
+				partition: "persist:superset",
+				additionalArguments: [`--tearoff-window-id=${windowId}`],
+			},
+		});
+
+		this.register(windowId, window);
+		this.ipcHandler?.attachWindow(window);
+
+		// Detach IPC BEFORE window is destroyed (close fires before closed)
+		window.on("close", () => {
+			this.ipcHandler?.detachWindow(window);
+		});
+		window.on("closed", () => {
+			this.windows.delete(windowId);
+		});
+
+		window.webContents.once("did-finish-load", () => {
+			window.show();
+		});
+
+		return { windowId, window };
+	}
+
+	broadcast(channel: string, ...args: unknown[]): void {
+		for (const window of this.windows.values()) {
+			if (!window.isDestroyed()) {
+				window.webContents.send(channel, ...args);
+			}
+		}
+	}
+}
+
+export const windowManager = new WindowManager();

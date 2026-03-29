@@ -15,10 +15,22 @@ declare global {
 	}
 }
 
+// Tearoff: synchronously fetch tab data BEFORE React/Zustand initialize
+const tearoffWindowId = (() => {
+	const arg = process.argv.find((a) => a.startsWith("--tearoff-window-id="));
+	return arg ? arg.split("=")[1] : null;
+})();
+// biome-ignore lint/suspicious/noExplicitAny: tearoff data is untyped at preload level
+const tearoffData: any = tearoffWindowId
+	? ipcRenderer.sendSync("get-tearoff-data", tearoffWindowId)
+	: null;
+
 const API = {
 	sayHelloFromBridge: () => console.log("\nHello from bridgeAPI! 👋\n\n"),
 	username: process.env.USER,
 	appVersion: __APP_VERSION__,
+	tearoffWindowId,
+	tearoffData,
 };
 
 // Store mapping of user listeners to wrapped listeners for proper cleanup

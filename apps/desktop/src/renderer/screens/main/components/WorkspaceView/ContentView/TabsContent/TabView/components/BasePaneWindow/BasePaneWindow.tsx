@@ -11,6 +11,7 @@ export interface PaneHandlers {
 	onFocus: () => void;
 	onClosePane: (e: React.MouseEvent) => void;
 	onSplitPane: (e: React.MouseEvent) => void;
+	onPopOut?: (e: React.MouseEvent) => void;
 	splitOrientation: SplitOrientation;
 }
 
@@ -38,6 +39,7 @@ interface BasePaneWindowProps {
 	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
+	onPopOut?: () => void;
 	renderToolbar: (handlers: PaneHandlers) => React.ReactElement;
 	children: React.ReactNode;
 	contentClassName?: string;
@@ -50,6 +52,7 @@ export function BasePaneWindow({
 	splitPaneAuto,
 	removePane,
 	setFocusedPane,
+	onPopOut,
 	renderToolbar,
 	children,
 	contentClassName = "w-full h-full overflow-hidden",
@@ -83,10 +86,18 @@ export function BasePaneWindow({
 		splitPaneAuto(tabId, paneId, { width, height }, path);
 	};
 
+	const handlePopOut = onPopOut
+		? (e: React.MouseEvent) => {
+				e.stopPropagation();
+				onPopOut();
+			}
+		: undefined;
+
 	const handlers: PaneHandlers = {
 		onFocus: handleFocus,
 		onClosePane: handleClosePane,
 		onSplitPane: handleSplitPane,
+		onPopOut: handlePopOut,
 		splitOrientation,
 	};
 

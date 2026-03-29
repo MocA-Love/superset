@@ -50,6 +50,7 @@ interface ChatPaneProps {
 	availableTabs: Tab[];
 	onMoveToTab: (targetTabId: string) => void;
 	onMoveToNewTab: () => void;
+	onPopOut?: () => void;
 }
 
 export function ChatPane({
@@ -65,6 +66,7 @@ export function ChatPane({
 	availableTabs,
 	onMoveToTab,
 	onMoveToNewTab,
+	onPopOut,
 }: ChatPaneProps) {
 	const showDevToolbarActions = env.NODE_ENV === "development";
 	const isFocused = useTabsStore((s) => s.focusedPaneIds[tabId] === paneId);
@@ -148,6 +150,7 @@ export function ChatPane({
 					splitPaneAuto={splitPaneAuto}
 					removePane={removePane}
 					setFocusedPane={setFocusedPane}
+					onPopOut={onPopOut}
 					renderToolbar={(handlers) => (
 						<div className="flex h-full w-full items-center justify-between px-3">
 							<div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
@@ -165,6 +168,7 @@ export function ChatPane({
 								splitOrientation={handlers.splitOrientation}
 								onSplitPane={handlers.onSplitPane}
 								onClosePane={handlers.onClosePane}
+								onPopOut={handlers.onPopOut}
 								leadingActions={
 									showDevToolbarActions ? (
 										<Tooltip>

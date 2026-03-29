@@ -41,6 +41,7 @@ interface TabPaneProps {
 	availableTabs: Tab[];
 	onMoveToTab: (targetTabId: string) => void;
 	onMoveToNewTab: () => void;
+	onPopOut?: () => void;
 }
 
 export function TabPane({
@@ -56,6 +57,7 @@ export function TabPane({
 	availableTabs,
 	onMoveToTab,
 	onMoveToNewTab,
+	onPopOut,
 }: TabPaneProps) {
 	const paneName = useTabsStore((s) => s.panes[paneId]?.name);
 	const paneStatus = useTabsStore((s) => s.panes[paneId]?.status);
@@ -100,6 +102,7 @@ export function TabPane({
 			splitPaneAuto={splitPaneAuto}
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
+			onPopOut={onPopOut}
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between px-3">
 					<div className="flex min-w-0 items-center gap-2">
@@ -123,6 +126,7 @@ export function TabPane({
 						onSplitPane={handlers.onSplitPane}
 						onClosePane={handlers.onClosePane}
 						closeHotkeyId="CLOSE_TERMINAL"
+						onPopOut={handlers.onPopOut}
 					/>
 				</div>
 			)}

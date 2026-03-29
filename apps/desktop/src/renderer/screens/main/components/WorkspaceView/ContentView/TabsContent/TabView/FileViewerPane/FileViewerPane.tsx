@@ -78,6 +78,7 @@ interface FileViewerPaneProps {
 	availableTabs: Tab[];
 	onMoveToTab: (targetTabId: string) => void;
 	onMoveToNewTab: () => void;
+	onPopOut?: () => void;
 }
 
 function getUnsavedDialogCopy(intent: EditorPendingIntent | null) {
@@ -126,6 +127,7 @@ export function FileViewerPane({
 	availableTabs,
 	onMoveToTab,
 	onMoveToNewTab,
+	onPopOut,
 }: FileViewerPaneProps) {
 	const workspaceId = useWorkspaceId();
 	const normalizedWorkspaceId = workspaceId ?? worktreePath;
@@ -617,6 +619,7 @@ export function FileViewerPane({
 				splitPaneAuto={splitPaneAuto}
 				removePane={requestPaneClose}
 				setFocusedPane={setFocusedPane}
+				onPopOut={onPopOut}
 				contentClassName="w-full h-full overflow-hidden bg-background"
 				renderToolbar={(handlers) => (
 					<div className="flex h-full w-full">
@@ -637,6 +640,7 @@ export function FileViewerPane({
 							onSplitPane={handlers.onSplitPane}
 							onPin={handlePin}
 							onClosePane={handlers.onClosePane}
+							onPopOut={handlers.onPopOut}
 						/>
 					</div>
 				)}

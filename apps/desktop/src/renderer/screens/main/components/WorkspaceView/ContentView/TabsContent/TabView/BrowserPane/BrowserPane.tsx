@@ -25,6 +25,7 @@ interface BrowserPaneProps {
 	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
+	onPopOut?: () => void;
 }
 
 export function BrowserPane({
@@ -34,6 +35,7 @@ export function BrowserPane({
 	splitPaneAuto,
 	removePane,
 	setFocusedPane,
+	onPopOut,
 }: BrowserPaneProps) {
 	const pane = useTabsStore((s) => s.panes[paneId]);
 	const browserState = pane?.browser;
@@ -101,6 +103,7 @@ export function BrowserPane({
 			splitPaneAuto={splitPaneAuto}
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
+			onPopOut={onPopOut}
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
@@ -121,6 +124,7 @@ export function BrowserPane({
 							onSplitPane={handlers.onSplitPane}
 							onClosePane={handlers.onClosePane}
 							closeHotkeyId="CLOSE_TERMINAL"
+							onPopOut={handlers.onPopOut}
 							leadingActions={
 								<>
 									<div className="flex items-center gap-0.5">
