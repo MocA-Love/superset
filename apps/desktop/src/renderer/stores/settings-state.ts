@@ -13,6 +13,7 @@ export type SettingsSection =
 	| "terminal"
 	| "models"
 	| "integrations"
+	| "extensions"
 	| "billing"
 	| "apikeys"
 	| "permissions"

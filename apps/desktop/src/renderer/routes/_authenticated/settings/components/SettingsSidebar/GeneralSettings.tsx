@@ -11,6 +11,7 @@ import {
 	HiOutlinePuzzlePiece,
 	HiOutlineShieldCheck,
 	HiOutlineSparkles,
+	HiOutlineSquare3Stack3D,
 	HiOutlineUser,
 } from "react-icons/hi2";
 import { LuBrain, LuGitBranch, LuKeyboard } from "react-icons/lu";
@@ -33,6 +34,7 @@ type SettingsRoute =
 	| "/settings/terminal"
 	| "/settings/models"
 	| "/settings/integrations"
+	| "/settings/extensions"
 	| "/settings/billing"
 	| "/settings/api-keys"
 	| "/settings/permissions";
@@ -112,6 +114,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "models",
 				label: "Models",
 				icon: <LuBrain className="h-4 w-4" />,
+			},
+			{
+				id: "/settings/extensions",
+				section: "extensions",
+				label: "Extensions",
+				icon: <HiOutlineSquare3Stack3D className="h-4 w-4" />,
 			},
 		],
 	},

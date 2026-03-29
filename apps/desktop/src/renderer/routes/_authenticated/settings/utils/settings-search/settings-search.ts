@@ -62,6 +62,8 @@ export const SETTING_ITEM_ID = {
 	API_KEYS_LIST: "api-keys-list",
 	API_KEYS_GENERATE: "api-keys-generate",
 
+	EXTENSIONS_BROWSER: "extensions-browser",
+
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
@@ -894,6 +896,22 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"mcp",
 			"claude desktop",
 			"claude code",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.EXTENSIONS_BROWSER,
+		section: "extensions",
+		title: "Browser Extensions",
+		description: "Install and manage Chrome extensions from the Chrome Web Store",
+		keywords: [
+			"extensions",
+			"chrome",
+			"browser",
+			"web store",
+			"addon",
+			"plugin",
+			"install",
+			"crx",
 		],
 	},
 	{
