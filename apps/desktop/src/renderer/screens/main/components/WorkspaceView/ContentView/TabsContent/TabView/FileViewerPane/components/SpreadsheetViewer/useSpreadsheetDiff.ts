@@ -1,3 +1,4 @@
+import { diffChars } from "diff";
 import { useEffect, useMemo, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { ChangeCategory } from "shared/changes-types";
@@ -5,8 +6,14 @@ import type { ParsedCell, ParsedSheet } from "./useSpreadsheetData";
 
 const MAX_SPREADSHEET_SIZE = 10 * 1024 * 1024;
 
+export interface DiffSegment {
+	text: string;
+	type: "added" | "removed" | "unchanged";
+}
+
 export interface DiffParsedCell extends ParsedCell {
 	diffStatus?: "added" | "removed" | "modified";
+	diffSegments?: DiffSegment[];
 }
 
 export interface DiffParsedRow {
@@ -21,6 +28,31 @@ export interface DiffParsedSheet {
 	columnCount: number;
 	columnWidths: number[];
 	sheetStatus?: "added" | "removed";
+}
+
+function computeDiffSegments(
+	oldValue: string,
+	newValue: string,
+	side: "original" | "modified",
+): DiffSegment[] {
+	const changes = diffChars(oldValue, newValue);
+	const segments: DiffSegment[] = [];
+	for (const change of changes) {
+		if (change.added) {
+			if (side === "modified") {
+				segments.push({ text: change.value, type: "added" });
+			}
+			// skip added parts on original side
+		} else if (change.removed) {
+			if (side === "original") {
+				segments.push({ text: change.value, type: "removed" });
+			}
+			// skip removed parts on modified side
+		} else {
+			segments.push({ text: change.value, type: "unchanged" });
+		}
+	}
+	return segments;
 }
 
 async function parseBase64Workbook(
@@ -126,10 +158,16 @@ function buildDiffSheets(
 						origCells.push({
 							...origCell,
 							diffStatus: changed ? "modified" : undefined,
+							diffSegments: changed
+								? computeDiffSegments(origCell.value, modCell.value, "original")
+								: undefined,
 						});
 						modCells.push({
 							...modCell,
 							diffStatus: changed ? "modified" : undefined,
+							diffSegments: changed
+								? computeDiffSegments(origCell.value, modCell.value, "modified")
+								: undefined,
 						});
 					} else {
 						origCells.push(emptyCell);
