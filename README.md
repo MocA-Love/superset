@@ -44,7 +44,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **タブのポップアウト** | ペインツールバーの Pop out ボタンでタブを独立ウィンドウとして分離。閉じるとメインウィンドウに自動返却。ターミナルセッション維持、preload 同期注入方式で Zustand persist との競合を排除 | [#11](https://github.com/MocA-Love/superset/pull/11) | 2026-03-29 |
 | **タブカラー設定** | タブを右クリック → Set Color で13色から背景色を設定可能。ワークスペースセクションと同じカラーパレットを再利用。アクティブ/非アクティブで濃淡が変化し、設定は自動永続化 | [#12](https://github.com/MocA-Love/superset/pull/12) | 2026-03-29 |
 | **クラッシュリカバリー強化** | macOS でアプリが白画面/フリーズする問題を修正。GPU クラッシュ時に最大化/フルスクリーンでもコンポジター再構築を実行、レンダラークラッシュ時の自動リロード/再起動、clipboard 操作のエラーハンドリング追加 | [#13](https://github.com/MocA-Love/superset/pull/13) | 2026-03-29 |
-| **Excel 描画オブジェクト・斜線表示** | Excel ファイルの描画オブジェクト（線・矩形）とセル斜線を表示。xlsx ZIP から drawing XML を直接パースし、CSS transform 方式の SVG オーバーレイで正確に配置 | [#14](https://github.com/MocA-Love/superset/pull/14) | 2026-03-29 |
+| **Excel 描画オブジェクト・斜線表示** | Excel ファイルの描画オブジェクト（線・矩形）とセル斜線を表示。xlsx ZIP から drawing XML を直接パースし、CSS transform 方式の SVG オーバーレイで正確に配置 | [#16](https://github.com/MocA-Love/superset/pull/16) | 2026-03-29 |
 
 ## Fork のビルド方法 (macOS)
 
