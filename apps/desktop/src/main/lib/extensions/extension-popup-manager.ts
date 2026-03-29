@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BrowserWindow, screen, session } from "electron";
+import { BrowserWindow, nativeTheme, screen, session } from "electron";
 import { getExtensionsDir } from "./crx-downloader";
 
 const APP_PARTITION = "persist:superset";
@@ -92,6 +92,9 @@ export class ExtensionPopupManager {
 			show: false,
 			frame: false,
 			transparent: false,
+			backgroundColor: nativeTheme.shouldUseDarkColors
+				? "#252525"
+				: "#ffffff",
 			resizable: false,
 			movable: false,
 			minimizable: false,
