@@ -6,6 +6,7 @@ import {
 	ContextMenuSeparator,
 	ContextMenuTrigger,
 } from "@superset/ui/context-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import {
 	LuChevronDown,
@@ -20,6 +21,7 @@ import {
 	LuTrash2,
 } from "react-icons/lu";
 import type { DirectoryEntry } from "shared/file-tree-types";
+import { useFileExplorerStore } from "renderer/stores/file-explorer";
 import { useFileDrag, usePathActions } from "../../../ChangesView/hooks";
 import { FileIcon } from "../../utils";
 
@@ -52,6 +54,7 @@ export function FileTreeItem({
 	onRename,
 	onDelete,
 }: FileTreeItemProps) {
+	const showFileTooltips = useFileExplorerStore((s) => s.showFileTooltips);
 	const isFolder = entry.isDirectory;
 	const isExpanded = item.isExpanded();
 	const level = item.getItemMeta().level;
@@ -143,7 +146,18 @@ export function FileTreeItem({
 				className="size-4 shrink-0"
 			/>
 
-			<span className="flex-1 min-w-0 text-xs truncate">{entry.name}</span>
+			{showFileTooltips ? (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span className="flex-1 min-w-0 text-xs truncate">
+							{entry.name}
+						</span>
+					</TooltipTrigger>
+					<TooltipContent side="right">{entry.relativePath}</TooltipContent>
+				</Tooltip>
+			) : (
+				<span className="flex-1 min-w-0 text-xs truncate">{entry.name}</span>
+			)}
 		</div>
 	);
 

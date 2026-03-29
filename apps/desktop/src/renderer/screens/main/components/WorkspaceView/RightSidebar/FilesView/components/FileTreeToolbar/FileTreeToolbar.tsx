@@ -6,9 +6,11 @@ import {
 	LuChevronsDownUp,
 	LuFilePlus,
 	LuFolderPlus,
+	LuMessageSquareText,
 	LuRefreshCw,
 	LuX,
 } from "react-icons/lu";
+import { useFileExplorerStore } from "renderer/stores/file-explorer";
 import { SEARCH_DEBOUNCE_MS } from "../../constants";
 
 interface FileTreeToolbarProps {
@@ -30,6 +32,7 @@ export function FileTreeToolbar({
 	onRefresh,
 	isRefreshing = false,
 }: FileTreeToolbarProps) {
+	const { showFileTooltips, toggleFileTooltips } = useFileExplorerStore();
 	const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
 	const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -156,6 +159,22 @@ export function FileTreeToolbar({
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent side="bottom">Refresh</TooltipContent>
+				</Tooltip>
+
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							className={`size-6 ${showFileTooltips ? "bg-accent" : ""}`}
+							onClick={toggleFileTooltips}
+						>
+							<LuMessageSquareText className="size-3.5" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">
+						{showFileTooltips ? "Hide Tooltips" : "Show Tooltips"}
+					</TooltipContent>
 				</Tooltip>
 			</div>
 		</div>
