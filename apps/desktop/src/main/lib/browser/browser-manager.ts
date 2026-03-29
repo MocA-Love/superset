@@ -94,7 +94,11 @@ class BrowserManager extends EventEmitter {
 		const wc = this.getWebContents(paneId);
 		if (!wc) throw new Error(`No webContents for pane ${paneId}`);
 		const image = await wc.capturePage();
-		clipboard.writeImage(image);
+		try {
+			clipboard.writeImage(image);
+		} catch (error) {
+			console.error("[browser-manager] clipboard.writeImage failed:", error);
+		}
 		return image.toPNG().toString("base64");
 	}
 
@@ -139,7 +143,13 @@ class BrowserManager extends EventEmitter {
 					},
 					{
 						label: "Copy Link Address",
-						click: () => clipboard.writeText(linkURL),
+						click: () => {
+							try {
+								clipboard.writeText(linkURL);
+							} catch {
+								// clipboard unavailable
+							}
+						},
 					},
 					{ type: "separator" },
 				);
@@ -203,7 +213,13 @@ class BrowserManager extends EventEmitter {
 					{
 						label: "Copy Page URL",
 						click: () => {
-							if (pageURL) clipboard.writeText(pageURL);
+							if (pageURL) {
+								try {
+									clipboard.writeText(pageURL);
+								} catch {
+									// clipboard unavailable
+								}
+							}
 						},
 						enabled: !!pageURL && pageURL !== "about:blank",
 					},
