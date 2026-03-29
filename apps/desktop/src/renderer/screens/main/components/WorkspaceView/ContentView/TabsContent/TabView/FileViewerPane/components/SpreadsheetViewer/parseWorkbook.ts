@@ -11,6 +11,34 @@ export interface RichTextPart {
 	style: StyleObj;
 }
 
+export interface RenderAnchor {
+	c: number; // col (0-indexed)
+	co: number; // colOff (EMU)
+	r: number; // row (0-indexed)
+	ro: number; // rowOff (EMU)
+}
+
+export interface RenderShape {
+	n: string; // name
+	t: string; // type ("line" | "rect" etc.)
+	vf: boolean; // verticalFlip
+	hf: boolean; // horizontalFlip
+	tl: RenderAnchor; // top-left anchor
+	br: RenderAnchor; // bottom-right anchor
+	o: {
+		w: number; // outline weight (px)
+		cl: string; // outline color
+		d: string; // dash style
+	};
+}
+
+export interface DiagonalBorder {
+	up: boolean; // bottom-left to top-right
+	down: boolean; // top-left to bottom-right
+	style: string; // CSS border style e.g. "1px solid"
+	color: string; // e.g. "#000"
+}
+
 export interface ParsedCell {
 	value: string;
 	style: StyleObj;
@@ -20,9 +48,11 @@ export interface ParsedCell {
 	wrapText?: boolean;
 	verticalText?: boolean;
 	richText?: RichTextPart[];
+	diagonal?: DiagonalBorder;
 }
 
 export interface ParsedRow {
+	excelRow: number; // actual Excel row number (1-based)
 	cells: ParsedCell[];
 	height: number;
 }
@@ -33,6 +63,9 @@ export interface ParsedSheet {
 	columnCount: number;
 	columnWidths: number[];
 	truncated: boolean;
+	shapes: RenderShape[];
+	/** First data column in Excel (1-based) */
+	minCol: number;
 }
 
 // ── Theme colors (standard Excel Office theme) ──
@@ -96,6 +129,181 @@ function resolveColor(color: any): string | null {
 	if (color.indexed !== undefined)
 		return color.indexed === 64 ? "#000000" : null;
 	return null;
+}
+
+const SHAPE_THEME_COLORS: Record<string, string> = {
+	lt1: "#FFFFFF",
+	dk1: "#000000",
+	lt2: "#E7E6E6",
+	dk2: "#44546A",
+	accent1: "#4472C4",
+	accent2: "#ED7D31",
+	accent3: "#A5A5A5",
+	accent4: "#FFC000",
+	accent5: "#5B9BD5",
+	accent6: "#70AD47",
+};
+
+// ── Drawing XML parser (works with standard ExcelJS 4.4.0) ──
+
+function xmlAttr(el: Element, name: string): string {
+	return el.getAttribute(name) || "";
+}
+
+function xmlInt(el: Element, name: string): number {
+	return Number.parseInt(el.getAttribute(name) || "0", 10);
+}
+
+function xmlChild(el: Element, localName: string): Element | null {
+	for (let i = 0; i < el.children.length; i++) {
+		const child = el.children[i];
+		if (child.localName === localName) return child;
+	}
+	return null;
+}
+
+function xmlText(el: Element, localName: string): string {
+	const child = xmlChild(el, localName);
+	return child?.textContent?.trim() || "0";
+}
+
+function parseAnchorPosition(el: Element): RenderAnchor {
+	return {
+		c: Number.parseInt(xmlText(el, "col"), 10),
+		co: Number.parseInt(xmlText(el, "colOff"), 10),
+		r: Number.parseInt(xmlText(el, "row"), 10),
+		ro: Number.parseInt(xmlText(el, "rowOff"), 10),
+	};
+}
+
+function resolveXmlColor(el: Element | null): string {
+	if (!el) return "#000000";
+	// <a:srgbClr val="FF0000"/>
+	const srgb = xmlChild(el, "srgbClr");
+	if (srgb) return `#${xmlAttr(srgb, "val")}`;
+	// <a:schemeClr val="accent1"/>
+	const scheme = xmlChild(el, "schemeClr");
+	if (scheme) {
+		const val = xmlAttr(scheme, "val");
+		return SHAPE_THEME_COLORS[val] || "#000000";
+	}
+	return "#000000";
+}
+
+function parseShapeFromAnchor(anchor: Element): RenderShape | null {
+	const from = xmlChild(anchor, "from");
+	const to = xmlChild(anchor, "to");
+	if (!from || !to) return null;
+
+	// Look for sp (shape) or cxnSp (connector)
+	const sp = xmlChild(anchor, "sp") || xmlChild(anchor, "cxnSp");
+	if (!sp) return null;
+
+	// Get name from nvSpPr/cNvPr or nvCxnSpPr/cNvPr
+	const nvPr =
+		xmlChild(sp, "nvSpPr") || xmlChild(sp, "nvCxnSpPr");
+	const cNvPr = nvPr ? xmlChild(nvPr, "cNvPr") : null;
+	const name = cNvPr ? xmlAttr(cNvPr, "name") : "";
+
+	// Get shape properties
+	const spPr = xmlChild(sp, "spPr");
+	if (!spPr) return null;
+
+	// Determine shape type from prstGeom
+	const prstGeom = xmlChild(spPr, "prstGeom");
+	const prst = prstGeom ? xmlAttr(prstGeom, "prst") : "";
+	const isLine = prst === "line" || sp.localName === "cxnSp";
+
+	// Get transform (flip, rotation)
+	const xfrm = xmlChild(spPr, "xfrm");
+	const flipH = xfrm ? xmlAttr(xfrm, "flipH") === "1" : false;
+	const flipV = xfrm ? xmlAttr(xfrm, "flipV") === "1" : false;
+
+	// Get line properties
+	const ln = xmlChild(spPr, "ln");
+	let lineWidth = 1;
+	let lineColor = "#000000";
+	let lineDash = "solid";
+
+	if (ln) {
+		const w = xmlAttr(ln, "w");
+		if (w) lineWidth = (Number.parseInt(w, 10) / 12700) * (96 / 72);
+		const fill = xmlChild(ln, "solidFill");
+		if (fill) lineColor = resolveXmlColor(fill);
+		const dash = xmlChild(ln, "prstDash");
+		if (dash) lineDash = xmlAttr(dash, "val") || "solid";
+	}
+
+	return {
+		n: name,
+		t: isLine ? "line" : prst || "rect",
+		vf: flipV,
+		hf: flipH,
+		tl: parseAnchorPosition(from),
+		br: parseAnchorPosition(to),
+		o: { w: lineWidth, cl: lineColor, d: lineDash },
+	};
+}
+
+async function parseDrawingsFromZip(
+	zipBuffer: ArrayBuffer,
+): Promise<Map<number, RenderShape[]>> {
+	// biome-ignore lint/suspicious/noExplicitAny: jszip has no type declarations in this context
+	const JSZip = (await import("jszip" as any)).default;
+	const zip = await JSZip.loadAsync(zipBuffer);
+	const parser = new DOMParser();
+	const result = new Map<number, RenderShape[]>();
+
+	const files = zip.files as Record<
+		string,
+		{ dir: boolean; async: (type: string) => Promise<string> }
+	>;
+
+	// Find which sheet links to which drawing via rels files
+	const sheetDrawingMap = new Map<string, number>();
+	for (const [name, file] of Object.entries(files)) {
+		const relsMatch = name.match(
+			/xl\/worksheets\/_rels\/sheet(\d+)\.xml\.rels$/,
+		);
+		if (!relsMatch || file.dir) continue;
+		const sheetIndex = Number.parseInt(relsMatch[1], 10);
+		const relsXml = await file.async("text");
+		const doc = parser.parseFromString(relsXml, "application/xml");
+		const rels = doc.getElementsByTagName("Relationship");
+		for (let i = 0; i < rels.length; i++) {
+			const target = rels[i].getAttribute("Target") || "";
+			const drawingMatch = target.match(/drawing(\d+)\.xml$/);
+			if (drawingMatch) {
+				sheetDrawingMap.set(`drawing${drawingMatch[1]}`, sheetIndex);
+			}
+		}
+	}
+
+	// Parse each drawing XML
+	for (const [name, file] of Object.entries(files)) {
+		const drawingMatch = name.match(/xl\/drawings\/(drawing\d+)\.xml$/);
+		if (!drawingMatch || file.dir) continue;
+		const drawingId = drawingMatch[1];
+		const sheetIndex = sheetDrawingMap.get(drawingId);
+		if (sheetIndex === undefined) continue;
+
+		const xml = await file.async("text");
+		const doc = parser.parseFromString(xml, "application/xml");
+		const shapes: RenderShape[] = [];
+
+		// Parse twoCellAnchor elements
+		const anchors = doc.getElementsByTagNameNS("*", "twoCellAnchor");
+		for (let i = 0; i < anchors.length; i++) {
+			const shape = parseShapeFromAnchor(anchors[i]);
+			if (shape) shapes.push(shape);
+		}
+
+		if (shapes.length > 0) {
+			result.set(sheetIndex, shapes);
+		}
+	}
+
+	return result;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: ExcelJS internal types are incomplete
@@ -200,6 +408,18 @@ function getCellStyle(cell: any): StyleObj {
 		if (br) style.borderRight = br;
 	}
 	return style;
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: ExcelJS internal types are incomplete
+function getCellDiagonal(cell: any): DiagonalBorder | undefined {
+	const bd = cell.border;
+	if (!bd?.diagonal?.style) return undefined;
+	const up = bd.diagonal.up === true;
+	const down = bd.diagonal.down === true;
+	if (!up && !down) return undefined;
+	const base = BORDER_STYLES[bd.diagonal.style] || "1px solid";
+	const color = resolveColor(bd.diagonal.color) || "#000";
+	return { up, down, style: base, color };
 }
 
 function getMergedCellBorders(
@@ -355,13 +575,21 @@ export async function parseWorkbook(
 	const binaryStr = atob(base64Content);
 	const bytes = new Uint8Array(binaryStr.length);
 	for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-	await workbook.xlsx.load(bytes.buffer as ArrayBuffer);
+	const buffer = bytes.buffer as ArrayBuffer;
+	await workbook.xlsx.load(buffer);
+
+	// Parse drawing objects (shapes/lines) directly from the xlsx ZIP
+	// since standard ExcelJS 4.4.0 only supports images, not shapes.
+	const drawingsMap = await parseDrawingsFromZip(buffer);
 
 	const sheets: ParsedSheet[] = [];
+	let sheetIndex = 0;
 
 	workbook.eachSheet((worksheet) => {
+		sheetIndex++;
 		const dims = getSheetDimensions(worksheet);
 		const mergeMap = buildMergeMap(worksheet);
+		const shapes = drawingsMap.get(sheetIndex) || [];
 		const colCount = dims.maxC - dims.minC + 1;
 		const columnWidths: number[] = [];
 		for (let c = dims.minC; c <= dims.maxC; c++) {
@@ -425,6 +653,8 @@ export async function parseWorkbook(
 				const verticalText =
 					al?.textRotation === "vertical" || al?.textRotation === 255;
 
+				const diagonal = getCellDiagonal(cell);
+
 				const parsed: ParsedCell = { value: val, style };
 				if (mergeInfo) {
 					parsed.colSpan = colspan;
@@ -433,10 +663,11 @@ export async function parseWorkbook(
 				if (wrapText) parsed.wrapText = true;
 				if (verticalText) parsed.verticalText = true;
 				if (richText) parsed.richText = richText;
+				if (diagonal) parsed.diagonal = diagonal;
 				cells.push(parsed);
 			}
 
-			rows.push({ cells, height: rowHeightToPx(row.height) });
+			rows.push({ excelRow: r, cells, height: rowHeightToPx(row.height) });
 		}
 
 		sheets.push({
@@ -445,6 +676,8 @@ export async function parseWorkbook(
 			columnCount: colCount,
 			columnWidths,
 			truncated,
+			shapes,
+			minCol: dims.minC,
 		});
 	});
 
