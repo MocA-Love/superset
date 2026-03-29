@@ -45,6 +45,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **タブカラー設定** | タブを右クリック → Set Color で13色から背景色を設定可能。ワークスペースセクションと同じカラーパレットを再利用。アクティブ/非アクティブで濃淡が変化し、設定は自動永続化 | [#12](https://github.com/MocA-Love/superset/pull/12) | 2026-03-29 |
 | **クラッシュリカバリー強化** | macOS でアプリが白画面/フリーズする問題を修正。GPU クラッシュ時に最大化/フルスクリーンでもコンポジター再構築を実行、レンダラークラッシュ時の自動リロード/再起動、clipboard 操作のエラーハンドリング追加 | [#13](https://github.com/MocA-Love/superset/pull/13) | 2026-03-29 |
 | **Excel 描画オブジェクト・斜線表示** | Excel ファイルの描画オブジェクト（線・矩形）とセル斜線を表示。xlsx ZIP から drawing XML を直接パースし、CSS transform 方式の SVG オーバーレイで正確に配置 | [#16](https://github.com/MocA-Love/superset/pull/16) | 2026-03-29 |
+| **Chrome 拡張機能インストール** | Chrome Web Store の URL または拡張 ID からブラウザ拡張機能をインストール。CRX ダウンロード・展開、互換性チェック（Electron 非対応 API 検出）、設定画面での管理（有効/無効/削除）。BrowserPane ツールバーに拡張アイコンを表示し、クリックでポップアップウィンドウを表示。GPL ライブラリ不使用、Electron 標準 API のみで自前実装 | [#20](https://github.com/MocA-Love/superset/pull/20) | 2026-03-29 |
 
 ## Fork のビルド方法 (macOS)
 
