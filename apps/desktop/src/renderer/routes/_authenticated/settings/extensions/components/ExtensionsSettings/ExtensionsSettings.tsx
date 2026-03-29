@@ -25,11 +25,16 @@ export function ExtensionsSettings() {
 	const { data: extensions, isLoading } =
 		electronTrpc.extensions.list.useQuery();
 
+	const invalidateExtensionQueries = useCallback(() => {
+		utils.extensions.list.invalidate();
+		utils.extensions.listToolbarExtensions.invalidate();
+	}, [utils]);
+
 	const installMutation = electronTrpc.extensions.install.useMutation({
 		onSuccess: () => {
 			setInstallInput("");
 			setError(null);
-			utils.extensions.list.invalidate();
+			invalidateExtensionQueries();
 		},
 		onError: (err) => {
 			setError(err.message);
@@ -41,13 +46,13 @@ export function ExtensionsSettings() {
 
 	const uninstallMutation = electronTrpc.extensions.uninstall.useMutation({
 		onSuccess: () => {
-			utils.extensions.list.invalidate();
+			invalidateExtensionQueries();
 		},
 	});
 
 	const toggleMutation = electronTrpc.extensions.toggle.useMutation({
 		onSuccess: () => {
-			utils.extensions.list.invalidate();
+			invalidateExtensionQueries();
 		},
 	});
 

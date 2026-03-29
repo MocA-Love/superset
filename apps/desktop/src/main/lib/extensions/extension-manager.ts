@@ -249,3 +249,55 @@ export async function listExtensions(): Promise<InstalledExtension[]> {
 	const store = await readStore();
 	return store.extensions;
 }
+
+export interface ExtensionToolbarInfo {
+	id: string;
+	name: string;
+	enabled: boolean;
+	hasPopup: boolean;
+	popupPath: string | null;
+	actionTitle: string | null;
+}
+
+/**
+ * Get toolbar-relevant info for all enabled extensions that have a popup action.
+ */
+export async function getExtensionsWithToolbarInfo(): Promise<
+	ExtensionToolbarInfo[]
+> {
+	const store = await readStore();
+	const results: ExtensionToolbarInfo[] = [];
+
+	for (const ext of store.extensions) {
+		if (!ext.enabled) continue;
+
+		const extensionDir = path.join(getExtensionsDir(), ext.id);
+		const manifestPath = path.join(extensionDir, "manifest.json");
+
+		if (!existsSync(manifestPath)) continue;
+
+		let manifest: ChromeManifest;
+		try {
+			const data = await readFile(manifestPath, "utf-8");
+			manifest = JSON.parse(data) as ChromeManifest;
+		} catch {
+			continue;
+		}
+
+		const action = manifest.action ?? manifest.browser_action;
+		const hasPopup = !!action?.default_popup;
+
+		if (!hasPopup) continue;
+
+		results.push({
+			id: ext.id,
+			name: ext.name,
+			enabled: ext.enabled,
+			hasPopup,
+			popupPath: action?.default_popup ?? null,
+			actionTitle: action?.default_title ?? null,
+		});
+	}
+
+	return results;
+}

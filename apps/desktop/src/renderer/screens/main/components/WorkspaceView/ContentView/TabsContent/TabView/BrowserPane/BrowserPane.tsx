@@ -10,6 +10,7 @@ import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
+import { ExtensionToolbar } from "./components/ExtensionToolbar";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
 
@@ -173,6 +174,7 @@ export function BrowserPane({
 											</TooltipContent>
 										</Tooltip>
 									</div>
+									<ExtensionToolbar />
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<button

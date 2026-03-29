@@ -64,7 +64,7 @@ export const createAppRouter = (
 		ringtone: createRingtoneRouter(getWindow),
 		hostServiceManager: createHostServiceManagerRouter(),
 		tabTearoff: createTabTearoffRouter(wm),
-		extensions: createExtensionsRouter(),
+		extensions: createExtensionsRouter(getWindow),
 	});
 };
 
