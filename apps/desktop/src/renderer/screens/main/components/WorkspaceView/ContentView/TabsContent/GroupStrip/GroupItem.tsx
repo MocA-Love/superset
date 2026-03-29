@@ -4,6 +4,9 @@ import {
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuSeparator,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
 	ContextMenuTrigger,
 } from "@superset/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
@@ -12,10 +15,12 @@ import { useEffect, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { getEmptyImage } from "react-dnd-html5-backend";
 import { HiMiniXMark } from "react-icons/hi2";
-import { LuEyeOff, LuPencil } from "react-icons/lu";
+import { LuEyeOff, LuPalette, LuPencil } from "react-icons/lu";
 import type { MosaicBranch } from "react-mosaic-component";
 import { MosaicDragType } from "react-mosaic-component";
+import { ColorSelector } from "renderer/components/ColorSelector/ColorSelector";
 import { StatusIndicator } from "renderer/screens/main/components/StatusIndicator";
+import { PROJECT_COLOR_DEFAULT } from "shared/constants/project-colors";
 import { RenameInput } from "renderer/screens/main/components/WorkspaceSidebar/RenameInput";
 import { useDragPaneStore } from "renderer/stores/drag-pane-store";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -48,6 +53,7 @@ interface GroupItemProps {
 	onSelect: () => void;
 	onClose: () => void;
 	onRename: (newName: string) => void;
+	onSetColor: (color: string | null) => void;
 	onMarkAsUnread: () => void;
 	onPaneDrop?: (paneId: string) => void;
 	onReorder?: (fromIndex: number, toIndex: number) => void;
@@ -61,6 +67,7 @@ export function GroupItem({
 	onSelect,
 	onClose,
 	onRename,
+	onSetColor,
 	onMarkAsUnread,
 	onPaneDrop,
 	onReorder,
@@ -187,11 +194,15 @@ export function GroupItem({
 		[onPaneDrop, onReorder, tab.id, index],
 	);
 
+	const hasTabColor = tab.color && tab.color !== PROJECT_COLOR_DEFAULT;
+
 	const tabStyles = cn(
 		"flex items-center gap-2 transition-all w-full shrink-0 pl-3 pr-8 h-full",
-		isActive
-			? "text-foreground bg-border/30"
-			: "text-muted-foreground/70 hover:text-muted-foreground hover:bg-tertiary/20",
+		hasTabColor
+			? "text-foreground"
+			: isActive
+				? "text-foreground bg-border/30"
+				: "text-muted-foreground/70 hover:text-muted-foreground hover:bg-tertiary/20",
 	);
 
 	const startEditing = () => {
@@ -219,7 +230,14 @@ export function GroupItem({
 						isOver && canDrop && "bg-primary/5",
 						isDragging && "opacity-50 text-muted-foreground/50",
 					)}
-					style={{ cursor: isDragging ? "grabbing" : undefined }}
+					style={{
+						cursor: isDragging ? "grabbing" : undefined,
+						...(hasTabColor
+							? {
+									backgroundColor: `${tab.color}${isActive ? "30" : "18"}`,
+								}
+							: {}),
+					}}
 				>
 					{isEditing ? (
 						<div className="flex h-full w-full shrink-0 items-center px-2">
@@ -284,6 +302,21 @@ export function GroupItem({
 					<LuPencil className="size-4 mr-2" />
 					Rename
 				</ContextMenuItem>
+				<ContextMenuSub>
+					<ContextMenuSubTrigger>
+						<LuPalette className="size-4 mr-2" />
+						Set Color
+					</ContextMenuSubTrigger>
+					<ContextMenuSubContent className="w-40 max-h-80 overflow-y-auto">
+						<ColorSelector
+							variant="menu"
+							selectedColor={tab.color}
+							onSelectColor={(color) =>
+								onSetColor(color === PROJECT_COLOR_DEFAULT ? null : color)
+							}
+						/>
+					</ContextMenuSubContent>
+				</ContextMenuSub>
 				<ContextMenuSeparator />
 				<ContextMenuItem onSelect={onMarkAsUnread}>
 					<LuEyeOff className="size-4 mr-2" />

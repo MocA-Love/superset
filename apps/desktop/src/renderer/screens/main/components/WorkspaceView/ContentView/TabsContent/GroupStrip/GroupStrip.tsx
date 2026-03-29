@@ -42,6 +42,7 @@ export function GroupStrip() {
 	const addChatTab = useTabsStore((s) => s.addChatTab);
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
 	const renameTab = useTabsStore((s) => s.renameTab);
+	const setTabColor = useTabsStore((s) => s.setTabColor);
 	const setActiveTab = useTabsStore((s) => s.setActiveTab);
 	const movePaneToTab = useTabsStore((s) => s.movePaneToTab);
 	const movePaneToNewTab = useTabsStore((s) => s.movePaneToNewTab);
@@ -362,6 +363,7 @@ export function GroupStrip() {
 											onSelect={() => handleSelectGroup(tab.id)}
 											onClose={() => handleCloseGroup(tab.id)}
 											onRename={(newName) => handleRenameGroup(tab.id, newName)}
+											onSetColor={(color) => setTabColor(tab.id, color)}
 											onMarkAsUnread={() => handleMarkTabAsUnread(tab.id)}
 											onPaneDrop={(paneId) => movePaneToTab(paneId, tab.id)}
 											onReorder={handleReorderTabs}
