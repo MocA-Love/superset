@@ -143,12 +143,12 @@ export function ExtensionsSettings() {
 						<Card key={ext.id}>
 							<CardHeader className="pb-2">
 								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-3 min-w-0">
+									<div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
 										<div className="flex size-10 items-center justify-center rounded-lg border bg-muted/50 shrink-0">
 											<HiOutlinePuzzlePiece className="size-5" />
 										</div>
-										<div className="min-w-0">
-											<div className="flex items-center gap-2">
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center gap-2 flex-wrap">
 												<span className="font-medium truncate">
 													{ext.name}
 												</span>
@@ -160,7 +160,7 @@ export function ExtensionsSettings() {
 												/>
 											</div>
 											{ext.description && (
-												<CardDescription className="mt-0.5 truncate">
+												<CardDescription className="mt-0.5 line-clamp-1">
 													{ext.description}
 												</CardDescription>
 											)}
