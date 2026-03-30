@@ -11,25 +11,6 @@ import {
 import { UrlSuggestions } from "./components/UrlSuggestions";
 import { useUrlAutocomplete } from "./hooks/useUrlAutocomplete";
 
-/**
- * Prevents native dragstart events from firing within a DOM element.
- * react-mosaic's connectDragSource sets draggable="true" on the toolbar wrapper,
- * so any mousedown+mousemove inside it triggers a drag. This hook captures
- * dragstart at the native level before react-dnd's HTML5Backend can act on it.
- */
-function useSuppressDrag(ref: React.RefObject<HTMLElement | null>) {
-	useEffect(() => {
-		const el = ref.current;
-		if (!el) return;
-		const stop = (e: Event) => {
-			e.preventDefault();
-			e.stopPropagation();
-		};
-		el.addEventListener("dragstart", stop, true);
-		return () => el.removeEventListener("dragstart", stop, true);
-	}, [ref]);
-}
-
 function displayUrl(url: string): string {
 	if (url === "about:blank") return "";
 	// Strip trailing slash for cleaner display (e.g. "https://github.com/" → "https://github.com")
@@ -46,6 +27,7 @@ interface BrowserToolbarProps {
 	onGoForward: () => void;
 	onReload: () => void;
 	onNavigate: (url: string) => void;
+	onEditingChange?: (editing: boolean) => void;
 }
 
 export function BrowserToolbar({
@@ -58,12 +40,18 @@ export function BrowserToolbar({
 	onGoForward,
 	onReload,
 	onNavigate,
+	onEditingChange,
 }: BrowserToolbarProps) {
-	const [isEditing, setIsEditing] = useState(false);
+	const [isEditing, setIsEditingRaw] = useState(false);
+	const setIsEditing = useCallback(
+		(v: boolean) => {
+			setIsEditingRaw(v);
+			onEditingChange?.(v);
+		},
+		[onEditingChange],
+	);
 	const [urlInputValue, setUrlInputValue] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
-	const urlAreaRef = useRef<HTMLDivElement>(null);
-	useSuppressDrag(urlAreaRef);
 
 	const url = displayUrl(currentUrl);
 	const isBlank = !url;
@@ -88,12 +76,12 @@ export function BrowserToolbar({
 		setIsEditing(true);
 		autocomplete.open();
 		autocomplete.updateQuery(url);
-	}, [url, autocomplete]);
+	}, [url, autocomplete, setIsEditing]);
 
 	const exitEditMode = useCallback(() => {
 		setIsEditing(false);
 		autocomplete.close();
-	}, [autocomplete]);
+	}, [autocomplete, setIsEditing]);
 
 	const handleSubmit = useCallback(
 		(e: React.FormEvent) => {
@@ -105,7 +93,7 @@ export function BrowserToolbar({
 				autocomplete.close();
 			}
 		},
-		[urlInputValue, onNavigate, autocomplete],
+		[urlInputValue, onNavigate, autocomplete, setIsEditing],
 	);
 
 	const handleInputChange = useCallback(
@@ -131,7 +119,7 @@ export function BrowserToolbar({
 				setIsEditing(false);
 			}
 		},
-		[autocomplete],
+		[autocomplete, setIsEditing],
 	);
 
 	return (
@@ -187,10 +175,7 @@ export function BrowserToolbar({
 				</Tooltip>
 			</div>
 			<div className="mx-1.5 h-3.5 w-px bg-muted-foreground/60" />
-			<div
-				ref={urlAreaRef}
-				className="relative flex flex-1 min-w-0 items-center"
-			>
+			<div className="relative flex flex-1 min-w-0 items-center">
 				{isEditing ? (
 					<form
 						onSubmit={handleSubmit}
