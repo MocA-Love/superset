@@ -1,9 +1,7 @@
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
 import { app, net } from "electron";
 import JSZip from "jszip";
 
@@ -135,10 +133,7 @@ function extractZipFromCrx(crxBuffer: Buffer): Buffer {
 /**
  * Unpack a ZIP buffer into the target directory.
  */
-async function unpackZip(
-	zipBuffer: Buffer,
-	targetDir: string,
-): Promise<void> {
+async function unpackZip(zipBuffer: Buffer, targetDir: string): Promise<void> {
 	const zip = await JSZip.loadAsync(zipBuffer);
 
 	await mkdir(targetDir, { recursive: true });
@@ -246,9 +241,7 @@ export async function downloadAndExtractExtension(
 	} catch (error) {
 		// Clean up on failure
 		if (existsSync(extensionDir)) {
-			await rm(extensionDir, { recursive: true, force: true }).catch(
-				() => {},
-			);
+			await rm(extensionDir, { recursive: true, force: true }).catch(() => {});
 		}
 		throw error;
 	} finally {

@@ -28,7 +28,9 @@ export function ContentView({
 	return (
 		<div className="h-full flex flex-col overflow-hidden">
 			<ContentHeader
-				trailingAction={!isSidebarOpen && !isTearoffWindow() ? <SidebarControl /> : undefined}
+				trailingAction={
+					!isSidebarOpen && !isTearoffWindow() ? <SidebarControl /> : undefined
+				}
 			>
 				<GroupStrip />
 			</ContentHeader>

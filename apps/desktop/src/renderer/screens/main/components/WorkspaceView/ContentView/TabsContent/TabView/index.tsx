@@ -102,8 +102,7 @@ export function TabView({ tab }: TabViewProps) {
 				const newTab = updated.tabs.find((t) => t.id === newTabId);
 				if (!newTab) return;
 
-				const newTabPanes: Record<string, (typeof updated.panes)[string]> =
-					{};
+				const newTabPanes: Record<string, (typeof updated.panes)[string]> = {};
 				const pane = updated.panes[paneId];
 				if (pane) {
 					newTabPanes[paneId] = pane;
@@ -362,6 +361,7 @@ export function TabView({ tab }: TabViewProps) {
 			movePaneToTab,
 			movePaneToNewTab,
 			handlePopOut,
+			isTearoff,
 		],
 	);
 

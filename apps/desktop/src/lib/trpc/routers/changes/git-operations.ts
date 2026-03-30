@@ -4,7 +4,6 @@ import {
 } from "@superset/chat/server/desktop";
 import { TRPCError } from "@trpc/server";
 import { callSmallModel } from "lib/ai/call-small-model";
-import type { RemoteWithRefs, SimpleGit } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { getCurrentBranch } from "../workspaces/utils/git";
@@ -446,10 +445,7 @@ export const createGitOperationsRouter = () => {
 				const skippedFileNames: string[] = [];
 
 				for (const f of files) {
-					if (
-						SKIP_PATTERNS.some((p) => p.test(f.path)) ||
-						isBinary(f.path)
-					) {
+					if (SKIP_PATTERNS.some((p) => p.test(f.path)) || isBinary(f.path)) {
 						skippedFileNames.push(f.path);
 					} else {
 						summarizableFiles.push(f);
@@ -462,9 +458,7 @@ export const createGitOperationsRouter = () => {
 					"与えられたdiffを1行の日本語で要約してください。何が変わったかを簡潔に。要約のみを返してください。";
 				const PER_FILE_MAX_CHARS = 4000;
 
-				const summarizeFile = async (
-					f: FileChange,
-				): Promise<string> => {
+				const summarizeFile = async (f: FileChange): Promise<string> => {
 					// Files without diff (untracked) — just report the file name
 					if (!f.diff) {
 						return `${f.path}: 新規ファイル`;
@@ -487,17 +481,12 @@ export const createGitOperationsRouter = () => {
 							providerId,
 							providerName,
 						}) => {
-							if (
-								providerId === "openai" &&
-								credentials.kind === "oauth"
-							) {
-								return generateTitleFromMessageWithStreamingModel(
-									{
-										message: `File: ${f.path}\n\n${truncatedDiff}`,
-										model: model as never,
-										instructions: PHASE1_INSTRUCTIONS,
-									},
-								);
+							if (providerId === "openai" && credentials.kind === "oauth") {
+								return generateTitleFromMessageWithStreamingModel({
+									message: `File: ${f.path}\n\n${truncatedDiff}`,
+									model: model as never,
+									instructions: PHASE1_INSTRUCTIONS,
+								});
 							}
 							return generateTitleFromMessage({
 								message: `File: ${f.path}\n\n${truncatedDiff}`,
@@ -534,12 +523,7 @@ export const createGitOperationsRouter = () => {
 					"日本語で簡潔なconventional commitメッセージを生成してください。コミットメッセージの行のみを返してください。";
 
 				const { result, attempts } = await callSmallModel<string>({
-					invoke: async ({
-						model,
-						credentials,
-						providerId,
-						providerName,
-					}) => {
+					invoke: async ({ model, credentials, providerId, providerName }) => {
 						if (providerId === "openai" && credentials.kind === "oauth") {
 							return generateTitleFromMessageWithStreamingModel({
 								message: PHASE2_PROMPT,

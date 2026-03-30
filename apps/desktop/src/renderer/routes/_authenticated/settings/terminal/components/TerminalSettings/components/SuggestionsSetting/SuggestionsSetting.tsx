@@ -9,10 +9,7 @@ export function SuggestionsSetting() {
 	return (
 		<div className="flex items-center justify-between">
 			<div className="space-y-0.5">
-				<Label
-					htmlFor="terminal-suggestions"
-					className="text-sm font-medium"
-				>
+				<Label htmlFor="terminal-suggestions" className="text-sm font-medium">
 					Shell history suggestions
 				</Label>
 				<p className="text-xs text-muted-foreground">

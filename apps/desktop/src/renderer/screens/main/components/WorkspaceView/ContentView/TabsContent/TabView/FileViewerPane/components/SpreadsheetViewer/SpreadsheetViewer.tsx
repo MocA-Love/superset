@@ -1,10 +1,4 @@
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useResizeObserver from "use-resize-observer";
 import {
 	type ParsedCell,
@@ -73,6 +67,8 @@ function DiagonalOverlay({
 
 	return (
 		<svg
+			role="img"
+			aria-label="Cell diagonal line"
 			style={{
 				position: "absolute",
 				top: 0,
@@ -182,14 +178,8 @@ export function SpreadsheetViewer({
 			}
 			if (trs.length > 0) {
 				const lastTr = trs[trs.length - 1];
-				const lastExcelRow = Number.parseInt(
-					lastTr.dataset.rowNum ?? "0",
-					10,
-				);
-				rowMap.set(
-					lastExcelRow + 1,
-					lastTr.offsetTop + lastTr.offsetHeight,
-				);
+				const lastExcelRow = Number.parseInt(lastTr.dataset.rowNum ?? "0", 10);
+				rowMap.set(lastExcelRow + 1, lastTr.offsetTop + lastTr.offsetHeight);
 			}
 			// Extrapolate for shapes extending beyond rendered rows
 			let maxNeeded = 0;
@@ -238,9 +228,7 @@ export function SpreadsheetViewer({
 				Math.min(anchor.c - (minCol - 1), cumulativeColWidths.length - 1),
 			);
 			const x =
-				ROW_NUM_COL_WIDTH +
-				cumulativeColWidths[colIdx] +
-				emuToPx(anchor.co);
+				ROW_NUM_COL_WIDTH + cumulativeColWidths[colIdx] + emuToPx(anchor.co);
 			const excelRow = anchor.r + 1;
 			const y =
 				(effectiveRowYPositions.get(excelRow) ?? 0) + emuToPx(anchor.ro);
@@ -261,6 +249,8 @@ export function SpreadsheetViewer({
 
 		return (
 			<svg
+				role="img"
+				aria-label="Drawing objects overlay"
 				style={{
 					position: "absolute",
 					top: 0,
@@ -276,9 +266,7 @@ export function SpreadsheetViewer({
 					const tlPos = getAnchorPosition(shape.tl);
 					const brPos = getAnchorPosition(shape.br);
 					const dashPattern = getDashPattern(shape.o.d);
-					const dashProps = dashPattern
-						? { strokeDasharray: dashPattern }
-						: {};
+					const dashProps = dashPattern ? { strokeDasharray: dashPattern } : {};
 
 					if (shape.t === "line") {
 						const flipped = shape.vf !== shape.hf;
@@ -312,7 +300,12 @@ export function SpreadsheetViewer({
 				})}
 			</svg>
 		);
-	}, [activeSheet, naturalTableWidth, effectiveRowYPositions, getAnchorPosition]);
+	}, [
+		activeSheet,
+		naturalTableWidth,
+		effectiveRowYPositions,
+		getAnchorPosition,
+	]);
 
 	if (isLoading) {
 		return (
@@ -344,7 +337,12 @@ export function SpreadsheetViewer({
 		<div className="flex h-full flex-col">
 			<div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-white">
 				{/* Outer wrapper: clips to container width */}
-				<div style={{ width: containerWidth ? `${containerWidth}px` : "100%", overflow: "hidden" }}>
+				<div
+					style={{
+						width: containerWidth ? `${containerWidth}px` : "100%",
+						overflow: "hidden",
+					}}
+				>
 					{/* Inner wrapper: holds table + SVG at natural size, scaled via CSS transform.
 					    This ensures SVG and table share the exact same coordinate space. */}
 					<div

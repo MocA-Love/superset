@@ -123,9 +123,7 @@ async function fetchLatestForkRelease(): Promise<string | null> {
 		let data = "";
 		request.on("response", (response) => {
 			if (response.statusCode !== 200) {
-				reject(
-					new Error(`GitHub API returned ${response.statusCode}`),
-				);
+				reject(new Error(`GitHub API returned ${response.statusCode}`));
 				return;
 			}
 			response.on("data", (chunk) => {
@@ -203,7 +201,10 @@ async function checkForkForUpdates(interactive: boolean): Promise<void> {
 			}
 			return;
 		}
-		console.error("[auto-updater:fork] Failed to check for updates:", err.message);
+		console.error(
+			"[auto-updater:fork] Failed to check for updates:",
+			err.message,
+		);
 		emitStatus(AUTO_UPDATE_STATUS.ERROR, undefined, err.message);
 		if (interactive) {
 			dialog.showMessageBox({
@@ -357,7 +358,10 @@ export function setupAutoUpdater(): void {
 				.whenReady()
 				.then(() => checkForUpdates())
 				.catch((error) => {
-					console.error("[auto-updater:fork] Failed to start update checks:", error);
+					console.error(
+						"[auto-updater:fork] Failed to start update checks:",
+						error,
+					);
 				});
 		}
 		return;

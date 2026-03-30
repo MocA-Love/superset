@@ -25,8 +25,8 @@ import {
 import { UnsavedChangesDialog } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/FileViewerPane/UnsavedChangesDialog";
 import { useWorkspaceFileEventBridge } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceRenameReconciliation } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceRenameReconciliation";
-import { WorkspaceInitializingView } from "renderer/screens/main/components/WorkspaceView/WorkspaceInitializingView";
 import { WorkspaceIdProvider } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
+import { WorkspaceInitializingView } from "renderer/screens/main/components/WorkspaceView/WorkspaceInitializingView";
 import { WorkspaceLayout } from "renderer/screens/main/components/WorkspaceView/WorkspaceLayout";
 import { useCreateOrOpenPR, usePRStatus } from "renderer/screens/main/hooks";
 import {
@@ -92,7 +92,10 @@ export const Route = createFileRoute(
 export function WorkspacePage({
 	workspaceIdOverride,
 	isActive = true,
-}: { workspaceIdOverride?: string; isActive?: boolean } = {}) {
+}: {
+	workspaceIdOverride?: string;
+	isActive?: boolean;
+} = {}) {
 	const routeParams = useParams({ strict: false }) as {
 		workspaceId?: string;
 	};
@@ -111,7 +114,9 @@ export function WorkspacePage({
 		enabled: Boolean(workspace?.worktreePath),
 	});
 	const navigate = useNavigate();
-	const searchParams = useSearch({ strict: false }) as Partial<WorkspaceSearchParams>;
+	const searchParams = useSearch({
+		strict: false,
+	}) as Partial<WorkspaceSearchParams>;
 	const searchTabId = searchParams?.tabId;
 	const searchPaneId = searchParams?.paneId;
 
@@ -253,9 +258,12 @@ export function WorkspacePage({
 	]);
 	usePresetHotkeys(openTabWithPreset, hotkeyOptions);
 
-	useAppHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), hotkeyOptions, [
-		toggleWorkspaceRun,
-	]);
+	useAppHotkey(
+		"RUN_WORKSPACE_COMMAND",
+		() => toggleWorkspaceRun(),
+		hotkeyOptions,
+		[toggleWorkspaceRun],
+	);
 
 	useAppHotkey(
 		"CLOSE_TERMINAL",
@@ -338,15 +346,33 @@ export function WorkspacePage({
 		[tabs, workspaceId, setActiveTab],
 	);
 
-	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), hotkeyOptions, [switchToTab]);
-	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), hotkeyOptions, [switchToTab]);
+	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), hotkeyOptions, [
+		switchToTab,
+	]);
+	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), hotkeyOptions, [
+		switchToTab,
+	]);
 
 	useAppHotkey(
 		"PREV_PANE",
@@ -399,7 +425,9 @@ export function WorkspacePage({
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useAppHotkey("OPEN_IN_APP", handleOpenInApp, hotkeyOptions, [handleOpenInApp]);
+	useAppHotkey("OPEN_IN_APP", handleOpenInApp, hotkeyOptions, [
+		handleOpenInApp,
+	]);
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
@@ -642,80 +670,80 @@ export function WorkspacePage({
 
 	return (
 		<WorkspaceIdProvider value={workspaceId}>
-		<div className="flex-1 h-full flex flex-col overflow-hidden">
-			<div className="flex-1 min-h-0 flex overflow-hidden">
-				{showInitView ? (
-					<WorkspaceInitializingView
-						workspaceId={workspaceId}
-						workspaceName={workspace?.name ?? "Workspace"}
-						isInterrupted={hasIncompleteInit && !isInitializing}
-					/>
-				) : (
-					<WorkspaceLayout
-						workspaceId={workspaceId}
-						defaultExternalApp={resolvedDefaultApp}
-						onOpenInApp={handleOpenInApp}
-						onOpenQuickOpen={handleQuickOpen}
-					/>
-				)}
-			</div>
-			<CommandPalette
-				open={commandPalette.open}
-				onOpenChange={commandPalette.handleOpenChange}
-				query={commandPalette.query}
-				onQueryChange={commandPalette.setQuery}
-				filtersOpen={commandPalette.filtersOpen}
-				onFiltersOpenChange={commandPalette.setFiltersOpen}
-				includePattern={commandPalette.includePattern}
-				onIncludePatternChange={commandPalette.setIncludePattern}
-				excludePattern={commandPalette.excludePattern}
-				onExcludePatternChange={commandPalette.setExcludePattern}
-				isLoading={commandPalette.isFetching}
-				searchResults={commandPalette.searchResults}
-				onSelectFile={commandPalette.selectFile}
-				scope={commandPalette.scope}
-				onScopeChange={commandPalette.setScope}
-				workspaceName={
-					workspace
-						? getWorkspaceDisplayName(
-								workspace.name,
-								workspace.type,
-								workspace.project?.name,
-							)
-						: undefined
-				}
-			/>
-			<UnsavedChangesDialog
-				open={pendingTabClose !== null}
-				onOpenChange={(open) => {
-					if (!open) {
-						cancelPendingTabClose(workspaceId);
+			<div className="flex-1 h-full flex flex-col overflow-hidden">
+				<div className="flex-1 min-h-0 flex overflow-hidden">
+					{showInitView ? (
+						<WorkspaceInitializingView
+							workspaceId={workspaceId}
+							workspaceName={workspace?.name ?? "Workspace"}
+							isInterrupted={hasIncompleteInit && !isInitializing}
+						/>
+					) : (
+						<WorkspaceLayout
+							workspaceId={workspaceId}
+							defaultExternalApp={resolvedDefaultApp}
+							onOpenInApp={handleOpenInApp}
+							onOpenQuickOpen={handleQuickOpen}
+						/>
+					)}
+				</div>
+				<CommandPalette
+					open={commandPalette.open}
+					onOpenChange={commandPalette.handleOpenChange}
+					query={commandPalette.query}
+					onQueryChange={commandPalette.setQuery}
+					filtersOpen={commandPalette.filtersOpen}
+					onFiltersOpenChange={commandPalette.setFiltersOpen}
+					includePattern={commandPalette.includePattern}
+					onIncludePatternChange={commandPalette.setIncludePattern}
+					excludePattern={commandPalette.excludePattern}
+					onExcludePatternChange={commandPalette.setExcludePattern}
+					isLoading={commandPalette.isFetching}
+					searchResults={commandPalette.searchResults}
+					onSelectFile={commandPalette.selectFile}
+					scope={commandPalette.scope}
+					onScopeChange={commandPalette.setScope}
+					workspaceName={
+						workspace
+							? getWorkspaceDisplayName(
+									workspace.name,
+									workspace.type,
+									workspace.project?.name,
+								)
+							: undefined
 					}
-				}}
-				onSave={() => {
-					void saveAndClosePendingTab(workspaceId).catch((error) => {
-						console.error(
-							"[WorkspacePage] Failed to save dirty files before closing tab",
-							{
-								workspaceId,
-								error,
-							},
-						);
-					});
-				}}
-				onDiscard={() => discardAndClosePendingTab(workspaceId)}
-				isSaving={pendingTabClose?.isSaving ?? false}
-				description={
-					pendingTabClose
-						? pendingTabClose.documentKeys.length === 1
-							? "This tab has unsaved changes in 1 file. What would you like to do before closing it?"
-							: `This tab has unsaved changes in ${pendingTabClose.documentKeys.length} files. What would you like to do before closing it?`
-						: undefined
-				}
-				discardLabel="Discard & Close Tab"
-				saveLabel="Save & Close Tab"
-			/>
-		</div>
+				/>
+				<UnsavedChangesDialog
+					open={pendingTabClose !== null}
+					onOpenChange={(open) => {
+						if (!open) {
+							cancelPendingTabClose(workspaceId);
+						}
+					}}
+					onSave={() => {
+						void saveAndClosePendingTab(workspaceId).catch((error) => {
+							console.error(
+								"[WorkspacePage] Failed to save dirty files before closing tab",
+								{
+									workspaceId,
+									error,
+								},
+							);
+						});
+					}}
+					onDiscard={() => discardAndClosePendingTab(workspaceId)}
+					isSaving={pendingTabClose?.isSaving ?? false}
+					description={
+						pendingTabClose
+							? pendingTabClose.documentKeys.length === 1
+								? "This tab has unsaved changes in 1 file. What would you like to do before closing it?"
+								: `This tab has unsaved changes in ${pendingTabClose.documentKeys.length} files. What would you like to do before closing it?`
+							: undefined
+					}
+					discardLabel="Discard & Close Tab"
+					saveLabel="Save & Close Tab"
+				/>
+			</div>
 		</WorkspaceIdProvider>
 	);
 }

@@ -92,9 +92,7 @@ export class ExtensionPopupManager {
 			show: false,
 			frame: false,
 			transparent: false,
-			backgroundColor: nativeTheme.shouldUseDarkColors
-				? "#252525"
-				: "#ffffff",
+			backgroundColor: nativeTheme.shouldUseDarkColors ? "#252525" : "#ffffff",
 			resizable: false,
 			movable: false,
 			minimizable: false,
@@ -122,7 +120,10 @@ export class ExtensionPopupManager {
 		popup.webContents.on("preferred-size-changed", (_event, preferredSize) => {
 			if (popup.isDestroyed()) return;
 
-			const width = Math.min(MAX_WIDTH, Math.max(MIN_SIZE, preferredSize.width));
+			const width = Math.min(
+				MAX_WIDTH,
+				Math.max(MIN_SIZE, preferredSize.width),
+			);
 			const height = Math.min(
 				MAX_HEIGHT,
 				Math.max(MIN_SIZE, preferredSize.height),
@@ -184,11 +185,7 @@ export class ExtensionPopupManager {
 			);
 
 			// Fallback: load the popup HTML directly from disk
-			const filePath = path.join(
-				getExtensionsDir(),
-				extensionId,
-				popupPath,
-			);
+			const filePath = path.join(getExtensionsDir(), extensionId, popupPath);
 			popup.webContents.loadFile(filePath).catch((fileError) => {
 				console.error(
 					`[extensions] Failed to load popup for ${extensionId}:`,

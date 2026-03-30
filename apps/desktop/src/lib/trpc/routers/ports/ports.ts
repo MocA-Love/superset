@@ -58,7 +58,7 @@ export const createPortsRouter = () => {
 			// Enrich detected ports with labels
 			const enriched: EnrichedPort[] = detectedPorts.map((port) => {
 				const info = labelCache.get(port.workspaceId);
-				const label = info?.labels.get(port.port) ?? null;
+				const label = info?.labels?.get(port.port) ?? null;
 				if (label != null) {
 					matchedStaticPorts.add(`${port.workspaceId}:${port.port}`);
 				}

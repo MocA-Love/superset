@@ -919,7 +919,8 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		id: SETTING_ITEM_ID.EXTENSIONS_BROWSER,
 		section: "extensions",
 		title: "Browser Extensions",
-		description: "Install and manage Chrome extensions from the Chrome Web Store",
+		description:
+			"Install and manage Chrome extensions from the Chrome Web Store",
 		keywords: [
 			"extensions",
 			"chrome",

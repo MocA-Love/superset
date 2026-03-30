@@ -582,10 +582,7 @@ export function setupKeyboardHandler(
 		}
 
 		// Dismiss suggestion on Escape or left arrow
-		if (
-			noModifiers &&
-			(event.key === "ArrowLeft" || event.key === "Escape")
-		) {
+		if (noModifiers && (event.key === "ArrowLeft" || event.key === "Escape")) {
 			options.activeSuggestionRef?.current?.onDismiss();
 		}
 

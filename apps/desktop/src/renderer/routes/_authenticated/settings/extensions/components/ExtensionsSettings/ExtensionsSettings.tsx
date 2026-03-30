@@ -125,9 +125,7 @@ export function ExtensionsSettings() {
 							)}
 						</Button>
 					</div>
-					{error && (
-						<p className="mt-2 text-sm text-destructive">{error}</p>
-					)}
+					{error && <p className="mt-2 text-sm text-destructive">{error}</p>}
 				</CardContent>
 			</Card>
 
@@ -149,15 +147,11 @@ export function ExtensionsSettings() {
 										</div>
 										<div className="min-w-0 flex-1">
 											<div className="flex items-center gap-2 flex-wrap">
-												<span className="font-medium truncate">
-													{ext.name}
-												</span>
+												<span className="font-medium truncate">{ext.name}</span>
 												<span className="text-xs text-muted-foreground shrink-0">
 													v{ext.version}
 												</span>
-												<CompatibilityBadge
-													level={ext.compatibility.level}
-												/>
+												<CompatibilityBadge level={ext.compatibility.level} />
 											</div>
 											{ext.description && (
 												<CardDescription className="mt-0.5 line-clamp-1">
@@ -232,8 +226,8 @@ export function ExtensionsSettings() {
 					<HiOutlinePuzzlePiece className="size-10 mb-3 opacity-30" />
 					<p className="text-sm font-medium">No extensions installed</p>
 					<p className="text-xs mt-1 max-w-sm">
-						Install extensions from the Chrome Web Store using the form
-						above. Not all extensions are compatible with Electron.
+						Install extensions from the Chrome Web Store using the form above.
+						Not all extensions are compatible with Electron.
 					</p>
 				</div>
 			)}
@@ -241,9 +235,7 @@ export function ExtensionsSettings() {
 	);
 }
 
-function CompatibilityBadge({
-	level,
-}: { level: "full" | "partial" | "low" }) {
+function CompatibilityBadge({ level }: { level: "full" | "partial" | "low" }) {
 	switch (level) {
 		case "full":
 			return (

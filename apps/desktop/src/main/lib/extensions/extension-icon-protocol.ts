@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { net } from "electron";
 import type { ChromeManifest } from "./crx-downloader";
 import { getExtensionsDir } from "./crx-downloader";

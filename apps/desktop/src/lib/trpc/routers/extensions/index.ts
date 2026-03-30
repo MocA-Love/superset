@@ -1,6 +1,4 @@
 import type { BrowserWindow } from "electron";
-import { z } from "zod";
-import { publicProcedure, router } from "../..";
 import {
 	getExtensionsWithToolbarInfo,
 	installExtension,
@@ -9,6 +7,8 @@ import {
 	uninstallExtension,
 } from "main/lib/extensions/extension-manager";
 import { extensionPopupManager } from "main/lib/extensions/extension-popup-manager";
+import { z } from "zod";
+import { publicProcedure, router } from "../..";
 
 export const createExtensionsRouter = (
 	getWindow: () => BrowserWindow | null,

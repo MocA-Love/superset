@@ -20,8 +20,8 @@ import {
 	LuPencil,
 	LuTrash2,
 } from "react-icons/lu";
-import type { DirectoryEntry } from "shared/file-tree-types";
 import { useFileExplorerStore } from "renderer/stores/file-explorer";
+import type { DirectoryEntry } from "shared/file-tree-types";
 import { useFileDrag, usePathActions } from "../../../ChangesView/hooks";
 import { FileIcon } from "../../utils";
 

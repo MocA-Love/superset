@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { type BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
 
 interface TearoffWindowOptions {

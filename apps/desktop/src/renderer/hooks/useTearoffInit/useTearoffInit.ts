@@ -1,12 +1,12 @@
-import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
 import type { Pane } from "shared/tabs-types";
 
 // Cached at module load from preload-injected data
 const _cachedWindowId: string | null =
-	typeof window !== "undefined" ? window.App?.tearoffWindowId ?? null : null;
+	typeof window !== "undefined" ? (window.App?.tearoffWindowId ?? null) : null;
 
 export function getTearoffWindowId(): string | null {
 	return _cachedWindowId;

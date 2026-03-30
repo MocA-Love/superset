@@ -41,8 +41,7 @@ export const usePortsStore = create<PortsState>()(
 						),
 					}),
 
-				setShowConfiguredOnly: (value) =>
-					set({ showConfiguredOnly: value }),
+				setShowConfiguredOnly: (value) => set({ showConfiguredOnly: value }),
 			}),
 			{
 				name: "ports-store",

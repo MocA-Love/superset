@@ -8,7 +8,6 @@ import {
 	LuRadioTower,
 } from "react-icons/lu";
 import { usePortsStore } from "renderer/stores";
-import { MIN_LIST_HEIGHT, MAX_LIST_HEIGHT } from "renderer/stores/ports/store";
 import { STROKE_WIDTH } from "../constants";
 import { WorkspacePortGroup } from "./components/WorkspacePortGroup";
 import { usePortsData } from "./hooks/usePortsData";
@@ -67,6 +66,7 @@ export function PortsList() {
 		<div className="shrink-0 border-t border-border">
 			{/* Resize handle */}
 			{!isCollapsed && (
+				// biome-ignore lint/a11y/noStaticElementInteractions: resize handle needs mouse interaction
 				<div
 					className="h-1.5 cursor-ns-resize hover:bg-primary/20 active:bg-primary/40 transition-colors flex items-center justify-center"
 					onMouseDown={handleMouseDown}
@@ -100,10 +100,7 @@ export function PortsList() {
 									: "hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-opacity"
 							}`}
 						>
-							<LuFilter
-								className="size-3"
-								strokeWidth={STROKE_WIDTH}
-							/>
+							<LuFilter className="size-3" strokeWidth={STROKE_WIDTH} />
 						</button>
 					</TooltipTrigger>
 					<TooltipContent side="top" sideOffset={4}>
@@ -122,16 +119,11 @@ export function PortsList() {
 							onClick={handleOpenPortsDocs}
 							className="p-0.5 rounded hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-opacity"
 						>
-							<LuCircleHelp
-								className="size-3"
-								strokeWidth={STROKE_WIDTH}
-							/>
+							<LuCircleHelp className="size-3" strokeWidth={STROKE_WIDTH} />
 						</button>
 					</TooltipTrigger>
 					<TooltipContent side="top" sideOffset={4}>
-						<p className="text-xs">
-							Learn about static port configuration
-						</p>
+						<p className="text-xs">Learn about static port configuration</p>
 					</TooltipContent>
 				</Tooltip>
 				<span className="ml-auto text-[10px] font-normal">

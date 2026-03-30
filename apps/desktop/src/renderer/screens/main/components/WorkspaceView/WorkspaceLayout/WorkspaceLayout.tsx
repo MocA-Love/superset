@@ -1,4 +1,5 @@
 import type { ExternalApp } from "@superset/local-db";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import {
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
@@ -6,7 +7,6 @@ import {
 	SidebarMode,
 	useSidebarStore,
 } from "renderer/stores/sidebar-state";
-import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { ResizablePanel } from "../../ResizablePanel";
 import { ChangesContent, ScrollProvider } from "../ChangesContent";
 import { ContentView } from "../ContentView";

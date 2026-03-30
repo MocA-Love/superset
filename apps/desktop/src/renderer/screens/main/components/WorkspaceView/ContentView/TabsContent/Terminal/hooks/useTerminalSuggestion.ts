@@ -24,8 +24,7 @@ export function useTerminalSuggestion({
 	enabled,
 	onAcceptWrite,
 }: UseTerminalSuggestionOptions): UseTerminalSuggestionReturn {
-	const [historySuggestions, setHistorySuggestions] =
-		useState<string[]>(EMPTY);
+	const [historySuggestions, setHistorySuggestions] = useState<string[]>(EMPTY);
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const [trackedInput, setTrackedInput] = useState("");
 	const activeSuggestionRef = useRef<ActiveSuggestionHandle | null>(null);
@@ -78,10 +77,11 @@ export function useTerminalSuggestion({
 				fetchTimerRef.current = null;
 				if (!enabledRef.current) return;
 				try {
-					const result =
-						await electronTrpcClient.terminal.getSuggestions.query({
+					const result = await electronTrpcClient.terminal.getSuggestions.query(
+						{
 							prefix,
-						});
+						},
+					);
 					if (lastPrefixRef.current !== prefix) return;
 					setHistorySuggestions(result.length > 0 ? result : EMPTY);
 					setSelectedIndex(0);
@@ -98,14 +98,17 @@ export function useTerminalSuggestion({
 			}
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [commandBufferRef.current]);
 
 	const displaySuggestions = historySuggestions;
 
 	const selected = displaySuggestions[selectedIndex] ?? null;
 	// Compute suffix for keyboard handler (→ key acceptance)
 	const suffix =
-		selected && trackedInput && selected.startsWith(trackedInput) && selected !== trackedInput
+		selected &&
+		trackedInput &&
+		selected.startsWith(trackedInput) &&
+		selected !== trackedInput
 			? selected.slice(trackedInput.length)
 			: null;
 

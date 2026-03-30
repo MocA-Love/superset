@@ -22,12 +22,12 @@ import {
 	useIsDarkTheme,
 } from "renderer/assets/app-icons/preset-icons";
 import { HotkeyMenuShortcut } from "renderer/components/HotkeyMenuShortcut";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { usePresets } from "renderer/react-query/presets";
-import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
-import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { WorkspaceRunButton } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/WorkspaceRunButton";
 import { PRESET_HOTKEY_IDS } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
+import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTabsWithPresets } from "renderer/stores/tabs/useTabsWithPresets";
 import { resolveActiveTabIdForWorkspace } from "renderer/stores/tabs/utils";
@@ -365,119 +365,124 @@ export function PresetsBar() {
 			className="flex items-center h-8 border-b border-border bg-background px-2 gap-0.5 overflow-x-auto shrink-0"
 			style={{ scrollbarWidth: "none" }}
 		>
-			{!isTearoff && (<DropdownMenu>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="icon" className="size-6 shrink-0">
-								<HiMiniCog6Tooth className="size-3.5" />
-							</Button>
-						</DropdownMenuTrigger>
-					</TooltipTrigger>
-					<TooltipContent side="bottom" sideOffset={4}>
-						Manage Presets
-					</TooltipContent>
-				</Tooltip>
-				<DropdownMenuContent align="start" className="w-56">
-					{managedPresets.map((item) => {
-						const icon = getPresetIcon(item.iconName, isDark);
-						const isPinned = item.preset
-							? isPresetPinnedToBar(item.preset.pinnedToBar)
-							: false;
-						const hasPreset = !!item.preset;
-						const presetIndex = item.preset
-							? presetIndexById.get(item.preset.id)
-							: undefined;
-						const hotkeyId =
-							typeof presetIndex === "number"
-								? PRESET_HOTKEY_IDS[presetIndex]
+			{!isTearoff && (
+				<DropdownMenu>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<DropdownMenuTrigger asChild>
+								<Button variant="ghost" size="icon" className="size-6 shrink-0">
+									<HiMiniCog6Tooth className="size-3.5" />
+								</Button>
+							</DropdownMenuTrigger>
+						</TooltipTrigger>
+						<TooltipContent side="bottom" sideOffset={4}>
+							Manage Presets
+						</TooltipContent>
+					</Tooltip>
+					<DropdownMenuContent align="start" className="w-56">
+						{managedPresets.map((item) => {
+							const icon = getPresetIcon(item.iconName, isDark);
+							const isPinned = item.preset
+								? isPresetPinnedToBar(item.preset.pinnedToBar)
+								: false;
+							const hasPreset = !!item.preset;
+							const presetIndex = item.preset
+								? presetIndexById.get(item.preset.id)
 								: undefined;
-						return (
-							<DropdownMenuItem
-								key={item.key}
-								className="gap-2"
-								disabled={createPreset.isPending}
-								onSelect={(event) => {
-									event.preventDefault();
-									if (hasPreset && item.preset) {
-										updatePreset.mutate({
-											id: item.preset.id,
-											patch: { pinnedToBar: !isPinned },
+							const hotkeyId =
+								typeof presetIndex === "number"
+									? PRESET_HOTKEY_IDS[presetIndex]
+									: undefined;
+							return (
+								<DropdownMenuItem
+									key={item.key}
+									className="gap-2"
+									disabled={createPreset.isPending}
+									onSelect={(event) => {
+										event.preventDefault();
+										if (hasPreset && item.preset) {
+											updatePreset.mutate({
+												id: item.preset.id,
+												patch: { pinnedToBar: !isPinned },
+											});
+											return;
+										}
+										if (!item.template) return;
+										createPreset.mutate({
+											...item.template.preset,
+											pinnedToBar: true,
 										});
-										return;
-									}
-									if (!item.template) return;
-									createPreset.mutate({
-										...item.template.preset,
-										pinnedToBar: true,
-									});
-								}}
-							>
-								{icon ? (
-									<img src={icon} alt="" className="size-4 object-contain" />
-								) : (
-									<HiMiniCommandLine className="size-4" />
-								)}
-								<span className="truncate">{item.name || "default"}</span>
-								<div className="ml-auto flex items-center gap-2">
-									{hotkeyId ? <HotkeyMenuShortcut hotkeyId={hotkeyId} /> : null}
-									{hasPreset ? (
-										<LuPin
-											className={`size-3.5 ${
-												isPinned
-													? "text-foreground"
-													: "text-muted-foreground/60"
-											}`}
-										/>
+									}}
+								>
+									{icon ? (
+										<img src={icon} alt="" className="size-4 object-contain" />
 									) : (
-										<LuCirclePlus className="size-3.5 text-muted-foreground" />
+										<HiMiniCommandLine className="size-4" />
 									)}
-								</div>
-							</DropdownMenuItem>
-						);
-					})}
-					<DropdownMenuSeparator />
-					<DropdownMenuCheckboxItem
-						checked={showPresetsBar ?? false}
-						onCheckedChange={(checked) =>
-							setShowPresetsBar.mutate({ enabled: checked })
-						}
-						onSelect={(e) => e.preventDefault()}
-					>
-						Show Preset Bar
-					</DropdownMenuCheckboxItem>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem
-						className="gap-2"
-						onClick={() => navigate({ to: "/settings/terminal" })}
-					>
-						<HiMiniCog6Tooth className="size-4" />
-						<span>Manage Presets</span>
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>)}
+									<span className="truncate">{item.name || "default"}</span>
+									<div className="ml-auto flex items-center gap-2">
+										{hotkeyId ? (
+											<HotkeyMenuShortcut hotkeyId={hotkeyId} />
+										) : null}
+										{hasPreset ? (
+											<LuPin
+												className={`size-3.5 ${
+													isPinned
+														? "text-foreground"
+														: "text-muted-foreground/60"
+												}`}
+											/>
+										) : (
+											<LuCirclePlus className="size-3.5 text-muted-foreground" />
+										)}
+									</div>
+								</DropdownMenuItem>
+							);
+						})}
+						<DropdownMenuSeparator />
+						<DropdownMenuCheckboxItem
+							checked={showPresetsBar ?? false}
+							onCheckedChange={(checked) =>
+								setShowPresetsBar.mutate({ enabled: checked })
+							}
+							onSelect={(e) => e.preventDefault()}
+						>
+							Show Preset Bar
+						</DropdownMenuCheckboxItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							className="gap-2"
+							onClick={() => navigate({ to: "/settings/terminal" })}
+						>
+							<HiMiniCog6Tooth className="size-4" />
+							<span>Manage Presets</span>
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			)}
 			{!isTearoff && <div className="h-4 w-px bg-border mx-1 shrink-0" />}
-			{!isTearoff && pinnedPresets.map(({ preset, index }, pinnedIndex) => {
-				const hotkeyId = PRESET_HOTKEY_IDS[index];
-				return (
-					<PresetBarItem
-						key={preset.id}
-						preset={preset}
-						pinnedIndex={pinnedIndex}
-						hotkeyId={hotkeyId}
-						isDark={isDark}
-						canOpen={!!workspaceId}
-						canOpenInCurrentTerminal={canOpenInCurrentTerminal}
-						onOpenDefault={handleOpenPresetDefault}
-						onOpenInCurrentTerminal={handleOpenPresetInCurrentTerminal}
-						onOpenInNewTab={handleOpenPresetInNewTab}
-						onOpenInPane={handleOpenPresetInPane}
-						onEdit={(presetToEdit) => handleEditPreset(presetToEdit.id)}
-						onLocalReorder={handleLocalPinnedReorder}
-						onPersistReorder={handlePersistPinnedReorder}
-					/>
-				);
-			})}
+			{!isTearoff &&
+				pinnedPresets.map(({ preset, index }, pinnedIndex) => {
+					const hotkeyId = PRESET_HOTKEY_IDS[index];
+					return (
+						<PresetBarItem
+							key={preset.id}
+							preset={preset}
+							pinnedIndex={pinnedIndex}
+							hotkeyId={hotkeyId}
+							isDark={isDark}
+							canOpen={!!workspaceId}
+							canOpenInCurrentTerminal={canOpenInCurrentTerminal}
+							onOpenDefault={handleOpenPresetDefault}
+							onOpenInCurrentTerminal={handleOpenPresetInCurrentTerminal}
+							onOpenInNewTab={handleOpenPresetInNewTab}
+							onOpenInPane={handleOpenPresetInPane}
+							onEdit={(presetToEdit) => handleEditPreset(presetToEdit.id)}
+							onLocalReorder={handleLocalPinnedReorder}
+							onPersistReorder={handlePersistPinnedReorder}
+						/>
+					);
+				})}
 			{workspaceId && (
 				<div className="ml-auto flex items-center gap-1 shrink-0">
 					<WorkspaceRunButton

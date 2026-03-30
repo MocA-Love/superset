@@ -150,7 +150,7 @@ function xmlAttr(el: Element, name: string): string {
 	return el.getAttribute(name) || "";
 }
 
-function xmlInt(el: Element, name: string): number {
+function _xmlInt(el: Element, name: string): number {
 	return Number.parseInt(el.getAttribute(name) || "0", 10);
 }
 
@@ -200,8 +200,7 @@ function parseShapeFromAnchor(anchor: Element): RenderShape | null {
 	if (!sp) return null;
 
 	// Get name from nvSpPr/cNvPr or nvCxnSpPr/cNvPr
-	const nvPr =
-		xmlChild(sp, "nvSpPr") || xmlChild(sp, "nvCxnSpPr");
+	const nvPr = xmlChild(sp, "nvSpPr") || xmlChild(sp, "nvCxnSpPr");
 	const cNvPr = nvPr ? xmlChild(nvPr, "cNvPr") : null;
 	const name = cNvPr ? xmlAttr(cNvPr, "name") : "";
 

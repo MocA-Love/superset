@@ -3,6 +3,7 @@ import { updateTree } from "react-mosaic-component";
 import { getFileOpenMode } from "renderer/hooks/useFileOpenMode";
 import { posthog } from "renderer/lib/posthog";
 import { trpcTabsStorage } from "renderer/lib/trpc-storage";
+import { tearoffPaneIds } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/pane-guards";
 import { deleteDocumentBuffer } from "renderer/stores/editor-state/editorBufferRegistry";
 import { useEditorDocumentsStore } from "renderer/stores/editor-state/useEditorDocumentsStore";
 import { useEditorSessionsStore } from "renderer/stores/editor-state/useEditorSessionsStore";
@@ -13,7 +14,6 @@ import {
 } from "shared/absolute-paths";
 import { acknowledgedStatus } from "shared/tabs-types";
 import { create } from "zustand";
-import { tearoffPaneIds } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/pane-guards";
 import { devtools, persist } from "zustand/middleware";
 import {
 	mergeTabIntoTab,
@@ -203,9 +203,7 @@ export const useTabsStore = create<TabsStore>()(
 					: {},
 				focusedPaneIds: _tearoffData
 					? {
-							[_tearoffData.tab.id]: getFirstPaneId(
-								_tearoffData.tab.layout,
-							),
+							[_tearoffData.tab.id]: getFirstPaneId(_tearoffData.tab.layout),
 						}
 					: {},
 				tabHistoryStacks: _tearoffData
@@ -441,9 +439,7 @@ export const useTabsStore = create<TabsStore>()(
 
 				setTabColor: (tabId, color) => {
 					set((state) => ({
-						tabs: state.tabs.map((t) =>
-							t.id === tabId ? { ...t, color } : t,
-						),
+						tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, color } : t)),
 					}));
 				},
 
@@ -2176,9 +2172,9 @@ export const useTabsStore = create<TabsStore>()(
 						focusedPaneIds: newFocusedPaneIds,
 						tabHistoryStacks: {
 							...state.tabHistoryStacks,
-							[workspaceId]: (
-								state.tabHistoryStacks[workspaceId] || []
-							).filter((id) => id !== tabId),
+							[workspaceId]: (state.tabHistoryStacks[workspaceId] || []).filter(
+								(id) => id !== tabId,
+							),
 						},
 					});
 				},

@@ -20,7 +20,6 @@ import type { MosaicBranch } from "react-mosaic-component";
 import { MosaicDragType } from "react-mosaic-component";
 import { ColorSelector } from "renderer/components/ColorSelector/ColorSelector";
 import { StatusIndicator } from "renderer/screens/main/components/StatusIndicator";
-import { PROJECT_COLOR_DEFAULT } from "shared/constants/project-colors";
 import { RenameInput } from "renderer/screens/main/components/WorkspaceSidebar/RenameInput";
 import { useDragPaneStore } from "renderer/stores/drag-pane-store";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -33,6 +32,7 @@ import {
 	getTabDisplayName,
 	resolveActiveTabIdForWorkspace,
 } from "renderer/stores/tabs/utils";
+import { PROJECT_COLOR_DEFAULT } from "shared/constants/project-colors";
 import { MOSAIC_ID } from "../TabView";
 
 const TAB_DRAG_NO_MATCH_ID = "__tab-drag-no-match__";

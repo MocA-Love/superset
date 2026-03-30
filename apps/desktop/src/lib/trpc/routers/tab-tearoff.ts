@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { WindowManager } from "main/lib/window-manager";
+import { z } from "zod";
 import { publicProcedure, router } from "..";
 
 export const createTabTearoffRouter = (wm: WindowManager) => {

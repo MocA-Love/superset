@@ -4,7 +4,7 @@ import { glob } from "fast-glob";
 import type { ChromeManifest } from "./crx-downloader";
 
 /** APIs fully supported in Electron */
-const SUPPORTED_APIS = new Set([
+const _SUPPORTED_APIS = new Set([
 	"chrome.devtools.inspectedWindow",
 	"chrome.devtools.network",
 	"chrome.devtools.panels",
@@ -157,7 +157,8 @@ function checkManifest(manifest: ChromeManifest): CompatibilityIssue[] {
 		issues.push({
 			type: "unsupported_feature",
 			severity: "error",
-			message: "Chrome URL overrides (new tab, history, bookmarks pages) are not supported",
+			message:
+				"Chrome URL overrides (new tab, history, bookmarks pages) are not supported",
 		});
 	}
 

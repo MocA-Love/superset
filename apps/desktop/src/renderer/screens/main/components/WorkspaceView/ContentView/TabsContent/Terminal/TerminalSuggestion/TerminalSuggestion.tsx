@@ -66,7 +66,9 @@ export function TerminalSuggestion({
 
 	const listMaxHeight = MAX_VISIBLE_ITEMS * ITEM_HEIGHT;
 	const selected = suggestions[selectedIndex] ?? "";
-	const suffix = selected.startsWith(prefix) ? selected.slice(prefix.length) : "";
+	const suffix = selected.startsWith(prefix)
+		? selected.slice(prefix.length)
+		: "";
 
 	return (
 		<div

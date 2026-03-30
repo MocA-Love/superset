@@ -1,6 +1,6 @@
 export {
-	useTearoffInit,
-	useReturnedTabListener,
 	getTearoffWindowId,
 	isTearoffWindow,
+	useReturnedTabListener,
+	useTearoffInit,
 } from "./useTearoffInit";

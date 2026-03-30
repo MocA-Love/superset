@@ -93,10 +93,7 @@ export function TabsContent({
 	return (
 		<div ref={contentRef} className="flex-1 min-h-0 flex overflow-hidden">
 			{workspaceTabs.length > 0 ? (
-				<PersistentTabRenderer
-					tabs={workspaceTabs}
-					activeTabId={activeTabId}
-				/>
+				<PersistentTabRenderer tabs={workspaceTabs} activeTabId={activeTabId} />
 			) : (
 				<EmptyTabView
 					defaultExternalApp={defaultExternalApp}
