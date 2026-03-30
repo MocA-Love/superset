@@ -54,7 +54,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **Sentry エラー監視統合** | 自前の Sentry プロジェクトと連携可能。`.env` に `SENTRY_DSN_DESKTOP` を設定するだけで本番ビルドのクラッシュ・エラーを自動収集 | [#26](https://github.com/MocA-Love/superset/pull/26) | 2026-03-30 |
 | **デスクトップ安定性修正** | シェル履歴サジェストが表示されないバグ（useEffect 依存配列の問題）、アプリ終了時の napi_fatal_error クラッシュ（SQLite 未クローズ）、webview パーキング後の getURL() エラー、サイドバーリサイズが webview 上で効かない問題を修正 | [#26](https://github.com/MocA-Love/superset/pull/26) | 2026-03-30 |
 | **Review パネル強化** | GitHub Actions チェックを展開してジョブ内ステップの進捗を表示。レビューコメントを展開して Markdown レンダリング全文表示（GitHub Alerts 対応）。コメントのファイルパス+行番号クリックでエディタの該当行にジャンプ | [#27](https://github.com/MocA-Love/superset/pull/27) | 2026-03-30 |
-| **サジェストバグ修正** | サジェストドロップダウンがターミナル下部からはみ出す問題を修正（上側表示に切替）。Agent（workspaceRun）操作中にサジェストが表示される問題を修正 | [#31](https://github.com/MocA-Love/superset/pull/31) | 2026-03-30 |
+| **サジェストバグ修正** | ドロップダウンのはみ出し防止（上側表示切替）、alternate screen（Claude Code等）中のサジェスト完全抑制（4層防御）、Agent操作中の非表示化、日本語文字化け修正（zsh metafied エンコーディング対応） | [#31](https://github.com/MocA-Love/superset/pull/31) | 2026-03-30 |
 | **サジェスト履歴削除** | サジェスト一覧の各候補にバツボタンを追加し、クリックで ~/.zsh_history から直接削除。atomic write でファイル破損防止、metafied エンコーディング対応 | [#34](https://github.com/MocA-Love/superset/pull/34) | 2026-03-30 |
 | **ブラウザアドレスバー選択修正** | アドレスバーでURLをマウスドラッグで範囲選択しようとするとペインが移動する問題を修正。input の mousedown イベント伝播を阻止 | [#34](https://github.com/MocA-Love/superset/pull/34) | 2026-03-30 |
 
