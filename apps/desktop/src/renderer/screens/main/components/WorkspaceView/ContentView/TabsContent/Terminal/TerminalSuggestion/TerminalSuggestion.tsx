@@ -157,6 +157,7 @@ export function TerminalSuggestion({
 						<span
 							style={{
 								flex: 1,
+								minWidth: 0,
 								whiteSpace: "nowrap",
 								overflow: "hidden",
 								textOverflow: "ellipsis",
