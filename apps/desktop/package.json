@@ -205,6 +205,7 @@
 		"rehype-raw": "^7.0.0",
 		"rehype-sanitize": "^6.0.0",
 		"remark-gfm": "^4.0.1",
+		"remark-github-blockquote-alert": "^2.1.0",
 		"semver": "^7.7.3",
 		"shell-env": "^4.0.3",
 		"shell-quote": "^1.8.3",

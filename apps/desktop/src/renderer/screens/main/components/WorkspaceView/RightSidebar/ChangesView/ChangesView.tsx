@@ -38,6 +38,7 @@ interface ChangesViewProps {
 		category: ChangeCategory,
 		commitHash?: string,
 	) => void;
+	onOpenFileAtLine?: (path: string, line?: number) => void;
 	isExpandedView?: boolean;
 	isActive?: boolean;
 }
@@ -79,6 +80,7 @@ function eventTargetsSelectedFile(
 
 export function ChangesView({
 	onFileOpen,
+	onOpenFileAtLine,
 	isExpandedView,
 	isActive = true,
 }: ChangesViewProps) {
@@ -822,6 +824,7 @@ export function ChangesView({
 						comments={githubComments}
 						isLoading={isGitHubStatusLoading}
 						isCommentsLoading={isGitHubCommentsLoading}
+						onOpenFile={onOpenFileAtLine}
 					/>
 				</TabsContent>
 			</Tabs>

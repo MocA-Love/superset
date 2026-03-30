@@ -20,6 +20,7 @@ import { extractNwoFromUrl, getRepoContext } from "./repo-context";
 import {
 	GHDeploymentSchema,
 	GHDeploymentStatusSchema,
+	GHJobResponseSchema,
 	type RepoContext,
 } from "./types";
 
@@ -372,5 +373,76 @@ async function fetchPreviewDeploymentUrl(
 		);
 	} catch {
 		return undefined;
+	}
+}
+
+export interface JobStepInfo {
+	name: string;
+	status: "queued" | "in_progress" | "completed";
+	conclusion: string | null;
+	number: number;
+}
+
+/**
+ * Extracts job ID from a GitHub Actions details URL.
+ * URL format: https://github.com/{owner}/{repo}/actions/runs/{run_id}/job/{job_id}
+ */
+function parseJobIdFromUrl(detailsUrl: string): string | null {
+	try {
+		const url = new URL(detailsUrl);
+		const match = url.pathname.match(/\/actions\/runs\/\d+\/job\/(\d+)/);
+		return match?.[1] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Extracts nwo (owner/repo) from a GitHub Actions details URL.
+ */
+function parseNwoFromActionsUrl(detailsUrl: string): string | null {
+	try {
+		const url = new URL(detailsUrl);
+		const match = url.pathname.match(/^\/([^/]+\/[^/]+)\/actions\//);
+		return match?.[1] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Fetches job steps for a given GitHub Actions check using its details URL.
+ */
+export async function fetchCheckJobSteps(
+	worktreePath: string,
+	detailsUrl: string,
+): Promise<JobStepInfo[]> {
+	const jobId = parseJobIdFromUrl(detailsUrl);
+	const nwo = parseNwoFromActionsUrl(detailsUrl);
+	if (!jobId || !nwo) {
+		return [];
+	}
+
+	try {
+		const { stdout } = await execWithShellEnv(
+			"gh",
+			["api", `repos/${nwo}/actions/jobs/${jobId}`],
+			{ cwd: worktreePath },
+		);
+
+		const raw: unknown = JSON.parse(stdout.trim());
+		const result = GHJobResponseSchema.safeParse(raw);
+		if (!result.success) {
+			return [];
+		}
+
+		return (result.data.steps ?? []).map((step) => ({
+			name: step.name,
+			status: step.status,
+			conclusion: step.conclusion ?? null,
+			number: step.number,
+		}));
+	} catch {
+		return [];
 	}
 }

@@ -90,6 +90,17 @@ export function resolveCheckDestinationUrl(
 	return undefined;
 }
 
+/**
+ * Strips HTML comments from a comment body.
+ * This removes internal state data embedded by bots like CodeRabbit.
+ */
+export function stripHtmlComments(body: string): string {
+	return body
+		.replace(/<!--[\s\S]*?-->/g, "")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+}
+
 export function getCommentPreviewText(body: string): string {
 	return (
 		body
