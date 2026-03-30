@@ -825,7 +825,6 @@ export function ChangesView({
 						isLoading={isGitHubStatusLoading}
 						isCommentsLoading={isGitHubCommentsLoading}
 						onOpenFile={onOpenFileAtLine}
-						workspaceId={workspaceId ?? ""}
 					/>
 				</TabsContent>
 			</Tabs>

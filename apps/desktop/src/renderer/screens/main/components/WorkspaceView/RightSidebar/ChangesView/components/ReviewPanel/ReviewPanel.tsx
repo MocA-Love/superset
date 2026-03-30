@@ -50,7 +50,6 @@ interface ReviewPanelProps {
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
 	onOpenFile?: (path: string, line?: number) => void;
-	workspaceId?: string;
 }
 
 export function ReviewPanel({
@@ -59,10 +58,8 @@ export function ReviewPanel({
 	isLoading = false,
 	isCommentsLoading = false,
 	onOpenFile,
-	workspaceId = "",
 }: ReviewPanelProps) {
-	const contextWorkspaceId = useWorkspaceId();
-	const resolvedWorkspaceId = contextWorkspaceId ?? workspaceId;
+	const resolvedWorkspaceId = useWorkspaceId();
 	const openInBrowserPane = useTabsStore((s) => s.openInBrowserPane);
 	const handleOpenUrl = useCallback(
 		(url: string, e: React.MouseEvent) => {
