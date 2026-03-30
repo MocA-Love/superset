@@ -130,6 +130,8 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 	const {
 		isAlternateScreenRef,
 		isBracketedPasteRef,
+		isAtPromptRef,
+		hasReceivedPromptMarkerRef,
 		modeScanBufferRef,
 		updateModesFromData,
 		resetModes,
@@ -345,6 +347,8 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 			!exitStatus &&
 			!isWorkspaceRunPane,
 		isAlternateScreenRef,
+		isAtPromptRef,
+		hasReceivedPromptMarkerRef,
 		xtermRef,
 		onAcceptWrite: handleSuggestionWrite,
 	});
@@ -391,6 +395,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		flushPendingEvents,
 		resetModes,
 		isAlternateScreenRef,
+		isAtPromptRef,
 		isBracketedPasteRef,
 		setPaneNameRef,
 		renameUnnamedWorkspaceRef,

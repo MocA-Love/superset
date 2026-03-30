@@ -234,6 +234,14 @@ _superset_shell_ready() {
 }
 # Keep our hook LAST so it fires after direnv and other precmd hooks complete.
 precmd_functions=(\${precmd_functions[@]} _superset_shell_ready)
+# Persistent precmd: emit prompt marker every time the shell shows a prompt.
+# Used by the suggestion system to detect "user is at shell prompt" vs
+# "a command/TUI is running". Unlike _superset_shell_ready (one-shot),
+# this fires on EVERY prompt.
+_superset_prompt_marker() {
+  printf '\\033]777;superset-prompt\\007'
+}
+precmd_functions=(\${precmd_functions[@]} _superset_prompt_marker)
 export ZDOTDIR="$_superset_home"
 `;
 	const wroteZlogin = writeFileIfChanged(zloginPath, zloginScript, 0o644);
@@ -304,6 +312,15 @@ else
     PROMPT_COMMAND="_superset_shell_ready"
   fi
 fi
+# Persistent prompt marker (fires every prompt, not one-shot).
+_superset_prompt_marker() {
+  printf '\\033]777;superset-prompt\\007'
+}
+if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+  PROMPT_COMMAND=("\${PROMPT_COMMAND[@]}" "_superset_prompt_marker")
+else
+  PROMPT_COMMAND="\${PROMPT_COMMAND};_superset_prompt_marker"
+fi
 `;
 	const changed = writeFileIfChanged(rcfilePath, script, 0o644);
 	console.log(`[agent-setup] ${changed ? "Updated" : "Verified"} bash wrapper`);
@@ -339,7 +356,7 @@ export function getShellArgs(
 		return [
 			"-l",
 			"--init-command",
-			`set -l _superset_bin "${escapedBinDir}"; contains -- "$_superset_bin" $PATH; or set -gx PATH "$_superset_bin" $PATH; function _superset_shell_ready --on-event fish_prompt; printf '\\033]777;superset-shell-ready\\007'; functions -e _superset_shell_ready; end`,
+			`set -l _superset_bin "${escapedBinDir}"; contains -- "$_superset_bin" $PATH; or set -gx PATH "$_superset_bin" $PATH; function _superset_shell_ready --on-event fish_prompt; printf '\\033]777;superset-shell-ready\\007'; functions -e _superset_shell_ready; end; function _superset_prompt_marker --on-event fish_prompt; printf '\\033]777;superset-prompt\\007'; end`,
 		];
 	}
 	if (["zsh", "sh", "ksh"].includes(shellName)) {

@@ -5,6 +5,10 @@ export interface UseTerminalModesReturn {
 	isAlternateScreenRef: React.MutableRefObject<boolean>;
 	/** Whether bracketed paste mode is enabled */
 	isBracketedPasteRef: React.MutableRefObject<boolean>;
+	/** Whether the shell is currently showing a prompt (vs running a command) */
+	isAtPromptRef: React.MutableRefObject<boolean>;
+	/** Whether we've ever received a prompt marker from the shell */
+	hasReceivedPromptMarkerRef: React.MutableRefObject<boolean>;
 	/** Buffer for scanning mode escape sequences across chunk boundaries */
 	modeScanBufferRef: React.MutableRefObject<string>;
 	/** Update mode flags from terminal data */
@@ -33,6 +37,14 @@ export function useTerminalModes(): UseTerminalModesReturn {
 	const isAlternateScreenRef = useRef(false);
 	// Track bracketed paste mode so large pastes can preserve a single bracketed-paste envelope.
 	const isBracketedPasteRef = useRef(false);
+	// Track whether the shell is at a prompt. Set true when the shell emits
+	// OSC 777;superset-prompt (via precmd), set false when the user presses Enter.
+	// Starts as true so suggestions work before the first marker arrives and
+	// in shells that don't emit the marker at all.
+	const isAtPromptRef = useRef(true);
+	// Whether we've ever received a prompt marker. If not, isAtPromptRef
+	// is not authoritative and should not be used to gate suggestions.
+	const hasReceivedPromptMarkerRef = useRef(false);
 	// Track mode toggles across chunk boundaries (escape sequences can span stream frames).
 	const modeScanBufferRef = useRef("");
 
@@ -59,6 +71,12 @@ export function useTerminalModes(): UseTerminalModesReturn {
 				enableBracketedIndex > disableBracketedIndex;
 		}
 
+		// Detect shell prompt marker (emitted by precmd in shell-wrappers.ts)
+		if (combined.includes("\x1b]777;superset-prompt\x07")) {
+			isAtPromptRef.current = true;
+			hasReceivedPromptMarkerRef.current = true;
+		}
+
 		// Keep a small tail in case the next chunk starts mid-sequence.
 		modeScanBufferRef.current = combined.slice(-32);
 	}, []);
@@ -66,12 +84,16 @@ export function useTerminalModes(): UseTerminalModesReturn {
 	const resetModes = useCallback(() => {
 		isAlternateScreenRef.current = false;
 		isBracketedPasteRef.current = false;
+		isAtPromptRef.current = true;
+		hasReceivedPromptMarkerRef.current = false;
 		modeScanBufferRef.current = "";
 	}, []);
 
 	return {
 		isAlternateScreenRef,
 		isBracketedPasteRef,
+		isAtPromptRef,
+		hasReceivedPromptMarkerRef,
 		modeScanBufferRef,
 		updateModesFromData,
 		resetModes,

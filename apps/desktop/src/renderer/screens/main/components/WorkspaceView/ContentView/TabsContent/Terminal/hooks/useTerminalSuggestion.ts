@@ -7,6 +7,8 @@ export interface UseTerminalSuggestionOptions {
 	commandBufferRef: React.MutableRefObject<string>;
 	enabled: boolean;
 	isAlternateScreenRef: React.MutableRefObject<boolean>;
+	isAtPromptRef: React.MutableRefObject<boolean>;
+	hasReceivedPromptMarkerRef: React.MutableRefObject<boolean>;
 	xtermRef: React.MutableRefObject<XTerm | null>;
 	onAcceptWrite: (data: string) => void;
 }
@@ -76,6 +78,8 @@ export function useTerminalSuggestion({
 	commandBufferRef,
 	enabled,
 	isAlternateScreenRef,
+	isAtPromptRef,
+	hasReceivedPromptMarkerRef,
 	xtermRef,
 	onAcceptWrite,
 }: UseTerminalSuggestionOptions): UseTerminalSuggestionReturn {
@@ -101,7 +105,12 @@ export function useTerminalSuggestion({
 	// Single stable effect — mount once
 	useEffect(() => {
 		const id = setInterval(() => {
-			if (!enabledRef.current || isAlternateScreenRef.current) {
+			const altRef = isAlternateScreenRef.current;
+			// Only enforce prompt check if the shell has sent at least one marker
+			const promptBlocked =
+				hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
+
+			if (!enabledRef.current || altRef || promptBlocked) {
 				if (lastPrefixRef.current !== "") {
 					lastPrefixRef.current = "";
 					setTrackedInput("");
@@ -130,7 +139,14 @@ export function useTerminalSuggestion({
 			const prefix = current;
 			fetchTimerRef.current = setTimeout(async () => {
 				fetchTimerRef.current = null;
-				if (!enabledRef.current || isAlternateScreenRef.current) return;
+				const promptBlocked2 =
+					hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
+				if (
+					!enabledRef.current ||
+					isAlternateScreenRef.current ||
+					promptBlocked2
+				)
+					return;
 				try {
 					const result = await electronTrpcClient.terminal.getSuggestions.query(
 						{
@@ -138,6 +154,9 @@ export function useTerminalSuggestion({
 						},
 					);
 					if (lastPrefixRef.current !== prefix) return;
+					// Re-check after async fetch
+					if (hasReceivedPromptMarkerRef.current && !isAtPromptRef.current)
+						return;
 
 					// Read zsh-autosuggestions ghost text and prioritize it
 					const xterm = xtermRef.current;
@@ -167,7 +186,13 @@ export function useTerminalSuggestion({
 				clearTimeout(fetchTimerRef.current);
 			}
 		};
-	}, [commandBufferRef, isAlternateScreenRef, xtermRef]);
+	}, [
+		commandBufferRef,
+		isAlternateScreenRef,
+		isAtPromptRef,
+		hasReceivedPromptMarkerRef,
+		xtermRef,
+	]);
 
 	const displaySuggestions = historySuggestions;
 

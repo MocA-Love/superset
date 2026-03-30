@@ -130,6 +130,7 @@ export interface UseTerminalLifecycleOptions {
 	flushPendingEvents: () => void;
 	resetModes: () => void;
 	isAlternateScreenRef: MutableRefObject<boolean>;
+	isAtPromptRef: MutableRefObject<boolean>;
 	isBracketedPasteRef: MutableRefObject<boolean>;
 	setPaneNameRef: MutableRefObject<(paneId: string, name: string) => void>;
 	renameUnnamedWorkspaceRef: MutableRefObject<(title: string) => void>;
@@ -196,6 +197,7 @@ export function useTerminalLifecycle({
 	flushPendingEvents,
 	resetModes,
 	isAlternateScreenRef,
+	isAtPromptRef,
 	isBracketedPasteRef,
 	setPaneNameRef,
 	renameUnnamedWorkspaceRef,
@@ -472,6 +474,7 @@ export function useTerminalLifecycle({
 					}
 				}
 				commandBufferRef.current = "";
+				isAtPromptRef.current = false;
 			} else if (domEvent.key === "Backspace") {
 				commandBufferRef.current = commandBufferRef.current.slice(0, -1);
 			} else if (domEvent.key === "c" && domEvent.ctrlKey) {
