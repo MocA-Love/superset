@@ -98,7 +98,7 @@ export function useTerminalSuggestion({
 			}
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [commandBufferRef.current]);
+	}, []);
 
 	const displaySuggestions = historySuggestions;
 

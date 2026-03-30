@@ -103,4 +103,12 @@ try {
 
 console.log("[local-db] Migrations complete");
 
+export function closeLocalDb(): void {
+	try {
+		sqlite.close();
+	} catch (error) {
+		console.error("[local-db] Failed to close database:", error);
+	}
+}
+
 export type LocalDb = typeof localDb;

@@ -286,21 +286,25 @@ export function usePersistentWebview({
 				return;
 			}
 
-			const url = wv.getURL();
-			const title = wv.getTitle();
-			store.updateBrowserUrl(
-				paneId,
-				url ?? "",
-				title ?? "",
-				faviconUrlRef.current,
-			);
+			try {
+				const url = wv.getURL();
+				const title = wv.getTitle();
+				store.updateBrowserUrl(
+					paneId,
+					url ?? "",
+					title ?? "",
+					faviconUrlRef.current,
+				);
 
-			if (url && url !== "about:blank") {
-				upsertHistory({
-					url,
-					title: title ?? "",
-					faviconUrl: faviconUrlRef.current ?? null,
-				});
+				if (url && url !== "about:blank") {
+					upsertHistory({
+						url,
+						title: title ?? "",
+						faviconUrl: faviconUrlRef.current ?? null,
+					});
+				}
+			} catch {
+				// Webview may not be attached to DOM (e.g. parked in hidden container)
 			}
 		};
 
