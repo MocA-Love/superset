@@ -18,6 +18,8 @@ import {
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { remarkAlert } from "remark-github-blockquote-alert";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -266,7 +268,10 @@ export function ReviewPanel({
 								</button>
 							)}
 							<div className="review-comment-body ml-4 break-words text-xs leading-5 text-foreground/90">
-								<ReactMarkdown remarkPlugins={[remarkGfm, remarkAlert]}>
+								<ReactMarkdown
+									remarkPlugins={[remarkGfm, remarkAlert]}
+									rehypePlugins={[rehypeRaw, rehypeSanitize]}
+								>
 									{stripHtmlComments(comment.body)}
 								</ReactMarkdown>
 							</div>
