@@ -192,14 +192,14 @@ export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zshrc" ]] && source "$_superset_home/.zshrc"
 ${SUPERSET_ENV_RESTORE}
 # Disable zsh-autosuggestions to avoid conflict with Superset's built-in
-# terminal suggestions. Only affects this terminal session; the user's
-# .zshrc is not modified.
-if [[ -n "$SUPERSET_DISABLE_ZSH_AUTOSUGGEST" ]] && (( $+functions[_zsh_autosuggest_start] )); then
-  unset ZSH_AUTOSUGGEST_STRATEGY
-  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=0"
-  _zsh_autosuggest_clear() { :; }
-  _zsh_autosuggest_suggest() { :; }
-  _zsh_autosuggest_fetch() { :; }
+# terminal suggestions. Uses the plugin's own disable function which
+# properly restores original ZLE widget bindings. Only affects this
+# terminal session; the user's .zshrc is not modified.
+if [[ -n "$SUPERSET_DISABLE_ZSH_AUTOSUGGEST" ]]; then
+  if (( $+functions[_zsh_autosuggest_disable] )); then
+    _zsh_autosuggest_disable
+  fi
+  add-zsh-hook -d precmd _zsh_autosuggest_start 2>/dev/null
 fi
 ${buildPathPrependFunction(paths.BIN_DIR)}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
