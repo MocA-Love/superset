@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import type { ActiveSuggestionHandle } from "../helpers";
 
@@ -9,10 +9,8 @@ export interface UseTerminalSuggestionOptions {
 }
 
 export interface UseTerminalSuggestionReturn {
-	/** Display list: [currentInput, ...historySuggestions] */
 	displaySuggestions: string[];
 	selectedIndex: number;
-	ghostText: string | null;
 	prefix: string;
 	activeSuggestionRef: React.MutableRefObject<ActiveSuggestionHandle | null>;
 }
@@ -105,18 +103,11 @@ export function useTerminalSuggestion({
 	const displaySuggestions = historySuggestions;
 
 	const selected = displaySuggestions[selectedIndex] ?? null;
-
-	const ghostText = useMemo(() => {
-		if (
-			!selected ||
-			!trackedInput ||
-			!selected.startsWith(trackedInput) ||
-			selected === trackedInput
-		) {
-			return null;
-		}
-		return selected.slice(trackedInput.length);
-	}, [selected, trackedInput]);
+	// Compute suffix for keyboard handler (→ key acceptance)
+	const suffix =
+		selected && trackedInput && selected.startsWith(trackedInput) && selected !== trackedInput
+			? selected.slice(trackedInput.length)
+			: null;
 
 	const dismiss = useCallback(() => {
 		setHistorySuggestions(EMPTY);
@@ -182,14 +173,14 @@ export function useTerminalSuggestion({
 	const selectPrev = useCallback(() => {
 		const len = displaySuggestions.length;
 		if (len <= 1) return;
-		setSelectedIndex((prev) => (prev - 1 < 0 ? len - 1 : prev - 1));
+		setSelectedIndex((prev) => (prev - 1 < 0 ? prev : prev - 1));
 	}, [displaySuggestions.length]);
 
 	// Sync ref — no state updates
 	activeSuggestionRef.current =
 		displaySuggestions.length > 0
 			? {
-					suffix: ghostText,
+					suffix,
 					onAccept: accept,
 					onDismiss: dismiss,
 					selectNext,
@@ -201,7 +192,6 @@ export function useTerminalSuggestion({
 	return {
 		displaySuggestions,
 		selectedIndex,
-		ghostText,
 		prefix: trackedInput,
 		activeSuggestionRef,
 	};

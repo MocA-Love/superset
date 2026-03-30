@@ -53,7 +53,6 @@ export function TerminalSuggestion({
 
 	const cursorX = xterm.buffer.active.cursorX;
 	const cursorY = xterm.buffer.active.cursorY;
-
 	const terminalWidth = xterm.cols * dims.width;
 
 	const rawDropdownLeft =
@@ -66,6 +65,8 @@ export function TerminalSuggestion({
 	const dropdownTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
 
 	const listMaxHeight = MAX_VISIBLE_ITEMS * ITEM_HEIGHT;
+	const selected = suggestions[selectedIndex] ?? "";
+	const suffix = selected.startsWith(prefix) ? selected.slice(prefix.length) : "";
 
 	return (
 		<div
@@ -87,6 +88,21 @@ export function TerminalSuggestion({
 				backgroundColor: "rgba(30, 30, 46, 0.92)",
 			}}
 		>
+			{/* Full command preview */}
+			<div
+				style={{
+					padding: "5px 10px",
+					color: "#cdd6f4",
+					borderBottom: "1px solid rgba(255,255,255,0.06)",
+					whiteSpace: "pre-wrap",
+					wordBreak: "break-all",
+					lineHeight: 1.4,
+				}}
+			>
+				<span style={{ color: "#89b4fa" }}>{prefix}</span>
+				<span style={{ color: "#a6e3a1" }}>{suffix}</span>
+			</div>
+
 			{/* Scrollable item list */}
 			<div
 				ref={listRef}
@@ -119,6 +135,7 @@ export function TerminalSuggestion({
 					</div>
 				))}
 			</div>
+
 			{/* Footer */}
 			<div
 				style={{

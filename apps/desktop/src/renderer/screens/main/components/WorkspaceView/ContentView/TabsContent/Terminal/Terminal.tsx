@@ -332,7 +332,6 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 	const {
 		displaySuggestions,
 		selectedIndex,
-		ghostText,
 		prefix: suggestionPrefix,
 		activeSuggestionRef,
 	} = useTerminalSuggestion({

@@ -50,7 +50,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **Files タブのツールチップ** | ファイルツリーのファイル/フォルダ名にホバーで相対パスをツールチップ表示。ツールバーのトグルボタンで ON/OFF 切り替え、設定は永続化 | [#22](https://github.com/MocA-Love/superset/pull/22) | 2026-03-29 |
 | **Inspect Element（右クリック検証）** | ブラウザペインの右クリックメニューに「Inspect Element」を追加。クリック位置の要素を直接 DevTools でインスペクト可能 | [#23](https://github.com/MocA-Love/superset/pull/23) | 2026-03-30 |
 | **Branch ワークスペースの PR 表示対応** | worktree を切らない「branch」タイプのワークスペースでも Review タブに PR 情報・チェック結果・レビューコメントを表示。`getGitHubStatus` / `getGitHubPRComments` が worktree レコード必須だった制限を、`mainRepoPath` へのフォールバックで解消 | — | 2026-03-30 |
-| **シェル履歴サジェスト** | ターミナル入力時に ~/.zsh_history からコマンド候補をドロップダウン表示。↑↓で選択、→で確定、Escで破棄。ゴーストテキストによるインラインプレビュー付き。設定画面から ON/OFF 切り替え可能 | — | 2026-03-30 |
+| **シェル履歴サジェスト** | ターミナル入力時に ~/.zsh_history からコマンド候補をドロップダウン表示。↑↓で選択、→で確定、Escで破棄。選択中コマンドのフルプレビュー付き（補完部分を緑色で強調）。8件超はスクロール、末尾到達で追加読み込み。設定画面から ON/OFF 切り替え可能 | — | 2026-03-30 |
 
 ## Fork のビルド方法 (macOS)
 
