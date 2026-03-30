@@ -11,6 +11,25 @@ import {
 import { UrlSuggestions } from "./components/UrlSuggestions";
 import { useUrlAutocomplete } from "./hooks/useUrlAutocomplete";
 
+/**
+ * Prevents native dragstart events from firing within a DOM element.
+ * react-mosaic's connectDragSource sets draggable="true" on the toolbar wrapper,
+ * so any mousedown+mousemove inside it triggers a drag. This hook captures
+ * dragstart at the native level before react-dnd's HTML5Backend can act on it.
+ */
+function useSuppressDrag(ref: React.RefObject<HTMLElement | null>) {
+	useEffect(() => {
+		const el = ref.current;
+		if (!el) return;
+		const stop = (e: Event) => {
+			e.preventDefault();
+			e.stopPropagation();
+		};
+		el.addEventListener("dragstart", stop, true);
+		return () => el.removeEventListener("dragstart", stop, true);
+	}, [ref]);
+}
+
 function displayUrl(url: string): string {
 	if (url === "about:blank") return "";
 	// Strip trailing slash for cleaner display (e.g. "https://github.com/" → "https://github.com")
@@ -43,6 +62,8 @@ export function BrowserToolbar({
 	const [isEditing, setIsEditing] = useState(false);
 	const [urlInputValue, setUrlInputValue] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
+	const urlAreaRef = useRef<HTMLDivElement>(null);
+	useSuppressDrag(urlAreaRef);
 
 	const url = displayUrl(currentUrl);
 	const isBlank = !url;
@@ -166,13 +187,14 @@ export function BrowserToolbar({
 				</Tooltip>
 			</div>
 			<div className="mx-1.5 h-3.5 w-px bg-muted-foreground/60" />
-			<div className="relative flex flex-1 min-w-0 items-center">
+			<div
+				ref={urlAreaRef}
+				className="relative flex flex-1 min-w-0 items-center"
+			>
 				{isEditing ? (
 					<form
 						onSubmit={handleSubmit}
 						className="flex w-full min-w-0 items-center"
-						draggable={false}
-						onDragStart={(e) => e.preventDefault()}
 					>
 						<input
 							ref={inputRef}
@@ -181,7 +203,6 @@ export function BrowserToolbar({
 							onChange={handleInputChange}
 							onBlur={exitEditMode}
 							onKeyDown={handleKeyDown}
-							draggable={false}
 							placeholder="Enter URL or search..."
 							className="h-[22px] w-full select-text rounded-sm border border-ring bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
 							spellCheck={false}
