@@ -190,6 +190,10 @@ ${SUPERSET_ENV_SAVE}
 _superset_home="\${SUPERSET_ORIG_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zshrc" ]] && source "$_superset_home/.zshrc"
+# Disable zsh-autosuggestions to avoid conflict with Superset's built-in suggestions
+if (( $+functions[_zsh_autosuggest_start] )) || [[ -n "$ZSH_AUTOSUGGEST_STRATEGY" ]]; then
+  ZSH_AUTOSUGGEST_STRATEGY=()
+fi
 ${SUPERSET_ENV_RESTORE}
 ${buildPathPrependFunction(paths.BIN_DIR)}
 ${buildZshPrecmdHook(paths.BIN_DIR)}

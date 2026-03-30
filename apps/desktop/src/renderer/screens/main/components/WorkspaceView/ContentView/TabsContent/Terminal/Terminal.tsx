@@ -505,7 +505,6 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 					suggestions={displaySuggestions}
 					selectedIndex={selectedIndex}
 					prefix={suggestionPrefix}
-					ghostText={ghostText}
 				/>
 			)}
 		</div>
