@@ -114,11 +114,7 @@ export function BrowserToolbar({
 	);
 
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: prevent drag from toolbar
-		<div
-			className="flex h-full flex-1 min-w-0 items-center px-2"
-			onMouseDown={(e) => e.stopPropagation()}
-		>
+		<div className="flex h-full flex-1 min-w-0 items-center px-2">
 			<div className="flex items-center gap-0.5 shrink-0">
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -175,6 +171,8 @@ export function BrowserToolbar({
 					<form
 						onSubmit={handleSubmit}
 						className="flex w-full min-w-0 items-center"
+						draggable={false}
+						onDragStart={(e) => e.preventDefault()}
 					>
 						<input
 							ref={inputRef}
@@ -183,7 +181,7 @@ export function BrowserToolbar({
 							onChange={handleInputChange}
 							onBlur={exitEditMode}
 							onKeyDown={handleKeyDown}
-							onMouseDown={(e) => e.stopPropagation()}
+							draggable={false}
 							placeholder="Enter URL or search..."
 							className="h-[22px] w-full select-text rounded-sm border border-ring bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
 							spellCheck={false}
