@@ -419,6 +419,13 @@ export const createTerminalRouter = () => {
 			return restartDaemonShared();
 		}),
 
+		getSuggestions: publicProcedure
+			.input(z.object({ prefix: z.string(), offset: z.number().optional() }))
+			.query(async ({ input }) => {
+				const { getSuggestions } = await import("main/lib/shell-history");
+				return getSuggestions(input.prefix, input.offset ?? 0);
+			}),
+
 		getSession: publicProcedure
 			.input(z.string())
 			.query(async ({ input: paneId }) => {
