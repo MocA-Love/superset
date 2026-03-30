@@ -48,6 +48,9 @@ export function TerminalSuggestion({
 		}
 	}, [selectedIndex]);
 
+	// Don't render in alternate screen (TUI apps like Claude Code)
+	if (xterm.buffer.active.type === "alternate") return null;
+
 	const dims = getCellDimensions(xterm);
 	if (!dims) return null;
 

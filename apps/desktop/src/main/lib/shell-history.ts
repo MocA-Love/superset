@@ -6,6 +6,21 @@ let cachedHistory: string[] | null = null;
 let lastReadTime = 0;
 const CACHE_TTL_MS = 30_000;
 
+const META_MARKER = 0x83;
+
+function decodeMetafied(buffer: Buffer): string {
+	const decoded: number[] = [];
+	for (let i = 0; i < buffer.length; i++) {
+		if (buffer[i] === META_MARKER && i + 1 < buffer.length) {
+			decoded.push(buffer[i + 1] ^ 0x20);
+			i++;
+		} else {
+			decoded.push(buffer[i]);
+		}
+	}
+	return Buffer.from(decoded).toString("utf-8");
+}
+
 function parseZshHistory(content: string): string[] {
 	const entries: string[] = [];
 	for (const line of content.split("\n")) {
@@ -35,7 +50,10 @@ async function readHistoryFile(): Promise<string[]> {
 	const zshPath = `${home}/.zsh_history`;
 	try {
 		await access(zshPath, constants.R_OK);
-		const content = await readFile(zshPath, "utf-8");
+		const buffer = await readFile(zshPath);
+		const content = buffer.includes(META_MARKER)
+			? decodeMetafied(buffer)
+			: buffer.toString("utf-8");
 		return parseZshHistory(content);
 	} catch {
 		// zsh history not available

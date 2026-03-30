@@ -5,6 +5,7 @@ import type { ActiveSuggestionHandle } from "../helpers";
 export interface UseTerminalSuggestionOptions {
 	commandBufferRef: React.MutableRefObject<string>;
 	enabled: boolean;
+	isAlternateScreenRef: React.MutableRefObject<boolean>;
 	onAcceptWrite: (data: string) => void;
 }
 
@@ -22,6 +23,7 @@ const FETCH_DEBOUNCE_MS = 80;
 export function useTerminalSuggestion({
 	commandBufferRef,
 	enabled,
+	isAlternateScreenRef,
 	onAcceptWrite,
 }: UseTerminalSuggestionOptions): UseTerminalSuggestionReturn {
 	const [historySuggestions, setHistorySuggestions] = useState<string[]>(EMPTY);
@@ -46,7 +48,7 @@ export function useTerminalSuggestion({
 	// Single stable effect — mount once
 	useEffect(() => {
 		const id = setInterval(() => {
-			if (!enabledRef.current) {
+			if (!enabledRef.current || isAlternateScreenRef.current) {
 				if (lastPrefixRef.current !== "") {
 					lastPrefixRef.current = "";
 					setTrackedInput("");
@@ -75,7 +77,7 @@ export function useTerminalSuggestion({
 			const prefix = current;
 			fetchTimerRef.current = setTimeout(async () => {
 				fetchTimerRef.current = null;
-				if (!enabledRef.current) return;
+				if (!enabledRef.current || isAlternateScreenRef.current) return;
 				try {
 					const result = await electronTrpcClient.terminal.getSuggestions.query(
 						{
