@@ -8,7 +8,7 @@ import {
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
 	LuArrowUpRight,
 	LuCheck,
@@ -23,6 +23,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { remarkAlert } from "remark-github-blockquote-alert";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { CodeBlock } from "renderer/components/MarkdownRenderer/components/CodeBlock";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs";
@@ -43,6 +44,42 @@ import {
 	splitPullRequestComments,
 	stripHtmlComments,
 } from "./utils";
+
+const CommentBody = memo(function CommentBody({
+	body,
+	onOpenUrl,
+}: {
+	body: string;
+	onOpenUrl: (url: string, e: React.MouseEvent) => void;
+}) {
+	return (
+		<ReactMarkdown
+			remarkPlugins={[remarkGfm, remarkAlert]}
+			rehypePlugins={[rehypeRaw, rehypeSanitize]}
+			components={{
+				a: ({ href, children }) =>
+					href ? (
+						<a
+							href={href}
+							className="text-primary underline"
+							onClick={(e) => onOpenUrl(href, e)}
+						>
+							{children}
+						</a>
+					) : (
+						<span>{children}</span>
+					),
+				code: ({ className, children, node }) => (
+					<CodeBlock className={className} node={node}>
+						{children}
+					</CodeBlock>
+				),
+			}}
+		>
+			{stripHtmlComments(body)}
+		</ReactMarkdown>
+	);
+});
 
 interface ReviewPanelProps {
 	pr: GitHubStatus["pr"] | null;
@@ -283,26 +320,7 @@ export function ReviewPanel({
 								</button>
 							)}
 							<div className="review-comment-body ml-4 break-words text-xs leading-5 text-foreground/90">
-								<ReactMarkdown
-									remarkPlugins={[remarkGfm, remarkAlert]}
-									rehypePlugins={[rehypeRaw, rehypeSanitize]}
-									components={{
-										a: ({ href, children }) =>
-											href ? (
-												<a
-													href={href}
-													className="text-primary underline"
-													onClick={(e) => handleOpenUrl(href, e)}
-												>
-													{children}
-												</a>
-											) : (
-												<span>{children}</span>
-											),
-									}}
-								>
-									{stripHtmlComments(comment.body)}
-								</ReactMarkdown>
+								<CommentBody body={comment.body} onOpenUrl={handleOpenUrl} />
 							</div>
 						</div>
 					)}
