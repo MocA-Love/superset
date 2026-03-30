@@ -1,8 +1,8 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { useEffect, useRef } from "react";
 
 interface TerminalSuggestionProps {
 	xterm: XTerm;
-	/** [currentInput, ...historySuggestions] */
 	suggestions: string[];
 	selectedIndex: number;
 	prefix: string;
@@ -10,6 +10,8 @@ interface TerminalSuggestionProps {
 }
 
 const TERMINAL_PADDING = 8; // p-2
+const MAX_VISIBLE_ITEMS = 8;
+const ITEM_HEIGHT = 26; // approximate height per item
 
 function getCellDimensions(
 	xterm: XTerm,
@@ -37,6 +39,18 @@ export function TerminalSuggestion({
 	prefix,
 	ghostText,
 }: TerminalSuggestionProps) {
+	const listRef = useRef<HTMLDivElement>(null);
+
+	// Scroll selected item into view
+	useEffect(() => {
+		const list = listRef.current;
+		if (!list) return;
+		const item = list.children[selectedIndex] as HTMLElement | undefined;
+		if (item) {
+			item.scrollIntoView({ block: "nearest" });
+		}
+	}, [selectedIndex]);
+
 	const dims = getCellDimensions(xterm);
 	if (!dims) return null;
 
@@ -45,7 +59,7 @@ export function TerminalSuggestion({
 
 	const fgColor = xterm.options.theme?.foreground || "#e0e0e0";
 
-	// Ghost text overlay at cursor position (only when history item selected)
+	// Ghost text overlay
 	const truncatedGhost = ghostText
 		? ghostText.length > xterm.cols - cursorX
 			? ghostText.slice(0, xterm.cols - cursorX)
@@ -67,6 +81,8 @@ export function TerminalSuggestion({
 		TERMINAL_PADDING + terminalWidth - dropdownMaxWidth,
 	);
 	const dropdownTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
+
+	const listMaxHeight = MAX_VISIBLE_ITEMS * ITEM_HEIGHT;
 
 	return (
 		<>
@@ -103,7 +119,6 @@ export function TerminalSuggestion({
 						zIndex: 20,
 						minWidth: Math.min(200, terminalWidth),
 						maxWidth: dropdownMaxWidth,
-						overflowY: "hidden",
 						borderRadius: 6,
 						border: "1px solid rgba(255,255,255,0.1)",
 						boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
@@ -115,29 +130,39 @@ export function TerminalSuggestion({
 						backgroundColor: "rgba(30, 30, 46, 0.92)",
 					}}
 				>
-					{suggestions.map((cmd, i) => (
-						<div
-							key={cmd}
-							style={{
-								padding: "4px 10px",
-								color: i === selectedIndex ? "#cdd6f4" : "#a6adc8",
-								backgroundColor:
-									i === selectedIndex
-										? "rgba(137, 180, 250, 0.15)"
-										: "transparent",
-								whiteSpace: "nowrap",
-								overflow: "hidden",
-								textOverflow: "ellipsis",
-								borderLeft:
-									i === selectedIndex
-										? "2px solid #89b4fa"
-										: "2px solid transparent",
-							}}
-						>
-							<span style={{ color: "#89b4fa" }}>{prefix}</span>
-							{cmd.slice(prefix.length)}
-						</div>
-					))}
+					{/* Scrollable item list */}
+					<div
+						ref={listRef}
+						style={{
+							maxHeight: listMaxHeight,
+							overflowY: "auto",
+						}}
+					>
+						{suggestions.map((cmd, i) => (
+							<div
+								key={cmd}
+								style={{
+									padding: "4px 10px",
+									color: i === selectedIndex ? "#cdd6f4" : "#a6adc8",
+									backgroundColor:
+										i === selectedIndex
+											? "rgba(137, 180, 250, 0.15)"
+											: "transparent",
+									whiteSpace: "nowrap",
+									overflow: "hidden",
+									textOverflow: "ellipsis",
+									borderLeft:
+										i === selectedIndex
+											? "2px solid #89b4fa"
+											: "2px solid transparent",
+								}}
+							>
+								<span style={{ color: "#89b4fa" }}>{prefix}</span>
+								{cmd.slice(prefix.length)}
+							</div>
+						))}
+					</div>
+					{/* Footer */}
 					<div
 						style={{
 							padding: "4px 10px 2px",
