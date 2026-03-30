@@ -60,16 +60,16 @@ export function ReviewPanel({
 	onOpenFile,
 }: ReviewPanelProps) {
 	const resolvedWorkspaceId = useWorkspaceId();
-	const openInBrowserPane = useTabsStore((s) => s.openInBrowserPane);
+	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
 	const handleOpenUrl = useCallback(
 		(url: string, e: React.MouseEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
 			if (resolvedWorkspaceId) {
-				openInBrowserPane(resolvedWorkspaceId, url);
+				addBrowserTab(resolvedWorkspaceId, url);
 			}
 		},
-		[resolvedWorkspaceId, openInBrowserPane],
+		[resolvedWorkspaceId, addBrowserTab],
 	);
 
 	const [checksOpen, setChecksOpen] = useState(true);
