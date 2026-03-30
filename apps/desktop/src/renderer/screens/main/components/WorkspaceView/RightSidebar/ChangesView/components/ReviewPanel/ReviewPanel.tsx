@@ -8,7 +8,7 @@ import {
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	LuArrowUpRight,
 	LuCheck,
@@ -24,6 +24,8 @@ import remarkGfm from "remark-gfm";
 import { remarkAlert } from "remark-github-blockquote-alert";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
+import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
+import { useTabsStore } from "renderer/stores/tabs";
 import { CheckSteps } from "./components/CheckSteps";
 import {
 	ALL_COMMENTS_COPY_ACTION_KEY,
@@ -48,6 +50,7 @@ interface ReviewPanelProps {
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
 	onOpenFile?: (path: string, line?: number) => void;
+	workspaceId?: string;
 }
 
 export function ReviewPanel({
@@ -56,7 +59,22 @@ export function ReviewPanel({
 	isLoading = false,
 	isCommentsLoading = false,
 	onOpenFile,
+	workspaceId = "",
 }: ReviewPanelProps) {
+	const contextWorkspaceId = useWorkspaceId();
+	const resolvedWorkspaceId = contextWorkspaceId ?? workspaceId;
+	const openInBrowserPane = useTabsStore((s) => s.openInBrowserPane);
+	const handleOpenUrl = useCallback(
+		(url: string, e: React.MouseEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			if (resolvedWorkspaceId) {
+				openInBrowserPane(resolvedWorkspaceId, url);
+			}
+		},
+		[resolvedWorkspaceId, openInBrowserPane],
+	);
+
 	const [checksOpen, setChecksOpen] = useState(true);
 	const [commentsOpen, setCommentsOpen] = useState(true);
 	const [resolvedCommentsGroupOpen, setResolvedCommentsGroupOpen] =
@@ -271,6 +289,20 @@ export function ReviewPanel({
 								<ReactMarkdown
 									remarkPlugins={[remarkGfm, remarkAlert]}
 									rehypePlugins={[rehypeRaw, rehypeSanitize]}
+									components={{
+										a: ({ href, children }) =>
+											href ? (
+												<a
+													href={href}
+													className="text-primary underline"
+													onClick={(e) => handleOpenUrl(href, e)}
+												>
+													{children}
+												</a>
+											) : (
+												<span>{children}</span>
+											),
+									}}
 								>
 									{stripHtmlComments(comment.body)}
 								</ReactMarkdown>
@@ -282,11 +314,9 @@ export function ReviewPanel({
 						{comment.url ? (
 							<a
 								href={comment.url}
-								target="_blank"
-								rel="noopener noreferrer"
 								className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 								aria-label="Open comment on GitHub"
-								onClick={(e) => e.stopPropagation()}
+								onClick={(e) => handleOpenUrl(comment.url as string, e)}
 							>
 								<LuArrowUpRight className="size-3" />
 							</a>
@@ -317,9 +347,8 @@ export function ReviewPanel({
 			<div className="px-2 py-2 space-y-1.5">
 				<a
 					href={pr.url}
-					target="_blank"
-					rel="noopener noreferrer"
 					className="group flex items-center gap-1.5 cursor-pointer"
+					onClick={(e) => handleOpenUrl(pr.url, e)}
 				>
 					<PRIcon state={pr.state} className="size-4 shrink-0" />
 					<span
