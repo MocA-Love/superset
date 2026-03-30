@@ -31,7 +31,7 @@ import { loadWebviewBrowserExtension } from "./lib/extensions";
 import { createExtensionIconProtocolHandler } from "./lib/extensions/extension-icon-protocol";
 import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
 import { getHostServiceManager } from "./lib/host-service-manager";
-import { localDb } from "./lib/local-db";
+import { closeLocalDb, localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";
 import {
@@ -199,6 +199,7 @@ app.on("before-quit", async (event) => {
 	// Quit confirmed or no confirmation needed - exit immediately
 	// Let OS clean up child processes, tray, etc.
 	isQuitting = true;
+	closeLocalDb();
 	getHostServiceManager().stopAll();
 	disposeTray();
 	app.exit(0);
