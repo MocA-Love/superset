@@ -1,3 +1,4 @@
+import type { Terminal as XTerm } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import type { ActiveSuggestionHandle } from "../helpers";
@@ -6,6 +7,7 @@ export interface UseTerminalSuggestionOptions {
 	commandBufferRef: React.MutableRefObject<string>;
 	enabled: boolean;
 	isAlternateScreenRef: React.MutableRefObject<boolean>;
+	xtermRef: React.MutableRefObject<XTerm | null>;
 	onAcceptWrite: (data: string) => void;
 }
 
@@ -21,10 +23,60 @@ const EMPTY: string[] = [];
 const POLL_MS = 150;
 const FETCH_DEBOUNCE_MS = 80;
 
+/**
+ * Read zsh-autosuggestions ghost text from the xterm buffer.
+ * Ghost text appears after the cursor in dim or gray color.
+ */
+function readGhostText(xterm: XTerm): string {
+	const buf = xterm.buffer.active;
+	const lineIndex = buf.cursorY + buf.viewportY;
+	const line = buf.getLine(lineIndex);
+	if (!line) return "";
+
+	let ghost = "";
+	for (let x = buf.cursorX; x < line.length; x++) {
+		const cell = line.getCell(x);
+		if (!cell) break;
+		const ch = cell.getChars();
+		if (!ch) break;
+
+		// zsh-autosuggestions uses dim attribute or gray palette/RGB colors
+		if (cell.isDim() !== 0) {
+			ghost += ch;
+			continue;
+		}
+		if (cell.isFgPalette()) {
+			const idx = cell.getFgColor();
+			// 256-color palette grays (232-255) or bright black (8)
+			if ((idx >= 232 && idx <= 255) || idx === 8) {
+				ghost += ch;
+				continue;
+			}
+		}
+		if (cell.isFgRGB()) {
+			const color = cell.getFgColor();
+			const r = (color >> 16) & 0xff;
+			const g = (color >> 8) & 0xff;
+			const b = color & 0xff;
+			// Grayscale: RGB values close together and dim
+			if (
+				Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(b - r)) < 30 &&
+				r < 180
+			) {
+				ghost += ch;
+				continue;
+			}
+		}
+		break;
+	}
+	return ghost;
+}
+
 export function useTerminalSuggestion({
 	commandBufferRef,
 	enabled,
 	isAlternateScreenRef,
+	xtermRef,
 	onAcceptWrite,
 }: UseTerminalSuggestionOptions): UseTerminalSuggestionReturn {
 	const [historySuggestions, setHistorySuggestions] = useState<string[]>(EMPTY);
@@ -86,6 +138,21 @@ export function useTerminalSuggestion({
 						},
 					);
 					if (lastPrefixRef.current !== prefix) return;
+
+					// Read zsh-autosuggestions ghost text and prioritize it
+					const xterm = xtermRef.current;
+					if (xterm && result.length > 0) {
+						const ghost = readGhostText(xterm);
+						if (ghost) {
+							const fullCmd = prefix + ghost;
+							// Move ghost suggestion to front if it exists in results
+							const filtered = result.filter((cmd) => cmd !== fullCmd);
+							setHistorySuggestions([fullCmd, ...filtered]);
+							setSelectedIndex(0);
+							return;
+						}
+					}
+
 					setHistorySuggestions(result.length > 0 ? result : EMPTY);
 					setSelectedIndex(0);
 				} catch {
@@ -100,7 +167,7 @@ export function useTerminalSuggestion({
 				clearTimeout(fetchTimerRef.current);
 			}
 		};
-	}, [commandBufferRef, isAlternateScreenRef]);
+	}, [commandBufferRef, isAlternateScreenRef, xtermRef]);
 
 	const displaySuggestions = historySuggestions;
 
