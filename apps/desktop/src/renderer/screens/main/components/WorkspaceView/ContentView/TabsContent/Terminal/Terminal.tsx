@@ -335,6 +335,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		selectedIndex,
 		prefix: suggestionPrefix,
 		activeSuggestionRef,
+		deleteSuggestion,
 	} = useTerminalSuggestion({
 		commandBufferRef,
 		enabled:
@@ -344,6 +345,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 			!exitStatus &&
 			!isWorkspaceRunPane,
 		isAlternateScreenRef,
+		xtermRef,
 		onAcceptWrite: handleSuggestionWrite,
 	});
 
@@ -506,6 +508,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 					suggestions={displaySuggestions}
 					selectedIndex={selectedIndex}
 					prefix={suggestionPrefix}
+					onDelete={deleteSuggestion}
 				/>
 			)}
 		</div>

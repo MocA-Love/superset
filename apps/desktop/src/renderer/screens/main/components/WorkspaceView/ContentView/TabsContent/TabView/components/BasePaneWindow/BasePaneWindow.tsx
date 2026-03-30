@@ -43,6 +43,7 @@ interface BasePaneWindowProps {
 	renderToolbar: (handlers: PaneHandlers) => React.ReactElement;
 	children: React.ReactNode;
 	contentClassName?: string;
+	draggable?: boolean;
 }
 
 export function BasePaneWindow({
@@ -56,6 +57,7 @@ export function BasePaneWindow({
 	renderToolbar,
 	children,
 	contentClassName = "w-full h-full overflow-hidden",
+	draggable = true,
 }: BasePaneWindowProps) {
 	const isActive = useTabsStore((s) => s.focusedPaneIds[tabId] === paneId);
 	const workspaceRunState = useTabsStore(
@@ -107,8 +109,9 @@ export function BasePaneWindow({
 		<MosaicWindow<string>
 			path={path}
 			title=""
+			draggable={draggable}
 			renderToolbar={() =>
-				isRoot ? (
+				isRoot && draggable ? (
 					<RootDraggable>{renderToolbar(handlers)}</RootDraggable>
 				) : (
 					renderToolbar(handlers)

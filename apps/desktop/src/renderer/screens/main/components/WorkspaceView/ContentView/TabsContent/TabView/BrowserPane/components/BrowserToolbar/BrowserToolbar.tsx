@@ -27,6 +27,7 @@ interface BrowserToolbarProps {
 	onGoForward: () => void;
 	onReload: () => void;
 	onNavigate: (url: string) => void;
+	onEditingChange?: (editing: boolean) => void;
 }
 
 export function BrowserToolbar({
@@ -39,8 +40,16 @@ export function BrowserToolbar({
 	onGoForward,
 	onReload,
 	onNavigate,
+	onEditingChange,
 }: BrowserToolbarProps) {
-	const [isEditing, setIsEditing] = useState(false);
+	const [isEditing, setIsEditingRaw] = useState(false);
+	const setIsEditing = useCallback(
+		(v: boolean) => {
+			setIsEditingRaw(v);
+			onEditingChange?.(v);
+		},
+		[onEditingChange],
+	);
 	const [urlInputValue, setUrlInputValue] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,12 +76,12 @@ export function BrowserToolbar({
 		setIsEditing(true);
 		autocomplete.open();
 		autocomplete.updateQuery(url);
-	}, [url, autocomplete]);
+	}, [url, autocomplete, setIsEditing]);
 
 	const exitEditMode = useCallback(() => {
 		setIsEditing(false);
 		autocomplete.close();
-	}, [autocomplete]);
+	}, [autocomplete, setIsEditing]);
 
 	const handleSubmit = useCallback(
 		(e: React.FormEvent) => {
@@ -84,7 +93,7 @@ export function BrowserToolbar({
 				autocomplete.close();
 			}
 		},
-		[urlInputValue, onNavigate, autocomplete],
+		[urlInputValue, onNavigate, autocomplete, setIsEditing],
 	);
 
 	const handleInputChange = useCallback(
@@ -110,7 +119,7 @@ export function BrowserToolbar({
 				setIsEditing(false);
 			}
 		},
-		[autocomplete],
+		[autocomplete, setIsEditing],
 	);
 
 	return (
@@ -180,7 +189,7 @@ export function BrowserToolbar({
 							onBlur={exitEditMode}
 							onKeyDown={handleKeyDown}
 							placeholder="Enter URL or search..."
-							className="h-[22px] w-full rounded-sm border border-ring bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
+							className="h-[22px] w-full select-text rounded-sm border border-ring bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
 							spellCheck={false}
 							autoComplete="off"
 						/>

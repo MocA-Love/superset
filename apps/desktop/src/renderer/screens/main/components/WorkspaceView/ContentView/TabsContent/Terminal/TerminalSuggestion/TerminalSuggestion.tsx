@@ -6,6 +6,7 @@ interface TerminalSuggestionProps {
 	suggestions: string[];
 	selectedIndex: number;
 	prefix: string;
+	onDelete?: (cmd: string) => void;
 }
 
 const TERMINAL_PADDING = 8; // p-2
@@ -36,6 +37,7 @@ export function TerminalSuggestion({
 	suggestions,
 	selectedIndex,
 	prefix,
+	onDelete,
 }: TerminalSuggestionProps) {
 	const listRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +92,7 @@ export function TerminalSuggestion({
 		: "";
 
 	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: terminal overlay, not interactive
 		<div
 			style={{
 				position: "absolute",
@@ -103,11 +106,11 @@ export function TerminalSuggestion({
 				boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
 				fontSize: `${(xterm.options.fontSize ?? 14) - 1}px`,
 				fontFamily: xterm.options.fontFamily,
-				pointerEvents: "none",
 				userSelect: "none",
 				backdropFilter: "blur(12px)",
 				backgroundColor: "rgba(30, 30, 46, 0.92)",
 			}}
+			onMouseDown={(e) => e.preventDefault()}
 		>
 			{/* Full command preview */}
 			<div
@@ -135,24 +138,61 @@ export function TerminalSuggestion({
 				{suggestions.map((cmd, i) => (
 					<div
 						key={cmd}
+						className="group/item"
 						style={{
-							padding: "4px 10px",
+							padding: "4px 6px 4px 10px",
+							display: "flex",
+							alignItems: "center",
 							color: i === selectedIndex ? "#cdd6f4" : "#a6adc8",
 							backgroundColor:
 								i === selectedIndex
 									? "rgba(137, 180, 250, 0.15)"
 									: "transparent",
-							whiteSpace: "nowrap",
-							overflow: "hidden",
-							textOverflow: "ellipsis",
 							borderLeft:
 								i === selectedIndex
 									? "2px solid #89b4fa"
 									: "2px solid transparent",
 						}}
 					>
-						<span style={{ color: "#89b4fa" }}>{prefix}</span>
-						{cmd.slice(prefix.length)}
+						<span
+							style={{
+								flex: 1,
+								minWidth: 0,
+								whiteSpace: "nowrap",
+								overflow: "hidden",
+								textOverflow: "ellipsis",
+							}}
+						>
+							<span style={{ color: "#89b4fa" }}>{prefix}</span>
+							{cmd.slice(prefix.length)}
+						</span>
+						{onDelete && (
+							<button
+								type="button"
+								onClick={() => onDelete(cmd)}
+								aria-label="Delete from history"
+								className="opacity-0 group-hover/item:opacity-100"
+								style={{
+									background: "none",
+									border: "none",
+									color: "#585b70",
+									cursor: "pointer",
+									padding: "0 4px",
+									fontSize: "0.9em",
+									lineHeight: 1,
+									flexShrink: 0,
+									transition: "color 0.15s",
+								}}
+								onMouseEnter={(e) => {
+									e.currentTarget.style.color = "#f38ba8";
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.color = "#585b70";
+								}}
+							>
+								✕
+							</button>
+						)}
 					</div>
 				))}
 			</div>

@@ -105,6 +105,7 @@ export function getCommentPreviewText(body: string): string {
 	return (
 		body
 			.replace(/<!--[\s\S]*?-->/g, "\n")
+			.replace(/<[^>]+>/g, "")
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.find(Boolean)

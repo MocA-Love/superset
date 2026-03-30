@@ -96,6 +96,8 @@ export function BrowserPane({
 		openDevTools({ paneId });
 	}, [openDevTools, paneId]);
 
+	const [isEditingUrl, setIsEditingUrl] = useState(false);
+
 	return (
 		<BasePaneWindow
 			paneId={paneId}
@@ -105,6 +107,7 @@ export function BrowserPane({
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
 			onPopOut={onPopOut}
+			draggable={!isEditingUrl}
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
@@ -117,6 +120,7 @@ export function BrowserPane({
 						onGoForward={goForward}
 						onReload={reload}
 						onNavigate={navigateTo}
+						onEditingChange={setIsEditingUrl}
 					/>
 					<div className="flex items-center shrink-0">
 						<div className="mx-1.5 h-3.5 w-px bg-muted-foreground/60" />
