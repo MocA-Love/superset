@@ -100,12 +100,21 @@ export function ResizablePanel({
 		onResizingChange(false);
 	}, [isResizing, onResizingChange, flushPendingWidth]);
 
+	const overlayRef = useRef<HTMLDivElement | null>(null);
+
 	useEffect(() => {
 		if (isResizing) {
 			document.addEventListener("mousemove", handleMouseMove);
 			document.addEventListener("mouseup", handleMouseUp);
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = "col-resize";
+
+			// Add a full-screen overlay to prevent webviews from swallowing mouse events
+			const overlay = document.createElement("div");
+			overlay.style.cssText =
+				"position:fixed;inset:0;z-index:9999;cursor:col-resize;";
+			document.body.appendChild(overlay);
+			overlayRef.current = overlay;
 		}
 
 		return () => {
@@ -118,6 +127,10 @@ export function ResizablePanel({
 				rafIdRef.current = null;
 			}
 			pendingWidthRef.current = null;
+			if (overlayRef.current) {
+				overlayRef.current.remove();
+				overlayRef.current = null;
+			}
 		};
 	}, [isResizing, handleMouseMove, handleMouseUp]);
 
