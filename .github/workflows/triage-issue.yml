@@ -17,6 +17,7 @@ concurrency:
 jobs:
   triage:
     name: Triage Issue
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:

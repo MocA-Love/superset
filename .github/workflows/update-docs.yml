@@ -9,6 +9,7 @@ on:
 jobs:
   update-docs:
     name: Update Docs
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     permissions:
       contents: write

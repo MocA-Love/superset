@@ -5,12 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Disabled in fork — only runs on the upstream repository
+# To re-enable, remove the `if` condition from each job
+
 env:
   VERCEL_CLI_VERSION: 50.22.1
 
 jobs:
   deploy-database:
     name: Deploy Database Migrations
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
 
@@ -42,6 +46,7 @@ jobs:
 
   deploy-api:
     name: Deploy API to Vercel
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-database
@@ -177,6 +182,7 @@ jobs:
 
   deploy-web:
     name: Deploy Web to Vercel
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-database
@@ -266,6 +272,7 @@ jobs:
 
   deploy-marketing:
     name: Deploy Marketing to Vercel
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-database
@@ -349,6 +356,7 @@ jobs:
 
   deploy-admin:
     name: Deploy Admin to Vercel
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-database
@@ -440,6 +448,7 @@ jobs:
 
   deploy-electric:
     name: Deploy Electric to Fly.io
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
 
@@ -467,6 +476,7 @@ jobs:
 
   deploy-electric-proxy:
     name: Deploy Electric Proxy to Cloudflare
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
 
@@ -498,6 +508,7 @@ jobs:
 
   deploy-docs:
     name: Deploy Docs to Vercel
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-database

@@ -9,6 +9,7 @@ on:
 jobs:
   generate-changelog:
     name: Generate Changelog
+    if: github.repository == 'superset-sh/superset'
     runs-on: ubuntu-latest
     permissions:
       contents: write
