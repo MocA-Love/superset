@@ -342,7 +342,8 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 			!isRestoredMode &&
 			!connectionError &&
 			!exitStatus &&
-			!isAlternateScreenRef.current,
+			!isAlternateScreenRef.current &&
+			!isWorkspaceRunPane,
 		onAcceptWrite: handleSuggestionWrite,
 	});
 

@@ -54,6 +54,7 @@ export function TerminalSuggestion({
 	const cursorX = xterm.buffer.active.cursorX;
 	const cursorY = xterm.buffer.active.cursorY;
 	const terminalWidth = xterm.cols * dims.width;
+	const terminalHeight = xterm.rows * dims.height;
 
 	const rawDropdownLeft =
 		TERMINAL_PADDING + Math.max(0, cursorX - prefix.length) * dims.width;
@@ -62,9 +63,25 @@ export function TerminalSuggestion({
 		rawDropdownLeft,
 		TERMINAL_PADDING + terminalWidth - dropdownMaxWidth,
 	);
-	const dropdownTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
 
 	const listMaxHeight = MAX_VISIBLE_ITEMS * ITEM_HEIGHT;
+	// Estimate total dropdown height: preview + list + footer
+	const PREVIEW_HEIGHT = 30;
+	const FOOTER_HEIGHT = 24;
+	const dropdownHeight =
+		PREVIEW_HEIGHT +
+		Math.min(suggestions.length, MAX_VISIBLE_ITEMS) * ITEM_HEIGHT +
+		FOOTER_HEIGHT;
+
+	const belowCursorTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
+	const spaceBelow =
+		terminalHeight + TERMINAL_PADDING * 2 - belowCursorTop;
+
+	// If not enough space below, show above the cursor
+	const dropdownTop =
+		spaceBelow >= dropdownHeight
+			? belowCursorTop
+			: Math.max(0, TERMINAL_PADDING + cursorY * dims.height - dropdownHeight);
 	const selected = suggestions[selectedIndex] ?? "";
 	const suffix = selected.startsWith(prefix)
 		? selected.slice(prefix.length)
