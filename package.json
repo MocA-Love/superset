@@ -46,9 +46,10 @@
 		"tooling/*"
 	],
 	"patchedDependencies": {
-		"@durable-streams/state@0.2.1": "patches/@durable-streams%2Fstate@0.2.1.patch"
+		"@durable-streams/state@0.2.1": "patches/@durable-streams%2Fstate@0.2.1.patch",
+		"fstream@1.0.12": "patches/fstream@1.0.12.patch"
 	},
 	"overrides": {
-		"unzipper": "^0.12.3"
+		"fstream>mkdirp": "^0.5.6"
 	}
 }

@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index fcb4920356140cfc5f6ddde7743858d33e032cba..0f4b50bedf8713f2652b9442847698a027aa194e 100644
+--- a/package.json
++++ b/package.json
+@@ -14,7 +14,7 @@
+   "dependencies": {
+     "graceful-fs": "^4.1.2",
+     "inherits": "~2.0.0",
+-    "mkdirp": ">=0.5 0",
++    "mkdirp": ">=0.5.0",
+     "rimraf": "2"
+   },
+   "devDependencies": {
