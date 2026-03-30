@@ -101,7 +101,10 @@ export function useTerminalSuggestion({
 	// Single stable effect — mount once
 	useEffect(() => {
 		const id = setInterval(() => {
-			if (!enabledRef.current || isAlternateScreenRef.current) {
+			const inAltScreen =
+				isAlternateScreenRef.current ||
+				xtermRef.current?.buffer.active.type === "alternate";
+			if (!enabledRef.current || inAltScreen) {
 				if (lastPrefixRef.current !== "") {
 					lastPrefixRef.current = "";
 					setTrackedInput("");
@@ -131,6 +134,11 @@ export function useTerminalSuggestion({
 			fetchTimerRef.current = setTimeout(async () => {
 				fetchTimerRef.current = null;
 				if (!enabledRef.current || isAlternateScreenRef.current) return;
+				// Double-check buffer is still valid (user may have pressed Enter)
+				if (commandBufferRef.current.length < 2) return;
+				const xterm = xtermRef.current;
+				// Also check xterm's own alternate screen state
+				if (xterm?.buffer.active.type === "alternate") return;
 				try {
 					const result = await electronTrpcClient.terminal.getSuggestions.query(
 						{
@@ -138,9 +146,14 @@ export function useTerminalSuggestion({
 						},
 					);
 					if (lastPrefixRef.current !== prefix) return;
+					// Final guard: re-check after async fetch
+					if (
+						commandBufferRef.current.length < 2 ||
+						isAlternateScreenRef.current
+					)
+						return;
 
 					// Read zsh-autosuggestions ghost text and prioritize it
-					const xterm = xtermRef.current;
 					if (xterm && result.length > 0) {
 						const ghost = readGhostText(xterm);
 						if (ghost) {
