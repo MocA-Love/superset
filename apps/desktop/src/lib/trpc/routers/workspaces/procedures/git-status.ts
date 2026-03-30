@@ -183,13 +183,22 @@ export const createGitStatusProcedures = () => {
 				const worktree = workspace.worktreeId
 					? getWorktree(workspace.worktreeId)
 					: null;
-				if (!worktree) {
+
+				// For "branch" type workspaces without a worktree record,
+				// fall back to the project's mainRepoPath
+				let repoPath: string | null = worktree?.path ?? null;
+				if (!repoPath && workspace.type === "branch") {
+					const project = getProject(workspace.projectId);
+					repoPath = project?.mainRepoPath ?? null;
+				}
+				if (!repoPath) {
 					return null;
 				}
 
-				const freshStatus = await fetchGitHubPRStatus(worktree.path);
+				const freshStatus = await fetchGitHubPRStatus(repoPath);
 
 				if (
+					worktree &&
 					freshStatus &&
 					hasMeaningfulGitHubStatusChange({
 						current: worktree.githubStatus,
@@ -217,14 +226,20 @@ export const createGitStatusProcedures = () => {
 				const worktree = workspace.worktreeId
 					? getWorktree(workspace.worktreeId)
 					: null;
-				if (!worktree) {
+
+				let repoPath: string | null = worktree?.path ?? null;
+				if (!repoPath && workspace.type === "branch") {
+					const project = getProject(workspace.projectId);
+					repoPath = project?.mainRepoPath ?? null;
+				}
+				if (!repoPath) {
 					return [];
 				}
 
-				const cachedGitHubStatus = worktree.githubStatus ?? null;
+				const cachedGitHubStatus = worktree?.githubStatus ?? null;
 
 				return fetchGitHubPRComments({
-					worktreePath: worktree.path,
+					worktreePath: repoPath,
 					pullRequest: resolveCommentsPullRequestTarget({
 						input,
 						githubStatus: cachedGitHubStatus,
