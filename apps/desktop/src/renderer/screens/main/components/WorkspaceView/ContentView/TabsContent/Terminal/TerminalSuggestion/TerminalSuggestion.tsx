@@ -77,8 +77,7 @@ export function TerminalSuggestion({
 		FOOTER_HEIGHT;
 
 	const belowCursorTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
-	const spaceBelow =
-		terminalHeight + TERMINAL_PADDING * 2 - belowCursorTop;
+	const spaceBelow = terminalHeight + TERMINAL_PADDING * 2 - belowCursorTop;
 
 	// If not enough space below, show above the cursor
 	const dropdownTop =

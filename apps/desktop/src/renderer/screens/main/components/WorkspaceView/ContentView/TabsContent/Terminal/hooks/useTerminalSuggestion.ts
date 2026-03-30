@@ -99,8 +99,7 @@ export function useTerminalSuggestion({
 				clearTimeout(fetchTimerRef.current);
 			}
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [commandBufferRef, isAlternateScreenRef]);
 
 	const displaySuggestions = historySuggestions;
 
