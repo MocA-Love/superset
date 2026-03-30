@@ -150,6 +150,19 @@ export function RightSidebar() {
 		[scrollToFile, worktreePath],
 	);
 
+	const handleOpenFileAtLine = useCallback(
+		(path: string, line?: number) => {
+			if (!workspaceId || !worktreePath) return;
+			const absolutePath = toAbsoluteWorkspacePath(worktreePath, path);
+			addFileViewerPane(workspaceId, {
+				filePath: absolutePath,
+				viewMode: "raw",
+				line,
+			});
+		},
+		[workspaceId, worktreePath, addFileViewerPane],
+	);
+
 	const handleFileOpen =
 		workspaceId && worktreePath
 			? isExpanded
@@ -232,6 +245,7 @@ export function RightSidebar() {
 				>
 					<ChangesView
 						onFileOpen={handleFileOpen}
+						onOpenFileAtLine={handleOpenFileAtLine}
 						isExpandedView={isExpanded}
 						isActive={rightSidebarTab === RightSidebarTab.Changes}
 					/>

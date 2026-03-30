@@ -9,10 +9,20 @@ import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { useEffect, useRef, useState } from "react";
-import { LuArrowUpRight, LuCheck, LuCopy } from "react-icons/lu";
+import {
+	LuArrowUpRight,
+	LuCheck,
+	LuChevronDown,
+	LuCode,
+	LuCopy,
+} from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { remarkAlert } from "remark-github-blockquote-alert";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
+import { CheckSteps } from "./components/CheckSteps";
 import {
 	ALL_COMMENTS_COPY_ACTION_KEY,
 	buildAllCommentsClipboardText,
@@ -27,6 +37,7 @@ import {
 	resolveCheckDestinationUrl,
 	reviewDecisionConfig,
 	splitPullRequestComments,
+	stripHtmlComments,
 } from "./utils";
 
 interface ReviewPanelProps {
@@ -34,6 +45,7 @@ interface ReviewPanelProps {
 	comments?: PullRequestComment[];
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
+	onOpenFile?: (path: string, line?: number) => void;
 }
 
 export function ReviewPanel({
@@ -41,12 +53,17 @@ export function ReviewPanel({
 	comments = [],
 	isLoading = false,
 	isCommentsLoading = false,
+	onOpenFile,
 }: ReviewPanelProps) {
 	const [checksOpen, setChecksOpen] = useState(true);
 	const [commentsOpen, setCommentsOpen] = useState(true);
 	const [resolvedCommentsGroupOpen, setResolvedCommentsGroupOpen] =
 		useState(false);
 	const [copiedActionKey, setCopiedActionKey] = useState<string | null>(null);
+	const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set());
+	const [expandedComments, setExpandedComments] = useState<Set<string>>(
+		new Set(),
+	);
 	const copiedActionResetTimeoutRef = useRef<ReturnType<
 		typeof setTimeout
 	> | null>(null);
@@ -98,6 +115,30 @@ export function ReviewPanel({
 		});
 	};
 
+	const toggleCheckExpansion = (checkName: string) => {
+		setExpandedChecks((prev) => {
+			const next = new Set(prev);
+			if (next.has(checkName)) {
+				next.delete(checkName);
+			} else {
+				next.add(checkName);
+			}
+			return next;
+		});
+	};
+
+	const toggleCommentExpansion = (commentId: string) => {
+		setExpandedComments((prev) => {
+			const next = new Set(prev);
+			if (next.has(commentId)) {
+				next.delete(commentId);
+			} else {
+				next.add(commentId);
+			}
+			return next;
+		});
+	};
+
 	if (isLoading && !pr) {
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -143,62 +184,95 @@ export function ReviewPanel({
 		});
 	};
 
+	const isActionsUrl = (url?: string) =>
+		url ? /\/actions\/runs\/\d+\/job\/\d+/.test(url) : false;
+
 	const renderCommentList = (list: PullRequestComment[]) =>
 		list.map((comment) => {
 			const age = formatShortAge(comment.createdAt);
 			const commentCopyActionKey = getCommentCopyActionKey(comment.id);
 			const isCopied = copiedActionKey === commentCopyActionKey;
-			const content = (
-				<>
-					<Avatar className="mt-0.5 size-4 shrink-0">
-						{comment.avatarUrl ? (
-							<AvatarImage src={comment.avatarUrl} alt={comment.authorLogin} />
-						) : null}
-						<AvatarFallback className="text-[10px] font-medium">
-							{getCommentAvatarFallback(comment.authorLogin)}
-						</AvatarFallback>
-					</Avatar>
-					<div className="min-w-0 flex-1">
-						<div className="flex items-center gap-1.5">
-							<span className="truncate text-xs font-medium text-foreground">
-								{comment.authorLogin}
-							</span>
-							<span className="shrink-0 rounded border border-border/70 bg-muted/35 px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground">
-								{getCommentKindText(comment)}
-							</span>
-							<span className="flex-1" />
-							{age ? (
-								<span className="shrink-0 text-[10px] text-muted-foreground">
-									{age}
-								</span>
-							) : null}
-						</div>
-						<p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">
-							{getCommentPreviewText(comment.body)}
-						</p>
-					</div>
-				</>
-			);
+			const isExpanded = expandedComments.has(comment.id);
+			const hasFileLocation = !!comment.path;
 
 			return (
 				<div
 					key={comment.id}
-					className="group relative flex items-start gap-1 rounded-sm px-1.5 py-1 transition-colors hover:bg-accent/50"
+					className="group relative rounded-sm transition-colors hover:bg-accent/50"
 				>
-					{comment.url ? (
-						<a
-							href={comment.url}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="flex min-w-0 flex-1 items-start gap-2"
-						>
-							{content}
-						</a>
-					) : (
-						<div className="flex min-w-0 flex-1 items-start gap-2">
-							{content}
+					<button
+						type="button"
+						className="flex w-full items-start gap-1 px-1.5 py-1 cursor-pointer text-left"
+						onClick={() => toggleCommentExpansion(comment.id)}
+					>
+						<LuChevronDown
+							className={cn(
+								"mt-1 size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+								!isExpanded && "-rotate-90",
+							)}
+						/>
+						<Avatar className="mt-0.5 size-4 shrink-0">
+							{comment.avatarUrl ? (
+								<AvatarImage
+									src={comment.avatarUrl}
+									alt={comment.authorLogin}
+								/>
+							) : null}
+							<AvatarFallback className="text-[10px] font-medium">
+								{getCommentAvatarFallback(comment.authorLogin)}
+							</AvatarFallback>
+						</Avatar>
+						<div className="min-w-0 flex-1">
+							<div className="flex items-center gap-1.5">
+								<span className="truncate text-xs font-medium text-foreground">
+									{comment.authorLogin}
+								</span>
+								<span className="shrink-0 rounded border border-border/70 bg-muted/35 px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground">
+									{getCommentKindText(comment)}
+								</span>
+								<span className="flex-1" />
+								{age ? (
+									<span className="shrink-0 text-[10px] text-muted-foreground">
+										{age}
+									</span>
+								) : null}
+							</div>
+							{!isExpanded && (
+								<p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">
+									{getCommentPreviewText(comment.body)}
+								</p>
+							)}
+						</div>
+					</button>
+
+					{isExpanded && (
+						<div className="px-1.5 pb-1.5">
+							{hasFileLocation && (
+								<button
+									type="button"
+									className="mb-1.5 ml-4 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
+									onClick={(e) => {
+										e.stopPropagation();
+										if (comment.path) {
+											onOpenFile?.(comment.path, comment.line);
+										}
+									}}
+								>
+									<LuCode className="size-3" />
+									<span className="truncate">
+										{comment.path}
+										{comment.line ? `:${comment.line}` : ""}
+									</span>
+								</button>
+							)}
+							<div className="review-comment-body ml-4 break-words text-xs leading-5 text-foreground/90">
+								<ReactMarkdown remarkPlugins={[remarkGfm, remarkAlert]}>
+									{stripHtmlComments(comment.body)}
+								</ReactMarkdown>
+							</div>
 						</div>
 					)}
+
 					<div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
 						{comment.url ? (
 							<a
@@ -207,6 +281,7 @@ export function ReviewPanel({
 								rel="noopener noreferrer"
 								className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 								aria-label="Open comment on GitHub"
+								onClick={(e) => e.stopPropagation()}
 							>
 								<LuArrowUpRight className="size-3" />
 							</a>
@@ -315,51 +390,66 @@ export function ReviewPanel({
 							const { icon: CheckIcon, className } =
 								checkIconConfig[check.status];
 							const checkUrl = resolveCheckDestinationUrl(check, pr.url);
+							const isCheckExpanded = expandedChecks.has(check.name);
+							const canExpand = isActionsUrl(check.url);
 
-							return checkUrl ? (
-								<a
-									key={check.name}
-									href={checkUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="group block"
-								>
+							return (
+								<div key={check.name}>
 									<div className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-1 text-xs transition-colors hover:bg-accent/50">
-										<CheckIcon
-											className={cn(
-												"size-3 shrink-0",
-												className,
-												check.status === "pending" && "animate-spin",
-											)}
-										/>
-										<div className="flex min-w-0 flex-1 items-center gap-1">
-											<span className="min-w-0 truncate">{check.name}</span>
-											<LuArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-										</div>
+										{canExpand ? (
+											<button
+												type="button"
+												className="flex min-w-0 flex-1 items-center gap-1"
+												onClick={() => toggleCheckExpansion(check.name)}
+											>
+												<LuChevronDown
+													className={cn(
+														"size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+														!isCheckExpanded && "-rotate-90",
+													)}
+												/>
+												<CheckIcon
+													className={cn(
+														"size-3 shrink-0",
+														className,
+														check.status === "pending" && "animate-spin",
+													)}
+												/>
+												<span className="min-w-0 truncate text-left">
+													{check.name}
+												</span>
+											</button>
+										) : (
+											<div className="flex min-w-0 flex-1 items-center gap-1">
+												<CheckIcon
+													className={cn(
+														"size-3 shrink-0",
+														className,
+														check.status === "pending" && "animate-spin",
+													)}
+												/>
+												<span className="min-w-0 truncate">{check.name}</span>
+											</div>
+										)}
+										{checkUrl ? (
+											<a
+												href={checkUrl}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="shrink-0 text-muted-foreground/70 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+												onClick={(e) => e.stopPropagation()}
+											>
+												<LuArrowUpRight className="size-3.5" />
+											</a>
+										) : null}
 										{check.durationText && (
 											<span className="shrink-0 text-[10px] text-muted-foreground">
 												{check.durationText}
 											</span>
 										)}
 									</div>
-								</a>
-							) : (
-								<div
-									key={check.name}
-									className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-1 text-xs"
-								>
-									<CheckIcon
-										className={cn(
-											"size-3 shrink-0",
-											className,
-											check.status === "pending" && "animate-spin",
-										)}
-									/>
-									<span className="min-w-0 flex-1 truncate">{check.name}</span>
-									{check.durationText && (
-										<span className="shrink-0 text-[10px] text-muted-foreground">
-											{check.durationText}
-										</span>
+									{isCheckExpanded && check.url && (
+										<CheckSteps detailsUrl={check.url} />
 									)}
 								</div>
 							);

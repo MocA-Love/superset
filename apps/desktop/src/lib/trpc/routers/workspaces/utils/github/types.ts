@@ -171,6 +171,38 @@ export interface RepoContext {
 
 export type GHPRResponse = z.infer<typeof GHPRResponseSchema>;
 
+/**
+ * GitHub Actions job step schema
+ */
+export const GHJobStepSchema = z.object({
+	name: z.string(),
+	status: z.enum(["queued", "in_progress", "completed"]),
+	conclusion: z
+		.enum(["success", "failure", "cancelled", "skipped", ""])
+		.nullable()
+		.optional(),
+	number: z.number(),
+	started_at: z.string().nullable().optional(),
+	completed_at: z.string().nullable().optional(),
+});
+
+export type GHJobStep = z.infer<typeof GHJobStepSchema>;
+
+export const GHJobResponseSchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	status: z.enum(["queued", "in_progress", "completed", "waiting"]),
+	conclusion: z
+		.enum(["success", "failure", "cancelled", "skipped", "timed_out", ""])
+		.nullable()
+		.optional(),
+	started_at: z.string().nullable().optional(),
+	completed_at: z.string().nullable().optional(),
+	steps: z.array(GHJobStepSchema).optional(),
+});
+
+export type GHJobResponse = z.infer<typeof GHJobResponseSchema>;
+
 export const GHDeploymentSchema = z.object({
 	id: z.number(),
 	ref: z.string(),
