@@ -14,6 +14,7 @@ export interface UseTerminalSuggestionReturn {
 	selectedIndex: number;
 	prefix: string;
 	activeSuggestionRef: React.MutableRefObject<ActiveSuggestionHandle | null>;
+	deleteSuggestion: (cmd: string) => void;
 }
 
 const EMPTY: string[] = [];
@@ -180,6 +181,16 @@ export function useTerminalSuggestion({
 		setSelectedIndex((prev) => (prev - 1 < 0 ? prev : prev - 1));
 	}, [displaySuggestions.length]);
 
+	const deleteSuggestion = useCallback((cmd: string) => {
+		// Remove from UI immediately
+		setHistorySuggestions((prev) => prev.filter((item) => item !== cmd));
+		setSelectedIndex(0);
+		// Delete from history file in background
+		void electronTrpcClient.terminal.deleteHistorySuggestion
+			.mutate({ command: cmd })
+			.catch(() => {});
+	}, []);
+
 	// Sync ref — no state updates
 	activeSuggestionRef.current =
 		displaySuggestions.length > 0
@@ -198,5 +209,6 @@ export function useTerminalSuggestion({
 		selectedIndex,
 		prefix: trackedInput,
 		activeSuggestionRef,
+		deleteSuggestion,
 	};
 }

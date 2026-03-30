@@ -1,6 +1,14 @@
 import { constants } from "node:fs";
-import { access, readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import {
+	access,
+	chmod,
+	readFile,
+	rename,
+	stat,
+	writeFile,
+} from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 
 let cachedHistory: string[] | null = null;
 let lastReadTime = 0;
@@ -120,4 +128,118 @@ export async function getSuggestions(
 	}
 
 	return results;
+}
+
+function encodeMetafied(text: string): Buffer {
+	const src = Buffer.from(text, "utf-8");
+	const out: number[] = [];
+	for (let i = 0; i < src.length; i++) {
+		const b = src[i];
+		if (b === META_MARKER) {
+			out.push(META_MARKER, b ^ 0x20);
+		} else {
+			out.push(b);
+		}
+	}
+	return Buffer.from(out);
+}
+
+function filterZshLines(lines: string[], commandToDelete: string): string[] {
+	const filtered: string[] = [];
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		const match = line.match(/^:\s*\d+:\d+;(.+)$/);
+		const cmd = match ? match[1] : null;
+
+		if (cmd !== null) {
+			// Collect continuation lines (ending with \)
+			let fullCmd = cmd;
+			let blockLen = 1;
+			while (fullCmd.endsWith("\\") && i + blockLen < lines.length) {
+				fullCmd = fullCmd.slice(0, -1) + lines[i + blockLen];
+				blockLen++;
+			}
+			if (fullCmd.trim() === commandToDelete.trim()) {
+				i += blockLen;
+				continue;
+			}
+		}
+		filtered.push(line);
+		i++;
+	}
+	return filtered;
+}
+
+function filterBashLines(lines: string[], commandToDelete: string): string[] {
+	return lines.filter((line) => line.trim() !== commandToDelete.trim());
+}
+
+async function atomicWriteFile(
+	filePath: string,
+	content: Buffer,
+): Promise<void> {
+	const tmp = join(
+		tmpdir(),
+		`superset-hist-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
+	await writeFile(tmp, content, { mode: 0o600 });
+	try {
+		const orig = await stat(filePath);
+		await chmod(tmp, orig.mode);
+	} catch {
+		// keep default 0o600
+	}
+	await rename(tmp, filePath);
+}
+
+export async function deleteHistoryEntry(command: string): Promise<void> {
+	const home = homedir();
+
+	// Try zsh first
+	const zshPath = `${home}/.zsh_history`;
+	try {
+		await access(zshPath, constants.R_OK | constants.W_OK);
+		const buffer = await readFile(zshPath);
+		const isMetafiedFile = buffer.includes(META_MARKER);
+		const content = isMetafiedFile
+			? decodeMetafied(buffer)
+			: buffer.toString("utf-8");
+
+		const lines = content.split("\n");
+		const filtered = filterZshLines(lines, command);
+		if (filtered.length === lines.length) {
+			// Nothing deleted
+			cachedHistory = null;
+			return;
+		}
+
+		const newContent = filtered.join("\n");
+		const newBuffer = isMetafiedFile
+			? encodeMetafied(newContent)
+			: Buffer.from(newContent, "utf-8");
+		await atomicWriteFile(zshPath, newBuffer);
+		cachedHistory = null;
+		return;
+	} catch {
+		// zsh not available or not writable
+	}
+
+	// Fall back to bash
+	const bashPath = `${home}/.bash_history`;
+	try {
+		await access(bashPath, constants.R_OK | constants.W_OK);
+		const content = await readFile(bashPath, "utf-8");
+		const lines = content.split("\n");
+		const filtered = filterBashLines(lines, command);
+		if (filtered.length < lines.length) {
+			await atomicWriteFile(
+				bashPath,
+				Buffer.from(filtered.join("\n"), "utf-8"),
+			);
+		}
+		cachedHistory = null;
+	} catch {
+		// bash not available
+	}
 }

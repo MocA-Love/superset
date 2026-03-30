@@ -426,6 +426,13 @@ export const createTerminalRouter = () => {
 				return getSuggestions(input.prefix, input.offset ?? 0);
 			}),
 
+		deleteHistorySuggestion: publicProcedure
+			.input(z.object({ command: z.string().min(1) }))
+			.mutation(async ({ input }) => {
+				const { deleteHistoryEntry } = await import("main/lib/shell-history");
+				await deleteHistoryEntry(input.command);
+			}),
+
 		getSession: publicProcedure
 			.input(z.string())
 			.query(async ({ input: paneId }) => {
