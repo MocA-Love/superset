@@ -36,8 +36,8 @@ const workspaceDependencies = Object.keys(dependencies).filter((dependency) =>
 // Sentry plugin for uploading sourcemaps (only in CI with auth token)
 const sentryPlugin = process.env.SENTRY_AUTH_TOKEN
 	? sentryVitePlugin({
-			org: "superset-sh",
-			project: "desktop",
+			org: "maguro-bot-corp",
+			project: "electron",
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			release: { name: version },
 		})
