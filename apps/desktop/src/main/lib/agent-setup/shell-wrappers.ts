@@ -190,11 +190,17 @@ ${SUPERSET_ENV_SAVE}
 _superset_home="\${SUPERSET_ORIG_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zshrc" ]] && source "$_superset_home/.zshrc"
-# Disable zsh-autosuggestions to avoid conflict with Superset's built-in suggestions
-if (( $+functions[_zsh_autosuggest_start] )) || [[ -n "$ZSH_AUTOSUGGEST_STRATEGY" ]]; then
-  ZSH_AUTOSUGGEST_STRATEGY=()
-fi
 ${SUPERSET_ENV_RESTORE}
+# Disable zsh-autosuggestions to avoid conflict with Superset's built-in
+# terminal suggestions. Only affects this terminal session; the user's
+# .zshrc is not modified.
+if [[ -n "$SUPERSET_DISABLE_ZSH_AUTOSUGGEST" ]] && (( $+functions[_zsh_autosuggest_start] )); then
+  unset ZSH_AUTOSUGGEST_STRATEGY
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=0"
+  _zsh_autosuggest_clear() { :; }
+  _zsh_autosuggest_suggest() { :; }
+  _zsh_autosuggest_fetch() { :; }
+fi
 ${buildPathPrependFunction(paths.BIN_DIR)}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
 rehash 2>/dev/null || true

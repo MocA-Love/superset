@@ -473,6 +473,7 @@ export function buildTerminalEnv(params: {
 		SUPERSET_TAB_ID: tabId,
 		SUPERSET_WORKSPACE_ID: workspaceId,
 		SUPERSET_WORKSPACE_NAME: workspaceName || "",
+		SUPERSET_DISABLE_ZSH_AUTOSUGGEST: "1",
 		SUPERSET_WORKSPACE_PATH: workspacePath || "",
 		SUPERSET_ROOT_PATH: rootPath || "",
 		SUPERSET_PORT: String(env.DESKTOP_NOTIFICATIONS_PORT),
