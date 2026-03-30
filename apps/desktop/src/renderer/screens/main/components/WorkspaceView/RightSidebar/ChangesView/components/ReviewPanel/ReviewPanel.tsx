@@ -309,14 +309,14 @@ export function ReviewPanel({
 
 					<div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
 						{comment.url ? (
-							<a
-								href={comment.url}
+							<button
+								type="button"
 								className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 								aria-label="Open comment on GitHub"
 								onClick={(e) => handleOpenUrl(comment.url as string, e)}
 							>
 								<LuArrowUpRight className="size-3" />
-							</a>
+							</button>
 						) : null}
 						<button
 							type="button"
@@ -342,10 +342,10 @@ export function ReviewPanel({
 	return (
 		<div className="flex h-full min-h-0 flex-col overflow-y-auto">
 			<div className="px-2 py-2 space-y-1.5">
-				<a
-					href={pr.url}
-					className="group flex items-center gap-1.5 cursor-pointer"
-					onClick={(e) => handleOpenUrl(pr.url, e)}
+				<button
+					type="button"
+					className="group flex w-full items-center gap-1.5 cursor-pointer text-left"
+					onClick={(e) => pr.url && handleOpenUrl(pr.url, e)}
 				>
 					<PRIcon state={pr.state} className="size-4 shrink-0" />
 					<span
@@ -355,7 +355,7 @@ export function ReviewPanel({
 						{pr.title}
 					</span>
 					<LuArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100" />
-				</a>
+				</button>
 				<div className="flex items-center gap-1.5">
 					<span
 						className={cn(
