@@ -7,6 +7,7 @@ import {
 import { LinkBehaviorSetting } from "./components/LinkBehaviorSetting";
 import { PresetsSection } from "./components/PresetsSection";
 import { SessionsSection } from "./components/SessionsSection";
+import { SuggestionsSetting } from "./components/SuggestionsSetting";
 
 interface TerminalSettingsProps {
 	visibleItems?: SettingItemId[] | null;
@@ -52,6 +53,10 @@ export function TerminalSettings({
 		SETTING_ITEM_ID.TERMINAL_QUICK_ADD,
 		visibleItems,
 	);
+	const showSuggestions = isItemVisible(
+		SETTING_ITEM_ID.TERMINAL_SUGGESTIONS,
+		visibleItems,
+	);
 	const showLinkBehavior = isItemVisible(
 		SETTING_ITEM_ID.TERMINAL_LINK_BEHAVIOR,
 		visibleItems,
@@ -82,6 +87,7 @@ export function TerminalSettings({
 						onPendingCreateProjectIdChange={onPendingCreateProjectIdChange}
 					/>
 				)}
+				{showSuggestions && <SuggestionsSetting key="suggestions" />}
 				{showLinkBehavior && <LinkBehaviorSetting key="link-behavior" />}
 				{showSessions && <SessionsSection key="sessions" />}
 			</SectionList>

@@ -42,3 +42,8 @@ export type {
 	UseTerminalStreamReturn,
 } from "./useTerminalStream";
 export { useTerminalStream } from "./useTerminalStream";
+export type {
+	UseTerminalSuggestionOptions,
+	UseTerminalSuggestionReturn,
+} from "./useTerminalSuggestion";
+export { useTerminalSuggestion } from "./useTerminalSuggestion";

@@ -2,11 +2,12 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTerminalCallbacksStore } from "renderer/stores/tabs/terminal-callbacks";
+import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestions";
 import { useTerminalTheme } from "renderer/stores/theme";
 import { SessionKilledOverlay } from "./components";
 import {
@@ -25,9 +26,11 @@ import {
 	useTerminalRefs,
 	useTerminalRestore,
 	useTerminalStream,
+	useTerminalSuggestion,
 } from "./hooks";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalSearch } from "./TerminalSearch";
+import { TerminalSuggestion } from "./TerminalSuggestion";
 import type {
 	TerminalExitReason,
 	TerminalProps,
@@ -315,6 +318,33 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		isFocused,
 		xtermRef,
 	});
+
+	// Shell history suggestions
+	const suggestionsEnabled = useTerminalSuggestionsStore((s) => s.enabled);
+	const handleSuggestionWrite = useCallback(
+		(data: string) => {
+			if (!isExitedRef.current) {
+				writeRef.current({ paneId, data });
+			}
+		},
+		[paneId, writeRef],
+	);
+	const {
+		displaySuggestions,
+		selectedIndex,
+		prefix: suggestionPrefix,
+		activeSuggestionRef,
+	} = useTerminalSuggestion({
+		commandBufferRef,
+		enabled:
+			suggestionsEnabled &&
+			!isRestoredMode &&
+			!connectionError &&
+			!exitStatus &&
+			!isAlternateScreenRef.current,
+		onAcceptWrite: handleSuggestionWrite,
+	});
+
 	useEffect(() => {
 		if (!isRestoredMode) return;
 		handleStartShell();
@@ -370,6 +400,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		registerPasteCallbackRef,
 		unregisterPasteCallbackRef,
 		defaultRestartCommandRef,
+		activeSuggestionRef,
 	});
 
 	const registerRestartCallback = useTerminalCallbacksStore(
@@ -467,6 +498,14 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 			<div className="h-full w-full p-2">
 				<div ref={terminalRef} className="h-full w-full" />
 			</div>
+			{xtermInstance && displaySuggestions.length > 0 && (
+				<TerminalSuggestion
+					xterm={xtermInstance}
+					suggestions={displaySuggestions}
+					selectedIndex={selectedIndex}
+					prefix={suggestionPrefix}
+				/>
+			)}
 		</div>
 	);
 };

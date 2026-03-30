@@ -305,12 +305,24 @@ export function createTerminalInstance(
 	};
 }
 
+export interface ActiveSuggestionHandle {
+	/** Remaining text to append. null when "current input" row is selected. */
+	suffix: string | null;
+	onAccept: () => void;
+	onDismiss: () => void;
+	selectNext?: () => void;
+	selectPrev?: () => void;
+	hasMultiple?: boolean;
+}
+
 export interface KeyboardHandlerOptions {
 	/** Callback for Shift+Enter (sends ESC+CR to avoid \ appearing in Claude Code while keeping line continuation behavior) */
 	onShiftEnter?: () => void;
 	/** Callback for the configured clear terminal shortcut */
 	onClear?: () => void;
 	onWrite?: (data: string) => void;
+	/** Ref to active suggestion for right-arrow acceptance */
+	activeSuggestionRef?: { current: ActiveSuggestionHandle | null };
 }
 
 export interface PasteHandlerOptions {
@@ -532,6 +544,51 @@ export function setupKeyboardHandler(
 	const isWindows = platform.includes("win");
 
 	const handler = (event: KeyboardEvent): boolean => {
+		const noModifiers =
+			!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+
+		// Right arrow: accept selected suggestion
+		if (event.key === "ArrowRight" && noModifiers && event.type === "keydown") {
+			const suggestion = options.activeSuggestionRef?.current;
+			if (suggestion?.suffix) {
+				event.preventDefault();
+				suggestion.onAccept();
+				return false;
+			}
+		}
+
+		// Enter: dismiss suggestions, let Enter pass through to shell
+		if (event.key === "Enter" && noModifiers && event.type === "keydown") {
+			options.activeSuggestionRef?.current?.onDismiss();
+		}
+
+		// Up/Down: navigate suggestion list when active
+		if (event.key === "ArrowDown" && noModifiers && event.type === "keydown") {
+			const suggestion = options.activeSuggestionRef?.current;
+			if (suggestion?.hasMultiple) {
+				event.preventDefault();
+				suggestion.selectNext?.();
+				return false;
+			}
+		}
+
+		if (event.key === "ArrowUp" && noModifiers && event.type === "keydown") {
+			const suggestion = options.activeSuggestionRef?.current;
+			if (suggestion?.hasMultiple) {
+				event.preventDefault();
+				suggestion.selectPrev?.();
+				return false;
+			}
+		}
+
+		// Dismiss suggestion on Escape or left arrow
+		if (
+			noModifiers &&
+			(event.key === "ArrowLeft" || event.key === "Escape")
+		) {
+			options.activeSuggestionRef?.current?.onDismiss();
+		}
+
 		const isShiftEnter =
 			event.key === "Enter" &&
 			event.shiftKey &&

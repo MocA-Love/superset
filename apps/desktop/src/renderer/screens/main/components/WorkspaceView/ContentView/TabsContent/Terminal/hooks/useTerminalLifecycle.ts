@@ -12,6 +12,7 @@ import { scheduleTerminalAttach } from "../attach-scheduler";
 import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
 import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
 import {
+	type ActiveSuggestionHandle,
 	createTerminalInstance,
 	setupClickToMoveCursor,
 	setupCopyHandler,
@@ -146,6 +147,7 @@ export interface UseTerminalLifecycleOptions {
 	>;
 	unregisterPasteCallbackRef: MutableRefObject<UnregisterCallback>;
 	defaultRestartCommandRef: MutableRefObject<string | undefined>;
+	activeSuggestionRef: MutableRefObject<ActiveSuggestionHandle | null>;
 }
 
 export interface UseTerminalLifecycleReturn {
@@ -207,6 +209,7 @@ export function useTerminalLifecycle({
 	registerPasteCallbackRef,
 	unregisterPasteCallbackRef,
 	defaultRestartCommandRef,
+	activeSuggestionRef,
 }: UseTerminalLifecycleOptions): UseTerminalLifecycleReturn {
 	const [xtermInstance, setXtermInstance] = useState<XTerm | null>(null);
 	const restartTerminalRef = useRef<
@@ -701,6 +704,7 @@ export function useTerminalLifecycle({
 			onShiftEnter: () => handleWrite("\x1b\r"),
 			onClear: handleClear,
 			onWrite: handleWrite,
+			activeSuggestionRef,
 		});
 		const cleanupClickToMove = setupClickToMoveCursor(xterm, {
 			onWrite: handleWrite,

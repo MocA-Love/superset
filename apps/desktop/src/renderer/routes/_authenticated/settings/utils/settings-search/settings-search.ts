@@ -38,6 +38,7 @@ export const SETTING_ITEM_ID = {
 	TERMINAL_PRESETS: "terminal-presets",
 	TERMINAL_QUICK_ADD: "terminal-quick-add",
 	TERMINAL_SESSIONS: "terminal-sessions",
+	TERMINAL_SUGGESTIONS: "terminal-suggestions",
 	TERMINAL_LINK_BEHAVIOR: "terminal-link-behavior",
 
 	MODELS_ANTHROPIC: "models-anthropic",
@@ -597,6 +598,22 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"stop",
 			"manage",
 			"pty",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.TERMINAL_SUGGESTIONS,
+		section: "terminal",
+		title: "Shell History Suggestions",
+		description: "Show command suggestions from shell history",
+		keywords: [
+			"terminal",
+			"suggest",
+			"suggestion",
+			"autocomplete",
+			"history",
+			"shell",
+			"command",
+			"dropdown",
 		],
 	},
 	{
