@@ -7,8 +7,8 @@ import {
 	stat,
 	writeFile,
 } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 let cachedHistory: string[] | null = null;
 let lastReadTime = 0;
@@ -135,7 +135,8 @@ function encodeMetafied(text: string): Buffer {
 	const out: number[] = [];
 	for (let i = 0; i < src.length; i++) {
 		const b = src[i];
-		if (b === META_MARKER) {
+		// zsh encodes any byte with high bit set (>= 0x80)
+		if (b >= 0x80) {
 			out.push(META_MARKER, b ^ 0x20);
 		} else {
 			out.push(b);
@@ -180,8 +181,8 @@ async function atomicWriteFile(
 	content: Buffer,
 ): Promise<void> {
 	const tmp = join(
-		tmpdir(),
-		`superset-hist-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		dirname(filePath),
+		`.superset-hist-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	);
 	await writeFile(tmp, content, { mode: 0o600 });
 	try {
@@ -221,8 +222,11 @@ export async function deleteHistoryEntry(command: string): Promise<void> {
 		await atomicWriteFile(zshPath, newBuffer);
 		cachedHistory = null;
 		return;
-	} catch {
-		// zsh not available or not writable
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code !== "ENOENT" && code !== "EACCES") {
+			console.warn("[shell-history] Failed to delete from zsh history:", err);
+		}
 	}
 
 	// Fall back to bash
@@ -239,7 +243,10 @@ export async function deleteHistoryEntry(command: string): Promise<void> {
 			);
 		}
 		cachedHistory = null;
-	} catch {
-		// bash not available
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code !== "ENOENT" && code !== "EACCES") {
+			console.warn("[shell-history] Failed to delete from bash history:", err);
+		}
 	}
 }

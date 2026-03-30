@@ -169,6 +169,7 @@ export function TerminalSuggestion({
 							<button
 								type="button"
 								onClick={() => onDelete(cmd)}
+								aria-label="Delete from history"
 								className="opacity-0 group-hover/item:opacity-100"
 								style={{
 									background: "none",
