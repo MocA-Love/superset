@@ -492,6 +492,7 @@ export function useTerminalLifecycle({
 					useTabsStore.getState().setPaneStatus(paneId, "idle");
 				}
 			} else if (
+				!isAlternateScreenRef.current &&
 				domEvent.key.length === 1 &&
 				!domEvent.ctrlKey &&
 				!domEvent.metaKey
@@ -740,7 +741,9 @@ export function useTerminalLifecycle({
 		);
 		const cleanupPaste = setupPasteHandler(xterm, {
 			onPaste: (text) => {
-				commandBufferRef.current += text;
+				if (!isAlternateScreenRef.current) {
+					commandBufferRef.current += text;
+				}
 			},
 			onWrite: handleWrite,
 			isBracketedPasteEnabled: () => isBracketedPasteRef.current,
