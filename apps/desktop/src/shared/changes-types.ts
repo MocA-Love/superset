@@ -16,7 +16,8 @@ export type ChangeCategory =
 	| "against-base"
 	| "committed"
 	| "staged"
-	| "unstaged";
+	| "unstaged"
+	| "conflicted";
 
 /** A changed file entry */
 export interface ChangedFile {
@@ -46,6 +47,7 @@ export interface GitChangesStatus {
 	staged: ChangedFile[];
 	unstaged: ChangedFile[];
 	untracked: ChangedFile[];
+	conflicted: ChangedFile[];
 	ahead: number; // Commits ahead of default branch
 	behind: number; // Commits behind default branch
 	// Tracking branch status (for push/pull)

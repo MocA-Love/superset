@@ -526,13 +526,15 @@ export function ChangesView({
 	const stagedFiles = status?.staged ?? [];
 	const unstagedFiles = status?.unstaged ?? [];
 	const untrackedFiles = status?.untracked ?? [];
+	const conflictedFiles = status?.conflicted ?? [];
 
 	const hasChanges =
 		againstBaseFiles.length > 0 ||
 		commits.length > 0 ||
 		stagedFiles.length > 0 ||
 		unstagedFiles.length > 0 ||
-		untrackedFiles.length > 0;
+		untrackedFiles.length > 0 ||
+		conflictedFiles.length > 0;
 
 	const commitsWithFiles = commits.map((commit) => ({
 		...commit,
@@ -566,7 +568,14 @@ export function ChangesView({
 									selectedFileState.absolutePath,
 								),
 							)
-						: selectedFileState.category === "committed";
+						: selectedFileState.category === "conflicted"
+							? conflictedFiles.some((file) =>
+									pathsMatch(
+										toAbsoluteWorkspacePath(worktreePath, file.path),
+										selectedFileState.absolutePath,
+									),
+								)
+							: selectedFileState.category === "committed";
 
 		if (!existsInSelection) {
 			selectFile(workspaceId, null, null);
@@ -574,6 +583,7 @@ export function ChangesView({
 	}, [
 		againstBaseFiles,
 		combinedUnstaged,
+		conflictedFiles,
 		selectFile,
 		selectedFileState,
 		stagedFiles,
@@ -612,6 +622,18 @@ export function ChangesView({
 		worktreePath: worktreePath ?? "",
 		projectId,
 		isExpandedView,
+		conflictedFiles,
+		onConflictedFileSelect: (file) => {
+			if (!workspaceId || !worktreePath) return;
+			selectFile(
+				workspaceId,
+				toAbsoluteWorkspacePath(worktreePath, file.path),
+				file,
+				"conflicted",
+				null,
+			);
+			onFileOpen?.(file, "conflicted");
+		},
 		againstBaseFiles,
 		onAgainstBaseFileSelect: (file) => handleFileSelect(file, "against-base"),
 		commitsWithFiles,

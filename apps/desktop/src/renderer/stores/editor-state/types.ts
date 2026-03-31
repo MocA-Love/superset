@@ -66,7 +66,7 @@ export interface FileViewerDocumentIdentity {
 export function resolveEditorDocumentScope(
 	diffCategory?: ChangeCategory,
 ): "working" | "against-base" | "committed" | "staged" {
-	if (!diffCategory || diffCategory === "unstaged") {
+	if (!diffCategory || diffCategory === "unstaged" || diffCategory === "conflicted") {
 		return "working";
 	}
 

@@ -43,6 +43,8 @@ export const resolveFileViewerMode = ({
 	if (viewMode) return viewMode;
 	// Images always default to rendered (no meaningful diff for binary files)
 	if (isImageFile(filePath)) return "rendered";
+	// Conflicted files show the inline conflict resolver
+	if (diffCategory === "conflicted") return "conflict";
 	// New files have no previous version — show raw/rendered instead of an all-green diff
 	if (diffCategory && fileStatus && isNewFile(fileStatus)) {
 		if (hasRenderedPreview(filePath)) return "rendered";

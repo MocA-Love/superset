@@ -60,6 +60,14 @@ export function useOrderedSections({
 	);
 
 	const sectionDefinitions = {
+		conflicted: {
+			id: "conflicted" as const,
+			title: "Conflicts",
+			count: 0,
+			isExpanded: expandedSections.conflicted,
+			onToggle: () => toggleSection("conflicted"),
+			content: null,
+		},
 		"against-base": {
 			id: "against-base",
 			title: `Against ${baseBranch}`,

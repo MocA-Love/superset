@@ -15,6 +15,7 @@ const emptyFile = (): ChangedFile => ({
 
 const emptyArgs = {
 	sectionOrder: [
+		"conflicted",
 		"against-base",
 		"committed",
 		"staged",
@@ -22,6 +23,7 @@ const emptyArgs = {
 	] satisfies ChangeCategory[],
 	effectiveBaseBranch: "main",
 	expandedSections: {
+		conflicted: true,
 		"against-base": true,
 		committed: true,
 		staged: true,
@@ -34,6 +36,8 @@ const emptyArgs = {
 	worktreePath: "/tmp/repo",
 	projectId: undefined,
 	isExpandedView: false,
+	conflictedFiles: [] as ChangedFile[],
+	onConflictedFileSelect: () => {},
 	againstBaseFiles: [] as ChangedFile[],
 	onAgainstBaseFileSelect: () => {},
 	commitsWithFiles: [] as CommitInfo[],

@@ -91,7 +91,7 @@ export function acknowledgedStatus(status: PaneStatus | undefined): PaneStatus {
 /**
  * File viewer display modes
  */
-export type FileViewerMode = "rendered" | "raw" | "diff";
+export type FileViewerMode = "rendered" | "raw" | "diff" | "conflict";
 
 /**
  * Diff layout options for file viewer

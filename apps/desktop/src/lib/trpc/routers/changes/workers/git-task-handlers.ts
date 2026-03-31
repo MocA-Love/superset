@@ -222,6 +222,7 @@ async function computeStatus({
 		staged: parsed.staged,
 		unstaged: parsed.unstaged,
 		untracked: parsed.untracked,
+		conflicted: parsed.conflicted,
 		ahead: branchComparison.ahead,
 		behind: branchComparison.behind,
 		pushCount: trackingStatus.pushCount,
