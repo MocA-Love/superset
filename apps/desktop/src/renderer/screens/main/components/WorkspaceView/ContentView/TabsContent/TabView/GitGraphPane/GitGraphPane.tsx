@@ -1,6 +1,6 @@
 import type { MosaicBranch } from "react-mosaic-component";
-import { useTabsStore } from "renderer/stores/tabs/store";
 import { GitGraphView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/GitGraphView";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 
 interface GitGraphPaneProps {
@@ -43,7 +43,9 @@ export function GitGraphPane({
 			onPopOut={onPopOut}
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center px-2">
-					<span className="truncate text-sm text-muted-foreground">Git Graph</span>
+					<span className="truncate text-sm text-muted-foreground">
+						Git Graph
+					</span>
 					<PaneToolbarActions
 						splitOrientation={handlers.splitOrientation}
 						onSplitPane={handlers.onSplitPane}

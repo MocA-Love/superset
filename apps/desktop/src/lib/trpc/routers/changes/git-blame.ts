@@ -60,6 +60,7 @@ function parseGitBlamePorcelain(output: string): BlameEntry[] {
 			while (i < lines.length && !lines[i].startsWith("\t")) {
 				i++;
 			}
+			// biome-ignore lint/style/noNonNullAssertion: commitHash is guaranteed to exist in cache at this point
 			const cached = commitCache.get(commitHash)!;
 			author = cached.author;
 			timestamp = cached.timestamp;

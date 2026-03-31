@@ -35,10 +35,21 @@ const suppressLineDeco = Decoration.line({ class: "cm-suppress-inline-diff" });
  * on the opposite side.
  */
 function makeSuppressPlugin(
-	side: "a" | "b",
-	isPureChange: (change: { fromA: number; toA: number; fromB: number; toB: number }) => boolean,
-	absFrom: (chunk: { fromA: number; fromB: number }, change: { fromA: number; fromB: number }) => number,
-	absTo: (chunk: { fromA: number; fromB: number }, change: { toA: number; toB: number }) => number,
+	_side: "a" | "b",
+	isPureChange: (change: {
+		fromA: number;
+		toA: number;
+		fromB: number;
+		toB: number;
+	}) => boolean,
+	absFrom: (
+		chunk: { fromA: number; fromB: number },
+		change: { fromA: number; fromB: number },
+	) => number,
+	absTo: (
+		chunk: { fromA: number; fromB: number },
+		change: { toA: number; toB: number },
+	) => number,
 ) {
 	return ViewPlugin.fromClass(
 		class {
@@ -81,7 +92,9 @@ function makeSuppressPlugin(
 				if (lineFroms.size === 0) return Decoration.none;
 
 				const sorted = [...lineFroms].sort((a, b) => a - b);
-				return Decoration.set(sorted.map((from) => suppressLineDeco.range(from)));
+				return Decoration.set(
+					sorted.map((from) => suppressLineDeco.range(from)),
+				);
 			}
 		},
 		{ decorations: (v) => v.decorations },

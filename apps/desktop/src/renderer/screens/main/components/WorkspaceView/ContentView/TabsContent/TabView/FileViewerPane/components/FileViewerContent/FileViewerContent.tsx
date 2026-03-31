@@ -21,11 +21,11 @@ import { isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
 import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
+import { ConflictViewer } from "../ConflictViewer";
 import { DiffViewerContextMenu } from "../DiffViewerContextMenu";
 import { FileEditorContextMenu } from "../FileEditorContextMenu";
 import { MarkdownSearch } from "../MarkdownSearch";
 import { SpreadsheetDiffViewer, SpreadsheetViewer } from "../SpreadsheetViewer";
-import { ConflictViewer } from "../ConflictViewer";
 import {
 	type DiffDomLocation,
 	mapDiffLocationToRawPosition,
@@ -175,6 +175,7 @@ export function FileViewerContent({
 	onMoveToTab,
 	onMoveToNewTab,
 	diffContainerRef,
+	// biome-ignore lint/correctness/noUnusedFunctionParameters: reserved for future use
 	diffSearch,
 	markdownContainerRef,
 	markdownSearch,
@@ -189,8 +190,7 @@ export function FileViewerContent({
 	});
 
 	const absoluteFilePath = useMemo(
-		() =>
-			worktreePath ? toAbsoluteWorkspacePath(worktreePath, filePath) : "",
+		() => (worktreePath ? toAbsoluteWorkspacePath(worktreePath, filePath) : ""),
 		[worktreePath, filePath],
 	);
 

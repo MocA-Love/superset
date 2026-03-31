@@ -4,21 +4,27 @@ import {
 	Decoration,
 	type DecorationSet,
 	EditorView,
-	ViewPlugin,
-	type ViewUpdate,
 	keymap,
 	lineNumbers,
+	ViewPlugin,
+	type ViewUpdate,
 } from "@codemirror/view";
 import { useCallback, useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/loadLanguageSupport";
 import { createCodeMirrorTheme } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createCodeMirrorTheme";
+import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/loadLanguageSupport";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
 import { detectLanguage } from "shared/detect-language";
-import { ConflictActionWidget, type ConflictResolution } from "./ConflictActionWidget";
+import {
+	ConflictActionWidget,
+	type ConflictResolution,
+} from "./ConflictActionWidget";
 import { conflictTheme } from "./conflict-theme";
-import { parseConflictMarkers, type ConflictRegion } from "./parseConflictMarkers";
+import {
+	type ConflictRegion,
+	parseConflictMarkers,
+} from "./parseConflictMarkers";
 
 interface ConflictViewerProps {
 	workspaceId: string;
@@ -88,7 +94,9 @@ function buildConflictDecorations(
 		}
 	}
 
-	decorations.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
+	decorations.sort(
+		(a, b) => a.from - b.from || a.value.startSide - b.value.startSide,
+	);
 	return Decoration.set(decorations, true);
 }
 
@@ -137,7 +145,9 @@ export function ConflictViewer({
 	const regionsRef = useRef<ConflictRegion[]>([]);
 	const activeTheme = useResolvedTheme();
 	// Use refs for callbacks to avoid re-creating the editor on every render
-	const handleResolveRef = useRef<(regionIndex: number, resolution: ConflictResolution) => void>(() => {});
+	const handleResolveRef = useRef<
+		(regionIndex: number, resolution: ConflictResolution) => void
+	>(() => {});
 	const handleSaveRef = useRef<() => void>(() => {});
 
 	const {
@@ -153,7 +163,9 @@ export function ConflictViewer({
 			maxBytes: MAX_CONFLICT_FILE_SIZE,
 		},
 		{
-			enabled: Boolean(workspaceId && absoluteFilePath && absoluteFilePath !== ""),
+			enabled: Boolean(
+				workspaceId && absoluteFilePath && absoluteFilePath !== "",
+			),
 			refetchOnWindowFocus: false,
 			retry: false,
 		},
@@ -285,7 +297,7 @@ export function ConflictViewer({
 			view.destroy();
 			editorRef.current = null;
 		};
-	// eslint-disable-next-line react-hooks/exhaustive-deps
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [absoluteFilePath, activeTheme]);
 
 	// Load file content into editor when fetched

@@ -21,9 +21,21 @@ export class ConflictActionWidget extends WidgetType {
 		container.className = "cm-conflict-action-widget";
 		container.setAttribute("aria-label", "Conflict resolution options");
 
-		const actions: { label: string; resolution: ConflictResolution; extraClass?: string }[] = [
-			{ label: "Accept Current Change", resolution: "current", extraClass: "cm-conflict-action-btn-current" },
-			{ label: "Accept Incoming Change", resolution: "incoming", extraClass: "cm-conflict-action-btn-incoming" },
+		const actions: {
+			label: string;
+			resolution: ConflictResolution;
+			extraClass?: string;
+		}[] = [
+			{
+				label: "Accept Current Change",
+				resolution: "current",
+				extraClass: "cm-conflict-action-btn-current",
+			},
+			{
+				label: "Accept Incoming Change",
+				resolution: "incoming",
+				extraClass: "cm-conflict-action-btn-incoming",
+			},
 			{ label: "Accept Both Changes", resolution: "both" },
 		];
 

@@ -30,6 +30,7 @@ export function TopBar() {
 	);
 	const isOnline = useOnlineStatus();
 	const navigate = useNavigate();
+	// biome-ignore lint/suspicious/noExplicitAny: route registered after dev server starts
 	const isDiffTestOpen = !!matchRoute({ to: "/diff-test" as any });
 	// Default to Mac layout while loading to avoid overlap with traffic lights
 	const isMac = platform === undefined || platform === "darwin";
@@ -45,6 +46,7 @@ export function TopBar() {
 				<SidebarToggle />
 				<button
 					type="button"
+					// biome-ignore lint/suspicious/noExplicitAny: route registered after dev server starts
 					onClick={() => navigate({ to: "/diff-test" as any })}
 					className={`no-drag flex size-8 items-center justify-center rounded-md transition-colors ${isDiffTestOpen ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"}`}
 					title="Diff Test"

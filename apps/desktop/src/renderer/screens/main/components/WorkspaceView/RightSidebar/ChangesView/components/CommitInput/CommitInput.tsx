@@ -104,7 +104,6 @@ export function CommitInput({
 		onError: (error) => toast.error(`Fetch failed: ${error.message}`),
 	});
 
-
 	const isPending =
 		commitMutation.isPending ||
 		pushMutation.isPending ||

@@ -94,7 +94,7 @@ function showTooltip(entry: BlameEntry, anchor: HTMLElement) {
 	}
 
 	const shortHash = entry.commitHash.substring(0, 7);
-	const parentHash = entry.commitHash.substring(0, 6) + "0"; // approximate parent
+	const parentHash = `${entry.commitHash.substring(0, 6)}0`; // approximate parent
 	const timeAgo = formatTimeAgo(entry.timestamp);
 	const fullDate = formatFullDate(entry.timestamp);
 	const initials = getInitials(entry.author);
@@ -193,7 +193,11 @@ class BlameWidget extends WidgetType {
 		};
 
 		// destroy() からクリーンアップできるよう DOM に持たせる
-		(span as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> | null })._dwellTimer = null;
+		(
+			span as HTMLElement & {
+				_dwellTimer?: ReturnType<typeof setTimeout> | null;
+			}
+		)._dwellTimer = null;
 
 		span.addEventListener("mouseenter", () => {
 			if (hasLeft) {
@@ -205,7 +209,11 @@ class BlameWidget extends WidgetType {
 					dwellTimer = null;
 					showTooltip(this.entry, span);
 				}, 1000);
-				(span as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> | null })._dwellTimer = dwellTimer;
+				(
+					span as HTMLElement & {
+						_dwellTimer?: ReturnType<typeof setTimeout> | null;
+					}
+				)._dwellTimer = dwellTimer;
 			}
 		});
 		span.addEventListener("mouseleave", () => {
@@ -219,7 +227,9 @@ class BlameWidget extends WidgetType {
 
 	destroy(dom: HTMLElement): void {
 		// カーソルが別の行に移った際にタイマーをクリーンアップ
-		const timer = (dom as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> })._dwellTimer;
+		const timer = (
+			dom as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> }
+		)._dwellTimer;
 		if (timer !== null && timer !== undefined) clearTimeout(timer);
 	}
 
@@ -412,9 +422,7 @@ function injectBlameTooltipStyles() {
 export function createBlamePlugin(entries: BlameEntry[]): Extension {
 	injectBlameTooltipStyles();
 
-	const blameMap = new Map<number, BlameEntry>(
-		entries.map((e) => [e.line, e]),
-	);
+	const blameMap = new Map<number, BlameEntry>(entries.map((e) => [e.line, e]));
 
 	const plugin = ViewPlugin.fromClass(
 		class {

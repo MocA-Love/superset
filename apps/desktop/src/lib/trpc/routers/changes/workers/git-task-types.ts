@@ -1,4 +1,8 @@
-import type { ChangedFile, CommitGraphData, GitChangesStatus } from "shared/changes-types";
+import type {
+	ChangedFile,
+	CommitGraphData,
+	GitChangesStatus,
+} from "shared/changes-types";
 
 export interface GitTaskPayloadMap {
 	getStatus: {

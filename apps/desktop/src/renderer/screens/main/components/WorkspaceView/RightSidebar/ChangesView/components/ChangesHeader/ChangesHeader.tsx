@@ -28,7 +28,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
-import { type ButtonHTMLAttributes, forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ButtonHTMLAttributes,
+	forwardRef,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { LuChevronDown } from "react-icons/lu";
 import {
 	VscCheck,
@@ -68,7 +75,10 @@ interface ChangesHeaderProps {
 
 const BranchSelectorButton = forwardRef<
 	HTMLButtonElement,
-	{ label: string; disabled?: boolean } & ButtonHTMLAttributes<HTMLButtonElement>
+	{
+		label: string;
+		disabled?: boolean;
+	} & ButtonHTMLAttributes<HTMLButtonElement>
 >(({ label, disabled, ...props }, ref) => (
 	<button
 		ref={ref}
@@ -306,15 +316,21 @@ function CurrentBranchSelector({
 
 			<AlertDialog
 				open={pendingBranch !== null}
-				onOpenChange={(open) => { if (!open) setPendingBranch(null); }}
+				onOpenChange={(open) => {
+					if (!open) setPendingBranch(null);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>You have uncommitted changes</AlertDialogTitle>
 						<AlertDialogDescription>
-							Switching to <span className="font-mono font-medium">{pendingBranch}</span> may cause your uncommitted changes to be lost.
-							<br /><br />
-							If you want to keep your changes, please commit or stash them first.
+							Switching to{" "}
+							<span className="font-mono font-medium">{pendingBranch}</span> may
+							cause your uncommitted changes to be lost.
+							<br />
+							<br />
+							If you want to keep your changes, please commit or stash them
+							first.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -332,7 +348,13 @@ function CurrentBranchSelector({
 	);
 }
 
-function GitGraphButton({ isOpen, onToggle }: { isOpen: boolean; onToggle: () => void }) {
+function GitGraphButton({
+	isOpen,
+	onToggle,
+}: {
+	isOpen: boolean;
+	onToggle: () => void;
+}) {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>

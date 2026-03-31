@@ -44,7 +44,10 @@ function isConflicted(index: string, working: string): boolean {
 
 export function parseGitStatus(
 	status: StatusResult,
-): Pick<GitChangesStatus, "branch" | "staged" | "unstaged" | "untracked" | "conflicted"> {
+): Pick<
+	GitChangesStatus,
+	"branch" | "staged" | "unstaged" | "untracked" | "conflicted"
+> {
 	const staged: ChangedFile[] = [];
 	const unstaged: ChangedFile[] = [];
 	const untracked: ChangedFile[] = [];

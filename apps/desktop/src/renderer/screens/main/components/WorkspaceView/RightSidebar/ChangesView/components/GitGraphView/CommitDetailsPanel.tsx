@@ -50,7 +50,6 @@ function getStatusColor(status: ChangedFile["status"]): string {
 			return "text-red-500";
 		case "renamed":
 			return "text-sky-500";
-		case "modified":
 		default:
 			return "text-amber-500";
 	}
@@ -90,7 +89,13 @@ export function CommitDetailsPanel({
 
 	return (
 		<div className="border-t border-border/50 bg-muted/20 px-3 py-3 text-xs">
-			<div className={containerWidth >= 900 ? "grid gap-4 grid-cols-[minmax(0,1fr)_280px]" : "flex flex-col gap-4"}>
+			<div
+				className={
+					containerWidth >= 900
+						? "grid gap-4 grid-cols-[minmax(0,1fr)_280px]"
+						: "flex flex-col gap-4"
+				}
+			>
 				<div className="space-y-3">
 					<div className="space-y-2">
 						<MetadataRow
@@ -206,7 +211,10 @@ export function CommitDetailsPanel({
 								key={`${node.hash}:${file.path}`}
 								type="button"
 								onClick={() => {
-									const absolutePath = toAbsoluteWorkspacePath(worktreePath, file.path);
+									const absolutePath = toAbsoluteWorkspacePath(
+										worktreePath,
+										file.path,
+									);
 									addFileViewerPane(workspaceId, {
 										filePath: absolutePath,
 										diffCategory: "committed",

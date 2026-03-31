@@ -34,10 +34,10 @@ import {
 	createBrowserPane,
 	createBrowserTabWithPane,
 	createChatPane,
-	createGitGraphTabWithPane,
 	createChatTabWithPane,
 	createDevToolsPane,
 	createFileViewerPane,
+	createGitGraphTabWithPane,
 	createPane,
 	createTabWithPane,
 	equalizeSplitPercentages,
@@ -1666,7 +1666,10 @@ export const useTabsStore = create<TabsStore>()(
 				addGitGraphTab: (workspaceId: string, worktreePath: string) => {
 					const state = get();
 
-					const { tab, pane } = createGitGraphTabWithPane(workspaceId, worktreePath);
+					const { tab, pane } = createGitGraphTabWithPane(
+						workspaceId,
+						worktreePath,
+					);
 
 					const currentActiveId = state.activeTabIds[workspaceId];
 					const historyStack = state.tabHistoryStacks[workspaceId] || [];

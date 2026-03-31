@@ -22,7 +22,9 @@ export function DiffTestPage() {
 						</option>
 					))}
 				</select>
-				<span className="text-xs text-muted-foreground">{fixture.description}</span>
+				<span className="text-xs text-muted-foreground">
+					{fixture.description}
+				</span>
 			</div>
 
 			{/* Diff viewer */}
