@@ -259,6 +259,22 @@ export function ChangesView({
 	const [showDiscardUnstagedDialog, setShowDiscardUnstagedDialog] =
 		useState(false);
 	const [showDiscardStagedDialog, setShowDiscardStagedDialog] = useState(false);
+	const [commitMessage, setCommitMessage] = useState("");
+
+	const generateCommitMessageMutation =
+		electronTrpc.changes.generateCommitMessage.useMutation({
+			onSuccess: (data) => {
+				if (data.message) {
+					setCommitMessage(data.message);
+				} else {
+					toast.error(
+						"Failed to generate commit message. Check your AI provider settings.",
+					);
+				}
+			},
+			onError: (error) =>
+				toast.error(`Failed to generate commit message: ${error.message}`),
+		});
 	const activePullRequest = githubStatus?.pr ?? null;
 	const githubPRCommentsQueryPolicy = getGitHubPRCommentsQueryPolicy({
 		hasWorkspaceId: !!workspaceId,
@@ -770,6 +786,12 @@ export function ChangesView({
 								stashIncludeUntrackedMutation.isPending ||
 								stashPopMutation.isPending
 							}
+							onGenerateCommitMessage={() =>
+								generateCommitMessageMutation.mutate({ worktreePath })
+							}
+							isGeneratingCommitMessage={
+								generateCommitMessageMutation.isPending
+							}
 						/>
 					</div>
 					<div className="border-b border-border">
@@ -783,6 +805,8 @@ export function ChangesView({
 							canCreatePR={prActionState.canCreatePR}
 							shouldAutoCreatePRAfterPublish={shouldAutoCreatePR}
 							onRefresh={handleRefresh}
+							commitMessage={commitMessage}
+							onCommitMessageChange={setCommitMessage}
 						/>
 					</div>
 

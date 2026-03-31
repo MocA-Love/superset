@@ -19,7 +19,6 @@ import {
 	VscChevronDown,
 	VscLinkExternal,
 	VscRefresh,
-	VscSparkle,
 	VscSync,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -39,6 +38,8 @@ interface CommitInputProps {
 	canCreatePR: boolean;
 	shouldAutoCreatePRAfterPublish: boolean;
 	onRefresh: () => void;
+	commitMessage: string;
+	onCommitMessageChange: (message: string) => void;
 }
 
 export function CommitInput({
@@ -51,8 +52,9 @@ export function CommitInput({
 	canCreatePR,
 	shouldAutoCreatePRAfterPublish,
 	onRefresh,
+	commitMessage,
+	onCommitMessageChange: setCommitMessage,
 }: CommitInputProps) {
-	const [commitMessage, setCommitMessage] = useState("");
 	const [isOpen, setIsOpen] = useState(false);
 
 	const commitMutation = electronTrpc.changes.commit.useMutation({
@@ -102,20 +104,6 @@ export function CommitInput({
 		onError: (error) => toast.error(`Fetch failed: ${error.message}`),
 	});
 
-	const generateCommitMessageMutation =
-		electronTrpc.changes.generateCommitMessage.useMutation({
-			onSuccess: (data) => {
-				if (data.message) {
-					setCommitMessage(data.message);
-				} else {
-					toast.error(
-						"Failed to generate commit message. Check your AI provider settings.",
-					);
-				}
-			},
-			onError: (error) =>
-				toast.error(`Failed to generate commit message: ${error.message}`),
-		});
 
 	const isPending =
 		commitMutation.isPending ||
@@ -250,25 +238,6 @@ export function CommitInput({
 						}
 					}}
 				/>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground/50 transition-colors hover:text-muted-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-							disabled={generateCommitMessageMutation.isPending}
-							onClick={() =>
-								generateCommitMessageMutation.mutate({ worktreePath })
-							}
-						>
-							<VscSparkle
-								className={`size-3.5 ${generateCommitMessageMutation.isPending ? "animate-pulse" : ""}`}
-							/>
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="left">
-						Generate commit message with AI
-					</TooltipContent>
-				</Tooltip>
 			</div>
 			<ButtonGroup className="w-full">
 				<Tooltip>
