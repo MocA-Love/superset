@@ -134,7 +134,7 @@ export const createStatusRouter = () => {
 							maxCount: input.maxCount,
 						},
 						{
-							dedupeKey: `graph:${input.worktreePath}`,
+							dedupeKey: `graph:${input.worktreePath}:${input.maxCount ?? "default"}`,
 							strategy: "coalesce",
 							timeoutMs: 30_000,
 						},

@@ -43,7 +43,14 @@ const chatLaunchConfigSchema = z.object({
 const paneSchema = z.object({
 	id: z.string(),
 	tabId: z.string(),
-	type: z.enum(["terminal", "webview", "file-viewer", "chat", "devtools"]),
+	type: z.enum([
+		"terminal",
+		"webview",
+		"file-viewer",
+		"chat",
+		"devtools",
+		"git-graph",
+	]),
 	name: z.string(),
 	isNew: z.boolean().optional(),
 	status: z.enum(["idle", "working", "permission", "review"]).optional(),

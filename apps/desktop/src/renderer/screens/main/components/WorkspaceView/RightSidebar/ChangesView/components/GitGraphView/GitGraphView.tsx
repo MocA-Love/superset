@@ -137,10 +137,11 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 		const startX = clientX;
 
 		const handleMouseMove = (event: MouseEvent) => {
-			const nextWidth = Math.max(
-				MIN_COLUMN_WIDTHS[index],
-				startWidth + event.clientX - startX,
-			);
+			const minWidth =
+				MIN_COLUMN_WIDTHS[index] ??
+				MIN_COLUMN_WIDTHS[MIN_COLUMN_WIDTHS.length - 1] ??
+				60;
+			const nextWidth = Math.max(minWidth, startWidth + event.clientX - startX);
 
 			setColumnWidths((currentWidths) => {
 				if (currentWidths[index] === nextWidth) {

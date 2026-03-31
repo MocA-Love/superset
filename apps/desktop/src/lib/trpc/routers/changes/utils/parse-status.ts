@@ -29,11 +29,9 @@ function toChangedFile(
 }
 
 const CONFLICT_PAIRS = new Set([
-	"DD", // both deleted
-	"AU", // added by us
-	"UD", // deleted by them
-	"UA", // added by them
-	"DU", // deleted by us
+	// Only states that produce conflict markers in the file content.
+	// Non-marker states (DD, AU, UD, UA, DU) have no markers and are
+	// handled as unstaged changes via git add/rm instead.
 	"AA", // both added
 	"UU", // both modified
 ]);
