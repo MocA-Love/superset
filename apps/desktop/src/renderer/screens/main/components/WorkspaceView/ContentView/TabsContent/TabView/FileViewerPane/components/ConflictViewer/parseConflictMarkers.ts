@@ -41,7 +41,7 @@ export function parseConflictMarkers(content: string): ConflictRegion[] {
 				currentLines = [];
 				incomingLines = [];
 			}
-		} else if (line.startsWith("=======") && state === "current") {
+		} else if (line.trimEnd() === "=======" && state === "current") {
 			state = "incoming";
 			separatorLine = lineNumber;
 		} else if (line.startsWith(">>>>>>>") && state === "incoming") {

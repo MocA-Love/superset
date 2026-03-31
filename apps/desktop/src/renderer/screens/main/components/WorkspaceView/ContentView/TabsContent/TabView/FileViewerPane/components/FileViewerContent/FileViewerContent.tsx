@@ -28,6 +28,8 @@ import { MarkdownSearch } from "../MarkdownSearch";
 import { SpreadsheetDiffViewer, SpreadsheetViewer } from "../SpreadsheetViewer";
 import {
 	type DiffDomLocation,
+	getColumnFromDiffPoint,
+	getDiffLocationFromEvent,
 	mapDiffLocationToRawPosition,
 } from "./utils/diff-location";
 
@@ -377,6 +379,18 @@ export function FileViewerContent({
 						onClickCapture={(event) => {
 							if (hasActiveSelectionWithinElement(diffContainerRef.current)) {
 								event.stopPropagation();
+							}
+						}}
+						onContextMenuCapture={(event) => {
+							const nativeEvent = event.nativeEvent;
+							const location = getDiffLocationFromEvent(nativeEvent);
+							if (location) {
+								const column = getColumnFromDiffPoint({
+									lineElement: event.target as HTMLElement,
+									clientX: event.clientX,
+									clientY: event.clientY,
+								});
+								lastDiffLocationRef.current = { ...location, column };
 							}
 						}}
 					>

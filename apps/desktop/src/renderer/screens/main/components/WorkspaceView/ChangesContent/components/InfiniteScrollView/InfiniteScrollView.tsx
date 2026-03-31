@@ -129,11 +129,17 @@ export function InfiniteScrollView({
 		handleDiscard,
 	});
 
+	const sortedConflicted = useMemo(
+		() => sortFiles(status.conflicted, fileListViewMode),
+		[status.conflicted, fileListViewMode],
+	);
+
 	const hasChanges =
 		sortedAgainstBase.length > 0 ||
 		status.commits.length > 0 ||
 		sortedStaged.length > 0 ||
-		sortedUnstaged.length > 0;
+		sortedUnstaged.length > 0 ||
+		sortedConflicted.length > 0;
 	const orderedSections = useOrderedSections({
 		sectionOrder,
 		baseBranch,
@@ -147,6 +153,7 @@ export function InfiniteScrollView({
 		commits: status.commits,
 		stagedFiles: sortedStaged,
 		unstagedFiles: sortedUnstaged,
+		conflictedFiles: sortedConflicted,
 		onUnstageFile: (file) =>
 			unstageFileMutation.mutate({
 				worktreePath,

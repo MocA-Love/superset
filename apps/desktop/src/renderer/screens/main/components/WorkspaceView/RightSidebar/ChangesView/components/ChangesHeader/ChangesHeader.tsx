@@ -220,12 +220,18 @@ function CurrentBranchSelector({
 		},
 		onError: (error) => {
 			const msg = error.message ?? "";
-			if (
+			// Check for uncommitted changes conflict in multiple languages
+			// (git error messages vary by LANG environment variable)
+			const isUncommittedConflict =
 				msg.includes("overwritten") ||
 				msg.includes("conflict") ||
 				msg.includes("Please commit") ||
-				msg.includes("would be overwritten")
-			) {
+				msg.includes("would be overwritten") ||
+				// Japanese git messages
+				msg.includes("上書き") ||
+				msg.includes("コミット") ||
+				msg.includes("スタッシュ");
+			if (isUncommittedConflict) {
 				toast.error(
 					"Could not switch branch. Your uncommitted changes conflict with the target branch. Please commit or stash your changes and try again.",
 				);

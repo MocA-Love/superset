@@ -63,7 +63,7 @@ const ICON_COMMIT =
 const ICON_COPY =
 	'<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';
 
-const ICON_ARROW =
+const _ICON_ARROW =
 	'<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8.22 2.97a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.042-.018.75.75 0 0 1-.018-1.042l2.97-2.97H3.75a.75.75 0 0 1 0-1.5h7.44L8.22 4.03a.75.75 0 0 1 0-1.06Z"/></svg>';
 
 // Singleton tooltip element
@@ -94,7 +94,6 @@ function showTooltip(entry: BlameEntry, anchor: HTMLElement) {
 	}
 
 	const shortHash = entry.commitHash.substring(0, 7);
-	const parentHash = `${entry.commitHash.substring(0, 6)}0`; // approximate parent
 	const timeAgo = formatTimeAgo(entry.timestamp);
 	const fullDate = formatFullDate(entry.timestamp);
 	const initials = getInitials(entry.author);
@@ -102,43 +101,59 @@ function showTooltip(entry: BlameEntry, anchor: HTMLElement) {
 	const tooltip = document.createElement("div");
 	tooltip.className = "cm-blame-tooltip";
 
-	tooltip.innerHTML = `
-		<div class="cm-bt-header">
-			<div class="cm-bt-avatar">${initials}</div>
-			<div class="cm-bt-meta">
-				<span class="cm-bt-author">${entry.author}</span>
-				<span class="cm-bt-time">${timeAgo} (${fullDate})</span>
-			</div>
-		</div>
-		<div class="cm-bt-message">${entry.summary}</div>
-		<div class="cm-bt-hash-row">
-			<span class="cm-bt-icon">${ICON_COMMIT}</span>
-			<span class="cm-bt-hash">${shortHash}</span>
-			<button class="cm-bt-copy-btn" title="コピー">${ICON_COPY}</button>
-		</div>
-		<div class="cm-bt-changes-row">
-			<span class="cm-bt-changes-label">Changes</span>
-			<span class="cm-bt-icon">${ICON_COMMIT}</span>
-			<span class="cm-bt-hash cm-bt-hash-muted">${parentHash}</span>
-			<span class="cm-bt-icon cm-bt-icon-arrow">${ICON_ARROW}</span>
-			<span class="cm-bt-icon">${ICON_COMMIT}</span>
-			<span class="cm-bt-hash">${shortHash}</span>
-		</div>
-	`;
+	// Build tooltip DOM safely without innerHTML to avoid XSS from commit author/summary
+	const header = document.createElement("div");
+	header.className = "cm-bt-header";
+
+	const avatar = document.createElement("div");
+	avatar.className = "cm-bt-avatar";
+	avatar.textContent = initials;
+
+	const meta = document.createElement("div");
+	meta.className = "cm-bt-meta";
+
+	const authorEl = document.createElement("span");
+	authorEl.className = "cm-bt-author";
+	authorEl.textContent = entry.author;
+
+	const timeEl = document.createElement("span");
+	timeEl.className = "cm-bt-time";
+	timeEl.textContent = `${timeAgo} (${fullDate})`;
+
+	meta.append(authorEl, timeEl);
+	header.append(avatar, meta);
+
+	const message = document.createElement("div");
+	message.className = "cm-bt-message";
+	message.textContent = entry.summary;
+
+	const hashRow = document.createElement("div");
+	hashRow.className = "cm-bt-hash-row";
+	hashRow.innerHTML = `<span class="cm-bt-icon">${ICON_COMMIT}</span>`;
+
+	const hashEl = document.createElement("span");
+	hashEl.className = "cm-bt-hash";
+	hashEl.textContent = shortHash;
+
+	const copyBtn = document.createElement("button");
+	copyBtn.className = "cm-bt-copy-btn";
+	copyBtn.title = "コピー";
+	copyBtn.innerHTML = ICON_COPY;
+
+	hashRow.append(hashEl, copyBtn);
+
+	tooltip.append(header, message, hashRow);
 
 	// Copy button handler
-	const copyBtn = tooltip.querySelector<HTMLButtonElement>(".cm-bt-copy-btn");
-	if (copyBtn) {
-		copyBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			navigator.clipboard.writeText(entry.commitHash).catch(() => {});
-			copyBtn.innerHTML =
-				'<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
-			setTimeout(() => {
-				if (copyBtn) copyBtn.innerHTML = ICON_COPY;
-			}, 1500);
-		});
-	}
+	copyBtn.addEventListener("click", (e) => {
+		e.stopPropagation();
+		navigator.clipboard.writeText(entry.commitHash).catch(() => {});
+		copyBtn.innerHTML =
+			'<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+		setTimeout(() => {
+			copyBtn.innerHTML = ICON_COPY;
+		}, 1500);
+	});
 
 	tooltip.addEventListener("mouseenter", clearHideTimer);
 	tooltip.addEventListener("mouseleave", scheduleHide);

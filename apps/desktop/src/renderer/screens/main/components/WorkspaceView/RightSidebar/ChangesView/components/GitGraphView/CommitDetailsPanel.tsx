@@ -24,8 +24,7 @@ const FILE_STATUS_LABELS: Record<ChangedFile["status"], string> = {
 };
 
 function formatCommitDate(date: Date): string {
-	return new Date(date).toLocaleString("ja-JP", {
-		timeZone: "Asia/Tokyo",
+	return new Date(date).toLocaleString(undefined, {
 		year: "numeric",
 		month: "2-digit",
 		day: "2-digit",

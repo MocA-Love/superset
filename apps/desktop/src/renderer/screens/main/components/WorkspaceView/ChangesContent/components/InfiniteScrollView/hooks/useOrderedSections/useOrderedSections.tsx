@@ -30,6 +30,7 @@ interface UseOrderedSectionsInput {
 	commits: CommitInfo[];
 	stagedFiles: ChangedFile[];
 	unstagedFiles: ChangedFile[];
+	conflictedFiles: ChangedFile[];
 	onUnstageFile: (file: ChangedFile) => void;
 	onStageFile: (file: ChangedFile) => void;
 	onDiscardFile: (file: ChangedFile) => void;
@@ -49,6 +50,7 @@ export function useOrderedSections({
 	commits,
 	stagedFiles,
 	unstagedFiles,
+	conflictedFiles,
 	onUnstageFile,
 	onStageFile,
 	onDiscardFile,
@@ -63,10 +65,19 @@ export function useOrderedSections({
 		conflicted: {
 			id: "conflicted" as const,
 			title: "Conflicts",
-			count: 0,
+			count: conflictedFiles.length,
 			isExpanded: expandedSections.conflicted,
 			onToggle: () => toggleSection("conflicted"),
-			content: null,
+			content: expandedSections.conflicted ? (
+				<VirtualizedFileList
+					files={conflictedFiles}
+					category="conflicted"
+					worktreePath={worktreePath}
+					collapsedFiles={collapsedFiles}
+					onToggleFile={onToggleFile}
+					scrollElementRef={scrollElementRef}
+				/>
+			) : null,
 		},
 		"against-base": {
 			id: "against-base",

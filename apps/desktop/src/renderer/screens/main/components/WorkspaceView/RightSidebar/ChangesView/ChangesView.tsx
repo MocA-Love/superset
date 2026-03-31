@@ -94,6 +94,23 @@ export function ChangesView({
 	const worktreePath = workspace?.worktreePath;
 	const projectId = workspace?.projectId;
 	const addGitGraphTab = useTabsStore((s) => s.addGitGraphTab);
+	const isGitGraphOpen = useTabsStore((s) =>
+		worktreePath
+			? s.tabs.some(
+					(t) =>
+						t.workspaceId === workspaceId &&
+						Object.values(s.panes).some(
+							(p) =>
+								p.tabId === t.id &&
+								"type" in p &&
+								(p as { type: string }).type === "git-graph" &&
+								"gitGraph" in p &&
+								(p as { gitGraph?: { worktreePath: string } }).gitGraph
+									?.worktreePath === worktreePath,
+						),
+				)
+			: false,
+	);
 	const activeTab = useChangesStore((s) => s.activeTab);
 	const isReviewTabActive = isActive && activeTab === "review";
 	const githubStatusQueryPolicy = getGitHubStatusQueryPolicy(
@@ -821,7 +838,7 @@ export function ChangesView({
 								unstagedFiles.length > 0 ||
 								untrackedFiles.length > 0
 							}
-							isGitGraphOpen={false}
+							isGitGraphOpen={isGitGraphOpen}
 							onToggleGitGraph={() => {
 								if (workspaceId && worktreePath) {
 									addGitGraphTab(workspaceId, worktreePath);
