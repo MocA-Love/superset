@@ -1,5 +1,6 @@
-import { useMatchRoute, useParams } from "@tanstack/react-router";
+import { useMatchRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { HiOutlineWifi } from "react-icons/hi2";
+import { LuFlaskConical } from "react-icons/lu";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
@@ -28,6 +29,8 @@ export function TopBar() {
 		{ enabled: !!workspaceId && !isV2WorkspaceRoute },
 	);
 	const isOnline = useOnlineStatus();
+	const navigate = useNavigate();
+	const isDiffTestOpen = !!matchRoute({ to: "/diff-test" as any });
 	// Default to Mac layout while loading to avoid overlap with traffic lights
 	const isMac = platform === undefined || platform === "darwin";
 
@@ -40,6 +43,14 @@ export function TopBar() {
 				}}
 			>
 				<SidebarToggle />
+				<button
+					type="button"
+					onClick={() => navigate({ to: "/diff-test" as any })}
+					className={`no-drag flex size-8 items-center justify-center rounded-md transition-colors ${isDiffTestOpen ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"}`}
+					title="Diff Test"
+				>
+					<LuFlaskConical className="size-4" />
+				</button>
 				<NavigationControls />
 				<ResourceConsumption />
 			</div>

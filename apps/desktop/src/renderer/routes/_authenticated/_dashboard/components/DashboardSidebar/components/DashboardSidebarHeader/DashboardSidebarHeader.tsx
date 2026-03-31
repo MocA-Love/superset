@@ -67,6 +67,7 @@ export function DashboardSidebarHeader({
 						New Workspace ({shortcutText})
 					</TooltipContent>
 				</Tooltip>
+
 			</div>
 		);
 	}
@@ -105,6 +106,7 @@ export function DashboardSidebarHeader({
 					{shortcutText}
 				</span>
 			</button>
+
 		</div>
 	);
 }

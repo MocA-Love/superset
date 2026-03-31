@@ -9,7 +9,6 @@ import {
 	type MarkdownEditorAdapter,
 	TipTapMarkdownRenderer,
 } from "renderer/components/MarkdownRenderer";
-import { LightDiffViewer } from "renderer/screens/main/components/WorkspaceView/ChangesContent/components/LightDiffViewer";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import type { Tab } from "renderer/stores/tabs/types";
@@ -19,15 +18,12 @@ import { isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
 import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
-import { DiffScrollbarDecorations } from "../DiffScrollbarDecorations";
 import { DiffViewerContextMenu } from "../DiffViewerContextMenu";
 import { FileEditorContextMenu } from "../FileEditorContextMenu";
 import { MarkdownSearch } from "../MarkdownSearch";
 import { SpreadsheetDiffViewer, SpreadsheetViewer } from "../SpreadsheetViewer";
 import {
 	type DiffDomLocation,
-	getColumnFromDiffPoint,
-	getDiffLocationFromEvent,
 	mapDiffLocationToRawPosition,
 } from "./utils/diff-location";
 
@@ -320,11 +316,6 @@ export function FileViewerContent({
 			);
 		}
 
-		const totalLines =
-			diffData.original.split("\n").length +
-			diffData.modified.split("\n").length;
-		const useLargeDiffViewer = totalLines > 2000;
-
 		return (
 			<DiffViewerContextMenu
 				containerRef={diffContainerRef}
@@ -353,20 +344,6 @@ export function FileViewerContent({
 				}}
 			>
 				<div className="relative h-full">
-					{!useLargeDiffViewer && (
-						<MarkdownSearch
-							isOpen={diffSearch.isSearchOpen}
-							query={diffSearch.query}
-							caseSensitive={diffSearch.caseSensitive}
-							matchCount={diffSearch.matchCount}
-							activeMatchIndex={diffSearch.activeMatchIndex}
-							onQueryChange={diffSearch.setQuery}
-							onCaseSensitiveChange={diffSearch.setCaseSensitive}
-							onFindNext={diffSearch.findNext}
-							onFindPrevious={diffSearch.findPrevious}
-							onClose={diffSearch.closeSearch}
-						/>
-					)}
 					<div
 						ref={diffContainerRef}
 						className="h-full min-h-0 overflow-auto bg-background select-text"
@@ -375,47 +352,16 @@ export function FileViewerContent({
 								event.stopPropagation();
 							}
 						}}
-						onContextMenuCapture={(event) => {
-							if (useLargeDiffViewer) return;
-							const location = getDiffLocationFromEvent(event.nativeEvent);
-							if (!location) {
-								return;
-							}
-
-							const column = getColumnFromDiffPoint({
-								lineElement: location.lineElement,
-								numberColumn: location.numberColumn,
-								clientX: event.clientX,
-								clientY: event.clientY,
-							});
-
-							lastDiffLocationRef.current = {
-								...location,
-								column,
-							};
-						}}
 					>
-						{useLargeDiffViewer ? (
-							<CodeMirrorDiffViewer
-								original={diffData.original}
-								modified={diffData.modified}
-								language={diffData.language}
-								viewMode={diffViewMode}
-							/>
-						) : (
-							<LightDiffViewer
-								key={filePath}
-								contents={diffData}
-								viewMode={diffViewMode}
-								hideUnchangedRegions={hideUnchangedRegions}
-								filePath={filePath}
-								className="min-h-full"
-							/>
-						)}
+						<CodeMirrorDiffViewer
+							original={diffData.original}
+							modified={diffData.modified}
+							language={diffData.language}
+							viewMode={diffViewMode}
+							onChange={onContentChange}
+							onSave={onSaveFile}
+						/>
 					</div>
-					{!useLargeDiffViewer && (
-						<DiffScrollbarDecorations scrollContainerRef={diffContainerRef} />
-					)}
 				</div>
 			</DiffViewerContextMenu>
 		);
