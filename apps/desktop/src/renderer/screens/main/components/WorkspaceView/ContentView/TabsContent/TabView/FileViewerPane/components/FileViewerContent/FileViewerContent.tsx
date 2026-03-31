@@ -384,14 +384,17 @@ export function FileViewerContent({
 						onContextMenuCapture={(event) => {
 							const nativeEvent = event.nativeEvent;
 							const location = getDiffLocationFromEvent(nativeEvent);
-							if (location) {
-								const column = getColumnFromDiffPoint({
-									lineElement: event.target as HTMLElement,
-									clientX: event.clientX,
-									clientY: event.clientY,
-								});
-								lastDiffLocationRef.current = { ...location, column };
+							if (!location) {
+								lastDiffLocationRef.current = null;
+								return;
 							}
+
+							const column = getColumnFromDiffPoint({
+								lineElement: event.target as HTMLElement,
+								clientX: event.clientX,
+								clientY: event.clientY,
+							});
+							lastDiffLocationRef.current = { ...location, column };
 						}}
 					>
 						<CodeMirrorDiffViewer

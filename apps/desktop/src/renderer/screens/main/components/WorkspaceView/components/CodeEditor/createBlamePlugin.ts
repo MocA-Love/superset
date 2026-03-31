@@ -37,7 +37,17 @@ function formatFullDate(timestamp: number): string {
 	const minutes = String(d.getMinutes()).padStart(2, "0");
 	const ampm = hours < 12 ? "朝" : "午後";
 	const hour12 = hours % 12 || 12;
-	return `${month} ${day}th, ${year} ${hour12}:${minutes} ${ampm}`;
+	const ordinal =
+		day % 100 >= 11 && day % 100 <= 13
+			? "th"
+			: day % 10 === 1
+				? "st"
+				: day % 10 === 2
+					? "nd"
+					: day % 10 === 3
+						? "rd"
+						: "th";
+	return `${month} ${day}${ordinal}, ${year} ${hour12}:${minutes} ${ampm}`;
 }
 
 function formatInlineText(entry: BlameEntry): string {

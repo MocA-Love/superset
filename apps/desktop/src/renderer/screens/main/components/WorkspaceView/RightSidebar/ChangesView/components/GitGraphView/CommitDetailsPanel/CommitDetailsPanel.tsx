@@ -214,11 +214,18 @@ export function CommitDetailsPanel({
 										worktreePath,
 										file.path,
 									);
+									const absoluteOldPath =
+										file.status === "renamed" &&
+										"oldPath" in file &&
+										typeof file.oldPath === "string"
+											? toAbsoluteWorkspacePath(worktreePath, file.oldPath)
+											: undefined;
 									addFileViewerPane(workspaceId, {
 										filePath: absolutePath,
 										diffCategory: "committed",
 										fileStatus: file.status,
 										commitHash: node.hash,
+										oldPath: absoluteOldPath,
 										openInNewTab: false,
 									});
 								}}

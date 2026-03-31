@@ -1,7 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import type { CommitGraphNode } from "shared/changes-types";
 import type { GraphEdge, GraphNodeLayout } from "../../utils/computeGraphLanes";
-import { CommitDetailsPanel } from "./CommitDetailsPanel";
+import { CommitDetailsPanel } from "./CommitDetailsPanel/index";
 import {
 	GRAPH_PADDING_X,
 	GRAPH_STROKE_WIDTH,
