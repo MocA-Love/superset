@@ -86,3 +86,4 @@ superset-dev-data/
 !.codex/commands
 !.codex/prompts
 test-conflict-repo/
+.amp/*
