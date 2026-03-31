@@ -1,6 +1,7 @@
 import type { ChangeCategory } from "shared/changes-types";
 
 export const DEFAULT_CHANGE_SECTION_ORDER: ChangeCategory[] = [
+	"conflicted",
 	"against-base",
 	"committed",
 	"staged",

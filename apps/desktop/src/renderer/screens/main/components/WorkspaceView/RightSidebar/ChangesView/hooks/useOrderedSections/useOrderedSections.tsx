@@ -1,7 +1,7 @@
 import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import type { ReactNode } from "react";
-import { VscAdd, VscDiscard, VscRemove } from "react-icons/vsc";
+import { VscAdd, VscDiscard, VscRemove, VscWarning } from "react-icons/vsc";
 import { getOrderedChangeSectionIds } from "renderer/stores/changes/section-order";
 import type {
 	ChangeCategory,
@@ -33,6 +33,8 @@ interface UseOrderedSectionsInput {
 	worktreePath: string;
 	projectId?: string;
 	isExpandedView?: boolean;
+	conflictedFiles: ChangedFile[];
+	onConflictedFileSelect: (file: ChangedFile) => void;
 	againstBaseFiles: ChangedFile[];
 	onAgainstBaseFileSelect: (file: ChangedFile) => void;
 	commitsWithFiles: CommitInfo[];
@@ -71,6 +73,8 @@ export function useOrderedSections({
 	worktreePath,
 	projectId,
 	isExpandedView,
+	conflictedFiles,
+	onConflictedFileSelect,
 	againstBaseFiles,
 	onAgainstBaseFileSelect,
 	commitsWithFiles,
@@ -100,6 +104,31 @@ export function useOrderedSections({
 	const commitCount = commitsWithFiles.length;
 
 	const sectionDefinitions: Record<ChangeCategory, OrderedSection> = {
+		conflicted: {
+			id: "conflicted",
+			title: "Conflicts",
+			count: conflictedFiles.length,
+			isExpanded: expandedSections.conflicted,
+			onToggle: () => toggleSection("conflicted"),
+			actions: (
+				<div className="flex items-center gap-0.5">
+					<VscWarning className="w-3.5 h-3.5 text-destructive" />
+				</div>
+			),
+			content: expandedSections.conflicted ? (
+				<FileList
+					files={conflictedFiles}
+					viewMode={fileListViewMode}
+					selectedFile={selectedFile}
+					selectedCommitHash={selectedCommitHash}
+					onFileSelect={onConflictedFileSelect}
+					worktreePath={worktreePath}
+					projectId={projectId}
+					category="conflicted"
+					isExpandedView={isExpandedView}
+				/>
+			) : null,
+		},
 		"against-base": {
 			id: "against-base",
 			title: `Against ${effectiveBaseBranch}`,

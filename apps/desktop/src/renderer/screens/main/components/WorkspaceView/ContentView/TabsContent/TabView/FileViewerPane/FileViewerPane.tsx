@@ -220,7 +220,7 @@ export function FileViewerPane({
 		workspaceId,
 		worktreePath,
 		filePath,
-		viewMode,
+		viewMode: viewMode === "conflict" ? "raw" : viewMode,
 		diffCategory,
 		commitHash,
 		oldPath,
@@ -302,7 +302,13 @@ export function FileViewerPane({
 	);
 
 	useEffect(() => {
-		if (viewMode === "diff" || isLoadingRaw || !rawFileData?.ok || isDirty) {
+		if (
+			viewMode === "diff" ||
+			viewMode === "conflict" ||
+			isLoadingRaw ||
+			!rawFileData?.ok ||
+			isDirty
+		) {
 			return;
 		}
 
@@ -331,6 +337,7 @@ export function FileViewerPane({
 		const nextHasExternalDiskChange =
 			isDirty &&
 			viewMode !== "diff" &&
+			viewMode !== "conflict" &&
 			((rawFileData?.ok === true && rawFileData.content !== baselineContent) ||
 				(rawFileData?.ok === false && rawFileData.reason === "not-found"));
 

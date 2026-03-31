@@ -16,6 +16,7 @@ import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/W
 import { useBranchSyncInvalidation } from "renderer/screens/main/hooks/useBranchSyncInvalidation";
 import { useGitChangesStatus } from "renderer/screens/main/hooks/useGitChangesStatus";
 import { useChangesStore } from "renderer/stores/changes";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import {
 	pathsMatch,
 	retargetAbsolutePath,
@@ -92,6 +93,24 @@ export function ChangesView({
 	);
 	const worktreePath = workspace?.worktreePath;
 	const projectId = workspace?.projectId;
+	const addGitGraphTab = useTabsStore((s) => s.addGitGraphTab);
+	const isGitGraphOpen = useTabsStore((s) =>
+		worktreePath
+			? s.tabs.some(
+					(t) =>
+						t.workspaceId === workspaceId &&
+						Object.values(s.panes).some(
+							(p) =>
+								p.tabId === t.id &&
+								"type" in p &&
+								(p as { type: string }).type === "git-graph" &&
+								"gitGraph" in p &&
+								(p as { gitGraph?: { worktreePath: string } }).gitGraph
+									?.worktreePath === worktreePath,
+						),
+				)
+			: false,
+	);
 	const activeTab = useChangesStore((s) => s.activeTab);
 	const isReviewTabActive = isActive && activeTab === "review";
 	const githubStatusQueryPolicy = getGitHubStatusQueryPolicy(
@@ -259,6 +278,22 @@ export function ChangesView({
 	const [showDiscardUnstagedDialog, setShowDiscardUnstagedDialog] =
 		useState(false);
 	const [showDiscardStagedDialog, setShowDiscardStagedDialog] = useState(false);
+	const [commitMessage, setCommitMessage] = useState("");
+
+	const generateCommitMessageMutation =
+		electronTrpc.changes.generateCommitMessage.useMutation({
+			onSuccess: (data) => {
+				if (data.message) {
+					setCommitMessage(data.message);
+				} else {
+					toast.error(
+						"Failed to generate commit message. Check your AI provider settings.",
+					);
+				}
+			},
+			onError: (error) =>
+				toast.error(`Failed to generate commit message: ${error.message}`),
+		});
 	const activePullRequest = githubStatus?.pr ?? null;
 	const githubPRCommentsQueryPolicy = getGitHubPRCommentsQueryPolicy({
 		hasWorkspaceId: !!workspaceId,
@@ -508,13 +543,15 @@ export function ChangesView({
 	const stagedFiles = status?.staged ?? [];
 	const unstagedFiles = status?.unstaged ?? [];
 	const untrackedFiles = status?.untracked ?? [];
+	const conflictedFiles = status?.conflicted ?? [];
 
 	const hasChanges =
 		againstBaseFiles.length > 0 ||
 		commits.length > 0 ||
 		stagedFiles.length > 0 ||
 		unstagedFiles.length > 0 ||
-		untrackedFiles.length > 0;
+		untrackedFiles.length > 0 ||
+		conflictedFiles.length > 0;
 
 	const commitsWithFiles = commits.map((commit) => ({
 		...commit,
@@ -548,7 +585,14 @@ export function ChangesView({
 									selectedFileState.absolutePath,
 								),
 							)
-						: selectedFileState.category === "committed";
+						: selectedFileState.category === "conflicted"
+							? conflictedFiles.some((file) =>
+									pathsMatch(
+										toAbsoluteWorkspacePath(worktreePath, file.path),
+										selectedFileState.absolutePath,
+									),
+								)
+							: selectedFileState.category === "committed";
 
 		if (!existsInSelection) {
 			selectFile(workspaceId, null, null);
@@ -556,6 +600,7 @@ export function ChangesView({
 	}, [
 		againstBaseFiles,
 		combinedUnstaged,
+		conflictedFiles,
 		selectFile,
 		selectedFileState,
 		stagedFiles,
@@ -594,6 +639,18 @@ export function ChangesView({
 		worktreePath: worktreePath ?? "",
 		projectId,
 		isExpandedView,
+		conflictedFiles,
+		onConflictedFileSelect: (file) => {
+			if (!workspaceId || !worktreePath) return;
+			selectFile(
+				workspaceId,
+				toAbsoluteWorkspacePath(worktreePath, file.path),
+				file,
+				"conflicted",
+				null,
+			);
+			onFileOpen?.(file, "conflicted");
+		},
 		againstBaseFiles,
 		onAgainstBaseFileSelect: (file) => handleFileSelect(file, "against-base"),
 		commitsWithFiles,
@@ -770,6 +827,23 @@ export function ChangesView({
 								stashIncludeUntrackedMutation.isPending ||
 								stashPopMutation.isPending
 							}
+							onGenerateCommitMessage={() =>
+								generateCommitMessageMutation.mutate({ worktreePath })
+							}
+							isGeneratingCommitMessage={
+								generateCommitMessageMutation.isPending
+							}
+							hasUncommittedChanges={
+								stagedFiles.length > 0 ||
+								unstagedFiles.length > 0 ||
+								untrackedFiles.length > 0
+							}
+							isGitGraphOpen={isGitGraphOpen}
+							onToggleGitGraph={() => {
+								if (workspaceId && worktreePath) {
+									addGitGraphTab(workspaceId, worktreePath);
+								}
+							}}
 						/>
 					</div>
 					<div className="border-b border-border">
@@ -783,6 +857,8 @@ export function ChangesView({
 							canCreatePR={prActionState.canCreatePR}
 							shouldAutoCreatePRAfterPublish={shouldAutoCreatePR}
 							onRefresh={handleRefresh}
+							commitMessage={commitMessage}
+							onCommitMessageChange={setCommitMessage}
 						/>
 					</div>
 

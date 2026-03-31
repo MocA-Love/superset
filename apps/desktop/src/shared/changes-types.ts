@@ -16,7 +16,8 @@ export type ChangeCategory =
 	| "against-base"
 	| "committed"
 	| "staged"
-	| "unstaged";
+	| "unstaged"
+	| "conflicted";
 
 /** A changed file entry */
 export interface ChangedFile {
@@ -46,6 +47,7 @@ export interface GitChangesStatus {
 	staged: ChangedFile[];
 	unstaged: ChangedFile[];
 	untracked: ChangedFile[];
+	conflicted: ChangedFile[];
 	ahead: number; // Commits ahead of default branch
 	behind: number; // Commits behind default branch
 	// Tracking branch status (for push/pull)
@@ -62,6 +64,26 @@ export function isNewFile(status: FileStatus): boolean {
 /** Whether a diff category supports editing (saving changes back to disk) */
 export function isDiffEditable(category: ChangeCategory): boolean {
 	return category === "staged" || category === "unstaged";
+}
+
+/** A single commit node for the git graph */
+export interface CommitGraphNode {
+	hash: string;
+	shortHash: string;
+	message: string;
+	fullMessage: string;
+	author: string;
+	authorEmail: string;
+	committer: string;
+	committerEmail: string;
+	date: Date;
+	parentHashes: string[];
+	refs: string[];
+}
+
+/** Graph data for the git graph view */
+export interface CommitGraphData {
+	nodes: CommitGraphNode[];
 }
 
 /** Diff view mode toggle */

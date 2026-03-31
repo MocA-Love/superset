@@ -1,6 +1,11 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { ChangedFile, GitChangesStatus } from "shared/changes-types";
+import type {
+	ChangedFile,
+	CommitGraphData,
+	CommitGraphNode,
+	GitChangesStatus,
+} from "shared/changes-types";
 import type { SimpleGit, StatusResult } from "simple-git";
 import { getStatusNoLock } from "../../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../../workspaces/utils/git-client";
@@ -217,6 +222,7 @@ async function computeStatus({
 		staged: parsed.staged,
 		unstaged: parsed.unstaged,
 		untracked: parsed.untracked,
+		conflicted: parsed.conflicted,
 		ahead: branchComparison.ahead,
 		behind: branchComparison.behind,
 		pushCount: trackingStatus.pushCount,
@@ -251,6 +257,70 @@ async function computeCommitFiles({
 	return files;
 }
 
+function parseGitGraphLog(logOutput: string): CommitGraphNode[] {
+	if (!logOutput.trim()) return [];
+
+	const nodes: CommitGraphNode[] = [];
+	const parts = logOutput.split("\x00");
+
+	for (let index = 0; index + 10 < parts.length; index += 11) {
+		const [
+			hash,
+			shortHash,
+			message,
+			fullMessageRaw,
+			author,
+			authorEmail,
+			committer,
+			committerEmail,
+			dateStr,
+			parentsStr,
+			refsStr,
+		] = parts.slice(index, index + 11);
+		if (!hash || !shortHash) continue;
+
+		const date = dateStr ? new Date(dateStr) : new Date();
+		const parentHashes = parentsStr?.trim() ? parentsStr.trim().split(" ") : [];
+		const refs = refsStr?.trim()
+			? refsStr.trim().split(", ").filter(Boolean)
+			: [];
+
+		nodes.push({
+			hash,
+			shortHash,
+			message: message ?? "",
+			fullMessage: fullMessageRaw?.trimEnd() || message || "",
+			author: author ?? "",
+			authorEmail: authorEmail ?? "",
+			committer: committer ?? "",
+			committerEmail: committerEmail ?? "",
+			date,
+			parentHashes,
+			refs,
+		});
+	}
+	return nodes;
+}
+
+async function computeCommitGraph({
+	worktreePath,
+	maxCount = 500,
+}: GitTaskPayloadMap["getCommitGraph"]): Promise<CommitGraphData> {
+	const git = await getSimpleGitWithShellPath(worktreePath);
+	const logOutput = await git.raw([
+		"log",
+		"--all",
+		"--topo-order",
+		"--date-order",
+		"--decorate=short",
+		`--max-count=${maxCount}`,
+		"-z",
+		"--format=%H%x00%h%x00%s%x00%B%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%P%x00%D",
+	]);
+	const nodes = parseGitGraphLog(logOutput);
+	return { nodes };
+}
+
 export async function executeGitTask<TTask extends GitTaskType>(
 	taskType: TTask,
 	payload: GitTaskPayloadMap[TTask],
@@ -263,6 +333,10 @@ export async function executeGitTask<TTask extends GitTaskType>(
 		case "getCommitFiles":
 			return computeCommitFiles(
 				payload as GitTaskPayloadMap["getCommitFiles"],
+			) as Promise<GitTaskResultMap[TTask]>;
+		case "getCommitGraph":
+			return computeCommitGraph(
+				payload as GitTaskPayloadMap["getCommitGraph"],
 			) as Promise<GitTaskResultMap[TTask]>;
 		default: {
 			const exhaustive: never = taskType;

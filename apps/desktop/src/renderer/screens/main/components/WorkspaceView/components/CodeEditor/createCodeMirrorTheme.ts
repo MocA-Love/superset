@@ -84,6 +84,43 @@ export function createCodeMirrorTheme(
 				color: editorTheme.colors.panelButtonForeground,
 				border: `1px solid ${editorTheme.colors.panelButtonBorder}`,
 			},
+			// Diff / merge view colors (a = original/left, b = modified/right)
+			"&.cm-merge-a .cm-changedLine": {
+				backgroundColor: `${editorTheme.colors.deletion}14`,
+			},
+			"&.cm-merge-b .cm-changedLine, &.cm-merge-b .cm-inlineChangedLine": {
+				backgroundColor: `${editorTheme.colors.addition}14`,
+			},
+			".cm-deletedChunk": {
+				backgroundColor: `${editorTheme.colors.deletion}14`,
+			},
+			"&.cm-merge-a .cm-changedText, .cm-deletedChunk .cm-deletedText": {
+				background: `${editorTheme.colors.deletion}2a !important`,
+			},
+			"&.cm-merge-b .cm-changedText": {
+				background: `${editorTheme.colors.addition}2a !important`,
+			},
+			"&.cm-merge-b .cm-deletedText": {
+				background: `${editorTheme.colors.deletion}14 !important`,
+			},
+			// Empty space on opposite side of insertion/deletion: diagonal stripe pattern
+			".cm-mergeSpacer": {
+				backgroundImage: `repeating-linear-gradient(
+					-45deg,
+					${editorTheme.colors.border}b3 0px,
+					${editorTheme.colors.border}b3 1px,
+					transparent 1px,
+					transparent 6px
+				)`,
+				backgroundSize: "8px 8px",
+			},
+			// Pure insertion/deletion lines: suppress inline highlight (only show line background)
+			// cm-suppress-inline-diff is a line decoration on the .cm-line element
+			// cm-changedText = b side inline highlight, cm-deletedText = a side deleted content
+			".cm-suppress-inline-diff .cm-changedText, .cm-suppress-inline-diff .cm-deletedText":
+				{
+					background: "transparent !important",
+				},
 		},
 		{
 			dark: theme.type === "dark",

@@ -28,6 +28,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
+import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
 import { loadLanguageSupport } from "./loadLanguageSupport";
 
@@ -40,6 +41,7 @@ interface CodeEditorProps {
 	editorRef?: MutableRefObject<CodeEditorAdapter | null>;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
+	blameEntries?: BlameEntry[];
 }
 
 function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
@@ -169,12 +171,14 @@ export function CodeEditor({
 	editorRef,
 	onChange,
 	onSave,
+	blameEntries,
 }: CodeEditorProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
 	const languageCompartment = useRef(new Compartment()).current;
 	const themeCompartment = useRef(new Compartment()).current;
 	const editableCompartment = useRef(new Compartment()).current;
+	const blameCompartment = useRef(new Compartment()).current;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
 	// Guards against re-entrant onChange calls triggered by the value-sync effect's own dispatch.
@@ -254,6 +258,7 @@ export function CodeEditor({
 					),
 				]),
 				languageCompartment.of([]),
+				blameCompartment.of([]),
 				updateListener,
 			],
 		});
@@ -336,6 +341,17 @@ export function CodeEditor({
 			]),
 		});
 	}, [editableCompartment, readOnly]);
+
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view) return;
+
+		view.dispatch({
+			effects: blameCompartment.reconfigure(
+				blameEntries ? createBlamePlugin(blameEntries) : [],
+			),
+		});
+	}, [blameEntries, blameCompartment]);
 
 	useEffect(() => {
 		let cancelled = false;

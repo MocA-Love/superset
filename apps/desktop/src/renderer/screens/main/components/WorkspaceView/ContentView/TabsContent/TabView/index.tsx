@@ -25,6 +25,7 @@ import { ChatPane } from "./ChatPane";
 import { MosaicSplitOverlay } from "./components";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
+import { GitGraphPane } from "./GitGraphPane";
 import { TabPane } from "./TabPane";
 
 export const MOSAIC_ID = "superset-mosaic";
@@ -304,6 +305,22 @@ export function TabView({ tab }: TabViewProps) {
 						paneId={paneId}
 						path={path}
 						tabId={tab.id}
+						splitPaneAuto={splitPaneAuto}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			// Route git-graph panes
+			if (paneInfo.type === "git-graph") {
+				return (
+					<GitGraphPane
+						paneId={paneId}
+						path={path}
+						tabId={tab.id}
+						workspaceId={tab.workspaceId}
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}

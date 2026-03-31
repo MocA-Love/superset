@@ -13,7 +13,8 @@ export type PaneType =
 	| "webview"
 	| "file-viewer"
 	| "chat"
-	| "devtools";
+	| "devtools"
+	| "git-graph";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -90,7 +91,7 @@ export function acknowledgedStatus(status: PaneStatus | undefined): PaneStatus {
 /**
  * File viewer display modes
  */
-export type FileViewerMode = "rendered" | "raw" | "diff";
+export type FileViewerMode = "rendered" | "raw" | "diff" | "conflict";
 
 /**
  * Diff layout options for file viewer
@@ -142,6 +143,7 @@ export interface Pane {
 	chat?: ChatPaneState; // For chat panes
 	browser?: BrowserPaneState; // For browser (webview) panes
 	devtools?: DevToolsPaneState; // For devtools panes
+	gitGraph?: GitGraphPaneState; // For git-graph panes
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";
@@ -213,6 +215,14 @@ export interface BrowserPaneState {
 export interface DevToolsPaneState {
 	/** The pane ID of the browser pane being inspected */
 	targetPaneId: string;
+}
+
+/**
+ * Git Graph pane-specific properties
+ */
+export interface GitGraphPaneState {
+	/** Worktree path for the git repository */
+	worktreePath: string;
 }
 
 /**

@@ -28,12 +28,28 @@ function toChangedFile(
 	};
 }
 
+const CONFLICT_PAIRS = new Set([
+	// Only states that produce conflict markers in the file content.
+	// Non-marker states (DD, AU, UD, UA, DU) have no markers and are
+	// handled as unstaged changes via git add/rm instead.
+	"AA", // both added
+	"UU", // both modified
+]);
+
+function isConflicted(index: string, working: string): boolean {
+	return CONFLICT_PAIRS.has(`${index}${working}`);
+}
+
 export function parseGitStatus(
 	status: StatusResult,
-): Pick<GitChangesStatus, "branch" | "staged" | "unstaged" | "untracked"> {
+): Pick<
+	GitChangesStatus,
+	"branch" | "staged" | "unstaged" | "untracked" | "conflicted"
+> {
 	const staged: ChangedFile[] = [];
 	const unstaged: ChangedFile[] = [];
 	const untracked: ChangedFile[] = [];
+	const conflicted: ChangedFile[] = [];
 
 	for (const file of status.files) {
 		const path = file.path;
@@ -42,6 +58,16 @@ export function parseGitStatus(
 
 		if (index === "?" && working === "?") {
 			untracked.push(toChangedFile(path, index, working));
+			continue;
+		}
+
+		if (isConflicted(index, working)) {
+			conflicted.push({
+				path,
+				status: "modified",
+				additions: 0,
+				deletions: 0,
+			});
 			continue;
 		}
 
@@ -70,6 +96,7 @@ export function parseGitStatus(
 		staged,
 		unstaged,
 		untracked,
+		conflicted,
 	};
 }
 

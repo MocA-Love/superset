@@ -17,6 +17,7 @@ import {
 	type DiffLayout,
 	type FileViewerMode,
 	type FileViewerState,
+	type GitGraphPaneState,
 } from "shared/tabs-types";
 import type {
 	AddChatTabOptions,
@@ -42,6 +43,8 @@ export const resolveFileViewerMode = ({
 	if (viewMode) return viewMode;
 	// Images always default to rendered (no meaningful diff for binary files)
 	if (isImageFile(filePath)) return "rendered";
+	// Conflicted files show the inline conflict resolver
+	if (diffCategory === "conflicted") return "conflict";
 	// New files have no previous version — show raw/rendered instead of an all-green diff
 	if (diffCategory && fileStatus && isNewFile(fileStatus)) {
 		if (hasRenderedPreview(filePath)) return "rendered";
@@ -332,6 +335,45 @@ export const createBrowserTabWithPane = (
 	const tab: Tab = {
 		id: tabId,
 		name: `Browser ${workspaceTabs.filter((t) => t.name.startsWith("Browser")).length + 1}`,
+		workspaceId,
+		layout: pane.id,
+		createdAt: Date.now(),
+	};
+
+	return { tab, pane };
+};
+
+/**
+ * Creates a new git graph pane
+ */
+export const createGitGraphPane = (
+	tabId: string,
+	worktreePath: string,
+): Pane => {
+	const id = generateId("pane");
+	const gitGraph: GitGraphPaneState = { worktreePath };
+	return {
+		id,
+		tabId,
+		type: "git-graph",
+		name: "Git Graph",
+		gitGraph,
+	};
+};
+
+/**
+ * Creates a new tab with a git graph pane atomically
+ */
+export const createGitGraphTabWithPane = (
+	workspaceId: string,
+	worktreePath: string,
+): { tab: Tab; pane: Pane } => {
+	const tabId = generateId("tab");
+	const pane = createGitGraphPane(tabId, worktreePath);
+
+	const tab: Tab = {
+		id: tabId,
+		name: "Git Graph",
 		workspaceId,
 		layout: pane.id,
 		createdAt: Date.now(),

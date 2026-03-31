@@ -17,11 +17,11 @@ import { publicProcedure, router } from "../..";
  */
 const fileViewerStateSchema = z.object({
 	filePath: z.string(),
-	viewMode: z.enum(["rendered", "raw", "diff"]),
+	viewMode: z.enum(["rendered", "raw", "diff", "conflict"]),
 	isPinned: z.boolean(),
 	diffLayout: z.enum(["inline", "side-by-side"]),
 	diffCategory: z
-		.enum(["against-base", "committed", "staged", "unstaged"])
+		.enum(["against-base", "committed", "staged", "unstaged", "conflicted"])
 		.optional(),
 	commitHash: z.string().optional(),
 	oldPath: z.string().optional(),
@@ -43,7 +43,14 @@ const chatLaunchConfigSchema = z.object({
 const paneSchema = z.object({
 	id: z.string(),
 	tabId: z.string(),
-	type: z.enum(["terminal", "webview", "file-viewer", "chat", "devtools"]),
+	type: z.enum([
+		"terminal",
+		"webview",
+		"file-viewer",
+		"chat",
+		"devtools",
+		"git-graph",
+	]),
 	name: z.string(),
 	isNew: z.boolean().optional(),
 	status: z.enum(["idle", "working", "permission", "review"]).optional(),
