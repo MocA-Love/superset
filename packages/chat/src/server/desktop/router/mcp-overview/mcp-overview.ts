@@ -2,12 +2,62 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-const MCP_SETTINGS_FILES = [".mastracode/mcp.json", ".mcp.json"] as const;
-
 const mcpSettingsSchema = z.object({
 	mcpServers: z.record(z.string(), z.unknown()),
 });
 
+const ampMcpSettingsSchema = z.object({
+	"amp.mcpServers": z.record(z.string(), z.unknown()),
+});
+
+const opencodeMcpSettingsSchema = z.object({
+	mcp: z.record(z.string(), z.unknown()),
+});
+
+const MCP_SETTINGS_FILES = [
+	{
+		relativePath: ".mastracode/mcp.json",
+		readServers: (parsed: unknown) => {
+			const result = mcpSettingsSchema.safeParse(parsed);
+			return result.success ? result.data.mcpServers : null;
+		},
+	},
+	{
+		relativePath: ".mcp.json",
+		readServers: (parsed: unknown) => {
+			const result = mcpSettingsSchema.safeParse(parsed);
+			return result.success ? result.data.mcpServers : null;
+		},
+	},
+	{
+		relativePath: ".cursor/mcp.json",
+		readServers: (parsed: unknown) => {
+			const result = mcpSettingsSchema.safeParse(parsed);
+			return result.success ? result.data.mcpServers : null;
+		},
+	},
+	{
+		relativePath: ".gemini/settings.json",
+		readServers: (parsed: unknown) => {
+			const result = mcpSettingsSchema.safeParse(parsed);
+			return result.success ? result.data.mcpServers : null;
+		},
+	},
+	{
+		relativePath: ".amp/settings.json",
+		readServers: (parsed: unknown) => {
+			const result = ampMcpSettingsSchema.safeParse(parsed);
+			return result.success ? result.data["amp.mcpServers"] : null;
+		},
+	},
+	{
+		relativePath: "opencode.json",
+		readServers: (parsed: unknown) => {
+			const result = opencodeMcpSettingsSchema.safeParse(parsed);
+			return result.success ? result.data.mcp : null;
+		},
+	},
+] as const;
 export type McpServerState = "enabled" | "disabled" | "invalid";
 export type McpServerTransport = "remote" | "local" | "unknown";
 
@@ -29,7 +79,7 @@ function resolveMcpServers(cwd: string): {
 } {
 	let firstExistingPath: string | null = null;
 
-	for (const relativePath of MCP_SETTINGS_FILES) {
+	for (const { relativePath, readServers } of MCP_SETTINGS_FILES) {
 		const sourcePath = join(cwd, relativePath);
 		if (!existsSync(sourcePath)) {
 			continue;
@@ -46,14 +96,14 @@ function resolveMcpServers(cwd: string): {
 			continue;
 		}
 
-		const result = mcpSettingsSchema.safeParse(parsed);
-		if (!result.success) {
+		const servers = readServers(parsed);
+		if (!servers) {
 			continue;
 		}
 
 		return {
 			sourcePath,
-			servers: result.data.mcpServers,
+			servers,
 		};
 	}
 
@@ -83,7 +133,7 @@ function toStringArray(value: unknown): string[] | null {
 
 function resolveTransport(config: Record<string, unknown>): McpServerTransport {
 	const type = toNonEmptyString(config.type)?.toLowerCase();
-	const url = toNonEmptyString(config.url);
+	const url = toNonEmptyString(config.url) ?? toNonEmptyString(config.httpUrl);
 	const command = toNonEmptyString(config.command);
 	const commandParts = toStringArray(config.command);
 
@@ -99,7 +149,11 @@ function resolveTarget(
 	transport: McpServerTransport,
 ): string {
 	if (transport === "remote") {
-		return toNonEmptyString(config.url) ?? "Not configured";
+		return (
+			toNonEmptyString(config.url) ??
+			toNonEmptyString(config.httpUrl) ??
+			"Not configured"
+		);
 	}
 
 	if (transport === "local") {

@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
-import { useTerminalCallbacksStore } from "renderer/stores/tabs/terminal-callbacks";
 import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestions";
 import { useTerminalTheme } from "renderer/stores/theme";
 import { SessionKilledOverlay } from "./components";
@@ -412,21 +411,11 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		activeSuggestionRef,
 	});
 
-	const registerRestartCallback = useTerminalCallbacksStore(
-		(s) => s.registerRestartCallback,
-	);
-	const unregisterRestartCallback = useTerminalCallbacksStore(
-		(s) => s.unregisterRestartCallback,
-	);
 	useEffect(() => {
-		registerRestartCallback(paneId, restartTerminal);
-		return () => unregisterRestartCallback(paneId);
-	}, [
-		paneId,
-		restartTerminal,
-		registerRestartCallback,
-		unregisterRestartCallback,
-	]);
+		const xterm = xtermRef.current;
+		if (!xterm || !terminalTheme) return;
+		xterm.options.theme = terminalTheme;
+	}, [terminalTheme]);
 
 	useEffect(() => {
 		const xterm = xtermRef.current;
