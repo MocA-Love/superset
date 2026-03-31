@@ -26,6 +26,8 @@ interface ConflictViewerProps {
 	onSave?: () => void;
 }
 
+const MAX_CONFLICT_FILE_SIZE = 2 * 1024 * 1024;
+
 function buildConflictDecorations(
 	doc: EditorState["doc"],
 	regions: ConflictRegion[],
@@ -134,15 +136,26 @@ export function ConflictViewer({
 	const contentRef = useRef<string>("");
 	const regionsRef = useRef<ConflictRegion[]>([]);
 	const activeTheme = useResolvedTheme();
+	// Use refs for callbacks to avoid re-creating the editor on every render
+	const handleResolveRef = useRef<(regionIndex: number, resolution: ConflictResolution) => void>(() => {});
+	const handleSaveRef = useRef<() => void>(() => {});
 
-	const { data: fileData, refetch } = electronTrpc.filesystem.readFile.useQuery(
+	const {
+		data: fileData,
+		error: fileError,
+		isLoading: isLoadingFile,
+		refetch,
+	} = electronTrpc.filesystem.readFile.useQuery(
 		{
 			workspaceId,
 			absolutePath: absoluteFilePath,
+			encoding: "utf-8",
+			maxBytes: MAX_CONFLICT_FILE_SIZE,
 		},
 		{
-			enabled: Boolean(workspaceId && absoluteFilePath),
+			enabled: Boolean(workspaceId && absoluteFilePath && absoluteFilePath !== ""),
 			refetchOnWindowFocus: false,
+			retry: false,
 		},
 	);
 
@@ -183,6 +196,10 @@ export function ConflictViewer({
 		});
 	}, [workspaceId, absoluteFilePath, writeFileMutation]);
 
+	// Keep refs up-to-date so the editor plugin always uses the latest callbacks
+	handleResolveRef.current = handleResolve;
+	handleSaveRef.current = handleSave;
+
 	useEffect(() => {
 		if (!containerRef.current) return;
 		if (editorRef.current) return;
@@ -204,7 +221,7 @@ export function ConflictViewer({
 					this.decorations = buildConflictDecorations(
 						view.state.doc,
 						regions,
-						handleResolve,
+						(idx, res) => handleResolveRef.current(idx, res),
 					);
 				}
 
@@ -217,7 +234,7 @@ export function ConflictViewer({
 						this.decorations = buildConflictDecorations(
 							update.view.state.doc,
 							regions,
-							handleResolve,
+							(idx, res) => handleResolveRef.current(idx, res),
 						);
 					}
 				}
@@ -229,7 +246,7 @@ export function ConflictViewer({
 			{
 				key: "Mod-s",
 				run: () => {
-					handleSave();
+					handleSaveRef.current();
 					return true;
 				},
 			},
@@ -268,17 +285,15 @@ export function ConflictViewer({
 			view.destroy();
 			editorRef.current = null;
 		};
-	}, [absoluteFilePath, activeTheme, handleResolve, handleSave]);
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [absoluteFilePath, activeTheme]);
 
 	// Load file content into editor when fetched
 	useEffect(() => {
 		const editor = editorRef.current;
-		if (!editor || !fileData) return;
+		if (!editor || !fileData || fileData.kind !== "text") return;
 
-		const content =
-			fileData.kind === "text"
-				? fileData.content
-				: "";
+		const content = fileData.content;
 
 		if (content === editor.state.doc.toString()) return;
 
@@ -291,10 +306,30 @@ export function ConflictViewer({
 		});
 	}, [fileData]);
 
+	const overlayMessage = fileError
+		? `Failed to load conflicted file: ${fileError.message}`
+		: fileData?.kind && fileData.kind !== "text"
+			? "Conflict viewer only supports text files."
+			: fileData?.exceededLimit
+				? `File exceeds ${MAX_CONFLICT_FILE_SIZE / 1024 / 1024}MB and was truncated.`
+				: null;
+
 	return (
-		<div
-			ref={containerRef}
-			className="h-full w-full overflow-auto bg-background select-text"
-		/>
+		<div className="relative h-full w-full bg-background">
+			<div
+				ref={containerRef}
+				className="h-full w-full overflow-auto bg-background select-text"
+			/>
+			{isLoadingFile && !fileData ? (
+				<div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/80 text-sm text-muted-foreground">
+					Loading conflicted file...
+				</div>
+			) : null}
+			{overlayMessage ? (
+				<div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/90 p-6 text-center text-sm text-muted-foreground">
+					{overlayMessage}
+				</div>
+			) : null}
+		</div>
 	);
 }

@@ -132,6 +132,7 @@ export function RightSidebar() {
 			addFileViewerPane(workspaceId, {
 				filePath: absolutePath,
 				diffCategory: category,
+				viewMode: category === "conflicted" ? "conflict" : undefined,
 				fileStatus: file.status,
 				commitHash,
 				oldPath: file.oldPath

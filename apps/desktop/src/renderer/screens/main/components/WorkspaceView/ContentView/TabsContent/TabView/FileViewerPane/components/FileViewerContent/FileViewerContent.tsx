@@ -25,6 +25,7 @@ import { DiffViewerContextMenu } from "../DiffViewerContextMenu";
 import { FileEditorContextMenu } from "../FileEditorContextMenu";
 import { MarkdownSearch } from "../MarkdownSearch";
 import { SpreadsheetDiffViewer, SpreadsheetViewer } from "../SpreadsheetViewer";
+import { ConflictViewer } from "../ConflictViewer";
 import {
 	type DiffDomLocation,
 	mapDiffLocationToRawPosition,
@@ -312,6 +313,15 @@ export function FileViewerContent({
 				filePath={filePath}
 				diffCategory={diffCategory}
 				commitHash={commitHash}
+			/>
+		);
+	}
+
+	if (viewMode === "conflict" && workspaceId) {
+		return (
+			<ConflictViewer
+				workspaceId={workspaceId}
+				absoluteFilePath={absoluteFilePath}
 			/>
 		);
 	}
