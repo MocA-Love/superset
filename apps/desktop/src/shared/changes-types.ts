@@ -64,6 +64,26 @@ export function isDiffEditable(category: ChangeCategory): boolean {
 	return category === "staged" || category === "unstaged";
 }
 
+/** A single commit node for the git graph */
+export interface CommitGraphNode {
+	hash: string;
+	shortHash: string;
+	message: string;
+	fullMessage: string;
+	author: string;
+	authorEmail: string;
+	committer: string;
+	committerEmail: string;
+	date: Date;
+	parentHashes: string[];
+	refs: string[];
+}
+
+/** Graph data for the git graph view */
+export interface CommitGraphData {
+	nodes: CommitGraphNode[];
+}
+
 /** Diff view mode toggle */
 export type DiffViewMode = "side-by-side" | "inline";
 

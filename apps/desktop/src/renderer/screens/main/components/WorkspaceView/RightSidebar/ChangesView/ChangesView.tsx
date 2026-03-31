@@ -16,6 +16,7 @@ import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/W
 import { useBranchSyncInvalidation } from "renderer/screens/main/hooks/useBranchSyncInvalidation";
 import { useGitChangesStatus } from "renderer/screens/main/hooks/useGitChangesStatus";
 import { useChangesStore } from "renderer/stores/changes";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import {
 	pathsMatch,
 	retargetAbsolutePath,
@@ -92,6 +93,7 @@ export function ChangesView({
 	);
 	const worktreePath = workspace?.worktreePath;
 	const projectId = workspace?.projectId;
+	const addGitGraphTab = useTabsStore((s) => s.addGitGraphTab);
 	const activeTab = useChangesStore((s) => s.activeTab);
 	const isReviewTabActive = isActive && activeTab === "review";
 	const githubStatusQueryPolicy = getGitHubStatusQueryPolicy(
@@ -797,6 +799,12 @@ export function ChangesView({
 								unstagedFiles.length > 0 ||
 								untrackedFiles.length > 0
 							}
+							isGitGraphOpen={false}
+							onToggleGitGraph={() => {
+								if (workspaceId && worktreePath) {
+									addGitGraphTab(workspaceId, worktreePath);
+								}
+							}}
 						/>
 					</div>
 					<div className="border-b border-border">

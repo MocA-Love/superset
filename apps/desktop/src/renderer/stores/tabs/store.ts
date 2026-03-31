@@ -34,6 +34,7 @@ import {
 	createBrowserPane,
 	createBrowserTabWithPane,
 	createChatPane,
+	createGitGraphTabWithPane,
 	createChatTabWithPane,
 	createDevToolsPane,
 	createFileViewerPane,
@@ -1657,6 +1658,40 @@ export const useTabsStore = create<TabsStore>()(
 						panel_type: "browser",
 						workspace_id: workspaceId,
 						pane_id: pane.id,
+					});
+
+					return { tabId: tab.id, paneId: pane.id };
+				},
+
+				addGitGraphTab: (workspaceId: string, worktreePath: string) => {
+					const state = get();
+
+					const { tab, pane } = createGitGraphTabWithPane(workspaceId, worktreePath);
+
+					const currentActiveId = state.activeTabIds[workspaceId];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
+					const newHistoryStack = currentActiveId
+						? [
+								currentActiveId,
+								...historyStack.filter((id) => id !== currentActiveId),
+							]
+						: historyStack;
+
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, [pane.id]: pane },
+						activeTabIds: {
+							...state.activeTabIds,
+							[workspaceId]: tab.id,
+						},
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: pane.id,
+						},
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: newHistoryStack,
+						},
 					});
 
 					return { tabId: tab.id, paneId: pane.id };

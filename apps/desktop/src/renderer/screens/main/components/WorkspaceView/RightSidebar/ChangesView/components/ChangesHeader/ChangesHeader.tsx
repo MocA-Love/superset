@@ -27,10 +27,12 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
+import { cn } from "@superset/ui/utils";
 import { type ButtonHTMLAttributes, forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronDown } from "react-icons/lu";
 import {
 	VscCheck,
+	VscGitCompare,
 	VscGitStash,
 	VscGitStashApply,
 	VscRefresh,
@@ -60,6 +62,8 @@ interface ChangesHeaderProps {
 	onGenerateCommitMessage: () => void;
 	isGeneratingCommitMessage: boolean;
 	hasUncommittedChanges: boolean;
+	isGitGraphOpen: boolean;
+	onToggleGitGraph: () => void;
 }
 
 const BranchSelectorButton = forwardRef<
@@ -328,6 +332,26 @@ function CurrentBranchSelector({
 	);
 }
 
+function GitGraphButton({ isOpen, onToggle }: { isOpen: boolean; onToggle: () => void }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={onToggle}
+					className={cn("size-6 p-0", isOpen && "bg-accent text-foreground")}
+				>
+					<VscGitCompare className="size-4" />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="top" showArrow={false}>
+				Toggle Git Graph
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
 function StashDropdown({
 	onStash,
 	onStashIncludeUntracked,
@@ -433,10 +457,13 @@ export function ChangesHeader({
 	onGenerateCommitMessage,
 	isGeneratingCommitMessage,
 	hasUncommittedChanges,
+	isGitGraphOpen,
+	onToggleGitGraph,
 }: ChangesHeaderProps) {
 	return (
 		<div className="flex flex-col border-b border-border">
 			<div className="flex items-center gap-0.5 px-2 py-1.5">
+				<GitGraphButton isOpen={isGitGraphOpen} onToggle={onToggleGitGraph} />
 				<StashDropdown
 					onStash={onStash}
 					onStashIncludeUntracked={onStashIncludeUntracked}

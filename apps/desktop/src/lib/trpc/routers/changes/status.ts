@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import type { ChangedFile, GitChangesStatus } from "shared/changes-types";
+import type { ChangedFile, CommitGraphData, GitChangesStatus } from "shared/changes-types";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { assertRegisteredWorktree } from "./security/path-validation";
@@ -98,6 +98,39 @@ export const createStatusRouter = () => {
 						},
 						{
 							dedupeKey: `${input.worktreePath}:${input.commitHash}`,
+							strategy: "coalesce",
+							timeoutMs: 30_000,
+						},
+					);
+				} catch (error) {
+					if (error instanceof Error && error.name === "NotGitRepoError") {
+						throw new TRPCError({
+							code: "BAD_REQUEST",
+							message: error.message,
+						});
+					}
+					throw error;
+				}
+			}),
+		getCommitGraph: publicProcedure
+			.input(
+				z.object({
+					worktreePath: z.string(),
+					maxCount: z.number().optional(),
+				}),
+			)
+			.query(async ({ input }): Promise<CommitGraphData> => {
+				assertRegisteredWorktree(input.worktreePath);
+
+				try {
+					return await runGitTask(
+						"getCommitGraph",
+						{
+							worktreePath: input.worktreePath,
+							maxCount: input.maxCount,
+						},
+						{
+							dedupeKey: `graph:${input.worktreePath}`,
 							strategy: "coalesce",
 							timeoutMs: 30_000,
 						},
