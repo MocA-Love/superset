@@ -133,8 +133,7 @@ function toStringArray(value: unknown): string[] | null {
 
 function resolveTransport(config: Record<string, unknown>): McpServerTransport {
 	const type = toNonEmptyString(config.type)?.toLowerCase();
-	const url =
-		toNonEmptyString(config.url) ?? toNonEmptyString(config.httpUrl);
+	const url = toNonEmptyString(config.url) ?? toNonEmptyString(config.httpUrl);
 	const command = toNonEmptyString(config.command);
 	const commandParts = toStringArray(config.command);
 

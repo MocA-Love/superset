@@ -261,8 +261,14 @@ describe("getMcpOverview", () => {
 		]);
 	});
 
-	it("documents unsupported Codex global config by returning no project config", () => {
+	it("ignores unsupported global Codex config because overview only reads project configs", () => {
 		const cwd = createTempDirectory();
+		writeFileSync(
+			join(cwd, "config.toml"),
+			`[mcp_servers.superset]\nurl = "https://codex.example.com/mcp"\n`,
+			"utf-8",
+		);
+
 		const result = getMcpOverview(cwd);
 		expect(result).toEqual({
 			sourcePath: null,
@@ -404,7 +410,7 @@ describe("getMcpOverview", () => {
 		]);
 	});
 
-	it("falls back to .mcp.json when .amp/settings.json is invalid", () => {
+	it("prefers .mcp.json when .amp/settings.json is invalid", () => {
 		const cwd = createTempDirectory();
 		mkdirSync(join(cwd, ".amp"), { recursive: true });
 		writeFileSync(join(cwd, ".amp", "settings.json"), "{ invalid", "utf-8");
