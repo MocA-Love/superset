@@ -792,6 +792,11 @@ export function ChangesView({
 							isGeneratingCommitMessage={
 								generateCommitMessageMutation.isPending
 							}
+							hasUncommittedChanges={
+								stagedFiles.length > 0 ||
+								unstagedFiles.length > 0 ||
+								untrackedFiles.length > 0
+							}
 						/>
 					</div>
 					<div className="border-b border-border">

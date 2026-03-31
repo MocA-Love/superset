@@ -1,4 +1,14 @@
 import type { GitHubStatus } from "@superset/local-db";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@superset/ui/alert-dialog";
 import { Button } from "@superset/ui/button";
 import {
 	Command,
@@ -15,6 +25,7 @@ import {
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
+import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { type ButtonHTMLAttributes, forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronDown } from "react-icons/lu";
@@ -48,6 +59,7 @@ interface ChangesHeaderProps {
 	isStashPending: boolean;
 	onGenerateCommitMessage: () => void;
 	isGeneratingCommitMessage: boolean;
+	hasUncommittedChanges: boolean;
 }
 
 const BranchSelectorButton = forwardRef<
@@ -167,9 +179,16 @@ function BaseBranchSelector({ worktreePath }: { worktreePath: string }) {
 	);
 }
 
-function CurrentBranchSelector({ worktreePath }: { worktreePath: string }) {
+function CurrentBranchSelector({
+	worktreePath,
+	hasUncommittedChanges,
+}: {
+	worktreePath: string;
+	hasUncommittedChanges: boolean;
+}) {
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
+	const [pendingBranch, setPendingBranch] = useState<string | null>(null);
 	const utils = electronTrpc.useUtils();
 	const { data: branchData, isLoading } =
 		electronTrpc.changes.getBranches.useQuery(
@@ -184,6 +203,21 @@ function CurrentBranchSelector({ worktreePath }: { worktreePath: string }) {
 	const switchBranch = electronTrpc.changes.switchBranch.useMutation({
 		onSuccess: () => {
 			utils.changes.getBranches.invalidate({ worktreePath });
+		},
+		onError: (error) => {
+			const msg = error.message ?? "";
+			if (
+				msg.includes("overwritten") ||
+				msg.includes("conflict") ||
+				msg.includes("Please commit") ||
+				msg.includes("would be overwritten")
+			) {
+				toast.error(
+					"Could not switch branch. Your uncommitted changes conflict with the target branch. Please commit or stash your changes and try again.",
+				);
+			} else {
+				toast.error(`Failed to switch branch: ${msg}`);
+			}
 		},
 	});
 
@@ -203,53 +237,94 @@ function CurrentBranchSelector({ worktreePath }: { worktreePath: string }) {
 		return sortedLocal.filter((b) => b.branch.toLowerCase().includes(lower));
 	}, [sortedLocal, search]);
 
-	const handleBranchSelect = (branch: string) => {
+	const doSwitch = (branch: string) => {
 		switchBranch.mutate({ worktreePath, branch });
 		setOpen(false);
 		setSearch("");
+		setPendingBranch(null);
+	};
+
+	const handleBranchSelect = (branch: string) => {
+		if (branch === currentBranch) {
+			setOpen(false);
+			return;
+		}
+		if (hasUncommittedChanges) {
+			setPendingBranch(branch);
+			setOpen(false);
+		} else {
+			doSwitch(branch);
+		}
 	};
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<PopoverTrigger asChild>
-						<BranchSelectorButton
-							label={currentBranch ?? "…"}
-							disabled={isLoading}
+		<>
+			<Popover open={open} onOpenChange={setOpen}>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<PopoverTrigger asChild>
+							<BranchSelectorButton
+								label={currentBranch ?? "…"}
+								disabled={isLoading}
+							/>
+						</PopoverTrigger>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" showArrow={false}>
+						Switch current branch
+					</TooltipContent>
+				</Tooltip>
+				<PopoverContent align="start" className="w-56 p-0">
+					<Command shouldFilter={false}>
+						<CommandInput
+							placeholder="Search branches..."
+							value={search}
+							onValueChange={setSearch}
 						/>
-					</PopoverTrigger>
-				</TooltipTrigger>
-				<TooltipContent side="bottom" showArrow={false}>
-					Switch current branch
-				</TooltipContent>
-			</Tooltip>
-			<PopoverContent align="start" className="w-56 p-0">
-				<Command shouldFilter={false}>
-					<CommandInput
-						placeholder="Search branches..."
-						value={search}
-						onValueChange={setSearch}
-					/>
-					<CommandList className="max-h-[200px]">
-						<CommandEmpty>No branches found</CommandEmpty>
-						{filteredLocal.map(({ branch }) => (
-							<CommandItem
-								key={branch}
-								value={branch}
-								onSelect={() => handleBranchSelect(branch)}
-								className="flex items-center justify-between text-xs"
-							>
-								<span className="truncate">{branch}</span>
-								{branch === currentBranch && (
-									<VscCheck className="size-3.5 shrink-0 text-primary" />
-								)}
-							</CommandItem>
-						))}
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
+						<CommandList className="max-h-[200px]">
+							<CommandEmpty>No branches found</CommandEmpty>
+							{filteredLocal.map(({ branch }) => (
+								<CommandItem
+									key={branch}
+									value={branch}
+									onSelect={() => handleBranchSelect(branch)}
+									className="flex items-center justify-between text-xs"
+								>
+									<span className="truncate">{branch}</span>
+									{branch === currentBranch && (
+										<VscCheck className="size-3.5 shrink-0 text-primary" />
+									)}
+								</CommandItem>
+							))}
+						</CommandList>
+					</Command>
+				</PopoverContent>
+			</Popover>
+
+			<AlertDialog
+				open={pendingBranch !== null}
+				onOpenChange={(open) => { if (!open) setPendingBranch(null); }}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>You have uncommitted changes</AlertDialogTitle>
+						<AlertDialogDescription>
+							Switching to <span className="font-mono font-medium">{pendingBranch}</span> may cause your uncommitted changes to be lost.
+							<br /><br />
+							If you want to keep your changes, please commit or stash them first.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => pendingBranch && doSwitch(pendingBranch)}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Switch anyway
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
 	);
 }
 
@@ -357,6 +432,7 @@ export function ChangesHeader({
 	isStashPending,
 	onGenerateCommitMessage,
 	isGeneratingCommitMessage,
+	hasUncommittedChanges,
 }: ChangesHeaderProps) {
 	return (
 		<div className="flex flex-col border-b border-border">
@@ -389,7 +465,10 @@ export function ChangesHeader({
 				</div>
 				<span className="shrink-0 text-xs text-muted-foreground/50">→</span>
 				<div className="min-w-0 flex-1">
-					<CurrentBranchSelector worktreePath={worktreePath} />
+					<CurrentBranchSelector
+						worktreePath={worktreePath}
+						hasUncommittedChanges={hasUncommittedChanges}
+					/>
 				</div>
 				<Tooltip>
 					<TooltipTrigger asChild>
