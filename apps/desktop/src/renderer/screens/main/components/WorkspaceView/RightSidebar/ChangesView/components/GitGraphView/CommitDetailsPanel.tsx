@@ -11,6 +11,7 @@ interface CommitDetailsPanelProps {
 	workspaceId: string;
 	onParentSelect: (hash: string) => void;
 	visibleCommitHashes: Set<string>;
+	containerWidth: number;
 }
 
 const FILE_STATUS_LABELS: Record<ChangedFile["status"], string> = {
@@ -70,6 +71,7 @@ export function CommitDetailsPanel({
 	workspaceId,
 	onParentSelect,
 	visibleCommitHashes,
+	containerWidth,
 }: CommitDetailsPanelProps) {
 	const { copyToClipboard, copied } = useCopyToClipboard(1200);
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
@@ -88,7 +90,7 @@ export function CommitDetailsPanel({
 
 	return (
 		<div className="border-t border-border/50 bg-muted/20 px-3 py-3 text-xs">
-			<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+			<div className={containerWidth >= 900 ? "grid gap-4 grid-cols-[minmax(0,1fr)_280px]" : "flex flex-col gap-4"}>
 				<div className="space-y-3">
 					<div className="space-y-2">
 						<MetadataRow

@@ -22,6 +22,7 @@ interface GraphRowProps {
 	onParentSelect: (hash: string) => void;
 	registerRowRef: (hash: string, node: HTMLDivElement | null) => void;
 	visibleCommitHashes: Set<string>;
+	containerWidth: number;
 }
 
 function laneX(lane: number): number {
@@ -44,6 +45,7 @@ export function GraphRow({
 	onParentSelect,
 	registerRowRef,
 	visibleCommitHashes,
+	containerWidth,
 }: GraphRowProps) {
 	const cx = laneX(layout.lane);
 	const cy = ROW_HEIGHT / 2;
@@ -130,7 +132,7 @@ export function GraphRow({
 	return (
 		<div
 			ref={(element) => registerRowRef(node.hash, element)}
-			className="border-b border-border/40"
+			className="border-b border-border/40 overflow-hidden"
 		>
 			<button
 				type="button"
@@ -237,13 +239,17 @@ export function GraphRow({
 			</button>
 
 			{isExpanded && (
-				<div className="animate-in slide-in-from-top-2 overflow-hidden duration-200">
+				<div
+					className="animate-in slide-in-from-top-2 overflow-hidden duration-200"
+					style={containerWidth > 0 ? { maxWidth: containerWidth } : undefined}
+				>
 					<CommitDetailsPanel
 						node={node}
 						worktreePath={worktreePath}
 						workspaceId={workspaceId}
 						onParentSelect={onParentSelect}
 						visibleCommitHashes={visibleCommitHashes}
+						containerWidth={containerWidth}
 					/>
 				</div>
 			)}

@@ -37,6 +37,8 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 	]);
 	const rowRefs = useRef(new Map<string, HTMLDivElement>());
 	const columnWidthsRef = useRef(columnWidths);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const [containerWidth, setContainerWidth] = useState(0);
 	const { data, isLoading, isError } =
 		electronTrpc.changes.getCommitGraph.useQuery(
 			{ worktreePath },
@@ -87,6 +89,17 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 	useEffect(() => {
 		columnWidthsRef.current = columnWidths;
 	}, [columnWidths]);
+
+	useEffect(() => {
+		const el = scrollContainerRef.current;
+		if (!el) return;
+		const observer = new ResizeObserver(() => {
+			setContainerWidth(el.clientWidth);
+		});
+		observer.observe(el);
+		setContainerWidth(el.clientWidth);
+		return () => observer.disconnect();
+	}, []);
 
 	const handleRowToggle = useCallback((hash: string) => {
 		setSelectedCommitHash((current) => (current === hash ? null : hash));
@@ -180,7 +193,7 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 	}
 
 	return (
-		<div className="h-full overflow-auto text-xs">
+		<div ref={scrollContainerRef} className="h-full overflow-auto text-xs">
 			<div className="min-h-full" style={{ minWidth: minContentWidth }}>
 				<div className="sticky top-0 z-10 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-border/70 bg-background/95 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70 backdrop-blur">
 					<div className="shrink-0 text-center" style={{ width: graphWidth }}>
@@ -229,6 +242,7 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 							onParentSelect={handleParentSelect}
 							registerRowRef={registerRowRef}
 							visibleCommitHashes={visibleCommitHashes}
+							containerWidth={containerWidth}
 						/>
 					))}
 				</div>
