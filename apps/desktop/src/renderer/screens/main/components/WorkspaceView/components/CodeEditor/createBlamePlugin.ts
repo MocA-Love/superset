@@ -167,8 +167,11 @@ class BlameWidget extends WidgetType {
 		super();
 	}
 
-	eq(other: BlameWidget): boolean {
-		return other.text === this.text;
+	eq(_other: BlameWidget): boolean {
+		// 常に false にして DOM を再利用しない。
+		// eq() が true だと toDOM() が呼ばれず hasLeft がリセットされないため、
+		// mouseleave 後に同じ行へ戻ると即座にトリップが表示されるバグが発生する。
+		return false;
 	}
 
 	toDOM(): HTMLElement {
@@ -177,10 +180,47 @@ class BlameWidget extends WidgetType {
 		span.textContent = `\u00a0\u00a0${this.text}`;
 		span.setAttribute("aria-hidden", "true");
 
-		span.addEventListener("mouseenter", () => showTooltip(this.entry, span));
-		span.addEventListener("mouseleave", scheduleHide);
+		// ウィジェット生成直後にカーソルが上にあっても表示しない。
+		// 一度マウスが離れてから戻ってきた時、またはホバーしたまま2秒経過したら表示する。
+		let hasLeft = false;
+		let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+
+		const clearDwellTimer = () => {
+			if (dwellTimer !== null) {
+				clearTimeout(dwellTimer);
+				dwellTimer = null;
+			}
+		};
+
+		// destroy() からクリーンアップできるよう DOM に持たせる
+		(span as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> | null })._dwellTimer = null;
+
+		span.addEventListener("mouseenter", () => {
+			if (hasLeft) {
+				// 一度離れた後に戻ってきた → 即表示
+				showTooltip(this.entry, span);
+			} else {
+				// 初回ホバー（ウィジェット生成直後から乗っている状態）→ 2秒待つ
+				dwellTimer = setTimeout(() => {
+					dwellTimer = null;
+					showTooltip(this.entry, span);
+				}, 1000);
+				(span as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> | null })._dwellTimer = dwellTimer;
+			}
+		});
+		span.addEventListener("mouseleave", () => {
+			clearDwellTimer();
+			hasLeft = true;
+			scheduleHide();
+		});
 
 		return span;
+	}
+
+	destroy(dom: HTMLElement): void {
+		// カーソルが別の行に移った際にタイマーをクリーンアップ
+		const timer = (dom as HTMLElement & { _dwellTimer?: ReturnType<typeof setTimeout> })._dwellTimer;
+		if (timer !== null && timer !== undefined) clearTimeout(timer);
 	}
 
 	ignoreEvent(): boolean {
@@ -379,9 +419,13 @@ export function createBlamePlugin(entries: BlameEntry[]): Extension {
 	const plugin = ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			private lastCursorLine = -1;
 
 			constructor(view: EditorView) {
 				this.decorations = buildBlameDecorations(view, blameMap);
+				this.lastCursorLine = view.state.doc.lineAt(
+					view.state.selection.main.head,
+				).number;
 			}
 
 			update(update: ViewUpdate) {
@@ -390,6 +434,18 @@ export function createBlamePlugin(entries: BlameEntry[]): Extension {
 					update.viewportChanged ||
 					update.selectionSet
 				) {
+					if (update.selectionSet) {
+						const newLine = update.view.state.doc.lineAt(
+							update.view.state.selection.main.head,
+						).number;
+						// カーソル行が変わったら古いトリップを即座に閉じる
+						if (newLine !== this.lastCursorLine) {
+							activeTooltip?.remove();
+							activeTooltip = null;
+							clearHideTimer();
+							this.lastCursorLine = newLine;
+						}
+					}
 					this.decorations = buildBlameDecorations(update.view, blameMap);
 				}
 			}
