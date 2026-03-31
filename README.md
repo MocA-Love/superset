@@ -57,6 +57,10 @@ Works with any CLI agent. Built for local worktree-based development.
 | **サジェストバグ修正** | ドロップダウンのはみ出し防止（上側表示切替）、alternate screen（Claude Code等）中のサジェスト完全抑制（4層防御）、Agent操作中の非表示化、日本語文字化け修正（zsh metafied エンコーディング対応） | [#31](https://github.com/MocA-Love/superset/pull/31) | 2026-03-30 |
 | **サジェスト履歴削除** | サジェスト一覧の各候補にバツボタンを追加し、クリックで ~/.zsh_history から直接削除。atomic write でファイル破損防止、metafied エンコーディング対応 | [#34](https://github.com/MocA-Love/superset/pull/34) | 2026-03-30 |
 | **ブラウザアドレスバー選択修正** | アドレスバーでURLをマウスドラッグで範囲選択しようとするとペインが移動する問題を修正。input の mousedown イベント伝播を阻止 | [#34](https://github.com/MocA-Love/superset/pull/34) | 2026-03-30 |
+| **git blame インライン表示** | ファイルビューアで行番号横に blame 情報をインライン表示。行ホバーで作者・コミットメッセージ・日時のポップアップを表示。表示タイミングを修正し、ファイル切り替え後も正しく動作 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
+| **マージコンフリクト解消 UI** | diff ビューア内でコンフリクトマーカーをインラインで検出し、VSCode スタイルの「Accept Current / Accept Incoming / Accept Both」ボタンを表示。ワンクリックでコンフリクトを解消可能 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
+| **GitGraph 詳細パネル修正** | GitGraph の詳細パネルがペイン外にはみ出る問題を修正。パネルの位置計算を改善し、画面端でも正しく収まるよう対応 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
+| **ConflictViewer 表示・スタイル修正** | ConflictViewer の表示条件とスタイルを修正 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
 
 ## Fork のビルド方法 (macOS)
 
