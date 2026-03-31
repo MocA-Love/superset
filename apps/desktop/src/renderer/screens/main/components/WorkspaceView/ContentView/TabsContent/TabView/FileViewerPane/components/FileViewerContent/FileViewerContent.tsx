@@ -2,6 +2,7 @@ import {
 	type MutableRefObject,
 	type RefObject,
 	useEffect,
+	useMemo,
 	useRef,
 } from "react";
 import { LuLoader } from "react-icons/lu";
@@ -9,9 +10,11 @@ import {
 	type MarkdownEditorAdapter,
 	TipTapMarkdownRenderer,
 } from "renderer/components/MarkdownRenderer";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import type { Tab } from "renderer/stores/tabs/types";
+import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
 import { isImageFile, isSpreadsheetFile } from "shared/file-types";
@@ -183,6 +186,20 @@ export function FileViewerContent({
 		diffData,
 		enabled: viewMode === "diff" && !isLoadingDiff && !!diffData,
 	});
+
+	const absoluteFilePath = useMemo(
+		() =>
+			worktreePath ? toAbsoluteWorkspacePath(worktreePath, filePath) : "",
+		[worktreePath, filePath],
+	);
+
+	const { data: blameData } = electronTrpc.changes.getGitBlame.useQuery(
+		{ worktreePath: worktreePath ?? "", absolutePath: absoluteFilePath },
+		{
+			enabled: Boolean(worktreePath && absoluteFilePath),
+			staleTime: 60_000,
+		},
+	);
 
 	const hasAppliedInitialLocationRef = useRef(false);
 	const lastDiffLocationRef = useRef<
@@ -360,6 +377,7 @@ export function FileViewerContent({
 							viewMode={diffViewMode}
 							onChange={onContentChange}
 							onSave={onSaveFile}
+							blameEntries={blameData?.entries}
 						/>
 					</div>
 				</div>
@@ -492,6 +510,7 @@ export function FileViewerContent({
 					onSave={onSaveFile}
 					editorRef={editorRef}
 					fillHeight
+					blameEntries={blameData?.entries}
 				/>
 			</div>
 		</FileEditorContextMenu>

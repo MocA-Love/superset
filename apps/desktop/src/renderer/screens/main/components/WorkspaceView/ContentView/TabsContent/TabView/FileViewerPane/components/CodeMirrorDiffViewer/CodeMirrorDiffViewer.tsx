@@ -15,6 +15,10 @@ import {
 } from "@codemirror/view";
 import { useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type BlameEntry,
+	createBlamePlugin,
+} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createBlamePlugin";
 import { createCodeMirrorTheme } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createCodeMirrorTheme";
 import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/loadLanguageSupport";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
@@ -107,6 +111,7 @@ interface CodeMirrorDiffViewerProps {
 	viewMode: DiffViewMode;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
+	blameEntries?: BlameEntry[];
 }
 
 export function CodeMirrorDiffViewer({
@@ -116,6 +121,7 @@ export function CodeMirrorDiffViewer({
 	viewMode,
 	onChange,
 	onSave,
+	blameEntries,
 }: CodeMirrorDiffViewerProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const mergeViewRef = useRef<MergeView | null>(null);
@@ -123,6 +129,7 @@ export function CodeMirrorDiffViewer({
 	const langCompartmentB = useRef(new Compartment()).current;
 	const themeCompartmentA = useRef(new Compartment()).current;
 	const themeCompartmentB = useRef(new Compartment()).current;
+	const blameCompartmentB = useRef(new Compartment()).current;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
 	const activeTheme = useResolvedTheme();
@@ -181,6 +188,7 @@ export function CodeMirrorDiffViewer({
 				}
 			}),
 			suppressInsertions,
+			blameCompartmentB.of([]),
 		];
 
 		const themeExts = [
@@ -252,6 +260,17 @@ export function CodeMirrorDiffViewer({
 		themeCompartmentA,
 		themeCompartmentB,
 	]);
+
+	useEffect(() => {
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+
+		mv.b.dispatch({
+			effects: blameCompartmentB.reconfigure(
+				blameEntries ? createBlamePlugin(blameEntries) : [],
+			),
+		});
+	}, [blameEntries, blameCompartmentB]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }
