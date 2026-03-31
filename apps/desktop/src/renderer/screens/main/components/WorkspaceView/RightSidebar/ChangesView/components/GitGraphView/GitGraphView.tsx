@@ -91,6 +91,7 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 	}, [columnWidths]);
 
 	useEffect(() => {
+		if (isLoading || isError || nodes.length === 0) return;
 		const el = scrollContainerRef.current;
 		if (!el) return;
 		const observer = new ResizeObserver(() => {
@@ -99,7 +100,7 @@ export function GitGraphView({ worktreePath, workspaceId }: GitGraphViewProps) {
 		observer.observe(el);
 		setContainerWidth(el.clientWidth);
 		return () => observer.disconnect();
-	}, []);
+	}, [isLoading, isError, nodes.length]);
 
 	const handleRowToggle = useCallback((hash: string) => {
 		setSelectedCommitHash((current) => (current === hash ? null : hash));

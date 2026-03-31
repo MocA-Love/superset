@@ -120,21 +120,22 @@ export const createStatusRouter = () => {
 			.input(
 				z.object({
 					worktreePath: z.string(),
-					maxCount: z.number().optional(),
+					maxCount: z.number().int().min(1).max(5_000).optional(),
 				}),
 			)
 			.query(async ({ input }): Promise<CommitGraphData> => {
 				assertRegisteredWorktree(input.worktreePath);
+				const effectiveMaxCount = input.maxCount ?? 500;
 
 				try {
 					return await runGitTask(
 						"getCommitGraph",
 						{
 							worktreePath: input.worktreePath,
-							maxCount: input.maxCount,
+							maxCount: effectiveMaxCount,
 						},
 						{
-							dedupeKey: `graph:${input.worktreePath}:${input.maxCount ?? "default"}`,
+							dedupeKey: `graph:${input.worktreePath}:${effectiveMaxCount}`,
 							strategy: "coalesce",
 							timeoutMs: 30_000,
 						},
