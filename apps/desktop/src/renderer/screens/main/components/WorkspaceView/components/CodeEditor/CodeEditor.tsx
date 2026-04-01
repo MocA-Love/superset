@@ -27,6 +27,7 @@ import { type MutableRefObject, useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
+import { getEditorTheme } from "shared/themes";
 import { useResolvedTheme } from "renderer/stores/theme";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
@@ -45,8 +46,128 @@ interface CodeEditorProps {
 	blameEntries?: BlameEntry[];
 }
 
-function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
+const HIGHLIGHT_CLEAR_DELAY_MS = 1800;
+const HIGHLIGHT_RETRY_DELAY_MS = 80;
+const HIGHLIGHT_MAX_RETRIES = 8;
+const SCROLL_STABILIZE_DELAY_MS = 120;
+
+function createCodeMirrorAdapter(
+	view: EditorView,
+	jumpHighlightStyle: {
+		backgroundColor: string;
+		boxShadow: string;
+	},
+): CodeEditorAdapter {
 	let disposed = false;
+	let highlightResetTimeout: ReturnType<typeof setTimeout> | null = null;
+	let scrollStabilizeTimeout: ReturnType<typeof setTimeout> | null = null;
+	let highlightedLine: HTMLElement | null = null;
+	let highlightAnimation: Animation | null = null;
+	let highlightedLinePreviousStyle:
+		| {
+				backgroundColor: string;
+				boxShadow: string;
+				outline: string;
+				outlineOffset: string;
+				borderRadius: string;
+				transition: string;
+		  }
+		| null = null;
+
+	const clearLineHighlight = () => {
+		if (!highlightedLine) {
+			return;
+		}
+
+		if (highlightedLinePreviousStyle) {
+			highlightedLine.style.backgroundColor =
+				highlightedLinePreviousStyle.backgroundColor;
+			highlightedLine.style.boxShadow = highlightedLinePreviousStyle.boxShadow;
+			highlightedLine.style.outline = highlightedLinePreviousStyle.outline;
+			highlightedLine.style.outlineOffset =
+				highlightedLinePreviousStyle.outlineOffset;
+			highlightedLine.style.borderRadius =
+				highlightedLinePreviousStyle.borderRadius;
+			highlightedLine.style.transition = highlightedLinePreviousStyle.transition;
+		} else {
+			highlightedLine.style.removeProperty("background-color");
+			highlightedLine.style.removeProperty("box-shadow");
+			highlightedLine.style.removeProperty("outline");
+			highlightedLine.style.removeProperty("outline-offset");
+			highlightedLine.style.removeProperty("border-radius");
+			highlightedLine.style.removeProperty("transition");
+		}
+
+		highlightAnimation?.cancel();
+		highlightAnimation = null;
+		highlightedLine = null;
+		highlightedLinePreviousStyle = null;
+	};
+
+	const highlightLineAt = (anchor: number, attempt = 0) => {
+		window.setTimeout(() => {
+			if (disposed) {
+				return;
+			}
+
+			const domAtPos = view.domAtPos(anchor);
+			const domNode =
+				domAtPos.node instanceof HTMLElement
+					? domAtPos.node
+					: domAtPos.node.parentElement;
+			const lineElement = domNode?.closest(".cm-line");
+			if (!(lineElement instanceof HTMLElement)) {
+				if (attempt < HIGHLIGHT_MAX_RETRIES) {
+					highlightLineAt(anchor, attempt + 1);
+				}
+				return;
+			}
+
+			clearLineHighlight();
+			highlightedLinePreviousStyle = {
+				backgroundColor: lineElement.style.backgroundColor,
+				boxShadow: lineElement.style.boxShadow,
+				outline: lineElement.style.outline,
+				outlineOffset: lineElement.style.outlineOffset,
+				borderRadius: lineElement.style.borderRadius,
+				transition: lineElement.style.transition,
+			};
+			lineElement.style.transition =
+				"background-color 1.2s ease-out, box-shadow 1.2s ease-out, outline-color 1.2s ease-out";
+			lineElement.style.backgroundColor = jumpHighlightStyle.backgroundColor;
+			lineElement.style.boxShadow = jumpHighlightStyle.boxShadow;
+			lineElement.style.outline = `2px solid ${jumpHighlightStyle.backgroundColor}`;
+			lineElement.style.outlineOffset = "-1px";
+			lineElement.style.borderRadius = "4px";
+			highlightedLine = lineElement;
+			highlightAnimation = lineElement.animate(
+				[
+					{
+						backgroundColor: jumpHighlightStyle.backgroundColor,
+						boxShadow: jumpHighlightStyle.boxShadow,
+						outlineColor: jumpHighlightStyle.backgroundColor,
+					},
+					{
+						backgroundColor: jumpHighlightStyle.backgroundColor,
+						boxShadow: jumpHighlightStyle.boxShadow,
+						outlineColor: jumpHighlightStyle.backgroundColor,
+						offset: 0.35,
+					},
+					{
+						backgroundColor:
+							highlightedLinePreviousStyle?.backgroundColor || "transparent",
+						boxShadow: highlightedLinePreviousStyle?.boxShadow || "none",
+						outlineColor: "transparent",
+					},
+				],
+				{
+					duration: HIGHLIGHT_CLEAR_DELAY_MS,
+					easing: "ease-out",
+					fill: "forwards",
+				},
+			);
+		}, attempt === 0 ? 32 : HIGHLIGHT_RETRY_DELAY_MS);
+	};
 
 	return {
 		focus() {
@@ -70,10 +191,45 @@ function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
 			const offset = Math.min(column - 1, lineInfo.length);
 			const anchor = lineInfo.from + Math.max(0, offset);
 
+			if (highlightResetTimeout) {
+				clearTimeout(highlightResetTimeout);
+				highlightResetTimeout = null;
+			}
+
 			view.dispatch({
-				selection: EditorSelection.cursor(anchor),
-				scrollIntoView: true,
+		selection: EditorSelection.cursor(anchor),
+				effects: EditorView.scrollIntoView(anchor, {
+					y: "center",
+					yMargin: 48,
+				}),
 			});
+			highlightLineAt(anchor);
+			if (scrollStabilizeTimeout) {
+				clearTimeout(scrollStabilizeTimeout);
+			}
+			scrollStabilizeTimeout = setTimeout(() => {
+				if (disposed) {
+					return;
+				}
+
+				view.dispatch({
+					effects: EditorView.scrollIntoView(anchor, {
+						y: "center",
+						yMargin: 48,
+					}),
+				});
+				scrollStabilizeTimeout = null;
+			}, SCROLL_STABILIZE_DELAY_MS);
+
+			highlightResetTimeout = setTimeout(() => {
+				if (disposed) {
+					return;
+				}
+
+				clearLineHighlight();
+				highlightResetTimeout = null;
+			}, HIGHLIGHT_CLEAR_DELAY_MS);
+
 			view.focus();
 		},
 		getSelectionLines() {
@@ -158,6 +314,15 @@ function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
 		dispose() {
 			if (disposed) return;
 			disposed = true;
+			if (highlightResetTimeout) {
+				clearTimeout(highlightResetTimeout);
+				highlightResetTimeout = null;
+			}
+			if (scrollStabilizeTimeout) {
+				clearTimeout(scrollStabilizeTimeout);
+				scrollStabilizeTimeout = null;
+			}
+			clearLineHighlight();
 			view.destroy();
 		},
 	};
@@ -194,6 +359,7 @@ export function CodeEditor({
 	const editorFontFamily = fontSettings?.editorFontFamily ?? undefined;
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const activeTheme = useResolvedTheme();
+	const editorTheme = getEditorTheme(activeTheme);
 
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
@@ -269,7 +435,10 @@ export function CodeEditor({
 			state,
 			parent: containerRef.current,
 		});
-		const adapter = createCodeMirrorAdapter(view);
+		const adapter = createCodeMirrorAdapter(view, {
+			backgroundColor: editorTheme.colors.search,
+			boxShadow: `inset 2px 0 0 ${editorTheme.colors.searchActive}`,
+		});
 
 		viewRef.current = view;
 		if (editorRef) {

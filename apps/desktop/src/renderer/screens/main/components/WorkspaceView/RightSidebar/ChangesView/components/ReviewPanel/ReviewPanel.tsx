@@ -109,6 +109,14 @@ interface ReviewPanelProps {
 	comments?: PullRequestComment[];
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
+	commentsQueryInput?: {
+		workspaceId: string;
+		prNumber?: number;
+		prUrl?: string;
+		repoUrl?: string;
+		upstreamUrl?: string;
+		isFork?: boolean;
+	};
 	onOpenFile?: (path: string, line?: number) => void;
 	onRefreshReview?: (scope?: "full" | "status") => Promise<void>;
 }
@@ -118,6 +126,7 @@ export function ReviewPanel({
 	comments = [],
 	isLoading = false,
 	isCommentsLoading = false,
+	commentsQueryInput,
 	onOpenFile,
 	onRefreshReview,
 }: ReviewPanelProps) {
@@ -245,17 +254,54 @@ export function ReviewPanel({
 			return;
 		}
 
+		const nextIsDraft = pr.state !== "draft";
+		const previousState = pr.state;
+
 		setIsDraftTogglePending(true);
+		trpcUtils.workspaces.getGitHubStatus.setData(
+			{ workspaceId: resolvedWorkspaceId },
+			(current) => {
+				if (!current?.pr) {
+					return current;
+				}
+
+				return {
+					...current,
+					pr: {
+						...current.pr,
+						state: nextIsDraft ? "draft" : "open",
+					},
+				};
+			},
+		);
+
 		void setPullRequestDraftStateMutation
 			.mutateAsync({
 				workspaceId: resolvedWorkspaceId,
-				isDraft: pr.state !== "draft",
+				isDraft: nextIsDraft,
 			})
 			.then(() => refreshReview("status"))
 			.catch((error) => {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
+				trpcUtils.workspaces.getGitHubStatus.setData(
+					{ workspaceId: resolvedWorkspaceId },
+					(current) => {
+						if (!current?.pr) {
+							return current;
+						}
+
+						return {
+							...current,
+							pr: {
+								...current.pr,
+								state: previousState,
+							},
+						};
+					},
+				);
 				toast.error(`Failed to update pull request: ${message}`);
+				void refreshReview("status");
 			})
 			.finally(() => {
 				setIsDraftTogglePending(false);
@@ -267,18 +313,41 @@ export function ReviewPanel({
 			return;
 		}
 
+		const nextResolved = comment.isResolved !== true;
+		const updateThreadResolutionInCache = (isResolved: boolean) => {
+			if (!commentsQueryInput) {
+				return;
+			}
+
+			trpcUtils.workspaces.getGitHubPRComments.setData(
+				commentsQueryInput,
+				(current) =>
+					(current ?? []).map((item) =>
+						item.threadId === comment.threadId
+							? {
+									...item,
+									isResolved,
+								}
+							: item,
+					),
+			);
+		};
+
 		setPendingThreadId(comment.threadId);
+		updateThreadResolutionInCache(nextResolved);
 		void setPullRequestThreadResolutionMutation
 			.mutateAsync({
 				workspaceId: resolvedWorkspaceId,
 				threadId: comment.threadId,
-				isResolved: comment.isResolved !== true,
+				isResolved: nextResolved,
 			})
 			.then(() => refreshReview("full"))
 			.catch((error) => {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
+				updateThreadResolutionInCache(comment.isResolved === true);
 				toast.error(`Failed to update conversation: ${message}`);
+				void refreshReview("full");
 			})
 			.finally(() => {
 				setPendingThreadId((current) =>
@@ -690,36 +759,37 @@ export function ReviewPanel({
 							</AvatarFallback>
 						</Avatar>
 						<div className="min-w-0 flex-1">
-							<div className="flex items-center gap-1.5">
-								<span className="truncate text-xs font-medium text-foreground">
-									{comment.authorLogin}
-								</span>
-								<span className="shrink-0 rounded border border-border/70 bg-muted/35 px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground">
-									{getCommentKindText(comment)}
-								</span>
-								<span className="flex-1" />
+							<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2">
+								<div className="flex min-w-0 items-center gap-1.5">
+									<span className="truncate text-xs font-medium text-foreground">
+										{comment.authorLogin}
+									</span>
+									<span className="shrink-0 rounded border border-border/70 bg-muted/35 px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground">
+										{getCommentKindText(comment)}
+									</span>
+								</div>
 								{age ? (
 									<span className="shrink-0 text-[10px] text-muted-foreground">
 										{age}
 									</span>
 								) : null}
+								{!isExpanded && (
+									<p className="col-span-2 mt-0.5 truncate text-xs leading-4 text-muted-foreground">
+										{getCommentPreviewText(comment.body)}
+									</p>
+								)}
 							</div>
-							{!isExpanded && (
-								<p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">
-									{getCommentPreviewText(comment.body)}
-								</p>
-							)}
 						</div>
 					</button>
 
 					{isExpanded && (
 						<div className="px-1.5 pb-1.5">
 							{hasFileLocation || comment.threadId ? (
-								<div className="mb-1.5 ml-4 flex flex-wrap items-center gap-1.5">
+								<div className="mb-1.5 ml-4 flex items-center gap-1.5">
 									{hasFileLocation ? (
 										<button
 											type="button"
-											className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
+											className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
 											onClick={(e) => {
 												e.stopPropagation();
 												if (comment.path) {
@@ -762,7 +832,12 @@ export function ReviewPanel({
 						</div>
 					)}
 
-					<div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+					<div
+						className={cn(
+							"absolute right-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+							"top-1",
+						)}
+					>
 						{comment.url ? (
 							<button
 								type="button"

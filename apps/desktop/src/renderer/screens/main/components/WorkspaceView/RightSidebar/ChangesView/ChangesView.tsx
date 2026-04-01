@@ -996,6 +996,10 @@ export function ChangesView({
 								comments={githubComments}
 								isLoading={isGitHubStatusLoading}
 								isCommentsLoading={isGitHubCommentsLoading}
+								commentsQueryInput={buildGitHubCommentsQueryInput({
+									workspaceId: workspaceId ?? "",
+									githubStatus,
+								})}
 								onOpenFile={onOpenFileAtLine}
 								onRefreshReview={handleReviewRefresh}
 							/>
