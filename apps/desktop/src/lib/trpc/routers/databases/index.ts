@@ -18,6 +18,7 @@ const SQLITE_FILE_GLOBS = [
 
 const SQLITE_ROW_ID_COLUMN = "__superset_rowid";
 const POSTGRES_ROW_ID_COLUMN = "__superset_ctid";
+const PREVIEW_TEXT_LIMIT = 180;
 
 function isAbsoluteFilesystemPath(inputPath: string): boolean {
 	return path.isAbsolute(inputPath) || /^[A-Za-z]:[\\/]/.test(inputPath);
@@ -76,6 +77,92 @@ function quoteSqliteIdentifier(identifier: string): string {
 
 function quotePostgresIdentifier(identifier: string): string {
 	return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function buildSqlitePreviewExpression(
+	columnName: string,
+	declaredType: string | null | undefined,
+): string {
+	const quotedColumn = quoteSqliteIdentifier(columnName);
+	const normalizedType = (declaredType ?? "").toLowerCase();
+
+	if (normalizedType.includes("blob")) {
+		return `CASE WHEN ${quotedColumn} IS NULL THEN NULL ELSE '<blob ' || length(${quotedColumn}) || ' bytes>' END AS ${quoteSqliteIdentifier(columnName)}`;
+	}
+
+	if (
+		normalizedType.includes("text") ||
+		normalizedType.includes("char") ||
+		normalizedType.includes("clob") ||
+		normalizedType.includes("json") ||
+		normalizedType.length === 0
+	) {
+		return `CASE
+			WHEN ${quotedColumn} IS NULL THEN NULL
+			WHEN typeof(${quotedColumn}) = 'text' AND length(CAST(${quotedColumn} AS TEXT)) > ${PREVIEW_TEXT_LIMIT}
+				THEN substr(CAST(${quotedColumn} AS TEXT), 1, ${PREVIEW_TEXT_LIMIT}) || '…'
+			ELSE ${quotedColumn}
+		END AS ${quoteSqliteIdentifier(columnName)}`;
+	}
+
+	return `${quotedColumn} AS ${quoteSqliteIdentifier(columnName)}`;
+}
+
+function buildPostgresPreviewExpression(input: {
+	columnName: string;
+	dataType: string;
+	udtName: string;
+}): string {
+	const quotedColumn = quotePostgresIdentifier(input.columnName);
+	const outputAlias = quotePostgresIdentifier(input.columnName);
+	const normalizedType = input.dataType.toLowerCase();
+	const normalizedUdtName = input.udtName.toLowerCase();
+
+	if (normalizedType === "bytea") {
+		return `CASE WHEN ${quotedColumn} IS NULL THEN NULL ELSE '<bytea ' || octet_length(${quotedColumn})::text || ' bytes>' END AS ${outputAlias}`;
+	}
+
+	if (normalizedType === "json" || normalizedType === "jsonb") {
+		return `CASE
+			WHEN ${quotedColumn} IS NULL THEN NULL
+			ELSE '<${normalizedType}> ' || left(${quotedColumn}::text, ${PREVIEW_TEXT_LIMIT}) ||
+				CASE WHEN length(${quotedColumn}::text) > ${PREVIEW_TEXT_LIMIT} THEN '…' ELSE '' END
+		END AS ${outputAlias}`;
+	}
+
+	if (normalizedType === "array") {
+		return `CASE
+			WHEN ${quotedColumn} IS NULL THEN NULL
+			ELSE 'Array(' || coalesce(cardinality(${quotedColumn}), 0)::text || ') ' ||
+				left(${quotedColumn}::text, ${PREVIEW_TEXT_LIMIT}) ||
+				CASE WHEN length(${quotedColumn}::text) > ${PREVIEW_TEXT_LIMIT} THEN '…' ELSE '' END
+		END AS ${outputAlias}`;
+	}
+
+	if (
+		normalizedType === "text" ||
+		normalizedType === "character varying" ||
+		normalizedType === "character" ||
+		normalizedType === "xml" ||
+		normalizedType === "citext" ||
+		normalizedType === "tsvector" ||
+		normalizedType === "tsquery" ||
+		normalizedUdtName === "vector" ||
+		normalizedUdtName === "halfvec" ||
+		normalizedUdtName === "sparsevec" ||
+		normalizedUdtName === "geometry" ||
+		normalizedUdtName === "geography" ||
+		normalizedUdtName === "hstore"
+	) {
+		return `CASE
+			WHEN ${quotedColumn} IS NULL THEN NULL
+			WHEN length(${quotedColumn}::text) > ${PREVIEW_TEXT_LIMIT}
+				THEN left(${quotedColumn}::text, ${PREVIEW_TEXT_LIMIT}) || '…'
+			ELSE ${quotedColumn}::text
+		END AS ${outputAlias}`;
+	}
+
+	return `${quotedColumn} AS ${outputAlias}`;
 }
 
 function openSqliteDatabase(databasePath: string): Database.Database {
@@ -318,12 +405,6 @@ export const createDatabasesRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				console.log("[databases.previewSqliteTable:start]", {
-					databasePath: input.databasePath,
-					tableName: input.tableName,
-					limit: input.limit ?? 50,
-					offset: input.offset ?? 0,
-				});
 				try {
 					ensureAbsoluteFilesystemPath(input.databasePath);
 					await ensureExistingFile(input.databasePath);
@@ -333,8 +414,21 @@ export const createDatabasesRouter = () => {
 					const offset = input.offset ?? 0;
 					const startedAt = performance.now();
 					try {
+						const columnInfo = db
+							.prepare(
+								`PRAGMA table_info(${quoteSqliteIdentifier(input.tableName)})`,
+							)
+							.all() as Array<{
+							name: string;
+							type: string | null;
+						}>;
+						const previewSelect = columnInfo
+							.map((column) =>
+								buildSqlitePreviewExpression(column.name, column.type),
+							)
+							.join(", ");
 						const statement = db.prepare(
-							`SELECT rowid AS ${quoteSqliteIdentifier(SQLITE_ROW_ID_COLUMN)}, * FROM ${quoteSqliteIdentifier(input.tableName)} LIMIT ? OFFSET ?`,
+							`SELECT rowid AS ${quoteSqliteIdentifier(SQLITE_ROW_ID_COLUMN)}, ${previewSelect} FROM ${quoteSqliteIdentifier(input.tableName)} LIMIT ? OFFSET ?`,
 						);
 						const previewRows = statement.all(limit + 1, offset) as Array<
 							Record<string, unknown>
@@ -366,11 +460,39 @@ export const createDatabasesRouter = () => {
 								? error.message
 								: "Failed to preview SQLite table.",
 					});
+				}
+			}),
+
+		getSqliteRowDetail: publicProcedure
+			.input(
+				z.object({
+					databasePath: z.string().min(1),
+					tableName: z.string().min(1),
+					rowId: z.union([z.string(), z.number()]),
+				}),
+			)
+			.query(async ({ input }) => {
+				ensureAbsoluteFilesystemPath(input.databasePath);
+				await ensureExistingFile(input.databasePath);
+
+				const db = openSqliteDatabase(input.databasePath);
+				try {
+					const row = db
+						.prepare(
+							`SELECT rowid AS ${quoteSqliteIdentifier(SQLITE_ROW_ID_COLUMN)}, * FROM ${quoteSqliteIdentifier(input.tableName)} WHERE rowid = ? LIMIT 1`,
+						)
+						.get(input.rowId) as Record<string, unknown> | undefined;
+
+					if (!row) {
+						throw new TRPCError({
+							code: "NOT_FOUND",
+							message: "Row not found.",
+						});
+					}
+
+					return { row };
 				} finally {
-					console.log("[databases.previewSqliteTable:end]", {
-						databasePath: input.databasePath,
-						tableName: input.tableName,
-					});
+					db.close();
 				}
 			}),
 
@@ -385,50 +507,92 @@ export const createDatabasesRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				console.log("[databases.previewPostgresTable:start]", {
-					schema: input.schema,
-					tableName: input.tableName,
-					limit: input.limit ?? 50,
-					offset: input.offset ?? 0,
-				});
-				try {
-					const limit = input.limit ?? 50;
-					const offset = input.offset ?? 0;
-					const startedAt = performance.now();
+				const limit = input.limit ?? 50;
+				const offset = input.offset ?? 0;
+				const startedAt = performance.now();
 
-					return await withPostgresClient(
-						input.connectionString,
-						async (client) => {
-							const qualifiedTableName = `${quotePostgresIdentifier(input.schema)}.${quotePostgresIdentifier(input.tableName)}`;
-							const dataResult = await client.query(
-								`SELECT ctid::text AS ${quotePostgresIdentifier(POSTGRES_ROW_ID_COLUMN)}, * FROM ${qualifiedTableName} LIMIT $1 OFFSET $2`,
-								[limit + 1, offset],
-							);
-							const hasMore = dataResult.rows.length > limit;
-							const rows = hasMore
-								? dataResult.rows.slice(0, limit)
-								: dataResult.rows;
+				return await withPostgresClient(
+					input.connectionString,
+					async (client) => {
+						const columnInfo = await client.query<{
+							column_name: string;
+							data_type: string;
+							udt_name: string;
+							ordinal_position: number;
+						}>(
+							`
+								SELECT column_name, data_type, udt_name, ordinal_position
+								FROM information_schema.columns
+								WHERE table_schema = $1 AND table_name = $2
+								ORDER BY ordinal_position
+							`,
+							[input.schema, input.tableName],
+						);
+						const qualifiedTableName = `${quotePostgresIdentifier(input.schema)}.${quotePostgresIdentifier(input.tableName)}`;
+						const previewSelect = columnInfo.rows
+							.map((column) =>
+								buildPostgresPreviewExpression({
+									columnName: column.column_name,
+									dataType: column.data_type,
+									udtName: column.udt_name,
+								}),
+							)
+							.join(", ");
+						const dataResult = await client.query(
+							`SELECT ctid::text AS ${quotePostgresIdentifier(POSTGRES_ROW_ID_COLUMN)}, ${previewSelect} FROM ${qualifiedTableName} LIMIT $1 OFFSET $2`,
+							[limit + 1, offset],
+						);
+						const hasMore = dataResult.rows.length > limit;
+						const rows = hasMore
+							? dataResult.rows.slice(0, limit)
+							: dataResult.rows;
 
-							return {
-								columns: dataResult.fields
-									.map((field: { name: string }) => field.name)
-									.filter((column) => column !== POSTGRES_ROW_ID_COLUMN),
-								rows,
-								rowCount: rows.length,
-								totalRows: null,
-								hasMore,
-								offset,
-								limit,
-								elapsedMs: Math.round(performance.now() - startedAt),
-							};
-						},
-					);
-				} finally {
-					console.log("[databases.previewPostgresTable:end]", {
-						schema: input.schema,
-						tableName: input.tableName,
-					});
-				}
+						return {
+							columns: dataResult.fields
+								.map((field: { name: string }) => field.name)
+								.filter((column) => column !== POSTGRES_ROW_ID_COLUMN),
+							rows,
+							rowCount: rows.length,
+							totalRows: null,
+							hasMore,
+							offset,
+							limit,
+							elapsedMs: Math.round(performance.now() - startedAt),
+						};
+					},
+				);
+			}),
+
+		getPostgresRowDetail: publicProcedure
+			.input(
+				z.object({
+					connectionString: z.string().min(1),
+					schema: z.string().min(1),
+					tableName: z.string().min(1),
+					ctid: z.string().min(1),
+				}),
+			)
+			.query(async ({ input }) => {
+				return await withPostgresClient(
+					input.connectionString,
+					async (client) => {
+						const qualifiedTableName = `${quotePostgresIdentifier(input.schema)}.${quotePostgresIdentifier(input.tableName)}`;
+						const result = await client.query(
+							`SELECT ctid::text AS ${quotePostgresIdentifier(POSTGRES_ROW_ID_COLUMN)}, * FROM ${qualifiedTableName} WHERE ctid = $1::tid LIMIT 1`,
+							[input.ctid],
+						);
+
+						const row = result.rows[0] as Record<string, unknown> | undefined;
+						if (!row) {
+							throw new TRPCError({
+								code: "NOT_FOUND",
+								message: "Row not found.",
+							});
+						}
+
+						return { row };
+					},
+				);
 			}),
 
 		executeSqlite: publicProcedure

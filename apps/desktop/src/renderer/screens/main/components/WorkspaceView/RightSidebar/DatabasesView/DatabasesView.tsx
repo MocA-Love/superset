@@ -1,6 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@superset/ui/alert";
 import { Badge } from "@superset/ui/badge";
 import { Button } from "@superset/ui/button";
+import { Checkbox } from "@superset/ui/checkbox";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -31,6 +32,7 @@ import {
 } from "@superset/ui/empty";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import {
 	ResizableHandle,
 	ResizablePanel,
@@ -47,8 +49,21 @@ import {
 } from "@superset/ui/table";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
+	memo,
+	startTransition,
+	useCallback,
+	useDeferredValue,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import {
+	LuArrowDown,
+	LuArrowUp,
+	LuArrowUpDown,
 	LuChevronDown,
 	LuChevronRight,
 	LuCopy,
@@ -57,18 +72,22 @@ import {
 	LuExternalLink,
 	LuEye,
 	LuEyeOff,
+	LuFilter,
 	LuPencil,
 	LuPlay,
 	LuPlus,
 	LuRefreshCw,
+	LuSearch,
 	LuTable2,
 	LuTrash2,
+	LuX,
 } from "react-icons/lu";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import {
 	type SavedDatabaseConnection,
+	type SavedDatabaseQueryHistoryItem,
 	useDatabaseSidebarStore,
 } from "renderer/stores/database-sidebar";
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
@@ -92,6 +111,8 @@ const POSTGRES_DEFAULT_SQL = [
 ].join("\n");
 
 const TABLE_PREVIEW_PAGE_SIZE = 15;
+const TABLE_PREVIEW_ROW_HEIGHT = 34;
+const TABLE_PREVIEW_OVERSCAN = 10;
 
 type ConnectionDialect = "sqlite" | "postgres";
 
@@ -106,6 +127,7 @@ interface QueryResult {
 }
 
 interface EditableCellState {
+	mode: "edit" | "insert" | "duplicate";
 	row: Record<string, unknown>;
 	column: string;
 	value: unknown;
@@ -126,6 +148,12 @@ interface ContextCellState {
 interface PendingEditRequest {
 	row: Record<string, unknown>;
 	column?: string;
+	mode?: EditableCellState["mode"];
+}
+
+interface TableSortState {
+	column: string;
+	direction: "asc" | "desc";
 }
 
 function isAbsoluteFilesystemPath(inputPath: string): boolean {
@@ -237,6 +265,56 @@ function toSqlLiteral(value: unknown, dialect: ConnectionDialect): string {
 	return `'${JSON.stringify(value).replaceAll("'", "''")}'`;
 }
 
+function getRowIdentifier(
+	row: Record<string, unknown>,
+	dialect: ConnectionDialect,
+): string | null {
+	const identifier =
+		dialect === "sqlite"
+			? row[SQLITE_ROW_ID_COLUMN]
+			: row[POSTGRES_ROW_ID_COLUMN];
+
+	if (identifier === undefined || identifier === null) {
+		return null;
+	}
+
+	return String(identifier);
+}
+
+function matchesSearchValue(value: unknown, query: string): boolean {
+	if (!query) return true;
+	return formatCellValue(value).toLowerCase().includes(query);
+}
+
+function comparePreviewValues(left: unknown, right: unknown): number {
+	if (left === right) return 0;
+	if (left === null || left === undefined) return 1;
+	if (right === null || right === undefined) return -1;
+	if (typeof left === "number" && typeof right === "number") {
+		return left - right;
+	}
+	if (typeof left === "boolean" && typeof right === "boolean") {
+		return Number(left) - Number(right);
+	}
+	if (left instanceof Date && right instanceof Date) {
+		return left.getTime() - right.getTime();
+	}
+
+	return formatCellValue(left).localeCompare(
+		formatCellValue(right),
+		undefined,
+		{
+			numeric: true,
+			sensitivity: "base",
+		},
+	);
+}
+
+function toCsvCell(value: unknown): string {
+	const stringValue = formatCellValue(value);
+	return `"${stringValue.replaceAll('"', '""')}"`;
+}
+
 function buildSqliteRowSelector(row: Record<string, unknown>): string {
 	const rowId = row[SQLITE_ROW_ID_COLUMN];
 	if (rowId === undefined) {
@@ -274,12 +352,15 @@ function normalizeDraftValue(
 }
 
 const PreviewTableCellValue = memo(function PreviewTableCellValue({
-	value,
-	onContextMenu,
+	row,
+	column,
+	onOpenContextMenu,
 }: {
-	value: unknown;
-	onContextMenu: () => void;
+	row: Record<string, unknown>;
+	column: string;
+	onOpenContextMenu: (row: Record<string, unknown>, column: string) => void;
 }) {
+	const value = row[column];
 	const formattedValue = useMemo(() => formatCellValue(value), [value]);
 
 	return (
@@ -287,10 +368,54 @@ const PreviewTableCellValue = memo(function PreviewTableCellValue({
 			type="button"
 			className="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-left"
 			title={formattedValue}
-			onContextMenu={onContextMenu}
+			onContextMenu={() => onOpenContextMenu(row, column)}
 		>
 			{formattedValue}
 		</button>
+	);
+});
+
+const PreviewTableRowView = memo(function PreviewTableRowView({
+	row,
+	rowId,
+	columns,
+	selected,
+	onToggleSelection,
+	onOpenContextMenu,
+	dataIndex,
+}: {
+	row: Record<string, unknown>;
+	rowId: string | null;
+	columns: string[];
+	selected: boolean;
+	onToggleSelection: (row: Record<string, unknown>, checked: boolean) => void;
+	onOpenContextMenu: (row: Record<string, unknown>, column: string) => void;
+	dataIndex?: number;
+}) {
+	return (
+		<TableRow data-index={dataIndex}>
+			<TableCell className="w-10 min-w-10">
+				<Checkbox
+					checked={selected}
+					onCheckedChange={(checked) =>
+						onToggleSelection(row, Boolean(checked))
+					}
+					aria-label="Select row"
+				/>
+			</TableCell>
+			{columns.map((column) => (
+				<TableCell
+					key={`${rowId ?? "row"}-${column}`}
+					className="max-w-[24rem] align-top font-mono text-[11px]"
+				>
+					<PreviewTableCellValue
+						row={row}
+						column={column}
+						onOpenContextMenu={onOpenContextMenu}
+					/>
+				</TableCell>
+			))}
+		</TableRow>
 	);
 });
 
@@ -411,6 +536,7 @@ export function DatabasesView({
 	const isSidebarMode = mode === "sidebar";
 	const isPaneMode = mode === "pane";
 	const { copyToClipboard } = useCopyToClipboard();
+	const trpcUtils = electronTrpc.useUtils();
 
 	const connections = useDatabaseSidebarStore((state) => state.connections);
 	const sidebarSelectedConnectionId = useDatabaseSidebarStore(
@@ -422,6 +548,16 @@ export function DatabasesView({
 	);
 	const removeConnection = useDatabaseSidebarStore(
 		(state) => state.removeConnection,
+	);
+	const queryHistory = useDatabaseSidebarStore((state) => state.queryHistory);
+	const addQueryHistoryItem = useDatabaseSidebarStore(
+		(state) => state.addQueryHistoryItem,
+	);
+	const removeQueryHistoryItem = useDatabaseSidebarStore(
+		(state) => state.removeQueryHistoryItem,
+	);
+	const clearQueryHistoryForConnection = useDatabaseSidebarStore(
+		(state) => state.clearQueryHistoryForConnection,
 	);
 	const setActiveConnectionId = useDatabaseSidebarStore(
 		(state) => state.setActiveConnectionId,
@@ -455,15 +591,26 @@ export function DatabasesView({
 	const [showPassword, setShowPassword] = useState(false);
 	const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
 	const [tablePreviewPage, setTablePreviewPage] = useState(0);
+	const [tableSearchInput, setTableSearchInput] = useState("");
+	const deferredTableSearchInput = useDeferredValue(tableSearchInput);
+	const [tableSort, setTableSort] = useState<TableSortState | null>(null);
+	const [columnFilters, setColumnFilters] = useState<Record<string, string>>(
+		{},
+	);
+	const [selectedRowIds, setSelectedRowIds] = useState<Record<string, boolean>>(
+		{},
+	);
 	const [expandedSchemaKeys, setExpandedSchemaKeys] = useState<
 		Record<string, boolean>
 	>({});
 	const [sql, setSql] = useState(POSTGRES_DEFAULT_SQL);
 	const [formError, setFormError] = useState<string | null>(null);
 	const [queryError, setQueryError] = useState<string | null>(null);
+	const [tableActionError, setTableActionError] = useState<string | null>(null);
 	const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
 	const [isSqlDialogOpen, setIsSqlDialogOpen] = useState(false);
 	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+	const [isEditDialogLoading, setIsEditDialogLoading] = useState(false);
 	const [isCellContextMenuOpen, setIsCellContextMenuOpen] = useState(false);
 	const [contextCell, setContextCell] = useState<ContextCellState | null>(null);
 	const [pendingEditRequest, setPendingEditRequest] =
@@ -472,6 +619,7 @@ export function DatabasesView({
 		null,
 	);
 	const [rowDraft, setRowDraft] = useState<Record<string, RowDraftValue>>({});
+	const previewScrollRef = useRef<HTMLDivElement>(null);
 
 	const labelInputRef = useRef<HTMLInputElement>(null);
 	const groupInputRef = useRef<HTMLInputElement>(null);
@@ -482,7 +630,6 @@ export function DatabasesView({
 	const postgresPasswordRef = useRef<HTMLInputElement>(null);
 	const postgresDatabaseRef = useRef<HTMLInputElement>(null);
 	const previousActiveConnectionIdRef = useRef<string | null>(null);
-	const editDialogOpenedAtRef = useRef(0);
 
 	const resetConnectionForm = () => {
 		setEditingConnectionId(null);
@@ -558,14 +705,16 @@ export function DatabasesView({
 			return;
 		}
 
-		console.log("[DatabasesView] active connection changed", {
-			connectionId: resolvedSelectedConnectionId,
-		});
 		previousActiveConnectionIdRef.current = resolvedSelectedConnectionId;
 		setQueryError(null);
+		setTableActionError(null);
 		setQueryResult(null);
 		setSelectedTableKey(null);
 		setTablePreviewPage(0);
+		setTableSearchInput("");
+		setTableSort(null);
+		setColumnFilters({});
+		setSelectedRowIds({});
 	}, [resolvedSelectedConnectionId]);
 
 	useEffect(() => {
@@ -626,6 +775,11 @@ export function DatabasesView({
 		if (!activeTables.length) {
 			if (selectedTableKey !== null) {
 				setSelectedTableKey(null);
+				setTableActionError(null);
+				setTableSearchInput("");
+				setTableSort(null);
+				setColumnFilters({});
+				setSelectedRowIds({});
 			}
 			return;
 		}
@@ -635,6 +789,11 @@ export function DatabasesView({
 			!activeTables.some((table) => getTableKey(table) === selectedTableKey)
 		) {
 			setSelectedTableKey(null);
+			setTableActionError(null);
+			setTableSearchInput("");
+			setTableSort(null);
+			setColumnFilters({});
+			setSelectedRowIds({});
 		}
 	}, [activeTables, selectedTableKey]);
 
@@ -669,6 +828,7 @@ export function DatabasesView({
 				activeConnection?.dialect === "sqlite" &&
 				Boolean(activeConnection.databasePath) &&
 				Boolean(selectedTable?.name),
+			placeholderData: (previousData) => previousData,
 		},
 	);
 
@@ -687,6 +847,7 @@ export function DatabasesView({
 					Boolean(activeConnection.connectionString) &&
 					Boolean(selectedTable?.schema) &&
 					Boolean(selectedTable?.name),
+				placeholderData: (previousData) => previousData,
 			},
 		);
 
@@ -740,56 +901,133 @@ export function DatabasesView({
 			: selectedTable.name
 		: null;
 	const previewRows = activePreviewQuery.data?.rows ?? [];
+	const normalizedTableSearch = deferredTableSearchInput.trim().toLowerCase();
+	const normalizedColumnFilters = useMemo(
+		() =>
+			Object.fromEntries(
+				Object.entries(columnFilters)
+					.map(([column, value]) => [column, value.trim().toLowerCase()])
+					.filter(([, value]) => value.length > 0),
+			) as Record<string, string>,
+		[columnFilters],
+	);
+	const filteredPreviewRows = useMemo(() => {
+		const rows = [...previewRows];
+		const hasGlobalSearch = normalizedTableSearch.length > 0;
+		const filterEntries = Object.entries(normalizedColumnFilters);
+
+		const nextRows = rows.filter((row) => {
+			if (hasGlobalSearch) {
+				const matchesGlobal = visiblePreviewColumns.some((column) =>
+					matchesSearchValue(row[column], normalizedTableSearch),
+				);
+				if (!matchesGlobal) {
+					return false;
+				}
+			}
+
+			for (const [column, value] of filterEntries) {
+				if (!matchesSearchValue(row[column], value)) {
+					return false;
+				}
+			}
+
+			return true;
+		});
+
+		if (!tableSort) {
+			return nextRows;
+		}
+
+		return nextRows.sort((left, right) => {
+			const comparison = comparePreviewValues(
+				left[tableSort.column],
+				right[tableSort.column],
+			);
+			return tableSort.direction === "asc" ? comparison : -comparison;
+		});
+	}, [
+		previewRows,
+		normalizedTableSearch,
+		normalizedColumnFilters,
+		visiblePreviewColumns,
+		tableSort,
+	]);
+	const filteredPreviewRowIds = useMemo(
+		() =>
+			filteredPreviewRows
+				.map((row) =>
+					activeConnection
+						? getRowIdentifier(row, activeConnection.dialect)
+						: null,
+				)
+				.filter((value): value is string => Boolean(value)),
+		[filteredPreviewRows, activeConnection],
+	);
+	const selectedVisibleRowCount = useMemo(
+		() => filteredPreviewRowIds.filter((rowId) => selectedRowIds[rowId]).length,
+		[filteredPreviewRowIds, selectedRowIds],
+	);
+	const areAllVisibleRowsSelected =
+		filteredPreviewRowIds.length > 0 &&
+		selectedVisibleRowCount === filteredPreviewRowIds.length;
+	const isPartiallySelected =
+		selectedVisibleRowCount > 0 &&
+		selectedVisibleRowCount < filteredPreviewRowIds.length;
+	const queryHistoryForActiveConnection = useMemo(
+		() =>
+			activeConnection
+				? queryHistory.filter(
+						(item) => item.connectionId === activeConnection.id,
+					)
+				: [],
+		[activeConnection, queryHistory],
+	);
+	const rowVirtualizer = useVirtualizer({
+		count: filteredPreviewRows.length,
+		getScrollElement: () => previewScrollRef.current,
+		estimateSize: () => TABLE_PREVIEW_ROW_HEIGHT,
+		overscan: TABLE_PREVIEW_OVERSCAN,
+		rangeExtractor: defaultRangeExtractor,
+	});
+	const virtualRows = rowVirtualizer.getVirtualItems();
+	const paddingTop = virtualRows.length > 0 ? (virtualRows[0]?.start ?? 0) : 0;
+	const paddingBottom =
+		virtualRows.length > 0
+			? rowVirtualizer.getTotalSize() -
+				(virtualRows[virtualRows.length - 1]?.end ?? 0)
+			: 0;
 
 	useEffect(() => {
-		if (!activeConnection || !selectedTable) {
+		if (!activeConnection) {
+			setSelectedRowIds((current) =>
+				Object.keys(current).length > 0 ? {} : current,
+			);
 			return;
 		}
 
-		console.log("[DatabasesView] preview query state", {
-			dialect: activeConnection.dialect,
-			connectionId: activeConnection.id,
-			table: selectedTableLabel,
-			page: tablePreviewPage,
-			isLoading: activePreviewQuery.isLoading,
-			isFetching: activePreviewQuery.isFetching,
-			hasData: Boolean(activePreviewQuery.data),
-			hasError: Boolean(activePreviewQuery.error),
-			rowCount: previewRows.length,
-			columnCount: activePreviewQuery.data?.columns.length ?? 0,
+		const validRowIds = new Set(
+			previewRows
+				.map((row) => getRowIdentifier(row, activeConnection.dialect))
+				.filter((value): value is string => Boolean(value)),
+		);
+
+		setSelectedRowIds((current) => {
+			const nextEntries = Object.entries(current).filter(([rowId]) =>
+				validRowIds.has(rowId),
+			);
+			if (nextEntries.length === Object.keys(current).length) {
+				return current;
+			}
+			return Object.fromEntries(nextEntries);
 		});
-	}, [
-		activeConnection,
-		selectedTable,
-		selectedTableLabel,
-		tablePreviewPage,
-		activePreviewQuery.isLoading,
-		activePreviewQuery.isFetching,
-		activePreviewQuery.data,
-		activePreviewQuery.error,
-		previewRows.length,
-	]);
+	}, [previewRows, activeConnection]);
 
 	useEffect(() => {
 		if (!selectedTableLabel) {
 			setContextCell(null);
-			return;
 		}
-
-		console.log("[DatabasesView] render table section", {
-			table: selectedTableLabel,
-			rowCount: previewRows.length,
-			columnCount: visiblePreviewColumns.length,
-			isLoading: activePreviewQuery.isLoading,
-			isFetching: activePreviewQuery.isFetching,
-		});
-	}, [
-		selectedTableLabel,
-		previewRows.length,
-		visiblePreviewColumns.length,
-		activePreviewQuery.isLoading,
-		activePreviewQuery.isFetching,
-	]);
+	}, [selectedTableLabel]);
 
 	const runSqlStatement = async (nextSql: string) => {
 		if (!activeConnection) {
@@ -852,6 +1090,37 @@ export function DatabasesView({
 		return `UPDATE ${quoteSqlIdentifier(selectedTable.schema ?? "public")}.${quoteSqlIdentifier(selectedTable.name)} SET ${assignments.join(", ")} WHERE ${buildPostgresRowSelector(row)}`;
 	};
 
+	const buildInsertStatement = (
+		values: Record<string, unknown>,
+		defaultSourceRow?: Record<string, unknown>,
+	) => {
+		if (!selectedTable || !activeConnection) {
+			throw new Error("Select a table first.");
+		}
+
+		const entries = Object.entries(values).filter(([column, value]) => {
+			if (value !== null && value !== undefined) {
+				return true;
+			}
+			return defaultSourceRow ? defaultSourceRow[column] !== undefined : false;
+		});
+
+		if (!entries.length) {
+			throw new Error("Enter at least one value to insert.");
+		}
+
+		const columns = entries.map(([column]) => quoteSqlIdentifier(column));
+		const sqlValues = entries.map(([, value]) =>
+			toSqlLiteral(value, activeConnection.dialect),
+		);
+		const tableReference =
+			activeConnection.dialect === "sqlite"
+				? quoteSqlIdentifier(selectedTable.name)
+				: `${quoteSqlIdentifier(selectedTable.schema ?? "public")}.${quoteSqlIdentifier(selectedTable.name)}`;
+
+		return `INSERT INTO ${tableReference} (${columns.join(", ")}) VALUES (${sqlValues.join(", ")})`;
+	};
+
 	const applyRowUpdate = async ({
 		row,
 		updates,
@@ -859,8 +1128,49 @@ export function DatabasesView({
 		row: Record<string, unknown>;
 		updates: Record<string, unknown>;
 	}) => {
+		setTableActionError(null);
 		await runSqlStatement(buildUpdateStatement({ row, updates }));
 		await activePreviewQuery.refetch();
+	};
+
+	const exportRows = async (
+		rows: Array<Record<string, unknown>>,
+		format: "csv" | "json",
+	) => {
+		if (!selectedTableLabel) {
+			return;
+		}
+
+		const fileBaseName = selectedTableLabel.replaceAll(".", "_");
+		const content =
+			format === "json"
+				? JSON.stringify(
+						rows.map((row) =>
+							Object.fromEntries(
+								visiblePreviewColumns.map((column) => [column, row[column]]),
+							),
+						),
+						null,
+						2,
+					)
+				: [
+						visiblePreviewColumns.map((column) => toCsvCell(column)).join(","),
+						...rows.map((row) =>
+							visiblePreviewColumns
+								.map((column) => toCsvCell(row[column]))
+								.join(","),
+						),
+					].join("\n");
+
+		const blob = new Blob([content], {
+			type: format === "json" ? "application/json" : "text/csv;charset=utf-8",
+		});
+		const objectUrl = URL.createObjectURL(blob);
+		const anchor = document.createElement("a");
+		anchor.href = objectUrl;
+		anchor.download = `${fileBaseName}.${format}`;
+		anchor.click();
+		URL.revokeObjectURL(objectUrl);
 	};
 
 	const handleAddConnection = () => {
@@ -959,13 +1269,14 @@ export function DatabasesView({
 	};
 
 	const handleRunQuery = async () => {
-		console.log("[DatabasesView] run SQL", {
-			dialect: activeConnection?.dialect,
-			connectionId: activeConnection?.id,
-			sqlPreview: sql.slice(0, 200),
-		});
 		try {
 			await runSqlStatement(sql);
+			if (activeConnection) {
+				addQueryHistoryItem({
+					connectionId: activeConnection.id,
+					sql,
+				});
+			}
 		} catch (error) {
 			setQueryResult(null);
 			setQueryError(
@@ -974,39 +1285,72 @@ export function DatabasesView({
 		}
 	};
 
+	const handleCreateRow = () => {
+		const blankRow = Object.fromEntries(
+			visiblePreviewColumns.map((column) => [column, null]),
+		) as Record<string, unknown>;
+		handleOpenEditDialog(blankRow, visiblePreviewColumns[0], "insert");
+	};
+
 	const handleOpenEditDialog = useCallback(
-		(row: Record<string, unknown>, initialColumn?: string) => {
-			console.log("[DatabasesView] open edit dialog", {
-				table: selectedTableLabel,
-				column: initialColumn,
-			});
+		async (
+			row: Record<string, unknown>,
+			initialColumn?: string,
+			mode: EditableCellState["mode"] = "edit",
+		) => {
+			let sourceRow = row;
+			if (mode !== "insert" && activeConnection && selectedTable) {
+				setIsEditDialogLoading(true);
+				try {
+					sourceRow =
+						activeConnection.dialect === "sqlite"
+							? (
+									await trpcUtils.databases.getSqliteRowDetail.fetch({
+										databasePath: activeConnection.databasePath ?? "",
+										tableName: selectedTable.name,
+										rowId: row[SQLITE_ROW_ID_COLUMN] as string | number,
+									})
+								).row
+							: (
+									await trpcUtils.databases.getPostgresRowDetail.fetch({
+										connectionString: activeConnection.connectionString ?? "",
+										schema: selectedTable.schema ?? "public",
+										tableName: selectedTable.name,
+										ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
+									})
+								).row;
+				} finally {
+					setIsEditDialogLoading(false);
+				}
+			}
+
 			const nextDraft = Object.fromEntries(
 				visiblePreviewColumns.map((column) => [
 					column,
 					{
-						value: formatCellValue(row[column]),
-						isNull: row[column] === null,
+						value: formatCellValue(sourceRow[column]),
+						isNull: mode === "insert" ? true : sourceRow[column] === null,
 					},
 				]),
 			) as Record<string, RowDraftValue>;
 
 			if (initialColumn && nextDraft[initialColumn]) {
 				nextDraft[initialColumn] = {
-					value: formatCellValue(row[initialColumn]),
-					isNull: row[initialColumn] === null,
+					value: formatCellValue(sourceRow[initialColumn]),
+					isNull: mode === "insert" ? false : sourceRow[initialColumn] === null,
 				};
 			}
 
 			setRowDraft(nextDraft);
 			setEditingCell({
-				row,
+				mode,
+				row: sourceRow,
 				column: initialColumn ?? visiblePreviewColumns[0] ?? "",
-				value: initialColumn ? row[initialColumn] : null,
+				value: initialColumn ? sourceRow[initialColumn] : null,
 			});
-			editDialogOpenedAtRef.current = Date.now();
 			setIsEditDialogOpen(true);
 		},
-		[selectedTableLabel, visiblePreviewColumns],
+		[visiblePreviewColumns, activeConnection, selectedTable, trpcUtils],
 	);
 
 	useEffect(() => {
@@ -1014,7 +1358,11 @@ export function DatabasesView({
 			return;
 		}
 
-		handleOpenEditDialog(pendingEditRequest.row, pendingEditRequest.column);
+		void handleOpenEditDialog(
+			pendingEditRequest.row,
+			pendingEditRequest.column,
+			pendingEditRequest.mode ?? "edit",
+		);
 		setPendingEditRequest(null);
 	}, [pendingEditRequest, isCellContextMenuOpen, handleOpenEditDialog]);
 
@@ -1023,12 +1371,7 @@ export function DatabasesView({
 			return;
 		}
 
-		console.log("[DatabasesView] save row edit", {
-			table: selectedTableLabel,
-			columnCount: Object.keys(rowDraft).length,
-		});
-
-		const updates = Object.fromEntries(
+		const nextValues = Object.fromEntries(
 			Object.entries(rowDraft).map(([column, draft]) => [
 				column,
 				draft.isNull
@@ -1038,13 +1381,20 @@ export function DatabasesView({
 		);
 
 		try {
-			await applyRowUpdate({ row: editingCell.row, updates });
-			editDialogOpenedAtRef.current = 0;
+			if (editingCell.mode === "edit") {
+				await applyRowUpdate({ row: editingCell.row, updates: nextValues });
+			} else {
+				setTableActionError(null);
+				await runSqlStatement(
+					buildInsertStatement(nextValues, editingCell.row),
+				);
+				await activePreviewQuery.refetch();
+			}
 			setIsEditDialogOpen(false);
 			setEditingCell(null);
 			setRowDraft({});
 		} catch (error) {
-			setQueryError(
+			setTableActionError(
 				error instanceof Error ? error.message : "Failed to update row.",
 			);
 		}
@@ -1066,25 +1416,136 @@ export function DatabasesView({
 		column: string;
 		value: unknown;
 	}) => {
-		console.log("[DatabasesView] quick cell update", {
-			table: selectedTableLabel,
-			column,
-			value,
-		});
 		try {
 			await applyRowUpdate({ row, updates: { [column]: value } });
 		} catch (error) {
-			setQueryError(
+			setTableActionError(
 				error instanceof Error ? error.message : "Failed to update cell.",
 			);
 		}
 	};
 
-	const toggleSchemaGroup = (schemaKey: string) => {
-		console.log("[DatabasesView] toggle schema", {
-			schemaKey,
-			nextOpen: !expandedSchemaKeys[schemaKey],
+	const toggleTableSort = (column: string) => {
+		setTableSort((current) => {
+			if (!current || current.column !== column) {
+				return { column, direction: "asc" };
+			}
+			if (current.direction === "asc") {
+				return { column, direction: "desc" };
+			}
+			return null;
 		});
+	};
+
+	const setColumnFilterValue = (column: string, value: string) => {
+		setColumnFilters((current) => {
+			const next = { ...current };
+			if (value.trim().length === 0) {
+				delete next[column];
+			} else {
+				next[column] = value;
+			}
+			return next;
+		});
+	};
+
+	const toggleRowSelection = useCallback(
+		(row: Record<string, unknown>, checked: boolean) => {
+			if (!activeConnection) {
+				return;
+			}
+			const rowId = getRowIdentifier(row, activeConnection.dialect);
+			if (!rowId) {
+				return;
+			}
+			setSelectedRowIds((current) => {
+				if (checked) {
+					return {
+						...current,
+						[rowId]: true,
+					};
+				}
+				const next = { ...current };
+				delete next[rowId];
+				return next;
+			});
+		},
+		[activeConnection],
+	);
+
+	const handleOpenCellContextMenu = useCallback(
+		(row: Record<string, unknown>, column: string) => {
+			const formattedValue = formatCellValue(row[column]);
+			setContextCell({
+				row,
+				column,
+				display: formattedValue,
+				title: formattedValue,
+			});
+		},
+		[],
+	);
+
+	const toggleAllVisibleRows = (checked: boolean) => {
+		setSelectedRowIds((current) => {
+			if (checked) {
+				const next = { ...current };
+				for (const rowId of filteredPreviewRowIds) {
+					next[rowId] = true;
+				}
+				return next;
+			}
+			const next = { ...current };
+			for (const rowId of filteredPreviewRowIds) {
+				delete next[rowId];
+			}
+			return next;
+		});
+	};
+
+	const handleDeleteSelectedRows = async () => {
+		if (!selectedTable || !activeConnection || selectedVisibleRowCount === 0) {
+			return;
+		}
+
+		const rowsToDelete = filteredPreviewRows.filter((row) => {
+			const rowId = getRowIdentifier(row, activeConnection.dialect);
+			return rowId ? selectedRowIds[rowId] : false;
+		});
+
+		if (!rowsToDelete.length) {
+			return;
+		}
+
+		const confirmed = window.confirm(
+			`${rowsToDelete.length} 行を削除します。元に戻せません。続行しますか？`,
+		);
+		if (!confirmed) {
+			return;
+		}
+
+		try {
+			const deleteStatement =
+				activeConnection.dialect === "sqlite"
+					? `DELETE FROM ${quoteSqlIdentifier(selectedTable.name)} WHERE ${rowsToDelete
+							.map((row) => buildSqliteRowSelector(row))
+							.join(" OR ")}`
+					: `DELETE FROM ${quoteSqlIdentifier(selectedTable.schema ?? "public")}.${quoteSqlIdentifier(selectedTable.name)} WHERE ${rowsToDelete
+							.map((row) => buildPostgresRowSelector(row))
+							.join(" OR ")}`;
+
+			await runSqlStatement(deleteStatement);
+			setTableActionError(null);
+			setSelectedRowIds({});
+			await activePreviewQuery.refetch();
+		} catch (error) {
+			setTableActionError(
+				error instanceof Error ? error.message : "Failed to delete rows.",
+			);
+		}
+	};
+
+	const toggleSchemaGroup = (schemaKey: string) => {
 		setExpandedSchemaKeys((current) => ({
 			...current,
 			[schemaKey]: !current[schemaKey],
@@ -1619,17 +2080,18 @@ export function DatabasesView({
 																			: "hover:bg-muted/50",
 																	)}
 																	onClick={() => {
-																		console.log(
-																			"[DatabasesView] select table",
-																			{
-																				connectionId: activeConnection?.id,
-																				table: table.schema
-																					? `${table.schema}.${table.name}`
-																					: table.name,
-																			},
-																		);
-																		setSelectedTableKey(getTableKey(table));
-																		setTablePreviewPage(0);
+																		startTransition(() => {
+																			setSelectedTableKey(getTableKey(table));
+																			setTablePreviewPage(0);
+																			setTableActionError(null);
+																			setTableSearchInput("");
+																			setTableSort(null);
+																			setColumnFilters({});
+																			setSelectedRowIds({});
+																		});
+																		if (previewScrollRef.current) {
+																			previewScrollRef.current.scrollTop = 0;
+																		}
 																	}}
 																>
 																	<LuTable2 className="size-3.5 shrink-0 text-muted-foreground" />
@@ -1669,6 +2131,16 @@ export function DatabasesView({
 												type="button"
 												size="sm"
 												variant="outline"
+												onClick={handleCreateRow}
+												disabled={!selectedTable}
+											>
+												<LuPlus className="mr-1.5 size-3.5" />
+												行を追加
+											</Button>
+											<Button
+												type="button"
+												size="sm"
+												variant="outline"
 												onClick={() => activePreviewQuery.refetch()}
 												disabled={
 													!selectedTable || activePreviewQuery.isFetching
@@ -1681,6 +2153,30 @@ export function DatabasesView({
 													)}
 												/>
 												更新
+											</Button>
+											<Button
+												type="button"
+												size="sm"
+												variant="outline"
+												onClick={() =>
+													void exportRows(filteredPreviewRows, "csv")
+												}
+												disabled={!filteredPreviewRows.length}
+											>
+												<LuExternalLink className="mr-1.5 size-3.5" />
+												CSV
+											</Button>
+											<Button
+												type="button"
+												size="sm"
+												variant="outline"
+												onClick={() =>
+													void exportRows(filteredPreviewRows, "json")
+												}
+												disabled={!filteredPreviewRows.length}
+											>
+												<LuExternalLink className="mr-1.5 size-3.5" />
+												JSON
 											</Button>
 											<Button
 												type="button"
@@ -1703,7 +2199,8 @@ export function DatabasesView({
 										<p className="text-muted-foreground text-sm">
 											左のツリーからテーブルを選択してください。
 										</p>
-									) : activePreviewQuery.isLoading ? (
+									) : activePreviewQuery.isLoading &&
+										!activePreviewQuery.data ? (
 										<p className="text-muted-foreground text-sm">
 											Loading table data...
 										</p>
@@ -1716,93 +2213,267 @@ export function DatabasesView({
 										</Alert>
 									) : activePreviewQuery.data ? (
 										<div className="space-y-3">
+											{tableActionError ? (
+												<Alert variant="destructive">
+													<AlertTitle>Action failed</AlertTitle>
+													<AlertDescription>
+														{tableActionError}
+													</AlertDescription>
+												</Alert>
+											) : null}
+											<div className="flex flex-wrap items-center gap-2">
+												<div className="relative min-w-[18rem] flex-1">
+													<LuSearch className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+													<Input
+														value={tableSearchInput}
+														onChange={(event) =>
+															setTableSearchInput(event.target.value)
+														}
+														placeholder="検索結果"
+														className="pl-9"
+													/>
+													{tableSearchInput ? (
+														<button
+															type="button"
+															className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+															onClick={() => setTableSearchInput("")}
+														>
+															<LuX className="size-4" />
+														</button>
+													) : null}
+												</div>
+												<Button
+													type="button"
+													size="sm"
+													variant="outline"
+													onClick={() => void handleDeleteSelectedRows()}
+													disabled={
+														selectedVisibleRowCount === 0 || isQueryRunning
+													}
+												>
+													<LuTrash2 className="mr-1.5 size-3.5" />
+													削除
+													{selectedVisibleRowCount > 0
+														? ` (${selectedVisibleRowCount})`
+														: ""}
+												</Button>
+											</div>
 											<div className="flex items-center gap-2 text-xs">
 												<Badge variant="outline">
-													{activePreviewQuery.data.rows.length} rows shown
+													{filteredPreviewRows.length} rows shown
 												</Badge>
 												<Badge variant="outline">
 													{activePreviewQuery.data.elapsedMs} ms
 												</Badge>
 												<Badge variant="outline">
-													{activePreviewQuery.data.rows.length > 0
+													{filteredPreviewRows.length > 0
 														? `${activePreviewQuery.data.offset + 1}-${
 																activePreviewQuery.data.offset +
-																activePreviewQuery.data.rows.length
+																filteredPreviewRows.length
 															}`
 														: "0 rows"}
 												</Badge>
+												{selectedVisibleRowCount > 0 ? (
+													<Badge variant="secondary">
+														{selectedVisibleRowCount} selected
+													</Badge>
+												) : null}
 												{activePreviewQuery.data.hasMore ? (
 													<Badge variant="outline">more available</Badge>
 												) : null}
+												{activePreviewQuery.isFetching ? (
+													<Badge variant="secondary">
+														<LuRefreshCw className="mr-1 size-3 animate-spin" />
+														Updating...
+													</Badge>
+												) : null}
 											</div>
-											<ContextMenu
-												open={isCellContextMenuOpen}
-												onOpenChange={setIsCellContextMenuOpen}
-											>
+											<ContextMenu onOpenChange={setIsCellContextMenuOpen}>
 												<ContextMenuTrigger asChild>
 													<div className="overflow-hidden rounded-md border">
-														<div className="max-h-[42rem] overflow-auto">
+														<div
+															ref={previewScrollRef}
+															className="max-h-[42rem] overflow-auto"
+														>
 															<Table className="min-w-max">
 																<TableHeader>
 																	<TableRow>
+																		<TableHead className="w-10 min-w-10">
+																			<Checkbox
+																				checked={
+																					areAllVisibleRowsSelected
+																						? true
+																						: isPartiallySelected
+																							? "indeterminate"
+																							: false
+																				}
+																				onCheckedChange={(checked) =>
+																					toggleAllVisibleRows(Boolean(checked))
+																				}
+																				aria-label="Select all visible rows"
+																			/>
+																		</TableHead>
 																		{activePreviewQuery.data.columns.map(
 																			(column) => (
 																				<TableHead
 																					key={column}
 																					className="whitespace-nowrap"
 																				>
-																					{column}
+																					<div className="flex items-center gap-1">
+																						<button
+																							type="button"
+																							className="hover:text-foreground flex items-center gap-1 font-medium"
+																							onClick={() =>
+																								toggleTableSort(column)
+																							}
+																						>
+																							<span>{column}</span>
+																							{tableSort?.column === column ? (
+																								tableSort.direction ===
+																								"asc" ? (
+																									<LuArrowUp className="size-3.5" />
+																								) : (
+																									<LuArrowDown className="size-3.5" />
+																								)
+																							) : (
+																								<LuArrowUpDown className="text-muted-foreground size-3.5" />
+																							)}
+																						</button>
+																						<Popover>
+																							<PopoverTrigger asChild>
+																								<Button
+																									type="button"
+																									size="icon"
+																									variant="ghost"
+																									className={cn(
+																										"size-6",
+																										columnFilters[column] &&
+																											"text-primary",
+																									)}
+																								>
+																									<LuFilter className="size-3.5" />
+																								</Button>
+																							</PopoverTrigger>
+																							<PopoverContent
+																								align="start"
+																								className="w-72 space-y-3"
+																							>
+																								<div className="space-y-1">
+																									<p className="text-sm font-medium">
+																										フィルター条件 "{column}"
+																									</p>
+																									<Input
+																										value={
+																											columnFilters[column] ??
+																											""
+																										}
+																										onChange={(event) =>
+																											setColumnFilterValue(
+																												column,
+																												event.target.value,
+																											)
+																										}
+																										placeholder="部分一致で絞り込み"
+																									/>
+																								</div>
+																								<div className="flex items-center justify-end gap-2">
+																									<Button
+																										type="button"
+																										size="sm"
+																										variant="outline"
+																										onClick={() =>
+																											setColumnFilterValue(
+																												column,
+																												"",
+																											)
+																										}
+																									>
+																										Clear
+																									</Button>
+																								</div>
+																							</PopoverContent>
+																						</Popover>
+																					</div>
 																				</TableHead>
 																			),
 																		)}
 																	</TableRow>
 																</TableHeader>
 																<TableBody>
-																	{previewRows.length > 0 ? (
-																		previewRows.map((row, index) => (
-																			<TableRow
-																				key={`${index}-${activePreviewQuery.data.columns.join("-")}`}
-																			>
-																				{activePreviewQuery.data.columns.map(
-																					(column) => (
-																						<TableCell
-																							key={`${index}-${column}`}
-																							className="max-w-[24rem] align-top font-mono text-[11px]"
-																						>
-																							<PreviewTableCellValue
-																								value={row[column]}
-																								onContextMenu={() => {
-																									const formattedValue =
-																										formatCellValue(
-																											row[column],
-																										);
-																									setContextCell({
-																										row,
-																										column,
-																										display: formattedValue,
-																										title: formattedValue,
-																									});
-																								}}
-																							/>
-																						</TableCell>
-																					),
+																	{paddingTop > 0 ? (
+																		<TableRow>
+																			<TableCell
+																				colSpan={Math.max(
+																					activePreviewQuery.data.columns
+																						.length + 1,
+																					1,
 																				)}
-																			</TableRow>
-																		))
+																				style={{ height: paddingTop }}
+																				className="p-0"
+																			/>
+																		</TableRow>
+																	) : null}
+																	{filteredPreviewRows.length > 0 ? (
+																		virtualRows.map((virtualRow) => {
+																			const row =
+																				filteredPreviewRows[virtualRow.index];
+																			const rowId = activeConnection
+																				? getRowIdentifier(
+																						row,
+																						activeConnection.dialect,
+																					)
+																				: null;
+																			return (
+																				<PreviewTableRowView
+																					key={
+																						rowId ??
+																						`${virtualRow.index}-${activePreviewQuery.data.columns.join("-")}`
+																					}
+																					row={row}
+																					rowId={rowId}
+																					columns={
+																						activePreviewQuery.data.columns
+																					}
+																					selected={Boolean(
+																						rowId && selectedRowIds[rowId],
+																					)}
+																					onToggleSelection={toggleRowSelection}
+																					onOpenContextMenu={
+																						handleOpenCellContextMenu
+																					}
+																					dataIndex={virtualRow.index}
+																				/>
+																			);
+																		})
 																	) : (
 																		<TableRow>
 																			<TableCell
 																				colSpan={Math.max(
 																					activePreviewQuery.data.columns
-																						.length,
+																						.length + 1,
 																					1,
 																				)}
 																				className="text-muted-foreground text-center text-sm"
 																			>
-																				No rows found in this table.
+																				{previewRows.length > 0
+																					? "現在の検索条件に一致する行はありません。"
+																					: "No rows found in this table."}
 																			</TableCell>
 																		</TableRow>
 																	)}
+																	{paddingBottom > 0 ? (
+																		<TableRow>
+																			<TableCell
+																				colSpan={Math.max(
+																					activePreviewQuery.data.columns
+																						.length + 1,
+																					1,
+																				)}
+																				style={{ height: paddingBottom }}
+																				className="p-0"
+																			/>
+																		</TableRow>
+																	) : null}
 																</TableBody>
 															</Table>
 														</div>
@@ -1847,6 +2518,23 @@ export function DatabasesView({
 														<LuCopy className="mr-2 size-4" />
 														行をコピー
 													</ContextMenuItem>
+													<ContextMenuItem
+														disabled={!contextCell}
+														onSelect={() =>
+															contextCell
+																? (() => {
+																		setPendingEditRequest({
+																			row: contextCell.row,
+																			mode: "duplicate",
+																		});
+																		setIsCellContextMenuOpen(false);
+																	})()
+																: undefined
+														}
+													>
+														<LuPlus className="mr-2 size-4" />
+														行を複製
+													</ContextMenuItem>
 													<ContextMenuSeparator />
 													<ContextMenuItem
 														disabled={!contextCell}
@@ -1885,9 +2573,14 @@ export function DatabasesView({
 													type="button"
 													size="sm"
 													variant="outline"
-													onClick={() =>
-														setTablePreviewPage((page) => Math.max(page - 1, 0))
-													}
+													onClick={() => {
+														setTablePreviewPage((page) =>
+															Math.max(page - 1, 0),
+														);
+														if (previewScrollRef.current) {
+															previewScrollRef.current.scrollTop = 0;
+														}
+													}}
 													disabled={tablePreviewPage === 0}
 												>
 													前へ
@@ -1896,9 +2589,12 @@ export function DatabasesView({
 													type="button"
 													size="sm"
 													variant="outline"
-													onClick={() =>
-														setTablePreviewPage((page) => page + 1)
-													}
+													onClick={() => {
+														setTablePreviewPage((page) => page + 1);
+														if (previewScrollRef.current) {
+															previewScrollRef.current.scrollTop = 0;
+														}
+													}}
 													disabled={!activePreviewQuery.data.hasMore}
 												>
 													次へ
@@ -1927,111 +2623,188 @@ export function DatabasesView({
 							選択中のデータベース接続に対して SQL を実行します。
 						</DialogDescription>
 					</DialogHeader>
-					<div className="flex min-h-0 flex-1 flex-col gap-3">
-						<Textarea
-							value={sql}
-							onChange={(event) => setSql(event.target.value)}
-							className="min-h-40 font-mono text-[12px]"
-						/>
-						{queryError ? (
-							<Alert variant="destructive">
-								<AlertTitle>Query failed</AlertTitle>
-								<AlertDescription>{queryError}</AlertDescription>
-							</Alert>
-						) : null}
-						<div className="min-h-0 flex-1 overflow-hidden rounded-md border">
-							<div className="h-full max-h-[26rem] overflow-auto p-3">
-								{isQueryRunning ? (
-									<p className="text-muted-foreground text-sm">
-										Running query...
+					<div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)] gap-3">
+						<div className="min-h-0 overflow-hidden rounded-md border">
+							<div className="flex items-center justify-between border-b px-3 py-2">
+								<div>
+									<p className="text-sm font-medium">Query history</p>
+									<p className="text-muted-foreground text-[11px]">
+										接続ごとに最近の実行 SQL を保存します
 									</p>
-								) : queryResult ? (
-									<div className="space-y-3">
-										<div className="flex items-center gap-2 text-xs">
-											<Badge variant="outline">
-												{queryResult.rowCount} rows
-											</Badge>
-											<Badge variant="outline">
-												{queryResult.elapsedMs} ms
-											</Badge>
-											{queryResult.command ? (
-												<Badge variant="outline">{queryResult.command}</Badge>
-											) : null}
-											{queryResult.truncated ? (
-												<Badge variant="outline">Truncated to 200 rows</Badge>
-											) : null}
-											{queryResult.lastInsertRowid ? (
-												<Badge variant="outline">
-													last id {String(queryResult.lastInsertRowid)}
-												</Badge>
-											) : null}
-										</div>
-										<div className="overflow-hidden rounded-md border">
-											<div className="max-h-80 overflow-auto">
-												<Table className="min-w-max">
-													<TableHeader>
-														<TableRow>
-															{queryResult.columns.map((column) => (
-																<TableHead
-																	key={column}
-																	className="whitespace-nowrap"
-																>
-																	{column}
-																</TableHead>
-															))}
-														</TableRow>
-													</TableHeader>
-													<TableBody>
-														{queryResult.rows.length > 0 ? (
-															queryResult.rows.map((row, index) => (
-																<TableRow
-																	key={`${index}-${queryResult.columns.join("-")}`}
-																>
-																	{queryResult.columns.map((column) => (
-																		<TableCell
-																			key={`${index}-${column}`}
-																			className="max-w-[24rem] align-top font-mono text-[11px]"
-																		>
-																			<div className="overflow-hidden text-ellipsis whitespace-nowrap">
-																				{formatCellValue(row[column])}
-																			</div>
-																		</TableCell>
-																	))}
-																</TableRow>
-															))
-														) : (
-															<TableRow>
-																<TableCell
-																	colSpan={Math.max(
-																		queryResult.columns.length,
-																		1,
-																	)}
-																	className="text-muted-foreground text-center text-sm"
-																>
-																	Query completed with no result rows.
-																</TableCell>
-															</TableRow>
-														)}
-													</TableBody>
-												</Table>
-											</div>
-										</div>
+								</div>
+								<Button
+									type="button"
+									size="sm"
+									variant="ghost"
+									onClick={() =>
+										activeConnection
+											? clearQueryHistoryForConnection(activeConnection.id)
+											: undefined
+									}
+									disabled={
+										!activeConnection || !queryHistoryForActiveConnection.length
+									}
+								>
+									Clear
+								</Button>
+							</div>
+							<div className="max-h-[34rem] overflow-y-auto p-2">
+								{queryHistoryForActiveConnection.length ? (
+									<div className="space-y-1">
+										{queryHistoryForActiveConnection.map(
+											(item: SavedDatabaseQueryHistoryItem) => (
+												<div
+													key={item.id}
+													className="hover:bg-muted/50 rounded-md border p-2"
+												>
+													<button
+														type="button"
+														className="w-full text-left"
+														onClick={() => setSql(item.sql)}
+													>
+														<p className="truncate font-mono text-[11px]">
+															{item.sql.replaceAll(/\s+/g, " ").trim()}
+														</p>
+														<p className="text-muted-foreground mt-1 text-[10px]">
+															{new Date(item.executedAt).toLocaleString()}
+														</p>
+													</button>
+													<div className="mt-2 flex items-center justify-end gap-2">
+														<Button
+															type="button"
+															size="sm"
+															variant="ghost"
+															onClick={() => setSql(item.sql)}
+														>
+															Load
+														</Button>
+														<Button
+															type="button"
+															size="sm"
+															variant="ghost"
+															onClick={() => removeQueryHistoryItem(item.id)}
+														>
+															<LuTrash2 className="size-3.5" />
+														</Button>
+													</div>
+												</div>
+											),
+										)}
 									</div>
 								) : (
-									<Empty className="min-h-0 border-0 p-0">
-										<EmptyContent className="max-w-none">
-											<EmptyHeader className="max-w-none">
-												<EmptyMedia variant="icon">
-													<LuPlay />
-												</EmptyMedia>
-												<EmptyTitle>No query results yet</EmptyTitle>
-												<EmptyDescription>
-													Run a query against the selected database connection.
-												</EmptyDescription>
-											</EmptyHeader>
-										</EmptyContent>
-									</Empty>
+									<p className="text-muted-foreground text-sm">
+										まだ履歴はありません。
+									</p>
 								)}
+							</div>
+						</div>
+						<div className="flex min-h-0 flex-col gap-3">
+							<Textarea
+								value={sql}
+								onChange={(event) => setSql(event.target.value)}
+								className="min-h-40 font-mono text-[12px]"
+							/>
+							{queryError ? (
+								<Alert variant="destructive">
+									<AlertTitle>Query failed</AlertTitle>
+									<AlertDescription>{queryError}</AlertDescription>
+								</Alert>
+							) : null}
+							<div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+								<div className="h-full max-h-[26rem] overflow-auto p-3">
+									{isQueryRunning ? (
+										<p className="text-muted-foreground text-sm">
+											Running query...
+										</p>
+									) : queryResult ? (
+										<div className="space-y-3">
+											<div className="flex items-center gap-2 text-xs">
+												<Badge variant="outline">
+													{queryResult.rowCount} rows
+												</Badge>
+												<Badge variant="outline">
+													{queryResult.elapsedMs} ms
+												</Badge>
+												{queryResult.command ? (
+													<Badge variant="outline">{queryResult.command}</Badge>
+												) : null}
+												{queryResult.truncated ? (
+													<Badge variant="outline">Truncated to 200 rows</Badge>
+												) : null}
+												{queryResult.lastInsertRowid ? (
+													<Badge variant="outline">
+														last id {String(queryResult.lastInsertRowid)}
+													</Badge>
+												) : null}
+											</div>
+											<div className="overflow-hidden rounded-md border">
+												<div className="max-h-80 overflow-auto">
+													<Table className="min-w-max">
+														<TableHeader>
+															<TableRow>
+																{queryResult.columns.map((column) => (
+																	<TableHead
+																		key={column}
+																		className="whitespace-nowrap"
+																	>
+																		{column}
+																	</TableHead>
+																))}
+															</TableRow>
+														</TableHeader>
+														<TableBody>
+															{queryResult.rows.length > 0 ? (
+																queryResult.rows.map((row, index) => (
+																	<TableRow
+																		key={`${index}-${queryResult.columns.join("-")}`}
+																	>
+																		{queryResult.columns.map((column) => (
+																			<TableCell
+																				key={`${index}-${column}`}
+																				className="max-w-[24rem] align-top font-mono text-[11px]"
+																			>
+																				<div className="overflow-hidden text-ellipsis whitespace-nowrap">
+																					{formatCellValue(row[column])}
+																				</div>
+																			</TableCell>
+																		))}
+																	</TableRow>
+																))
+															) : (
+																<TableRow>
+																	<TableCell
+																		colSpan={Math.max(
+																			queryResult.columns.length,
+																			1,
+																		)}
+																		className="text-muted-foreground text-center text-sm"
+																	>
+																		Query completed with no result rows.
+																	</TableCell>
+																</TableRow>
+															)}
+														</TableBody>
+													</Table>
+												</div>
+											</div>
+										</div>
+									) : (
+										<Empty className="min-h-0 border-0 p-0">
+											<EmptyContent className="max-w-none">
+												<EmptyHeader className="max-w-none">
+													<EmptyMedia variant="icon">
+														<LuPlay />
+													</EmptyMedia>
+													<EmptyTitle>No query results yet</EmptyTitle>
+													<EmptyDescription>
+														Run a query against the selected database
+														connection.
+													</EmptyDescription>
+												</EmptyHeader>
+											</EmptyContent>
+										</Empty>
+									)}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -2057,79 +2830,80 @@ export function DatabasesView({
 			<Dialog
 				open={isEditDialogOpen}
 				onOpenChange={(open) => {
-					if (!open && Date.now() - editDialogOpenedAtRef.current < 300) {
-						console.log("[DatabasesView] ignore immediate edit dialog close");
-						return;
-					}
-
 					if (!open) {
-						setIsEditDialogOpen(false);
-						setPendingEditRequest(null);
-						setEditingCell(null);
-						setRowDraft({});
+						return;
 					}
 				}}
 			>
 				<DialogContent className="flex max-h-[85vh] !max-w-[72rem] flex-col overflow-hidden">
 					<DialogHeader>
 						<DialogTitle>
-							Edit For{" "}
-							{selectedTableLabel ? `"${selectedTableLabel}"` : "table"}
+							{editingCell?.mode === "insert"
+								? "Insert Row"
+								: editingCell?.mode === "duplicate"
+									? "Duplicate Row"
+									: "Edit Row"}{" "}
+							{selectedTableLabel ? `for "${selectedTableLabel}"` : ""}
 						</DialogTitle>
 						<DialogDescription>
-							選択した行の各カラム値を編集します。
+							{editingCell?.mode === "edit"
+								? "選択した行の各カラム値を編集します。"
+								: "値を確認して新しい行を保存します。"}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="grid max-h-[60vh] grid-cols-2 gap-4 overflow-y-auto pr-1">
-						{editingCell
-							? visiblePreviewColumns.map((column) => {
-									const draft = rowDraft[column] ?? {
-										value: "",
-										isNull: false,
-									};
-									return (
-										<div key={column} className="space-y-1">
-											<div className="flex items-center justify-between gap-2">
-												<Label htmlFor={`edit-row-${column}`}>{column}</Label>
-												<Button
-													type="button"
-													size="sm"
-													variant="ghost"
-													onClick={() =>
-														setRowDraft((current) => ({
-															...current,
-															[column]: { value: "", isNull: true },
-														}))
-													}
-												>
-													NULL
-												</Button>
-											</div>
-											<Input
-												id={`edit-row-${column}`}
-												value={draft.isNull ? "" : draft.value}
-												onChange={(event) =>
+						{isEditDialogLoading ? (
+							<p className="text-muted-foreground col-span-2 text-sm">
+								Loading full row data...
+							</p>
+						) : editingCell ? (
+							visiblePreviewColumns.map((column) => {
+								const draft = rowDraft[column] ?? {
+									value: "",
+									isNull: false,
+								};
+								return (
+									<div key={column} className="space-y-1">
+										<div className="flex items-center justify-between gap-2">
+											<Label htmlFor={`edit-row-${column}`}>{column}</Label>
+											<Button
+												type="button"
+												size="sm"
+												variant="ghost"
+												onClick={() =>
 													setRowDraft((current) => ({
 														...current,
-														[column]: {
-															value: event.target.value,
-															isNull: false,
-														},
+														[column]: { value: "", isNull: true },
 													}))
 												}
-												placeholder={draft.isNull ? "NULL" : column}
-											/>
+											>
+												NULL
+											</Button>
 										</div>
-									);
-								})
-							: null}
+										<Input
+											id={`edit-row-${column}`}
+											value={draft.isNull ? "" : draft.value}
+											onChange={(event) =>
+												setRowDraft((current) => ({
+													...current,
+													[column]: {
+														value: event.target.value,
+														isNull: false,
+													},
+												}))
+											}
+											placeholder={draft.isNull ? "NULL" : column}
+										/>
+									</div>
+								);
+							})
+						) : null}
 					</div>
 					<DialogFooter>
 						<Button
 							type="button"
 							variant="outline"
 							onClick={() => {
-								editDialogOpenedAtRef.current = 0;
 								setIsEditDialogOpen(false);
 								setEditingCell(null);
 								setRowDraft({});
@@ -2137,8 +2911,12 @@ export function DatabasesView({
 						>
 							キャンセル
 						</Button>
-						<Button type="button" onClick={() => void handleSaveRowEdit()}>
-							更新
+						<Button
+							type="button"
+							onClick={() => void handleSaveRowEdit()}
+							disabled={isEditDialogLoading}
+						>
+							{editingCell?.mode === "edit" ? "更新" : "保存"}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

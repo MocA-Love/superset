@@ -11,8 +11,16 @@ export interface SavedDatabaseConnection {
 	createdAt: number;
 }
 
+export interface SavedDatabaseQueryHistoryItem {
+	id: string;
+	connectionId: string;
+	sql: string;
+	executedAt: number;
+}
+
 interface DatabaseSidebarState {
 	connections: SavedDatabaseConnection[];
+	queryHistory: SavedDatabaseQueryHistoryItem[];
 	activeConnectionId: string | null;
 	addConnection: (
 		input:
@@ -48,6 +56,12 @@ interface DatabaseSidebarState {
 	) => SavedDatabaseConnection | null;
 	removeConnection: (id: string) => void;
 	setActiveConnectionId: (id: string | null) => void;
+	addQueryHistoryItem: (input: {
+		connectionId: string;
+		sql: string;
+	}) => SavedDatabaseQueryHistoryItem;
+	removeQueryHistoryItem: (id: string) => void;
+	clearQueryHistoryForConnection: (connectionId: string) => void;
 }
 
 export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
@@ -55,6 +69,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 		persist(
 			(set, get) => ({
 				connections: [],
+				queryHistory: [],
 				activeConnectionId: null,
 
 				addConnection: (input) => {
@@ -130,6 +145,9 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						);
 						return {
 							connections: nextConnections,
+							queryHistory: state.queryHistory.filter(
+								(item) => item.connectionId !== id,
+							),
 							activeConnectionId:
 								state.activeConnectionId === id
 									? (nextConnections[0]?.id ?? null)
@@ -141,10 +159,50 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 				setActiveConnectionId: (id) => {
 					set({ activeConnectionId: id });
 				},
+
+				addQueryHistoryItem: ({ connectionId, sql }) => {
+					const normalizedSql = sql.trim();
+					const item: SavedDatabaseQueryHistoryItem = {
+						id: crypto.randomUUID(),
+						connectionId,
+						sql: normalizedSql,
+						executedAt: Date.now(),
+					};
+
+					set((state) => {
+						const deduped = state.queryHistory.filter(
+							(entry) =>
+								!(
+									entry.connectionId === connectionId &&
+									entry.sql.trim() === normalizedSql
+								),
+						);
+						const nextHistory = [item, ...deduped].slice(0, 100);
+						return {
+							queryHistory: nextHistory,
+						};
+					});
+
+					return item;
+				},
+
+				removeQueryHistoryItem: (id) => {
+					set((state) => ({
+						queryHistory: state.queryHistory.filter((item) => item.id !== id),
+					}));
+				},
+
+				clearQueryHistoryForConnection: (connectionId) => {
+					set((state) => ({
+						queryHistory: state.queryHistory.filter(
+							(item) => item.connectionId !== connectionId,
+						),
+					}));
+				},
 			}),
 			{
 				name: "database-sidebar-store",
-				version: 2,
+				version: 3,
 				migrate: (persistedState) => {
 					const state = persistedState as {
 						connections?: Array<{
@@ -156,6 +214,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							connectionString?: string;
 							createdAt: number;
 						}>;
+						queryHistory?: SavedDatabaseQueryHistoryItem[];
 						activeConnectionId?: string | null;
 					};
 
@@ -164,6 +223,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							...connection,
 							dialect: connection.dialect ?? "sqlite",
 						})),
+						queryHistory: state.queryHistory ?? [],
 						activeConnectionId: state.activeConnectionId ?? null,
 					} as DatabaseSidebarState;
 				},
