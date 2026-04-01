@@ -417,6 +417,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		prefix: suggestionPrefix,
 		activeSuggestionRef,
 		deleteSuggestion,
+		canOpenHistorySuggestions,
 		openHistorySuggestions,
 	} = useTerminalSuggestion({
 		commandBufferRef,
@@ -432,6 +433,8 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		onAcceptWrite: handleSuggestionWrite,
 		onExecuteCommand: handleSuggestionExecute,
 	});
+	const canOpenHistorySuggestionsRef = useRef(canOpenHistorySuggestions);
+	canOpenHistorySuggestionsRef.current = canOpenHistorySuggestions;
 	const openHistorySuggestionsRef = useRef(openHistorySuggestions);
 	openHistorySuggestionsRef.current = openHistorySuggestions;
 
@@ -492,6 +495,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		unregisterPasteCallbackRef,
 		defaultRestartCommandRef,
 		activeSuggestionRef,
+		canOpenHistorySuggestionsRef,
 		openHistorySuggestionsRef,
 	});
 

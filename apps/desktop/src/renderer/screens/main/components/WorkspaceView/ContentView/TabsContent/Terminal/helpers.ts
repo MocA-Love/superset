@@ -324,6 +324,8 @@ export interface KeyboardHandlerOptions {
 	onWrite?: (data: string) => void;
 	/** Ref to active suggestion for history navigation/acceptance */
 	activeSuggestionRef?: { current: ActiveSuggestionHandle | null };
+	/** Whether shell history suggestions should open for the current input */
+	canOpenSuggestions?: () => boolean;
 	/** Opens shell history suggestions using the current input as prefix */
 	onOpenSuggestions?: () => void;
 }
@@ -578,9 +580,9 @@ export function setupKeyboardHandler(
 				suggestion.selectNext?.();
 				return false;
 			}
-			if (options.onOpenSuggestions) {
+			if (options.canOpenSuggestions?.()) {
 				event.preventDefault();
-				options.onOpenSuggestions();
+				options.onOpenSuggestions?.();
 				return false;
 			}
 		}
@@ -592,9 +594,9 @@ export function setupKeyboardHandler(
 				suggestion.selectPrev?.();
 				return false;
 			}
-			if (options.onOpenSuggestions) {
+			if (options.canOpenSuggestions?.()) {
 				event.preventDefault();
-				options.onOpenSuggestions();
+				options.onOpenSuggestions?.();
 				return false;
 			}
 		}

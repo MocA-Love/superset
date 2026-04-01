@@ -149,6 +149,7 @@ export interface UseTerminalLifecycleOptions {
 	unregisterPasteCallbackRef: MutableRefObject<UnregisterCallback>;
 	defaultRestartCommandRef: MutableRefObject<string | undefined>;
 	activeSuggestionRef: MutableRefObject<ActiveSuggestionHandle | null>;
+	canOpenHistorySuggestionsRef: MutableRefObject<() => boolean>;
 	openHistorySuggestionsRef: MutableRefObject<() => void>;
 }
 
@@ -213,6 +214,7 @@ export function useTerminalLifecycle({
 	unregisterPasteCallbackRef,
 	defaultRestartCommandRef,
 	activeSuggestionRef,
+	canOpenHistorySuggestionsRef,
 	openHistorySuggestionsRef,
 }: UseTerminalLifecycleOptions): UseTerminalLifecycleReturn {
 	const [xtermInstance, setXtermInstance] = useState<XTerm | null>(null);
@@ -711,6 +713,7 @@ export function useTerminalLifecycle({
 			onClear: handleClear,
 			onWrite: handleWrite,
 			activeSuggestionRef,
+			canOpenSuggestions: () => canOpenHistorySuggestionsRef.current(),
 			onOpenSuggestions: () => openHistorySuggestionsRef.current(),
 		});
 		const cleanupClickToMove = setupClickToMoveCursor(xterm, {
