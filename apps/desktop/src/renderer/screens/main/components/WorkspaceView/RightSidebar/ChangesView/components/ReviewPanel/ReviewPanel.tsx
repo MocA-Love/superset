@@ -25,6 +25,7 @@ import {
 	LuCode,
 	LuCopy,
 	LuLoaderCircle,
+	LuRefreshCw,
 	LuX,
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
@@ -175,9 +176,14 @@ export function ReviewPanel({
 		electronTrpc.workspaces.updatePullRequestReviewers.useMutation();
 	const updatePullRequestAssigneesMutation =
 		electronTrpc.workspaces.updatePullRequestAssignees.useMutation();
+	const rerunPullRequestChecksMutation =
+		electronTrpc.workspaces.rerunPullRequestChecks.useMutation();
 	const candidateKind =
 		identityPopoverOpen === "assignees" ? "assignee" : "reviewer";
 	const canEditPullRequest = pr?.state === "open" || pr?.state === "draft";
+	const [pendingRerunMode, setPendingRerunMode] = useState<
+		"all" | "failed" | null
+	>(null);
 	const {
 		data: identityCandidates = [],
 		isLoading: isIdentityCandidatesLoading,
@@ -495,6 +501,12 @@ export function ReviewPanel({
 	const checksStatus = relevantChecks.length > 0 ? pr.checksStatus : "none";
 	const checksStatusConfig = checkSummaryIconConfig[checksStatus];
 	const ChecksStatusIcon = checksStatusConfig.icon;
+	const actionChecks = relevantChecks.filter((check) =>
+		isActionsRunUrl(check.url),
+	);
+	const failedActionChecks = actionChecks.filter(
+		(check) => check.status === "failure",
+	);
 	const { active: activeComments, resolved: resolvedComments } =
 		splitPullRequestComments(comments);
 	const commentsCountLabel = isCommentsLoading ? "..." : comments.length;
@@ -507,6 +519,31 @@ export function ReviewPanel({
 			actionKey: ALL_COMMENTS_COPY_ACTION_KEY,
 			errorLabel: "Failed to copy comments",
 		});
+	};
+
+	const handleRerunChecks = async (mode: "all" | "failed") => {
+		if (!resolvedWorkspaceId || pendingRerunMode) {
+			return;
+		}
+
+		setPendingRerunMode(mode);
+		try {
+			const result = await rerunPullRequestChecksMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				mode,
+			});
+			toast.success(
+				mode === "failed"
+					? `Re-ran failed jobs for ${result.rerunCount} workflow run${result.rerunCount === 1 ? "" : "s"}`
+					: `Re-ran ${result.rerunCount} workflow run${result.rerunCount === 1 ? "" : "s"}`,
+			);
+			await refreshReview("status");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to rerun jobs: ${message}`);
+		} finally {
+			setPendingRerunMode((current) => (current === mode ? null : current));
+		}
 	};
 
 	const updateReviewers = async ({
@@ -633,8 +670,10 @@ export function ReviewPanel({
 		void updateAssignees({ add: [candidate] });
 	};
 
-	const isActionsUrl = (url?: string) =>
+	const isActionsJobUrl = (url?: string) =>
 		url ? /\/actions\/runs\/\d+\/job\/\d+/.test(url) : false;
+	const isActionsRunUrl = (url?: string) =>
+		url ? /\/actions\/runs\/\d+(?:\/|$)/.test(url) : false;
 
 	const renderIdentitySection = ({
 		label,
@@ -1017,6 +1056,46 @@ export function ReviewPanel({
 					</div>
 				</CollapsibleTrigger>
 				<CollapsibleContent className="px-0.5 pb-1 min-w-0 overflow-hidden">
+					{actionChecks.length > 0 ? (
+						<div className="flex flex-wrap items-center justify-end gap-1 px-1.5 py-1">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-6 px-2 text-[10px]"
+								onClick={() => {
+									void handleRerunChecks("failed");
+								}}
+								disabled={
+									pendingRerunMode !== null || failedActionChecks.length === 0
+								}
+							>
+								{pendingRerunMode === "failed" ? (
+									<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+								) : (
+									<LuRefreshCw className="mr-1 size-3" />
+								)}
+								Re-run failed jobs
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-6 px-2 text-[10px]"
+								onClick={() => {
+									void handleRerunChecks("all");
+								}}
+								disabled={pendingRerunMode !== null}
+							>
+								{pendingRerunMode === "all" ? (
+									<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+								) : (
+									<LuRefreshCw className="mr-1 size-3" />
+								)}
+								Re-run all jobs
+							</Button>
+						</div>
+					) : null}
 					{relevantChecks.length === 0 ? (
 						<div className="px-1.5 py-1 text-xs text-muted-foreground">
 							No checks reported.
@@ -1027,7 +1106,7 @@ export function ReviewPanel({
 								checkIconConfig[check.status];
 							const checkUrl = resolveCheckDestinationUrl(check, pr.url);
 							const isCheckExpanded = expandedChecks.has(check.name);
-							const canExpand = isActionsUrl(check.url);
+							const canExpand = isActionsJobUrl(check.url);
 
 							return (
 								<div key={check.name}>

@@ -32,6 +32,7 @@ import { CategorySection } from "./components/CategorySection";
 import { ChangesHeader } from "./components/ChangesHeader";
 import { CommitInput } from "./components/CommitInput";
 import { DiscardConfirmDialog } from "./components/DiscardConfirmDialog";
+import { RepositoryPanel } from "./components/RepositoryPanel";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { VerticalResizablePanels } from "./components/VerticalResizablePanels";
 import { useOrderedSections } from "./hooks";
@@ -837,6 +838,7 @@ export function ChangesView({
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
+			<RepositoryPanel isActive={isActive} />
 			<VerticalResizablePanels
 				topSizePercentage={diffsPanePercentage}
 				onTopSizePercentageChange={setDiffsPanePercentage}

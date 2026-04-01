@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { GitHubStatus } from "@superset/local-db";
 import { workspaces, worktrees } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
@@ -13,8 +14,10 @@ import {
 	updateProjectDefaultBranch,
 } from "../utils/db-helpers";
 import {
+	branchExistsOnRemote,
 	fetchDefaultBranch,
 	getAheadBehindCount,
+	getCurrentBranch,
 	getDefaultBranch,
 	listExternalWorktrees,
 	refreshDefaultBranch,
@@ -25,6 +28,7 @@ import {
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	getRepoContext,
 	type PullRequestCommentsTarget,
 } from "../utils/github";
 import { GHIdentityCandidatesResponseSchema } from "../utils/github/types";
@@ -39,6 +43,169 @@ const gitHubPRCommentsInputSchema = z.object({
 	isFork: z.boolean().optional(),
 	forceFresh: z.boolean().optional(),
 });
+
+const ghRepositoryPullRequestSchema = z.object({
+	number: z.number(),
+	title: z.string(),
+	url: z.string(),
+	state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+	isDraft: z.boolean().optional().default(false),
+	headRefName: z.string().optional(),
+	updatedAt: z.string().nullable().optional(),
+	author: z
+		.object({
+			login: z.string().optional(),
+		})
+		.nullable()
+		.optional(),
+});
+
+const ghRepositoryWorkflowSchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	path: z.string().optional(),
+	state: z.string().optional(),
+});
+
+const ghRepositoryWorkflowsResponseSchema = z.object({
+	workflows: z.array(ghRepositoryWorkflowSchema).optional(),
+});
+
+const ghRepositoryLabelSchema = z.object({
+	name: z.string(),
+	color: z.string().optional(),
+	description: z.string().nullable().optional(),
+});
+
+const ghRepositoryAssigneeSchema = z.object({
+	login: z.string(),
+});
+
+function sanitizeIssueAssetBasename(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9._-]+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "")
+		.slice(0, 80);
+}
+
+function getIssueAssetExtension({
+	filename,
+	mimeType,
+}: {
+	filename?: string;
+	mimeType?: string;
+}): string {
+	const lower = filename?.toLowerCase() ?? "";
+	if (lower.endsWith(".png")) return "png";
+	if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "jpg";
+	if (lower.endsWith(".gif")) return "gif";
+	if (lower.endsWith(".webp")) return "webp";
+
+	if (mimeType === "image/jpeg") return "jpg";
+	if (mimeType === "image/gif") return "gif";
+	if (mimeType === "image/webp") return "webp";
+	return "png";
+}
+
+async function ensureGitHubBranchExists({
+	repoPath,
+	repositoryNameWithOwner,
+	branchName,
+	baseBranch,
+}: {
+	repoPath: string;
+	repositoryNameWithOwner: string;
+	branchName: string;
+	baseBranch: string;
+}) {
+	try {
+		await execWithShellEnv(
+			"gh",
+			["api", `repos/${repositoryNameWithOwner}/git/ref/heads/${branchName}`],
+			{ cwd: repoPath },
+		);
+		return;
+	} catch {}
+
+	const { stdout } = await execWithShellEnv(
+		"gh",
+		["api", `repos/${repositoryNameWithOwner}/git/ref/heads/${baseBranch}`],
+		{ cwd: repoPath },
+	);
+	const raw = JSON.parse(stdout) as {
+		object?: { sha?: string };
+	};
+	const sha = raw.object?.sha;
+	if (!sha) {
+		throw new TRPCError({
+			code: "INTERNAL_SERVER_ERROR",
+			message: "Could not determine the base branch SHA for issue assets.",
+		});
+	}
+
+	await execWithShellEnv(
+		"gh",
+		[
+			"api",
+			"--method",
+			"POST",
+			`repos/${repositoryNameWithOwner}/git/refs`,
+			"-f",
+			`ref=refs/heads/${branchName}`,
+			"-f",
+			`sha=${sha}`,
+		],
+		{ cwd: repoPath },
+	);
+}
+
+function parseRunIdFromActionsUrl(detailsUrl?: string): string | null {
+	if (!detailsUrl) {
+		return null;
+	}
+
+	try {
+		const url = new URL(detailsUrl);
+		const match = url.pathname.match(/\/actions\/runs\/(\d+)(?:\/|$)/);
+		return match?.[1] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function isGitHubActionsUrl(url?: string): boolean {
+	return parseRunIdFromActionsUrl(url) !== null;
+}
+
+function workflowSupportsDispatch({
+	repoPath,
+	workflowPath,
+}: {
+	repoPath: string;
+	workflowPath?: string;
+}): boolean {
+	if (!workflowPath) {
+		return false;
+	}
+
+	const absolutePath = path.join(repoPath, workflowPath);
+	if (!existsSync(absolutePath)) {
+		return false;
+	}
+
+	try {
+		const content = readFileSync(absolutePath, "utf8");
+		return (
+			/^\s*workflow_dispatch\s*:/m.test(content) ||
+			/^\s*on\s*:\s*workflow_dispatch\s*$/m.test(content) ||
+			/^\s*on\s*:\s*\[[^\]]*\bworkflow_dispatch\b[^\]]*\]/m.test(content)
+		);
+	} catch {
+		return false;
+	}
+}
 
 function resolveCommentsPullRequestTarget({
 	input,
@@ -148,6 +315,415 @@ async function getFreshPullRequestForWorkspace(workspaceId: string): Promise<{
 	}
 
 	return { repoPath, worktree, pullRequest };
+}
+
+async function resolveRepositoryTargetForWorkspace(
+	workspaceId: string,
+): Promise<{
+	repoPath: string;
+	worktree: NonNullable<ReturnType<typeof getWorktree>> | null;
+	repositoryUrl: string;
+	repositoryNameWithOwner: string;
+	upstreamUrl: string;
+	upstreamNameWithOwner: string;
+	isFork: boolean;
+	branchExistsOnRemote: boolean;
+	currentBranch: string;
+	defaultBranch: string;
+}> {
+	const { repoPath, worktree } = resolveRepoPathForWorkspace(workspaceId);
+	const [githubStatus, repoContext, currentBranch, defaultBranch] =
+		await Promise.all([
+			fetchGitHubPRStatus(repoPath),
+			getRepoContext(repoPath),
+			getCurrentBranch(repoPath),
+			getDefaultBranch(repoPath),
+		]);
+
+	const repoUrl = githubStatus?.repoUrl ?? repoContext?.repoUrl;
+	const upstreamUrl =
+		githubStatus?.upstreamUrl ?? repoContext?.upstreamUrl ?? repoUrl;
+	const isFork = githubStatus?.isFork ?? repoContext?.isFork ?? false;
+	const repositoryUrl = repoUrl;
+	const repositoryNameWithOwner = repositoryUrl
+		? extractNwoFromUrl(repositoryUrl)
+		: null;
+	const upstreamNameWithOwner = upstreamUrl
+		? extractNwoFromUrl(upstreamUrl)
+		: null;
+
+	if (
+		!repoUrl ||
+		!upstreamUrl ||
+		!repositoryUrl ||
+		!repositoryNameWithOwner ||
+		!upstreamNameWithOwner
+	) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "Could not determine the GitHub repository for this workspace.",
+		});
+	}
+
+	if (!currentBranch) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "Could not determine the current branch for this workspace.",
+		});
+	}
+
+	return {
+		repoPath,
+		worktree,
+		repositoryUrl,
+		repositoryNameWithOwner,
+		upstreamUrl,
+		upstreamNameWithOwner,
+		isFork,
+		branchExistsOnRemote: githubStatus?.branchExistsOnRemote ?? false,
+		currentBranch,
+		defaultBranch,
+	};
+}
+
+async function getGitHubRepositoryOverview(workspaceId: string) {
+	const {
+		repoPath,
+		repositoryNameWithOwner,
+		repositoryUrl,
+		upstreamUrl,
+		upstreamNameWithOwner,
+		isFork,
+		branchExistsOnRemote,
+		currentBranch,
+		defaultBranch,
+	} = await resolveRepositoryTargetForWorkspace(workspaceId);
+
+	const [pullRequestsResult, workflowsResult, labelsResult, assigneesResult] =
+		await Promise.all([
+			execWithShellEnv(
+				"gh",
+				[
+					"pr",
+					"list",
+					"--repo",
+					repositoryNameWithOwner,
+					"--state",
+					"open",
+					"--limit",
+					"8",
+					"--json",
+					"number,title,url,state,isDraft,headRefName,updatedAt,author",
+				],
+				{ cwd: repoPath },
+			),
+			execWithShellEnv(
+				"gh",
+				[
+					"api",
+					`repos/${repositoryNameWithOwner}/actions/workflows?per_page=100`,
+				],
+				{ cwd: repoPath },
+			),
+			execWithShellEnv(
+				"gh",
+				["api", `repos/${repositoryNameWithOwner}/labels?per_page=100`],
+				{ cwd: repoPath },
+			),
+			execWithShellEnv(
+				"gh",
+				["api", `repos/${repositoryNameWithOwner}/assignees?per_page=100`],
+				{ cwd: repoPath },
+			),
+		]);
+
+	const rawPullRequests = JSON.parse(pullRequestsResult.stdout) as unknown;
+	const pullRequests = z
+		.array(ghRepositoryPullRequestSchema)
+		.parse(rawPullRequests);
+
+	const rawWorkflows = JSON.parse(workflowsResult.stdout) as unknown;
+	const workflows =
+		ghRepositoryWorkflowsResponseSchema.parse(rawWorkflows).workflows ?? [];
+	const rawLabels = JSON.parse(labelsResult.stdout) as unknown;
+	const labels = z.array(ghRepositoryLabelSchema).parse(rawLabels);
+	const rawAssignees = JSON.parse(assigneesResult.stdout) as unknown;
+	const assignees = z.array(ghRepositoryAssigneeSchema).parse(rawAssignees);
+
+	return {
+		repositoryNameWithOwner,
+		repositoryUrl,
+		upstreamUrl,
+		upstreamNameWithOwner,
+		isFork,
+		branchExistsOnRemote,
+		currentBranch,
+		defaultBranch,
+		issueAssignees: assignees.map((assignee) => assignee.login),
+		issueLabels: labels.map((label) => ({
+			name: label.name,
+			color: label.color ?? "",
+			description: label.description ?? "",
+		})),
+		pullsUrl: `${repositoryUrl}/pulls`,
+		issuesUrl: `${repositoryUrl}/issues`,
+		actionsUrl: `${repositoryUrl}/actions`,
+		newIssueUrl: `${repositoryUrl}/issues/new`,
+		pullRequests: pullRequests.map((pullRequest) => ({
+			number: pullRequest.number,
+			title: pullRequest.title,
+			url: pullRequest.url,
+			state: pullRequest.isDraft ? "draft" : pullRequest.state.toLowerCase(),
+			headRefName: pullRequest.headRefName ?? "",
+			updatedAt: pullRequest.updatedAt ?? null,
+			authorLogin: pullRequest.author?.login ?? null,
+		})),
+		workflows: workflows
+			.filter((workflow) => workflow.state !== "disabled_manually")
+			.filter((workflow) =>
+				workflowSupportsDispatch({
+					repoPath,
+					workflowPath: workflow.path,
+				}),
+			)
+			.map((workflow) => ({
+				id: workflow.id,
+				name: workflow.name,
+				path: workflow.path ?? "",
+				state: workflow.state ?? "unknown",
+			})),
+	};
+}
+
+async function createGitHubIssueForWorkspace({
+	workspaceId,
+	title,
+	body,
+	assignees,
+	labels,
+}: {
+	workspaceId: string;
+	title: string;
+	body?: string;
+	assignees?: string[];
+	labels?: string[];
+}) {
+	const { repoPath, repositoryNameWithOwner } =
+		await resolveRepositoryTargetForWorkspace(workspaceId);
+	const args = [
+		"issue",
+		"create",
+		"--repo",
+		repositoryNameWithOwner,
+		"--title",
+		title.trim(),
+		"--body",
+		body?.trim() || "",
+	];
+	const normalizedAssignees = normalizeIdentityList(assignees ?? []);
+	const normalizedLabels = normalizeIdentityList(labels ?? []);
+	if (normalizedAssignees.length > 0) {
+		args.push("--assignee", normalizedAssignees.join(","));
+	}
+	if (normalizedLabels.length > 0) {
+		args.push("--label", normalizedLabels.join(","));
+	}
+	const { stdout } = await execWithShellEnv("gh", args, { cwd: repoPath });
+
+	return {
+		url: stdout.trim(),
+	};
+}
+
+async function uploadIssueAssetForWorkspace({
+	workspaceId,
+	filename,
+	contentBase64,
+	mimeType,
+}: {
+	workspaceId: string;
+	filename: string;
+	contentBase64: string;
+	mimeType?: string;
+}) {
+	const { repoPath, repositoryNameWithOwner, defaultBranch } =
+		await resolveRepositoryTargetForWorkspace(workspaceId);
+	const assetBranch = "superset-issue-assets";
+	await ensureGitHubBranchExists({
+		repoPath,
+		repositoryNameWithOwner,
+		branchName: assetBranch,
+		baseBranch: defaultBranch,
+	});
+
+	const now = new Date();
+	const extension = getIssueAssetExtension({ filename, mimeType });
+	const basename =
+		sanitizeIssueAssetBasename(filename.replace(/\.[^.]+$/, "")) ||
+		"pasted-image";
+	const timestamp = now.toISOString().replace(/[:.]/g, "-");
+	const assetPath = [
+		".superset",
+		"issue-assets",
+		String(now.getUTCFullYear()),
+		String(now.getUTCMonth() + 1).padStart(2, "0"),
+		`${timestamp}-${basename}.${extension}`,
+	].join("/");
+
+	await execWithShellEnv(
+		"gh",
+		[
+			"api",
+			"--method",
+			"PUT",
+			`repos/${repositoryNameWithOwner}/contents/${assetPath}`,
+			"-f",
+			`message=Add issue asset ${assetPath}`,
+			"-f",
+			`content=${contentBase64}`,
+			"-f",
+			`branch=${assetBranch}`,
+		],
+		{ cwd: repoPath },
+	);
+
+	const assetUrl = `https://github.com/${repositoryNameWithOwner}/raw/${assetBranch}/${assetPath}`;
+
+	return {
+		name: `${basename}.${extension}`,
+		url: assetUrl,
+		markdown: `![${basename}](${assetUrl})`,
+	};
+}
+
+async function dispatchGitHubWorkflowForWorkspace({
+	workspaceId,
+	workflowId,
+	ref,
+}: {
+	workspaceId: string;
+	workflowId: number;
+	ref?: string;
+}) {
+	const { repoPath, repositoryNameWithOwner, currentBranch, defaultBranch } =
+		await resolveRepositoryTargetForWorkspace(workspaceId);
+	const requestedRef = ref?.trim() || currentBranch || defaultBranch;
+	let targetRef = requestedRef;
+	if (requestedRef === currentBranch) {
+		const branchCheck = await branchExistsOnRemote(
+			repoPath,
+			currentBranch,
+			"origin",
+		);
+		if (branchCheck.status !== "exists") {
+			targetRef = defaultBranch;
+		}
+	}
+
+	await execWithShellEnv(
+		"gh",
+		[
+			"api",
+			"--method",
+			"POST",
+			`repos/${repositoryNameWithOwner}/actions/workflows/${workflowId}/dispatches`,
+			"-f",
+			`ref=${targetRef}`,
+		],
+		{ cwd: repoPath },
+	);
+
+	return {
+		success: true as const,
+		ref: targetRef,
+	};
+}
+
+async function rerunPullRequestChecksForWorkspace({
+	workspaceId,
+	mode,
+}: {
+	workspaceId: string;
+	mode: "all" | "failed";
+}) {
+	const { repoPath, worktree, pullRequest } =
+		await getFreshPullRequestForWorkspace(workspaceId);
+	const checksToRerun = pullRequest.checks.filter((check) => {
+		if (!isGitHubActionsUrl(check.url)) {
+			return false;
+		}
+
+		if (mode === "failed") {
+			return check.status === "failure";
+		}
+
+		return true;
+	});
+
+	if (checksToRerun.length === 0) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message:
+				mode === "failed"
+					? "No failed GitHub Actions jobs found for this pull request."
+					: "No GitHub Actions jobs found for this pull request.",
+		});
+	}
+
+	const runTargets = new Map<string, string>();
+	for (const check of checksToRerun) {
+		const runId = parseRunIdFromActionsUrl(check.url);
+		const repositoryNameWithOwner = check.url
+			? extractNwoFromUrl(check.url)
+			: null;
+		if (!runId || !repositoryNameWithOwner) {
+			continue;
+		}
+
+		runTargets.set(
+			`${repositoryNameWithOwner}:${runId}`,
+			`${repositoryNameWithOwner}:${runId}`,
+		);
+	}
+
+	if (runTargets.size === 0) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "No rerunnable GitHub Actions runs were found.",
+		});
+	}
+
+	for (const target of runTargets.values()) {
+		const [repositoryNameWithOwner, runId] = target.split(":");
+		if (!repositoryNameWithOwner || !runId) {
+			continue;
+		}
+
+		await execWithShellEnv(
+			"gh",
+			[
+				"api",
+				"--method",
+				"POST",
+				`repos/${repositoryNameWithOwner}/actions/runs/${runId}/${mode === "failed" ? "rerun-failed-jobs" : "rerun"}`,
+			],
+			{ cwd: repoPath },
+		);
+	}
+
+	clearGitHubCachesForWorktree(repoPath);
+	if (worktree) {
+		localDb
+			.update(worktrees)
+			.set({ githubStatus: null })
+			.where(eq(worktrees.id, worktree.id))
+			.run();
+	}
+
+	return {
+		success: true as const,
+		rerunCount: runTargets.size,
+	};
 }
 
 function resolvePullRequestTarget({
@@ -548,6 +1124,66 @@ export const createGitStatusProcedures = () => {
 			)
 			.query(async ({ input }) => {
 				return getPullRequestIdentityCandidates(input);
+			}),
+
+		getGitHubRepositoryOverview: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+				}),
+			)
+			.query(async ({ input }) => {
+				return getGitHubRepositoryOverview(input.workspaceId);
+			}),
+
+		createGitHubIssue: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					title: z.string().trim().min(1),
+					body: z.string().optional(),
+					assignees: z.array(z.string()).optional(),
+					labels: z.array(z.string()).optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				return createGitHubIssueForWorkspace(input);
+			}),
+
+		uploadGitHubIssueAsset: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					filename: z.string().trim().min(1),
+					contentBase64: z.string().trim().min(1),
+					mimeType: z.string().optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				return uploadIssueAssetForWorkspace(input);
+			}),
+
+		dispatchGitHubWorkflow: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					workflowId: z.number().int().positive(),
+					ref: z.string().optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				return dispatchGitHubWorkflowForWorkspace(input);
+			}),
+
+		rerunPullRequestChecks: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					mode: z.enum(["all", "failed"]),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				return rerunPullRequestChecksForWorkspace(input);
 			}),
 
 		setPullRequestDraftState: publicProcedure

@@ -180,7 +180,7 @@ export function RightSidebar() {
 							isActive={rightSidebarTab === RightSidebarTab.Changes}
 							onClick={() => setRightSidebarTab(RightSidebarTab.Changes)}
 							icon={<LuGitCompareArrows className="size-3.5" />}
-							label="Changes"
+							label="Git"
 							compact={compactTabs}
 						/>
 					)}
