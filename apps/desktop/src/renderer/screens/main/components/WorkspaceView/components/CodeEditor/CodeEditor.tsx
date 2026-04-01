@@ -27,8 +27,8 @@ import { type MutableRefObject, useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
-import { getEditorTheme } from "shared/themes";
 import { useResolvedTheme } from "renderer/stores/theme";
+import { getEditorTheme } from "shared/themes";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
 import { loadLanguageSupport } from "./loadLanguageSupport";
@@ -63,16 +63,14 @@ function createCodeMirrorAdapter(
 	let scrollStabilizeTimeout: ReturnType<typeof setTimeout> | null = null;
 	let highlightedLine: HTMLElement | null = null;
 	let highlightAnimation: Animation | null = null;
-	let highlightedLinePreviousStyle:
-		| {
-				backgroundColor: string;
-				boxShadow: string;
-				outline: string;
-				outlineOffset: string;
-				borderRadius: string;
-				transition: string;
-		  }
-		| null = null;
+	let highlightedLinePreviousStyle: {
+		backgroundColor: string;
+		boxShadow: string;
+		outline: string;
+		outlineOffset: string;
+		borderRadius: string;
+		transition: string;
+	} | null = null;
 
 	const clearLineHighlight = () => {
 		if (!highlightedLine) {
@@ -88,7 +86,8 @@ function createCodeMirrorAdapter(
 				highlightedLinePreviousStyle.outlineOffset;
 			highlightedLine.style.borderRadius =
 				highlightedLinePreviousStyle.borderRadius;
-			highlightedLine.style.transition = highlightedLinePreviousStyle.transition;
+			highlightedLine.style.transition =
+				highlightedLinePreviousStyle.transition;
 		} else {
 			highlightedLine.style.removeProperty("background-color");
 			highlightedLine.style.removeProperty("box-shadow");
@@ -105,68 +104,71 @@ function createCodeMirrorAdapter(
 	};
 
 	const highlightLineAt = (anchor: number, attempt = 0) => {
-		window.setTimeout(() => {
-			if (disposed) {
-				return;
-			}
-
-			const domAtPos = view.domAtPos(anchor);
-			const domNode =
-				domAtPos.node instanceof HTMLElement
-					? domAtPos.node
-					: domAtPos.node.parentElement;
-			const lineElement = domNode?.closest(".cm-line");
-			if (!(lineElement instanceof HTMLElement)) {
-				if (attempt < HIGHLIGHT_MAX_RETRIES) {
-					highlightLineAt(anchor, attempt + 1);
+		window.setTimeout(
+			() => {
+				if (disposed) {
+					return;
 				}
-				return;
-			}
 
-			clearLineHighlight();
-			highlightedLinePreviousStyle = {
-				backgroundColor: lineElement.style.backgroundColor,
-				boxShadow: lineElement.style.boxShadow,
-				outline: lineElement.style.outline,
-				outlineOffset: lineElement.style.outlineOffset,
-				borderRadius: lineElement.style.borderRadius,
-				transition: lineElement.style.transition,
-			};
-			lineElement.style.transition =
-				"background-color 1.2s ease-out, box-shadow 1.2s ease-out, outline-color 1.2s ease-out";
-			lineElement.style.backgroundColor = jumpHighlightStyle.backgroundColor;
-			lineElement.style.boxShadow = jumpHighlightStyle.boxShadow;
-			lineElement.style.outline = `2px solid ${jumpHighlightStyle.backgroundColor}`;
-			lineElement.style.outlineOffset = "-1px";
-			lineElement.style.borderRadius = "4px";
-			highlightedLine = lineElement;
-			highlightAnimation = lineElement.animate(
-				[
+				const domAtPos = view.domAtPos(anchor);
+				const domNode =
+					domAtPos.node instanceof HTMLElement
+						? domAtPos.node
+						: domAtPos.node.parentElement;
+				const lineElement = domNode?.closest(".cm-line");
+				if (!(lineElement instanceof HTMLElement)) {
+					if (attempt < HIGHLIGHT_MAX_RETRIES) {
+						highlightLineAt(anchor, attempt + 1);
+					}
+					return;
+				}
+
+				clearLineHighlight();
+				highlightedLinePreviousStyle = {
+					backgroundColor: lineElement.style.backgroundColor,
+					boxShadow: lineElement.style.boxShadow,
+					outline: lineElement.style.outline,
+					outlineOffset: lineElement.style.outlineOffset,
+					borderRadius: lineElement.style.borderRadius,
+					transition: lineElement.style.transition,
+				};
+				lineElement.style.transition =
+					"background-color 1.2s ease-out, box-shadow 1.2s ease-out, outline-color 1.2s ease-out";
+				lineElement.style.backgroundColor = jumpHighlightStyle.backgroundColor;
+				lineElement.style.boxShadow = jumpHighlightStyle.boxShadow;
+				lineElement.style.outline = `2px solid ${jumpHighlightStyle.backgroundColor}`;
+				lineElement.style.outlineOffset = "-1px";
+				lineElement.style.borderRadius = "4px";
+				highlightedLine = lineElement;
+				highlightAnimation = lineElement.animate(
+					[
+						{
+							backgroundColor: jumpHighlightStyle.backgroundColor,
+							boxShadow: jumpHighlightStyle.boxShadow,
+							outlineColor: jumpHighlightStyle.backgroundColor,
+						},
+						{
+							backgroundColor: jumpHighlightStyle.backgroundColor,
+							boxShadow: jumpHighlightStyle.boxShadow,
+							outlineColor: jumpHighlightStyle.backgroundColor,
+							offset: 0.35,
+						},
+						{
+							backgroundColor:
+								highlightedLinePreviousStyle?.backgroundColor || "transparent",
+							boxShadow: highlightedLinePreviousStyle?.boxShadow || "none",
+							outlineColor: "transparent",
+						},
+					],
 					{
-						backgroundColor: jumpHighlightStyle.backgroundColor,
-						boxShadow: jumpHighlightStyle.boxShadow,
-						outlineColor: jumpHighlightStyle.backgroundColor,
+						duration: HIGHLIGHT_CLEAR_DELAY_MS,
+						easing: "ease-out",
+						fill: "forwards",
 					},
-					{
-						backgroundColor: jumpHighlightStyle.backgroundColor,
-						boxShadow: jumpHighlightStyle.boxShadow,
-						outlineColor: jumpHighlightStyle.backgroundColor,
-						offset: 0.35,
-					},
-					{
-						backgroundColor:
-							highlightedLinePreviousStyle?.backgroundColor || "transparent",
-						boxShadow: highlightedLinePreviousStyle?.boxShadow || "none",
-						outlineColor: "transparent",
-					},
-				],
-				{
-					duration: HIGHLIGHT_CLEAR_DELAY_MS,
-					easing: "ease-out",
-					fill: "forwards",
-				},
-			);
-		}, attempt === 0 ? 32 : HIGHLIGHT_RETRY_DELAY_MS);
+				);
+			},
+			attempt === 0 ? 32 : HIGHLIGHT_RETRY_DELAY_MS,
+		);
 	};
 
 	return {
@@ -197,7 +199,7 @@ function createCodeMirrorAdapter(
 			}
 
 			view.dispatch({
-		selection: EditorSelection.cursor(anchor),
+				selection: EditorSelection.cursor(anchor),
 				effects: EditorView.scrollIntoView(anchor, {
 					y: "center",
 					yMargin: 48,

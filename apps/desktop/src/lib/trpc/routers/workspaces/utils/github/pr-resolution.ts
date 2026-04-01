@@ -227,23 +227,37 @@ async function findPRByHeadBranch(
 
 		for (const repoArgs of repoArgSets) {
 			for (const branchCandidate of getPRHeadBranchCandidates(localBranch)) {
-				const { stdout } = await execWithShellEnv(
-					"gh",
-					[
-						"pr",
-						"list",
-						...repoArgs,
-						"--state",
-						"all",
-						"--head",
-						branchCandidate,
-						"--limit",
-						"20",
-						"--json",
-						PR_JSON_FIELDS,
-					],
-					{ cwd: worktreePath },
-				);
+				let stdout: string;
+				try {
+					({ stdout } = await execWithShellEnv(
+						"gh",
+						[
+							"pr",
+							"list",
+							...repoArgs,
+							"--state",
+							"all",
+							"--head",
+							branchCandidate,
+							"--limit",
+							"20",
+							"--json",
+							PR_JSON_FIELDS,
+						],
+						{ cwd: worktreePath },
+					));
+				} catch (error) {
+					console.warn(
+						"[GitHub/findPRByHeadBranch] Failed repo-scoped PR lookup:",
+						{
+							worktreePath,
+							repoArgs,
+							branchCandidate,
+							message: error instanceof Error ? error.message : String(error),
+						},
+					);
+					continue;
+				}
 
 				for (const candidate of parsePRListResponse(stdout)) {
 					if (shouldAcceptPRMatch({ localBranch, pr: candidate, headSha })) {
@@ -284,23 +298,37 @@ async function findPRByHeadCommit(
 
 		const exactHeadMatches: GHPRResponse[] = [];
 		for (const repoArgs of getPullRequestRepoArgSets(repoContext)) {
-			const { stdout } = await execWithShellEnv(
-				"gh",
-				[
-					"pr",
-					"list",
-					...repoArgs,
-					"--state",
-					"all",
-					"--search",
-					`${headSha} is:pr`,
-					"--limit",
-					"20",
-					"--json",
-					PR_JSON_FIELDS,
-				],
-				{ cwd: worktreePath },
-			);
+			let stdout: string;
+			try {
+				({ stdout } = await execWithShellEnv(
+					"gh",
+					[
+						"pr",
+						"list",
+						...repoArgs,
+						"--state",
+						"all",
+						"--search",
+						`${headSha} is:pr`,
+						"--limit",
+						"20",
+						"--json",
+						PR_JSON_FIELDS,
+					],
+					{ cwd: worktreePath },
+				));
+			} catch (error) {
+				console.warn(
+					"[GitHub/findPRByHeadCommit] Failed repo-scoped PR lookup:",
+					{
+						worktreePath,
+						repoArgs,
+						headSha,
+						message: error instanceof Error ? error.message : String(error),
+					},
+				);
+				continue;
+			}
 
 			const candidates = parsePRListResponse(stdout);
 			exactHeadMatches.push(

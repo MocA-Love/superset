@@ -104,7 +104,10 @@ async function openPathInApp(
 		throw lastError;
 	}
 
-	await shell.openPath(filePath);
+	const openError = await shell.openPath(filePath);
+	if (openError) {
+		throw new Error(openError);
+	}
 }
 
 /**
@@ -203,7 +206,10 @@ export const createExternalRouter = () => {
 					// No preferred editor configured yet.
 					// Fall back to OS default file handler so Cmd/Ctrl+click still works
 					// even when Cursor (or any specific editor) isn't installed.
-					await shell.openPath(filePath);
+					const openError = await shell.openPath(filePath);
+					if (openError) {
+						throw new Error(openError);
+					}
 					return;
 				}
 

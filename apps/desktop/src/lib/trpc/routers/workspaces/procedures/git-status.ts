@@ -90,7 +90,7 @@ function hasMeaningfulGitHubStatusChange({
 	next,
 }: {
 	current: GitHubStatus | null | undefined;
-	next: GitHubStatus;
+	next: GitHubStatus | null;
 }): boolean {
 	return (
 		JSON.stringify(stripGitHubStatusTimestamp(current)) !==
@@ -487,7 +487,6 @@ export const createGitStatusProcedures = () => {
 
 				if (
 					worktree &&
-					freshStatus &&
 					hasMeaningfulGitHubStatusChange({
 						current: worktree.githubStatus,
 						next: freshStatus,

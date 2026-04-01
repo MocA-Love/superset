@@ -490,7 +490,7 @@ export function ReviewPanel({
 		remove?: string[];
 		onSuccess?: () => void;
 	}) => {
-		if (!resolvedWorkspaceId) {
+		if (!resolvedWorkspaceId || pendingIdentityGroup === "reviewers") {
 			return;
 		}
 
@@ -530,7 +530,7 @@ export function ReviewPanel({
 		remove?: string[];
 		onSuccess?: () => void;
 	}) => {
-		if (!resolvedWorkspaceId) {
+		if (!resolvedWorkspaceId || pendingIdentityGroup === "assignees") {
 			return;
 		}
 
@@ -577,6 +577,9 @@ export function ReviewPanel({
 		pendingGroup: "reviewers" | "assignees",
 		candidate: string,
 	) => {
+		if (pendingIdentityGroup === pendingGroup) {
+			return;
+		}
 		setIdentityPopoverOpen(null);
 		if (pendingGroup === "assignees") {
 			setAssigneeSearch("");
@@ -641,7 +644,7 @@ export function ReviewPanel({
 						<button
 							type="button"
 							className="flex w-full items-center justify-between gap-2 rounded-sm text-left transition-colors hover:bg-accent/40"
-							disabled={!canEditPullRequest}
+							disabled={!canEditPullRequest || isPending}
 						>
 							<div className="flex min-w-0 items-center gap-2 px-0.5">
 								<span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
@@ -676,6 +679,7 @@ export function ReviewPanel({
 							<CommandInput
 								placeholder={`Search ${label.toLowerCase()}...`}
 								value={searchValue}
+								disabled={isPending}
 								onValueChange={
 									pendingGroup === "assignees"
 										? setAssigneeSearch
@@ -693,6 +697,7 @@ export function ReviewPanel({
 											<CommandItem
 												key={`${pendingGroup}-selected-${item}`}
 												value={`selected-${item}`}
+												disabled={isPending}
 												onSelect={() => onRemove(item)}
 												className="flex items-center justify-between gap-2 text-xs"
 											>
@@ -708,6 +713,7 @@ export function ReviewPanel({
 									<CommandItem
 										key={`${pendingGroup}-${candidate}`}
 										value={candidate}
+										disabled={isPending}
 										onSelect={() => handleAddCandidate(pendingGroup, candidate)}
 										className="flex items-center justify-between gap-2 text-xs"
 									>

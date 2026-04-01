@@ -1381,19 +1381,10 @@ export class TerminalHostClient extends EventEmitter {
 		return `${sessionId}:${requestId}`;
 	}
 
-	// ===========================================================================
-	// Public API
-	// ===========================================================================
-
-	/**
-	 * Create or attach to a terminal session
-	 */
-	async createOrAttach(
+	private throwIfCreateOrAttachCanceled(
 		request: CreateOrAttachRequest,
 		signal?: AbortSignal,
-	): Promise<CreateOrAttachResponse> {
-		throwIfAborted(signal);
-		await this.ensureConnected();
+	): void {
 		throwIfAborted(signal);
 		if (
 			request.requestId &&
@@ -1406,6 +1397,22 @@ export class TerminalHostClient extends EventEmitter {
 		) {
 			throw new TerminalAttachCanceledError();
 		}
+	}
+
+	// ===========================================================================
+	// Public API
+	// ===========================================================================
+
+	/**
+	 * Create or attach to a terminal session
+	 */
+	async createOrAttach(
+		request: CreateOrAttachRequest,
+		signal?: AbortSignal,
+	): Promise<CreateOrAttachResponse> {
+		this.throwIfCreateOrAttachCanceled(request, signal);
+		await this.ensureConnected();
+		this.throwIfCreateOrAttachCanceled(request, signal);
 		let response: CreateOrAttachResponse;
 		try {
 			response = await this.sendRequest<CreateOrAttachResponse>(
@@ -1418,6 +1425,7 @@ export class TerminalHostClient extends EventEmitter {
 			}
 			this.resetConnectionState({ emitDisconnected: false });
 			await this.ensureConnected();
+			this.throwIfCreateOrAttachCanceled(request, signal);
 			response = await this.sendRequest<CreateOrAttachResponse>(
 				"createOrAttach",
 				request,
