@@ -1,9 +1,10 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { TerminalHistorySuggestion } from "../hooks/useTerminalSuggestion";
 
 interface TerminalSuggestionProps {
 	xterm: XTerm;
-	suggestions: string[];
+	suggestions: TerminalHistorySuggestion[];
 	selectedIndex: number;
 	prefix: string;
 	onDelete?: (cmd: string) => void;
@@ -32,6 +33,44 @@ function getCellDimensions(
 	return { width, height };
 }
 
+function formatLastRunAgo(lastRunAt: number | null): string {
+	if (!lastRunAt) return "";
+
+	const diffMs = Date.now() - lastRunAt;
+	const minuteMs = 60_000;
+	const hourMs = 60 * minuteMs;
+	const dayMs = 24 * hourMs;
+	const weekMs = 7 * dayMs;
+	const monthMs = 30 * dayMs;
+	const yearMs = 365 * dayMs;
+
+	if (diffMs < minuteMs) {
+		return `${Math.max(1, Math.floor(diffMs / 1000))}s ago`;
+	}
+
+	if (diffMs < hourMs) {
+		return `${Math.floor(diffMs / minuteMs)}m ago`;
+	}
+
+	if (diffMs < dayMs) {
+		return `${Math.floor(diffMs / hourMs)}h ago`;
+	}
+
+	if (diffMs < weekMs) {
+		return `${Math.floor(diffMs / dayMs)}d ago`;
+	}
+
+	if (diffMs < monthMs) {
+		return `${Math.floor(diffMs / weekMs)}w ago`;
+	}
+
+	if (diffMs < yearMs) {
+		return `${Math.floor(diffMs / monthMs)}mo ago`;
+	}
+
+	return `${Math.floor(diffMs / yearMs)}y ago`;
+}
+
 export function TerminalSuggestion({
 	xterm,
 	suggestions,
@@ -40,6 +79,8 @@ export function TerminalSuggestion({
 	onDelete,
 }: TerminalSuggestionProps) {
 	const listRef = useRef<HTMLDivElement>(null);
+	const itemTextRefs = useRef<Array<HTMLSpanElement | null>>([]);
+	const [isSelectedTruncated, setIsSelectedTruncated] = useState(false);
 
 	useEffect(() => {
 		const list = listRef.current;
@@ -49,6 +90,18 @@ export function TerminalSuggestion({
 			item.scrollIntoView({ block: "nearest" });
 		}
 	}, [selectedIndex]);
+
+	useEffect(() => {
+		const selectedText = itemTextRefs.current[selectedIndex];
+		if (!selectedText) {
+			setIsSelectedTruncated(false);
+			return;
+		}
+
+		setIsSelectedTruncated(
+			selectedText.scrollWidth > selectedText.clientWidth + 1,
+		);
+	}, [prefix, selectedIndex, suggestions]);
 
 	// Don't render in alternate screen (TUI apps like Claude Code)
 	if (xterm.buffer.active.type === "alternate") return null;
@@ -63,20 +116,17 @@ export function TerminalSuggestion({
 
 	const rawDropdownLeft =
 		TERMINAL_PADDING + Math.max(0, cursorX - prefix.length) * dims.width;
-	const dropdownMaxWidth = Math.min(500, terminalWidth);
+	const dropdownMinWidth = Math.min(320, terminalWidth);
+	const dropdownMaxWidth = Math.min(680, terminalWidth);
 	const dropdownLeft = Math.min(
 		rawDropdownLeft,
 		TERMINAL_PADDING + terminalWidth - dropdownMaxWidth,
 	);
 
 	const listMaxHeight = MAX_VISIBLE_ITEMS * ITEM_HEIGHT;
-	// Estimate total dropdown height: preview + list + footer
-	const PREVIEW_HEIGHT = 30;
 	const FOOTER_HEIGHT = 24;
 	const dropdownHeight =
-		PREVIEW_HEIGHT +
-		Math.min(suggestions.length, MAX_VISIBLE_ITEMS) * ITEM_HEIGHT +
-		FOOTER_HEIGHT;
+		Math.min(suggestions.length, MAX_VISIBLE_ITEMS) * ITEM_HEIGHT + FOOTER_HEIGHT;
 
 	const belowCursorTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
 	const spaceBelow = terminalHeight + TERMINAL_PADDING * 2 - belowCursorTop;
@@ -86,7 +136,7 @@ export function TerminalSuggestion({
 		spaceBelow >= dropdownHeight
 			? belowCursorTop
 			: Math.max(0, TERMINAL_PADDING + cursorY * dims.height - dropdownHeight);
-	const selected = suggestions[selectedIndex] ?? "";
+	const selected = suggestions[selectedIndex]?.command ?? "";
 	const suffix = selected.startsWith(prefix)
 		? selected.slice(prefix.length)
 		: "";
@@ -99,11 +149,11 @@ export function TerminalSuggestion({
 				left: dropdownLeft,
 				top: dropdownTop,
 				zIndex: 20,
-				minWidth: Math.min(200, terminalWidth),
+				minWidth: dropdownMinWidth,
 				maxWidth: dropdownMaxWidth,
 				borderRadius: 6,
 				border: "1px solid rgba(255,255,255,0.1)",
-				boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+				boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
 				fontSize: `${(xterm.options.fontSize ?? 14) - 1}px`,
 				fontFamily: xterm.options.fontFamily,
 				userSelect: "none",
@@ -112,38 +162,51 @@ export function TerminalSuggestion({
 			}}
 			onMouseDown={(e) => e.preventDefault()}
 		>
-			{/* Full command preview */}
-			<div
-				style={{
-					padding: "5px 10px",
-					color: "#cdd6f4",
-					borderBottom: "1px solid rgba(255,255,255,0.06)",
-					whiteSpace: "pre-wrap",
-					wordBreak: "break-all",
-					lineHeight: 1.4,
-				}}
-			>
-				<span style={{ color: "#89b4fa" }}>{prefix}</span>
-				<span style={{ color: "#a6e3a1" }}>{suffix}</span>
-			</div>
-
+			{isSelectedTruncated && selected && (
+				<div
+					style={{
+						position: "absolute",
+						left: 8,
+						right: 8,
+						top: "calc(100% + 6px)",
+						padding: "6px 8px",
+						borderRadius: 6,
+						border: "1px solid rgba(255,255,255,0.12)",
+						backgroundColor: "rgba(17, 17, 27, 0.96)",
+						color: "#cdd6f4",
+						boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+						whiteSpace: "pre-wrap",
+						wordBreak: "break-word",
+						lineHeight: 1.35,
+						pointerEvents: "none",
+						zIndex: 21,
+					}}
+				>
+					{selected}
+				</div>
+			)}
 			{/* Scrollable item list */}
 			<div
 				ref={listRef}
+				className="hide-scrollbar"
 				style={{
 					maxHeight: listMaxHeight,
 					overflowY: "auto",
 				}}
 			>
-				{suggestions.map((cmd, i) => (
+				{suggestions.map((suggestion, i) => (
 					<div
-						key={cmd}
+						key={`${suggestion.command}:${suggestion.lastRunAt ?? "none"}`}
 						className="group/item"
 						style={{
 							padding: "4px 6px 4px 10px",
 							display: "flex",
 							alignItems: "center",
-							color: i === selectedIndex ? "#cdd6f4" : "#a6adc8",
+							gap: 6,
+							color:
+								i === selectedIndex
+									? "#cdd6f4"
+									: "#a6adc8",
 							backgroundColor:
 								i === selectedIndex
 									? "rgba(137, 180, 250, 0.15)"
@@ -155,6 +218,9 @@ export function TerminalSuggestion({
 						}}
 					>
 						<span
+							ref={(element) => {
+								itemTextRefs.current[i] = element;
+							}}
 							style={{
 								flex: 1,
 								minWidth: 0,
@@ -164,12 +230,24 @@ export function TerminalSuggestion({
 							}}
 						>
 							<span style={{ color: "#89b4fa" }}>{prefix}</span>
-							{cmd.slice(prefix.length)}
+							{suggestion.command.slice(prefix.length)}
+						</span>
+						<span
+							style={{
+								flexShrink: 0,
+								minWidth: 48,
+								color: i === selectedIndex ? "#9399b2" : "#6c7086",
+								fontSize: "0.85em",
+								textAlign: "right",
+								whiteSpace: "nowrap",
+							}}
+						>
+							{formatLastRunAgo(suggestion.lastRunAt)}
 						</span>
 						{onDelete && (
 							<button
 								type="button"
-								onClick={() => onDelete(cmd)}
+								onClick={() => onDelete(suggestion.command)}
 								aria-label="Delete from history"
 								className="opacity-0 group-hover/item:opacity-100"
 								style={{
@@ -177,7 +255,7 @@ export function TerminalSuggestion({
 									border: "none",
 									color: "#585b70",
 									cursor: "pointer",
-									padding: "0 4px",
+									padding: "0 2px",
 									fontSize: "0.9em",
 									lineHeight: 1,
 									flexShrink: 0,

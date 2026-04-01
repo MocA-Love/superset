@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import type { ActiveSuggestionHandle } from "../helpers";
 
+export interface TerminalHistorySuggestion {
+	command: string;
+	lastRunAt: number | null;
+}
+
 export interface UseTerminalSuggestionOptions {
 	commandBufferRef: React.MutableRefObject<string>;
 	enabled: boolean;
@@ -13,7 +18,7 @@ export interface UseTerminalSuggestionOptions {
 }
 
 export interface UseTerminalSuggestionReturn {
-	displaySuggestions: string[];
+	displaySuggestions: TerminalHistorySuggestion[];
 	selectedIndex: number;
 	prefix: string;
 	activeSuggestionRef: React.MutableRefObject<ActiveSuggestionHandle | null>;
@@ -21,7 +26,7 @@ export interface UseTerminalSuggestionReturn {
 	openHistorySuggestions: () => void;
 }
 
-const EMPTY: string[] = [];
+const EMPTY: TerminalHistorySuggestion[] = [];
 const POLL_MS = 150;
 const FETCH_DEBOUNCE_MS = 80;
 
@@ -34,7 +39,8 @@ export function useTerminalSuggestion({
 	onAcceptWrite,
 	onExecuteCommand,
 }: UseTerminalSuggestionOptions): UseTerminalSuggestionReturn {
-	const [historySuggestions, setHistorySuggestions] = useState<string[]>(EMPTY);
+	const [historySuggestions, setHistorySuggestions] =
+		useState<TerminalHistorySuggestion[]>(EMPTY);
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const [trackedInput, setTrackedInput] = useState("");
 	const [isOpen, setIsOpen] = useState(false);
@@ -184,9 +190,9 @@ export function useTerminalSuggestion({
 	const selected = displaySuggestions[selectedIndex] ?? null;
 	const suffix =
 		selected &&
-		selected.startsWith(trackedInput) &&
-		selected !== trackedInput
-			? selected.slice(trackedInput.length)
+		selected.command.startsWith(trackedInput) &&
+		selected.command !== trackedInput
+			? selected.command.slice(trackedInput.length)
 			: null;
 
 	const accept = useCallback(() => {
@@ -194,12 +200,12 @@ export function useTerminalSuggestion({
 		const history = historySuggestionsRef.current;
 		const item = history[idx];
 		const currentInput = lastPrefixRef.current;
-		if (item && currentInput && item.startsWith(currentInput)) {
-			const suffix = item.slice(currentInput.length);
+		if (item && currentInput && item.command.startsWith(currentInput)) {
+			const suffix = item.command.slice(currentInput.length);
 			if (suffix) {
 				onAcceptWriteRef.current(suffix);
-				commandBufferRef.current = item;
-				lastPrefixRef.current = item;
+				commandBufferRef.current = item.command;
+				lastPrefixRef.current = item.command;
 			}
 		}
 		setHistorySuggestions(EMPTY);
@@ -216,7 +222,7 @@ export function useTerminalSuggestion({
 			return;
 		}
 
-		onExecuteCommandRef.current(item, currentInput);
+		onExecuteCommandRef.current(item.command, currentInput);
 		setIsOpen(false);
 		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
@@ -262,7 +268,9 @@ export function useTerminalSuggestion({
 
 	const deleteSuggestion = useCallback((cmd: string) => {
 		// Remove from UI immediately
-		setHistorySuggestions((prev) => prev.filter((item) => item !== cmd));
+		setHistorySuggestions((prev) =>
+			prev.filter((item) => item.command !== cmd),
+		);
 		setSelectedIndex(0);
 		// Delete from history file in background
 		void electronTrpcClient.terminal.deleteHistorySuggestion

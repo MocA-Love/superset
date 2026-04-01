@@ -10,7 +10,12 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-let cachedHistory: string[] | null = null;
+export interface ShellHistoryEntry {
+	command: string;
+	lastRunAt: number | null;
+}
+
+let cachedHistory: ShellHistoryEntry[] | null = null;
 let lastReadTime = 0;
 const CACHE_TTL_MS = 30_000;
 
@@ -29,29 +34,35 @@ function decodeMetafied(buffer: Buffer): string {
 	return Buffer.from(decoded).toString("utf-8");
 }
 
-function parseZshHistory(content: string): string[] {
-	const entries: string[] = [];
+function parseZshHistory(content: string): ShellHistoryEntry[] {
+	const entries: ShellHistoryEntry[] = [];
 	for (const line of content.split("\n")) {
 		if (!line.trim()) continue;
 		// Extended format: : timestamp:0;command
-		const match = line.match(/^:\s*\d+:\d+;(.+)$/);
-		const command = match ? match[1] : line;
+		const match = line.match(/^:\s*(\d+):\d+;(.+)$/);
+		const command = match ? match[2] : line;
+		const timestamp = match ? Number.parseInt(match[1], 10) * 1000 : null;
 		// Skip multi-line continuations
 		if (command.endsWith("\\")) continue;
 		const trimmed = command.trim();
-		if (trimmed) entries.push(trimmed);
+		if (trimmed) {
+			entries.push({ command: trimmed, lastRunAt: timestamp });
+		}
 	}
 	return entries;
 }
 
-function parseBashHistory(content: string): string[] {
+function parseBashHistory(content: string): ShellHistoryEntry[] {
 	return content
 		.split("\n")
 		.filter((line) => line.trim() && !line.startsWith("#"))
-		.map((line) => line.trim());
+		.map((line) => ({
+			command: line.trim(),
+			lastRunAt: null,
+		}));
 }
 
-async function readHistoryFile(): Promise<string[]> {
+async function readHistoryFile(): Promise<ShellHistoryEntry[]> {
 	const home = homedir();
 
 	// Try zsh first (more common on macOS)
@@ -80,7 +91,7 @@ async function readHistoryFile(): Promise<string[]> {
 	return [];
 }
 
-async function getHistory(): Promise<string[]> {
+async function getHistory(): Promise<ShellHistoryEntry[]> {
 	const now = Date.now();
 	if (cachedHistory && now - lastReadTime < CACHE_TTL_MS) {
 		return cachedHistory;
@@ -90,12 +101,12 @@ async function getHistory(): Promise<string[]> {
 
 	// Deduplicate, most-recent-first
 	const seen = new Set<string>();
-	const result: string[] = [];
+	const result: ShellHistoryEntry[] = [];
 	for (let i = entries.length - 1; i >= 0; i--) {
-		const cmd = entries[i];
-		if (!seen.has(cmd)) {
-			seen.add(cmd);
-			result.push(cmd);
+		const entry = entries[i];
+		if (!seen.has(entry.command)) {
+			seen.add(entry.command);
+			result.push(entry);
 		}
 	}
 
@@ -109,18 +120,18 @@ const PAGE_SIZE = 8;
 export async function getSuggestions(
 	prefix: string,
 	offset = 0,
-): Promise<string[]> {
+): Promise<ShellHistoryEntry[]> {
 	const history = await getHistory();
-	const results: string[] = [];
+	const results: ShellHistoryEntry[] = [];
 	let skipped = 0;
 
-	for (const cmd of history) {
-		if (cmd.startsWith(prefix) && cmd !== prefix) {
+	for (const entry of history) {
+		if (entry.command.startsWith(prefix) && entry.command !== prefix) {
 			if (skipped < offset) {
 				skipped++;
 				continue;
 			}
-			results.push(cmd);
+			results.push(entry);
 			if (results.length >= PAGE_SIZE) break;
 		}
 	}
