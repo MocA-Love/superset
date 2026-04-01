@@ -253,7 +253,8 @@ export function ReviewPanel({
 			})
 			.then(() => refreshReview("status"))
 			.catch((error) => {
-				const message = error instanceof Error ? error.message : "Unknown error";
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
 				toast.error(`Failed to update pull request: ${message}`);
 			})
 			.finally(() => {
@@ -275,7 +276,8 @@ export function ReviewPanel({
 			})
 			.then(() => refreshReview("full"))
 			.catch((error) => {
-				const message = error instanceof Error ? error.message : "Unknown error";
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
 				toast.error(`Failed to update conversation: ${message}`);
 			})
 			.finally(() => {
@@ -339,8 +341,8 @@ export function ReviewPanel({
 
 					const existingValues =
 						kind === "reviewer"
-							? current.pr.requestedReviewers ?? []
-							: current.pr.assignees ?? [];
+							? (current.pr.requestedReviewers ?? [])
+							: (current.pr.assignees ?? []);
 					const nextValues = Array.from(
 						new Set(
 							existingValues
@@ -617,9 +619,8 @@ export function ReviewPanel({
 										? "Loading..."
 										: "No candidates found"}
 								</CommandEmpty>
-								{items.length > 0 ? (
-									<>
-										{items.map((item) => (
+								{items.length > 0
+									? items.map((item) => (
 											<CommandItem
 												key={`${pendingGroup}-selected-${item}`}
 												value={`selected-${item}`}
@@ -632,9 +633,8 @@ export function ReviewPanel({
 												</div>
 												<LuX className="size-3.5 shrink-0 text-muted-foreground" />
 											</CommandItem>
-										))}
-									</>
-								) : null}
+										))
+									: null}
 								{filteredCandidates.map((candidate) => (
 									<CommandItem
 										key={`${pendingGroup}-${candidate}`}
@@ -839,9 +839,7 @@ export function ReviewPanel({
 							{isDraftTogglePending ? (
 								<LuLoaderCircle className="mr-1 size-3 animate-spin" />
 							) : null}
-							{pr.state === "draft"
-								? "Ready for review"
-								: "Convert to draft"}
+							{pr.state === "draft" ? "Ready for review" : "Convert to draft"}
 						</Button>
 					) : null}
 				</div>

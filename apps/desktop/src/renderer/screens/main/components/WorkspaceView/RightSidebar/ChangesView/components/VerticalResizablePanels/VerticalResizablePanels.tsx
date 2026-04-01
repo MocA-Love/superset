@@ -125,8 +125,7 @@ export function VerticalResizablePanels({
 			>
 				{top}
 			</div>
-			<div
-				role="separator"
+			<hr
 				aria-orientation="horizontal"
 				aria-valuenow={Math.round(topSizePercentage)}
 				aria-valuemin={0}

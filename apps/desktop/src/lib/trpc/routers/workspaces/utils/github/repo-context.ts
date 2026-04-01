@@ -139,9 +139,7 @@ export function normalizeGitHubUrl(remoteUrl: string): string | null {
 
 export function extractNwoFromUrl(normalizedUrl: string): string | null {
 	try {
-		const segments = new URL(normalizedUrl).pathname
-			.split("/")
-			.filter(Boolean);
+		const segments = new URL(normalizedUrl).pathname.split("/").filter(Boolean);
 		if (segments.length < 2) {
 			return null;
 		}

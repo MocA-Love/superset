@@ -24,7 +24,9 @@ async function findOpenPRByHeadCommit(
 			return null;
 		}
 
-		const repoNames = getPullRequestRepoNames(await getRepoContext(worktreePath));
+		const repoNames = getPullRequestRepoNames(
+			await getRepoContext(worktreePath),
+		);
 		const repoArgSets =
 			repoNames.length > 0
 				? repoNames.map((repoName) => ["--repo", repoName])
@@ -53,7 +55,9 @@ async function findOpenPRByHeadCommit(
 				url?: string;
 				headRefOid?: string;
 			}>;
-			const match = parsed.find((candidate) => candidate.headRefOid === headSha);
+			const match = parsed.find(
+				(candidate) => candidate.headRefOid === headSha,
+			);
 			if (match?.url?.trim()) {
 				return match.url.trim();
 			}

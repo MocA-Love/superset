@@ -1,15 +1,20 @@
 import {
-	AlertDialog as BranchAlertDialog,
 	AlertDialogDescription,
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
+	AlertDialog as BranchAlertDialog,
 	EnterEnabledAlertDialogContent,
 } from "@superset/ui/alert-dialog";
 import { Button } from "@superset/ui/button";
 import type { ReactNode } from "react";
 import { HiExclamationTriangle } from "react-icons/hi2";
-import { LuGitBranch, LuLock, LuRefreshCcw, LuShieldAlert } from "react-icons/lu";
+import {
+	LuGitBranch,
+	LuLock,
+	LuRefreshCcw,
+	LuShieldAlert,
+} from "react-icons/lu";
 
 export type BranchProgressOperation =
 	| "merge"
@@ -219,7 +224,9 @@ export function BranchActionDialog({
 					<div className="mb-3 flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
 						{copy.icon}
 					</div>
-					<AlertDialogTitle className="font-medium">{copy.title}</AlertDialogTitle>
+					<AlertDialogTitle className="font-medium">
+						{copy.title}
+					</AlertDialogTitle>
 					<AlertDialogDescription className="whitespace-pre-line">
 						{copy.description}
 					</AlertDialogDescription>

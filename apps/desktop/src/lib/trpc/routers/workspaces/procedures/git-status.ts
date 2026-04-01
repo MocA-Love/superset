@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
-import { TRPCError } from "@trpc/server";
 import type { GitHubStatus } from "@superset/local-db";
 import { workspaces, worktrees } from "@superset/local-db";
+import { TRPCError } from "@trpc/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import { z } from "zod";
@@ -27,8 +27,8 @@ import {
 	fetchGitHubPRStatus,
 	type PullRequestCommentsTarget,
 } from "../utils/github";
-import { execWithShellEnv } from "../utils/shell-env";
 import { GHIdentityCandidatesResponseSchema } from "../utils/github/types";
+import { execWithShellEnv } from "../utils/shell-env";
 
 const gitHubPRCommentsInputSchema = z.object({
 	workspaceId: z.string(),
@@ -99,8 +99,8 @@ function hasMeaningfulGitHubStatusChange({
 }
 
 function resolveRepoPathForWorkspace(workspaceId: string): {
-	workspace: ReturnType<typeof getWorkspace>;
-	worktree: ReturnType<typeof getWorktree>;
+	workspace: NonNullable<ReturnType<typeof getWorkspace>>;
+	worktree: NonNullable<ReturnType<typeof getWorktree>> | null;
 	repoPath: string;
 } {
 	const workspace = getWorkspace(workspaceId);
@@ -111,7 +111,9 @@ function resolveRepoPathForWorkspace(workspaceId: string): {
 		});
 	}
 
-	const worktree = workspace.worktreeId ? getWorktree(workspace.worktreeId) : null;
+	const worktree = workspace.worktreeId
+		? (getWorktree(workspace.worktreeId) ?? null)
+		: null;
 	let repoPath: string | null = worktree?.path ?? null;
 	if (!repoPath && workspace.type === "branch") {
 		const project = getProject(workspace.projectId);
@@ -130,7 +132,7 @@ function resolveRepoPathForWorkspace(workspaceId: string): {
 
 async function getFreshPullRequestForWorkspace(workspaceId: string): Promise<{
 	repoPath: string;
-	worktree: ReturnType<typeof getWorktree>;
+	worktree: NonNullable<ReturnType<typeof getWorktree>> | null;
 	pullRequest: NonNullable<GitHubStatus["pr"]>;
 }> {
 	const { repoPath, worktree } = resolveRepoPathForWorkspace(workspaceId);
@@ -158,7 +160,7 @@ function resolvePullRequestTarget({
 	pullRequestUrl?: string;
 }): {
 	repoPath: string;
-	worktree: ReturnType<typeof getWorktree>;
+	worktree: NonNullable<ReturnType<typeof getWorktree>> | null;
 	repoNameWithOwner: string;
 	pullRequestNumber: number;
 } {
@@ -190,7 +192,7 @@ function resolvePullRequestRepoTarget({
 	pullRequestUrl?: string;
 }): {
 	repoPath: string;
-	worktree: ReturnType<typeof getWorktree>;
+	worktree: NonNullable<ReturnType<typeof getWorktree>> | null;
 	repoNameWithOwner: string;
 } {
 	const { repoPath, worktree } = resolveRepoPathForWorkspace(workspaceId);
@@ -240,20 +242,18 @@ async function updatePullRequestMembers({
 		return { success: true };
 	}
 
-	const { repoPath, worktree, repoNameWithOwner, pullRequestNumber: resolvedPr } =
-		resolvePullRequestTarget({
-			workspaceId,
-			pullRequestNumber,
-			pullRequestUrl,
-		});
-
-	const args = [
-		"pr",
-		"edit",
-		String(resolvedPr),
-		"--repo",
+	const {
+		repoPath,
+		worktree,
 		repoNameWithOwner,
-	];
+		pullRequestNumber: resolvedPr,
+	} = resolvePullRequestTarget({
+		workspaceId,
+		pullRequestNumber,
+		pullRequestUrl,
+	});
+
+	const args = ["pr", "edit", String(resolvedPr), "--repo", repoNameWithOwner];
 
 	if (normalizedAdd.length > 0) {
 		args.push(

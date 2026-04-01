@@ -381,23 +381,25 @@ export function ChangesView({
 
 		setIsReviewRefreshing(true);
 		try {
-			const freshGitHubStatus = await trpcUtils.workspaces.getGitHubStatus.fetch({
-				workspaceId,
-				forceFresh: true,
-			});
+			const freshGitHubStatus =
+				await trpcUtils.workspaces.getGitHubStatus.fetch({
+					workspaceId,
+					forceFresh: true,
+				});
 			trpcUtils.workspaces.getGitHubStatus.setData(
 				{ workspaceId },
 				freshGitHubStatus,
 			);
 
 			if (scope === "full") {
-				const freshComments = await trpcUtils.workspaces.getGitHubPRComments.fetch(
-					buildGitHubCommentsQueryInput({
-						workspaceId,
-						githubStatus: freshGitHubStatus,
-						forceFresh: true,
-					}),
-				);
+				const freshComments =
+					await trpcUtils.workspaces.getGitHubPRComments.fetch(
+						buildGitHubCommentsQueryInput({
+							workspaceId,
+							githubStatus: freshGitHubStatus,
+							forceFresh: true,
+						}),
+					);
 				trpcUtils.workspaces.getGitHubPRComments.setData(
 					buildGitHubCommentsQueryInput({
 						workspaceId,
@@ -857,21 +859,25 @@ export function ChangesView({
 									onViewModeChange={setFileListViewMode}
 									showViewModeToggle
 									worktreePath={worktreePath}
-									currentBranch={status?.branch ?? branchData?.currentBranch ?? null}
+									currentBranch={
+										status?.branch ?? branchData?.currentBranch ?? null
+									}
 									pr={githubStatus?.pr ?? null}
 									isPRStatusLoading={isGitHubStatusLoading}
 									canCreatePR={prActionState.canCreatePR}
 									createPRBlockedReason={prActionState.createPRBlockedReason}
 									onStash={() => stashMutation.mutate({ worktreePath })}
-									onStashAsync={() =>
-										stashMutation.mutateAsync({ worktreePath })
-									}
+									onStashAsync={async () => {
+										await stashMutation.mutateAsync({ worktreePath });
+									}}
 									onStashIncludeUntracked={() =>
 										stashIncludeUntrackedMutation.mutate({ worktreePath })
 									}
-									onStashIncludeUntrackedAsync={() =>
-										stashIncludeUntrackedMutation.mutateAsync({ worktreePath })
-									}
+									onStashIncludeUntrackedAsync={async () => {
+										await stashIncludeUntrackedMutation.mutateAsync({
+											worktreePath,
+										});
+									}}
 									onStashPop={() => stashPopMutation.mutate({ worktreePath })}
 									isStashPending={
 										stashMutation.isPending ||
@@ -957,9 +963,7 @@ export function ChangesView({
 									className={[
 										"size-3 shrink-0",
 										reviewTabChecksStatusConfig.className,
-										reviewTabChecksStatus === "pending"
-											? "animate-spin"
-											: "",
+										reviewTabChecksStatus === "pending" ? "animate-spin" : "",
 									]
 										.filter(Boolean)
 										.join(" ")}

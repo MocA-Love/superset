@@ -327,9 +327,8 @@ function CurrentBranchSelector({
 	const [mode, setMode] = useState<CurrentBranchSelectorMode>("default");
 	const [selectedStartPoint, setSelectedStartPoint] =
 		useState<SearchableRefItem | null>(null);
-	const [dialogState, setDialogState] = useState<BranchActionDialogState | null>(
-		null,
-	);
+	const [dialogState, setDialogState] =
+		useState<BranchActionDialogState | null>(null);
 	const utils = electronTrpc.useUtils();
 	const { data: branchData, isLoading } =
 		electronTrpc.changes.getBranches.useQuery(
@@ -531,7 +530,8 @@ function CurrentBranchSelector({
 		},
 	});
 
-	const effectiveCurrentBranch = currentBranch ?? branchData?.currentBranch ?? null;
+	const effectiveCurrentBranch =
+		currentBranch ?? branchData?.currentBranch ?? null;
 	const effectiveBaseBranch =
 		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
 	const existingBranchNames = useMemo(
@@ -1031,7 +1031,10 @@ function CurrentBranchSelector({
 							runTargetAction(dialogState.target as BranchActionTarget);
 						})
 						.catch((error) => {
-							handleStashFailure(dialogState.target as BranchActionTarget, error);
+							handleStashFailure(
+								dialogState.target as BranchActionTarget,
+								error,
+							);
 						});
 				}}
 				onStashAllAndContinue={() => {
@@ -1043,7 +1046,10 @@ function CurrentBranchSelector({
 							runTargetAction(dialogState.target as BranchActionTarget);
 						})
 						.catch((error) => {
-							handleStashFailure(dialogState.target as BranchActionTarget, error);
+							handleStashFailure(
+								dialogState.target as BranchActionTarget,
+								error,
+							);
 						});
 				}}
 			/>
