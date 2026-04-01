@@ -374,7 +374,7 @@ export function ChangesView({
 		}
 	};
 
-	const handleReviewRefresh = async () => {
+	const handleReviewRefresh = async (scope: "full" | "status" = "full") => {
 		if (!workspaceId || isReviewRefreshing) {
 			return;
 		}
@@ -390,20 +390,22 @@ export function ChangesView({
 				freshGitHubStatus,
 			);
 
-			const freshComments = await trpcUtils.workspaces.getGitHubPRComments.fetch(
-				buildGitHubCommentsQueryInput({
-					workspaceId,
-					githubStatus: freshGitHubStatus,
-					forceFresh: true,
-				}),
-			);
-			trpcUtils.workspaces.getGitHubPRComments.setData(
-				buildGitHubCommentsQueryInput({
-					workspaceId,
-					githubStatus: freshGitHubStatus,
-				}),
-				freshComments,
-			);
+			if (scope === "full") {
+				const freshComments = await trpcUtils.workspaces.getGitHubPRComments.fetch(
+					buildGitHubCommentsQueryInput({
+						workspaceId,
+						githubStatus: freshGitHubStatus,
+						forceFresh: true,
+					}),
+				);
+				trpcUtils.workspaces.getGitHubPRComments.setData(
+					buildGitHubCommentsQueryInput({
+						workspaceId,
+						githubStatus: freshGitHubStatus,
+					}),
+					freshComments,
+				);
+			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to refresh review: ${message}`);

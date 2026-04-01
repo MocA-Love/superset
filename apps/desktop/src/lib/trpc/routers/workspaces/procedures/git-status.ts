@@ -28,6 +28,7 @@ import {
 	type PullRequestCommentsTarget,
 } from "../utils/github";
 import { execWithShellEnv } from "../utils/shell-env";
+import { GHIdentityCandidatesResponseSchema } from "../utils/github/types";
 
 const gitHubPRCommentsInputSchema = z.object({
 	workspaceId: z.string(),
@@ -145,6 +146,226 @@ async function getFreshPullRequestForWorkspace(workspaceId: string): Promise<{
 	}
 
 	return { repoPath, worktree, pullRequest };
+}
+
+function resolvePullRequestTarget({
+	workspaceId,
+	pullRequestNumber,
+	pullRequestUrl,
+}: {
+	workspaceId: string;
+	pullRequestNumber?: number;
+	pullRequestUrl?: string;
+}): {
+	repoPath: string;
+	worktree: ReturnType<typeof getWorktree>;
+	repoNameWithOwner: string;
+	pullRequestNumber: number;
+} {
+	const { repoPath, worktree } = resolveRepoPathForWorkspace(workspaceId);
+	const repoNameWithOwner = pullRequestUrl
+		? extractNwoFromUrl(pullRequestUrl)
+		: null;
+
+	if (!repoNameWithOwner || !pullRequestNumber) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "Could not determine the pull request target.",
+		});
+	}
+
+	return {
+		repoPath,
+		worktree,
+		repoNameWithOwner,
+		pullRequestNumber,
+	};
+}
+
+function resolvePullRequestRepoTarget({
+	workspaceId,
+	pullRequestUrl,
+}: {
+	workspaceId: string;
+	pullRequestUrl?: string;
+}): {
+	repoPath: string;
+	worktree: ReturnType<typeof getWorktree>;
+	repoNameWithOwner: string;
+} {
+	const { repoPath, worktree } = resolveRepoPathForWorkspace(workspaceId);
+	const repoNameWithOwner = pullRequestUrl
+		? extractNwoFromUrl(pullRequestUrl)
+		: null;
+
+	if (!repoNameWithOwner) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "Could not determine the pull request repository.",
+		});
+	}
+
+	return {
+		repoPath,
+		worktree,
+		repoNameWithOwner,
+	};
+}
+
+function normalizeIdentityList(values: string[]): string[] {
+	return Array.from(
+		new Set(values.map((value) => value.trim()).filter(Boolean)),
+	);
+}
+
+async function updatePullRequestMembers({
+	workspaceId,
+	kind,
+	add,
+	remove,
+	pullRequestNumber,
+	pullRequestUrl,
+}: {
+	workspaceId: string;
+	kind: "reviewer" | "assignee";
+	add: string[];
+	remove: string[];
+	pullRequestNumber?: number;
+	pullRequestUrl?: string;
+}): Promise<{ success: true }> {
+	const normalizedAdd = normalizeIdentityList(add);
+	const normalizedRemove = normalizeIdentityList(remove);
+
+	if (normalizedAdd.length === 0 && normalizedRemove.length === 0) {
+		return { success: true };
+	}
+
+	const { repoPath, worktree, repoNameWithOwner, pullRequestNumber: resolvedPr } =
+		resolvePullRequestTarget({
+			workspaceId,
+			pullRequestNumber,
+			pullRequestUrl,
+		});
+
+	const args = [
+		"pr",
+		"edit",
+		String(resolvedPr),
+		"--repo",
+		repoNameWithOwner,
+	];
+
+	if (normalizedAdd.length > 0) {
+		args.push(
+			kind === "reviewer" ? "--add-reviewer" : "--add-assignee",
+			normalizedAdd.join(","),
+		);
+	}
+
+	if (normalizedRemove.length > 0) {
+		args.push(
+			kind === "reviewer" ? "--remove-reviewer" : "--remove-assignee",
+			normalizedRemove.join(","),
+		);
+	}
+
+	await execWithShellEnv("gh", args, { cwd: repoPath });
+	clearGitHubCachesForWorktree(repoPath);
+
+	if (worktree) {
+		localDb
+			.update(worktrees)
+			.set({ githubStatus: null })
+			.where(eq(worktrees.id, worktree.id))
+			.run();
+	}
+
+	return { success: true };
+}
+
+async function getPullRequestIdentityCandidates({
+	workspaceId,
+	kind,
+	pullRequestUrl,
+}: {
+	workspaceId: string;
+	kind: "reviewer" | "assignee";
+	pullRequestUrl?: string;
+}): Promise<string[]> {
+	const { repoPath, repoNameWithOwner } = resolvePullRequestRepoTarget({
+		workspaceId,
+		pullRequestUrl,
+	});
+
+	const [owner, name] = repoNameWithOwner.split("/");
+	if (!owner || !name) {
+		return [];
+	}
+
+	const fieldName =
+		kind === "assignee" ? "assignableUsers" : "mentionableUsers";
+	const query = `query PullRequestIdentityCandidates($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    users: ${fieldName}(first: 100, after: $after) {
+      nodes {
+        login
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}`;
+
+	const logins = new Set<string>();
+	let afterCursor: string | null = null;
+
+	while (true) {
+		const args = [
+			"api",
+			"graphql",
+			"-f",
+			`query=${query}`,
+			"-F",
+			`owner=${owner}`,
+			"-F",
+			`name=${name}`,
+		];
+		if (afterCursor) {
+			args.push("-F", `after=${afterCursor}`);
+		}
+
+		const { stdout } = await execWithShellEnv("gh", args, { cwd: repoPath });
+		const raw = JSON.parse(stdout) as unknown;
+		const parsed = GHIdentityCandidatesResponseSchema.safeParse(raw);
+		if (!parsed.success) {
+			console.warn(
+				"[GitHub] Failed to parse pull request identity candidates:",
+				parsed.error.message,
+			);
+			break;
+		}
+
+		const users = parsed.data.data.repository?.users;
+		if (!users) {
+			break;
+		}
+
+		for (const user of users.nodes ?? []) {
+			if (user?.login) {
+				logins.add(user.login);
+			}
+		}
+
+		if (!users.pageInfo.hasNextPage || !users.pageInfo.endCursor) {
+			break;
+		}
+
+		afterCursor = users.pageInfo.endCursor;
+	}
+
+	return [...logins];
 }
 
 export const createGitStatusProcedures = () => {
@@ -318,6 +539,18 @@ export const createGitStatusProcedures = () => {
 				});
 			}),
 
+		getPullRequestIdentityCandidates: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					kind: z.enum(["reviewer", "assignee"]),
+					pullRequestUrl: z.string().optional(),
+				}),
+			)
+			.query(async ({ input }) => {
+				return getPullRequestIdentityCandidates(input);
+			}),
+
 		setPullRequestDraftState: publicProcedure
 			.input(
 				z.object({
@@ -422,6 +655,48 @@ export const createGitStatusProcedures = () => {
 				}
 
 				return { success: true };
+			}),
+
+		updatePullRequestReviewers: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					add: z.array(z.string()).optional().default([]),
+					remove: z.array(z.string()).optional().default([]),
+					pullRequestNumber: z.number().int().positive().optional(),
+					pullRequestUrl: z.string().optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				return updatePullRequestMembers({
+					workspaceId: input.workspaceId,
+					kind: "reviewer",
+					add: input.add,
+					remove: input.remove,
+					pullRequestNumber: input.pullRequestNumber,
+					pullRequestUrl: input.pullRequestUrl,
+				});
+			}),
+
+		updatePullRequestAssignees: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					add: z.array(z.string()).optional().default([]),
+					remove: z.array(z.string()).optional().default([]),
+					pullRequestNumber: z.number().int().positive().optional(),
+					pullRequestUrl: z.string().optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				return updatePullRequestMembers({
+					workspaceId: input.workspaceId,
+					kind: "assignee",
+					add: input.add,
+					remove: input.remove,
+					pullRequestNumber: input.pullRequestNumber,
+					pullRequestUrl: input.pullRequestUrl,
+				});
 			}),
 
 		getWorktreeInfo: publicProcedure

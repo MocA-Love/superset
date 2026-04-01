@@ -63,6 +63,7 @@ export const gitHubStatusSchema = z.object({
 			checks: z.array(checkItemSchema),
 			comments: z.array(pullRequestCommentSchema).optional(),
 			requestedReviewers: z.array(z.string()).optional(),
+			assignees: z.array(z.string()).optional(),
 		})
 		.nullable(),
 	repoUrl: z.string(),

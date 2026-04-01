@@ -6,6 +6,14 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@superset/ui/collapsible";
+import {
+	Command,
+	CommandEmpty,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@superset/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
@@ -17,6 +25,7 @@ import {
 	LuCode,
 	LuCopy,
 	LuLoaderCircle,
+	LuX,
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
 import ReactMarkdown from "react-markdown";
@@ -83,13 +92,25 @@ const CommentBody = memo(function CommentBody({
 	);
 });
 
+function buildIdentitySummary(items: string[]): string {
+	if (items.length === 0) {
+		return "None";
+	}
+
+	if (items.length <= 2) {
+		return items.join(", ");
+	}
+
+	return `${items.slice(0, 2).join(", ")} +${items.length - 2}`;
+}
+
 interface ReviewPanelProps {
 	pr: GitHubStatus["pr"] | null;
 	comments?: PullRequestComment[];
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
 	onOpenFile?: (path: string, line?: number) => void;
-	onRefreshReview?: () => Promise<void>;
+	onRefreshReview?: (scope?: "full" | "status") => Promise<void>;
 }
 
 export function ReviewPanel({
@@ -122,8 +143,16 @@ export function ReviewPanel({
 	const [expandedComments, setExpandedComments] = useState<Set<string>>(
 		new Set(),
 	);
+	const [reviewerSearch, setReviewerSearch] = useState("");
+	const [assigneeSearch, setAssigneeSearch] = useState("");
 	const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
 	const [isDraftTogglePending, setIsDraftTogglePending] = useState(false);
+	const [identityPopoverOpen, setIdentityPopoverOpen] = useState<
+		"reviewers" | "assignees" | null
+	>(null);
+	const [pendingIdentityGroup, setPendingIdentityGroup] = useState<
+		"reviewers" | "assignees" | null
+	>(null);
 	const copiedActionResetTimeoutRef = useRef<ReturnType<
 		typeof setTimeout
 	> | null>(null);
@@ -132,6 +161,29 @@ export function ReviewPanel({
 		electronTrpc.workspaces.setPullRequestDraftState.useMutation();
 	const setPullRequestThreadResolutionMutation =
 		electronTrpc.workspaces.setPullRequestThreadResolution.useMutation();
+	const updatePullRequestReviewersMutation =
+		electronTrpc.workspaces.updatePullRequestReviewers.useMutation();
+	const updatePullRequestAssigneesMutation =
+		electronTrpc.workspaces.updatePullRequestAssignees.useMutation();
+	const candidateKind =
+		identityPopoverOpen === "assignees" ? "assignee" : "reviewer";
+	const canEditPullRequest = pr?.state === "open" || pr?.state === "draft";
+	const {
+		data: identityCandidates = [],
+		isLoading: isIdentityCandidatesLoading,
+	} = electronTrpc.workspaces.getPullRequestIdentityCandidates.useQuery(
+		{
+			workspaceId: resolvedWorkspaceId ?? "",
+			kind: candidateKind,
+			pullRequestUrl: pr?.url,
+		},
+		{
+			enabled:
+				!!resolvedWorkspaceId && !!identityPopoverOpen && !!canEditPullRequest,
+			staleTime: 60_000,
+			refetchOnWindowFocus: false,
+		},
+	);
 
 	useEffect(() => {
 		return () => {
@@ -179,12 +231,12 @@ export function ReviewPanel({
 		});
 	};
 
-	const refreshReview = async () => {
+	const refreshReview = async (scope: "full" | "status" = "full") => {
 		if (!onRefreshReview) {
 			return;
 		}
 
-		await onRefreshReview();
+		await onRefreshReview(scope);
 	};
 
 	const handleToggleDraftState = () => {
@@ -198,7 +250,7 @@ export function ReviewPanel({
 				workspaceId: resolvedWorkspaceId,
 				isDraft: pr.state !== "draft",
 			})
-			.then(() => refreshReview())
+			.then(() => refreshReview("status"))
 			.catch((error) => {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				toast.error(`Failed to update pull request: ${message}`);
@@ -220,7 +272,7 @@ export function ReviewPanel({
 				threadId: comment.threadId,
 				isResolved: comment.isResolved !== true,
 			})
-			.then(() => refreshReview())
+			.then(() => refreshReview("full"))
 			.catch((error) => {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				toast.error(`Failed to update conversation: ${message}`);
@@ -273,6 +325,7 @@ export function ReviewPanel({
 	}
 
 	const requestedReviewers = pr.requestedReviewers ?? [];
+	const assignees = pr.assignees ?? [];
 
 	const relevantChecks = pr.checks.filter(
 		(check) => check.status !== "skipped" && check.status !== "cancelled",
@@ -301,8 +354,226 @@ export function ReviewPanel({
 		});
 	};
 
+	const updateReviewers = async ({
+		add = [],
+		remove = [],
+		onSuccess,
+	}: {
+		add?: string[];
+		remove?: string[];
+		onSuccess?: () => void;
+	}) => {
+		if (!resolvedWorkspaceId) {
+			return;
+		}
+
+		setPendingIdentityGroup("reviewers");
+		try {
+			await updatePullRequestReviewersMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				add,
+				remove,
+				pullRequestNumber: pr?.number,
+				pullRequestUrl: pr?.url,
+			});
+			onSuccess?.();
+			await refreshReview("status");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to update reviewers: ${message}`);
+		} finally {
+			setPendingIdentityGroup((current) =>
+				current === "reviewers" ? null : current,
+			);
+		}
+	};
+
+	const updateAssignees = async ({
+		add = [],
+		remove = [],
+		onSuccess,
+	}: {
+		add?: string[];
+		remove?: string[];
+		onSuccess?: () => void;
+	}) => {
+		if (!resolvedWorkspaceId) {
+			return;
+		}
+
+		setPendingIdentityGroup("assignees");
+		try {
+			await updatePullRequestAssigneesMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				add,
+				remove,
+				pullRequestNumber: pr?.number,
+				pullRequestUrl: pr?.url,
+			});
+			onSuccess?.();
+			await refreshReview("status");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to update assignees: ${message}`);
+		} finally {
+			setPendingIdentityGroup((current) =>
+				current === "assignees" ? null : current,
+			);
+		}
+	};
+
+	const handleRemoveReviewer = (reviewer: string) => {
+		void updateReviewers({ remove: [reviewer] });
+	};
+
+	const handleRemoveAssignee = (assignee: string) => {
+		void updateAssignees({ remove: [assignee] });
+	};
+
+	const handleAddCandidate = (
+		pendingGroup: "reviewers" | "assignees",
+		candidate: string,
+	) => {
+		if (pendingGroup === "reviewers") {
+			void updateReviewers({ add: [candidate] });
+			return;
+		}
+
+		void updateAssignees({ add: [candidate] });
+	};
+
 	const isActionsUrl = (url?: string) =>
 		url ? /\/actions\/runs\/\d+\/job\/\d+/.test(url) : false;
+
+	const renderIdentitySection = ({
+		label,
+		items,
+		onRemove,
+		pendingGroup,
+	}: {
+		label: string;
+		items: string[];
+		onRemove: (value: string) => void;
+		pendingGroup: "reviewers" | "assignees";
+	}) => {
+		const isPending = pendingIdentityGroup === pendingGroup;
+		const isOpen = identityPopoverOpen === pendingGroup;
+		const summary = buildIdentitySummary(items);
+		const searchValue =
+			pendingGroup === "assignees" ? assigneeSearch : reviewerSearch;
+		const existingItems = new Set(items.map((item) => item.toLowerCase()));
+		const query = searchValue.trim().toLowerCase();
+		const filteredCandidates = !isOpen
+			? []
+			: identityCandidates
+					.filter((candidate) => !existingItems.has(candidate.toLowerCase()))
+					.filter((candidate) =>
+						query ? candidate.toLowerCase().includes(query) : true,
+					)
+					.slice(0, 8);
+
+		return (
+			<div className="rounded-sm border border-border/60 bg-muted/15 px-2 py-1.5">
+				<Popover
+					open={isOpen}
+					onOpenChange={(nextOpen) => {
+						setIdentityPopoverOpen(nextOpen ? pendingGroup : null);
+						if (!nextOpen) {
+							if (pendingGroup === "assignees") {
+								setAssigneeSearch("");
+							} else {
+								setReviewerSearch("");
+							}
+						}
+					}}
+				>
+					<PopoverTrigger asChild>
+						<button
+							type="button"
+							className="flex w-full items-center justify-between gap-2 rounded-sm text-left transition-colors hover:bg-accent/40"
+							disabled={!canEditPullRequest}
+						>
+							<div className="flex min-w-0 items-center gap-2 px-0.5">
+								<span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+									{label}
+								</span>
+								<span
+									className="truncate text-[11px] text-foreground/85"
+									title={items.join(", ")}
+								>
+									{summary}
+								</span>
+							</div>
+							<div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+								{isPending ? (
+									<LuLoaderCircle className="size-3 animate-spin" />
+								) : null}
+								<LuChevronDown
+									className={cn(
+										"size-3 transition-transform",
+										isOpen && "rotate-180",
+									)}
+								/>
+							</div>
+						</button>
+					</PopoverTrigger>
+					<PopoverContent
+						align="start"
+						className="w-[var(--radix-popover-trigger-width)] min-w-[220px] p-0"
+						onWheel={(event) => event.stopPropagation()}
+					>
+						<Command shouldFilter={false}>
+							<CommandInput
+								placeholder={`Search ${label.toLowerCase()}...`}
+								value={searchValue}
+								onValueChange={
+									pendingGroup === "assignees"
+										? setAssigneeSearch
+										: setReviewerSearch
+								}
+							/>
+							<CommandList className="max-h-[240px]">
+								<CommandEmpty>
+									{isIdentityCandidatesLoading
+										? "Loading..."
+										: "No candidates found"}
+								</CommandEmpty>
+								{items.length > 0 ? (
+									<>
+										{items.map((item) => (
+											<CommandItem
+												key={`${pendingGroup}-selected-${item}`}
+												value={`selected-${item}`}
+												onSelect={() => onRemove(item)}
+												className="flex items-center justify-between gap-2 text-xs"
+											>
+												<div className="flex min-w-0 items-center gap-2">
+													<LuCheck className="size-3.5 shrink-0 text-primary" />
+													<span className="truncate">{item}</span>
+												</div>
+												<LuX className="size-3.5 shrink-0 text-muted-foreground" />
+											</CommandItem>
+										))}
+									</>
+								) : null}
+								{filteredCandidates.map((candidate) => (
+									<CommandItem
+										key={`${pendingGroup}-${candidate}`}
+										value={candidate}
+										onSelect={() => handleAddCandidate(pendingGroup, candidate)}
+										className="flex items-center justify-between gap-2 text-xs"
+									>
+										<span className="truncate">{candidate}</span>
+										<LuCheck className="size-3.5 shrink-0 opacity-0" />
+									</CommandItem>
+								))}
+							</CommandList>
+						</Command>
+					</PopoverContent>
+				</Popover>
+			</div>
+		);
+	};
 
 	const renderCommentList = (list: PullRequestComment[]) =>
 		list.map((comment) => {
@@ -494,6 +765,20 @@ export function ReviewPanel({
 								: "Convert to draft"}
 						</Button>
 					) : null}
+				</div>
+				<div className="grid grid-cols-2 gap-1.5">
+					{renderIdentitySection({
+						label: "Assignees",
+						items: assignees,
+						onRemove: handleRemoveAssignee,
+						pendingGroup: "assignees",
+					})}
+					{renderIdentitySection({
+						label: "Reviewers",
+						items: requestedReviewers,
+						onRemove: handleRemoveReviewer,
+						pendingGroup: "reviewers",
+					})}
 				</div>
 			</div>
 

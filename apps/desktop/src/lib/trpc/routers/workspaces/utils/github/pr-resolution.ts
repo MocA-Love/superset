@@ -9,7 +9,7 @@ import {
 } from "./types";
 
 const PR_JSON_FIELDS =
-	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepository,headRepositoryOwner,isCrossRepository,reviewDecision,statusCheckRollup,reviewRequests";
+	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepository,headRepositoryOwner,isCrossRepository,reviewDecision,statusCheckRollup,reviewRequests,assignees";
 
 function getPullRequestRepoArgSets(repoContext?: RepoContext): string[][] {
 	const repoNames = getPullRequestRepoNames(repoContext);
@@ -392,6 +392,7 @@ function formatPRData(data: GHPRResponse): NonNullable<GitHubStatus["pr"]> {
 		checksStatus: computeChecksStatus(data.statusCheckRollup),
 		checks: parseChecks(data.statusCheckRollup),
 		requestedReviewers: parseReviewRequests(data.reviewRequests),
+		assignees: parseAssignees(data.assignees),
 	};
 }
 
@@ -400,6 +401,11 @@ function parseReviewRequests(
 ): string[] {
 	if (!requests || requests.length === 0) return [];
 	return requests.map((r) => r.login || r.slug || r.name || "").filter(Boolean);
+}
+
+function parseAssignees(assignees: GHPRResponse["assignees"]): string[] {
+	if (!assignees || assignees.length === 0) return [];
+	return assignees.map((assignee) => assignee.login || "").filter(Boolean);
 }
 
 function mapPRState(
