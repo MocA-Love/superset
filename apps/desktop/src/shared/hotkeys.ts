@@ -788,6 +788,12 @@ export const HOTKEYS = {
 		category: "Navigation",
 		description: "Search and open files in the current workspace",
 	}),
+	SEARCH_IN_FILES: defineHotkey({
+		keys: "meta+shift+f",
+		label: "Search in Files",
+		category: "Navigation",
+		description: "Search and replace across files in the current workspace",
+	}),
 
 	// Chat
 	FIND_IN_CHAT: defineHotkey({

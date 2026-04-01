@@ -3,6 +3,7 @@ import type {
 	FsEntry,
 	FsMetadata,
 	FsReadResult,
+	FsReplaceContentResult,
 	FsSearchMatch,
 	FsWatchEvent,
 	FsWriteResult,
@@ -64,7 +65,20 @@ export interface FsService {
 		includePattern?: string;
 		excludePattern?: string;
 		limit?: number;
+		isRegex?: boolean;
+		caseSensitive?: boolean;
 	}): Promise<{ matches: FsContentMatch[] }>;
+
+	replaceContent(input: {
+		query: string;
+		replacement: string;
+		includeHidden?: boolean;
+		includePattern?: string;
+		excludePattern?: string;
+		isRegex?: boolean;
+		caseSensitive?: boolean;
+		paths?: string[];
+	}): Promise<FsReplaceContentResult>;
 
 	watchPath(input: {
 		absolutePath: string;
@@ -139,8 +153,23 @@ export interface FsRequestMap {
 			includePattern?: string;
 			excludePattern?: string;
 			limit?: number;
+			isRegex?: boolean;
+			caseSensitive?: boolean;
 		};
 		output: { matches: FsContentMatch[] };
+	};
+	replaceContent: {
+		input: {
+			query: string;
+			replacement: string;
+			includeHidden?: boolean;
+			includePattern?: string;
+			excludePattern?: string;
+			isRegex?: boolean;
+			caseSensitive?: boolean;
+			paths?: string[];
+		};
+		output: FsReplaceContentResult;
 	};
 }
 

@@ -7,6 +7,7 @@ import {
 	LuExpand,
 	LuFile,
 	LuGitCompareArrows,
+	LuSearch,
 	LuShrink,
 	LuX,
 } from "react-icons/lu";
@@ -27,6 +28,7 @@ import { DatabasesView } from "./DatabasesView";
 import { FilesView } from "./FilesView";
 import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
 import { ProblemsView } from "./ProblemsView";
+import { SearchView } from "./SearchView";
 
 function TabButton({
 	isActive,
@@ -193,13 +195,14 @@ export function RightSidebar() {
 	);
 
 	const handleOpenFileAtLine = useCallback(
-		(path: string, line?: number) => {
+		(path: string, line?: number, column?: number) => {
 			if (!workspaceId || !worktreePath) return;
 			const absolutePath = toAbsoluteWorkspacePath(worktreePath, path);
 			addFileViewerPane(workspaceId, {
 				filePath: absolutePath,
 				viewMode: "raw",
 				line,
+				column,
 			});
 		},
 		[workspaceId, worktreePath, addFileViewerPane],
@@ -240,6 +243,13 @@ export function RightSidebar() {
 						onClick={() => setRightSidebarTab(RightSidebarTab.Files)}
 						icon={<LuFile className="size-3.5" />}
 						label="Files"
+						compact={compactTabs}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Search}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Search)}
+						icon={<LuSearch className="size-3.5" />}
+						label="Search"
 						compact={compactTabs}
 					/>
 					<TabButton
@@ -326,6 +336,18 @@ export function RightSidebar() {
 				}
 			>
 				<FilesView />
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Search
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<SearchView
+					isActive={rightSidebarTab === RightSidebarTab.Search}
+					onOpenFileAtLine={handleOpenFileAtLine}
+				/>
 			</div>
 			<div
 				className={

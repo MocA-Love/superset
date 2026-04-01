@@ -28,6 +28,29 @@ type WatchPathEventBatch = {
 	}>;
 };
 
+const searchContentInputSchema = z.object({
+	workspaceId: z.string(),
+	query: z.string(),
+	includeHidden: z.boolean().optional(),
+	includePattern: z.string().optional(),
+	excludePattern: z.string().optional(),
+	limit: z.number().optional(),
+	isRegex: z.boolean().optional(),
+	caseSensitive: z.boolean().optional(),
+});
+
+const replaceContentInputSchema = z.object({
+	workspaceId: z.string(),
+	query: z.string(),
+	replacement: z.string(),
+	includeHidden: z.boolean().optional(),
+	includePattern: z.string().optional(),
+	excludePattern: z.string().optional(),
+	isRegex: z.boolean().optional(),
+	caseSensitive: z.boolean().optional(),
+	paths: z.array(z.string()).optional(),
+});
+
 export const createFilesystemRouter = () => {
 	return router({
 		listDirectory: publicProcedure
@@ -215,16 +238,7 @@ export const createFilesystemRouter = () => {
 			}),
 
 		searchContent: publicProcedure
-			.input(
-				z.object({
-					workspaceId: z.string(),
-					query: z.string(),
-					includeHidden: z.boolean().optional(),
-					includePattern: z.string().optional(),
-					excludePattern: z.string().optional(),
-					limit: z.number().optional(),
-				}),
-			)
+			.input(searchContentInputSchema)
 			.query(async ({ input }) => {
 				const trimmedQuery = input.query.trim();
 				if (!trimmedQuery) {
@@ -238,6 +252,35 @@ export const createFilesystemRouter = () => {
 					includePattern: input.includePattern,
 					excludePattern: input.excludePattern,
 					limit: input.limit,
+					isRegex: input.isRegex,
+					caseSensitive: input.caseSensitive,
+				});
+			}),
+
+		replaceContent: publicProcedure
+			.input(replaceContentInputSchema)
+			.mutation(async ({ input }) => {
+				const trimmedQuery = input.query.trim();
+				if (!trimmedQuery) {
+					return {
+						replacements: 0,
+						filesUpdated: 0,
+						updated: [],
+						conflicts: [],
+						failed: [],
+					};
+				}
+
+				const service = getServiceForWorkspace(input.workspaceId);
+				return await service.replaceContent({
+					query: trimmedQuery,
+					replacement: input.replacement,
+					includeHidden: input.includeHidden,
+					includePattern: input.includePattern,
+					excludePattern: input.excludePattern,
+					isRegex: input.isRegex,
+					caseSensitive: input.caseSensitive,
+					paths: input.paths,
 				});
 			}),
 

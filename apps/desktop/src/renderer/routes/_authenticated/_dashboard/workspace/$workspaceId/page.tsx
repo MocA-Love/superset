@@ -38,7 +38,11 @@ import {
 } from "renderer/stores/editor-state/editorCoordinator";
 import { useEditorSessionsStore } from "renderer/stores/editor-state/useEditorSessionsStore";
 import { useAppHotkey } from "renderer/stores/hotkeys";
-import { SidebarMode, useSidebarStore } from "renderer/stores/sidebar-state";
+import {
+	RightSidebarTab,
+	SidebarMode,
+	useSidebarStore,
+} from "renderer/stores/sidebar-state";
 import { getPaneDimensions } from "renderer/stores/tabs/pane-refs";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
@@ -187,6 +191,7 @@ export function WorkspacePage({
 	const setSidebarOpen = useSidebarStore((s) => s.setSidebarOpen);
 	const currentSidebarMode = useSidebarStore((s) => s.currentMode);
 	const setSidebarMode = useSidebarStore((s) => s.setMode);
+	const setRightSidebarTab = useSidebarStore((s) => s.setRightSidebarTab);
 
 	const tabs = useMemo(
 		() => allTabs.filter((tab) => tab.workspaceId === workspaceId),
@@ -468,6 +473,17 @@ export function WorkspacePage({
 		commandPalette.toggle();
 	}, [commandPalette.toggle]);
 	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
+
+	const handleSearchInFiles = useCallback(() => {
+		if (!isSidebarOpen) {
+			setSidebarOpen(true);
+		}
+		setSidebarMode(SidebarMode.Tabs);
+		setRightSidebarTab(RightSidebarTab.Search);
+	}, [isSidebarOpen, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
+	useAppHotkey("SEARCH_IN_FILES", handleSearchInFiles, undefined, [
+		handleSearchInFiles,
+	]);
 
 	// Toggle changes sidebar (⌘L)
 	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), hotkeyOptions, [
