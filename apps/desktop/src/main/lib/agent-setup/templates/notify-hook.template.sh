@@ -53,6 +53,43 @@ fi
 # This prevents parse failures from causing false completion notifications
 [ -z "$EVENT_TYPE" ] && exit 0
 
+_superset_manage_sleep_inhibitor() {
+  [ -n "$SUPERSET_WRAPPER_PID" ] || return 0
+  [ "$SUPERSET_PREVENT_AGENT_SLEEP" = "1" ] || return 0
+  [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 0
+  command -v caffeinate >/dev/null 2>&1 || return 0
+
+  _superset_sleep_dir="${TMPDIR:-/tmp}/superset-sleep-inhibitors"
+  mkdir -p "$_superset_sleep_dir" >/dev/null 2>&1 || return 0
+  _superset_pid_file="$_superset_sleep_dir/${SUPERSET_WRAPPER_PID}.pid"
+
+  case "$EVENT_TYPE" in
+    Start|PermissionRequest)
+      if [ -f "$_superset_pid_file" ]; then
+        _superset_caffeinate_pid=$(cat "$_superset_pid_file" 2>/dev/null)
+        if [ -n "$_superset_caffeinate_pid" ] && kill -0 "$_superset_caffeinate_pid" 2>/dev/null; then
+          return 0
+        fi
+        rm -f "$_superset_pid_file" >/dev/null 2>&1 || true
+      fi
+      kill -0 "$SUPERSET_WRAPPER_PID" 2>/dev/null || return 0
+      caffeinate -i -w "$SUPERSET_WRAPPER_PID" >/dev/null 2>&1 &
+      echo "$!" > "$_superset_pid_file"
+      ;;
+    Stop)
+      if [ -f "$_superset_pid_file" ]; then
+        _superset_caffeinate_pid=$(cat "$_superset_pid_file" 2>/dev/null)
+        if [ -n "$_superset_caffeinate_pid" ] && kill -0 "$_superset_caffeinate_pid" 2>/dev/null; then
+          kill "$_superset_caffeinate_pid" >/dev/null 2>&1 || true
+        fi
+        rm -f "$_superset_pid_file" >/dev/null 2>&1 || true
+      fi
+      ;;
+  esac
+}
+
+_superset_manage_sleep_inhibitor
+
 DEBUG_HOOKS_ENABLED="0"
 if [ -n "$SUPERSET_DEBUG_HOOKS" ]; then
   case "$SUPERSET_DEBUG_HOOKS" in
@@ -68,7 +105,7 @@ elif [ "$SUPERSET_ENV" = "development" ] || [ "$NODE_ENV" = "development" ]; the
 fi
 
 if [ "$DEBUG_HOOKS_ENABLED" = "1" ]; then
-  echo "[notify-hook] event=$EVENT_TYPE sessionId=$SESSION_ID hookSessionId=$HOOK_SESSION_ID resourceId=$RESOURCE_ID paneId=$SUPERSET_PANE_ID tabId=$SUPERSET_TAB_ID workspaceId=$SUPERSET_WORKSPACE_ID" >&2
+  echo "[notify-hook] event=$EVENT_TYPE sessionId=$SESSION_ID hookSessionId=$HOOK_SESSION_ID resourceId=$RESOURCE_ID paneId=$SUPERSET_PANE_ID tabId=$SUPERSET_TAB_ID workspaceId=$SUPERSET_WORKSPACE_ID wrapperPid=$SUPERSET_WRAPPER_PID" >&2
 fi
 
 # Timeouts prevent blocking agent completion if notification server is unresponsive

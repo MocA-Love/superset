@@ -23,6 +23,7 @@ export const SETTING_ITEM_ID = {
 	KEYBOARD_SHORTCUTS: "keyboard-shortcuts",
 	BEHAVIOR_CONFIRM_QUIT: "behavior-confirm-quit",
 	BEHAVIOR_TELEMETRY: "behavior-telemetry",
+	BEHAVIOR_PREVENT_AGENT_SLEEP: "behavior-prevent-agent-sleep",
 	BEHAVIOR_FILE_OPEN_MODE: "behavior-file-open-mode",
 	BEHAVIOR_RESOURCE_MONITOR: "behavior-resource-monitor",
 	BEHAVIOR_OPEN_LINKS_IN_APP: "behavior-open-links-in-app",
@@ -416,6 +417,25 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"metrics",
 			"opt out",
 			"disable",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
+		section: "behavior",
+		title: "Prevent Mac sleep during agent tasks",
+		description:
+			"Keep macOS awake while agents are running in Superset terminals",
+		keywords: [
+			"sleep",
+			"mac",
+			"macos",
+			"awake",
+			"caffeinate",
+			"agent",
+			"claude",
+			"codex",
+			"terminal",
+			"power",
 		],
 	},
 	{

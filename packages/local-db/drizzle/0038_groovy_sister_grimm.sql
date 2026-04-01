@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `prevent_agent_sleep` integer;

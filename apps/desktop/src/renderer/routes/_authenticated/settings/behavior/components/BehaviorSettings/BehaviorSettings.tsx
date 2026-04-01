@@ -29,6 +29,10 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,
 		visibleItems,
 	);
+	const showPreventAgentSleep = isItemVisible(
+		SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
+		visibleItems,
+	);
 	const showFileOpenMode = isItemVisible(
 		SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
 		visibleItems,
@@ -70,6 +74,29 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 	const handleConfirmToggle = (enabled: boolean) => {
 		setConfirmOnQuit.mutate({ enabled });
 	};
+
+	const { data: preventAgentSleep, isLoading: isPreventAgentSleepLoading } =
+		electronTrpc.settings.getPreventAgentSleep.useQuery();
+	const setPreventAgentSleep =
+		electronTrpc.settings.setPreventAgentSleep.useMutation({
+			onMutate: async ({ enabled }) => {
+				await utils.settings.getPreventAgentSleep.cancel();
+				const previous = utils.settings.getPreventAgentSleep.getData();
+				utils.settings.getPreventAgentSleep.setData(undefined, enabled);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getPreventAgentSleep.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getPreventAgentSleep.invalidate();
+			},
+		});
 
 	// TODO: remove telemetry query/mutation/handler once telemetry procedures are removed
 	const { data: telemetryEnabled, isLoading: isTelemetryLoading } =
@@ -189,6 +216,33 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 							checked={confirmOnQuit ?? true}
 							onCheckedChange={handleConfirmToggle}
 							disabled={isConfirmLoading || setConfirmOnQuit.isPending}
+						/>
+					</div>
+				)}
+
+				{showPreventAgentSleep && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label
+								htmlFor="prevent-agent-sleep"
+								className="text-sm font-medium"
+							>
+								Prevent Mac sleep during agent tasks
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Keep macOS awake while Claude, Codex, and other agents are
+								running in Superset terminals
+							</p>
+						</div>
+						<Switch
+							id="prevent-agent-sleep"
+							checked={preventAgentSleep ?? false}
+							onCheckedChange={(enabled) =>
+								setPreventAgentSleep.mutate({ enabled })
+							}
+							disabled={
+								isPreventAgentSleepLoading || setPreventAgentSleep.isPending
+							}
 						/>
 					</div>
 				)}

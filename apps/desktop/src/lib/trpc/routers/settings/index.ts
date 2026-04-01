@@ -25,6 +25,7 @@ import {
 	DEFAULT_CONFIRM_ON_QUIT,
 	DEFAULT_FILE_OPEN_MODE,
 	DEFAULT_OPEN_LINKS_IN_APP,
+	DEFAULT_PREVENT_AGENT_SLEEP,
 	DEFAULT_SHOW_PRESETS_BAR,
 	DEFAULT_SHOW_RESOURCE_MONITOR,
 	DEFAULT_TERMINAL_LINK_BEHAVIOR,
@@ -585,6 +586,26 @@ export const createSettingsRouter = () => {
 					.onConflictDoUpdate({
 						target: settings.id,
 						set: { confirmOnQuit: input.enabled },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getPreventAgentSleep: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.preventAgentSleep ?? DEFAULT_PREVENT_AGENT_SLEEP;
+		}),
+
+		setPreventAgentSleep: publicProcedure
+			.input(z.object({ enabled: z.boolean() }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, preventAgentSleep: input.enabled })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { preventAgentSleep: input.enabled },
 					})
 					.run();
 

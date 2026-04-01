@@ -1,9 +1,12 @@
 import { exec } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
+import { settings } from "@superset/local-db";
 import defaultShell from "default-shell";
+import { DEFAULT_PREVENT_AGENT_SLEEP } from "shared/constants";
 import { env } from "shared/env.shared";
 import { getShellEnv } from "../agent-setup/shell-wrappers";
+import { localDb } from "../local-db";
 
 const MACOS_SYSTEM_CERT_FILE = "/etc/ssl/cert.pem";
 let cachedUtf8Locale: string | null = null;
@@ -460,6 +463,9 @@ export function buildTerminalEnv(params: {
 
 	// COLORFGBG: "foreground;background" ANSI color indices — TUI apps use this to detect light/dark
 	const colorFgBg = themeType === "light" ? "0;15" : "15;0";
+	const preventAgentSleepSetting =
+		localDb.select().from(settings).get()?.preventAgentSleep ??
+		DEFAULT_PREVENT_AGENT_SLEEP;
 
 	const terminalEnv: Record<string, string> = {
 		...baseEnv,
@@ -480,6 +486,7 @@ export function buildTerminalEnv(params: {
 		SUPERSET_ENV: env.NODE_ENV === "development" ? "development" : "production",
 		// Hook protocol version for forward compatibility
 		SUPERSET_HOOK_VERSION: HOOK_PROTOCOL_VERSION,
+		SUPERSET_PREVENT_AGENT_SLEEP: preventAgentSleepSetting ? "1" : "0",
 	};
 
 	delete terminalEnv.GOOGLE_API_KEY;
