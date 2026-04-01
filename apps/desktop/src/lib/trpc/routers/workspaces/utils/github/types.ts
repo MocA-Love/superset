@@ -36,6 +36,11 @@ export const GHUserSchema = z.object({
 	login: z.string().optional(),
 });
 
+export const GHIdentityCandidateUserSchema = z.object({
+	login: z.string().optional(),
+	avatarUrl: z.string().optional(),
+});
+
 export const GHCommentAuthorSchema = z.object({
 	login: z.string().optional(),
 	avatar_url: z.string().optional(),
@@ -83,7 +88,7 @@ export const GHPageInfoSchema = z.object({
 });
 
 export const GHUsersConnectionSchema = z.object({
-	nodes: z.array(GHUserSchema.nullable()).optional(),
+	nodes: z.array(GHIdentityCandidateUserSchema.nullable()).optional(),
 	pageInfo: GHPageInfoSchema,
 });
 

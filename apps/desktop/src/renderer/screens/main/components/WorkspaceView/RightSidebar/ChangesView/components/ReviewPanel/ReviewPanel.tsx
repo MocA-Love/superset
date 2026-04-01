@@ -1,4 +1,5 @@
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
+import { Avatar as UserAvatar } from "@superset/ui/atoms/Avatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@superset/ui/avatar";
 import { Button } from "@superset/ui/button";
 import {
@@ -692,13 +693,20 @@ export function ReviewPanel({
 		const searchValue =
 			pendingGroup === "assignees" ? assigneeSearch : reviewerSearch;
 		const existingItems = new Set(items.map((item) => item.toLowerCase()));
+		const identityCandidatesByLogin = new Map(
+			identityCandidates.map(
+				(candidate) => [candidate.login.toLowerCase(), candidate] as const,
+			),
+		);
 		const query = searchValue.trim().toLowerCase();
 		const filteredCandidates = !isOpen
 			? []
 			: identityCandidates
-					.filter((candidate) => !existingItems.has(candidate.toLowerCase()))
+					.filter(
+						(candidate) => !existingItems.has(candidate.login.toLowerCase()),
+					)
 					.filter((candidate) =>
-						query ? candidate.toLowerCase().includes(query) : true,
+						query ? candidate.login.toLowerCase().includes(query) : true,
 					)
 					.slice(0, 8);
 
@@ -779,6 +787,14 @@ export function ReviewPanel({
 												className="flex items-center justify-between gap-2 text-xs"
 											>
 												<div className="flex min-w-0 items-center gap-2">
+													<UserAvatar
+														size="xs"
+														fullName={item}
+														image={
+															identityCandidatesByLogin.get(item.toLowerCase())
+																?.avatarUrl
+														}
+													/>
 													<LuCheck className="size-3.5 shrink-0 text-primary" />
 													<span className="truncate">{item}</span>
 												</div>
@@ -788,13 +804,22 @@ export function ReviewPanel({
 									: null}
 								{filteredCandidates.map((candidate) => (
 									<CommandItem
-										key={`${pendingGroup}-${candidate}`}
-										value={candidate}
+										key={`${pendingGroup}-${candidate.login}`}
+										value={candidate.login}
 										disabled={isPending}
-										onSelect={() => handleAddCandidate(pendingGroup, candidate)}
+										onSelect={() =>
+											handleAddCandidate(pendingGroup, candidate.login)
+										}
 										className="flex items-center justify-between gap-2 text-xs"
 									>
-										<span className="truncate">{candidate}</span>
+										<div className="flex min-w-0 items-center gap-2">
+											<UserAvatar
+												size="xs"
+												fullName={candidate.login}
+												image={candidate.avatarUrl}
+											/>
+											<span className="truncate">{candidate.login}</span>
+										</div>
 										<LuCheck className="size-3.5 shrink-0 opacity-0" />
 									</CommandItem>
 								))}

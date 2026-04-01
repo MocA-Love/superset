@@ -100,6 +100,7 @@ const ghRepositoryLabelSchema = z.object({
 
 const ghRepositoryAssigneeSchema = z.object({
 	login: z.string(),
+	avatar_url: z.string().optional(),
 });
 
 function sanitizeIssueAssetBasename(value: string): string {
@@ -480,7 +481,10 @@ async function getGitHubRepositoryOverview(workspaceId: string) {
 		branchExistsOnRemote,
 		currentBranch,
 		defaultBranch,
-		issueAssignees: assignees.map((assignee) => assignee.login),
+		issueAssignees: assignees.map((assignee) => ({
+			login: assignee.login,
+			avatarUrl: assignee.avatar_url ?? null,
+		})),
 		issueLabels: labels.map((label) => ({
 			name: label.name,
 			color: label.color ?? "",
@@ -929,7 +933,7 @@ async function getPullRequestIdentityCandidates({
 	workspaceId: string;
 	kind: "reviewer" | "assignee";
 	pullRequestUrl?: string;
-}): Promise<string[]> {
+}): Promise<Array<{ login: string; avatarUrl: string | null }>> {
 	const { repoPath, repoNameWithOwner } = resolvePullRequestRepoTarget({
 		workspaceId,
 		pullRequestUrl,
@@ -947,6 +951,7 @@ async function getPullRequestIdentityCandidates({
     users: ${fieldName}(first: 100, after: $after) {
       nodes {
         login
+        avatarUrl
       }
       pageInfo {
         hasNextPage
@@ -956,7 +961,7 @@ async function getPullRequestIdentityCandidates({
   }
 }`;
 
-	const logins = new Set<string>();
+	const usersByLogin = new Map<string, string | null>();
 	let afterCursor: string | null = null;
 
 	while (true) {
@@ -992,7 +997,7 @@ async function getPullRequestIdentityCandidates({
 
 		for (const user of users.nodes ?? []) {
 			if (user?.login) {
-				logins.add(user.login);
+				usersByLogin.set(user.login, user.avatarUrl ?? null);
 			}
 		}
 
@@ -1003,7 +1008,10 @@ async function getPullRequestIdentityCandidates({
 		afterCursor = users.pageInfo.endCursor;
 	}
 
-	return [...logins];
+	return [...usersByLogin.entries()].map(([login, avatarUrl]) => ({
+		login,
+		avatarUrl,
+	}));
 }
 
 export const createGitStatusProcedures = () => {

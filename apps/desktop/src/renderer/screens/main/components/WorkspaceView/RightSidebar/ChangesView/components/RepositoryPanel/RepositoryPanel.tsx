@@ -1,3 +1,4 @@
+import { Avatar } from "@superset/ui/atoms/Avatar";
 import { Badge } from "@superset/ui/badge";
 import { Button } from "@superset/ui/button";
 import {
@@ -331,15 +332,24 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 		electronTrpc.workspaces.dispatchGitHubWorkflow.useMutation();
 
 	const availableAssignees = repositoryOverview?.issueAssignees ?? [];
+	const availableAssigneesByLogin = useMemo(
+		() =>
+			new Map(
+				availableAssignees.map(
+					(assignee) => [assignee.login, assignee] as const,
+				),
+			),
+		[availableAssignees],
+	);
 	const availableLabels = repositoryOverview?.issueLabels ?? [];
 	const filteredAssignees = useMemo(() => {
 		const query = issueAssigneeSearch.trim().toLowerCase();
 		return availableAssignees.filter((candidate) => {
-			if (issueAssignees.includes(candidate)) {
+			if (issueAssignees.includes(candidate.login)) {
 				return false;
 			}
 
-			return query ? candidate.toLowerCase().includes(query) : true;
+			return query ? candidate.login.toLowerCase().includes(query) : true;
 		});
 	}, [availableAssignees, issueAssigneeSearch, issueAssignees]);
 	const filteredLabels = useMemo(() => {
@@ -725,6 +735,15 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																				)
 																			}
 																		>
+																			<Avatar
+																				size="xs"
+																				fullName={assignee}
+																				image={
+																					availableAssigneesByLogin.get(
+																						assignee,
+																					)?.avatarUrl
+																				}
+																			/>
 																			<LuCheck className="size-3.5 text-primary" />
 																			<span className="flex-1 truncate">
 																				{assignee}
@@ -740,16 +759,21 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																<CommandGroup heading="Available">
 																	{filteredAssignees.map((assignee) => (
 																		<CommandItem
-																			key={assignee}
+																			key={assignee.login}
 																			onSelect={() =>
 																				setIssueAssignees((current) => [
 																					...current,
-																					assignee,
+																					assignee.login,
 																				])
 																			}
 																		>
+																			<Avatar
+																				size="xs"
+																				fullName={assignee.login}
+																				image={assignee.avatarUrl}
+																			/>
 																			<span className="truncate">
-																				{assignee}
+																				{assignee.login}
 																			</span>
 																		</CommandItem>
 																	))}
@@ -857,7 +881,14 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 														variant="outline"
 														className="gap-1"
 													>
-														<LuUserPlus className="size-3" />
+														<Avatar
+															size="xs"
+															fullName={assignee}
+															image={
+																availableAssigneesByLogin.get(assignee)
+																	?.avatarUrl
+															}
+														/>
 														{assignee}
 													</Badge>
 												))}
