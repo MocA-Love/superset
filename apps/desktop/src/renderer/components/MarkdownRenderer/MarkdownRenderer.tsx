@@ -18,12 +18,14 @@ interface MarkdownRendererProps {
 	content: string;
 	style?: keyof typeof styleConfigs;
 	className?: string;
+	scrollable?: boolean;
 }
 
 export function MarkdownRenderer({
 	content,
 	style: styleProp,
 	className,
+	scrollable = true,
 }: MarkdownRendererProps) {
 	const globalStyle = useMarkdownStyle();
 	const style = styleProp ?? globalStyle;
@@ -34,7 +36,8 @@ export function MarkdownRenderer({
 		<SelectionContextMenu selectAllContainerRef={articleRef}>
 			<div
 				className={cn(
-					"markdown-renderer h-full overflow-y-auto select-text",
+					"markdown-renderer select-text",
+					scrollable && "h-full overflow-y-auto",
 					config.wrapperClass,
 					className,
 				)}

@@ -45,6 +45,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@superset/ui/select";
+import { toast } from "@superset/ui/sonner";
 import { Switch } from "@superset/ui/switch";
 import {
 	Table,
@@ -89,6 +90,7 @@ import {
 	LuTrash2,
 	LuX,
 } from "react-icons/lu";
+import { MarkdownRenderer } from "renderer/components/MarkdownRenderer/MarkdownRenderer";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -168,7 +170,7 @@ interface CellDetailState {
 	column: string;
 	columnType: string;
 	value: unknown;
-	format: "text" | "json";
+	format: "text" | "json" | "markdown";
 	draft: string;
 }
 
@@ -382,9 +384,26 @@ function canUseJsonDetailFormat(columnType: string, value: unknown): boolean {
 	}
 }
 
+function canUseMarkdownDetailFormat(
+	columnType: string,
+	value: unknown,
+): boolean {
+	const normalizedType = normalizeColumnType(columnType);
+	if (
+		normalizedType.includes("json") ||
+		normalizedType.includes("array") ||
+		normalizedType.includes("bytea") ||
+		normalizedType.includes("blob")
+	) {
+		return false;
+	}
+
+	return typeof value === "string";
+}
+
 function formatCellDetailDraft(
 	value: unknown,
-	format: "text" | "json",
+	format: "text" | "json" | "markdown",
 ): string {
 	if (format === "json") {
 		if (typeof value === "string") {
@@ -723,6 +742,12 @@ export function DatabasesView({
 	const [isEditDialogLoading, setIsEditDialogLoading] = useState(false);
 	const [isCellDetailDialogOpen, setIsCellDetailDialogOpen] = useState(false);
 	const [isCellDetailLoading, setIsCellDetailLoading] = useState(false);
+	const [isCreatingRow, setIsCreatingRow] = useState(false);
+	const [tableExportFormat, setTableExportFormat] = useState<
+		"csv" | "json" | null
+	>(null);
+	const [isCellDetailCopying, setIsCellDetailCopying] = useState(false);
+	const [isCellDetailExporting, setIsCellDetailExporting] = useState(false);
 	const [isCellContextMenuOpen, setIsCellContextMenuOpen] = useState(false);
 	const [contextCell, setContextCell] = useState<ContextCellState | null>(null);
 	const [pendingEditRequest, setPendingEditRequest] =
@@ -1293,12 +1318,18 @@ export function DatabasesView({
 		const blob = new Blob([content], {
 			type: format === "json" ? "application/json" : "text/csv;charset=utf-8",
 		});
-		const objectUrl = URL.createObjectURL(blob);
-		const anchor = document.createElement("a");
-		anchor.href = objectUrl;
-		anchor.download = `${fileBaseName}.${format}`;
-		anchor.click();
-		URL.revokeObjectURL(objectUrl);
+		try {
+			const objectUrl = URL.createObjectURL(blob);
+			const anchor = document.createElement("a");
+			anchor.href = objectUrl;
+			anchor.download = `${fileBaseName}.${format}`;
+			anchor.click();
+			URL.revokeObjectURL(objectUrl);
+		} catch (error) {
+			throw new Error(
+				error instanceof Error ? error.message : "Failed to export table rows.",
+			);
+		}
 	};
 
 	const handleAddConnection = () => {
@@ -1413,11 +1444,21 @@ export function DatabasesView({
 		}
 	};
 
-	const handleCreateRow = () => {
+	const handleCreateRow = async () => {
 		const blankRow = Object.fromEntries(
 			visiblePreviewColumns.map((column) => [column, null]),
 		) as Record<string, unknown>;
-		void handleOpenEditDialog(blankRow, visiblePreviewColumns[0], "insert");
+		setIsCreatingRow(true);
+		try {
+			await handleOpenEditDialog(blankRow, visiblePreviewColumns[0], "insert");
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to open row editor.";
+			setTableActionError(message);
+			toast.error(message);
+		} finally {
+			setIsCreatingRow(false);
+		}
 	};
 
 	const fetchFullRow = useCallback(
@@ -1659,7 +1700,9 @@ export function DatabasesView({
 		[columnTypeByName, fetchFullRow],
 	);
 
-	const handleCellDetailFormatChange = (nextFormat: "text" | "json") => {
+	const handleCellDetailFormatChange = (
+		nextFormat: "text" | "json" | "markdown",
+	) => {
 		setCellDetail((current) =>
 			current
 				? {
@@ -1676,18 +1719,31 @@ export function DatabasesView({
 			return;
 		}
 
-		const blob = new Blob([cellDetail.draft], {
-			type:
-				cellDetail.format === "json"
-					? "application/json"
-					: "text/plain;charset=utf-8",
-		});
-		const objectUrl = URL.createObjectURL(blob);
-		const anchor = document.createElement("a");
-		anchor.href = objectUrl;
-		anchor.download = `${selectedTableLabel.replaceAll(".", "_")}_${cellDetail.column}.${cellDetail.format === "json" ? "json" : "txt"}`;
-		anchor.click();
-		URL.revokeObjectURL(objectUrl);
+		setIsCellDetailExporting(true);
+		try {
+			const blob = new Blob([cellDetail.draft], {
+				type:
+					cellDetail.format === "json"
+						? "application/json"
+						: "text/plain;charset=utf-8",
+			});
+			const objectUrl = URL.createObjectURL(blob);
+			const anchor = document.createElement("a");
+			anchor.href = objectUrl;
+			anchor.download = `${selectedTableLabel.replaceAll(".", "_")}_${cellDetail.column}.${cellDetail.format === "json" ? "json" : cellDetail.format === "markdown" ? "md" : "txt"}`;
+			anchor.click();
+			URL.revokeObjectURL(objectUrl);
+			toast.success("セル内容をエクスポートしました。");
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "Failed to export detailed cell value.";
+			setTableActionError(message);
+			toast.error(message);
+		} finally {
+			setIsCellDetailExporting(false);
+		}
 	};
 
 	const handleSaveCellDetail = async () => {
@@ -1720,6 +1776,44 @@ export function DatabasesView({
 					? error.message
 					: "Failed to save detailed cell value.",
 			);
+		}
+	};
+
+	const handleCopyCellDetail = async () => {
+		if (!cellDetail) {
+			return;
+		}
+
+		setIsCellDetailCopying(true);
+		try {
+			await copyToClipboard(cellDetail.draft);
+			toast.success("セル内容をコピーしました。");
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to copy cell value.";
+			setTableActionError(message);
+			toast.error(message);
+		} finally {
+			setIsCellDetailCopying(false);
+		}
+	};
+
+	const handleExportPreviewRows = async (format: "csv" | "json") => {
+		setTableExportFormat(format);
+		try {
+			await exportRows(filteredPreviewRows, format);
+			toast.success(
+				format === "csv"
+					? "CSV をエクスポートしました。"
+					: "JSON をエクスポートしました。",
+			);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to export rows.";
+			setTableActionError(message);
+			toast.error(message);
+		} finally {
+			setTableExportFormat(null);
 		}
 	};
 
@@ -2368,11 +2462,15 @@ export function DatabasesView({
 												type="button"
 												size="sm"
 												variant="outline"
-												onClick={handleCreateRow}
-												disabled={!selectedTable}
+												onClick={() => void handleCreateRow()}
+												disabled={!selectedTable || isCreatingRow}
 											>
-												<LuPlus className="mr-1.5 size-3.5" />
-												行を追加
+												{isCreatingRow ? (
+													<LuRefreshCw className="mr-1.5 size-3.5 animate-spin" />
+												) : (
+													<LuPlus className="mr-1.5 size-3.5" />
+												)}
+												{isCreatingRow ? "開いています..." : "行を追加"}
 											</Button>
 											<Button
 												type="button"
@@ -2395,25 +2493,39 @@ export function DatabasesView({
 												type="button"
 												size="sm"
 												variant="outline"
-												onClick={() =>
-													void exportRows(filteredPreviewRows, "csv")
+												onClick={() => void handleExportPreviewRows("csv")}
+												disabled={
+													!filteredPreviewRows.length ||
+													tableExportFormat !== null
 												}
-												disabled={!filteredPreviewRows.length}
 											>
-												<LuExternalLink className="mr-1.5 size-3.5" />
-												CSV
+												<LuExternalLink
+													className={cn(
+														"mr-1.5 size-3.5",
+														tableExportFormat === "csv" && "animate-pulse",
+													)}
+												/>
+												{tableExportFormat === "csv" ? "書き出し中..." : "CSV"}
 											</Button>
 											<Button
 												type="button"
 												size="sm"
 												variant="outline"
-												onClick={() =>
-													void exportRows(filteredPreviewRows, "json")
+												onClick={() => void handleExportPreviewRows("json")}
+												disabled={
+													!filteredPreviewRows.length ||
+													tableExportFormat !== null
 												}
-												disabled={!filteredPreviewRows.length}
 											>
-												<LuExternalLink className="mr-1.5 size-3.5" />
-												JSON
+												<LuExternalLink
+													className={cn(
+														"mr-1.5 size-3.5",
+														tableExportFormat === "json" && "animate-pulse",
+													)}
+												/>
+												{tableExportFormat === "json"
+													? "書き出し中..."
+													: "JSON"}
 											</Button>
 											<Button
 												type="button"
@@ -3181,7 +3293,7 @@ export function DatabasesView({
 					<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
 						<div className="flex items-center gap-2">
 							<Select
-								value={cellDetail?.format ?? "text"}
+								value={cellDetail?.format === "json" ? "json" : "text"}
 								onValueChange={(value) =>
 									handleCellDetailFormatChange(value as "text" | "json")
 								}
@@ -3201,27 +3313,48 @@ export function DatabasesView({
 									) : null}
 								</SelectContent>
 							</Select>
+							{cellDetail &&
+							canUseMarkdownDetailFormat(
+								cellDetail.columnType,
+								cellDetail.value,
+							) ? (
+								<Button
+									type="button"
+									size="sm"
+									variant={
+										cellDetail.format === "markdown" ? "default" : "outline"
+									}
+									onClick={() =>
+										handleCellDetailFormatChange(
+											cellDetail.format === "markdown" ? "text" : "markdown",
+										)
+									}
+								>
+									<LuEye className="mr-1.5 size-3.5" />
+									{cellDetail.format === "markdown"
+										? "テキスト編集に戻る"
+										: "Markdownとして見る"}
+								</Button>
+							) : null}
 							<Button
 								type="button"
 								size="sm"
 								variant="outline"
-								onClick={() =>
-									cellDetail ? copyToClipboard(cellDetail.draft) : undefined
-								}
-								disabled={!cellDetail}
+								onClick={() => void handleCopyCellDetail()}
+								disabled={!cellDetail || isCellDetailCopying}
 							>
 								<LuCopy className="mr-1.5 size-3.5" />
-								コピー
+								{isCellDetailCopying ? "コピー中..." : "コピー"}
 							</Button>
 							<Button
 								type="button"
 								size="sm"
 								variant="outline"
 								onClick={() => void handleExportCellDetail()}
-								disabled={!cellDetail}
+								disabled={!cellDetail || isCellDetailExporting}
 							>
 								<LuExternalLink className="mr-1.5 size-3.5" />
-								Export
+								{isCellDetailExporting ? "書き出し中..." : "Export"}
 							</Button>
 						</div>
 						<div className="min-h-0 flex-1 overflow-hidden rounded-md border">
@@ -3230,6 +3363,16 @@ export function DatabasesView({
 									<p className="text-muted-foreground text-sm">
 										Loading full cell value...
 									</p>
+								</div>
+							) : cellDetail?.format === "markdown" ? (
+								<div className="h-[31rem] min-h-[31rem] max-h-[78vh] overflow-y-auto p-3">
+									<div className="min-h-full">
+										<MarkdownRenderer
+											content={cellDetail.draft}
+											scrollable={false}
+											className="!h-auto overflow-visible"
+										/>
+									</div>
 								</div>
 							) : (
 								<textarea
@@ -3241,7 +3384,7 @@ export function DatabasesView({
 												: current,
 										)
 									}
-									className="text-foreground placeholder:text-muted-foreground h-full min-h-[24rem] w-full resize-none overflow-auto border-0 bg-transparent px-3 py-2 font-mono text-[12px] outline-none"
+									className="text-foreground placeholder:text-muted-foreground h-[31rem] min-h-[31rem] w-full resize-none overflow-auto border-0 bg-transparent px-3 py-2 font-mono text-[12px] outline-none"
 								/>
 							)}
 						</div>
