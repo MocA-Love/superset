@@ -7,6 +7,7 @@ import {
 	type ViewUpdate,
 	WidgetType,
 } from "@codemirror/view";
+import { electronTrpcClient } from "renderer/lib/trpc-client";
 
 export interface BlameEntry {
 	line: number;
@@ -14,6 +15,16 @@ export interface BlameEntry {
 	author: string;
 	timestamp: number;
 	summary: string;
+	authorAvatarUrl?: string;
+}
+
+interface BlamePluginOptions {
+	worktreePath?: string;
+}
+
+interface GitHubCommitAuthor {
+	login: string | null;
+	avatarUrl: string | null;
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -79,6 +90,11 @@ const _ICON_ARROW =
 // Singleton tooltip element
 let activeTooltip: HTMLElement | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
+const commitAuthorCache = new Map<string, GitHubCommitAuthor | null>();
+const commitAuthorInFlight = new Map<
+	string,
+	Promise<GitHubCommitAuthor | null>
+>();
 
 function clearHideTimer() {
 	if (hideTimer !== null) {
@@ -96,7 +112,77 @@ function scheduleHide() {
 	}, 120);
 }
 
-function showTooltip(entry: BlameEntry, anchor: HTMLElement) {
+function setAvatarContent({
+	avatar,
+	initials,
+	avatarUrl,
+}: {
+	avatar: HTMLDivElement;
+	initials: string;
+	avatarUrl?: string | null;
+}) {
+	avatar.replaceChildren();
+	avatar.classList.toggle("cm-bt-avatar--image", Boolean(avatarUrl));
+
+	if (!avatarUrl) {
+		avatar.textContent = initials;
+		return;
+	}
+
+	const image = document.createElement("img");
+	image.className = "cm-bt-avatar-image";
+	image.alt = "";
+	image.src = avatarUrl;
+	image.referrerPolicy = "no-referrer";
+	image.addEventListener("error", () => {
+		avatar.classList.remove("cm-bt-avatar--image");
+		avatar.replaceChildren();
+		avatar.textContent = initials;
+	});
+	avatar.appendChild(image);
+}
+
+function loadCommitAuthor({
+	worktreePath,
+	commitHash,
+}: {
+	worktreePath: string;
+	commitHash: string;
+}): Promise<GitHubCommitAuthor | null> {
+	const cacheKey = `${worktreePath}#${commitHash}`;
+	const cached = commitAuthorCache.get(cacheKey);
+	if (cached !== undefined) {
+		return Promise.resolve(cached);
+	}
+
+	const inFlight = commitAuthorInFlight.get(cacheKey);
+	if (inFlight) {
+		return inFlight;
+	}
+
+	const request = electronTrpcClient.changes.getGitHubCommitAuthor
+		.query({ worktreePath, commitHash })
+		.then((result) => {
+			commitAuthorCache.set(cacheKey, result);
+			return result;
+		})
+		.catch(() => {
+			commitAuthorCache.set(cacheKey, null);
+			return null;
+		})
+		.finally(() => {
+			commitAuthorInFlight.delete(cacheKey);
+		});
+
+	commitAuthorInFlight.set(cacheKey, request);
+	return request;
+}
+
+function showTooltip(
+	entry: BlameEntry,
+	anchor: HTMLElement,
+	options?: BlamePluginOptions,
+) {
 	clearHideTimer();
 
 	if (activeTooltip) {
@@ -117,7 +203,11 @@ function showTooltip(entry: BlameEntry, anchor: HTMLElement) {
 
 	const avatar = document.createElement("div");
 	avatar.className = "cm-bt-avatar";
-	avatar.textContent = initials;
+	setAvatarContent({
+		avatar,
+		initials,
+		avatarUrl: entry.authorAvatarUrl,
+	});
 
 	const meta = document.createElement("div");
 	meta.className = "cm-bt-meta";
@@ -182,12 +272,30 @@ function showTooltip(entry: BlameEntry, anchor: HTMLElement) {
 		const top = rect.top - th - 8;
 		activeTooltip.style.top = `${top < 8 ? rect.bottom + 8 : top}px`;
 	});
+
+	if (!entry.authorAvatarUrl && options?.worktreePath) {
+		void loadCommitAuthor({
+			worktreePath: options.worktreePath,
+			commitHash: entry.commitHash,
+		}).then((authorInfo) => {
+			if (activeTooltip !== tooltip || !authorInfo?.avatarUrl) {
+				return;
+			}
+
+			setAvatarContent({
+				avatar,
+				initials,
+				avatarUrl: authorInfo.avatarUrl,
+			});
+		});
+	}
 }
 
 class BlameWidget extends WidgetType {
 	constructor(
 		private readonly text: string,
 		private readonly entry: BlameEntry,
+		private readonly options?: BlamePluginOptions,
 	) {
 		super();
 	}
@@ -227,12 +335,12 @@ class BlameWidget extends WidgetType {
 		span.addEventListener("mouseenter", () => {
 			if (hasLeft) {
 				// 一度離れた後に戻ってきた → 即表示
-				showTooltip(this.entry, span);
+				showTooltip(this.entry, span, this.options);
 			} else {
 				// 初回ホバー（ウィジェット生成直後から乗っている状態）→ 2秒待つ
 				dwellTimer = setTimeout(() => {
 					dwellTimer = null;
-					showTooltip(this.entry, span);
+					showTooltip(this.entry, span, this.options);
 				}, 1000);
 				(
 					span as HTMLElement & {
@@ -266,6 +374,7 @@ class BlameWidget extends WidgetType {
 function buildBlameDecorations(
 	view: EditorView,
 	blameMap: Map<number, BlameEntry>,
+	options?: BlamePluginOptions,
 ): DecorationSet {
 	const doc = view.state.doc;
 	const cursorPos = view.state.selection.main.head;
@@ -279,7 +388,7 @@ function buildBlameDecorations(
 
 	return Decoration.set([
 		Decoration.widget({
-			widget: new BlameWidget(text, entry),
+			widget: new BlameWidget(text, entry, options),
 			side: 1,
 		}).range(line.to),
 	]);
@@ -338,6 +447,18 @@ const blameTooltipStyles = `
   justify-content: center;
   letter-spacing: 0.02em;
   border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.cm-bt-avatar--image {
+  background: transparent;
+  color: transparent;
+}
+
+.cm-bt-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .cm-bt-meta {
@@ -444,7 +565,10 @@ function injectBlameTooltipStyles() {
 	document.head.appendChild(style);
 }
 
-export function createBlamePlugin(entries: BlameEntry[]): Extension {
+export function createBlamePlugin(
+	entries: BlameEntry[],
+	options?: BlamePluginOptions,
+): Extension {
 	injectBlameTooltipStyles();
 
 	const blameMap = new Map<number, BlameEntry>(entries.map((e) => [e.line, e]));
@@ -455,7 +579,7 @@ export function createBlamePlugin(entries: BlameEntry[]): Extension {
 			private lastCursorLine = -1;
 
 			constructor(view: EditorView) {
-				this.decorations = buildBlameDecorations(view, blameMap);
+				this.decorations = buildBlameDecorations(view, blameMap, options);
 				this.lastCursorLine = view.state.doc.lineAt(
 					view.state.selection.main.head,
 				).number;
@@ -479,10 +603,14 @@ export function createBlamePlugin(entries: BlameEntry[]): Extension {
 							this.lastCursorLine = newLine;
 						}
 					}
-					this.decorations = buildBlameDecorations(update.view, blameMap);
+						this.decorations = buildBlameDecorations(
+							update.view,
+							blameMap,
+							options,
+						);
+					}
 				}
-			}
-		},
+			},
 		{ decorations: (v) => v.decorations },
 	);
 

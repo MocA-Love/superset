@@ -121,6 +121,7 @@ interface CodeMirrorDiffViewerProps {
 	original: string;
 	modified: string;
 	language: string;
+	worktreePath?: string;
 	viewMode: DiffViewMode;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
@@ -131,6 +132,7 @@ export function CodeMirrorDiffViewer({
 	original,
 	modified,
 	language,
+	worktreePath,
 	viewMode,
 	onChange,
 	onSave,
@@ -280,10 +282,12 @@ export function CodeMirrorDiffViewer({
 
 		mv.b.dispatch({
 			effects: blameCompartmentB.reconfigure(
-				blameEntries ? createBlamePlugin(blameEntries) : [],
+				blameEntries
+					? createBlamePlugin(blameEntries, { worktreePath })
+					: [],
 			),
 		});
-	}, [blameEntries, blameCompartmentB]);
+	}, [blameEntries, blameCompartmentB, worktreePath]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }
