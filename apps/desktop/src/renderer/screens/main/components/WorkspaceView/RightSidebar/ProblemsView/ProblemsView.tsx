@@ -21,6 +21,7 @@ import {
 } from "@superset/ui/empty";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
+import { ToggleGroup, ToggleGroupItem } from "@superset/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { useMemo, useState } from "react";
@@ -59,6 +60,33 @@ type ProblemItem = {
 		message: string;
 	}>;
 };
+
+const SEVERITY_FILTERS = [
+	{
+		value: "error",
+		label: "Error",
+		shortLabel: "Error",
+	},
+	{
+		value: "warning",
+		label: "Warning",
+		shortLabel: "Warn",
+	},
+	{
+		value: "info",
+		label: "Info",
+		shortLabel: "Info",
+	},
+	{
+		value: "hint",
+		label: "Hint",
+		shortLabel: "Hint",
+	},
+] as const satisfies ReadonlyArray<{
+	value: ProblemItem["severity"];
+	label: string;
+	shortLabel: string;
+}>;
 
 function severityLabel(severity: ProblemItem["severity"]): string {
 	switch (severity) {
@@ -109,6 +137,31 @@ function normalizeSource(source: string): string {
 	return source === "typescript" ? "ts" : source;
 }
 
+function getSummaryCount(
+	summary:
+		| {
+				errorCount: number;
+				warningCount: number;
+				infoCount: number;
+				hintCount: number;
+		  }
+		| null
+		| undefined,
+	severity: ProblemItem["severity"],
+): number {
+	switch (severity) {
+		case "error":
+			return summary?.errorCount ?? 0;
+		case "warning":
+			return summary?.warningCount ?? 0;
+		case "info":
+			return summary?.infoCount ?? 0;
+		case "hint":
+		default:
+			return summary?.hintCount ?? 0;
+	}
+}
+
 function buildClipboardPayload(problem: ProblemItem) {
 	return [
 		{
@@ -153,7 +206,9 @@ function TruncatedWithTooltip({
 	return (
 		<Tooltip delayDuration={400}>
 			<TooltipTrigger asChild>
-				<span className={cn("block truncate", className)}>{children}</span>
+				<div className={cn("min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap", className)}>
+					{children}
+				</div>
 			</TooltipTrigger>
 			<TooltipContent side="top" align="start" className="max-w-[420px] text-xs">
 				<p className="whitespace-pre-wrap break-words">{tooltip ?? children}</p>
@@ -172,6 +227,9 @@ export function ProblemsView({
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+	const [severityFilters, setSeverityFilters] = useState<
+		ProblemItem["severity"][]
+	>(SEVERITY_FILTERS.map((filter) => filter.value));
 
 	const { data, isLoading, isFetching, refetch } =
 		electronTrpc.languageServices.getWorkspaceDiagnostics.useQuery(
@@ -181,17 +239,6 @@ export function ProblemsView({
 				staleTime: Infinity,
 			},
 		);
-
-	console.log("[ProblemsView] workspace diagnostics state", {
-		workspaceId,
-		isActive,
-		isLoading,
-		isFetching,
-		totalCount: data?.totalCount ?? null,
-		providers: data?.providers ?? [],
-		problemFiles:
-			data?.problems.map((problem) => problem.relativePath ?? "Workspace") ?? [],
-	});
 
 	const refreshDiagnostics =
 		electronTrpc.languageServices.refreshWorkspace.useMutation({
@@ -210,9 +257,6 @@ export function ProblemsView({
 				if (!workspaceId) {
 					return;
 				}
-				console.log("[ProblemsView] subscribeDiagnostics event", {
-					workspaceId,
-				});
 				void trpcUtils.languageServices.getWorkspaceDiagnostics.invalidate({
 					workspaceId,
 				});
@@ -220,9 +264,16 @@ export function ProblemsView({
 		},
 	);
 
+	const visibleProblems = useMemo(() => {
+		const activeSeverities = new Set(severityFilters);
+		return (data?.problems ?? []).filter((problem) =>
+			activeSeverities.has(problem.severity),
+		);
+	}, [data?.problems, severityFilters]);
+
 	const groupedProblems = useMemo(() => {
 		const groups = new Map<string, ProblemItem[]>();
-		for (const problem of data?.problems ?? []) {
+		for (const problem of visibleProblems) {
 			const groupKey = problem.relativePath ?? "Workspace";
 			const existing = groups.get(groupKey);
 			if (existing) {
@@ -236,16 +287,22 @@ export function ProblemsView({
 			groupKey,
 			problems,
 		}));
-	}, [data?.problems]);
+	}, [visibleProblems]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col overflow-hidden">
-			<div className="border-b px-3 py-2">
-				<div className="flex items-center justify-between gap-2">
+			<div className="overflow-hidden border-b px-3 py-2">
+				<div className="flex min-w-0 items-center justify-between gap-2 overflow-hidden">
 					<div className="flex min-w-0 items-center gap-2">
 						<Badge variant="destructive">{data?.summary.errorCount ?? 0}</Badge>
 						<Badge variant="secondary">{data?.summary.warningCount ?? 0}</Badge>
-						<Badge variant="outline">{data?.totalCount ?? 0} total</Badge>
+						<Badge variant="outline">
+							{visibleProblems.length}
+							{visibleProblems.length !== (data?.totalCount ?? 0)
+								? ` / ${data?.totalCount ?? 0}`
+								: ""}{" "}
+							total
+						</Badge>
 					</div>
 					<Button
 						type="button"
@@ -269,17 +326,74 @@ export function ProblemsView({
 						/>
 					</Button>
 				</div>
-				{data?.providers?.length ? (
-					<p className="text-muted-foreground mt-2 truncate text-xs">
-						{data.providers
-							.map((provider) =>
-								provider.details
-									? `${provider.label}: ${provider.details}`
-									: `${provider.label}: ${provider.documentCount} files`,
-							)
-							.join(" / ")}
-					</p>
-				) : null}
+				<div className="mt-2 flex min-w-0 flex-wrap items-start gap-2 overflow-hidden">
+					<ToggleGroup
+						type="multiple"
+						value={severityFilters}
+						onValueChange={(nextValue) => {
+							setSeverityFilters(
+								nextValue.filter(
+									(value): value is ProblemItem["severity"] =>
+										SEVERITY_FILTERS.some((filter) => filter.value === value),
+								),
+							);
+						}}
+						size="sm"
+						variant="outline"
+						className="min-w-0 max-w-full flex-wrap overflow-hidden gap-1"
+						spacing={1}
+					>
+						{SEVERITY_FILTERS.map((filter) => {
+							const count = getSummaryCount(data?.summary, filter.value);
+							return (
+								<ToggleGroupItem
+									key={filter.value}
+									value={filter.value}
+									aria-label={`Show ${filter.label} problems`}
+									className="h-6 gap-1 px-2 text-[11px] text-muted-foreground data-[state=on]:text-foreground"
+								>
+									{severityIcon(filter.value)}
+									<span>{filter.shortLabel}</span>
+									<span className="text-[10px] opacity-70">{count}</span>
+								</ToggleGroupItem>
+							);
+						})}
+					</ToggleGroup>
+					{groupedProblems.length > 0 ? (
+						<div className="flex min-w-0 shrink-0 items-center gap-1">
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-6 max-w-[92px] px-2 text-[11px] text-muted-foreground"
+								onClick={() => {
+									setOpenGroups(
+										Object.fromEntries(
+											groupedProblems.map(({ groupKey }) => [groupKey, true]),
+										),
+									);
+								}}
+							>
+								<span className="block truncate">Expand all</span>
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-6 max-w-[96px] px-2 text-[11px] text-muted-foreground"
+								onClick={() => {
+									setOpenGroups(
+										Object.fromEntries(
+											groupedProblems.map(({ groupKey }) => [groupKey, false]),
+										),
+									);
+								}}
+							>
+								<span className="block truncate">Collapse all</span>
+							</Button>
+						</div>
+					) : null}
+				</div>
 			</div>
 
 			<ScrollArea className="min-h-0 flex-1">
@@ -295,8 +409,20 @@ export function ProblemsView({
 							</EmptyMedia>
 							<EmptyTitle>No Problems</EmptyTitle>
 							<EmptyDescription>
-								No diagnostics were found in the currently open TypeScript or
-								JavaScript files.
+								No diagnostics were found in the currently open supported files.
+							</EmptyDescription>
+						</EmptyHeader>
+						<EmptyContent />
+					</Empty>
+				) : visibleProblems.length === 0 ? (
+					<Empty className="h-full min-h-[220px]">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<LuInfo className="size-5" />
+							</EmptyMedia>
+							<EmptyTitle>No Matching Problems</EmptyTitle>
+							<EmptyDescription>
+								現在の severity フィルタに一致する問題はありません。
 							</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent />
@@ -353,47 +479,49 @@ export function ProblemsView({
 															}
 														}}
 														className={cn(
-															"group w-full rounded-sm px-1.5 py-1 text-left transition-colors",
+															"group block w-full max-w-full overflow-hidden rounded-sm px-1.5 py-1 text-left transition-colors",
 															canOpen
 																? "hover:bg-muted/60"
 																: "cursor-default opacity-90",
 														)}
 													>
-														<div className="flex items-start gap-2">
+														<div className="grid w-full min-w-0 max-w-full grid-cols-[14px_minmax(0,1fr)] gap-2 overflow-hidden">
 															<div className="pt-0.5">
 																{severityIcon(problem.severity)}
 															</div>
-															<div className="min-w-0 flex-1">
+															<div className="min-w-0 overflow-hidden">
 																<TruncatedWithTooltip
-																	className="text-xs leading-5"
+																	className="w-full text-xs leading-5"
 																	tooltip={problem.message}
 																>
 																	{problem.message}
 																</TruncatedWithTooltip>
-																<div className="text-muted-foreground flex items-center gap-2 overflow-hidden text-[11px] leading-4">
-																	<span className="shrink-0">
+																<div className="text-muted-foreground mt-0.5 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden text-[11px] leading-4">
+																	<div className="flex min-w-0 items-center gap-2 overflow-hidden">
+																		<span className="max-w-[56px] shrink-0 truncate">
 																		{severityLabel(problem.severity)}
-																	</span>
-																	<TruncatedWithTooltip
-																		className="min-w-0 flex-1"
-																		tooltip={
-																			problem.code !== null
+																		</span>
+																		<TruncatedWithTooltip
+																			className="min-w-0 flex-1"
+																			tooltip={
+																				problem.code !== null
+																					? `${normalizeSource(problem.source)}(${problem.code})`
+																					: normalizeSource(problem.source)
+																			}
+																		>
+																			{problem.code !== null
 																				? `${normalizeSource(problem.source)}(${problem.code})`
-																				: normalizeSource(problem.source)
-																		}
-																	>
-																		{problem.code !== null
-																			? `${normalizeSource(problem.source)}(${problem.code})`
-																			: normalizeSource(problem.source)}
-																	</TruncatedWithTooltip>
+																				: normalizeSource(problem.source)}
+																		</TruncatedWithTooltip>
+																	</div>
 																	{problem.line !== null ? (
-																		<span className="shrink-0">
+																		<div className="shrink-0 whitespace-nowrap text-right tabular-nums">
 																			[Ln {problem.line}
 																			{problem.column !== null
 																				? `, Col ${problem.column}`
 																				: ""}
 																			]
-																		</span>
+																		</div>
 																	) : null}
 																</div>
 															</div>

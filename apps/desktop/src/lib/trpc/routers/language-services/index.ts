@@ -40,14 +40,6 @@ export const createLanguageServicesRouter = () => {
 			.input(languageServiceDocumentSchema)
 			.mutation(async ({ input }) => {
 				const workspacePath = resolveWorkspacePath(input.workspaceId);
-				console.log("[languageServices router] openDocument", {
-					workspaceId: input.workspaceId,
-					workspacePath,
-					absolutePath: input.absolutePath,
-					languageId: input.languageId,
-					version: input.version,
-					contentLength: input.content.length,
-				});
 				await languageServiceManager.openDocument({
 					...input,
 					workspacePath,
@@ -59,14 +51,6 @@ export const createLanguageServicesRouter = () => {
 			.input(languageServiceDocumentSchema)
 			.mutation(async ({ input }) => {
 				const workspacePath = resolveWorkspacePath(input.workspaceId);
-				console.log("[languageServices router] changeDocument", {
-					workspaceId: input.workspaceId,
-					workspacePath,
-					absolutePath: input.absolutePath,
-					languageId: input.languageId,
-					version: input.version,
-					contentLength: input.content.length,
-				});
 				await languageServiceManager.syncDocument({
 					...input,
 					workspacePath,
@@ -84,12 +68,6 @@ export const createLanguageServicesRouter = () => {
 			)
 			.mutation(async ({ input }) => {
 				const workspacePath = resolveWorkspacePath(input.workspaceId);
-				console.log("[languageServices router] closeDocument", {
-					workspaceId: input.workspaceId,
-					workspacePath,
-					absolutePath: input.absolutePath,
-					languageId: input.languageId,
-				});
 				await languageServiceManager.closeDocument({
 					...input,
 					workspacePath,
@@ -105,10 +83,6 @@ export const createLanguageServicesRouter = () => {
 			)
 			.mutation(async ({ input }) => {
 				const workspacePath = resolveWorkspacePath(input.workspaceId);
-				console.log("[languageServices router] refreshWorkspace", {
-					workspaceId: input.workspaceId,
-					workspacePath,
-				});
 				await languageServiceManager.refreshWorkspace({
 					workspaceId: input.workspaceId,
 					workspacePath,
@@ -124,20 +98,36 @@ export const createLanguageServicesRouter = () => {
 			)
 			.query(({ input }) => {
 				const workspacePath = resolveWorkspacePath(input.workspaceId);
-				const snapshot = languageServiceManager.getWorkspaceSnapshot({
+				return languageServiceManager.getWorkspaceSnapshot({
 					workspaceId: input.workspaceId,
 					workspacePath,
 				});
-				console.log("[languageServices router] getWorkspaceDiagnostics", {
-					workspaceId: input.workspaceId,
-					workspacePath,
-					totalCount: snapshot.totalCount,
-					providers: snapshot.providers,
-					problemFiles: snapshot.problems.map(
-						(problem) => problem.relativePath ?? "Workspace",
-					),
-				});
-				return snapshot;
+			}),
+
+		getProviders: publicProcedure.query(() => {
+			return languageServiceManager.getProviders();
+		}),
+
+		setProviderEnabled: publicProcedure
+			.input(
+				z.object({
+					providerId: z.string(),
+					enabled: z.boolean(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const provider = await languageServiceManager.setProviderEnabled(
+					input.providerId,
+					input.enabled,
+				);
+				if (!provider) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: `Language service provider ${input.providerId} not found`,
+					});
+				}
+
+				return provider;
 			}),
 
 		subscribeDiagnostics: publicProcedure
@@ -148,16 +138,9 @@ export const createLanguageServicesRouter = () => {
 			)
 			.subscription(({ input }) => {
 				return observable<{ version: number }>((emit) => {
-					console.log("[languageServices router] subscribeDiagnostics", {
-						workspaceId: input.workspaceId,
-					});
 					const unsubscribe = languageServiceManager.subscribeToWorkspace(
 						input.workspaceId,
 						(payload) => {
-							console.log("[languageServices router] subscribeDiagnostics event", {
-								workspaceId: input.workspaceId,
-								version: payload.version,
-							});
 							emit.next(payload);
 						},
 					);

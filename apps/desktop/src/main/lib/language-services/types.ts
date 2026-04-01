@@ -42,6 +42,14 @@ export interface LanguageServiceProviderSummary {
 	documentCount: number;
 }
 
+export interface LanguageServiceProviderDescriptor {
+	providerId: string;
+	label: string;
+	description: string;
+	languageIds: string[];
+	enabled: boolean;
+}
+
 export interface LanguageServiceWorkspaceSnapshot {
 	status: "ready";
 	workspaceId: string;
@@ -61,6 +69,8 @@ export interface LanguageServiceWorkspaceSnapshot {
 export interface LanguageServiceProvider {
 	readonly id: string;
 	readonly label: string;
+	readonly description: string;
+	readonly languageIds: string[];
 	supportsLanguage(languageId: string): boolean;
 	openDocument(document: LanguageServiceDocument): Promise<void>;
 	changeDocument(document: LanguageServiceDocument): Promise<void>;

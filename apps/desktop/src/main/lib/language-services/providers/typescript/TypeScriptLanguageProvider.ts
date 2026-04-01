@@ -137,6 +137,10 @@ function tryConsumeLineMessage(
 		return tryConsumeLineMessage(normalizedBuffer);
 	}
 
+	if (!normalizedBuffer.trimStart().startsWith("{")) {
+		return null;
+	}
+
 	const newlineIndex = buffer.indexOf("\n");
 	if (newlineIndex === -1) {
 		return null;
@@ -206,6 +210,16 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 
 	readonly label = "TypeScript";
 
+	readonly description =
+		"TypeScript, JavaScript, TSX, JSX diagnostics via tsserver.";
+
+	readonly languageIds = [
+		"typescript",
+		"typescriptreact",
+		"javascript",
+		"javascriptreact",
+	];
+
 	private readonly sessions = new Map<string, WorkspaceSession>();
 
 	supportsLanguage(languageId: string): boolean {
@@ -219,14 +233,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 
 	async openDocument(document: LanguageServiceDocument): Promise<void> {
 		const session = await this.ensureSession(document.workspaceId, document.workspacePath);
-		console.log("[typescript provider] openDocument", {
-			workspaceId: document.workspaceId,
-			workspacePath: document.workspacePath,
-			absolutePath: document.absolutePath,
-			languageId: document.languageId,
-			version: document.version,
-			contentLength: document.content.length,
-		});
 		session.openDocuments.set(document.absolutePath, {
 			languageId: document.languageId,
 			version: document.version,
@@ -242,19 +248,8 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 
 	async changeDocument(document: LanguageServiceDocument): Promise<void> {
 		const session = await this.ensureSession(document.workspaceId, document.workspacePath);
-		console.log("[typescript provider] changeDocument", {
-			workspaceId: document.workspaceId,
-			absolutePath: document.absolutePath,
-			languageId: document.languageId,
-			version: document.version,
-			contentLength: document.content.length,
-		});
 		const previous = session.openDocuments.get(document.absolutePath);
 		if (!previous) {
-			console.log("[typescript provider] changeDocument promoted to openDocument", {
-				workspaceId: document.workspaceId,
-				absolutePath: document.absolutePath,
-			});
 			await this.openDocument(document);
 			return;
 		}
@@ -282,11 +277,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		languageId: string;
 	}): Promise<void> {
 		const session = this.sessions.get(args.workspaceId);
-		console.log("[typescript provider] closeDocument", {
-			workspaceId: args.workspaceId,
-			absolutePath: args.absolutePath,
-			hasSession: Boolean(session),
-		});
 		if (!session) {
 			return;
 		}
@@ -323,11 +313,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		workspacePath: string;
 	}): Promise<void> {
 		const session = this.sessions.get(args.workspaceId);
-		console.log("[typescript provider] refreshWorkspace", {
-			workspaceId: args.workspaceId,
-			hasSession: Boolean(session),
-			openDocumentCount: session?.openDocuments.size ?? 0,
-		});
 		if (!session || session.openDocuments.size === 0) {
 			return;
 		}
@@ -395,7 +380,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		}
 
 		this.sessions.delete(args.workspaceId);
-		languageDiagnosticsStore.clearWorkspace(args.workspaceId);
 	}
 
 	private async ensureSession(
@@ -409,11 +393,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 
 		const tsserverPath =
 			resolveWorkspaceTsServerPath(workspacePath) ?? resolveBundledTsServerPath();
-		console.log("[typescript provider] create session", {
-			workspaceId,
-			workspacePath,
-			tsserverPath,
-		});
 		const child = spawn(process.execPath, [tsserverPath, "--stdio"], {
 			env: {
 				...process.env,
@@ -448,11 +427,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 			});
 		});
 		child.on("exit", (code, signal) => {
-			console.log("[typescript provider] tsserver exit", {
-				workspaceId,
-				code,
-				signal,
-			});
 			session.lastError = `tsserver exited (${code ?? "null"}${signal ? `, ${signal}` : ""})`;
 			if (session.getErrTimer) {
 				clearTimeout(session.getErrTimer);
@@ -498,12 +472,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 
 			try {
 				const message = JSON.parse(body) as TsServerMessage;
-				if (message.type === "event") {
-					console.log("[typescript provider] tsserver event", {
-						workspaceId: session.workspaceId,
-						event: message.event,
-					});
-				}
 				this.handleMessage(session, message);
 			} catch (error) {
 				console.error("[language-services/typescript] Failed to parse tsserver payload", {
@@ -517,13 +485,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 
 	private handleMessage(session: WorkspaceSession, message: TsServerMessage): void {
 		if (message.type === "response") {
-			console.log("[typescript provider] tsserver response", {
-				workspaceId: session.workspaceId,
-				command: message.command,
-				success: message.success,
-				requestSeq: message.request_seq,
-				message: message.message ?? null,
-			});
 			const resolver = session.requestResolvers.get(message.request_seq);
 			if (!resolver) {
 				return;
@@ -578,20 +539,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		buckets[bucketKey] = (payload.diagnostics ?? []).map((diagnostic) =>
 			this.mapDiagnostic(session.workspacePath, absolutePath, diagnostic),
 		);
-		console.log("[typescript provider] apply diagnostics", {
-			workspaceId: session.workspaceId,
-			bucketKey,
-			absolutePath,
-			count: buckets[bucketKey].length,
-			diagnostics: buckets[bucketKey].map((diagnostic) => ({
-				relativePath: diagnostic.relativePath,
-				line: diagnostic.line,
-				column: diagnostic.column,
-				code: diagnostic.code,
-				message: diagnostic.message,
-				severity: diagnostic.severity,
-			})),
-		});
 		session.diagnosticBuckets.set(absolutePath, buckets);
 		this.publishDiagnostics(session, absolutePath, buckets);
 	}
@@ -617,13 +564,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		buckets.config = (payload.diagnostics ?? []).map((diagnostic) =>
 			this.mapDiagnostic(session.workspacePath, absolutePath, diagnostic),
 		);
-		console.log("[typescript provider] apply config diagnostics", {
-			workspaceId: session.workspaceId,
-			absolutePath,
-			configFile: payload?.configFile ?? null,
-			triggerFile: payload?.triggerFile ?? null,
-			count: buckets.config.length,
-		});
 		session.diagnosticBuckets.set(absolutePath, buckets);
 		this.publishDiagnostics(session, absolutePath, buckets);
 	}
@@ -639,14 +579,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 			...buckets.suggestion,
 			...buckets.config,
 		];
-		console.log("[typescript provider] publish diagnostics", {
-			workspaceId: session.workspaceId,
-			absolutePath,
-			totalCount: diagnostics.length,
-			relativePaths: diagnostics.map(
-				(diagnostic) => diagnostic.relativePath ?? "Workspace",
-			),
-		});
 		languageDiagnosticsStore.setFileDiagnostics(
 			session.workspaceId,
 			this.fileKey(absolutePath),
@@ -712,10 +644,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 				return;
 			}
 
-			console.log("[typescript provider] geterr", {
-				workspaceId: session.workspaceId,
-				files: Array.from(session.openDocuments.keys()),
-			});
 			void this.sendRequest(session, "geterr", {
 				files: Array.from(session.openDocuments.keys()),
 				delay: 0,
@@ -742,12 +670,6 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 			command,
 			arguments: args,
 		};
-		console.log("[typescript provider] send request", {
-			workspaceId: session.workspaceId,
-			seq,
-			command,
-			args,
-		});
 		const content = `${JSON.stringify(payload)}\n`;
 
 		return await new Promise<TsServerResponse>((resolve, reject) => {

@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import {
 	getDocumentCurrentContent,
 	hasInitializedDocumentBuffer,
 } from "renderer/stores/editor-state/editorBufferRegistry";
 import { useEditorDocumentsStore } from "renderer/stores/editor-state/useEditorDocumentsStore";
+import {
+	type LanguageServiceProviderId,
+	useLanguageServicePreferencesStore,
+} from "renderer/stores/language-service-preferences";
 
 type TrackedDocument = {
 	documentKey: string;
@@ -16,7 +20,8 @@ type TrackedDocument = {
 };
 
 function resolveLanguageId(absolutePath: string): string | null {
-	const normalizedPath = absolutePath.toLowerCase();
+	const normalizedPath = absolutePath.toLowerCase().replaceAll("\\", "/");
+	const fileName = normalizedPath.split("/").at(-1) ?? normalizedPath;
 	if (normalizedPath.endsWith(".tsx")) {
 		return "typescriptreact";
 	}
@@ -37,15 +42,88 @@ function resolveLanguageId(absolutePath: string): string | null {
 	) {
 		return "javascript";
 	}
+	if (
+		normalizedPath.endsWith(".jsonc") ||
+		fileName === "jsconfig.json" ||
+		fileName === "settings.json" ||
+		fileName === "extensions.json" ||
+		fileName === "launch.json" ||
+		fileName === "tasks.json" ||
+		fileName === "keybindings.json" ||
+		/^tsconfig\..+\.json$/.test(fileName) ||
+		fileName === "tsconfig.json"
+	) {
+		return "jsonc";
+	}
+	if (normalizedPath.endsWith(".json")) {
+		return "json";
+	}
+	if (normalizedPath.endsWith(".toml")) {
+		return "toml";
+	}
+	if (normalizedPath.endsWith(".dart")) {
+		return "dart";
+	}
 	return null;
+}
+
+function resolveProviderId(
+	languageId: string,
+): LanguageServiceProviderId | null {
+	switch (languageId) {
+		case "typescript":
+		case "typescriptreact":
+		case "javascript":
+		case "javascriptreact":
+			return "typescript";
+		case "json":
+		case "jsonc":
+			return "json";
+		case "toml":
+			return "toml";
+		case "dart":
+			return "dart";
+		default:
+			return null;
+	}
 }
 
 export function LanguageServicesProvider() {
 	const documentsByKey = useEditorDocumentsStore((state) => state.documents);
+	const enabledProviders = useLanguageServicePreferencesStore(
+		(state) => state.enabledProviders,
+	);
+	const hasHydratedPreferences = useLanguageServicePreferencesStore(
+		(state) => state.hasHydrated,
+	);
 	const previousRef = useRef<Map<string, TrackedDocument>>(new Map());
+	const hasAppliedInitialProviderPreferencesRef = useRef(false);
+	const [isProviderPreferenceSyncReady, setIsProviderPreferenceSyncReady] =
+		useState(false);
+
+	useEffect(() => {
+		if (!hasHydratedPreferences || hasAppliedInitialProviderPreferencesRef.current) {
+			return;
+		}
+
+		hasAppliedInitialProviderPreferencesRef.current = true;
+		void Promise.allSettled(
+			Object.entries(enabledProviders).map(([providerId, enabled]) =>
+				electronTrpcClient.languageServices.setProviderEnabled.mutate({
+					providerId,
+					enabled,
+				}),
+			),
+		).finally(() => {
+			setIsProviderPreferenceSyncReady(true);
+		});
+	}, [enabledProviders, hasHydratedPreferences]);
 
 	const trackedDocuments = useMemo(() => {
 		const next = new Map<string, TrackedDocument>();
+		if (!hasHydratedPreferences || !isProviderPreferenceSyncReady) {
+			return next;
+		}
 
 		for (const document of Object.values(documentsByKey)) {
 			if (
@@ -58,6 +136,11 @@ export function LanguageServicesProvider() {
 
 			const languageId = resolveLanguageId(document.filePath);
 			if (!languageId) {
+				continue;
+			}
+
+			const providerId = resolveProviderId(languageId);
+			if (providerId && !enabledProviders[providerId]) {
 				continue;
 			}
 
@@ -78,32 +161,19 @@ export function LanguageServicesProvider() {
 		}
 
 		return next;
-	}, [documentsByKey]);
+	}, [
+		documentsByKey,
+		enabledProviders,
+		hasHydratedPreferences,
+		isProviderPreferenceSyncReady,
+	]);
 
 	useEffect(() => {
 		const previous = previousRef.current;
 
-		console.log("[LanguageServicesProvider] tracked documents", {
-			count: trackedDocuments.size,
-			documents: Array.from(trackedDocuments.values()).map((document) => ({
-				workspaceId: document.workspaceId,
-				absolutePath: document.absolutePath,
-				languageId: document.languageId,
-				version: document.version,
-				contentLength: document.content.length,
-			})),
-		});
-
 		for (const [documentKey, tracked] of trackedDocuments.entries()) {
 			const prev = previous.get(documentKey);
 			if (!prev) {
-				console.log("[LanguageServicesProvider] openDocument", {
-					documentKey,
-					workspaceId: tracked.workspaceId,
-					absolutePath: tracked.absolutePath,
-					languageId: tracked.languageId,
-					version: tracked.version,
-				});
 				void electronTrpcClient.languageServices.openDocument.mutate({
 					workspaceId: tracked.workspaceId,
 					absolutePath: tracked.absolutePath,
@@ -120,15 +190,6 @@ export function LanguageServicesProvider() {
 				prev.languageId !== tracked.languageId ||
 				prev.workspaceId !== tracked.workspaceId
 			) {
-				console.log("[LanguageServicesProvider] changeDocument", {
-					documentKey,
-					workspaceId: tracked.workspaceId,
-					absolutePath: tracked.absolutePath,
-					languageId: tracked.languageId,
-					prevVersion: prev.version,
-					nextVersion: tracked.version,
-					contentLength: tracked.content.length,
-				});
 				void electronTrpcClient.languageServices.changeDocument.mutate({
 					workspaceId: tracked.workspaceId,
 					absolutePath: tracked.absolutePath,
@@ -144,12 +205,6 @@ export function LanguageServicesProvider() {
 				continue;
 			}
 
-			console.log("[LanguageServicesProvider] closeDocument", {
-				documentKey,
-				workspaceId: tracked.workspaceId,
-				absolutePath: tracked.absolutePath,
-				languageId: tracked.languageId,
-			});
 			void electronTrpcClient.languageServices.closeDocument.mutate({
 				workspaceId: tracked.workspaceId,
 				absolutePath: tracked.absolutePath,
@@ -163,11 +218,6 @@ export function LanguageServicesProvider() {
 	useEffect(() => {
 		return () => {
 			for (const tracked of previousRef.current.values()) {
-				console.log("[LanguageServicesProvider] closeDocument on unmount", {
-					workspaceId: tracked.workspaceId,
-					absolutePath: tracked.absolutePath,
-					languageId: tracked.languageId,
-				});
 				void electronTrpcClient.languageServices.closeDocument.mutate({
 					workspaceId: tracked.workspaceId,
 					absolutePath: tracked.absolutePath,

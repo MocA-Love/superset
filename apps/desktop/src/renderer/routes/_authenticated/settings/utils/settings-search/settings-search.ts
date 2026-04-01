@@ -26,6 +26,7 @@ export const SETTING_ITEM_ID = {
 	BEHAVIOR_FILE_OPEN_MODE: "behavior-file-open-mode",
 	BEHAVIOR_RESOURCE_MONITOR: "behavior-resource-monitor",
 	BEHAVIOR_OPEN_LINKS_IN_APP: "behavior-open-links-in-app",
+	BEHAVIOR_LANGUAGE_DIAGNOSTICS: "behavior-language-diagnostics",
 
 	GIT_BRANCH_PREFIX: "git-branch-prefix",
 	GIT_DELETE_LOCAL_BRANCH: "git-delete-local-branch",
@@ -487,6 +488,28 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"chat",
 			"terminal",
 			"url",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS,
+		section: "behavior",
+		title: "Language diagnostics",
+		description:
+			"Choose which language services report errors and warnings in Problems",
+		keywords: [
+			"diagnostics",
+			"problems",
+			"errors",
+			"warnings",
+			"typescript",
+			"tsx",
+			"json",
+			"toml",
+			"dart",
+			"flutter",
+			"language server",
+			"lint",
+			"validation",
 		],
 	},
 	{

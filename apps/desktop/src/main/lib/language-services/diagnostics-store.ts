@@ -66,6 +66,40 @@ export class LanguageDiagnosticsStore {
 		this.bump(workspaceId);
 	}
 
+	clearProviderDiagnostics(providerId: string, workspaceId?: string): void {
+		const fileKeyPrefix = `${providerId}::`;
+		const targetWorkspaceIds = workspaceId
+			? [workspaceId]
+			: Array.from(this.workspaces.keys());
+
+		for (const targetWorkspaceId of targetWorkspaceIds) {
+			const workspaceDiagnostics = this.workspaces.get(targetWorkspaceId);
+			if (!workspaceDiagnostics) {
+				continue;
+			}
+
+			let changed = false;
+			for (const fileKey of Array.from(workspaceDiagnostics.keys())) {
+				if (!fileKey.startsWith(fileKeyPrefix)) {
+					continue;
+				}
+
+				workspaceDiagnostics.delete(fileKey);
+				changed = true;
+			}
+
+			if (!changed) {
+				continue;
+			}
+
+			if (workspaceDiagnostics.size === 0) {
+				this.workspaces.delete(targetWorkspaceId);
+			}
+
+			this.bump(targetWorkspaceId);
+		}
+	}
+
 	getVersion(workspaceId: string): number {
 		return this.versions.get(workspaceId) ?? 0;
 	}

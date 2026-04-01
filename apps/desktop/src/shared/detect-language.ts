@@ -20,6 +20,7 @@ export function detectLanguage(filePath: string): string {
 
 		// Data formats
 		json: "json",
+		jsonc: "json",
 		yaml: "yaml",
 		yml: "yaml",
 		xml: "xml",
@@ -41,6 +42,7 @@ export function detectLanguage(filePath: string): string {
 
 		// Other languages
 		py: "python",
+		dart: "dart",
 		rb: "ruby",
 		go: "go",
 		rs: "rust",
