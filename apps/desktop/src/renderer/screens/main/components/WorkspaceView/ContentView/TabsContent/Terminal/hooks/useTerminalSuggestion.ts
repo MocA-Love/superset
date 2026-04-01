@@ -55,6 +55,7 @@ export function useTerminalSuggestion({
 	onExecuteCommandRef.current = onExecuteCommand;
 	const lastPrefixRef = useRef("");
 	const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const requestTokenRef = useRef(0);
 	const isOpenRef = useRef(isOpen);
 	isOpenRef.current = isOpen;
 
@@ -65,6 +66,8 @@ export function useTerminalSuggestion({
 	selectedIndexRef.current = selectedIndex;
 
 	const dismiss = useCallback(() => {
+		requestTokenRef.current += 1;
+		isOpenRef.current = false;
 		setIsOpen(false);
 		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
@@ -78,6 +81,7 @@ export function useTerminalSuggestion({
 
 	const fetchSuggestions = useCallback(
 		async (prefix: string, offset = 0, append = false) => {
+			const requestToken = requestTokenRef.current;
 			const promptBlocked =
 				hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
 			if (
@@ -94,7 +98,13 @@ export function useTerminalSuggestion({
 					prefix,
 					offset,
 				});
-				if (!isOpenRef.current || lastPrefixRef.current !== prefix) return;
+				if (
+					requestToken !== requestTokenRef.current ||
+					!isOpenRef.current ||
+					lastPrefixRef.current !== prefix
+				) {
+					return;
+				}
 
 				if (append) {
 					if (result.length > 0) {
@@ -120,6 +130,7 @@ export function useTerminalSuggestion({
 		}
 
 		const prefix = commandBufferRef.current;
+		requestTokenRef.current += 1;
 		isOpenRef.current = true;
 		setIsOpen(true);
 		setTrackedInput(prefix);
@@ -194,8 +205,8 @@ export function useTerminalSuggestion({
 		const idx = selectedIndexRef.current;
 		const history = historySuggestionsRef.current;
 		const item = history[idx];
-		const currentInput = lastPrefixRef.current;
-		if (item && currentInput && item.command.startsWith(currentInput)) {
+		const currentInput = commandBufferRef.current;
+		if (item?.command.startsWith(currentInput)) {
 			const suffix = item.command.slice(currentInput.length);
 			if (suffix) {
 				onAcceptWriteRef.current(suffix);
@@ -203,6 +214,10 @@ export function useTerminalSuggestion({
 				lastPrefixRef.current = item.command;
 			}
 		}
+		requestTokenRef.current += 1;
+		isOpenRef.current = false;
+		setIsOpen(false);
+		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
 		setSelectedIndex(0);
 	}, [commandBufferRef]);
@@ -211,19 +226,21 @@ export function useTerminalSuggestion({
 		const idx = selectedIndexRef.current;
 		const history = historySuggestionsRef.current;
 		const item = history[idx];
-		const currentInput = lastPrefixRef.current;
+		const currentInput = commandBufferRef.current;
 		if (!item) {
 			dismiss();
 			return;
 		}
 
+		requestTokenRef.current += 1;
+		isOpenRef.current = false;
 		onExecuteCommandRef.current(item.command, currentInput);
 		setIsOpen(false);
 		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
 		setSelectedIndex(0);
 		lastPrefixRef.current = "";
-	}, [dismiss]);
+	}, [commandBufferRef, dismiss]);
 
 	const loadingMoreRef = useRef(false);
 
