@@ -102,7 +102,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((state) => state.addBrowserTab);
-	const [open, setOpen] = useState(true);
+	const [open, setOpen] = useState(false);
 	const [issueComposerOpen, setIssueComposerOpen] = useState(false);
 	const [issueTitle, setIssueTitle] = useState("");
 	const [issueBody, setIssueBody] = useState("");
