@@ -2,6 +2,8 @@ import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback } from "react";
 import {
+	LuCircleAlert,
+	LuDatabase,
 	LuExpand,
 	LuFile,
 	LuGitCompareArrows,
@@ -21,8 +23,10 @@ import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import { useScrollContext } from "../ChangesContent";
 import { ChangesView } from "./ChangesView";
+import { DatabasesView } from "./DatabasesView";
 import { FilesView } from "./FilesView";
 import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
+import { ProblemsView } from "./ProblemsView";
 
 function TabButton({
 	isActive,
@@ -93,6 +97,7 @@ export function RightSidebar() {
 	};
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
+	const addDatabaseExplorerTab = useTabsStore((s) => s.addDatabaseExplorerTab);
 	const trpcUtils = electronTrpc.useUtils();
 	const { scrollToFile } = useScrollContext();
 
@@ -170,6 +175,16 @@ export function RightSidebar() {
 				? handleFileScrollTo
 				: handleFileOpenPane
 			: undefined;
+	const handleOpenDatabaseExplorer = useCallback(
+		(connectionId: string) => {
+			if (!workspaceId) {
+				return;
+			}
+
+			addDatabaseExplorerTab(workspaceId, connectionId);
+		},
+		[workspaceId, addDatabaseExplorerTab],
+	);
 
 	return (
 		<aside className="h-full flex flex-col overflow-hidden">
@@ -189,6 +204,20 @@ export function RightSidebar() {
 						onClick={() => setRightSidebarTab(RightSidebarTab.Files)}
 						icon={<LuFile className="size-3.5" />}
 						label="Files"
+						compact={compactTabs}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Problems}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Problems)}
+						icon={<LuCircleAlert className="size-3.5" />}
+						label="Problems"
+						compact={compactTabs}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Databases}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Databases)}
+						icon={<LuDatabase className="size-3.5" />}
+						label="Databases"
 						compact={compactTabs}
 					/>
 				</div>
@@ -254,12 +283,33 @@ export function RightSidebar() {
 			)}
 			<div
 				className={
-					rightSidebarTab === RightSidebarTab.Changes && showChangesTab
-						? "hidden"
-						: "flex-1 min-h-0 flex flex-col overflow-hidden"
+					rightSidebarTab === RightSidebarTab.Files
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
 				}
 			>
 				<FilesView />
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Problems
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<ProblemsView
+					isActive={rightSidebarTab === RightSidebarTab.Problems}
+					onOpenFileAtLine={handleOpenFileAtLine}
+				/>
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Databases
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<DatabasesView onOpenExplorer={handleOpenDatabaseExplorer} />
 			</div>
 		</aside>
 	);

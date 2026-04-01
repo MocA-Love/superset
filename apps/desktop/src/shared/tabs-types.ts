@@ -14,7 +14,8 @@ export type PaneType =
 	| "file-viewer"
 	| "chat"
 	| "devtools"
-	| "git-graph";
+	| "git-graph"
+	| "database-explorer";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -144,6 +145,7 @@ export interface Pane {
 	browser?: BrowserPaneState; // For browser (webview) panes
 	devtools?: DevToolsPaneState; // For devtools panes
 	gitGraph?: GitGraphPaneState; // For git-graph panes
+	databaseExplorer?: DatabaseExplorerPaneState; // For database explorer panes
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";
@@ -223,6 +225,13 @@ export interface DevToolsPaneState {
 export interface GitGraphPaneState {
 	/** Worktree path for the git repository */
 	worktreePath: string;
+}
+
+/**
+ * Database Explorer pane-specific properties
+ */
+export interface DatabaseExplorerPaneState {
+	connectionId: string | null;
 }
 
 /**
