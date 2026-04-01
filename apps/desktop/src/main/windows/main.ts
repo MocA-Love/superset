@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import * as Sentry from "@sentry/electron/main";
 import { workspaces, worktrees } from "@superset/local-db";
 import { eq } from "drizzle-orm";
 import type { BrowserWindow } from "electron";
@@ -62,6 +63,18 @@ function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
 }
 
 let currentWindow: BrowserWindow | null = null;
+
+function addWindowLifecycleBreadcrumb(
+	message: string,
+	data?: Record<string, string | number | boolean | undefined>,
+): void {
+	Sentry.addBreadcrumb({
+		category: "window.lifecycle",
+		level: "info",
+		message,
+		data,
+	});
+}
 
 // Routers receive this getter so they always see the current window, not a stale reference
 const getWindow = () => currentWindow;
@@ -228,9 +241,11 @@ export async function MainWindow() {
 	// macOS Sequoia+: occluded/minimized windows can lose compositor layers
 	if (PLATFORM.IS_MAC) {
 		window.on("restore", () => {
+			addWindowLifecycleBreadcrumb("main window restored");
 			window.webContents.invalidate();
 		});
 		window.on("show", () => {
+			addWindowLifecycleBreadcrumb("main window shown");
 			window.webContents.invalidate();
 		});
 	}
@@ -303,6 +318,10 @@ export async function MainWindow() {
 	);
 
 	window.webContents.on("render-process-gone", (_event, details) => {
+		addWindowLifecycleBreadcrumb("renderer process gone", {
+			reason: details.reason,
+			exitCode: details.exitCode,
+		});
 		console.error("[main-window] Renderer process gone:", details);
 		if (window.isDestroyed()) return;
 
@@ -337,6 +356,10 @@ export async function MainWindow() {
 	});
 
 	window.on("close", () => {
+		addWindowLifecycleBreadcrumb("main window closing", {
+			isDestroyed: window.isDestroyed(),
+			isVisible: window.isVisible(),
+		});
 		// Save window state first, before any cleanup
 		const isMaximized = window.isMaximized();
 		const bounds = isMaximized ? window.getNormalBounds() : window.getBounds();

@@ -1308,6 +1308,13 @@ export class TerminalHostClient extends EventEmitter {
 		});
 	}
 
+	private isCreateOrAttachTimeoutError(error: unknown): boolean {
+		return (
+			error instanceof Error &&
+			error.message === "Request timeout: createOrAttach"
+		);
+	}
+
 	/**
 	 * Send a notification (no pending request / no timeout).
 	 *
@@ -1399,10 +1406,23 @@ export class TerminalHostClient extends EventEmitter {
 		) {
 			throw new TerminalAttachCanceledError();
 		}
-		const response = await this.sendRequest<CreateOrAttachResponse>(
-			"createOrAttach",
-			request,
-		);
+		let response: CreateOrAttachResponse;
+		try {
+			response = await this.sendRequest<CreateOrAttachResponse>(
+				"createOrAttach",
+				request,
+			);
+		} catch (error) {
+			if (!this.isCreateOrAttachTimeoutError(error)) {
+				throw error;
+			}
+			this.resetConnectionState({ emitDisconnected: false });
+			await this.ensureConnected();
+			response = await this.sendRequest<CreateOrAttachResponse>(
+				"createOrAttach",
+				request,
+			);
+		}
 		// Version skew: older daemons may not return pid - normalize undefined → null
 		return { ...response, pid: response.pid ?? null };
 	}

@@ -35,6 +35,7 @@ interface TrackingStatus {
 }
 
 const MAX_LINE_COUNT_SIZE = 1 * 1024 * 1024;
+const MAX_UNTRACKED_LINE_COUNT_FILES = 200;
 const WORKER_DEBUG = process.env.SUPERSET_WORKER_DEBUG === "1";
 
 function logWorkerWarning(message: string, error: unknown): void {
@@ -74,6 +75,8 @@ async function applyUntrackedLineCount(
 	worktreePath: string,
 	untracked: ChangedFile[],
 ): Promise<void> {
+	if (untracked.length > MAX_UNTRACKED_LINE_COUNT_FILES) return;
+
 	let worktreeReal: string;
 	try {
 		worktreeReal = await realpath(worktreePath);
