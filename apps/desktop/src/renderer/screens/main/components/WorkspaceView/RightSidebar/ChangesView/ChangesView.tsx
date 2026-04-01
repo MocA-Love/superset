@@ -787,8 +787,14 @@ export function ChangesView({
 									canCreatePR={prActionState.canCreatePR}
 									createPRBlockedReason={prActionState.createPRBlockedReason}
 									onStash={() => stashMutation.mutate({ worktreePath })}
+									onStashAsync={() =>
+										stashMutation.mutateAsync({ worktreePath })
+									}
 									onStashIncludeUntracked={() =>
 										stashIncludeUntrackedMutation.mutate({ worktreePath })
+									}
+									onStashIncludeUntrackedAsync={() =>
+										stashIncludeUntrackedMutation.mutateAsync({ worktreePath })
 									}
 									onStashPop={() => stashPopMutation.mutate({ worktreePath })}
 									isStashPending={
@@ -807,6 +813,8 @@ export function ChangesView({
 										unstagedFiles.length > 0 ||
 										untrackedFiles.length > 0
 									}
+									hasUntrackedFiles={untrackedFiles.length > 0}
+									hasConflictedFiles={conflictedFiles.length > 0}
 									isGitGraphOpen={isGitGraphOpen}
 									onToggleGitGraph={() => {
 										if (workspaceId && worktreePath) {

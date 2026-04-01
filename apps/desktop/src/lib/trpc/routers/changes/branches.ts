@@ -1,3 +1,5 @@
+import { access } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { worktrees } from "@superset/local-db";
 import { eq } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
@@ -17,6 +19,19 @@ import { clearStatusCacheForWorktree } from "./utils/status-cache";
 
 const DEFAULT_REF_SEARCH_LIMIT = 50;
 const MAX_REF_SEARCH_LIMIT = 200;
+const GIT_PROGRESS_OPERATIONS = [
+	{ kind: "merge", path: "MERGE_HEAD" },
+	{ kind: "cherry-pick", path: "CHERRY_PICK_HEAD" },
+	{ kind: "revert", path: "REVERT_HEAD" },
+	{ kind: "bisect", path: "BISECT_LOG" },
+] as const;
+
+type BranchProgressOperation =
+	| "merge"
+	| "rebase"
+	| "cherry-pick"
+	| "revert"
+	| "bisect";
 
 type SearchableRef = {
 	name: string;
@@ -198,6 +213,25 @@ export const createBranchesRouter = () => {
 				return { success: true };
 			}),
 
+		getBranchGuardState: publicProcedure
+			.input(z.object({ worktreePath: z.string() }))
+			.query(
+				async ({
+					input,
+				}): Promise<{ operationInProgress: BranchProgressOperation | null }> => {
+					assertRegisteredWorktree(input.worktreePath);
+
+					const git = await getSimpleGitWithShellPath(input.worktreePath);
+
+					return {
+						operationInProgress: await detectGitProgressOperation(
+							git,
+							input.worktreePath,
+						),
+					};
+				},
+			),
+
 		createBranch: publicProcedure
 			.input(
 				z.object({
@@ -355,6 +389,44 @@ function getPersistedWorktree(worktreePath: string) {
 		.from(worktrees)
 		.where(eq(worktrees.path, worktreePath))
 		.get();
+}
+
+async function pathExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function detectGitProgressOperation(
+	git: SimpleGit,
+	worktreePath: string,
+): Promise<BranchProgressOperation | null> {
+	let gitDirPath: string;
+
+	try {
+		const gitDir = (await git.revparse(["--git-dir"])).trim();
+		gitDirPath = resolve(worktreePath, gitDir);
+	} catch {
+		return null;
+	}
+
+	if (
+		(await pathExists(join(gitDirPath, "rebase-merge"))) ||
+		(await pathExists(join(gitDirPath, "rebase-apply")))
+	) {
+		return "rebase";
+	}
+
+	for (const candidate of GIT_PROGRESS_OPERATIONS) {
+		if (await pathExists(join(gitDirPath, candidate.path))) {
+			return candidate.kind;
+		}
+	}
+
+	return null;
 }
 
 function persistWorktreeBranch(worktreePath: string, branch: string): void {

@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Changes Branch Error Dialog Mocks</title>
+    <style>
+      :root {
+        --background: #151110;
+        --foreground: #eae8e6;
+        --card: #201e1c;
+        --popover: #201e1c;
+        --secondary: #2a2827;
+        --accent: #252220;
+        --border: #2a2827;
+        --muted-foreground: #a8a5a3;
+        --primary: #eae8e6;
+        --primary-foreground: #151110;
+        --destructive: #cc4444;
+        --destructive-foreground: #ffcccc;
+        --warning: #d4a84b;
+        --warning-foreground: #21170b;
+        --info: #7aa2ff;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+        --dialog-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+        --radius-xl: 18px;
+        --radius-lg: 14px;
+        --radius-md: 12px;
+        --radius-sm: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        color: var(--foreground);
+        background:
+          radial-gradient(circle at top, rgba(224, 120, 80, 0.14), transparent 28%),
+          radial-gradient(circle at 20% 0%, rgba(123, 104, 238, 0.08), transparent 24%),
+          linear-gradient(180deg, #100d0c 0%, #151110 100%);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      body {
+        padding: 24px;
+      }
+
+      .page {
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+
+      .hero {
+        display: grid;
+        gap: 18px;
+        margin-bottom: 24px;
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background:
+          linear-gradient(180deg, rgba(32, 30, 28, 0.96), rgba(21, 17, 16, 0.98));
+        box-shadow: var(--shadow);
+      }
+
+      .eyebrow {
+        width: fit-content;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--muted-foreground);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 46px);
+        line-height: 1;
+        letter-spacing: -0.04em;
+        max-width: 900px;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 840px;
+        color: var(--muted-foreground);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--muted-foreground);
+        font-size: 13px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: currentColor;
+      }
+
+      .dot.danger {
+        color: var(--destructive);
+      }
+
+      .dot.warning {
+        color: var(--warning);
+      }
+
+      .dot.info {
+        color: var(--info);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .card {
+        position: relative;
+        min-height: 500px;
+        padding: 16px;
+        border-radius: var(--radius-xl);
+        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(26, 23, 22, 0.98), rgba(21, 17, 16, 0.98));
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 30%),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.015), transparent 18%);
+        pointer-events: none;
+      }
+
+      .card::after {
+        content: "";
+        position: absolute;
+        inset: 44px 16px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        background:
+          linear-gradient(180deg, rgba(37, 34, 32, 0.92), rgba(26, 23, 22, 0.96));
+        pointer-events: none;
+      }
+
+      .card-header {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .badge.danger {
+        color: #ffb1b1;
+      }
+
+      .badge.warning {
+        color: #f5d17d;
+      }
+
+      .badge.info {
+        color: #b7cbff;
+      }
+
+      .index {
+        color: var(--muted-foreground);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .dialog {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        gap: 14px;
+        width: min(100%, 340px);
+        margin: 70px auto 0;
+        padding: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: var(--radius-lg);
+        background: linear-gradient(180deg, rgba(32, 30, 28, 0.98), rgba(26, 23, 22, 0.98));
+        box-shadow: var(--dialog-shadow);
+      }
+
+      .dialog-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .icon {
+        flex: 0 0 auto;
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        font-weight: 700;
+      }
+
+      .icon.danger {
+        color: #ffb1b1;
+        background: rgba(204, 68, 68, 0.16);
+      }
+
+      .icon.warning {
+        color: #f5d17d;
+        background: rgba(212, 168, 75, 0.16);
+      }
+
+      .icon.info {
+        color: #b7cbff;
+        background: rgba(122, 162, 255, 0.16);
+      }
+
+      .dialog h2 {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.2;
+        letter-spacing: -0.03em;
+      }
+
+      .dialog p {
+        margin: 0;
+        color: var(--muted-foreground);
+        line-height: 1.55;
+        font-size: 13px;
+      }
+
+      .meta {
+        display: grid;
+        gap: 8px;
+      }
+
+      .meta-row {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 10px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .meta-label {
+        flex: 0 0 92px;
+        color: var(--muted-foreground);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .meta-value {
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        color: #f2f0ed;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 0.92em;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 4px;
+      }
+
+      .button {
+        appearance: none;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--foreground);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1;
+      }
+
+      .button.primary {
+        border-color: transparent;
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+
+      .button.danger {
+        border-color: transparent;
+        background: var(--destructive);
+        color: #fff;
+      }
+
+      .button.ghost {
+        background: transparent;
+        color: var(--muted-foreground);
+      }
+
+      .footer-note {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed rgba(255, 255, 255, 0.06);
+        color: var(--muted-foreground);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 1220px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 820px) {
+        body {
+          padding: 16px;
+        }
+
+        .hero {
+          padding: 18px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .card {
+          min-height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="hero">
+        <div class="eyebrow">Changes / Diffs / Current Branch</div>
+        <h1>ブランチ操作エラーを、初心者が次に何をすればよいか分かるダイアログに置き換える</h1>
+        <p>
+          toast で終わらせず、操作不能な理由、影響、次の一手をその場で提示するモックです。12パターンを同じ画面に並べ、どこまで事前防止し、どこからダイアログに倒すかを比較しやすくしています。
+        </p>
+        <div class="legend">
+          <div class="chip"><span class="dot danger"></span> 破壊やロスの可能性があるもの</div>
+          <div class="chip"><span class="dot warning"></span> ユーザー判断が必要なもの</div>
+          <div class="chip"><span class="dot info"></span> 環境や参照状態の問題</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">別 workspace で使用中</span>
+            <span class="index">01</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">↗</div>
+              <h2>このブランチは別の workspace で開かれています</h2>
+            </div>
+            <p>同じブランチは複数の worktree で同時に checkout できません。今の workspace では切り替えられない状態です。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">対象</div><div class="meta-value"><code>feature/payment-retry</code></div></div>
+              <div class="meta-row"><div class="meta-label">開いている場所</div><div class="meta-value"><code>workspace/payment-hotfix</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">その workspace を開く</button>
+              <button class="button">別名で新しい branch を作る</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">基本は事前 disable。race で発生した場合のみこのダイアログを表示。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge danger">未コミット変更が衝突</span>
+            <span class="index">02</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon danger">!</div>
+              <h2>このままではブランチを切り替えられません</h2>
+            </div>
+            <p>現在の変更が切り替え先の内容と衝突するため、Git が安全のために操作を止めています。まず変更を退避するか、commit してください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">切り替え先</div><div class="meta-value"><code>release/april</code></div></div>
+              <div class="meta-row"><div class="meta-label">影響</div><div class="meta-value">編集中の変更が上書きされる可能性があります。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">stash して切り替える</button>
+              <button class="button">commit してから戻る</button>
+              <button class="button ghost">キャンセル</button>
+            </div>
+            <div class="footer-note">ただのエラー文ではなく、stash をこの場で実行できる導線が必要。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge danger">未追跡ファイルが上書き対象</span>
+            <span class="index">03</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon danger">+</div>
+              <h2>新規ファイルが切り替え先の内容とぶつかっています</h2>
+            </div>
+            <p>まだ Git に追加していないファイルが、切り替え先ブランチの既存ファイルと重なっています。このままでは安全に切り替えできません。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">未追跡</div><div class="meta-value"><code>docs/release-notes.md</code></div></div>
+              <div class="meta-row"><div class="meta-label">推奨</div><div class="meta-value">stash に未追跡ファイルも含めるか、不要なら削除してください。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">untracked も含めて stash</button>
+              <button class="button">ファイル一覧を開く</button>
+              <button class="button ghost">キャンセル</button>
+            </div>
+            <div class="footer-note">「未コミット変更」と分けて説明した方が初心者に伝わる。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">参照が消えた</span>
+            <span class="index">04</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">⊘</div>
+              <h2>選んだブランチはもう存在しません</h2>
+            </div>
+            <p>一覧を開いてからの間に、remote branch が削除されたか名前変更された可能性があります。最新の状態を読み直してください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">見つからない参照</div><div class="meta-value"><code>origin/feature/legacy-import</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">一覧を更新する</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">toast だと見失いやすいので、プルダウンの文脈を保ったまま再試行させる。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">入力エラー</span>
+            <span class="index">05</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">Aa</div>
+              <h2>この branch 名は使えません</h2>
+            </div>
+            <p>branch 名の形式が Git のルールに合っていません。ここは modal というより、入力欄直下の inline validation を優先したいケースです。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">入力値</div><div class="meta-value"><code>release..april</code></div></div>
+              <div class="meta-row"><div class="meta-label">理由</div><div class="meta-value"><code>..</code>、末尾の <code>/</code>、<code>@{</code> などは禁止。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">名前を修正する</button>
+              <button class="button ghost">ルールを見る</button>
+            </div>
+            <div class="footer-note">実装上はダイアログではなく inline が最適だが、比較用にモック化。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">同名 branch が存在</span>
+            <span class="index">06</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">=</div>
+              <h2>同じ名前の branch が既にあります</h2>
+            </div>
+            <p>新しい branch は作れません。既存の branch に切り替えるか、別の名前で作成してください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">branch 名</div><div class="meta-value"><code>feature/agent-settings</code></div></div>
+              <div class="meta-row"><div class="meta-label">状態</div><div class="meta-value">local に存在。別 workspace では未使用。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">その branch に切り替える</button>
+              <button class="button">名前を変更する</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">存在場所が local / remote / 他 workspace かで文言を出し分けるとよい。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">start point が消えた</span>
+            <span class="index">07</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">◎</div>
+              <h2>元にする branch / tag が見つかりません</h2>
+            </div>
+            <p><code>Create new branch from...</code> で選んだ参照が取得できなくなりました。削除や force-push の影響が考えられます。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">start point</div><div class="meta-value"><code>origin/release/candidate</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">refs を再読み込み</button>
+              <button class="button">別の start point を選ぶ</button>
+              <button class="button ghost">キャンセル</button>
+            </div>
+            <div class="footer-note">remote ref の一覧は stale になりやすいので、再選択導線が必要。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge danger">branch 作成時の衝突</span>
+            <span class="index">08</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon danger">⇄</div>
+              <h2>この ref から branch を作る前に変更を退避してください</h2>
+            </div>
+            <p>新しい branch を作る処理の中で checkout が発生するため、未コミット変更があると同じように衝突することがあります。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">作成先</div><div class="meta-value"><code>hotfix/apply-patch</code></div></div>
+              <div class="meta-row"><div class="meta-label">from</div><div class="meta-value"><code>v2.4.1</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">stash して作成する</button>
+              <button class="button">今の変更を確認する</button>
+              <button class="button ghost">キャンセル</button>
+            </div>
+            <div class="footer-note">切り替え失敗と同じデザインシステムに寄せると理解コストが下がる。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">detached HEAD</span>
+            <span class="index">09</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">#</div>
+              <h2>compare branch は branch 上にいる時だけ変更できます</h2>
+            </div>
+            <p>今は特定 commit を直接見ている状態なので、どの branch の設定として保存するか決められません。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">現在</div><div class="meta-value"><code>detached HEAD @ 3ac91f2</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">branch 一覧を開く</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">実際の UI ではメニュー項目を disabled にして tooltip を出すのが第一選択。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">compare branch が無効</span>
+            <span class="index">10</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">△</div>
+              <h2>保存済みの compare branch が見つかりません</h2>
+            </div>
+            <p>以前選んだ compare branch が削除されたため、現在の diff が正しく計算できません。default branch に戻すのが安全です。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">設定値</div><div class="meta-value"><code>release/preview</code></div></div>
+              <div class="meta-row"><div class="meta-label">代替</div><div class="meta-value"><code>main</code> を compare branch に戻す</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">default branch に戻す</button>
+              <button class="button">別の compare branch を選ぶ</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">これは modal でもよいが、Diffs 上部の persistent banner でも相性がよい。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">Git が busy</span>
+            <span class="index">11</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">…</div>
+              <h2>別の Git 操作が進行中です</h2>
+            </div>
+            <p>今は repository が一時的にロックされています。マージ、rebase、index 更新などが終わってから再試行してください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">例</div><div class="meta-value"><code>.git/index.lock</code> が存在</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">再試行</button>
+              <button class="button">詳細を表示</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">toast で流すと見逃しやすいので、軽量ダイアログか sticky banner が適切。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">環境 / システム異常</span>
+            <span class="index">12</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">?</div>
+              <h2>Git 操作を完了できませんでした</h2>
+            </div>
+            <p>想定外の環境エラーです。初心者向けには平易な説明を先に出し、必要なら技術詳細を展開できる形がよいです。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">ユーザー向け</div><div class="meta-value">Git の設定か、この workspace の状態に問題があります。</div></div>
+              <div class="meta-row"><div class="meta-label">技術詳細</div><div class="meta-value"><code>fatal: not a git repository</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">詳細を表示</button>
+              <button class="button">メッセージをコピー</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">Git 未インストール、権限不足、repo 破損、hook 異常などの受け皿。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">進行中の Git 操作</span>
+            <span class="index">13</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">⟳</div>
+              <h2>いまは rebase を完了させる必要があります</h2>
+            </div>
+            <p>この repository では別の Git 操作が途中です。branch 切り替えより先に、進行中の操作を完了または中止してください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">状態</div><div class="meta-value"><code>rebase in progress</code></div></div>
+              <div class="meta-row"><div class="meta-label">先に必要</div><div class="meta-value">競合を解決して続行するか、rebase を中止する。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">状況を確認する</button>
+              <button class="button">Git Graph を開く</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">`busy` の一種だが、再試行よりも「何が進行中か」を明示した方がよい。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge danger">競合が未解決</span>
+            <span class="index">14</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon danger">×</div>
+              <h2>競合を解決するまで切り替えできません</h2>
+            </div>
+            <p>この workspace には未解決の conflict があります。`stash` や `switch` の前に、競合ファイルを確認して解決する必要があります。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">conflict</div><div class="meta-value"><code>apps/desktop/src/main.tsx</code></div></div>
+              <div class="meta-row"><div class="meta-label">理由</div><div class="meta-value">Git は衝突中の index を持ったまま branch を安全に移動できません。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">競合ファイルを開く</button>
+              <button class="button">解決手順を見る</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">未コミット変更と分けて扱い、正しい行動を `conflict 解消` に寄せる。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">一覧取得失敗</span>
+            <span class="index">15</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">≋</div>
+              <h2>ブランチ一覧を読み込めませんでした</h2>
+            </div>
+            <p>現在の branch 一覧を取得できないため、切り替え候補を表示できません。ネットワークや repository 状態を確認して再読み込みしてください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">影響</div><div class="meta-value">プルダウンは空表示または stale な一覧のままになります。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">再読み込み</button>
+              <button class="button">技術詳細を表示</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">これは選択後の失敗ではなく、プルダウンを開く時点の失敗パターン。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">比較元を解決できない</span>
+            <span class="index">16</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">⇢</div>
+              <h2>compare branch の比較元が見つかりません</h2>
+            </div>
+            <p>設定されている compare branch はあるように見えますが、remote 側で解決できません。Diffs の結果が不正確になる可能性があります。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">設定値</div><div class="meta-value"><code>origin/release/next</code></div></div>
+              <div class="meta-row"><div class="meta-label">問題</div><div class="meta-value">remote が無い、fetch されていない、または追跡先が壊れている。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">default branch に戻す</button>
+              <button class="button">fetch して再試行</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">modal でもよいが、Diffs 上部の persistent banner とも相性がよい。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge info">初回コミット前</span>
+            <span class="index">17</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon info">•</div>
+              <h2>まだコミットがないため branch 操作を完了できません</h2>
+            </div>
+            <p>この repository は初回コミット前です。compare branch や履歴ベースの diff はまだ成立しません。最初の commit を作成してください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">状態</div><div class="meta-value"><code>unborn HEAD</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">最初の commit を作る</button>
+              <button class="button">Files を開く</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">`detached HEAD` とは別物。empty state 寄りの扱いでもよい。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">切替後の警告</span>
+            <span class="index">18</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">!</div>
+              <h2>ブランチの切り替えは完了しましたが、追加処理で問題がありました</h2>
+            </div>
+            <p>checkout 自体は成功しています。ただし post-checkout hook や付随スクリプトが失敗したため、環境セットアップが途中の可能性があります。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">現在の branch</div><div class="meta-value"><code>feature/new-sidebar</code></div></div>
+              <div class="meta-row"><div class="meta-label">追加処理</div><div class="meta-value"><code>post-checkout hook exited 1</code></div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">ログを見る</button>
+              <button class="button">そのまま続ける</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">これは失敗ダイアログというより warning banner / toast に近いが、比較用に modal で置いている。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge danger">救済アクション失敗</span>
+            <span class="index">19</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon danger">↯</div>
+              <h2>変更の退避に失敗したため、切り替えを続けられません</h2>
+            </div>
+            <p>`stash して切り替える` を試しましたが、stash 自体が完了しませんでした。元の branch に留まったまま、次の対応を選んでください。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">実行した操作</div><div class="meta-value"><code>git stash push</code></div></div>
+              <div class="meta-row"><div class="meta-label">次の候補</div><div class="meta-value">競合解決、不要ファイル削除、手動 commit。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">技術詳細を表示</button>
+              <button class="button">手動で対処する</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">救済 CTA も失敗し得るので、1段深い失敗パターンを持っておく。</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="badge warning">stale compare branch</span>
+            <span class="index">20</span>
+          </div>
+          <div class="dialog">
+            <div class="dialog-top">
+              <div class="icon warning">~</div>
+              <h2>compare branch が古いため、Diffs が最新ではありません</h2>
+            </div>
+            <p>設定された compare branch は存在しますが、まだ fetch されていないか、手元の情報が古い状態です。まず更新してから比較するのが安全です。</p>
+            <div class="meta">
+              <div class="meta-row"><div class="meta-label">compare</div><div class="meta-value"><code>main</code></div></div>
+              <div class="meta-row"><div class="meta-label">状況</div><div class="meta-value">remote と同期されていない可能性があります。</div></div>
+            </div>
+            <div class="actions">
+              <button class="button primary">fetch して更新</button>
+              <button class="button">今のまま続ける</button>
+              <button class="button ghost">閉じる</button>
+            </div>
+            <div class="footer-note">致命的ではないが、レビュー結果の信用性に影響するため明示したい。</div>
+          </div>
+        </article>
+      </section>
+    </div>
+  </body>
+</html>
