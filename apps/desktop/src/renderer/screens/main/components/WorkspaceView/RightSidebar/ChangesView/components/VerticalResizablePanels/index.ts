@@ -1,0 +1,1 @@
+export { VerticalResizablePanels } from "./VerticalResizablePanels";

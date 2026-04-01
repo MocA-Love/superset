@@ -13,7 +13,7 @@ export enum RightSidebarTab {
 
 export const DEFAULT_SIDEBAR_WIDTH = 250;
 export const MIN_SIDEBAR_WIDTH = 200;
-export const MAX_SIDEBAR_WIDTH = 500;
+export const MAX_SIDEBAR_WIDTH = 800;
 
 interface SidebarState {
 	isSidebarOpen: boolean;
