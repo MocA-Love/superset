@@ -32,6 +32,7 @@ interface FileItemProps {
 	isSelected: boolean;
 	onClick: () => void;
 	showStats?: boolean;
+	directoryLabel?: string;
 	level?: number;
 	onStage?: () => void;
 	onUnstage?: () => void;
@@ -68,6 +69,7 @@ export function FileItem({
 	isSelected,
 	onClick,
 	showStats = true,
+	directoryLabel,
 	level = 0,
 	onStage,
 	onUnstage,
@@ -239,8 +241,15 @@ export function FileItem({
 				<span className="flex-1 min-w-0 flex items-center gap-1">
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<span className="text-xs text-start truncate overflow-hidden text-ellipsis">
-								{fileName}
+							<span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
+								<span className="truncate overflow-hidden text-ellipsis text-xs text-start">
+									{fileName}
+								</span>
+								{directoryLabel ? (
+									<span className="truncate text-[10px] text-muted-foreground/80">
+										{directoryLabel}
+									</span>
+								) : null}
 							</span>
 						</TooltipTrigger>
 						<TooltipContent side="right">{file.path}</TooltipContent>

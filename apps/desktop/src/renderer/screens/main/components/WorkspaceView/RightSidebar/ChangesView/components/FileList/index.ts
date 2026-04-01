@@ -1,3 +1,5 @@
+export { FileListCompact } from "./FileListCompact";
+export { FileListCompactVirtualized } from "./FileListCompactVirtualized";
 export { FileList } from "./FileList";
 export { FileListGrouped } from "./FileListGrouped";
 export { FileListGroupedVirtualized } from "./FileListGroupedVirtualized";
