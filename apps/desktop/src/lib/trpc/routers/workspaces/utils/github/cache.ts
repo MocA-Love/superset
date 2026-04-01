@@ -9,10 +9,12 @@ import type { RepoContext } from "./types";
 const GITHUB_STATUS_CACHE_TTL_MS = 10_000;
 const GITHUB_PR_COMMENTS_CACHE_TTL_MS = 30_000;
 const GITHUB_REPO_CONTEXT_CACHE_TTL_MS = 300_000;
+const GITHUB_COMMIT_AUTHOR_CACHE_TTL_MS = 300_000;
 
 const MAX_GITHUB_STATUS_CACHE_ENTRIES = 256;
 const MAX_GITHUB_PR_COMMENTS_CACHE_ENTRIES = 512;
 const MAX_GITHUB_REPO_CONTEXT_CACHE_ENTRIES = 256;
+const MAX_GITHUB_COMMIT_AUTHOR_CACHE_ENTRIES = 2048;
 
 const githubStatusResource = createCachedResource<GitHubStatus | null>({
 	ttlMs: GITHUB_STATUS_CACHE_TTL_MS,
@@ -27,6 +29,16 @@ const pullRequestCommentsResource = createCachedResource<PullRequestComment[]>({
 const repoContextResource = createCachedResource<RepoContext | null>({
 	ttlMs: GITHUB_REPO_CONTEXT_CACHE_TTL_MS,
 	maxEntries: MAX_GITHUB_REPO_CONTEXT_CACHE_ENTRIES,
+});
+
+export interface GitHubCommitAuthor {
+	login: string | null;
+	avatarUrl: string | null;
+}
+
+const commitAuthorResource = createCachedResource<GitHubCommitAuthor | null>({
+	ttlMs: GITHUB_COMMIT_AUTHOR_CACHE_TTL_MS,
+	maxEntries: MAX_GITHUB_COMMIT_AUTHOR_CACHE_ENTRIES,
 });
 
 export function getCachedGitHubStatus(
@@ -130,6 +142,24 @@ export function readCachedRepoContext(
 		...options,
 		shouldCache: options?.shouldCache ?? ((value) => value !== null),
 	});
+}
+
+export function makeGitHubCommitAuthorCacheKey({
+	repoNameWithOwner,
+	commitHash,
+}: {
+	repoNameWithOwner: string;
+	commitHash: string;
+}): string {
+	return `${repoNameWithOwner}#${commitHash}`;
+}
+
+export function readCachedGitHubCommitAuthor(
+	cacheKey: string,
+	load: () => Promise<GitHubCommitAuthor | null>,
+	options?: CachedResourceReadOptions<GitHubCommitAuthor | null>,
+): Promise<GitHubCommitAuthor | null> {
+	return commitAuthorResource.read(cacheKey, load, options);
 }
 
 export function clearGitHubCachesForWorktree(worktreePath: string): void {

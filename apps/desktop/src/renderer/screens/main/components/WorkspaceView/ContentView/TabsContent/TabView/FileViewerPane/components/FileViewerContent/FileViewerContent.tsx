@@ -401,6 +401,7 @@ export function FileViewerContent({
 							original={diffData.original}
 							modified={diffData.modified}
 							language={diffData.language}
+							worktreePath={worktreePath}
 							viewMode={diffViewMode}
 							onChange={onContentChange}
 							onSave={onSaveFile}
@@ -532,6 +533,7 @@ export function FileViewerContent({
 				<CodeEditor
 					key={filePath}
 					language={detectLanguage(filePath)}
+					worktreePath={worktreePath}
 					value={renderedContent}
 					onChange={onContentChange}
 					onSave={onSaveFile}

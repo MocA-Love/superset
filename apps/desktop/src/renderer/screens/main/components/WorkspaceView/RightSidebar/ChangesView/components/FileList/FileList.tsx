@@ -2,6 +2,8 @@ import { useDeferredValue } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import type { ChangesViewMode } from "../../types";
+import { FileListCompact } from "./FileListCompact";
+import { FileListCompactVirtualized } from "./FileListCompactVirtualized";
 import { FileListGrouped } from "./FileListGrouped";
 import { FileListGroupedVirtualized } from "./FileListGroupedVirtualized";
 import { FileListTree } from "./FileListTree";
@@ -96,6 +98,50 @@ export function FileList({
 				onUnstage={onUnstage}
 				onStageFiles={onStageFiles}
 				onUnstageFiles={onUnstageFiles}
+				isActioning={isActioning}
+				worktreePath={worktreePath}
+				onDiscard={onDiscard}
+				category={category}
+				commitHash={commitHash}
+				isExpandedView={isExpandedView}
+				projectId={projectId}
+				defaultApp={defaultApp}
+			/>
+		);
+	}
+
+	if (viewMode === "compact") {
+		if (shouldVirtualize) {
+			return (
+				<FileListCompactVirtualized
+					files={filesForRender}
+					selectedFile={selectedFile}
+					selectedCommitHash={selectedCommitHash}
+					onFileSelect={onFileSelect}
+					showStats={showStats}
+					onStage={onStage}
+					onUnstage={onUnstage}
+					isActioning={isActioning}
+					worktreePath={worktreePath}
+					onDiscard={onDiscard}
+					category={category}
+					commitHash={commitHash}
+					isExpandedView={isExpandedView}
+					projectId={projectId}
+					defaultApp={defaultApp}
+				/>
+			);
+		}
+
+		return (
+			<FileListCompact
+				files={filesForRender}
+				selectedFile={selectedFile}
+				selectedCommitHash={selectedCommitHash}
+				onFileSelect={onFileSelect}
+				showStats={showStats}
+				onStage={onStage}
+				onUnstage={onUnstage}
 				isActioning={isActioning}
 				worktreePath={worktreePath}
 				onDiscard={onDiscard}

@@ -14,7 +14,7 @@ import {
 	normalizeChangeSectionOrder,
 } from "./section-order";
 
-type FileListViewMode = "grouped" | "tree";
+type FileListViewMode = "grouped" | "compact" | "tree";
 type ChangesSidebarTab = "diffs" | "review";
 
 interface SelectedFileState {

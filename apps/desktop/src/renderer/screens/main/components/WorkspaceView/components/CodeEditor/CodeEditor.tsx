@@ -35,6 +35,7 @@ import { loadLanguageSupport } from "./loadLanguageSupport";
 interface CodeEditorProps {
 	value: string;
 	language: string;
+	worktreePath?: string;
 	readOnly?: boolean;
 	fillHeight?: boolean;
 	className?: string;
@@ -165,6 +166,7 @@ function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
 export function CodeEditor({
 	value,
 	language,
+	worktreePath,
 	readOnly = false,
 	fillHeight = true,
 	className,
@@ -348,10 +350,10 @@ export function CodeEditor({
 
 		view.dispatch({
 			effects: blameCompartment.reconfigure(
-				blameEntries ? createBlamePlugin(blameEntries) : [],
+				blameEntries ? createBlamePlugin(blameEntries, { worktreePath }) : [],
 			),
 		});
-	}, [blameEntries, blameCompartment]);
+	}, [blameEntries, blameCompartment, worktreePath]);
 
 	useEffect(() => {
 		let cancelled = false;

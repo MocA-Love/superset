@@ -2,6 +2,16 @@ import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { toRegisteredWorktreeRelativePath } from "../workspace-fs-service";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
+import {
+	type GitHubCommitAuthor,
+	makeGitHubCommitAuthorCacheKey,
+	readCachedGitHubCommitAuthor,
+} from "../workspaces/utils/github/cache";
+import {
+	extractNwoFromUrl,
+	getRepoContext,
+} from "../workspaces/utils/github/repo-context";
+import { execWithShellEnv } from "../workspaces/utils/shell-env";
 import { assertRegisteredWorktree } from "./security/path-validation";
 
 export interface BlameEntry {
@@ -10,6 +20,121 @@ export interface BlameEntry {
 	author: string;
 	timestamp: number;
 	summary: string;
+}
+
+const GitHubCommitResponseSchema = z.object({
+	author: z
+		.object({
+			login: z.string().optional(),
+			avatar_url: z.string().optional(),
+		})
+		.nullable()
+		.optional(),
+});
+
+function isSafeAvatarUrl(url: string): boolean {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "https:";
+	} catch {
+		return false;
+	}
+}
+
+function parseJsonOrNull(stdout: string): unknown | null {
+	try {
+		return JSON.parse(stdout) as unknown;
+	} catch {
+		return null;
+	}
+}
+
+function getRepoCandidates(
+	repoContext: Awaited<ReturnType<typeof getRepoContext>>,
+): string[] {
+	if (!repoContext) {
+		return [];
+	}
+
+	return Array.from(
+		new Set(
+			[repoContext.repoUrl, repoContext.upstreamUrl]
+				.map((url) => extractNwoFromUrl(url))
+				.filter((value): value is string => Boolean(value)),
+		),
+	);
+}
+
+async function fetchGitHubCommitAuthorForRepo({
+	worktreePath,
+	repoNameWithOwner,
+	commitHash,
+}: {
+	worktreePath: string;
+	repoNameWithOwner: string;
+	commitHash: string;
+}): Promise<GitHubCommitAuthor | null> {
+	const cacheKey = makeGitHubCommitAuthorCacheKey({
+		repoNameWithOwner,
+		commitHash,
+	});
+
+	return readCachedGitHubCommitAuthor(cacheKey, async () => {
+		try {
+			const { stdout } = await execWithShellEnv(
+				"gh",
+				["api", `repos/${repoNameWithOwner}/commits/${commitHash}`],
+				{ cwd: worktreePath },
+			);
+			const raw = parseJsonOrNull(stdout);
+			if (raw === null) {
+				return null;
+			}
+
+			const parsed = GitHubCommitResponseSchema.safeParse(raw);
+			if (!parsed.success) {
+				return null;
+			}
+
+			const login = parsed.data.author?.login?.trim() || null;
+			const avatarUrl =
+				parsed.data.author?.avatar_url &&
+				isSafeAvatarUrl(parsed.data.author.avatar_url)
+					? parsed.data.author.avatar_url
+					: null;
+
+			if (!login && !avatarUrl) {
+				return null;
+			}
+
+			return { login, avatarUrl };
+		} catch {
+			return null;
+		}
+	});
+}
+
+async function getGitHubCommitAuthor({
+	worktreePath,
+	commitHash,
+}: {
+	worktreePath: string;
+	commitHash: string;
+}): Promise<GitHubCommitAuthor | null> {
+	const repoContext = await getRepoContext(worktreePath);
+
+	for (const repoNameWithOwner of getRepoCandidates(repoContext)) {
+		const author = await fetchGitHubCommitAuthorForRepo({
+			worktreePath,
+			repoNameWithOwner,
+			commitHash,
+		});
+		if (author) {
+			return author;
+		}
+	}
+
+	return null;
 }
 
 function parseGitBlamePorcelain(output: string): BlameEntry[] {
@@ -108,6 +233,17 @@ export const createGitBlameRouter = () => {
 				} catch {
 					return { entries: [] };
 				}
+			}),
+		getGitHubCommitAuthor: publicProcedure
+			.input(
+				z.object({
+					worktreePath: z.string(),
+					commitHash: z.string().regex(/^[0-9a-f]{40}$/i),
+				}),
+			)
+			.query(async ({ input }): Promise<GitHubCommitAuthor | null> => {
+				assertRegisteredWorktree(input.worktreePath);
+				return getGitHubCommitAuthor(input);
 			}),
 	});
 };

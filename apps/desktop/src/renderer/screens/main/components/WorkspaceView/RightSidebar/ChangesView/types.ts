@@ -1,4 +1,4 @@
-export type ChangesViewMode = "grouped" | "tree";
+export type ChangesViewMode = "grouped" | "compact" | "tree";
 
 export interface FileTreeNode {
 	id: string;

@@ -8,6 +8,7 @@ import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestions";
 import { useTerminalTheme } from "renderer/stores/theme";
+import { sanitizeForTitle } from "./commandBuffer";
 import { SessionKilledOverlay } from "./components";
 import {
 	DEFAULT_TERMINAL_FONT_FAMILY,
@@ -30,6 +31,7 @@ import {
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalSearch } from "./TerminalSearch";
 import { TerminalSuggestion } from "./TerminalSuggestion";
+import { TerminalTypingPreview } from "./TerminalTypingPreview";
 import type {
 	TerminalExitReason,
 	TerminalProps,
@@ -39,6 +41,7 @@ import { shellEscapePaths } from "./utils";
 
 const stripLeadingEmoji = (text: string) =>
 	text.trim().replace(/^[\p{Emoji}\p{Symbol}]\s*/u, "");
+const TYPING_PREVIEW_MAX_DURATION_MS = 200;
 
 export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 	const pane = useTabsStore((s) => s.panes[paneId]);
@@ -93,7 +96,11 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 	const [exitStatus, setExitStatus] = useState<"killed" | "exited" | null>(
 		null,
 	);
+	const [typingPreviewText, setTypingPreviewText] = useState("");
 	const wasKilledByUserRef = useRef(false);
+	const typingPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 	const pendingEventsRef = useRef<TerminalStreamEvent[]>([]);
 	const commandBufferRef = useRef("");
 	const tabIdRef = useRef(tabId);
@@ -331,12 +338,86 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		},
 		[paneId, writeRef],
 	);
+	const handleSuggestionExecute = useCallback(
+		(command: string, currentInput: string) => {
+			if (isExitedRef.current) return;
+
+			const title = sanitizeForTitle(command);
+			if (title) {
+				setPaneName(paneId, title);
+				renameUnnamedWorkspaceRef.current(title);
+			}
+
+			const data = command.startsWith(currentInput)
+				? `${command.slice(currentInput.length)}\r`
+				: `\x15${command}\r`;
+			const suffix = command.startsWith(currentInput)
+				? command.slice(currentInput.length)
+				: "";
+
+			if (typingPreviewTimeoutRef.current) {
+				clearTimeout(typingPreviewTimeoutRef.current);
+				typingPreviewTimeoutRef.current = null;
+			}
+
+			if (!suffix) {
+				setTypingPreviewText("");
+				writeRef.current({ paneId, data });
+				commandBufferRef.current = "";
+				isAtPromptRef.current = false;
+				return;
+			}
+
+			const totalSteps = suffix.length;
+			const durationMs = Math.max(0, TYPING_PREVIEW_MAX_DURATION_MS);
+
+			if (durationMs === 0) {
+				setTypingPreviewText("");
+				writeRef.current({ paneId, data });
+				commandBufferRef.current = "";
+				isAtPromptRef.current = false;
+				return;
+			}
+
+			const startTime = performance.now();
+
+			const finish = () => {
+				setTypingPreviewText("");
+				typingPreviewTimeoutRef.current = null;
+				writeRef.current({ paneId, data });
+				commandBufferRef.current = "";
+				isAtPromptRef.current = false;
+			};
+
+			const tick = () => {
+				const elapsed = performance.now() - startTime;
+				const progress = Math.min(1, elapsed / durationMs);
+				const visibleLength = Math.max(
+					1,
+					Math.min(totalSteps, Math.ceil(progress * totalSteps)),
+				);
+				setTypingPreviewText(suffix.slice(0, visibleLength));
+
+				if (progress >= 1) {
+					finish();
+					return;
+				}
+
+				typingPreviewTimeoutRef.current = setTimeout(tick, 0);
+			};
+
+			setTypingPreviewText(suffix.slice(0, 1));
+			typingPreviewTimeoutRef.current = setTimeout(tick, 0);
+		},
+		[paneId, setPaneName, writeRef, isAtPromptRef],
+	);
 	const {
 		displaySuggestions,
 		selectedIndex,
 		prefix: suggestionPrefix,
 		activeSuggestionRef,
 		deleteSuggestion,
+		openHistorySuggestions,
 	} = useTerminalSuggestion({
 		commandBufferRef,
 		enabled:
@@ -348,9 +429,11 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		isAlternateScreenRef,
 		isAtPromptRef,
 		hasReceivedPromptMarkerRef,
-		xtermRef,
 		onAcceptWrite: handleSuggestionWrite,
+		onExecuteCommand: handleSuggestionExecute,
 	});
+	const openHistorySuggestionsRef = useRef(openHistorySuggestions);
+	openHistorySuggestionsRef.current = openHistorySuggestions;
 
 	useEffect(() => {
 		if (!isRestoredMode) return;
@@ -409,6 +492,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		unregisterPasteCallbackRef,
 		defaultRestartCommandRef,
 		activeSuggestionRef,
+		openHistorySuggestionsRef,
 	});
 
 	useEffect(() => {
@@ -446,6 +530,14 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		xterm.options.fontSize = size;
 		fitAddonRef.current?.fit();
 	}, [fontSettings]);
+
+	useEffect(() => {
+		return () => {
+			if (typingPreviewTimeoutRef.current) {
+				clearTimeout(typingPreviewTimeoutRef.current);
+			}
+		};
+	}, []);
 
 	const terminalBg = terminalTheme?.background ?? getDefaultTerminalBg();
 
@@ -496,6 +588,9 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 			<div className="h-full w-full p-2">
 				<div ref={terminalRef} className="h-full w-full" />
 			</div>
+			{xtermInstance && typingPreviewText && (
+				<TerminalTypingPreview xterm={xtermInstance} text={typingPreviewText} />
+			)}
 			{xtermInstance && displaySuggestions.length > 0 && (
 				<TerminalSuggestion
 					xterm={xtermInstance}

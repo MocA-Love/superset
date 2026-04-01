@@ -22,6 +22,28 @@ async function getGitWithShellPath(worktreePath: string) {
 	return getSimpleGitWithShellPath(worktreePath);
 }
 
+function assertValidBranchName(branch: string): void {
+	// Validate: reject anything that looks like a flag
+	if (branch.startsWith("-")) {
+		throw new Error("Invalid branch name: cannot start with -");
+	}
+
+	// Validate: reject empty branch names
+	if (!branch.trim()) {
+		throw new Error("Invalid branch name: cannot be empty");
+	}
+}
+
+function assertValidStartPoint(startPoint: string): void {
+	if (startPoint.startsWith("-")) {
+		throw new Error("Invalid start point: cannot start with -");
+	}
+
+	if (!startPoint.trim()) {
+		throw new Error("Invalid start point: cannot be empty");
+	}
+}
+
 async function isCurrentBranch({
 	worktreePath,
 	expectedBranch,
@@ -50,22 +72,44 @@ export async function gitSwitchBranch(
 	branch: string,
 ): Promise<void> {
 	assertRegisteredWorktree(worktreePath);
-
-	// Validate: reject anything that looks like a flag
-	if (branch.startsWith("-")) {
-		throw new Error("Invalid branch name: cannot start with -");
-	}
-
-	// Validate: reject empty branch names
-	if (!branch.trim()) {
-		throw new Error("Invalid branch name: cannot be empty");
-	}
+	assertValidBranchName(branch);
 
 	const git = await getGitWithShellPath(worktreePath);
 
 	await runWithPostCheckoutHookTolerance({
 		context: `Switched branch to "${branch}" in ${worktreePath}`,
 		run: async () => {
+			const localBranches = await git.branchLocal();
+			if (localBranches.all.includes(branch)) {
+				try {
+					await git.raw(["switch", branch]);
+					return;
+				} catch (switchError) {
+					const errorMessage = String(switchError);
+					if (errorMessage.includes("is not a git command")) {
+						await git.checkout(branch);
+						return;
+					}
+					throw switchError;
+				}
+			}
+
+			const remoteBranches = await git.branch(["-r"]);
+			const remoteBranch = `origin/${branch}`;
+			if (remoteBranches.all.includes(remoteBranch)) {
+				try {
+					await git.raw(["switch", "--track", "-c", branch, remoteBranch]);
+					return;
+				} catch (switchError) {
+					const errorMessage = String(switchError);
+					if (errorMessage.includes("is not a git command")) {
+						await git.checkout(["-b", branch, "--track", remoteBranch]);
+						return;
+					}
+					throw switchError;
+				}
+			}
+
 			try {
 				// Prefer `git switch` - unambiguous branch operation (git 2.23+)
 				await git.raw(["switch", branch]);
@@ -80,6 +124,49 @@ export async function gitSwitchBranch(
 				} else {
 					throw switchError;
 				}
+			}
+		},
+		didSucceed: async () =>
+			isCurrentBranch({ worktreePath, expectedBranch: branch }),
+	});
+}
+
+/**
+ * Create and switch to a new branch, optionally from a specific ref.
+ *
+ * Uses `git switch -c` (or `git checkout -b` as a fallback).
+ */
+export async function gitCreateBranch(
+	worktreePath: string,
+	branch: string,
+	startPoint?: string,
+): Promise<void> {
+	assertRegisteredWorktree(worktreePath);
+	assertValidBranchName(branch);
+	if (startPoint) {
+		assertValidStartPoint(startPoint);
+	}
+
+	const git = await getGitWithShellPath(worktreePath);
+
+	await runWithPostCheckoutHookTolerance({
+		context: `Created branch "${branch}" in ${worktreePath}`,
+		run: async () => {
+			try {
+				await git.raw(
+					startPoint
+						? ["switch", "-c", branch, startPoint]
+						: ["switch", "-c", branch],
+				);
+			} catch (switchError) {
+				const errorMessage = String(switchError);
+				if (errorMessage.includes("is not a git command")) {
+					await git.checkout(
+						startPoint ? ["-b", branch, startPoint] : ["-b", branch],
+					);
+					return;
+				}
+				throw switchError;
 			}
 		},
 		didSucceed: async () =>

@@ -11,12 +11,36 @@ import {
 } from "../workspaces/utils/base-branch-config";
 import { getCurrentBranch } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
-import { gitSwitchBranch } from "./security/git-commands";
-import {
-	assertRegisteredWorktree,
-	getRegisteredWorktree,
-} from "./security/path-validation";
+import { gitCreateBranch, gitSwitchBranch } from "./security/git-commands";
+import { assertRegisteredWorktree } from "./security/path-validation";
 import { clearStatusCacheForWorktree } from "./utils/status-cache";
+
+const DEFAULT_REF_SEARCH_LIMIT = 50;
+const MAX_REF_SEARCH_LIMIT = 200;
+
+type SearchableRef = {
+	name: string;
+	displayName: string;
+	ref: string;
+	kind: "branch" | "tag";
+	scope: "local" | "remote" | "tag";
+	lastCommitDate: number;
+	shortHash: string | null;
+	authorName: string | null;
+	subject: string | null;
+	checkedOutPath: string | null;
+};
+
+type ParsedRefEntry = {
+	name: string;
+	shortHash: string | null;
+	authorName: string | null;
+	subject: string | null;
+	lastCommitDate: number;
+};
+
+const REF_FIELD_SEPARATOR = "\u001f";
+const REF_RECORD_SEPARATOR = "\u001e";
 
 export const createBranchesRouter = () => {
 	return router({
@@ -92,6 +116,71 @@ export const createBranchesRouter = () => {
 				},
 			),
 
+		searchRefs: publicProcedure
+			.input(
+				z.object({
+					worktreePath: z.string(),
+					search: z.string().default(""),
+					limit: z.number().int().min(1).max(MAX_REF_SEARCH_LIMIT).optional(),
+					includeTags: z.boolean().default(true),
+				}),
+			)
+			.query(
+				async ({
+					input,
+				}): Promise<{
+					refs: SearchableRef[];
+					defaultBranch: string;
+					currentBranch: string | null;
+				}> => {
+					assertRegisteredWorktree(input.worktreePath);
+
+					const git = await getSimpleGitWithShellPath(input.worktreePath);
+					const currentBranch = await getCurrentBranch(input.worktreePath);
+					const checkedOutBranches = await getCheckedOutBranches(
+						git,
+						input.worktreePath,
+					);
+					const refs = await getSearchableRefs(git, {
+						search: input.search,
+						includeTags: input.includeTags,
+					});
+					const remoteBranchNames = refs
+						.filter((ref) => ref.kind === "branch" && ref.scope === "remote")
+						.map((ref) => ref.name);
+					const defaultBranch = await getDefaultBranch(git, remoteBranchNames);
+
+					const sortedRefs = refs.sort((a, b) => {
+						if (a.kind !== b.kind) return a.kind === "branch" ? -1 : 1;
+						if (a.kind === "branch" && b.kind === "branch") {
+							if (a.name === currentBranch) return -1;
+							if (b.name === currentBranch) return 1;
+							if (a.name === defaultBranch) return -1;
+							if (b.name === defaultBranch) return 1;
+							if (a.scope !== b.scope) return a.scope === "local" ? -1 : 1;
+						}
+						if (a.lastCommitDate !== b.lastCommitDate) {
+							return b.lastCommitDate - a.lastCommitDate;
+						}
+						return a.displayName.localeCompare(b.displayName);
+					});
+
+					return {
+						refs: sortedRefs
+							.slice(0, input.limit ?? DEFAULT_REF_SEARCH_LIMIT)
+							.map((ref) => ({
+								...ref,
+								checkedOutPath:
+									ref.kind === "branch"
+										? (checkedOutBranches[ref.name] ?? null)
+										: null,
+							})),
+						defaultBranch,
+						currentBranch,
+					};
+				},
+			),
+
 		switchBranch: publicProcedure
 			.input(
 				z.object({
@@ -100,26 +189,46 @@ export const createBranchesRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }): Promise<{ success: boolean }> => {
-				const worktree = getRegisteredWorktree(input.worktreePath);
 				await gitSwitchBranch(input.worktreePath, input.branch);
-
-				const gitStatus = worktree.gitStatus
-					? { ...worktree.gitStatus, branch: input.branch }
-					: null;
-
-				localDb
-					.update(worktrees)
-					.set({
-						branch: input.branch,
-						baseBranch: null,
-						gitStatus,
-					})
-					.where(eq(worktrees.path, input.worktreePath))
-					.run();
+				const currentBranch =
+					(await getCurrentBranch(input.worktreePath)) ?? input.branch;
+				persistWorktreeBranch(input.worktreePath, currentBranch);
 
 				clearStatusCacheForWorktree(input.worktreePath);
 				return { success: true };
 			}),
+
+		createBranch: publicProcedure
+			.input(
+				z.object({
+					worktreePath: z.string(),
+					branch: z.string(),
+					startPoint: z.string().nullish(),
+				}),
+			)
+			.mutation(
+				async ({ input }): Promise<{ success: boolean; branch: string }> => {
+					assertRegisteredWorktree(input.worktreePath);
+
+					const git = await getSimpleGitWithShellPath(input.worktreePath);
+					const branchSummary = await git.branchLocal();
+					if (branchSummary.all.includes(input.branch)) {
+						throw new Error(`Branch "${input.branch}" already exists.`);
+					}
+
+					await gitCreateBranch(
+						input.worktreePath,
+						input.branch,
+						input.startPoint ?? undefined,
+					);
+					const currentBranch =
+						(await getCurrentBranch(input.worktreePath)) ?? input.branch;
+					persistWorktreeBranch(input.worktreePath, currentBranch);
+
+					clearStatusCacheForWorktree(input.worktreePath);
+					return { success: true, branch: currentBranch };
+				},
+			),
 
 		updateBaseBranch: publicProcedure
 			.input(
@@ -150,11 +259,14 @@ export const createBranchesRouter = () => {
 					});
 				}
 
-				localDb
-					.update(worktrees)
-					.set({ baseBranch: input.baseBranch })
-					.where(eq(worktrees.path, input.worktreePath))
-					.run();
+				const persistedWorktree = getPersistedWorktree(input.worktreePath);
+				if (persistedWorktree) {
+					localDb
+						.update(worktrees)
+						.set({ baseBranch: input.baseBranch })
+						.where(eq(worktrees.path, input.worktreePath))
+						.run();
+				}
 
 				clearStatusCacheForWorktree(input.worktreePath);
 				return { success: true };
@@ -235,4 +347,207 @@ async function getCheckedOutBranches(
 	} catch {}
 
 	return checkedOutBranches;
+}
+
+function getPersistedWorktree(worktreePath: string) {
+	return localDb
+		.select()
+		.from(worktrees)
+		.where(eq(worktrees.path, worktreePath))
+		.get();
+}
+
+function persistWorktreeBranch(worktreePath: string, branch: string): void {
+	const persistedWorktree = getPersistedWorktree(worktreePath);
+	if (!persistedWorktree) {
+		return;
+	}
+
+	const gitStatus = persistedWorktree.gitStatus
+		? { ...persistedWorktree.gitStatus, branch }
+		: null;
+
+	localDb
+		.update(worktrees)
+		.set({
+			branch,
+			baseBranch: null,
+			gitStatus,
+		})
+		.where(eq(worktrees.path, worktreePath))
+		.run();
+}
+
+async function getSearchableRefs(
+	git: SimpleGit,
+	{
+		search,
+		includeTags,
+	}: {
+		search: string;
+		includeTags: boolean;
+	},
+): Promise<SearchableRef[]> {
+	const searchLower = search.trim().toLowerCase();
+	const refs: SearchableRef[] = [];
+
+	try {
+		for (const localBranch of await getRefEntries(git, {
+			refPath: "refs/heads/",
+			dateField: "committerdate",
+			authorField: "authorname",
+		})) {
+			if (!matchesSearch(localBranch, searchLower)) continue;
+
+			refs.push({
+				name: localBranch.name,
+				displayName: localBranch.name,
+				ref: localBranch.name,
+				kind: "branch",
+				scope: "local",
+				lastCommitDate: localBranch.lastCommitDate,
+				shortHash: localBranch.shortHash,
+				authorName: localBranch.authorName,
+				subject: localBranch.subject,
+				checkedOutPath: null,
+			});
+		}
+	} catch {}
+
+	try {
+		for (const remoteBranch of await getRefEntries(git, {
+			refPath: "refs/remotes/origin/",
+			dateField: "committerdate",
+			authorField: "authorname",
+		})) {
+			if (remoteBranch.name === "origin/HEAD") continue;
+			const canonicalName = remoteBranch.name.startsWith("origin/")
+				? remoteBranch.name.replace("origin/", "")
+				: remoteBranch.name;
+			const displayName = remoteBranch.name.startsWith("origin/")
+				? remoteBranch.name
+				: `origin/${remoteBranch.name}`;
+			if (
+				!matchesSearch(
+					{ ...remoteBranch, name: canonicalName, displayName },
+					searchLower,
+				)
+			) {
+				continue;
+			}
+
+			refs.push({
+				name: canonicalName,
+				displayName,
+				ref: displayName,
+				kind: "branch",
+				scope: "remote",
+				lastCommitDate: remoteBranch.lastCommitDate,
+				shortHash: remoteBranch.shortHash,
+				authorName: remoteBranch.authorName,
+				subject: remoteBranch.subject,
+				checkedOutPath: null,
+			});
+		}
+	} catch {}
+
+	if (includeTags) {
+		try {
+			for (const tag of await getRefEntries(git, {
+				refPath: "refs/tags/",
+				dateField: "creatordate",
+				authorField: "creatorname",
+			})) {
+				if (!matchesSearch(tag, searchLower)) continue;
+
+				refs.push({
+					name: tag.name,
+					displayName: tag.name,
+					ref: `refs/tags/${tag.name}`,
+					kind: "tag",
+					scope: "tag",
+					lastCommitDate: tag.lastCommitDate,
+					shortHash: tag.shortHash,
+					authorName: tag.authorName,
+					subject: tag.subject,
+					checkedOutPath: null,
+				});
+			}
+		} catch {}
+	}
+
+	return refs;
+}
+
+async function getRefEntries(
+	git: SimpleGit,
+	{
+		refPath,
+		dateField,
+		authorField,
+	}: {
+		refPath: string;
+		dateField: "committerdate" | "creatordate";
+		authorField: "authorname" | "creatorname";
+	},
+): Promise<ParsedRefEntry[]> {
+	const output = await git.raw([
+		"for-each-ref",
+		`--sort=-${dateField}`,
+		`--format=%(refname:short)${REF_FIELD_SEPARATOR}%(objectname:short)${REF_FIELD_SEPARATOR}%(${authorField})${REF_FIELD_SEPARATOR}%(subject)${REF_FIELD_SEPARATOR}%(${dateField}:unix)${REF_RECORD_SEPARATOR}`,
+		refPath,
+	]);
+
+	return output
+		.split(REF_RECORD_SEPARATOR)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => {
+			const [
+				name = "",
+				shortHash = "",
+				authorName = "",
+				subject = "",
+				timestamp = "0",
+			] = line.split(REF_FIELD_SEPARATOR);
+			const parsedTimestamp = Number.parseInt(timestamp, 10);
+
+			return {
+				name,
+				shortHash: normalizeRefField(shortHash),
+				authorName: normalizeRefField(authorName),
+				subject: normalizeRefField(subject),
+				lastCommitDate: Number.isNaN(parsedTimestamp)
+					? 0
+					: parsedTimestamp * 1000,
+			};
+		})
+		.filter((entry) => entry.name.length > 0);
+}
+
+function normalizeRefField(value: string): string | null {
+	const normalized = value.trim();
+	return normalized.length > 0 ? normalized : null;
+}
+
+function matchesSearch(
+	ref:
+		| ParsedRefEntry
+		| (ParsedRefEntry & { displayName?: string })
+		| SearchableRef,
+	searchLower: string,
+): boolean {
+	if (!searchLower) {
+		return true;
+	}
+
+	return [
+		ref.name,
+		"displayName" in ref ? ref.displayName : null,
+		ref.shortHash,
+		ref.authorName,
+		ref.subject,
+	]
+		.filter((value): value is string => Boolean(value))
+		.some((value) => value.toLowerCase().includes(searchLower));
 }

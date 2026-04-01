@@ -13,6 +13,7 @@ import { Button } from "@superset/ui/button";
 import {
 	Command,
 	CommandEmpty,
+	CommandGroup,
 	CommandInput,
 	CommandItem,
 	CommandList,
@@ -36,7 +37,8 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { LuChevronDown } from "react-icons/lu";
+import { GoGitBranch, GoGlobe } from "react-icons/go";
+import { LuArrowLeft, LuChevronDown, LuPlus, LuTag } from "react-icons/lu";
 import {
 	VscCheck,
 	VscGitCompare,
@@ -46,6 +48,7 @@ import {
 	VscSparkle,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
 import type { ChangesViewMode } from "../../types";
 import { ViewModeToggle } from "../ViewModeToggle";
 import { PRButton } from "./components/PRButton";
@@ -93,115 +96,185 @@ const BranchSelectorButton = forwardRef<
 ));
 BranchSelectorButton.displayName = "BranchSelectorButton";
 
-function BaseBranchSelector({ worktreePath }: { worktreePath: string }) {
-	const [open, setOpen] = useState(false);
-	const [search, setSearch] = useState("");
-	const utils = electronTrpc.useUtils();
-	const { data: branchData, isLoading } =
-		electronTrpc.changes.getBranches.useQuery(
-			{ worktreePath },
-			{
-				enabled: !!worktreePath,
-				staleTime: BRANCH_QUERY_STALE_TIME_MS,
-				refetchOnWindowFocus: false,
-			},
-		);
+type CurrentBranchSelectorMode =
+	| "default"
+	| "create"
+	| "create-from-ref"
+	| "compare-base";
 
-	const updateBaseBranch = electronTrpc.changes.updateBaseBranch.useMutation({
-		onSuccess: () => {
-			utils.changes.getBranches.invalidate({ worktreePath });
-		},
-	});
+interface SearchableRefItem {
+	name: string;
+	displayName: string;
+	ref: string;
+	kind: "branch" | "tag";
+	scope: "local" | "remote" | "tag";
+	lastCommitDate: number;
+	shortHash: string | null;
+	authorName: string | null;
+	subject: string | null;
+	checkedOutPath: string | null;
+}
 
-	const effectiveBaseBranch =
-		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
-	const sortedBranches = useMemo(() => {
-		return [...(branchData?.remote ?? [])].sort((a, b) => {
-			if (a === effectiveBaseBranch) return -1;
-			if (b === effectiveBaseBranch) return 1;
-			if (a === branchData?.defaultBranch) return -1;
-			if (b === branchData?.defaultBranch) return 1;
-			return a.localeCompare(b);
+function getSearchableRefIcon(ref: Pick<SearchableRefItem, "kind" | "scope">) {
+	if (ref.kind === "tag") {
+		return <LuTag className="size-3.5 shrink-0 text-muted-foreground" />;
+	}
+
+	if (ref.scope === "remote") {
+		return <GoGlobe className="size-3.5 shrink-0 text-muted-foreground" />;
+	}
+
+	return <GoGitBranch className="size-3.5 shrink-0 text-muted-foreground" />;
+}
+
+function getSearchableRefMeta(ref: SearchableRefItem): string | null {
+	return (
+		[ref.authorName, ref.shortHash, ref.subject]
+			.filter((value): value is string => Boolean(value))
+			.join(" • ") || null
+	);
+}
+
+function BranchNameWithOverflowTooltip({
+	name,
+	className,
+}: {
+	name: string;
+	className?: string;
+}) {
+	const textRef = useRef<HTMLSpanElement | null>(null);
+	const [isTruncated, setIsTruncated] = useState(false);
+
+	useEffect(() => {
+		const updateIsTruncated = () => {
+			const element = textRef.current;
+			if (!element) {
+				return;
+			}
+
+			setIsTruncated(element.scrollWidth > element.clientWidth + 1);
+		};
+
+		updateIsTruncated();
+
+		const element = textRef.current;
+		if (!element || typeof ResizeObserver === "undefined") {
+			return;
+		}
+
+		const observer = new ResizeObserver(() => {
+			updateIsTruncated();
 		});
-	}, [branchData?.remote, branchData?.defaultBranch, effectiveBaseBranch]);
+		observer.observe(element);
 
-	const filteredBranches = useMemo(() => {
-		if (!search) return sortedBranches.filter(Boolean);
-		const lower = search.toLowerCase();
-		return sortedBranches.filter((branch) =>
-			branch?.toLowerCase().includes(lower),
-		);
-	}, [sortedBranches, search]);
+		return () => {
+			observer.disconnect();
+		};
+	}, []);
 
-	const handleBranchSelect = (branch: string) => {
-		updateBaseBranch.mutate({
-			worktreePath,
-			baseBranch: branch === branchData?.defaultBranch ? null : branch,
-		});
-		setOpen(false);
-		setSearch("");
-	};
+	const content = (
+		<span ref={textRef} className={cn("block truncate", className)}>
+			{name}
+		</span>
+	);
+
+	if (!isTruncated) {
+		return content;
+	}
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<PopoverTrigger asChild>
-						<BranchSelectorButton
-							label={effectiveBaseBranch}
-							disabled={isLoading}
+		<Tooltip>
+			<TooltipTrigger asChild>{content}</TooltipTrigger>
+			<TooltipContent side="top" showArrow={false}>
+				{name}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+function BranchRefCommandItem({
+	refItem,
+	onSelect,
+	isCurrent = false,
+	isDefault = false,
+	isDisabled = false,
+	statusLabel,
+}: {
+	refItem: SearchableRefItem;
+	onSelect: () => void;
+	isCurrent?: boolean;
+	isDefault?: boolean;
+	isDisabled?: boolean;
+	statusLabel?: string | null;
+}) {
+	const meta = getSearchableRefMeta(refItem);
+
+	return (
+		<CommandItem
+			value={refItem.displayName}
+			onSelect={() => {
+				if (!isDisabled) {
+					onSelect();
+				}
+			}}
+			disabled={isDisabled}
+			className="group flex h-auto items-start justify-between gap-3 px-3 py-2.5 text-xs"
+		>
+			<span className="flex min-w-0 flex-1 items-start gap-2.5">
+				{getSearchableRefIcon(refItem)}
+				<span className="min-w-0 flex-1">
+					<span className="flex min-w-0 items-center gap-1.5">
+						<BranchNameWithOverflowTooltip
+							key={refItem.displayName}
+							name={refItem.displayName}
+							className="font-mono text-xs"
 						/>
-					</PopoverTrigger>
-				</TooltipTrigger>
-				<TooltipContent side="bottom" showArrow={false}>
-					Change base branch
-				</TooltipContent>
-			</Tooltip>
-			<PopoverContent align="start" className="w-56 p-0">
-				<Command shouldFilter={false}>
-					<CommandInput
-						placeholder="Search branches..."
-						value={search}
-						onValueChange={setSearch}
-					/>
-					<CommandList className="max-h-[200px]">
-						<CommandEmpty>No branches found</CommandEmpty>
-						{filteredBranches.map((branch) => (
-							<CommandItem
-								key={branch}
-								value={branch}
-								onSelect={() => handleBranchSelect(branch)}
-								className="flex items-center justify-between text-xs"
-							>
-								<span className="truncate">
-									{branch}
-									{branch === branchData?.defaultBranch && (
-										<span className="ml-1 text-muted-foreground">
-											(default)
-										</span>
-									)}
-								</span>
-								{branch === effectiveBaseBranch && (
-									<VscCheck className="size-3.5 shrink-0 text-primary" />
-								)}
-							</CommandItem>
-						))}
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
+						{isDefault ? (
+							<span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+								default
+							</span>
+						) : null}
+					</span>
+					{meta ? (
+						<span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+							{meta}
+						</span>
+					) : null}
+				</span>
+			</span>
+			<span className="flex shrink-0 items-center gap-2 pt-0.5">
+				{refItem.lastCommitDate > 0 ? (
+					<span className="text-[10px] text-muted-foreground">
+						{formatRelativeTime(refItem.lastCommitDate)}
+					</span>
+				) : null}
+				{statusLabel ? (
+					<span className="text-[10px] text-muted-foreground">
+						{statusLabel}
+					</span>
+				) : null}
+				{isCurrent ? (
+					<VscCheck className="size-3.5 shrink-0 text-primary" />
+				) : null}
+			</span>
+		</CommandItem>
 	);
 }
 
 function CurrentBranchSelector({
 	worktreePath,
 	hasUncommittedChanges,
+	onRefresh,
 }: {
 	worktreePath: string;
 	hasUncommittedChanges: boolean;
+	onRefresh: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
+	const [mode, setMode] = useState<CurrentBranchSelectorMode>("default");
+	const [selectedStartPoint, setSelectedStartPoint] =
+		useState<SearchableRefItem | null>(null);
 	const [pendingBranch, setPendingBranch] = useState<string | null>(null);
 	const utils = electronTrpc.useUtils();
 	const { data: branchData, isLoading } =
@@ -213,10 +286,34 @@ function CurrentBranchSelector({
 				refetchOnWindowFocus: false,
 			},
 		);
+	const { data: refSearchData, isLoading: isRefSearchLoading } =
+		electronTrpc.changes.searchRefs.useQuery(
+			{
+				worktreePath,
+				search,
+				includeTags: mode === "create-from-ref",
+				limit: 50,
+			},
+			{
+				enabled:
+					open &&
+					!!worktreePath &&
+					(mode === "default" || mode === "create-from-ref"),
+				staleTime: BRANCH_QUERY_STALE_TIME_MS,
+				refetchOnWindowFocus: false,
+			},
+		);
+
+	const invalidateBranchQueries = () => {
+		void utils.changes.getBranches.invalidate({ worktreePath });
+		void utils.changes.getStatus.invalidate();
+		void utils.changes.searchRefs.invalidate();
+		onRefresh();
+	};
 
 	const switchBranch = electronTrpc.changes.switchBranch.useMutation({
 		onSuccess: () => {
-			utils.changes.getBranches.invalidate({ worktreePath });
+			invalidateBranchQueries();
 		},
 		onError: (error) => {
 			const msg = error.message ?? "";
@@ -240,28 +337,91 @@ function CurrentBranchSelector({
 			}
 		},
 	});
+	const createBranch = electronTrpc.changes.createBranch.useMutation({
+		onSuccess: () => {
+			invalidateBranchQueries();
+		},
+		onError: (error) => {
+			toast.error(
+				`Failed to create branch: ${error.message ?? "Unknown error"}`,
+			);
+		},
+	});
+	const updateBaseBranch = electronTrpc.changes.updateBaseBranch.useMutation({
+		onSuccess: () => {
+			invalidateBranchQueries();
+		},
+		onError: (error) => {
+			toast.error(
+				`Failed to update compare branch: ${error.message ?? "Unknown error"}`,
+			);
+		},
+	});
 
 	const currentBranch = branchData?.currentBranch ?? null;
+	const effectiveBaseBranch =
+		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
+	const existingBranchNames = useMemo(
+		() =>
+			new Set([
+				...(branchData?.local ?? []).map((entry) => entry.branch.toLowerCase()),
+				...(branchData?.remote ?? []).map((branch) => branch.toLowerCase()),
+			]),
+		[branchData?.local, branchData?.remote],
+	);
 
-	const sortedLocal = useMemo(() => {
-		return [...(branchData?.local ?? [])].sort((a, b) => {
-			if (a.branch === currentBranch) return -1;
-			if (b.branch === currentBranch) return 1;
-			return b.lastCommitDate - a.lastCommitDate;
+	const compareBaseBranches = useMemo(() => {
+		const branches = [...(branchData?.remote ?? [])].filter(
+			(branch) => branch !== branchData?.defaultBranch,
+		);
+		branches.sort((a, b) => {
+			if (a === effectiveBaseBranch) return -1;
+			if (b === effectiveBaseBranch) return 1;
+			if (a === branchData?.defaultBranch) return -1;
+			if (b === branchData?.defaultBranch) return 1;
+			return a.localeCompare(b);
 		});
-	}, [branchData?.local, currentBranch]);
-
-	const filteredLocal = useMemo(() => {
-		if (!search) return sortedLocal;
+		if (!search) return branches;
 		const lower = search.toLowerCase();
-		return sortedLocal.filter((b) => b.branch.toLowerCase().includes(lower));
-	}, [sortedLocal, search]);
+		return branches.filter((branch) => branch.toLowerCase().includes(lower));
+	}, [
+		branchData?.defaultBranch,
+		branchData?.remote,
+		effectiveBaseBranch,
+		search,
+	]);
+
+	const branchResults = useMemo(
+		() =>
+			(refSearchData?.refs ?? []).filter(
+				(ref): ref is SearchableRefItem => ref.kind === "branch",
+			),
+		[refSearchData?.refs],
+	);
+	const localBranchResults = useMemo(
+		() => branchResults.filter((ref) => ref.scope === "local"),
+		[branchResults],
+	);
+	const remoteBranchResults = useMemo(
+		() => branchResults.filter((ref) => ref.scope === "remote"),
+		[branchResults],
+	);
+	const tagResults = useMemo(
+		() =>
+			(refSearchData?.refs ?? []).filter(
+				(ref): ref is SearchableRefItem => ref.kind === "tag",
+			),
+		[refSearchData?.refs],
+	);
+
+	const createBranchName = search.trim();
+	const isCreateBranchNameTaken = existingBranchNames.has(
+		createBranchName.toLowerCase(),
+	);
 
 	const doSwitch = (branch: string) => {
 		switchBranch.mutate({ worktreePath, branch });
-		setOpen(false);
-		setSearch("");
-		setPendingBranch(null);
+		resetState();
 	};
 
 	const handleBranchSelect = (branch: string) => {
@@ -277,14 +437,302 @@ function CurrentBranchSelector({
 		}
 	};
 
+	const handleCreateBranch = () => {
+		if (!createBranchName || isCreateBranchNameTaken) {
+			return;
+		}
+		createBranch.mutate({
+			worktreePath,
+			branch: createBranchName,
+			startPoint: selectedStartPoint?.ref,
+		});
+		resetState();
+	};
+
+	const handleCompareBaseSelect = (branch: string | null) => {
+		updateBaseBranch.mutate({
+			worktreePath,
+			baseBranch:
+				branch && branch !== branchData?.defaultBranch ? branch : null,
+		});
+		resetState();
+	};
+
+	const resetState = () => {
+		setOpen(false);
+		setSearch("");
+		setMode("default");
+		setSelectedStartPoint(null);
+		setPendingBranch(null);
+	};
+
+	const canCreateBranch =
+		mode === "create" &&
+		createBranchName.length > 0 &&
+		!isCreateBranchNameTaken;
+
+	const renderDefaultList = () => (
+		<>
+			<CommandGroup heading="Actions">
+				<CommandItem
+					onSelect={() => {
+						setMode("create");
+						setSearch("");
+						setSelectedStartPoint(null);
+					}}
+					className="gap-2 text-xs"
+				>
+					<LuPlus className="size-3.5 shrink-0" />
+					<span>Create new branch...</span>
+				</CommandItem>
+				<CommandItem
+					onSelect={() => {
+						setMode("create-from-ref");
+						setSearch("");
+						setSelectedStartPoint(null);
+					}}
+					className="gap-2 text-xs"
+				>
+					<LuPlus className="size-3.5 shrink-0" />
+					<span>Create new branch from...</span>
+				</CommandItem>
+				<CommandItem
+					onSelect={() => {
+						setMode("compare-base");
+						setSearch("");
+					}}
+					className="gap-2 text-xs"
+				>
+					<VscGitCompare className="size-3.5 shrink-0" />
+					<span>Change compare branch...</span>
+				</CommandItem>
+			</CommandGroup>
+			{localBranchResults.length > 0 ? (
+				<CommandGroup heading="Branches">
+					{localBranchResults.map((branch) => {
+						const isCurrent = branch.name === currentBranch;
+						const checkedOutPath = branch.checkedOutPath;
+						const isDisabled = !!checkedOutPath && !isCurrent;
+
+						return (
+							<BranchRefCommandItem
+								key={`local:${branch.displayName}`}
+								refItem={branch}
+								onSelect={() => handleBranchSelect(branch.name)}
+								isCurrent={isCurrent}
+								isDefault={branch.name === branchData?.defaultBranch}
+								isDisabled={isDisabled}
+								statusLabel={
+									checkedOutPath && !isCurrent ? "checked out" : null
+								}
+							/>
+						);
+					})}
+				</CommandGroup>
+			) : null}
+			{remoteBranchResults.length > 0 ? (
+				<CommandGroup heading="Remote Branches">
+					{remoteBranchResults.map((branch) => (
+						<BranchRefCommandItem
+							key={`remote:${branch.displayName}`}
+							refItem={branch}
+							onSelect={() => handleBranchSelect(branch.name)}
+							isDefault={branch.name === branchData?.defaultBranch}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
+		</>
+	);
+
+	const renderCreateList = () => (
+		<>
+			<CommandItem
+				onSelect={() => {
+					setMode(selectedStartPoint ? "create-from-ref" : "default");
+					setSearch("");
+					setSelectedStartPoint(null);
+				}}
+				className="gap-2 text-xs"
+			>
+				<LuArrowLeft className="size-3.5 shrink-0" />
+				<span>Back</span>
+			</CommandItem>
+			{selectedStartPoint ? (
+				<div className="px-3 py-2 text-[11px] text-muted-foreground">
+					<div className="mb-1">Start point</div>
+					<div className="flex items-center gap-2 font-mono text-foreground">
+						{getSearchableRefIcon(selectedStartPoint)}
+						<BranchNameWithOverflowTooltip
+							key={selectedStartPoint.displayName}
+							name={selectedStartPoint.displayName}
+						/>
+					</div>
+				</div>
+			) : null}
+			{createBranchName ? (
+				<CommandItem
+					onSelect={handleCreateBranch}
+					disabled={!canCreateBranch || createBranch.isPending}
+					className="flex items-center justify-between gap-3 text-xs"
+				>
+					<span className="flex min-w-0 items-center gap-2 truncate">
+						<LuPlus className="size-3.5 shrink-0" />
+						<span className="truncate font-mono">{createBranchName}</span>
+					</span>
+					<span className="shrink-0 text-muted-foreground">
+						{isCreateBranchNameTaken ? "exists" : "create"}
+					</span>
+				</CommandItem>
+			) : null}
+		</>
+	);
+
+	const renderCreateFromRefList = () => (
+		<>
+			<CommandItem
+				onSelect={() => {
+					setMode("default");
+					setSearch("");
+					setSelectedStartPoint(null);
+				}}
+				className="gap-2 text-xs"
+			>
+				<LuArrowLeft className="size-3.5 shrink-0" />
+				<span>Back</span>
+			</CommandItem>
+			{localBranchResults.length > 0 ? (
+				<CommandGroup heading="Branches">
+					{localBranchResults.map((ref) => (
+						<BranchRefCommandItem
+							key={`create-local:${ref.displayName}`}
+							refItem={ref}
+							onSelect={() => {
+								setSelectedStartPoint(ref);
+								setMode("create");
+								setSearch("");
+							}}
+							isDefault={ref.name === branchData?.defaultBranch}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
+			{remoteBranchResults.length > 0 ? (
+				<CommandGroup heading="Remote Branches">
+					{remoteBranchResults.map((ref) => (
+						<BranchRefCommandItem
+							key={`create-remote:${ref.displayName}`}
+							refItem={ref}
+							onSelect={() => {
+								setSelectedStartPoint(ref);
+								setMode("create");
+								setSearch("");
+							}}
+							isDefault={ref.name === branchData?.defaultBranch}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
+			{tagResults.length > 0 ? (
+				<CommandGroup heading="Tags">
+					{tagResults.map((ref) => (
+						<BranchRefCommandItem
+							key={`create-tag:${ref.displayName}`}
+							refItem={ref}
+							onSelect={() => {
+								setSelectedStartPoint(ref);
+								setMode("create");
+								setSearch("");
+							}}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
+		</>
+	);
+
+	const renderCompareBaseList = () => (
+		<>
+			<CommandItem
+				onSelect={() => {
+					setMode("default");
+					setSearch("");
+				}}
+				className="gap-2 text-xs"
+			>
+				<LuArrowLeft className="size-3.5 shrink-0" />
+				<span>Back</span>
+			</CommandItem>
+			<CommandGroup heading="Compare Branches">
+				<CommandItem
+					onSelect={() =>
+						handleCompareBaseSelect(branchData?.defaultBranch ?? null)
+					}
+					className="flex items-center justify-between gap-3 text-xs"
+				>
+					<span className="truncate">
+						{branchData?.defaultBranch ?? "main"}
+						<span className="ml-1 text-muted-foreground">(default)</span>
+					</span>
+					{effectiveBaseBranch === branchData?.defaultBranch ? (
+						<VscCheck className="size-3.5 shrink-0 text-primary" />
+					) : null}
+				</CommandItem>
+				{compareBaseBranches.map((branch) => (
+					<CommandItem
+						key={`compare:${branch}`}
+						value={branch}
+						onSelect={() => handleCompareBaseSelect(branch)}
+						className="flex items-center justify-between gap-3 text-xs"
+					>
+						<span className="truncate">{branch}</span>
+						{branch === effectiveBaseBranch ? (
+							<VscCheck className="size-3.5 shrink-0 text-primary" />
+						) : null}
+					</CommandItem>
+				))}
+			</CommandGroup>
+		</>
+	);
+
+	const isPopoverLoading =
+		isLoading ||
+		((mode === "default" || mode === "create-from-ref") && isRefSearchLoading);
+	const commandEmptyCopy =
+		mode === "create"
+			? "Enter a branch name"
+			: mode === "create-from-ref"
+				? "No refs found"
+				: mode === "compare-base"
+					? "No branches found"
+					: "No branches found";
+	const inputPlaceholder =
+		mode === "create"
+			? "New branch name"
+			: mode === "create-from-ref"
+				? "Search branches or tags..."
+				: mode === "compare-base"
+					? "Search compare branches..."
+					: "Search branches...";
+
 	return (
 		<>
-			<Popover open={open} onOpenChange={setOpen}>
+			<Popover
+				open={open}
+				onOpenChange={(nextOpen) => {
+					setOpen(nextOpen);
+					if (!nextOpen) {
+						setSearch("");
+						setMode("default");
+						setSelectedStartPoint(null);
+					}
+				}}
+			>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<PopoverTrigger asChild>
 							<BranchSelectorButton
-								label={currentBranch ?? "…"}
+								label={currentBranch ?? "detached HEAD"}
 								disabled={isLoading}
 							/>
 						</PopoverTrigger>
@@ -293,28 +741,28 @@ function CurrentBranchSelector({
 						Switch current branch
 					</TooltipContent>
 				</Tooltip>
-				<PopoverContent align="start" className="w-56 p-0">
+				<PopoverContent
+					align="start"
+					className="w-96 p-0"
+					onWheel={(event) => event.stopPropagation()}
+				>
 					<Command shouldFilter={false}>
 						<CommandInput
-							placeholder="Search branches..."
+							placeholder={inputPlaceholder}
 							value={search}
 							onValueChange={setSearch}
 						/>
-						<CommandList className="max-h-[200px]">
-							<CommandEmpty>No branches found</CommandEmpty>
-							{filteredLocal.map(({ branch }) => (
-								<CommandItem
-									key={branch}
-									value={branch}
-									onSelect={() => handleBranchSelect(branch)}
-									className="flex items-center justify-between text-xs"
-								>
-									<span className="truncate">{branch}</span>
-									{branch === currentBranch && (
-										<VscCheck className="size-3.5 shrink-0 text-primary" />
-									)}
-								</CommandItem>
-							))}
+						<CommandList className="max-h-[320px]">
+							<CommandEmpty>
+								{isPopoverLoading ? "Loading..." : commandEmptyCopy}
+							</CommandEmpty>
+							{mode === "default"
+								? renderDefaultList()
+								: mode === "create"
+									? renderCreateList()
+									: mode === "create-from-ref"
+										? renderCreateFromRefList()
+										: renderCompareBaseList()}
 						</CommandList>
 					</Command>
 				</PopoverContent>
@@ -515,14 +963,11 @@ export function ChangesHeader({
 				/>
 			</div>
 			<div className="flex items-center gap-0.5 px-2 pb-1.5 min-w-0">
-				<div className="shrink-0">
-					<BaseBranchSelector worktreePath={worktreePath} />
-				</div>
-				<span className="shrink-0 text-xs text-muted-foreground/50">→</span>
-				<div className="min-w-0 flex-1">
+				<div className="min-w-0">
 					<CurrentBranchSelector
 						worktreePath={worktreePath}
 						hasUncommittedChanges={hasUncommittedChanges}
+						onRefresh={onRefresh}
 					/>
 				</div>
 				<Tooltip>

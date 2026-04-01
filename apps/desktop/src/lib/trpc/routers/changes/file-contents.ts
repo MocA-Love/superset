@@ -1,17 +1,16 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { FileContents } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
 import type { SimpleGit } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { toRegisteredWorktreeRelativePath } from "../workspace-fs-service";
-import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
-import { getProcessEnvWithShellPath } from "../workspaces/utils/shell-env";
+import {
+	execGitWithShellPathBuffer,
+	getSimpleGitWithShellPath,
+} from "../workspaces/utils/git-client";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 const MAX_BINARY_FILE_SIZE = 10 * 1024 * 1024;
-const execFileAsync = promisify(execFile);
 
 export const createFileContentsRouter = () => {
 	return router({
@@ -83,18 +82,14 @@ export const createFileContentsRouter = () => {
 				}
 
 				try {
-					const env = await getProcessEnvWithShellPath();
-					const { stdout } = await execFileAsync(
-						"git",
+					const { stdout } = await execGitWithShellPathBuffer(
 						["cat-file", "-p", spec],
 						{
 							cwd: input.worktreePath,
-							encoding: "buffer",
 							maxBuffer: MAX_BINARY_FILE_SIZE,
-							env,
 						},
 					);
-					return { content: (stdout as unknown as Buffer).toString("base64") };
+					return { content: stdout.toString("base64") };
 				} catch {
 					return { content: null };
 				}
