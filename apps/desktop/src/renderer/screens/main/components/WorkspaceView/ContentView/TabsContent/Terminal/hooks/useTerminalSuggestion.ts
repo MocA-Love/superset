@@ -23,6 +23,7 @@ export interface UseTerminalSuggestionReturn {
 	prefix: string;
 	activeSuggestionRef: React.MutableRefObject<ActiveSuggestionHandle | null>;
 	deleteSuggestion: (cmd: string) => void;
+	canOpenHistorySuggestions: () => boolean;
 	openHistorySuggestions: () => void;
 }
 
@@ -122,14 +123,29 @@ export function useTerminalSuggestion({
 		[hasReceivedPromptMarkerRef, isAlternateScreenRef, isAtPromptRef],
 	);
 
-	const openHistorySuggestions = useCallback(() => {
+	const canOpenHistorySuggestions = useCallback(() => {
 		const promptBlocked =
 			hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
 		if (!enabledRef.current || isAlternateScreenRef.current || promptBlocked) {
+			return false;
+		}
+
+		const prefix = commandBufferRef.current;
+		return Boolean(prefix);
+	}, [
+		commandBufferRef,
+		hasReceivedPromptMarkerRef,
+		isAlternateScreenRef,
+		isAtPromptRef,
+	]);
+
+	const openHistorySuggestions = useCallback(() => {
+		if (!canOpenHistorySuggestions()) {
 			return;
 		}
 
 		const prefix = commandBufferRef.current;
+
 		requestTokenRef.current += 1;
 		isOpenRef.current = true;
 		setIsOpen(true);
@@ -142,13 +158,7 @@ export function useTerminalSuggestion({
 		}
 
 		void fetchSuggestions(prefix);
-	}, [
-		commandBufferRef,
-		fetchSuggestions,
-		hasReceivedPromptMarkerRef,
-		isAlternateScreenRef,
-		isAtPromptRef,
-	]);
+	}, [canOpenHistorySuggestions, commandBufferRef, fetchSuggestions]);
 
 	useEffect(() => {
 		const promptBlocked =
@@ -170,6 +180,10 @@ export function useTerminalSuggestion({
 		const id = setInterval(() => {
 			const current = commandBufferRef.current;
 			if (current === lastPrefixRef.current) return;
+			if (!current) {
+				dismiss();
+				return;
+			}
 			lastPrefixRef.current = current;
 			setTrackedInput(current);
 
@@ -190,7 +204,7 @@ export function useTerminalSuggestion({
 				fetchTimerRef.current = null;
 			}
 		};
-	}, [commandBufferRef, fetchSuggestions, isOpen]);
+	}, [commandBufferRef, dismiss, fetchSuggestions, isOpen]);
 
 	const displaySuggestions = historySuggestions;
 
@@ -310,6 +324,7 @@ export function useTerminalSuggestion({
 		prefix: trackedInput,
 		activeSuggestionRef,
 		deleteSuggestion,
+		canOpenHistorySuggestions,
 		openHistorySuggestions,
 	};
 }

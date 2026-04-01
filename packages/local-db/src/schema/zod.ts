@@ -33,6 +33,7 @@ export const pullRequestCommentSchema = z.object({
 	createdAt: z.number().optional(),
 	url: z.string().optional(),
 	kind: z.enum(["review", "conversation"]).optional(),
+	threadId: z.string().optional(),
 	path: z.string().optional(),
 	line: z.number().optional(),
 	isResolved: z.boolean().optional(),
@@ -62,6 +63,7 @@ export const gitHubStatusSchema = z.object({
 			checks: z.array(checkItemSchema),
 			comments: z.array(pullRequestCommentSchema).optional(),
 			requestedReviewers: z.array(z.string()).optional(),
+			assignees: z.array(z.string()).optional(),
 		})
 		.nullable(),
 	repoUrl: z.string(),

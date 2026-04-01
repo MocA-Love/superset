@@ -1,5 +1,8 @@
 import { JSONFilePreset } from "lowdb/node";
-import { APP_STATE_PATH } from "../app-environment";
+import {
+	APP_STATE_PATH,
+	ensureSupersetHomeDirExists,
+} from "../app-environment";
 import type { AppState } from "./schemas";
 import { defaultAppState } from "./schemas";
 
@@ -36,6 +39,7 @@ function ensureValidShape(data: Partial<AppState>): AppState {
 export async function initAppState(): Promise<void> {
 	if (_appState) return;
 
+	ensureSupersetHomeDirExists();
 	_appState = await JSONFilePreset<AppState>(APP_STATE_PATH, defaultAppState);
 
 	// Reshape data to ensure it has the correct structure (handles legacy formats)

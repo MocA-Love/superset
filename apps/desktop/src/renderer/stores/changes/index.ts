@@ -1,1 +1,1 @@
-export { useChangesStore } from "./store";
+export { DEFAULT_DIFFS_PANE_PERCENTAGE, useChangesStore } from "./store";

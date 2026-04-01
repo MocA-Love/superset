@@ -27,6 +27,7 @@ import {
 export interface PullRequestCommentsTarget {
 	prNumber: number;
 	repoContext: Pick<RepoContext, "repoUrl" | "upstreamUrl" | "isFork">;
+	prUrl?: string | null;
 }
 
 export { clearGitHubCachesForWorktree };
@@ -34,6 +35,13 @@ export { clearGitHubCachesForWorktree };
 function getPullRequestCommentsRepoNameWithOwner(
 	target: PullRequestCommentsTarget,
 ): string | null {
+	const prRepoNameWithOwner = target.prUrl
+		? extractNwoFromUrl(target.prUrl)
+		: null;
+	if (prRepoNameWithOwner) {
+		return prRepoNameWithOwner;
+	}
+
 	const targetUrl = target.repoContext.isFork
 		? target.repoContext.upstreamUrl
 		: target.repoContext.repoUrl;
@@ -75,6 +83,7 @@ async function resolvePullRequestCommentsTarget(
 	return {
 		prNumber: prInfo.number,
 		repoContext,
+		prUrl: prInfo.url,
 	};
 }
 

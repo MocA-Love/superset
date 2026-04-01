@@ -1,7 +1,7 @@
 import type { CheckItem, GitHubStatus } from "@superset/local-db";
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
-import { getPullRequestRepoArgs } from "./repo-context";
+import { getPullRequestRepoNames } from "./repo-context";
 import {
 	type GHPRResponse,
 	GHPRResponseSchema,
@@ -9,7 +9,17 @@ import {
 } from "./types";
 
 const PR_JSON_FIELDS =
-	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepository,headRepositoryOwner,isCrossRepository,reviewDecision,statusCheckRollup,reviewRequests";
+	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepository,headRepositoryOwner,isCrossRepository,reviewDecision,statusCheckRollup,reviewRequests,assignees";
+
+function getPullRequestRepoArgSets(repoContext?: RepoContext): string[][] {
+	const repoNames = getPullRequestRepoNames(repoContext);
+
+	if (repoNames.length === 0) {
+		return [[]];
+	}
+
+	return repoNames.map((repoName) => ["--repo", repoName]);
+}
 
 export async function getPRForBranch(
 	worktreePath: string,
@@ -213,29 +223,46 @@ async function findPRByHeadBranch(
 ): Promise<GitHubStatus["pr"]> {
 	try {
 		const matches = new Map<number, GHPRResponse>();
+		const repoArgSets = getPullRequestRepoArgSets(repoContext);
 
-		for (const branchCandidate of getPRHeadBranchCandidates(localBranch)) {
-			const { stdout } = await execWithShellEnv(
-				"gh",
-				[
-					"pr",
-					"list",
-					...getPullRequestRepoArgs(repoContext),
-					"--state",
-					"all",
-					"--head",
-					branchCandidate,
-					"--limit",
-					"20",
-					"--json",
-					PR_JSON_FIELDS,
-				],
-				{ cwd: worktreePath },
-			);
+		for (const repoArgs of repoArgSets) {
+			for (const branchCandidate of getPRHeadBranchCandidates(localBranch)) {
+				let stdout: string;
+				try {
+					({ stdout } = await execWithShellEnv(
+						"gh",
+						[
+							"pr",
+							"list",
+							...repoArgs,
+							"--state",
+							"all",
+							"--head",
+							branchCandidate,
+							"--limit",
+							"20",
+							"--json",
+							PR_JSON_FIELDS,
+						],
+						{ cwd: worktreePath },
+					));
+				} catch (error) {
+					console.warn(
+						"[GitHub/findPRByHeadBranch] Failed repo-scoped PR lookup:",
+						{
+							worktreePath,
+							repoArgs,
+							branchCandidate,
+							message: error instanceof Error ? error.message : String(error),
+						},
+					);
+					continue;
+				}
 
-			for (const candidate of parsePRListResponse(stdout)) {
-				if (shouldAcceptPRMatch({ localBranch, pr: candidate, headSha })) {
-					matches.set(candidate.number, candidate);
+				for (const candidate of parsePRListResponse(stdout)) {
+					if (shouldAcceptPRMatch({ localBranch, pr: candidate, headSha })) {
+						matches.set(candidate.number, candidate);
+					}
 				}
 			}
 		}
@@ -269,28 +296,46 @@ async function findPRByHeadCommit(
 			return null;
 		}
 
-		const { stdout } = await execWithShellEnv(
-			"gh",
-			[
-				"pr",
-				"list",
-				...getPullRequestRepoArgs(repoContext),
-				"--state",
-				"all",
-				"--search",
-				`${headSha} is:pr`,
-				"--limit",
-				"20",
-				"--json",
-				PR_JSON_FIELDS,
-			],
-			{ cwd: worktreePath },
-		);
+		const exactHeadMatches: GHPRResponse[] = [];
+		for (const repoArgs of getPullRequestRepoArgSets(repoContext)) {
+			let stdout: string;
+			try {
+				({ stdout } = await execWithShellEnv(
+					"gh",
+					[
+						"pr",
+						"list",
+						...repoArgs,
+						"--state",
+						"all",
+						"--search",
+						`${headSha} is:pr`,
+						"--limit",
+						"20",
+						"--json",
+						PR_JSON_FIELDS,
+					],
+					{ cwd: worktreePath },
+				));
+			} catch (error) {
+				console.warn(
+					"[GitHub/findPRByHeadCommit] Failed repo-scoped PR lookup:",
+					{
+						worktreePath,
+						repoArgs,
+						headSha,
+						message: error instanceof Error ? error.message : String(error),
+					},
+				);
+				continue;
+			}
 
-		const candidates = parsePRListResponse(stdout);
-		const exactHeadMatches = candidates.filter(
-			(candidate) => candidate.headRefOid === headSha,
-		);
+			const candidates = parsePRListResponse(stdout);
+			exactHeadMatches.push(
+				...candidates.filter((candidate) => candidate.headRefOid === headSha),
+			);
+		}
+
 		const bestMatch = sortPRCandidates(exactHeadMatches, headSha)[0];
 		if (bestMatch) {
 			return formatPRData(bestMatch);
@@ -375,6 +420,7 @@ function formatPRData(data: GHPRResponse): NonNullable<GitHubStatus["pr"]> {
 		checksStatus: computeChecksStatus(data.statusCheckRollup),
 		checks: parseChecks(data.statusCheckRollup),
 		requestedReviewers: parseReviewRequests(data.reviewRequests),
+		assignees: parseAssignees(data.assignees),
 	};
 }
 
@@ -383,6 +429,11 @@ function parseReviewRequests(
 ): string[] {
 	if (!requests || requests.length === 0) return [];
 	return requests.map((r) => r.login || r.slug || r.name || "").filter(Boolean);
+}
+
+function parseAssignees(assignees: GHPRResponse["assignees"]): string[] {
+	if (!assignees || assignees.length === 0) return [];
+	return assignees.map((assignee) => assignee.login || "").filter(Boolean);
 }
 
 function mapPRState(

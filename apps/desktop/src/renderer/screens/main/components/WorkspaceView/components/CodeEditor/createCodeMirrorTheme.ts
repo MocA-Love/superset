@@ -51,6 +51,11 @@ export function createCodeMirrorTheme(
 			".cm-activeLineGutter": {
 				backgroundColor: editorTheme.colors.activeLine,
 			},
+			".cm-line.cm-jump-highlight, .cm-line.cm-jump-highlight.cm-activeLine": {
+				backgroundColor: `${editorTheme.colors.searchActive}55`,
+				boxShadow: `inset 3px 0 0 ${editorTheme.colors.searchActive}, inset 0 0 0 9999px ${editorTheme.colors.searchActive}22`,
+				transition: "background-color 1.2s ease-out, box-shadow 1.2s ease-out",
+			},
 			"&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
 				{
 					backgroundColor: editorTheme.colors.selection,

@@ -3,7 +3,7 @@ import type { SimpleGit } from "simple-git";
 import { z } from "zod";
 import { execGitWithShellPath } from "../../workspaces/utils/git-client";
 import { getRepoContext } from "../../workspaces/utils/github";
-import { getPullRequestRepoArgs } from "../../workspaces/utils/github/repo-context";
+import { getPullRequestRepoNames } from "../../workspaces/utils/github/repo-context";
 import { execWithShellEnv } from "../../workspaces/utils/shell-env";
 import {
 	buildPullRequestCompareUrl,
@@ -24,32 +24,57 @@ async function findOpenPRByHeadCommit(
 			return null;
 		}
 
-		const repoArgs = getPullRequestRepoArgs(await getRepoContext(worktreePath));
-
-		const { stdout } = await execWithShellEnv(
-			"gh",
-			[
-				"pr",
-				"list",
-				...repoArgs,
-				"--state",
-				"open",
-				"--search",
-				`${headSha} is:pr`,
-				"--limit",
-				"20",
-				"--json",
-				"url,headRefOid",
-			],
-			{ cwd: worktreePath },
+		const repoNames = getPullRequestRepoNames(
+			await getRepoContext(worktreePath),
 		);
+		const repoArgSets =
+			repoNames.length > 0
+				? repoNames.map((repoName) => ["--repo", repoName])
+				: [[]];
 
-		const parsed = JSON.parse(stdout) as Array<{
-			url?: string;
-			headRefOid?: string;
-		}>;
-		const match = parsed.find((candidate) => candidate.headRefOid === headSha);
-		return match?.url?.trim() || null;
+		for (const repoArgs of repoArgSets) {
+			try {
+				const { stdout } = await execWithShellEnv(
+					"gh",
+					[
+						"pr",
+						"list",
+						...repoArgs,
+						"--state",
+						"open",
+						"--search",
+						`${headSha} is:pr`,
+						"--limit",
+						"20",
+						"--json",
+						"url,headRefOid",
+					],
+					{ cwd: worktreePath },
+				);
+
+				const parsed = JSON.parse(stdout) as Array<{
+					url?: string;
+					headRefOid?: string;
+				}>;
+				const match = parsed.find(
+					(candidate) => candidate.headRefOid === headSha,
+				);
+				if (match?.url?.trim()) {
+					return match.url.trim();
+				}
+			} catch (error) {
+				console.warn(
+					"[git/findExistingOpenPRUrl] Failed repo-scoped commit-based PR lookup:",
+					{
+						worktreePath,
+						repoArgs,
+						message: error instanceof Error ? error.message : String(error),
+					},
+				);
+			}
+		}
+
+		return null;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(

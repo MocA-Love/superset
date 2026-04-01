@@ -1308,6 +1308,13 @@ export class TerminalHostClient extends EventEmitter {
 		});
 	}
 
+	private isCreateOrAttachTimeoutError(error: unknown): boolean {
+		return (
+			error instanceof Error &&
+			error.message === "Request timeout: createOrAttach"
+		);
+	}
+
 	/**
 	 * Send a notification (no pending request / no timeout).
 	 *
@@ -1374,19 +1381,10 @@ export class TerminalHostClient extends EventEmitter {
 		return `${sessionId}:${requestId}`;
 	}
 
-	// ===========================================================================
-	// Public API
-	// ===========================================================================
-
-	/**
-	 * Create or attach to a terminal session
-	 */
-	async createOrAttach(
+	private throwIfCreateOrAttachCanceled(
 		request: CreateOrAttachRequest,
 		signal?: AbortSignal,
-	): Promise<CreateOrAttachResponse> {
-		throwIfAborted(signal);
-		await this.ensureConnected();
+	): void {
 		throwIfAborted(signal);
 		if (
 			request.requestId &&
@@ -1399,10 +1397,40 @@ export class TerminalHostClient extends EventEmitter {
 		) {
 			throw new TerminalAttachCanceledError();
 		}
-		const response = await this.sendRequest<CreateOrAttachResponse>(
-			"createOrAttach",
-			request,
-		);
+	}
+
+	// ===========================================================================
+	// Public API
+	// ===========================================================================
+
+	/**
+	 * Create or attach to a terminal session
+	 */
+	async createOrAttach(
+		request: CreateOrAttachRequest,
+		signal?: AbortSignal,
+	): Promise<CreateOrAttachResponse> {
+		this.throwIfCreateOrAttachCanceled(request, signal);
+		await this.ensureConnected();
+		this.throwIfCreateOrAttachCanceled(request, signal);
+		let response: CreateOrAttachResponse;
+		try {
+			response = await this.sendRequest<CreateOrAttachResponse>(
+				"createOrAttach",
+				request,
+			);
+		} catch (error) {
+			if (!this.isCreateOrAttachTimeoutError(error)) {
+				throw error;
+			}
+			this.resetConnectionState({ emitDisconnected: false });
+			await this.ensureConnected();
+			this.throwIfCreateOrAttachCanceled(request, signal);
+			response = await this.sendRequest<CreateOrAttachResponse>(
+				"createOrAttach",
+				request,
+			);
+		}
 		// Version skew: older daemons may not return pid - normalize undefined → null
 		return { ...response, pid: response.pid ?? null };
 	}

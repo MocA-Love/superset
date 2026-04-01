@@ -32,6 +32,10 @@ export const GHReviewRequestSchema = z.object({
 	type: z.enum(["User", "Team"]).optional(),
 });
 
+export const GHUserSchema = z.object({
+	login: z.string().optional(),
+});
+
 export const GHCommentAuthorSchema = z.object({
 	login: z.string().optional(),
 	avatar_url: z.string().optional(),
@@ -76,6 +80,21 @@ export const GHReviewThreadCommentSchema = z.object({
 export const GHPageInfoSchema = z.object({
 	hasNextPage: z.boolean(),
 	endCursor: z.string().nullable(),
+});
+
+export const GHUsersConnectionSchema = z.object({
+	nodes: z.array(GHUserSchema.nullable()).optional(),
+	pageInfo: GHPageInfoSchema,
+});
+
+export const GHIdentityCandidatesResponseSchema = z.object({
+	data: z.object({
+		repository: z
+			.object({
+				users: GHUsersConnectionSchema,
+			})
+			.nullable(),
+	}),
 });
 
 export const GHReviewThreadCommentsConnectionSchema = z.object({
@@ -155,6 +174,7 @@ export const GHPRResponseSchema = z.object({
 	statusCheckRollup: z.array(GHCheckContextSchema).nullable(),
 	comments: z.array(GHCommentSchema).nullable().optional(),
 	reviewRequests: z.array(GHReviewRequestSchema).nullable().optional(),
+	assignees: z.array(GHUserSchema).nullable().optional(),
 });
 
 export const GHRepoResponseSchema = z.object({

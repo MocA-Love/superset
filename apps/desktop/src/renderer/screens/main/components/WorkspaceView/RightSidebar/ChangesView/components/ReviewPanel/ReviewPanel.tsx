@@ -1,10 +1,19 @@
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
 import { Avatar, AvatarFallback, AvatarImage } from "@superset/ui/avatar";
+import { Button } from "@superset/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@superset/ui/collapsible";
+import {
+	Command,
+	CommandEmpty,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@superset/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
@@ -15,6 +24,8 @@ import {
 	LuChevronDown,
 	LuCode,
 	LuCopy,
+	LuLoaderCircle,
+	LuX,
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
 import ReactMarkdown from "react-markdown";
@@ -81,12 +92,33 @@ const CommentBody = memo(function CommentBody({
 	);
 });
 
+function buildIdentitySummary(items: string[]): string {
+	if (items.length === 0) {
+		return "None";
+	}
+
+	if (items.length <= 2) {
+		return items.join(", ");
+	}
+
+	return `${items.slice(0, 2).join(", ")} +${items.length - 2}`;
+}
+
 interface ReviewPanelProps {
 	pr: GitHubStatus["pr"] | null;
 	comments?: PullRequestComment[];
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
+	commentsQueryInput?: {
+		workspaceId: string;
+		prNumber?: number;
+		prUrl?: string;
+		repoUrl?: string;
+		upstreamUrl?: string;
+		isFork?: boolean;
+	};
 	onOpenFile?: (path: string, line?: number) => void;
+	onRefreshReview?: (scope?: "full" | "status") => Promise<void>;
 }
 
 export function ReviewPanel({
@@ -94,9 +126,12 @@ export function ReviewPanel({
 	comments = [],
 	isLoading = false,
 	isCommentsLoading = false,
+	commentsQueryInput,
 	onOpenFile,
+	onRefreshReview,
 }: ReviewPanelProps) {
 	const resolvedWorkspaceId = useWorkspaceId();
+	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
 	const handleOpenUrl = useCallback(
 		(url: string, e: React.MouseEvent) => {
@@ -118,10 +153,47 @@ export function ReviewPanel({
 	const [expandedComments, setExpandedComments] = useState<Set<string>>(
 		new Set(),
 	);
+	const [reviewerSearch, setReviewerSearch] = useState("");
+	const [assigneeSearch, setAssigneeSearch] = useState("");
+	const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
+	const [isDraftTogglePending, setIsDraftTogglePending] = useState(false);
+	const [identityPopoverOpen, setIdentityPopoverOpen] = useState<
+		"reviewers" | "assignees" | null
+	>(null);
+	const [pendingIdentityGroup, setPendingIdentityGroup] = useState<
+		"reviewers" | "assignees" | null
+	>(null);
 	const copiedActionResetTimeoutRef = useRef<ReturnType<
 		typeof setTimeout
 	> | null>(null);
 	const copyToClipboardMutation = electronTrpc.external.copyText.useMutation();
+	const setPullRequestDraftStateMutation =
+		electronTrpc.workspaces.setPullRequestDraftState.useMutation();
+	const setPullRequestThreadResolutionMutation =
+		electronTrpc.workspaces.setPullRequestThreadResolution.useMutation();
+	const updatePullRequestReviewersMutation =
+		electronTrpc.workspaces.updatePullRequestReviewers.useMutation();
+	const updatePullRequestAssigneesMutation =
+		electronTrpc.workspaces.updatePullRequestAssignees.useMutation();
+	const candidateKind =
+		identityPopoverOpen === "assignees" ? "assignee" : "reviewer";
+	const canEditPullRequest = pr?.state === "open" || pr?.state === "draft";
+	const {
+		data: identityCandidates = [],
+		isLoading: isIdentityCandidatesLoading,
+	} = electronTrpc.workspaces.getPullRequestIdentityCandidates.useQuery(
+		{
+			workspaceId: resolvedWorkspaceId ?? "",
+			kind: candidateKind,
+			pullRequestUrl: pr?.url,
+		},
+		{
+			enabled:
+				!!resolvedWorkspaceId && !!identityPopoverOpen && !!canEditPullRequest,
+			staleTime: 60_000,
+			refetchOnWindowFocus: false,
+		},
+	);
 
 	useEffect(() => {
 		return () => {
@@ -169,6 +241,121 @@ export function ReviewPanel({
 		});
 	};
 
+	const refreshReview = async (scope: "full" | "status" = "full") => {
+		if (!onRefreshReview) {
+			return;
+		}
+
+		await onRefreshReview(scope);
+	};
+
+	const handleToggleDraftState = () => {
+		if (!resolvedWorkspaceId || !pr) {
+			return;
+		}
+
+		const nextIsDraft = pr.state !== "draft";
+		const previousState = pr.state;
+
+		setIsDraftTogglePending(true);
+		trpcUtils.workspaces.getGitHubStatus.setData(
+			{ workspaceId: resolvedWorkspaceId },
+			(current) => {
+				if (!current?.pr) {
+					return current;
+				}
+
+				return {
+					...current,
+					pr: {
+						...current.pr,
+						state: nextIsDraft ? "draft" : "open",
+					},
+				};
+			},
+		);
+
+		void setPullRequestDraftStateMutation
+			.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				isDraft: nextIsDraft,
+			})
+			.then(() => refreshReview("status"))
+			.catch((error) => {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				trpcUtils.workspaces.getGitHubStatus.setData(
+					{ workspaceId: resolvedWorkspaceId },
+					(current) => {
+						if (!current?.pr) {
+							return current;
+						}
+
+						return {
+							...current,
+							pr: {
+								...current.pr,
+								state: previousState,
+							},
+						};
+					},
+				);
+				toast.error(`Failed to update pull request: ${message}`);
+				void refreshReview("status");
+			})
+			.finally(() => {
+				setIsDraftTogglePending(false);
+			});
+	};
+
+	const handleToggleThreadResolution = (comment: PullRequestComment) => {
+		if (!resolvedWorkspaceId || !comment.threadId) {
+			return;
+		}
+
+		const nextResolved = comment.isResolved !== true;
+		const updateThreadResolutionInCache = (isResolved: boolean) => {
+			if (!commentsQueryInput) {
+				return;
+			}
+
+			trpcUtils.workspaces.getGitHubPRComments.setData(
+				commentsQueryInput,
+				(current) =>
+					(current ?? []).map((item) =>
+						item.threadId === comment.threadId
+							? {
+									...item,
+									isResolved,
+								}
+							: item,
+					),
+			);
+		};
+
+		setPendingThreadId(comment.threadId);
+		updateThreadResolutionInCache(nextResolved);
+		void setPullRequestThreadResolutionMutation
+			.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				threadId: comment.threadId,
+				isResolved: nextResolved,
+			})
+			.then(() => refreshReview("full"))
+			.catch((error) => {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				updateThreadResolutionInCache(comment.isResolved === true);
+				toast.error(`Failed to update conversation: ${message}`);
+				void refreshReview("full");
+			})
+			.finally(() => {
+				setPendingThreadId((current) =>
+					current === comment.threadId ? null : current,
+				);
+			});
+	};
+
 	const toggleCheckExpansion = (checkName: string) => {
 		setExpandedChecks((prev) => {
 			const next = new Set(prev);
@@ -193,6 +380,89 @@ export function ReviewPanel({
 		});
 	};
 
+	const applyOptimisticMemberUpdate = useCallback(
+		({
+			kind,
+			add = [],
+			remove = [],
+		}: {
+			kind: "reviewer" | "assignee";
+			add?: string[];
+			remove?: string[];
+		}) => {
+			if (!resolvedWorkspaceId) {
+				return;
+			}
+
+			const normalizedAdd = Array.from(
+				new Set(add.map((value) => value.trim()).filter(Boolean)),
+			);
+			const normalizedRemove = new Set(
+				remove.map((value) => value.trim()).filter(Boolean),
+			);
+
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId: resolvedWorkspaceId },
+				(current) => {
+					if (!current?.pr) {
+						return current;
+					}
+
+					const existingValues =
+						kind === "reviewer"
+							? (current.pr.requestedReviewers ?? [])
+							: (current.pr.assignees ?? []);
+					const nextValues = Array.from(
+						new Set(
+							existingValues
+								.filter((value) => !normalizedRemove.has(value))
+								.concat(normalizedAdd),
+						),
+					);
+
+					return {
+						...current,
+						pr: {
+							...current.pr,
+							...(kind === "reviewer"
+								? { requestedReviewers: nextValues }
+								: { assignees: nextValues }),
+						},
+					};
+				},
+			);
+		},
+		[resolvedWorkspaceId, trpcUtils],
+	);
+
+	const restoreOptimisticMemberUpdate = useCallback(
+		({ kind, values }: { kind: "reviewer" | "assignee"; values: string[] }) => {
+			if (!resolvedWorkspaceId) {
+				return;
+			}
+
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId: resolvedWorkspaceId },
+				(current) => {
+					if (!current?.pr) {
+						return current;
+					}
+
+					return {
+						...current,
+						pr: {
+							...current.pr,
+							...(kind === "reviewer"
+								? { requestedReviewers: values }
+								: { assignees: values }),
+						},
+					};
+				},
+			);
+		},
+		[resolvedWorkspaceId, trpcUtils],
+	);
+
 	if (isLoading && !pr) {
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -210,6 +480,7 @@ export function ReviewPanel({
 	}
 
 	const requestedReviewers = pr.requestedReviewers ?? [];
+	const assignees = pr.assignees ?? [];
 
 	const relevantChecks = pr.checks.filter(
 		(check) => check.status !== "skipped" && check.status !== "cancelled",
@@ -238,8 +509,263 @@ export function ReviewPanel({
 		});
 	};
 
+	const updateReviewers = async ({
+		add = [],
+		remove = [],
+		onSuccess,
+	}: {
+		add?: string[];
+		remove?: string[];
+		onSuccess?: () => void;
+	}) => {
+		if (!resolvedWorkspaceId || pendingIdentityGroup === "reviewers") {
+			return;
+		}
+
+		const previousReviewers = [...requestedReviewers];
+		setPendingIdentityGroup("reviewers");
+		try {
+			applyOptimisticMemberUpdate({
+				kind: "reviewer",
+				add,
+				remove,
+			});
+			await updatePullRequestReviewersMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				add,
+				remove,
+				pullRequestNumber: pr?.number,
+				pullRequestUrl: pr?.url,
+			});
+			onSuccess?.();
+			void refreshReview("status");
+		} catch (error) {
+			restoreOptimisticMemberUpdate({
+				kind: "reviewer",
+				values: previousReviewers,
+			});
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to update reviewers: ${message}`);
+			void refreshReview("status");
+		} finally {
+			setPendingIdentityGroup((current) =>
+				current === "reviewers" ? null : current,
+			);
+		}
+	};
+
+	const updateAssignees = async ({
+		add = [],
+		remove = [],
+		onSuccess,
+	}: {
+		add?: string[];
+		remove?: string[];
+		onSuccess?: () => void;
+	}) => {
+		if (!resolvedWorkspaceId || pendingIdentityGroup === "assignees") {
+			return;
+		}
+
+		const previousAssignees = [...assignees];
+		setPendingIdentityGroup("assignees");
+		try {
+			applyOptimisticMemberUpdate({
+				kind: "assignee",
+				add,
+				remove,
+			});
+			await updatePullRequestAssigneesMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				add,
+				remove,
+				pullRequestNumber: pr?.number,
+				pullRequestUrl: pr?.url,
+			});
+			onSuccess?.();
+			void refreshReview("status");
+		} catch (error) {
+			restoreOptimisticMemberUpdate({
+				kind: "assignee",
+				values: previousAssignees,
+			});
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to update assignees: ${message}`);
+			void refreshReview("status");
+		} finally {
+			setPendingIdentityGroup((current) =>
+				current === "assignees" ? null : current,
+			);
+		}
+	};
+
+	const handleRemoveReviewer = (reviewer: string) => {
+		setIdentityPopoverOpen(null);
+		setReviewerSearch("");
+		void updateReviewers({ remove: [reviewer] });
+	};
+
+	const handleRemoveAssignee = (assignee: string) => {
+		setIdentityPopoverOpen(null);
+		setAssigneeSearch("");
+		void updateAssignees({ remove: [assignee] });
+	};
+
+	const handleAddCandidate = (
+		pendingGroup: "reviewers" | "assignees",
+		candidate: string,
+	) => {
+		if (pendingIdentityGroup === pendingGroup) {
+			return;
+		}
+		setIdentityPopoverOpen(null);
+		if (pendingGroup === "assignees") {
+			setAssigneeSearch("");
+		} else {
+			setReviewerSearch("");
+		}
+
+		if (pendingGroup === "reviewers") {
+			void updateReviewers({ add: [candidate] });
+			return;
+		}
+
+		void updateAssignees({ add: [candidate] });
+	};
+
 	const isActionsUrl = (url?: string) =>
 		url ? /\/actions\/runs\/\d+\/job\/\d+/.test(url) : false;
+
+	const renderIdentitySection = ({
+		label,
+		items,
+		onRemove,
+		pendingGroup,
+	}: {
+		label: string;
+		items: string[];
+		onRemove: (value: string) => void;
+		pendingGroup: "reviewers" | "assignees";
+	}) => {
+		const isPending = pendingIdentityGroup === pendingGroup;
+		const isOpen = identityPopoverOpen === pendingGroup;
+		const summary = buildIdentitySummary(items);
+		const searchValue =
+			pendingGroup === "assignees" ? assigneeSearch : reviewerSearch;
+		const existingItems = new Set(items.map((item) => item.toLowerCase()));
+		const query = searchValue.trim().toLowerCase();
+		const filteredCandidates = !isOpen
+			? []
+			: identityCandidates
+					.filter((candidate) => !existingItems.has(candidate.toLowerCase()))
+					.filter((candidate) =>
+						query ? candidate.toLowerCase().includes(query) : true,
+					)
+					.slice(0, 8);
+
+		return (
+			<div className="rounded-sm border border-border/60 bg-muted/15 px-2 py-1.5">
+				<Popover
+					open={isOpen}
+					onOpenChange={(nextOpen) => {
+						setIdentityPopoverOpen(nextOpen ? pendingGroup : null);
+						if (!nextOpen) {
+							if (pendingGroup === "assignees") {
+								setAssigneeSearch("");
+							} else {
+								setReviewerSearch("");
+							}
+						}
+					}}
+				>
+					<PopoverTrigger asChild>
+						<button
+							type="button"
+							className="flex w-full items-center justify-between gap-2 rounded-sm text-left transition-colors hover:bg-accent/40"
+							disabled={!canEditPullRequest || isPending}
+						>
+							<div className="flex min-w-0 items-center gap-2 px-0.5">
+								<span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+									{label}
+								</span>
+								<span
+									className="truncate text-[11px] text-foreground/85"
+									title={items.join(", ")}
+								>
+									{summary}
+								</span>
+							</div>
+							<div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+								{isPending ? (
+									<LuLoaderCircle className="size-3 animate-spin" />
+								) : null}
+								<LuChevronDown
+									className={cn(
+										"size-3 transition-transform",
+										isOpen && "rotate-180",
+									)}
+								/>
+							</div>
+						</button>
+					</PopoverTrigger>
+					<PopoverContent
+						align="start"
+						className="w-[var(--radix-popover-trigger-width)] min-w-[220px] p-0"
+						onWheel={(event) => event.stopPropagation()}
+					>
+						<Command shouldFilter={false}>
+							<CommandInput
+								placeholder={`Search ${label.toLowerCase()}...`}
+								value={searchValue}
+								disabled={isPending}
+								onValueChange={
+									pendingGroup === "assignees"
+										? setAssigneeSearch
+										: setReviewerSearch
+								}
+							/>
+							<CommandList className="max-h-[240px]">
+								<CommandEmpty>
+									{isIdentityCandidatesLoading
+										? "Loading..."
+										: "No candidates found"}
+								</CommandEmpty>
+								{items.length > 0
+									? items.map((item) => (
+											<CommandItem
+												key={`${pendingGroup}-selected-${item}`}
+												value={`selected-${item}`}
+												disabled={isPending}
+												onSelect={() => onRemove(item)}
+												className="flex items-center justify-between gap-2 text-xs"
+											>
+												<div className="flex min-w-0 items-center gap-2">
+													<LuCheck className="size-3.5 shrink-0 text-primary" />
+													<span className="truncate">{item}</span>
+												</div>
+												<LuX className="size-3.5 shrink-0 text-muted-foreground" />
+											</CommandItem>
+										))
+									: null}
+								{filteredCandidates.map((candidate) => (
+									<CommandItem
+										key={`${pendingGroup}-${candidate}`}
+										value={candidate}
+										disabled={isPending}
+										onSelect={() => handleAddCandidate(pendingGroup, candidate)}
+										className="flex items-center justify-between gap-2 text-xs"
+									>
+										<span className="truncate">{candidate}</span>
+										<LuCheck className="size-3.5 shrink-0 opacity-0" />
+									</CommandItem>
+								))}
+							</CommandList>
+						</Command>
+					</PopoverContent>
+				</Popover>
+			</div>
+		);
+	};
 
 	const renderCommentList = (list: PullRequestComment[]) =>
 		list.map((comment) => {
@@ -277,55 +803,85 @@ export function ReviewPanel({
 							</AvatarFallback>
 						</Avatar>
 						<div className="min-w-0 flex-1">
-							<div className="flex items-center gap-1.5">
-								<span className="truncate text-xs font-medium text-foreground">
-									{comment.authorLogin}
-								</span>
-								<span className="shrink-0 rounded border border-border/70 bg-muted/35 px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground">
-									{getCommentKindText(comment)}
-								</span>
-								<span className="flex-1" />
+							<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2">
+								<div className="flex min-w-0 items-center gap-1.5">
+									<span className="truncate text-xs font-medium text-foreground">
+										{comment.authorLogin}
+									</span>
+									<span className="shrink-0 rounded border border-border/70 bg-muted/35 px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground">
+										{getCommentKindText(comment)}
+									</span>
+								</div>
 								{age ? (
 									<span className="shrink-0 text-[10px] text-muted-foreground">
 										{age}
 									</span>
 								) : null}
+								{!isExpanded && (
+									<p className="col-span-2 mt-0.5 truncate text-xs leading-4 text-muted-foreground">
+										{getCommentPreviewText(comment.body)}
+									</p>
+								)}
 							</div>
-							{!isExpanded && (
-								<p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">
-									{getCommentPreviewText(comment.body)}
-								</p>
-							)}
 						</div>
 					</button>
 
 					{isExpanded && (
 						<div className="px-1.5 pb-1.5">
-							{hasFileLocation && (
-								<button
-									type="button"
-									className="mb-1.5 ml-4 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
-									onClick={(e) => {
-										e.stopPropagation();
-										if (comment.path) {
-											onOpenFile?.(comment.path, comment.line);
-										}
-									}}
-								>
-									<LuCode className="size-3" />
-									<span className="truncate">
-										{comment.path}
-										{comment.line ? `:${comment.line}` : ""}
-									</span>
-								</button>
-							)}
+							{hasFileLocation || comment.threadId ? (
+								<div className="mb-1.5 ml-4 flex items-center gap-1.5">
+									{hasFileLocation ? (
+										<button
+											type="button"
+											className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
+											onClick={(e) => {
+												e.stopPropagation();
+												if (comment.path) {
+													onOpenFile?.(comment.path, comment.line);
+												}
+											}}
+										>
+											<LuCode className="size-3" />
+											<span className="truncate">
+												{comment.path}
+												{comment.line ? `:${comment.line}` : ""}
+											</span>
+										</button>
+									) : null}
+									{comment.threadId ? (
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											className="h-5 px-1.5 text-[10px]"
+											onClick={(e) => {
+												e.stopPropagation();
+												handleToggleThreadResolution(comment);
+											}}
+											disabled={pendingThreadId === comment.threadId}
+										>
+											{pendingThreadId === comment.threadId ? (
+												<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+											) : null}
+											{comment.isResolved
+												? "Unresolve conversation"
+												: "Resolve conversation"}
+										</Button>
+									) : null}
+								</div>
+							) : null}
 							<div className="review-comment-body ml-4 break-words text-xs leading-5 text-foreground/90">
 								<CommentBody body={comment.body} onOpenUrl={handleOpenUrl} />
 							</div>
 						</div>
 					)}
 
-					<div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+					<div
+						className={cn(
+							"absolute right-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+							"top-1",
+						)}
+					>
 						{comment.url ? (
 							<button
 								type="button"
@@ -374,20 +930,51 @@ export function ReviewPanel({
 					</span>
 					<LuArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100" />
 				</button>
-				<div className="flex items-center gap-1.5">
-					<span
-						className={cn(
-							"shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium",
-							reviewDecisionConfig[pr.reviewDecision].className,
-						)}
-					>
-						{reviewDecisionConfig[pr.reviewDecision].label}
-					</span>
-					{requestedReviewers.length > 0 && (
-						<span className="truncate text-[10px] text-muted-foreground">
-							Awaiting {requestedReviewers.join(", ")}
+				<div className="flex items-center justify-between gap-2">
+					<div className="flex min-w-0 items-center gap-1.5">
+						<span
+							className={cn(
+								"shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium",
+								reviewDecisionConfig[pr.reviewDecision].className,
+							)}
+						>
+							{reviewDecisionConfig[pr.reviewDecision].label}
 						</span>
-					)}
+						{requestedReviewers.length > 0 && (
+							<span className="truncate text-[10px] text-muted-foreground">
+								Awaiting {requestedReviewers.join(", ")}
+							</span>
+						)}
+					</div>
+					{pr.state === "open" || pr.state === "draft" ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-6 shrink-0 px-2 text-[10px]"
+							onClick={handleToggleDraftState}
+							disabled={isDraftTogglePending}
+						>
+							{isDraftTogglePending ? (
+								<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+							) : null}
+							{pr.state === "draft" ? "Ready for review" : "Convert to draft"}
+						</Button>
+					) : null}
+				</div>
+				<div className="grid grid-cols-2 gap-1.5">
+					{renderIdentitySection({
+						label: "Assignees",
+						items: assignees,
+						onRemove: handleRemoveAssignee,
+						pendingGroup: "assignees",
+					})}
+					{renderIdentitySection({
+						label: "Reviewers",
+						items: requestedReviewers,
+						onRemove: handleRemoveReviewer,
+						pendingGroup: "reviewers",
+					})}
 				</div>
 			</div>
 

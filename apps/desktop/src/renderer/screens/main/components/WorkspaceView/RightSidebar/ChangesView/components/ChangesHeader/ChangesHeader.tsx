@@ -1,14 +1,4 @@
 import type { GitHubStatus } from "@superset/local-db";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@superset/ui/alert-dialog";
 import { Button } from "@superset/ui/button";
 import {
 	Command,
@@ -51,6 +41,11 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
 import type { ChangesViewMode } from "../../types";
 import { ViewModeToggle } from "../ViewModeToggle";
+import {
+	BranchActionDialog,
+	type BranchActionDialogState,
+	type BranchProgressOperation,
+} from "./components/BranchActionDialog";
 import { PRButton } from "./components/PRButton";
 
 const BRANCH_QUERY_STALE_TIME_MS = 10_000;
@@ -61,17 +56,22 @@ interface ChangesHeaderProps {
 	onViewModeChange: (mode: ChangesViewMode) => void;
 	showViewModeToggle?: boolean;
 	worktreePath: string;
+	currentBranch?: string | null;
 	pr: GitHubStatus["pr"] | null;
 	isPRStatusLoading: boolean;
 	canCreatePR: boolean;
 	createPRBlockedReason: string | null;
 	onStash: () => void;
+	onStashAsync: () => Promise<void>;
 	onStashIncludeUntracked: () => void;
+	onStashIncludeUntrackedAsync: () => Promise<void>;
 	onStashPop: () => void;
 	isStashPending: boolean;
 	onGenerateCommitMessage: () => void;
 	isGeneratingCommitMessage: boolean;
 	hasUncommittedChanges: boolean;
+	hasUntrackedFiles: boolean;
+	hasConflictedFiles: boolean;
 	isGitGraphOpen: boolean;
 	onToggleGitGraph: () => void;
 }
@@ -113,6 +113,46 @@ interface SearchableRefItem {
 	authorName: string | null;
 	subject: string | null;
 	checkedOutPath: string | null;
+}
+
+function isCheckedOutElsewhereMessage(message: string): boolean {
+	const normalized = message.toLowerCase();
+	return (
+		normalized.includes("already checked out") ||
+		normalized.includes("already used by worktree")
+	);
+}
+
+function isGitBusyMessage(message: string): boolean {
+	const normalized = message.toLowerCase();
+	return (
+		normalized.includes("could not lock") ||
+		normalized.includes("unable to lock") ||
+		(normalized.includes(".lock") && normalized.includes("file exists"))
+	);
+}
+
+function isReferenceMissingMessage(message: string): boolean {
+	const normalized = message.toLowerCase();
+	return (
+		(normalized.includes("pathspec") && normalized.includes("did not match")) ||
+		normalized.includes("invalid reference") ||
+		normalized.includes("unknown revision") ||
+		normalized.includes("not a valid object name") ||
+		normalized.includes("cannot be resolved to branch")
+	);
+}
+
+function isOverwriteConflictMessage(message: string): boolean {
+	return (
+		message.includes("overwritten") ||
+		message.includes("conflict") ||
+		message.includes("Please commit") ||
+		message.includes("would be overwritten") ||
+		message.includes("上書き") ||
+		message.includes("コミット") ||
+		message.includes("スタッシュ")
+	);
 }
 
 function getSearchableRefIcon(ref: Pick<SearchableRefItem, "kind" | "scope">) {
@@ -263,11 +303,23 @@ function BranchRefCommandItem({
 
 function CurrentBranchSelector({
 	worktreePath,
+	currentBranch,
 	hasUncommittedChanges,
+	hasUntrackedFiles,
+	hasConflictedFiles,
+	isStashPending,
+	onStashAsync,
+	onStashIncludeUntrackedAsync,
 	onRefresh,
 }: {
 	worktreePath: string;
+	currentBranch?: string | null;
 	hasUncommittedChanges: boolean;
+	hasUntrackedFiles: boolean;
+	hasConflictedFiles: boolean;
+	isStashPending: boolean;
+	onStashAsync: () => Promise<void>;
+	onStashIncludeUntrackedAsync: () => Promise<void>;
 	onRefresh: () => void;
 }) {
 	const [open, setOpen] = useState(false);
@@ -275,7 +327,8 @@ function CurrentBranchSelector({
 	const [mode, setMode] = useState<CurrentBranchSelectorMode>("default");
 	const [selectedStartPoint, setSelectedStartPoint] =
 		useState<SearchableRefItem | null>(null);
-	const [pendingBranch, setPendingBranch] = useState<string | null>(null);
+	const [dialogState, setDialogState] =
+		useState<BranchActionDialogState | null>(null);
 	const utils = electronTrpc.useUtils();
 	const { data: branchData, isLoading } =
 		electronTrpc.changes.getBranches.useQuery(
@@ -283,6 +336,15 @@ function CurrentBranchSelector({
 			{
 				enabled: !!worktreePath,
 				staleTime: BRANCH_QUERY_STALE_TIME_MS,
+				refetchOnWindowFocus: false,
+			},
+		);
+	const { data: branchGuardState } =
+		electronTrpc.changes.getBranchGuardState.useQuery(
+			{ worktreePath },
+			{
+				enabled: !!worktreePath,
+				staleTime: 2_000,
 				refetchOnWindowFocus: false,
 			},
 		);
@@ -311,40 +373,146 @@ function CurrentBranchSelector({
 		onRefresh();
 	};
 
+	type BranchActionTarget =
+		| {
+				action: "switch";
+				branch: string;
+		  }
+		| {
+				action: "create-from-ref";
+				branch: string;
+				startPointRef: string;
+				startPointDisplayName: string | null;
+		  };
+
+	const openDirtyActionDialog = (
+		kind: "dirty-uncommitted" | "dirty-untracked" | "conflicted",
+		target: BranchActionTarget,
+	) => {
+		setDialogState({ kind, target });
+		setOpen(false);
+	};
+
+	const openOperationDialog = (
+		target: BranchActionTarget,
+		operation?: BranchProgressOperation | null,
+	) => {
+		setDialogState({
+			kind: "operation-in-progress",
+			target,
+			operation: operation ?? null,
+		});
+		setOpen(false);
+	};
+
+	const resetSelectorState = () => {
+		setOpen(false);
+		setSearch("");
+		setMode("default");
+		setSelectedStartPoint(null);
+	};
+
+	const runTargetAction = (target: BranchActionTarget) => {
+		setDialogState(null);
+		if (target.action === "switch") {
+			switchBranch.mutate({ worktreePath, branch: target.branch });
+			resetSelectorState();
+			return;
+		}
+
+		createBranch.mutate({
+			worktreePath,
+			branch: target.branch,
+			startPoint: target.startPointRef,
+		});
+		resetSelectorState();
+	};
+
+	const handleStashFailure = (target: BranchActionTarget, error: unknown) => {
+		const message =
+			error instanceof Error
+				? error.message
+				: "stash に失敗したため、branch 操作を続けられませんでした。";
+		setDialogState({
+			kind: "stash-failed",
+			target,
+			message,
+		});
+	};
+
 	const switchBranch = electronTrpc.changes.switchBranch.useMutation({
 		onSuccess: () => {
 			invalidateBranchQueries();
 		},
-		onError: (error) => {
+		onError: (error, variables) => {
 			const msg = error.message ?? "";
-			// Check for uncommitted changes conflict in multiple languages
-			// (git error messages vary by LANG environment variable)
-			const isUncommittedConflict =
-				msg.includes("overwritten") ||
-				msg.includes("conflict") ||
-				msg.includes("Please commit") ||
-				msg.includes("would be overwritten") ||
-				// Japanese git messages
-				msg.includes("上書き") ||
-				msg.includes("コミット") ||
-				msg.includes("スタッシュ");
-			if (isUncommittedConflict) {
-				toast.error(
-					"Could not switch branch. Your uncommitted changes conflict with the target branch. Please commit or stash your changes and try again.",
-				);
-			} else {
-				toast.error(`Failed to switch branch: ${msg}`);
+			const target = {
+				action: "switch" as const,
+				branch: variables.branch,
+			};
+			if (isCheckedOutElsewhereMessage(msg)) {
+				setDialogState({
+					kind: "checked-out-elsewhere",
+					target,
+				});
+				return;
 			}
+			if (isGitBusyMessage(msg)) {
+				setDialogState({
+					kind: "git-busy",
+					target,
+					message: msg,
+				});
+				return;
+			}
+			if (isReferenceMissingMessage(msg)) {
+				setDialogState({
+					kind: "reference-missing",
+					target,
+				});
+				return;
+			}
+			if (isOverwriteConflictMessage(msg)) {
+				setDialogState({
+					kind: hasUntrackedFiles ? "dirty-untracked" : "dirty-uncommitted",
+					target,
+				});
+				return;
+			}
+			toast.error(`Failed to switch branch: ${msg}`);
 		},
 	});
 	const createBranch = electronTrpc.changes.createBranch.useMutation({
 		onSuccess: () => {
 			invalidateBranchQueries();
 		},
-		onError: (error) => {
-			toast.error(
-				`Failed to create branch: ${error.message ?? "Unknown error"}`,
-			);
+		onError: (error, variables) => {
+			const message = error.message ?? "Unknown error";
+			const target =
+				variables.startPoint == null
+					? null
+					: {
+							action: "create-from-ref" as const,
+							branch: variables.branch,
+							startPointRef: variables.startPoint,
+							startPointDisplayName: selectedStartPoint?.displayName ?? null,
+						};
+			if (target && isGitBusyMessage(message)) {
+				setDialogState({
+					kind: "git-busy",
+					target,
+					message,
+				});
+				return;
+			}
+			if (target && isReferenceMissingMessage(message)) {
+				setDialogState({
+					kind: "reference-missing",
+					target,
+				});
+				return;
+			}
+			toast.error(`Failed to create branch: ${message}`);
 		},
 	});
 	const updateBaseBranch = electronTrpc.changes.updateBaseBranch.useMutation({
@@ -352,13 +520,18 @@ function CurrentBranchSelector({
 			invalidateBranchQueries();
 		},
 		onError: (error) => {
+			if (error.message?.includes("Could not determine current branch")) {
+				setDialogState({ kind: "compare-detached-head" });
+				return;
+			}
 			toast.error(
 				`Failed to update compare branch: ${error.message ?? "Unknown error"}`,
 			);
 		},
 	});
 
-	const currentBranch = branchData?.currentBranch ?? null;
+	const effectiveCurrentBranch =
+		currentBranch ?? branchData?.currentBranch ?? null;
 	const effectiveBaseBranch =
 		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
 	const existingBranchNames = useMemo(
@@ -419,34 +592,88 @@ function CurrentBranchSelector({
 		createBranchName.toLowerCase(),
 	);
 
-	const doSwitch = (branch: string) => {
-		switchBranch.mutate({ worktreePath, branch });
-		resetState();
-	};
-
 	const handleBranchSelect = (branch: string) => {
-		if (branch === currentBranch) {
+		const target = {
+			action: "switch" as const,
+			branch,
+		};
+		if (branch === effectiveCurrentBranch) {
 			setOpen(false);
 			return;
 		}
-		if (hasUncommittedChanges) {
-			setPendingBranch(branch);
-			setOpen(false);
-		} else {
-			doSwitch(branch);
+		if (branchGuardState?.operationInProgress) {
+			openOperationDialog(target, branchGuardState.operationInProgress);
+			return;
 		}
+		if (hasConflictedFiles) {
+			openDirtyActionDialog("conflicted", target);
+			return;
+		}
+		if (hasUntrackedFiles) {
+			openDirtyActionDialog("dirty-untracked", target);
+			return;
+		}
+		if (hasUncommittedChanges) {
+			openDirtyActionDialog("dirty-uncommitted", target);
+			return;
+		}
+		runTargetAction(target);
 	};
 
 	const handleCreateBranch = () => {
 		if (!createBranchName || isCreateBranchNameTaken) {
 			return;
 		}
-		createBranch.mutate({
-			worktreePath,
+		const currentBranchCreateTarget = {
+			action: "create-from-ref" as const,
 			branch: createBranchName,
-			startPoint: selectedStartPoint?.ref,
-		});
-		resetState();
+			startPointRef: effectiveCurrentBranch ?? "HEAD",
+			startPointDisplayName: effectiveCurrentBranch,
+		};
+		if (branchGuardState?.operationInProgress) {
+			openOperationDialog(
+				currentBranchCreateTarget,
+				branchGuardState.operationInProgress,
+			);
+			return;
+		}
+		if (hasConflictedFiles) {
+			openDirtyActionDialog("conflicted", currentBranchCreateTarget);
+			return;
+		}
+		if (!selectedStartPoint) {
+			createBranch.mutate({
+				worktreePath,
+				branch: createBranchName,
+				startPoint: null,
+			});
+			resetSelectorState();
+			return;
+		}
+
+		const target = {
+			action: "create-from-ref" as const,
+			branch: createBranchName,
+			startPointRef: selectedStartPoint.ref,
+			startPointDisplayName: selectedStartPoint.displayName,
+		};
+		if (branchGuardState?.operationInProgress) {
+			openOperationDialog(target, branchGuardState.operationInProgress);
+			return;
+		}
+		if (hasConflictedFiles) {
+			openDirtyActionDialog("conflicted", target);
+			return;
+		}
+		if (hasUntrackedFiles) {
+			openDirtyActionDialog("dirty-untracked", target);
+			return;
+		}
+		if (hasUncommittedChanges) {
+			openDirtyActionDialog("dirty-uncommitted", target);
+			return;
+		}
+		runTargetAction(target);
 	};
 
 	const handleCompareBaseSelect = (branch: string | null) => {
@@ -455,15 +682,7 @@ function CurrentBranchSelector({
 			baseBranch:
 				branch && branch !== branchData?.defaultBranch ? branch : null,
 		});
-		resetState();
-	};
-
-	const resetState = () => {
-		setOpen(false);
-		setSearch("");
-		setMode("default");
-		setSelectedStartPoint(null);
-		setPendingBranch(null);
+		resetSelectorState();
 	};
 
 	const canCreateBranch =
@@ -498,6 +717,11 @@ function CurrentBranchSelector({
 				</CommandItem>
 				<CommandItem
 					onSelect={() => {
+						if (!effectiveCurrentBranch) {
+							setDialogState({ kind: "compare-detached-head" });
+							setOpen(false);
+							return;
+						}
 						setMode("compare-base");
 						setSearch("");
 					}}
@@ -510,7 +734,7 @@ function CurrentBranchSelector({
 			{localBranchResults.length > 0 ? (
 				<CommandGroup heading="Branches">
 					{localBranchResults.map((branch) => {
-						const isCurrent = branch.name === currentBranch;
+						const isCurrent = branch.name === effectiveCurrentBranch;
 						const checkedOutPath = branch.checkedOutPath;
 						const isDisabled = !!checkedOutPath && !isCurrent;
 
@@ -532,14 +756,25 @@ function CurrentBranchSelector({
 			) : null}
 			{remoteBranchResults.length > 0 ? (
 				<CommandGroup heading="Remote Branches">
-					{remoteBranchResults.map((branch) => (
-						<BranchRefCommandItem
-							key={`remote:${branch.displayName}`}
-							refItem={branch}
-							onSelect={() => handleBranchSelect(branch.name)}
-							isDefault={branch.name === branchData?.defaultBranch}
-						/>
-					))}
+					{remoteBranchResults.map((branch) => {
+						const isCurrent = branch.name === effectiveCurrentBranch;
+						const checkedOutPath = branch.checkedOutPath;
+						const isDisabled = !!checkedOutPath && !isCurrent;
+
+						return (
+							<BranchRefCommandItem
+								key={`remote:${branch.displayName}`}
+								refItem={branch}
+								onSelect={() => handleBranchSelect(branch.name)}
+								isCurrent={isCurrent}
+								isDefault={branch.name === branchData?.defaultBranch}
+								isDisabled={isDisabled}
+								statusLabel={
+									checkedOutPath && !isCurrent ? "checked out" : null
+								}
+							/>
+						);
+					})}
 				</CommandGroup>
 			) : null}
 		</>
@@ -732,7 +967,7 @@ function CurrentBranchSelector({
 					<TooltipTrigger asChild>
 						<PopoverTrigger asChild>
 							<BranchSelectorButton
-								label={currentBranch ?? "detached HEAD"}
+								label={effectiveCurrentBranch ?? "detached HEAD"}
 								disabled={isLoading}
 							/>
 						</PopoverTrigger>
@@ -768,36 +1003,56 @@ function CurrentBranchSelector({
 				</PopoverContent>
 			</Popover>
 
-			<AlertDialog
-				open={pendingBranch !== null}
-				onOpenChange={(open) => {
-					if (!open) setPendingBranch(null);
+			<BranchActionDialog
+				open={dialogState !== null}
+				state={dialogState}
+				isPending={
+					switchBranch.isPending ||
+					createBranch.isPending ||
+					updateBaseBranch.isPending ||
+					isStashPending
+				}
+				onOpenChange={(nextOpen) => {
+					if (!nextOpen) {
+						setDialogState(null);
+					}
 				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>You have uncommitted changes</AlertDialogTitle>
-						<AlertDialogDescription>
-							Switching to{" "}
-							<span className="font-mono font-medium">{pendingBranch}</span> may
-							cause your uncommitted changes to be lost.
-							<br />
-							<br />
-							If you want to keep your changes, please commit or stash them
-							first.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={() => pendingBranch && doSwitch(pendingBranch)}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Switch anyway
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				onContinueWithoutStash={() => {
+					if (dialogState?.target) {
+						runTargetAction(dialogState.target);
+					}
+				}}
+				onStashTrackedAndContinue={() => {
+					if (!dialogState?.target) {
+						return;
+					}
+					void onStashAsync()
+						.then(() => {
+							runTargetAction(dialogState.target as BranchActionTarget);
+						})
+						.catch((error) => {
+							handleStashFailure(
+								dialogState.target as BranchActionTarget,
+								error,
+							);
+						});
+				}}
+				onStashAllAndContinue={() => {
+					if (!dialogState?.target) {
+						return;
+					}
+					void onStashIncludeUntrackedAsync()
+						.then(() => {
+							runTargetAction(dialogState.target as BranchActionTarget);
+						})
+						.catch((error) => {
+							handleStashFailure(
+								dialogState.target as BranchActionTarget,
+								error,
+							);
+						});
+				}}
+			/>
 		</>
 	);
 }
@@ -922,17 +1177,22 @@ export function ChangesHeader({
 	onViewModeChange,
 	showViewModeToggle = true,
 	worktreePath,
+	currentBranch,
 	pr,
 	isPRStatusLoading,
 	canCreatePR,
 	createPRBlockedReason,
 	onStash,
+	onStashAsync,
 	onStashIncludeUntracked,
+	onStashIncludeUntrackedAsync,
 	onStashPop,
 	isStashPending,
 	onGenerateCommitMessage,
 	isGeneratingCommitMessage,
 	hasUncommittedChanges,
+	hasUntrackedFiles,
+	hasConflictedFiles,
 	isGitGraphOpen,
 	onToggleGitGraph,
 }: ChangesHeaderProps) {
@@ -966,7 +1226,13 @@ export function ChangesHeader({
 				<div className="min-w-0">
 					<CurrentBranchSelector
 						worktreePath={worktreePath}
+						currentBranch={currentBranch}
 						hasUncommittedChanges={hasUncommittedChanges}
+						hasUntrackedFiles={hasUntrackedFiles}
+						hasConflictedFiles={hasConflictedFiles}
+						isStashPending={isStashPending}
+						onStashAsync={onStashAsync}
+						onStashIncludeUntrackedAsync={onStashIncludeUntrackedAsync}
 						onRefresh={onRefresh}
 					/>
 				</div>

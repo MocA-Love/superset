@@ -139,11 +139,37 @@ export function normalizeGitHubUrl(remoteUrl: string): string | null {
 
 export function extractNwoFromUrl(normalizedUrl: string): string | null {
 	try {
-		const path = new URL(normalizedUrl).pathname.slice(1);
-		return path || null;
+		const segments = new URL(normalizedUrl).pathname.split("/").filter(Boolean);
+		if (segments.length < 2) {
+			return null;
+		}
+		return `${segments[0]}/${segments[1]}`;
 	} catch {
 		return null;
 	}
+}
+
+export function getPullRequestRepoNames(
+	repoContext?: Pick<RepoContext, "repoUrl" | "upstreamUrl" | "isFork"> | null,
+): string[] {
+	if (!repoContext) {
+		return [];
+	}
+
+	const candidates = [
+		repoContext.repoUrl,
+		repoContext.isFork ? repoContext.upstreamUrl : null,
+	];
+
+	return Array.from(
+		new Set(
+			candidates
+				.map((candidate) => normalizeGitHubUrl(candidate ?? ""))
+				.filter((candidate): candidate is string => Boolean(candidate))
+				.map((candidate) => extractNwoFromUrl(candidate))
+				.filter((candidate): candidate is string => Boolean(candidate)),
+		),
+	);
 }
 
 export function getPullRequestRepoArgs(

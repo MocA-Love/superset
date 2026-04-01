@@ -64,6 +64,7 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 		<CommandDialog
 			open={open}
 			onOpenChange={onOpenChange}
+			modal
 			title={title}
 			description={description}
 			showCloseButton={false}

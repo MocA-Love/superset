@@ -16,6 +16,7 @@ import {
 
 type FileListViewMode = "grouped" | "compact" | "tree";
 type ChangesSidebarTab = "diffs" | "review";
+export const DEFAULT_DIFFS_PANE_PERCENTAGE = 60;
 
 interface SelectedFileState {
 	absolutePath: string;
@@ -29,6 +30,7 @@ interface ChangesState {
 	activeTab: ChangesSidebarTab;
 	viewMode: DiffViewMode;
 	fileListViewMode: FileListViewMode;
+	diffsPanePercentage: number;
 	expandedSections: Record<ChangeCategory, boolean>;
 	sectionOrder: ChangeCategory[];
 	showRenderedMarkdown: Record<string, boolean>;
@@ -53,6 +55,7 @@ interface ChangesState {
 	setActiveTab: (tab: ChangesSidebarTab) => void;
 	setViewMode: (mode: DiffViewMode) => void;
 	setFileListViewMode: (mode: FileListViewMode) => void;
+	setDiffsPanePercentage: (percentage: number) => void;
 	toggleSection: (section: ChangeCategory) => void;
 	setSectionExpanded: (section: ChangeCategory, expanded: boolean) => void;
 	moveSection: (fromSection: ChangeCategory, toSection: ChangeCategory) => void;
@@ -68,6 +71,7 @@ const initialState = {
 	activeTab: "diffs" as ChangesSidebarTab,
 	viewMode: "side-by-side" as DiffViewMode,
 	fileListViewMode: "grouped" as FileListViewMode,
+	diffsPanePercentage: DEFAULT_DIFFS_PANE_PERCENTAGE,
 	expandedSections: {
 		conflicted: true,
 		"against-base": true,
@@ -159,6 +163,12 @@ export const useChangesStore = create<ChangesState>()(
 					set({ fileListViewMode: mode });
 				},
 
+				setDiffsPanePercentage: (percentage) => {
+					set({
+						diffsPanePercentage: Math.max(0, Math.min(100, percentage)),
+					});
+				},
+
 				toggleSection: (section) => {
 					const { expandedSections } = get();
 					set({
@@ -232,7 +242,7 @@ export const useChangesStore = create<ChangesState>()(
 			}),
 			{
 				name: "changes-store",
-				version: 6,
+				version: 7,
 				migrate: (persisted, version) => {
 					const state = persisted as Record<string, unknown>;
 					if (version < 2) {
@@ -255,6 +265,9 @@ export const useChangesStore = create<ChangesState>()(
 							expandedSections.conflicted = true;
 						}
 					}
+					if (version < 7) {
+						state.diffsPanePercentage = DEFAULT_DIFFS_PANE_PERCENTAGE;
+					}
 					state.sectionOrder = normalizeChangeSectionOrder(
 						state.sectionOrder as ChangeCategory[] | undefined,
 					);
@@ -265,6 +278,7 @@ export const useChangesStore = create<ChangesState>()(
 					activeTab: state.activeTab,
 					viewMode: state.viewMode,
 					fileListViewMode: state.fileListViewMode,
+					diffsPanePercentage: state.diffsPanePercentage,
 					expandedSections: state.expandedSections,
 					sectionOrder: state.sectionOrder,
 					showRenderedMarkdown: state.showRenderedMarkdown,
