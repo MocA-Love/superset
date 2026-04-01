@@ -27,6 +27,14 @@ interface GitHubCommitAuthor {
 	avatarUrl: string | null;
 }
 
+const blameDateFormatter = new Intl.DateTimeFormat("ja-JP-u-hc-h24", {
+	year: "numeric",
+	month: "numeric",
+	day: "numeric",
+	hour: "2-digit",
+	minute: "2-digit",
+});
+
 function formatTimeAgo(timestamp: number): string {
 	const now = Date.now() / 1000;
 	const diff = now - timestamp;
@@ -40,25 +48,7 @@ function formatTimeAgo(timestamp: number): string {
 }
 
 function formatFullDate(timestamp: number): string {
-	const d = new Date(timestamp * 1000);
-	const month = d.getMonth() + 1;
-	const day = d.getDate();
-	const year = d.getFullYear();
-	const hours = d.getHours();
-	const minutes = String(d.getMinutes()).padStart(2, "0");
-	const ampm = hours < 12 ? "朝" : "午後";
-	const hour12 = hours % 12 || 12;
-	const ordinal =
-		day % 100 >= 11 && day % 100 <= 13
-			? "th"
-			: day % 10 === 1
-				? "st"
-				: day % 10 === 2
-					? "nd"
-					: day % 10 === 3
-						? "rd"
-						: "th";
-	return `${month} ${day}${ordinal}, ${year} ${hour12}:${minutes} ${ampm}`;
+	return blameDateFormatter.format(new Date(timestamp * 1000));
 }
 
 function formatInlineText(entry: BlameEntry): string {
