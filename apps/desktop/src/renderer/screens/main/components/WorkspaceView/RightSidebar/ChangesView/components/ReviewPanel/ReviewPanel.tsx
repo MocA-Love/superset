@@ -1,5 +1,6 @@
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
 import { Avatar, AvatarFallback, AvatarImage } from "@superset/ui/avatar";
+import { Button } from "@superset/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -15,6 +16,7 @@ import {
 	LuChevronDown,
 	LuCode,
 	LuCopy,
+	LuLoaderCircle,
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
 import ReactMarkdown from "react-markdown";
@@ -87,6 +89,7 @@ interface ReviewPanelProps {
 	isLoading?: boolean;
 	isCommentsLoading?: boolean;
 	onOpenFile?: (path: string, line?: number) => void;
+	onRefreshReview?: () => Promise<void>;
 }
 
 export function ReviewPanel({
@@ -95,6 +98,7 @@ export function ReviewPanel({
 	isLoading = false,
 	isCommentsLoading = false,
 	onOpenFile,
+	onRefreshReview,
 }: ReviewPanelProps) {
 	const resolvedWorkspaceId = useWorkspaceId();
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
@@ -118,10 +122,16 @@ export function ReviewPanel({
 	const [expandedComments, setExpandedComments] = useState<Set<string>>(
 		new Set(),
 	);
+	const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
+	const [isDraftTogglePending, setIsDraftTogglePending] = useState(false);
 	const copiedActionResetTimeoutRef = useRef<ReturnType<
 		typeof setTimeout
 	> | null>(null);
 	const copyToClipboardMutation = electronTrpc.external.copyText.useMutation();
+	const setPullRequestDraftStateMutation =
+		electronTrpc.workspaces.setPullRequestDraftState.useMutation();
+	const setPullRequestThreadResolutionMutation =
+		electronTrpc.workspaces.setPullRequestThreadResolution.useMutation();
 
 	useEffect(() => {
 		return () => {
@@ -167,6 +177,59 @@ export function ReviewPanel({
 			actionKey: getCommentCopyActionKey(comment.id),
 			errorLabel: "Failed to copy comment",
 		});
+	};
+
+	const refreshReview = async () => {
+		if (!onRefreshReview) {
+			return;
+		}
+
+		await onRefreshReview();
+	};
+
+	const handleToggleDraftState = () => {
+		if (!resolvedWorkspaceId || !pr) {
+			return;
+		}
+
+		setIsDraftTogglePending(true);
+		void setPullRequestDraftStateMutation
+			.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				isDraft: pr.state !== "draft",
+			})
+			.then(() => refreshReview())
+			.catch((error) => {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				toast.error(`Failed to update pull request: ${message}`);
+			})
+			.finally(() => {
+				setIsDraftTogglePending(false);
+			});
+	};
+
+	const handleToggleThreadResolution = (comment: PullRequestComment) => {
+		if (!resolvedWorkspaceId || !comment.threadId) {
+			return;
+		}
+
+		setPendingThreadId(comment.threadId);
+		void setPullRequestThreadResolutionMutation
+			.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				threadId: comment.threadId,
+				isResolved: comment.isResolved !== true,
+			})
+			.then(() => refreshReview())
+			.catch((error) => {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				toast.error(`Failed to update conversation: ${message}`);
+			})
+			.finally(() => {
+				setPendingThreadId((current) =>
+					current === comment.threadId ? null : current,
+				);
+			});
 	};
 
 	const toggleCheckExpansion = (checkName: string) => {
@@ -301,24 +364,48 @@ export function ReviewPanel({
 
 					{isExpanded && (
 						<div className="px-1.5 pb-1.5">
-							{hasFileLocation && (
-								<button
-									type="button"
-									className="mb-1.5 ml-4 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
-									onClick={(e) => {
-										e.stopPropagation();
-										if (comment.path) {
-											onOpenFile?.(comment.path, comment.line);
-										}
-									}}
-								>
-									<LuCode className="size-3" />
-									<span className="truncate">
-										{comment.path}
-										{comment.line ? `:${comment.line}` : ""}
-									</span>
-								</button>
-							)}
+							{hasFileLocation || comment.threadId ? (
+								<div className="mb-1.5 ml-4 flex flex-wrap items-center gap-1.5">
+									{hasFileLocation ? (
+										<button
+											type="button"
+											className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
+											onClick={(e) => {
+												e.stopPropagation();
+												if (comment.path) {
+													onOpenFile?.(comment.path, comment.line);
+												}
+											}}
+										>
+											<LuCode className="size-3" />
+											<span className="truncate">
+												{comment.path}
+												{comment.line ? `:${comment.line}` : ""}
+											</span>
+										</button>
+									) : null}
+									{comment.threadId ? (
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											className="h-5 px-1.5 text-[10px]"
+											onClick={(e) => {
+												e.stopPropagation();
+												handleToggleThreadResolution(comment);
+											}}
+											disabled={pendingThreadId === comment.threadId}
+										>
+											{pendingThreadId === comment.threadId ? (
+												<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+											) : null}
+											{comment.isResolved
+												? "Unresolve conversation"
+												: "Resolve conversation"}
+										</Button>
+									) : null}
+								</div>
+							) : null}
 							<div className="review-comment-body ml-4 break-words text-xs leading-5 text-foreground/90">
 								<CommentBody body={comment.body} onOpenUrl={handleOpenUrl} />
 							</div>
@@ -374,20 +461,39 @@ export function ReviewPanel({
 					</span>
 					<LuArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100" />
 				</button>
-				<div className="flex items-center gap-1.5">
-					<span
-						className={cn(
-							"shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium",
-							reviewDecisionConfig[pr.reviewDecision].className,
-						)}
-					>
-						{reviewDecisionConfig[pr.reviewDecision].label}
-					</span>
-					{requestedReviewers.length > 0 && (
-						<span className="truncate text-[10px] text-muted-foreground">
-							Awaiting {requestedReviewers.join(", ")}
+				<div className="flex items-center justify-between gap-2">
+					<div className="flex min-w-0 items-center gap-1.5">
+						<span
+							className={cn(
+								"shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium",
+								reviewDecisionConfig[pr.reviewDecision].className,
+							)}
+						>
+							{reviewDecisionConfig[pr.reviewDecision].label}
 						</span>
-					)}
+						{requestedReviewers.length > 0 && (
+							<span className="truncate text-[10px] text-muted-foreground">
+								Awaiting {requestedReviewers.join(", ")}
+							</span>
+						)}
+					</div>
+					{pr.state === "open" || pr.state === "draft" ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-6 shrink-0 px-2 text-[10px]"
+							onClick={handleToggleDraftState}
+							disabled={isDraftTogglePending}
+						>
+							{isDraftTogglePending ? (
+								<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+							) : null}
+							{pr.state === "draft"
+								? "Ready for review"
+								: "Convert to draft"}
+						</Button>
+					) : null}
 				</div>
 			</div>
 

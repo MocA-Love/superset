@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { TRPCError } from "@trpc/server";
 import type { GitHubStatus } from "@superset/local-db";
 import { workspaces, worktrees } from "@superset/local-db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -20,11 +21,13 @@ import {
 } from "../utils/git";
 import {
 	clearGitHubCachesForWorktree,
+	extractNwoFromUrl,
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
 	type PullRequestCommentsTarget,
 } from "../utils/github";
+import { execWithShellEnv } from "../utils/shell-env";
 
 const gitHubPRCommentsInputSchema = z.object({
 	workspaceId: z.string(),
@@ -92,6 +95,56 @@ function hasMeaningfulGitHubStatusChange({
 		JSON.stringify(stripGitHubStatusTimestamp(current)) !==
 		JSON.stringify(stripGitHubStatusTimestamp(next))
 	);
+}
+
+function resolveRepoPathForWorkspace(workspaceId: string): {
+	workspace: ReturnType<typeof getWorkspace>;
+	worktree: ReturnType<typeof getWorktree>;
+	repoPath: string;
+} {
+	const workspace = getWorkspace(workspaceId);
+	if (!workspace) {
+		throw new TRPCError({
+			code: "NOT_FOUND",
+			message: `Workspace ${workspaceId} not found`,
+		});
+	}
+
+	const worktree = workspace.worktreeId ? getWorktree(workspace.worktreeId) : null;
+	let repoPath: string | null = worktree?.path ?? null;
+	if (!repoPath && workspace.type === "branch") {
+		const project = getProject(workspace.projectId);
+		repoPath = project?.mainRepoPath ?? null;
+	}
+
+	if (!repoPath) {
+		throw new TRPCError({
+			code: "NOT_FOUND",
+			message: "GitHub is not available for this workspace.",
+		});
+	}
+
+	return { workspace, worktree, repoPath };
+}
+
+async function getFreshPullRequestForWorkspace(workspaceId: string): Promise<{
+	repoPath: string;
+	worktree: ReturnType<typeof getWorktree>;
+	pullRequest: NonNullable<GitHubStatus["pr"]>;
+}> {
+	const { repoPath, worktree } = resolveRepoPathForWorkspace(workspaceId);
+	clearGitHubCachesForWorktree(repoPath);
+	const githubStatus = await fetchGitHubPRStatus(repoPath);
+	const pullRequest = githubStatus?.pr ?? null;
+
+	if (!pullRequest) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "No pull request found for this workspace.",
+		});
+	}
+
+	return { repoPath, worktree, pullRequest };
 }
 
 export const createGitStatusProcedures = () => {
@@ -263,6 +316,112 @@ export const createGitStatusProcedures = () => {
 						githubStatus: cachedGitHubStatus,
 					}),
 				});
+			}),
+
+		setPullRequestDraftState: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					isDraft: z.boolean(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const { repoPath, worktree, pullRequest } =
+					await getFreshPullRequestForWorkspace(input.workspaceId);
+
+				const isCurrentlyDraft = pullRequest.state === "draft";
+				if (pullRequest.state !== "draft" && pullRequest.state !== "open") {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message:
+							"Only open or draft pull requests can be updated from Review.",
+					});
+				}
+
+				if (input.isDraft === isCurrentlyDraft) {
+					return { success: true };
+				}
+
+				const repoNameWithOwner = extractNwoFromUrl(pullRequest.url);
+				if (!repoNameWithOwner) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: "Could not determine the pull request repository.",
+					});
+				}
+
+				const args = [
+					"pr",
+					"ready",
+					String(pullRequest.number),
+					"--repo",
+					repoNameWithOwner,
+				];
+				if (input.isDraft) {
+					args.push("--undo");
+				}
+
+				await execWithShellEnv("gh", args, { cwd: repoPath });
+				clearGitHubCachesForWorktree(repoPath);
+
+				if (worktree) {
+					localDb
+						.update(worktrees)
+						.set({ githubStatus: null })
+						.where(eq(worktrees.id, worktree.id))
+						.run();
+				}
+
+				return { success: true };
+			}),
+
+		setPullRequestThreadResolution: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					threadId: z.string().min(1),
+					isResolved: z.boolean(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const { repoPath, worktree } = resolveRepoPathForWorkspace(
+					input.workspaceId,
+				);
+				const mutationName = input.isResolved
+					? "resolveReviewThread"
+					: "unresolveReviewThread";
+				const mutationQuery = `mutation ${mutationName}($threadId: ID!) {
+  ${mutationName}(input: { threadId: $threadId }) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}`;
+
+				await execWithShellEnv(
+					"gh",
+					[
+						"api",
+						"graphql",
+						"-f",
+						`query=${mutationQuery}`,
+						"-F",
+						`threadId=${input.threadId}`,
+					],
+					{ cwd: repoPath },
+				);
+
+				clearGitHubCachesForWorktree(repoPath);
+				if (worktree) {
+					localDb
+						.update(worktrees)
+						.set({ githubStatus: null })
+						.where(eq(worktrees.id, worktree.id))
+						.run();
+				}
+
+				return { success: true };
 			}),
 
 		getWorktreeInfo: publicProcedure

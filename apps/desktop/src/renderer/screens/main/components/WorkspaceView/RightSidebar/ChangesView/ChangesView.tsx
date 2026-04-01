@@ -991,6 +991,7 @@ export function ChangesView({
 								isLoading={isGitHubStatusLoading}
 								isCommentsLoading={isGitHubCommentsLoading}
 								onOpenFile={onOpenFileAtLine}
+								onRefreshReview={handleReviewRefresh}
 							/>
 						</div>
 					</div>

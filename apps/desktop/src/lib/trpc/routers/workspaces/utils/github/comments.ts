@@ -113,9 +113,11 @@ function getReviewThreadCommentId(
 function parseReviewThreadCommentNode({
 	comment,
 	isResolved,
+	threadId,
 }: {
 	comment: ReviewThreadCommentNode;
 	isResolved: boolean;
+	threadId?: string;
 }): PullRequestComment | null {
 	const id = getReviewThreadCommentId(comment);
 	const body = comment.body?.trim();
@@ -133,6 +135,7 @@ function parseReviewThreadCommentNode({
 		createdAt: parseTimestamp(comment.createdAt),
 		url: comment.url,
 		kind: "review" as const,
+		threadId,
 		path: comment.path,
 		line: comment.line ?? comment.originalLine ?? undefined,
 		isResolved,
@@ -164,9 +167,11 @@ export function parsePaginatedApiArray(stdout: string): unknown[] {
 export function parseReviewThreadCommentsConnection({
 	comments,
 	isResolved,
+	threadId,
 }: {
 	comments: unknown;
 	isResolved: boolean;
+	threadId?: string;
 }): PullRequestComment[] {
 	const parsed = GHReviewThreadCommentsConnectionSchema.safeParse(comments);
 	if (!parsed.success) {
@@ -182,6 +187,7 @@ export function parseReviewThreadCommentsConnection({
 			const parsedComment = parseReviewThreadCommentNode({
 				comment,
 				isResolved,
+				threadId,
 			});
 			return parsedComment ? [parsedComment] : [];
 		}) ?? []
@@ -201,6 +207,7 @@ export function parseReviewThreadCommentsResponse(
 			return parseReviewThreadCommentsConnection({
 				comments: result.data.comments,
 				isResolved: result.data.isResolved === true,
+				threadId: result.data.id ?? undefined,
 			});
 		}),
 	);
@@ -360,6 +367,7 @@ async function fetchAdditionalReviewThreadCommentsForThread({
 			...parseReviewThreadCommentsConnection({
 				comments,
 				isResolved,
+				threadId,
 			}),
 		);
 		afterCursor =
@@ -453,6 +461,7 @@ async function fetchReviewThreadCommentsForPullRequest(
 				...parseReviewThreadCommentsConnection({
 					comments: thread.comments,
 					isResolved,
+					threadId: thread.id ?? undefined,
 				}),
 			);
 
