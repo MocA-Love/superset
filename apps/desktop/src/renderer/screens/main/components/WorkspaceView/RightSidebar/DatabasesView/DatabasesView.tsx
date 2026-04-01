@@ -38,6 +38,13 @@ import {
 	ResizablePanel,
 	ResizablePanelGroup,
 } from "@superset/ui/resizable";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
 import {
 	Table,
@@ -154,6 +161,15 @@ interface PendingEditRequest {
 interface TableSortState {
 	column: string;
 	direction: "asc" | "desc";
+}
+
+interface CellDetailState {
+	row: Record<string, unknown>;
+	column: string;
+	columnType: string;
+	value: unknown;
+	format: "text" | "json";
+	draft: string;
 }
 
 function isAbsoluteFilesystemPath(inputPath: string): boolean {
@@ -315,6 +331,75 @@ function toCsvCell(value: unknown): string {
 	return `"${stringValue.replaceAll('"', '""')}"`;
 }
 
+function normalizeColumnType(type: string | null | undefined): string {
+	return (type ?? "").toLowerCase();
+}
+
+function supportsDetailViewer(columnType: string, value: unknown): boolean {
+	const normalizedType = normalizeColumnType(columnType);
+	if (
+		normalizedType.includes("json") ||
+		normalizedType.includes("text") ||
+		normalizedType.includes("char") ||
+		normalizedType.includes("citext") ||
+		normalizedType.includes("xml") ||
+		normalizedType.includes("array") ||
+		normalizedType.includes("bytea") ||
+		normalizedType.includes("blob") ||
+		normalizedType.includes("vector") ||
+		normalizedType.includes("hstore") ||
+		normalizedType.includes("geometry") ||
+		normalizedType.includes("geography") ||
+		normalizedType.includes("tsvector") ||
+		normalizedType.includes("tsquery")
+	) {
+		return true;
+	}
+
+	return typeof value === "string" && value.length > 80;
+}
+
+function canUseJsonDetailFormat(columnType: string, value: unknown): boolean {
+	const normalizedType = normalizeColumnType(columnType);
+	if (
+		normalizedType.includes("json") ||
+		normalizedType.includes("array") ||
+		Array.isArray(value) ||
+		(typeof value === "object" && value !== null)
+	) {
+		return true;
+	}
+
+	if (typeof value !== "string") {
+		return false;
+	}
+
+	try {
+		JSON.parse(value);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function formatCellDetailDraft(
+	value: unknown,
+	format: "text" | "json",
+): string {
+	if (format === "json") {
+		if (typeof value === "string") {
+			try {
+				return JSON.stringify(JSON.parse(value), null, 2);
+			} catch {
+				return value;
+			}
+		}
+		return JSON.stringify(value, null, 2);
+	}
+
+	return formatCellValue(value);
+}
+
 function buildSqliteRowSelector(row: Record<string, unknown>): string {
 	const rowId = row[SQLITE_ROW_ID_COLUMN];
 	if (rowId === undefined) {
@@ -355,23 +440,42 @@ const PreviewTableCellValue = memo(function PreviewTableCellValue({
 	row,
 	column,
 	onOpenContextMenu,
+	canOpenDetail,
+	onOpenDetail,
 }: {
 	row: Record<string, unknown>;
 	column: string;
 	onOpenContextMenu: (row: Record<string, unknown>, column: string) => void;
+	canOpenDetail: boolean;
+	onOpenDetail: (row: Record<string, unknown>, column: string) => void;
 }) {
 	const value = row[column];
 	const formattedValue = useMemo(() => formatCellValue(value), [value]);
 
 	return (
-		<button
-			type="button"
-			className="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-left"
-			title={formattedValue}
-			onContextMenu={() => onOpenContextMenu(row, column)}
-		>
-			{formattedValue}
-		</button>
+		<div className="group flex items-center gap-1">
+			<button
+				type="button"
+				className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left"
+				title={formattedValue}
+				onContextMenu={() => onOpenContextMenu(row, column)}
+			>
+				{formattedValue}
+			</button>
+			{canOpenDetail ? (
+				<button
+					type="button"
+					className="text-muted-foreground hover:text-foreground size-5 shrink-0 rounded opacity-0 transition-opacity group-hover:opacity-100"
+					onClick={(event) => {
+						event.stopPropagation();
+						onOpenDetail(row, column);
+					}}
+					aria-label={`Open full value for ${column}`}
+				>
+					<LuSearch className="size-3.5" />
+				</button>
+			) : null}
+		</div>
 	);
 });
 
@@ -382,6 +486,8 @@ const PreviewTableRowView = memo(function PreviewTableRowView({
 	selected,
 	onToggleSelection,
 	onOpenContextMenu,
+	getCanOpenDetail,
+	onOpenDetail,
 	dataIndex,
 }: {
 	row: Record<string, unknown>;
@@ -390,6 +496,8 @@ const PreviewTableRowView = memo(function PreviewTableRowView({
 	selected: boolean;
 	onToggleSelection: (row: Record<string, unknown>, checked: boolean) => void;
 	onOpenContextMenu: (row: Record<string, unknown>, column: string) => void;
+	getCanOpenDetail: (column: string, value: unknown) => boolean;
+	onOpenDetail: (row: Record<string, unknown>, column: string) => void;
 	dataIndex?: number;
 }) {
 	return (
@@ -412,6 +520,8 @@ const PreviewTableRowView = memo(function PreviewTableRowView({
 						row={row}
 						column={column}
 						onOpenContextMenu={onOpenContextMenu}
+						canOpenDetail={getCanOpenDetail(column, row[column])}
+						onOpenDetail={onOpenDetail}
 					/>
 				</TableCell>
 			))}
@@ -611,6 +721,8 @@ export function DatabasesView({
 	const [isSqlDialogOpen, setIsSqlDialogOpen] = useState(false);
 	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 	const [isEditDialogLoading, setIsEditDialogLoading] = useState(false);
+	const [isCellDetailDialogOpen, setIsCellDetailDialogOpen] = useState(false);
+	const [isCellDetailLoading, setIsCellDetailLoading] = useState(false);
 	const [isCellContextMenuOpen, setIsCellContextMenuOpen] = useState(false);
 	const [contextCell, setContextCell] = useState<ContextCellState | null>(null);
 	const [pendingEditRequest, setPendingEditRequest] =
@@ -619,6 +731,7 @@ export function DatabasesView({
 		null,
 	);
 	const [rowDraft, setRowDraft] = useState<Record<string, RowDraftValue>>({});
+	const [cellDetail, setCellDetail] = useState<CellDetailState | null>(null);
 	const previewScrollRef = useRef<HTMLDivElement>(null);
 
 	const labelInputRef = useRef<HTMLInputElement>(null);
@@ -895,6 +1008,16 @@ export function DatabasesView({
 		executeSQLiteMutation.isPending || executePostgresMutation.isPending;
 
 	const visiblePreviewColumns = activePreviewQuery.data?.columns ?? [];
+	const columnTypeByName = useMemo(
+		() =>
+			Object.fromEntries(
+				(selectedTable?.columns ?? []).map((column) => [
+					column.name,
+					column.type,
+				]),
+			) as Record<string, string>,
+		[selectedTable?.columns],
+	);
 	const selectedTableLabel = selectedTable
 		? selectedTable.schema
 			? `${selectedTable.schema}.${selectedTable.name}`
@@ -982,6 +1105,11 @@ export function DatabasesView({
 					)
 				: [],
 		[activeConnection, queryHistory],
+	);
+	const getCanOpenDetail = useCallback(
+		(column: string, value: unknown) =>
+			supportsDetailViewer(columnTypeByName[column] ?? "", value),
+		[columnTypeByName],
 	);
 	const rowVirtualizer = useVirtualizer({
 		count: filteredPreviewRows.length,
@@ -1289,8 +1417,36 @@ export function DatabasesView({
 		const blankRow = Object.fromEntries(
 			visiblePreviewColumns.map((column) => [column, null]),
 		) as Record<string, unknown>;
-		handleOpenEditDialog(blankRow, visiblePreviewColumns[0], "insert");
+		void handleOpenEditDialog(blankRow, visiblePreviewColumns[0], "insert");
 	};
+
+	const fetchFullRow = useCallback(
+		async (row: Record<string, unknown>) => {
+			if (!activeConnection || !selectedTable) {
+				return row;
+			}
+
+			if (activeConnection.dialect === "sqlite") {
+				return (
+					await trpcUtils.databases.getSqliteRowDetail.fetch({
+						databasePath: activeConnection.databasePath ?? "",
+						tableName: selectedTable.name,
+						rowId: row[SQLITE_ROW_ID_COLUMN] as string | number,
+					})
+				).row;
+			}
+
+			return (
+				await trpcUtils.databases.getPostgresRowDetail.fetch({
+					connectionString: activeConnection.connectionString ?? "",
+					schema: selectedTable.schema ?? "public",
+					tableName: selectedTable.name,
+					ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
+				})
+			).row;
+		},
+		[activeConnection, selectedTable, trpcUtils],
+	);
 
 	const handleOpenEditDialog = useCallback(
 		async (
@@ -1302,23 +1458,7 @@ export function DatabasesView({
 			if (mode !== "insert" && activeConnection && selectedTable) {
 				setIsEditDialogLoading(true);
 				try {
-					sourceRow =
-						activeConnection.dialect === "sqlite"
-							? (
-									await trpcUtils.databases.getSqliteRowDetail.fetch({
-										databasePath: activeConnection.databasePath ?? "",
-										tableName: selectedTable.name,
-										rowId: row[SQLITE_ROW_ID_COLUMN] as string | number,
-									})
-								).row
-							: (
-									await trpcUtils.databases.getPostgresRowDetail.fetch({
-										connectionString: activeConnection.connectionString ?? "",
-										schema: selectedTable.schema ?? "public",
-										tableName: selectedTable.name,
-										ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
-									})
-								).row;
+					sourceRow = await fetchFullRow(row);
 				} finally {
 					setIsEditDialogLoading(false);
 				}
@@ -1350,7 +1490,7 @@ export function DatabasesView({
 			});
 			setIsEditDialogOpen(true);
 		},
-		[visiblePreviewColumns, activeConnection, selectedTable, trpcUtils],
+		[visiblePreviewColumns, activeConnection, selectedTable, fetchFullRow],
 	);
 
 	useEffect(() => {
@@ -1485,6 +1625,103 @@ export function DatabasesView({
 		},
 		[],
 	);
+
+	const handleOpenCellDetail = useCallback(
+		async (row: Record<string, unknown>, column: string) => {
+			setIsCellDetailLoading(true);
+			setIsCellDetailDialogOpen(true);
+			try {
+				const fullRow = await fetchFullRow(row);
+				const value = fullRow[column];
+				const columnType = columnTypeByName[column] ?? "";
+				const format = canUseJsonDetailFormat(columnType, value)
+					? "json"
+					: "text";
+				setCellDetail({
+					row: fullRow,
+					column,
+					columnType,
+					value,
+					format,
+					draft: formatCellDetailDraft(value, format),
+				});
+			} catch (error) {
+				setTableActionError(
+					error instanceof Error
+						? error.message
+						: "Failed to load full cell value.",
+				);
+				setIsCellDetailDialogOpen(false);
+			} finally {
+				setIsCellDetailLoading(false);
+			}
+		},
+		[columnTypeByName, fetchFullRow],
+	);
+
+	const handleCellDetailFormatChange = (nextFormat: "text" | "json") => {
+		setCellDetail((current) =>
+			current
+				? {
+						...current,
+						format: nextFormat,
+						draft: formatCellDetailDraft(current.value, nextFormat),
+					}
+				: current,
+		);
+	};
+
+	const handleExportCellDetail = async () => {
+		if (!cellDetail || !selectedTableLabel) {
+			return;
+		}
+
+		const blob = new Blob([cellDetail.draft], {
+			type:
+				cellDetail.format === "json"
+					? "application/json"
+					: "text/plain;charset=utf-8",
+		});
+		const objectUrl = URL.createObjectURL(blob);
+		const anchor = document.createElement("a");
+		anchor.href = objectUrl;
+		anchor.download = `${selectedTableLabel.replaceAll(".", "_")}_${cellDetail.column}.${cellDetail.format === "json" ? "json" : "txt"}`;
+		anchor.click();
+		URL.revokeObjectURL(objectUrl);
+	};
+
+	const handleSaveCellDetail = async () => {
+		if (!cellDetail) {
+			return;
+		}
+
+		try {
+			const nextValue =
+				cellDetail.format === "json"
+					? JSON.parse(cellDetail.draft)
+					: cellDetail.draft;
+			await handleQuickCellUpdate({
+				row: cellDetail.row,
+				column: cellDetail.column,
+				value: nextValue,
+			});
+			setCellDetail((current) =>
+				current
+					? {
+							...current,
+							value: nextValue,
+						}
+					: current,
+			);
+			setIsCellDetailDialogOpen(false);
+		} catch (error) {
+			setTableActionError(
+				error instanceof Error
+					? error.message
+					: "Failed to save detailed cell value.",
+			);
+		}
+	};
 
 	const toggleAllVisibleRows = (checked: boolean) => {
 		setSelectedRowIds((current) => {
@@ -2441,6 +2678,8 @@ export function DatabasesView({
 																					onOpenContextMenu={
 																						handleOpenCellContextMenu
 																					}
+																					getCanOpenDetail={getCanOpenDetail}
+																					onOpenDetail={handleOpenCellDetail}
 																					dataIndex={virtualRow.index}
 																				/>
 																			);
@@ -2917,6 +3156,113 @@ export function DatabasesView({
 							disabled={isEditDialogLoading}
 						>
 							{editingCell?.mode === "edit" ? "更新" : "保存"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+			<Dialog
+				open={isCellDetailDialogOpen}
+				onOpenChange={(open) => {
+					if (!open) {
+						setIsCellDetailDialogOpen(false);
+						setCellDetail(null);
+					}
+				}}
+			>
+				<DialogContent className="flex max-h-[85vh] !max-w-[72rem] flex-col overflow-hidden">
+					<DialogHeader>
+						<DialogTitle>データを編集</DialogTitle>
+						<DialogDescription>
+							{cellDetail?.column
+								? `${cellDetail.column} の詳細値を表示・編集します。`
+								: "セルの詳細値を表示します。"}
+						</DialogDescription>
+					</DialogHeader>
+					<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+						<div className="flex items-center gap-2">
+							<Select
+								value={cellDetail?.format ?? "text"}
+								onValueChange={(value) =>
+									handleCellDetailFormatChange(value as "text" | "json")
+								}
+								disabled={!cellDetail}
+							>
+								<SelectTrigger className="w-32">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="text">Text</SelectItem>
+									{cellDetail &&
+									canUseJsonDetailFormat(
+										cellDetail.columnType,
+										cellDetail.value,
+									) ? (
+										<SelectItem value="json">JSON</SelectItem>
+									) : null}
+								</SelectContent>
+							</Select>
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={() =>
+									cellDetail ? copyToClipboard(cellDetail.draft) : undefined
+								}
+								disabled={!cellDetail}
+							>
+								<LuCopy className="mr-1.5 size-3.5" />
+								コピー
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={() => void handleExportCellDetail()}
+								disabled={!cellDetail}
+							>
+								<LuExternalLink className="mr-1.5 size-3.5" />
+								Export
+							</Button>
+						</div>
+						<div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+							{isCellDetailLoading ? (
+								<div className="flex h-full items-center justify-center">
+									<p className="text-muted-foreground text-sm">
+										Loading full cell value...
+									</p>
+								</div>
+							) : (
+								<textarea
+									value={cellDetail?.draft ?? ""}
+									onChange={(event) =>
+										setCellDetail((current) =>
+											current
+												? { ...current, draft: event.target.value }
+												: current,
+										)
+									}
+									className="text-foreground placeholder:text-muted-foreground h-full min-h-[24rem] w-full resize-none overflow-auto border-0 bg-transparent px-3 py-2 font-mono text-[12px] outline-none"
+								/>
+							)}
+						</div>
+					</div>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => {
+								setIsCellDetailDialogOpen(false);
+								setCellDetail(null);
+							}}
+						>
+							閉じる
+						</Button>
+						<Button
+							type="button"
+							onClick={() => void handleSaveCellDetail()}
+							disabled={!cellDetail || isCellDetailLoading}
+						>
+							保存
 						</Button>
 					</DialogFooter>
 				</DialogContent>
