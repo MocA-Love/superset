@@ -207,7 +207,8 @@ export function TerminalSuggestion({
 				}}
 			>
 				<span style={{ color: "#6c7086" }}>↑↓</span> navigate{" "}
-				<span style={{ color: "#6c7086" }}>→</span> accept{" "}
+				<span style={{ color: "#6c7086" }}>enter</span> run{" "}
+				<span style={{ color: "#6c7086" }}>→</span> fill{" "}
 				<span style={{ color: "#6c7086" }}>esc</span> dismiss
 			</div>
 		</div>

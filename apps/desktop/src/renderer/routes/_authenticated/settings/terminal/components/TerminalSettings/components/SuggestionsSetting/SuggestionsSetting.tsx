@@ -13,7 +13,7 @@ export function SuggestionsSetting() {
 					Shell history suggestions
 				</Label>
 				<p className="text-xs text-muted-foreground">
-					Show command suggestions from shell history while typing
+					Show shell history suggestions when pressing ↑ at the prompt
 				</p>
 			</div>
 			<Switch

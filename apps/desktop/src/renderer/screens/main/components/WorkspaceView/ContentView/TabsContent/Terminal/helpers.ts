@@ -309,10 +309,11 @@ export interface ActiveSuggestionHandle {
 	/** Remaining text to append. null when "current input" row is selected. */
 	suffix: string | null;
 	onAccept: () => void;
+	onExecute: () => void;
 	onDismiss: () => void;
 	selectNext?: () => void;
 	selectPrev?: () => void;
-	hasMultiple?: boolean;
+	hasSuggestions?: boolean;
 }
 
 export interface KeyboardHandlerOptions {
@@ -321,8 +322,10 @@ export interface KeyboardHandlerOptions {
 	/** Callback for the configured clear terminal shortcut */
 	onClear?: () => void;
 	onWrite?: (data: string) => void;
-	/** Ref to active suggestion for right-arrow acceptance */
+	/** Ref to active suggestion for history navigation/acceptance */
 	activeSuggestionRef?: { current: ActiveSuggestionHandle | null };
+	/** Opens shell history suggestions using the current input as prefix */
+	onOpenSuggestions?: () => void;
 }
 
 export interface PasteHandlerOptions {
@@ -557,26 +560,41 @@ export function setupKeyboardHandler(
 			}
 		}
 
-		// Enter: dismiss suggestions, let Enter pass through to shell
+		// Enter: execute selected suggestion instead of the currently typed command.
 		if (event.key === "Enter" && noModifiers && event.type === "keydown") {
-			options.activeSuggestionRef?.current?.onDismiss();
+			const suggestion = options.activeSuggestionRef?.current;
+			if (suggestion?.hasSuggestions) {
+				event.preventDefault();
+				suggestion.onExecute();
+				return false;
+			}
 		}
 
 		// Up/Down: navigate suggestion list when active
 		if (event.key === "ArrowDown" && noModifiers && event.type === "keydown") {
 			const suggestion = options.activeSuggestionRef?.current;
-			if (suggestion?.hasMultiple) {
+			if (suggestion?.hasSuggestions) {
 				event.preventDefault();
 				suggestion.selectNext?.();
+				return false;
+			}
+			if (options.onOpenSuggestions) {
+				event.preventDefault();
+				options.onOpenSuggestions();
 				return false;
 			}
 		}
 
 		if (event.key === "ArrowUp" && noModifiers && event.type === "keydown") {
 			const suggestion = options.activeSuggestionRef?.current;
-			if (suggestion?.hasMultiple) {
+			if (suggestion?.hasSuggestions) {
 				event.preventDefault();
 				suggestion.selectPrev?.();
+				return false;
+			}
+			if (options.onOpenSuggestions) {
+				event.preventDefault();
+				options.onOpenSuggestions();
 				return false;
 			}
 		}
@@ -614,6 +632,17 @@ export function setupKeyboardHandler(
 				options.onWrite("\x15\x1b[D"); // Ctrl+U + left arrow
 			}
 			return false;
+		}
+
+		const isCtrlC =
+			event.key === "c" &&
+			event.ctrlKey &&
+			!event.metaKey &&
+			!event.altKey &&
+			!event.shiftKey;
+
+		if (isCtrlC && event.type === "keydown") {
+			options.activeSuggestionRef?.current?.onDismiss();
 		}
 
 		// Cmd+Left: Move cursor to beginning of line (sends Ctrl+A)

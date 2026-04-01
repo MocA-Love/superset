@@ -110,8 +110,6 @@ export async function getSuggestions(
 	prefix: string,
 	offset = 0,
 ): Promise<string[]> {
-	if (!prefix || prefix.length < 2) return [];
-
 	const history = await getHistory();
 	const results: string[] = [];
 	let skipped = 0;
