@@ -426,6 +426,23 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 			getErrTimer: null,
 			lastError: null,
 		};
+		let isSessionClosed = false;
+		const closeSession = (message: string) => {
+			if (isSessionClosed) {
+				return;
+			}
+			isSessionClosed = true;
+			session.lastError = message;
+			if (session.getErrTimer) {
+				clearTimeout(session.getErrTimer);
+				session.getErrTimer = null;
+			}
+			for (const request of session.requestResolvers.values()) {
+				request.reject(new Error(message));
+			}
+			session.requestResolvers.clear();
+			this.sessions.delete(workspaceId);
+		};
 
 		child.stdout.setEncoding("utf8");
 		child.stdout.on("data", (chunk: string) => {
@@ -438,21 +455,21 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 				chunk,
 			});
 		});
+		child.on("error", (error) => {
+			console.error("[language-services/typescript] tsserver process error", {
+				workspaceId,
+				error,
+			});
+			closeSession(
+				error instanceof Error
+					? `tsserver process error: ${error.message}`
+					: "tsserver process error",
+			);
+		});
 		child.on("exit", (code, signal) => {
-			session.lastError = `tsserver exited (${code ?? "null"}${signal ? `, ${signal}` : ""})`;
-			if (session.getErrTimer) {
-				clearTimeout(session.getErrTimer);
-				session.getErrTimer = null;
-			}
-			for (const request of session.requestResolvers.values()) {
-				request.reject(
-					new Error(
-						`TypeScript server exited: ${code ?? "null"}${signal ? ` ${signal}` : ""}`,
-					),
-				);
-			}
-			session.requestResolvers.clear();
-			this.sessions.delete(workspaceId);
+			closeSession(
+				`TypeScript server exited: ${code ?? "null"}${signal ? ` ${signal}` : ""}`,
+			);
 		});
 
 		this.sessions.set(workspaceId, session);

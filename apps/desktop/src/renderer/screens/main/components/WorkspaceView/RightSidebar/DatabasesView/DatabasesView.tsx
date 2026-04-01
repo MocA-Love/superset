@@ -102,6 +102,7 @@ import {
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 
 const SQLITE_ROW_ID_COLUMN = "__superset_rowid";
+const SQLITE_PRIMARY_KEY_COLUMN = "__superset_primary_key";
 const POSTGRES_ROW_ID_COLUMN = "__superset_ctid";
 
 const SQLITE_DEFAULT_SQL = [
@@ -289,7 +290,7 @@ function getRowIdentifier(
 ): string | null {
 	const identifier =
 		dialect === "sqlite"
-			? row[SQLITE_ROW_ID_COLUMN]
+			? (row[SQLITE_PRIMARY_KEY_COLUMN] ?? row[SQLITE_ROW_ID_COLUMN])
 			: row[POSTGRES_ROW_ID_COLUMN];
 
 	if (identifier === undefined || identifier === null) {
@@ -420,6 +421,23 @@ function formatCellDetailDraft(
 }
 
 function buildSqliteRowSelector(row: Record<string, unknown>): string {
+	const primaryKeyPayload = row[SQLITE_PRIMARY_KEY_COLUMN];
+	if (typeof primaryKeyPayload === "string" && primaryKeyPayload.length > 0) {
+		try {
+			const parsed = JSON.parse(primaryKeyPayload) as Record<string, unknown>;
+			const clauses = Object.entries(parsed).map(([column, value]) =>
+				value === null
+					? `${quoteSqlIdentifier(column)} IS NULL`
+					: `${quoteSqlIdentifier(column)} = ${toSqlLiteral(value, "sqlite")}`,
+			);
+			if (clauses.length > 0) {
+				return clauses.join(" AND ");
+			}
+		} catch {
+			// Fall back to rowid below if the preview metadata is malformed.
+		}
+	}
+
 	const rowId = row[SQLITE_ROW_ID_COLUMN];
 	if (rowId === undefined) {
 		throw new Error("Missing SQLite row identifier.");
@@ -1468,23 +1486,36 @@ export function DatabasesView({
 			}
 
 			if (activeConnection.dialect === "sqlite") {
-				return (
-					await trpcUtils.databases.getSqliteRowDetail.fetch({
-						databasePath: activeConnection.databasePath ?? "",
-						tableName: selectedTable.name,
-						rowId: row[SQLITE_ROW_ID_COLUMN] as string | number,
-					})
-				).row;
+				const detail = await trpcUtils.databases.getSqliteRowDetail.fetch({
+					databasePath: activeConnection.databasePath ?? "",
+					tableName: selectedTable.name,
+					rowId:
+						typeof row[SQLITE_ROW_ID_COLUMN] === "string" ||
+						typeof row[SQLITE_ROW_ID_COLUMN] === "number"
+							? (row[SQLITE_ROW_ID_COLUMN] as string | number)
+							: undefined,
+					primaryKey:
+						typeof row[SQLITE_PRIMARY_KEY_COLUMN] === "string"
+							? row[SQLITE_PRIMARY_KEY_COLUMN]
+							: undefined,
+				});
+				return {
+					...detail.row,
+					[SQLITE_ROW_ID_COLUMN]: row[SQLITE_ROW_ID_COLUMN],
+					[SQLITE_PRIMARY_KEY_COLUMN]: row[SQLITE_PRIMARY_KEY_COLUMN],
+				};
 			}
 
-			return (
-				await trpcUtils.databases.getPostgresRowDetail.fetch({
-					connectionString: activeConnection.connectionString ?? "",
-					schema: selectedTable.schema ?? "public",
-					tableName: selectedTable.name,
-					ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
-				})
-			).row;
+			const detail = await trpcUtils.databases.getPostgresRowDetail.fetch({
+				connectionString: activeConnection.connectionString ?? "",
+				schema: selectedTable.schema ?? "public",
+				tableName: selectedTable.name,
+				ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
+			});
+			return {
+				...detail.row,
+				[POSTGRES_ROW_ID_COLUMN]: row[POSTGRES_ROW_ID_COLUMN],
+			};
 		},
 		[activeConnection, selectedTable, trpcUtils],
 	);

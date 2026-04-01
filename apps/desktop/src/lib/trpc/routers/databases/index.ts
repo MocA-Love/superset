@@ -17,6 +17,7 @@ const SQLITE_FILE_GLOBS = [
 ];
 
 const SQLITE_ROW_ID_COLUMN = "__superset_rowid";
+const SQLITE_PRIMARY_KEY_COLUMN = "__superset_primary_key";
 const POSTGRES_ROW_ID_COLUMN = "__superset_ctid";
 const PREVIEW_TEXT_LIMIT = 180;
 
@@ -77,6 +78,10 @@ function quoteSqliteIdentifier(identifier: string): string {
 
 function quotePostgresIdentifier(identifier: string): string {
 	return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function quoteSqlStringLiteral(value: string): string {
+	return `'${value.replaceAll("'", "''")}'`;
 }
 
 function buildSqlitePreviewExpression(
@@ -165,6 +170,69 @@ function buildPostgresPreviewExpression(input: {
 	return `${quotedColumn} AS ${outputAlias}`;
 }
 
+function getSqliteTableMetadata(
+	db: Database.Database,
+	tableName: string,
+): {
+	columns: Array<{
+		cid: number;
+		name: string;
+		type: string | null;
+		notnull: 0 | 1;
+		dflt_value: string | null;
+		pk: number;
+	}>;
+	primaryKeyColumns: Array<{
+		cid: number;
+		name: string;
+		type: string | null;
+		notnull: 0 | 1;
+		dflt_value: string | null;
+		pk: number;
+	}>;
+	hasRowId: boolean;
+} {
+	const columns = db
+		.prepare(`PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`)
+		.all() as Array<{
+		cid: number;
+		name: string;
+		type: string | null;
+		notnull: 0 | 1;
+		dflt_value: string | null;
+		pk: number;
+	}>;
+	const primaryKeyColumns = columns
+		.filter((column) => column.pk > 0)
+		.sort((left, right) => left.pk - right.pk);
+	const tableDefinition = db
+		.prepare(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+		)
+		.get(tableName) as { sql?: string | null } | undefined;
+
+	return {
+		columns,
+		primaryKeyColumns,
+		hasRowId: !/without\s+rowid/i.test(tableDefinition?.sql ?? ""),
+	};
+}
+
+function buildSqlitePrimaryKeyPreviewExpression(
+	primaryKeyColumns: Array<{ name: string }>,
+): string {
+	if (primaryKeyColumns.length === 0) {
+		return `NULL AS ${quoteSqliteIdentifier(SQLITE_PRIMARY_KEY_COLUMN)}`;
+	}
+
+	const jsonEntries = primaryKeyColumns.flatMap((column) => [
+		quoteSqlStringLiteral(column.name),
+		quoteSqliteIdentifier(column.name),
+	]);
+
+	return `json_object(${jsonEntries.join(", ")}) AS ${quoteSqliteIdentifier(SQLITE_PRIMARY_KEY_COLUMN)}`;
+}
+
 function openSqliteDatabase(databasePath: string): Database.Database {
 	try {
 		return new Database(databasePath, {
@@ -201,6 +269,14 @@ async function withPostgresClient<T>(
 	} finally {
 		await client.end().catch(() => undefined);
 	}
+}
+
+function stripTrailingSemicolon(sql: string): string {
+	return sql.replace(/;\s*$/, "");
+}
+
+function canApplyPostgresReadLimit(sql: string): boolean {
+	return /^(select|with|values|table)\b/i.test(sql.trim());
 }
 
 export const createDatabasesRouter = () => {
@@ -414,21 +490,23 @@ export const createDatabasesRouter = () => {
 					const offset = input.offset ?? 0;
 					const startedAt = performance.now();
 					try {
-						const columnInfo = db
-							.prepare(
-								`PRAGMA table_info(${quoteSqliteIdentifier(input.tableName)})`,
-							)
-							.all() as Array<{
-							name: string;
-							type: string | null;
-						}>;
-						const previewSelect = columnInfo
+						const metadata = getSqliteTableMetadata(db, input.tableName);
+						const previewSelect = metadata.columns
 							.map((column) =>
 								buildSqlitePreviewExpression(column.name, column.type),
 							)
 							.join(", ");
+						const selectColumns = [
+							metadata.hasRowId
+								? `rowid AS ${quoteSqliteIdentifier(SQLITE_ROW_ID_COLUMN)}`
+								: null,
+							buildSqlitePrimaryKeyPreviewExpression(
+								metadata.primaryKeyColumns,
+							),
+							previewSelect,
+						].filter(Boolean);
 						const statement = db.prepare(
-							`SELECT rowid AS ${quoteSqliteIdentifier(SQLITE_ROW_ID_COLUMN)}, ${previewSelect} FROM ${quoteSqliteIdentifier(input.tableName)} LIMIT ? OFFSET ?`,
+							`SELECT ${selectColumns.join(", ")} FROM ${quoteSqliteIdentifier(input.tableName)} LIMIT ? OFFSET ?`,
 						);
 						const previewRows = statement.all(limit + 1, offset) as Array<
 							Record<string, unknown>
@@ -440,7 +518,11 @@ export const createDatabasesRouter = () => {
 							columns: statement
 								.columns()
 								.map((column) => column.name)
-								.filter((column) => column !== SQLITE_ROW_ID_COLUMN),
+								.filter(
+									(column) =>
+										column !== SQLITE_ROW_ID_COLUMN &&
+										column !== SQLITE_PRIMARY_KEY_COLUMN,
+								),
 							rows,
 							rowCount: rows.length,
 							totalRows: null,
@@ -468,7 +550,8 @@ export const createDatabasesRouter = () => {
 				z.object({
 					databasePath: z.string().min(1),
 					tableName: z.string().min(1),
-					rowId: z.union([z.string(), z.number()]),
+					rowId: z.union([z.string(), z.number()]).optional(),
+					primaryKey: z.string().optional(),
 				}),
 			)
 			.query(async ({ input }) => {
@@ -477,11 +560,63 @@ export const createDatabasesRouter = () => {
 
 				const db = openSqliteDatabase(input.databasePath);
 				try {
+					const metadata = getSqliteTableMetadata(db, input.tableName);
+					let whereClause = "";
+					const parameters: Array<string | number | null> = [];
+
+					if (metadata.primaryKeyColumns.length > 0) {
+						if (!input.primaryKey) {
+							throw new TRPCError({
+								code: "BAD_REQUEST",
+								message:
+									"Primary key payload is required for this SQLite table.",
+							});
+						}
+
+						let parsedPrimaryKey: Record<string, unknown>;
+						try {
+							parsedPrimaryKey = JSON.parse(input.primaryKey) as Record<
+								string,
+								unknown
+							>;
+						} catch {
+							throw new TRPCError({
+								code: "BAD_REQUEST",
+								message: "Invalid SQLite primary key payload.",
+							});
+						}
+						whereClause = metadata.primaryKeyColumns
+							.map((column) => {
+								const value = parsedPrimaryKey[column.name];
+								if (value === null) {
+									return `${quoteSqliteIdentifier(column.name)} IS NULL`;
+								}
+								parameters.push((value ?? null) as string | number | null);
+								return `${quoteSqliteIdentifier(column.name)} = ?`;
+							})
+							.join(" AND ");
+					} else if (metadata.hasRowId) {
+						if (input.rowId === undefined) {
+							throw new TRPCError({
+								code: "BAD_REQUEST",
+								message: "rowid is required for this SQLite table.",
+							});
+						}
+						whereClause = "rowid = ?";
+						parameters.push(input.rowId);
+					} else {
+						throw new TRPCError({
+							code: "BAD_REQUEST",
+							message:
+								"This SQLite table has neither a rowid nor a primary key.",
+						});
+					}
+
 					const row = db
 						.prepare(
-							`SELECT rowid AS ${quoteSqliteIdentifier(SQLITE_ROW_ID_COLUMN)}, * FROM ${quoteSqliteIdentifier(input.tableName)} WHERE rowid = ? LIMIT 1`,
+							`SELECT * FROM ${quoteSqliteIdentifier(input.tableName)} WHERE ${whereClause} LIMIT 1`,
 						)
-						.get(input.rowId) as Record<string, unknown> | undefined;
+						.get(...parameters) as Record<string, unknown> | undefined;
 
 					if (!row) {
 						throw new TRPCError({
@@ -694,8 +829,30 @@ export const createDatabasesRouter = () => {
 				return await withPostgresClient(
 					input.connectionString,
 					async (client) => {
-						const result = await client.query(sql);
 						const limit = input.limit ?? 200;
+						if (canApplyPostgresReadLimit(sql)) {
+							const limitedSql = `SELECT * FROM (${stripTrailingSemicolon(
+								sql,
+							)}) AS __superset_query LIMIT ${limit + 1}`;
+							const limitedResult = await client.query(limitedSql);
+							const truncated = limitedResult.rows.length > limit;
+							const rows = truncated
+								? limitedResult.rows.slice(0, limit)
+								: limitedResult.rows;
+
+							return {
+								columns: limitedResult.fields.map(
+									(field: { name: string }) => field.name,
+								),
+								rows,
+								rowCount: rows.length,
+								truncated,
+								elapsedMs: Math.round(performance.now() - startedAt),
+								command: "SELECT",
+							};
+						}
+
+						const result = await client.query(sql);
 
 						return {
 							columns: result.fields.map(

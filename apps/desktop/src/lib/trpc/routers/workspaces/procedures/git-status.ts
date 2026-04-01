@@ -149,7 +149,45 @@ async function ensureGitHubBranchExists({
 			{ cwd: repoPath },
 		);
 		return;
-	} catch {}
+	} catch (error) {
+		const errorText =
+			error instanceof Error
+				? [
+						error.message,
+						"stderr" in error && typeof error.stderr === "string"
+							? error.stderr
+							: "",
+						"stdout" in error && typeof error.stdout === "string"
+							? error.stdout
+							: "",
+					]
+						.join("\n")
+						.toLowerCase()
+				: String(error).toLowerCase();
+		const isMissingRefError =
+			errorText.includes("404") ||
+			errorText.includes("not found") ||
+			errorText.includes("no ref found");
+
+		if (!isMissingRefError) {
+			console.warn("[git-status] GitHub branch probe failed", {
+				repoPath,
+				repositoryNameWithOwner,
+				branchName,
+				baseBranch,
+				error,
+			});
+			throw error;
+		}
+
+		console.warn("[git-status] GitHub branch not found, creating branch", {
+			repoPath,
+			repositoryNameWithOwner,
+			branchName,
+			baseBranch,
+			error,
+		});
+	}
 
 	const { stdout } = await execWithShellEnv(
 		"gh",

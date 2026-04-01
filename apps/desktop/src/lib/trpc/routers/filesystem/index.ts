@@ -260,8 +260,7 @@ export const createFilesystemRouter = () => {
 		replaceContent: publicProcedure
 			.input(replaceContentInputSchema)
 			.mutation(async ({ input }) => {
-				const trimmedQuery = input.query.trim();
-				if (!trimmedQuery) {
+				if (input.query.length === 0) {
 					return {
 						replacements: 0,
 						filesUpdated: 0,
@@ -273,7 +272,7 @@ export const createFilesystemRouter = () => {
 
 				const service = getServiceForWorkspace(input.workspaceId);
 				return await service.replaceContent({
-					query: trimmedQuery,
+					query: input.query,
 					replacement: input.replacement,
 					includeHidden: input.includeHidden,
 					includePattern: input.includePattern,

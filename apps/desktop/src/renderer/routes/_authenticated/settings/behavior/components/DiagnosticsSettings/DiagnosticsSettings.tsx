@@ -56,6 +56,8 @@ export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 					const checked = isKnownProvider
 						? enabledProviders[providerId]
 						: provider.enabled;
+					const isSwitchDisabled =
+						isLoading || setProviderEnabled.isPending || !isKnownProvider;
 
 					return (
 						<div
@@ -72,11 +74,16 @@ export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 								<p className="text-xs text-muted-foreground">
 									{provider.description}
 								</p>
+								{!isKnownProvider ? (
+									<p className="text-xs text-muted-foreground">
+										この provider は現在の設定 UI からは変更できません。
+									</p>
+								) : null}
 							</div>
 							<Switch
 								id={`language-service-${provider.providerId}`}
 								checked={checked}
-								disabled={isLoading || setProviderEnabled.isPending}
+								disabled={isSwitchDisabled}
 								onCheckedChange={async (nextChecked) => {
 									if (!isKnownProvider) {
 										return;
