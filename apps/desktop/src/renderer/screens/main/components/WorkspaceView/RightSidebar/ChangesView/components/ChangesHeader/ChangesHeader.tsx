@@ -56,6 +56,7 @@ interface ChangesHeaderProps {
 	onViewModeChange: (mode: ChangesViewMode) => void;
 	showViewModeToggle?: boolean;
 	worktreePath: string;
+	currentBranch?: string | null;
 	pr: GitHubStatus["pr"] | null;
 	isPRStatusLoading: boolean;
 	canCreatePR: boolean;
@@ -302,6 +303,7 @@ function BranchRefCommandItem({
 
 function CurrentBranchSelector({
 	worktreePath,
+	currentBranch,
 	hasUncommittedChanges,
 	hasUntrackedFiles,
 	hasConflictedFiles,
@@ -311,6 +313,7 @@ function CurrentBranchSelector({
 	onRefresh,
 }: {
 	worktreePath: string;
+	currentBranch?: string | null;
 	hasUncommittedChanges: boolean;
 	hasUntrackedFiles: boolean;
 	hasConflictedFiles: boolean;
@@ -528,7 +531,7 @@ function CurrentBranchSelector({
 		},
 	});
 
-	const currentBranch = branchData?.currentBranch ?? null;
+	const effectiveCurrentBranch = currentBranch ?? branchData?.currentBranch ?? null;
 	const effectiveBaseBranch =
 		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
 	const existingBranchNames = useMemo(
@@ -594,7 +597,7 @@ function CurrentBranchSelector({
 			action: "switch" as const,
 			branch,
 		};
-		if (branch === currentBranch) {
+		if (branch === effectiveCurrentBranch) {
 			setOpen(false);
 			return;
 		}
@@ -624,8 +627,8 @@ function CurrentBranchSelector({
 		const currentBranchCreateTarget = {
 			action: "create-from-ref" as const,
 			branch: createBranchName,
-			startPointRef: currentBranch ?? "HEAD",
-			startPointDisplayName: currentBranch,
+			startPointRef: effectiveCurrentBranch ?? "HEAD",
+			startPointDisplayName: effectiveCurrentBranch,
 		};
 		if (branchGuardState?.operationInProgress) {
 			openOperationDialog(
@@ -714,7 +717,7 @@ function CurrentBranchSelector({
 				</CommandItem>
 				<CommandItem
 					onSelect={() => {
-						if (!currentBranch) {
+						if (!effectiveCurrentBranch) {
 							setDialogState({ kind: "compare-detached-head" });
 							setOpen(false);
 							return;
@@ -731,7 +734,7 @@ function CurrentBranchSelector({
 			{localBranchResults.length > 0 ? (
 				<CommandGroup heading="Branches">
 					{localBranchResults.map((branch) => {
-						const isCurrent = branch.name === currentBranch;
+						const isCurrent = branch.name === effectiveCurrentBranch;
 						const checkedOutPath = branch.checkedOutPath;
 						const isDisabled = !!checkedOutPath && !isCurrent;
 
@@ -754,7 +757,7 @@ function CurrentBranchSelector({
 			{remoteBranchResults.length > 0 ? (
 				<CommandGroup heading="Remote Branches">
 					{remoteBranchResults.map((branch) => {
-						const isCurrent = branch.name === currentBranch;
+						const isCurrent = branch.name === effectiveCurrentBranch;
 						const checkedOutPath = branch.checkedOutPath;
 						const isDisabled = !!checkedOutPath && !isCurrent;
 
@@ -964,7 +967,7 @@ function CurrentBranchSelector({
 					<TooltipTrigger asChild>
 						<PopoverTrigger asChild>
 							<BranchSelectorButton
-								label={currentBranch ?? "detached HEAD"}
+								label={effectiveCurrentBranch ?? "detached HEAD"}
 								disabled={isLoading}
 							/>
 						</PopoverTrigger>
@@ -1168,6 +1171,7 @@ export function ChangesHeader({
 	onViewModeChange,
 	showViewModeToggle = true,
 	worktreePath,
+	currentBranch,
 	pr,
 	isPRStatusLoading,
 	canCreatePR,
@@ -1216,6 +1220,7 @@ export function ChangesHeader({
 				<div className="min-w-0">
 					<CurrentBranchSelector
 						worktreePath={worktreePath}
+						currentBranch={currentBranch}
 						hasUncommittedChanges={hasUncommittedChanges}
 						hasUntrackedFiles={hasUntrackedFiles}
 						hasConflictedFiles={hasConflictedFiles}
