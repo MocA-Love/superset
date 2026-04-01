@@ -379,11 +379,21 @@ export function ChangesView({
 			return;
 		}
 
+		const startedAt = Date.now();
+		console.log("[ReviewPanel] refresh:start", {
+			scope,
+			workspaceId,
+		});
 		setIsReviewRefreshing(true);
 		try {
 			const freshGitHubStatus = await trpcUtils.workspaces.getGitHubStatus.fetch({
 				workspaceId,
 				forceFresh: true,
+			});
+			console.log("[ReviewPanel] refresh:statusFetched", {
+				scope,
+				workspaceId,
+				durationMs: Date.now() - startedAt,
 			});
 			trpcUtils.workspaces.getGitHubStatus.setData(
 				{ workspaceId },
@@ -391,6 +401,7 @@ export function ChangesView({
 			);
 
 			if (scope === "full") {
+				const commentsStartedAt = Date.now();
 				const freshComments = await trpcUtils.workspaces.getGitHubPRComments.fetch(
 					buildGitHubCommentsQueryInput({
 						workspaceId,
@@ -398,6 +409,11 @@ export function ChangesView({
 						forceFresh: true,
 					}),
 				);
+				console.log("[ReviewPanel] refresh:commentsFetched", {
+					scope,
+					workspaceId,
+					durationMs: Date.now() - commentsStartedAt,
+				});
 				trpcUtils.workspaces.getGitHubPRComments.setData(
 					buildGitHubCommentsQueryInput({
 						workspaceId,
@@ -410,6 +426,11 @@ export function ChangesView({
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to refresh review: ${message}`);
 		} finally {
+			console.log("[ReviewPanel] refresh:done", {
+				scope,
+				workspaceId,
+				totalDurationMs: Date.now() - startedAt,
+			});
 			setIsReviewRefreshing(false);
 		}
 	};

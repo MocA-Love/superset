@@ -235,6 +235,7 @@ async function updatePullRequestMembers({
 }): Promise<{ success: true }> {
 	const normalizedAdd = normalizeIdentityList(add);
 	const normalizedRemove = normalizeIdentityList(remove);
+	const startedAt = Date.now();
 
 	if (normalizedAdd.length === 0 && normalizedRemove.length === 0) {
 		return { success: true };
@@ -269,7 +270,20 @@ async function updatePullRequestMembers({
 		);
 	}
 
+	console.log("[GitHub] updatePullRequestMembers:start", {
+		kind,
+		workspaceId,
+		pullRequestNumber: resolvedPr,
+		add: normalizedAdd,
+		remove: normalizedRemove,
+		repoNameWithOwner,
+	});
 	await execWithShellEnv("gh", args, { cwd: repoPath });
+	console.log("[GitHub] updatePullRequestMembers:ghComplete", {
+		kind,
+		workspaceId,
+		durationMs: Date.now() - startedAt,
+	});
 	clearGitHubCachesForWorktree(repoPath);
 
 	if (worktree) {
@@ -279,6 +293,12 @@ async function updatePullRequestMembers({
 			.where(eq(worktrees.id, worktree.id))
 			.run();
 	}
+
+	console.log("[GitHub] updatePullRequestMembers:done", {
+		kind,
+		workspaceId,
+		totalDurationMs: Date.now() - startedAt,
+	});
 
 	return { success: true };
 }

@@ -122,6 +122,7 @@ export function ReviewPanel({
 	onRefreshReview,
 }: ReviewPanelProps) {
 	const resolvedWorkspaceId = useWorkspaceId();
+	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
 	const handleOpenUrl = useCallback(
 		(url: string, e: React.MouseEvent) => {
@@ -354,6 +355,61 @@ export function ReviewPanel({
 		});
 	};
 
+	const applyOptimisticMemberUpdate = useCallback(
+		({
+			kind,
+			add = [],
+			remove = [],
+		}: {
+			kind: "reviewer" | "assignee";
+			add?: string[];
+			remove?: string[];
+		}) => {
+			if (!resolvedWorkspaceId) {
+				return;
+			}
+
+			const normalizedAdd = Array.from(
+				new Set(add.map((value) => value.trim()).filter(Boolean)),
+			);
+			const normalizedRemove = new Set(
+				remove.map((value) => value.trim()).filter(Boolean),
+			);
+
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId: resolvedWorkspaceId },
+				(current) => {
+					if (!current?.pr) {
+						return current;
+					}
+
+					const existingValues =
+						kind === "reviewer"
+							? current.pr.requestedReviewers ?? []
+							: current.pr.assignees ?? [];
+					const nextValues = Array.from(
+						new Set(
+							existingValues
+								.filter((value) => !normalizedRemove.has(value))
+								.concat(normalizedAdd),
+						),
+					);
+
+					return {
+						...current,
+						pr: {
+							...current.pr,
+							...(kind === "reviewer"
+								? { requestedReviewers: nextValues }
+								: { assignees: nextValues }),
+						},
+					};
+				},
+			);
+		},
+		[resolvedWorkspaceId, trpcUtils],
+	);
+
 	const updateReviewers = async ({
 		add = [],
 		remove = [],
@@ -367,8 +423,20 @@ export function ReviewPanel({
 			return;
 		}
 
+		const startedAt = Date.now();
+		console.log("[ReviewPanel] updateReviewers:start", {
+			workspaceId: resolvedWorkspaceId,
+			add,
+			remove,
+			pullRequestNumber: pr?.number,
+		});
 		setPendingIdentityGroup("reviewers");
 		try {
+			applyOptimisticMemberUpdate({
+				kind: "reviewer",
+				add,
+				remove,
+			});
 			await updatePullRequestReviewersMutation.mutateAsync({
 				workspaceId: resolvedWorkspaceId,
 				add,
@@ -376,12 +444,21 @@ export function ReviewPanel({
 				pullRequestNumber: pr?.number,
 				pullRequestUrl: pr?.url,
 			});
+			console.log("[ReviewPanel] updateReviewers:mutationDone", {
+				workspaceId: resolvedWorkspaceId,
+				durationMs: Date.now() - startedAt,
+			});
 			onSuccess?.();
-			await refreshReview("status");
+			void refreshReview("status");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to update reviewers: ${message}`);
+			void refreshReview("status");
 		} finally {
+			console.log("[ReviewPanel] updateReviewers:done", {
+				workspaceId: resolvedWorkspaceId,
+				totalDurationMs: Date.now() - startedAt,
+			});
 			setPendingIdentityGroup((current) =>
 				current === "reviewers" ? null : current,
 			);
@@ -401,8 +478,20 @@ export function ReviewPanel({
 			return;
 		}
 
+		const startedAt = Date.now();
+		console.log("[ReviewPanel] updateAssignees:start", {
+			workspaceId: resolvedWorkspaceId,
+			add,
+			remove,
+			pullRequestNumber: pr?.number,
+		});
 		setPendingIdentityGroup("assignees");
 		try {
+			applyOptimisticMemberUpdate({
+				kind: "assignee",
+				add,
+				remove,
+			});
 			await updatePullRequestAssigneesMutation.mutateAsync({
 				workspaceId: resolvedWorkspaceId,
 				add,
@@ -410,12 +499,21 @@ export function ReviewPanel({
 				pullRequestNumber: pr?.number,
 				pullRequestUrl: pr?.url,
 			});
+			console.log("[ReviewPanel] updateAssignees:mutationDone", {
+				workspaceId: resolvedWorkspaceId,
+				durationMs: Date.now() - startedAt,
+			});
 			onSuccess?.();
-			await refreshReview("status");
+			void refreshReview("status");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to update assignees: ${message}`);
+			void refreshReview("status");
 		} finally {
+			console.log("[ReviewPanel] updateAssignees:done", {
+				workspaceId: resolvedWorkspaceId,
+				totalDurationMs: Date.now() - startedAt,
+			});
 			setPendingIdentityGroup((current) =>
 				current === "assignees" ? null : current,
 			);
@@ -423,10 +521,14 @@ export function ReviewPanel({
 	};
 
 	const handleRemoveReviewer = (reviewer: string) => {
+		setIdentityPopoverOpen(null);
+		setReviewerSearch("");
 		void updateReviewers({ remove: [reviewer] });
 	};
 
 	const handleRemoveAssignee = (assignee: string) => {
+		setIdentityPopoverOpen(null);
+		setAssigneeSearch("");
 		void updateAssignees({ remove: [assignee] });
 	};
 
@@ -434,6 +536,13 @@ export function ReviewPanel({
 		pendingGroup: "reviewers" | "assignees",
 		candidate: string,
 	) => {
+		setIdentityPopoverOpen(null);
+		if (pendingGroup === "assignees") {
+			setAssigneeSearch("");
+		} else {
+			setReviewerSearch("");
+		}
+
 		if (pendingGroup === "reviewers") {
 			void updateReviewers({ add: [candidate] });
 			return;
