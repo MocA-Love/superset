@@ -21,6 +21,7 @@ export interface ChatPaneData {
 export interface BrowserPaneData {
 	url: string;
 	mode: "docs" | "preview" | "generic";
+	reloadToken?: string;
 }
 
 export interface DevtoolsPaneData {

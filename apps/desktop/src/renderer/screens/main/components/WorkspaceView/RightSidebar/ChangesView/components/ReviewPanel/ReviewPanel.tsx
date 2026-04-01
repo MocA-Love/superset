@@ -671,10 +671,13 @@ export function ReviewPanel({
 		void updateAssignees({ add: [candidate] });
 	};
 
-	const isActionsJobUrl = (url?: string) =>
-		url ? /\/actions\/runs\/\d+\/job\/\d+/.test(url) : false;
-	const isActionsRunUrl = (url?: string) =>
-		url ? /\/actions\/runs\/\d+(?:\/|$)/.test(url) : false;
+	function isActionsJobUrl(url?: string) {
+		return url ? /\/actions\/runs\/\d+\/job\/\d+/.test(url) : false;
+	}
+
+	function isActionsRunUrl(url?: string) {
+		return url ? /\/actions\/runs\/\d+(?:\/|$)/.test(url) : false;
+	}
 
 	const renderIdentitySection = ({
 		label,

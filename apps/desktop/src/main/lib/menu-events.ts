@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { BrowserShortcutAction } from "shared/browser-shortcuts";
 export type SettingsSection =
 	| "project"
 	| "workspace"
@@ -15,6 +16,10 @@ export interface OpenSettingsEvent {
 
 export interface OpenWorkspaceEvent {
 	workspaceId: string;
+}
+
+export interface BrowserActionEvent {
+	action: BrowserShortcutAction;
 }
 
 export const menuEmitter = new EventEmitter();

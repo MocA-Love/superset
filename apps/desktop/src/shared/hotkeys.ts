@@ -9,6 +9,7 @@ export type HotkeyPlatform = "darwin" | "win32" | "linux";
 
 export type HotkeyCategory =
 	| "Navigation"
+	| "Browser"
 	| "Workspace"
 	| "Layout"
 	| "Terminal"
@@ -401,6 +402,20 @@ export const HOTKEYS = {
 		label: "Navigate Forward",
 		category: "Navigation",
 		description: "Go forward to the next page in history",
+	}),
+
+	// Browser
+	BROWSER_RELOAD: defineHotkey({
+		keys: null,
+		label: "Reload Browser",
+		category: "Browser",
+		description: "Reload the active browser pane",
+	}),
+	BROWSER_HARD_RELOAD: defineHotkey({
+		keys: null,
+		label: "Hard Reload Browser",
+		category: "Browser",
+		description: "Force reload the active browser pane",
 	}),
 
 	// Workspace - switch with ⌘+1-9
@@ -855,6 +870,7 @@ export function getHotkeysByCategory(options?: {
 }): Record<HotkeyCategory, HotkeyWithId[]> {
 	const grouped: Record<HotkeyCategory, HotkeyWithId[]> = {
 		Navigation: [],
+		Browser: [],
 		Workspace: [],
 		Layout: [],
 		Terminal: [],
