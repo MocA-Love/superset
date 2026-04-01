@@ -71,6 +71,27 @@ const ghRepositoryWorkflowsResponseSchema = z.object({
 	workflows: z.array(ghRepositoryWorkflowSchema).optional(),
 });
 
+const ghRepositoryWorkflowRunSchema = z.object({
+	id: z.number(),
+	name: z.string().nullable().optional(),
+	display_title: z.string().nullable().optional(),
+	html_url: z.string().optional(),
+	status: z.string().nullable().optional(),
+	conclusion: z.string().nullable().optional(),
+	event: z.string().nullable().optional(),
+	created_at: z.string().nullable().optional(),
+	updated_at: z.string().nullable().optional(),
+	run_started_at: z.string().nullable().optional(),
+	head_branch: z.string().nullable().optional(),
+	head_sha: z.string().nullable().optional(),
+	run_number: z.number().optional(),
+	workflow_id: z.number().optional(),
+});
+
+const ghRepositoryWorkflowRunsResponseSchema = z.object({
+	workflow_runs: z.array(ghRepositoryWorkflowRunSchema).optional(),
+});
+
 const ghRepositoryLabelSchema = z.object({
 	name: z.string(),
 	color: z.string().optional(),
@@ -636,7 +657,48 @@ async function dispatchGitHubWorkflowForWorkspace({
 	return {
 		success: true as const,
 		ref: targetRef,
+		dispatchedAt: new Date().toISOString(),
 	};
+}
+
+async function getGitHubWorkflowRunsForWorkspace({
+	workspaceId,
+	workflowId,
+}: {
+	workspaceId: string;
+	workflowId: number;
+}) {
+	const { repoPath, repositoryNameWithOwner } =
+		await resolveRepositoryTargetForWorkspace(workspaceId);
+	const { stdout } = await execWithShellEnv(
+		"gh",
+		[
+			"api",
+			`repos/${repositoryNameWithOwner}/actions/workflows/${workflowId}/runs?per_page=10&event=workflow_dispatch`,
+		],
+		{ cwd: repoPath },
+	);
+
+	const rawRuns = JSON.parse(stdout) as unknown;
+	const runs =
+		ghRepositoryWorkflowRunsResponseSchema.parse(rawRuns).workflow_runs ?? [];
+
+	return runs.map((run) => ({
+		id: run.id,
+		name: run.name ?? "",
+		displayTitle: run.display_title ?? "",
+		url: run.html_url ?? "",
+		status: run.status ?? "unknown",
+		conclusion: run.conclusion ?? null,
+		event: run.event ?? null,
+		createdAt: run.created_at ?? null,
+		updatedAt: run.updated_at ?? null,
+		runStartedAt: run.run_started_at ?? null,
+		headBranch: run.head_branch ?? null,
+		headSha: run.head_sha ?? null,
+		runNumber: run.run_number ?? null,
+		workflowId: run.workflow_id ?? workflowId,
+	}));
 }
 
 async function rerunPullRequestChecksForWorkspace({
@@ -1173,6 +1235,17 @@ export const createGitStatusProcedures = () => {
 			)
 			.mutation(async ({ input }) => {
 				return dispatchGitHubWorkflowForWorkspace(input);
+			}),
+
+		getGitHubWorkflowRuns: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					workflowId: z.number().int().positive(),
+				}),
+			)
+			.query(async ({ input }) => {
+				return getGitHubWorkflowRunsForWorkspace(input);
 			}),
 
 		rerunPullRequestChecks: publicProcedure

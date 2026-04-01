@@ -68,6 +68,13 @@ interface UploadedIssueAsset {
 	markdown: string;
 }
 
+interface TrackedWorkflowRun {
+	workflowId: number;
+	workflowName: string;
+	ref: string;
+	dispatchedAt: string;
+}
+
 function buildSelectionSummary(items: string[], emptyLabel: string): string {
 	if (items.length === 0) {
 		return emptyLabel;
@@ -98,6 +105,186 @@ function readFileAsBase64(file: File): Promise<string> {
 	});
 }
 
+function getWorkflowRunStatusLabel(
+	run?: {
+		status: string;
+		conclusion: string | null;
+	} | null,
+): string {
+	if (!run) {
+		return "Waiting";
+	}
+
+	if (run.status === "completed") {
+		switch (run.conclusion) {
+			case "success":
+				return "Succeeded";
+			case "failure":
+				return "Failed";
+			case "cancelled":
+				return "Cancelled";
+			case "skipped":
+				return "Skipped";
+			default:
+				return run.conclusion ?? "Completed";
+		}
+	}
+
+	if (run.status === "in_progress") {
+		return "Running";
+	}
+
+	if (run.status === "queued") {
+		return "Queued";
+	}
+
+	return run.status;
+}
+
+function getWorkflowRunStatusClassName(
+	run?: {
+		status: string;
+		conclusion: string | null;
+	} | null,
+): string {
+	if (!run) {
+		return "border-border/60 text-muted-foreground";
+	}
+
+	if (run.status !== "completed") {
+		return "border-blue-500/30 text-blue-600 dark:text-blue-300";
+	}
+
+	switch (run.conclusion) {
+		case "success":
+			return "border-emerald-500/30 text-emerald-600 dark:text-emerald-300";
+		case "failure":
+			return "border-red-500/30 text-red-600 dark:text-red-300";
+		case "cancelled":
+			return "border-amber-500/30 text-amber-600 dark:text-amber-300";
+		default:
+			return "border-border/60 text-muted-foreground";
+	}
+}
+
+function findTrackedWorkflowRun(
+	runs: Array<{
+		id: number;
+		status: string;
+		conclusion: string | null;
+		createdAt: string | null;
+		headBranch: string | null;
+	}>,
+	tracked: TrackedWorkflowRun,
+) {
+	const dispatchedAtMs = Date.parse(tracked.dispatchedAt);
+	return runs.find((run) => {
+		const createdAtMs = run.createdAt ? Date.parse(run.createdAt) : Number.NaN;
+		if (Number.isNaN(createdAtMs) || createdAtMs < dispatchedAtMs - 30_000) {
+			return false;
+		}
+
+		return !run.headBranch || run.headBranch === tracked.ref;
+	});
+}
+
+function WorkflowRunCard({
+	workspaceId,
+	tracked,
+	onOpenUrl,
+	onRemove,
+}: {
+	workspaceId: string;
+	tracked: TrackedWorkflowRun;
+	onOpenUrl: (url: string) => void;
+	onRemove: (workflowId: number) => void;
+}) {
+	const { data: runs = [], isFetching } =
+		electronTrpc.workspaces.getGitHubWorkflowRuns.useQuery(
+			{
+				workspaceId,
+				workflowId: tracked.workflowId,
+			},
+			{
+				refetchInterval: (query) => {
+					const matched = findTrackedWorkflowRun(
+						query.state.data ?? [],
+						tracked,
+					);
+					return matched?.status === "completed" ? false : 3_000;
+				},
+				refetchIntervalInBackground: true,
+				staleTime: 0,
+			},
+		);
+
+	const matchedRun = findTrackedWorkflowRun(runs, tracked);
+	const statusLabel = getWorkflowRunStatusLabel(matchedRun);
+	const statusClassName = getWorkflowRunStatusClassName(matchedRun);
+	const isPending =
+		!matchedRun ||
+		matchedRun.status === "queued" ||
+		matchedRun.status === "in_progress";
+	const timestampLabel = formatRepositoryTimestamp(
+		matchedRun?.runStartedAt ?? matchedRun?.createdAt ?? tracked.dispatchedAt,
+	);
+
+	return (
+		<div className="rounded-sm border border-border/60 bg-background px-2 py-2">
+			<div className="flex items-start justify-between gap-2">
+				<div className="min-w-0 flex-1">
+					<p className="truncate text-xs font-medium text-foreground">
+						{tracked.workflowName}
+					</p>
+					<p className="truncate text-[11px] text-muted-foreground">
+						{matchedRun?.runNumber ? `#${matchedRun.runNumber} · ` : ""}
+						{tracked.ref}
+					</p>
+				</div>
+				<div className="flex items-center gap-1">
+					<Badge variant="outline" className={statusClassName}>
+						{isPending ? (
+							<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+						) : null}
+						{statusLabel}
+					</Badge>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="h-6 px-1.5 text-[10px]"
+						onClick={() => onRemove(tracked.workflowId)}
+					>
+						<LuX className="size-3" />
+					</Button>
+				</div>
+			</div>
+			<div className="mt-2 flex items-center justify-between gap-2">
+				<p className="truncate text-[11px] text-muted-foreground">
+					{matchedRun
+						? timestampLabel
+							? `${isPending ? "Updated" : "Finished"} ${timestampLabel}`
+							: statusLabel
+						: isFetching
+							? "Waiting for GitHub to create the run..."
+							: "Looking for the triggered run..."}
+				</p>
+				{matchedRun?.url ? (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="h-6 px-2 text-[10px]"
+						onClick={() => onOpenUrl(matchedRun.url)}
+					>
+						Open in GitHub
+					</Button>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
 export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
@@ -121,6 +308,9 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const [pendingWorkflowId, setPendingWorkflowId] = useState<number | null>(
 		null,
 	);
+	const [trackedWorkflowRuns, setTrackedWorkflowRuns] = useState<
+		TrackedWorkflowRun[]
+	>([]);
 	const {
 		data: repositoryOverview,
 		isLoading,
@@ -192,6 +382,15 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 			setIssueLabelSearch("");
 		}
 	}, [issueComposerOpen]);
+
+	useEffect(() => {
+		if (workspaceId === undefined) {
+			setTrackedWorkflowRuns([]);
+			return;
+		}
+
+		setTrackedWorkflowRuns([]);
+	}, [workspaceId]);
 
 	const openUrl = (url: string) => {
 		if (!workspaceId) {
@@ -328,6 +527,17 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 				workflowId,
 				ref: workflowRef.trim() || undefined,
 			});
+			setTrackedWorkflowRuns((current) =>
+				[
+					{
+						workflowId,
+						workflowName,
+						ref: result.ref,
+						dispatchedAt: result.dispatchedAt,
+					},
+					...current.filter((item) => item.workflowId !== workflowId),
+				].slice(0, 4),
+			);
 			toast.success(`Triggered ${workflowName} on ${result.ref}`);
 		} catch (mutationError) {
 			const message =
@@ -800,6 +1010,28 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 										{repositoryOverview.workflows.length}
 									</span>
 								</div>
+								{workspaceId && trackedWorkflowRuns.length > 0 ? (
+									<div className="space-y-1">
+										<p className="text-[11px] font-medium text-muted-foreground">
+											Recent Runs
+										</p>
+										{trackedWorkflowRuns.map((tracked) => (
+											<WorkflowRunCard
+												key={`${tracked.workflowId}-${tracked.dispatchedAt}`}
+												workspaceId={workspaceId}
+												tracked={tracked}
+												onOpenUrl={openUrl}
+												onRemove={(workflowId) => {
+													setTrackedWorkflowRuns((current) =>
+														current.filter(
+															(item) => item.workflowId !== workflowId,
+														),
+													);
+												}}
+											/>
+										))}
+									</div>
+								) : null}
 								<Input
 									value={workflowRef}
 									onChange={(event) => setWorkflowRef(event.target.value)}
