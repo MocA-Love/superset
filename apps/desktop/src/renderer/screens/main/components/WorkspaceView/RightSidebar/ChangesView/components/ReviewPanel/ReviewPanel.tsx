@@ -309,52 +309,6 @@ export function ReviewPanel({
 		});
 	};
 
-	if (isLoading && !pr) {
-		return (
-			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-				Loading review...
-			</div>
-		);
-	}
-
-	if (!pr) {
-		return (
-			<div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-				Open a pull request to view review status, checks, and comments.
-			</div>
-		);
-	}
-
-	const requestedReviewers = pr.requestedReviewers ?? [];
-	const assignees = pr.assignees ?? [];
-
-	const relevantChecks = pr.checks.filter(
-		(check) => check.status !== "skipped" && check.status !== "cancelled",
-	);
-	const passingChecks = relevantChecks.filter(
-		(check) => check.status === "success",
-	).length;
-	const checksSummary =
-		relevantChecks.length > 0
-			? `${passingChecks}/${relevantChecks.length} checks passing`
-			: "No checks reported";
-	const checksStatus = relevantChecks.length > 0 ? pr.checksStatus : "none";
-	const checksStatusConfig = checkSummaryIconConfig[checksStatus];
-	const ChecksStatusIcon = checksStatusConfig.icon;
-	const { active: activeComments, resolved: resolvedComments } =
-		splitPullRequestComments(comments);
-	const commentsCountLabel = isCommentsLoading ? "..." : comments.length;
-	const copyAllCommentsLabel =
-		copiedActionKey === ALL_COMMENTS_COPY_ACTION_KEY ? "Copied" : "Copy all";
-
-	const handleCopyCommentsList = () => {
-		void copyTextToClipboard({
-			text: buildAllCommentsClipboardText(activeComments),
-			actionKey: ALL_COMMENTS_COPY_ACTION_KEY,
-			errorLabel: "Failed to copy comments",
-		});
-	};
-
 	const applyOptimisticMemberUpdate = useCallback(
 		({
 			kind,
@@ -410,6 +364,52 @@ export function ReviewPanel({
 		[resolvedWorkspaceId, trpcUtils],
 	);
 
+	if (isLoading && !pr) {
+		return (
+			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+				Loading review...
+			</div>
+		);
+	}
+
+	if (!pr) {
+		return (
+			<div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
+				Open a pull request to view review status, checks, and comments.
+			</div>
+		);
+	}
+
+	const requestedReviewers = pr.requestedReviewers ?? [];
+	const assignees = pr.assignees ?? [];
+
+	const relevantChecks = pr.checks.filter(
+		(check) => check.status !== "skipped" && check.status !== "cancelled",
+	);
+	const passingChecks = relevantChecks.filter(
+		(check) => check.status === "success",
+	).length;
+	const checksSummary =
+		relevantChecks.length > 0
+			? `${passingChecks}/${relevantChecks.length} checks passing`
+			: "No checks reported";
+	const checksStatus = relevantChecks.length > 0 ? pr.checksStatus : "none";
+	const checksStatusConfig = checkSummaryIconConfig[checksStatus];
+	const ChecksStatusIcon = checksStatusConfig.icon;
+	const { active: activeComments, resolved: resolvedComments } =
+		splitPullRequestComments(comments);
+	const commentsCountLabel = isCommentsLoading ? "..." : comments.length;
+	const copyAllCommentsLabel =
+		copiedActionKey === ALL_COMMENTS_COPY_ACTION_KEY ? "Copied" : "Copy all";
+
+	const handleCopyCommentsList = () => {
+		void copyTextToClipboard({
+			text: buildAllCommentsClipboardText(activeComments),
+			actionKey: ALL_COMMENTS_COPY_ACTION_KEY,
+			errorLabel: "Failed to copy comments",
+		});
+	};
+
 	const updateReviewers = async ({
 		add = [],
 		remove = [],
@@ -423,13 +423,6 @@ export function ReviewPanel({
 			return;
 		}
 
-		const startedAt = Date.now();
-		console.log("[ReviewPanel] updateReviewers:start", {
-			workspaceId: resolvedWorkspaceId,
-			add,
-			remove,
-			pullRequestNumber: pr?.number,
-		});
 		setPendingIdentityGroup("reviewers");
 		try {
 			applyOptimisticMemberUpdate({
@@ -444,10 +437,6 @@ export function ReviewPanel({
 				pullRequestNumber: pr?.number,
 				pullRequestUrl: pr?.url,
 			});
-			console.log("[ReviewPanel] updateReviewers:mutationDone", {
-				workspaceId: resolvedWorkspaceId,
-				durationMs: Date.now() - startedAt,
-			});
 			onSuccess?.();
 			void refreshReview("status");
 		} catch (error) {
@@ -455,10 +444,6 @@ export function ReviewPanel({
 			toast.error(`Failed to update reviewers: ${message}`);
 			void refreshReview("status");
 		} finally {
-			console.log("[ReviewPanel] updateReviewers:done", {
-				workspaceId: resolvedWorkspaceId,
-				totalDurationMs: Date.now() - startedAt,
-			});
 			setPendingIdentityGroup((current) =>
 				current === "reviewers" ? null : current,
 			);
@@ -478,13 +463,6 @@ export function ReviewPanel({
 			return;
 		}
 
-		const startedAt = Date.now();
-		console.log("[ReviewPanel] updateAssignees:start", {
-			workspaceId: resolvedWorkspaceId,
-			add,
-			remove,
-			pullRequestNumber: pr?.number,
-		});
 		setPendingIdentityGroup("assignees");
 		try {
 			applyOptimisticMemberUpdate({
@@ -499,10 +477,6 @@ export function ReviewPanel({
 				pullRequestNumber: pr?.number,
 				pullRequestUrl: pr?.url,
 			});
-			console.log("[ReviewPanel] updateAssignees:mutationDone", {
-				workspaceId: resolvedWorkspaceId,
-				durationMs: Date.now() - startedAt,
-			});
 			onSuccess?.();
 			void refreshReview("status");
 		} catch (error) {
@@ -510,10 +484,6 @@ export function ReviewPanel({
 			toast.error(`Failed to update assignees: ${message}`);
 			void refreshReview("status");
 		} finally {
-			console.log("[ReviewPanel] updateAssignees:done", {
-				workspaceId: resolvedWorkspaceId,
-				totalDurationMs: Date.now() - startedAt,
-			});
 			setPendingIdentityGroup((current) =>
 				current === "assignees" ? null : current,
 			);
