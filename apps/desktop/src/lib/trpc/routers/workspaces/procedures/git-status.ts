@@ -19,6 +19,7 @@ import {
 	refreshDefaultBranch,
 } from "../utils/git";
 import {
+	clearGitHubCachesForWorktree,
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
@@ -28,9 +29,11 @@ import {
 const gitHubPRCommentsInputSchema = z.object({
 	workspaceId: z.string(),
 	prNumber: z.number().int().positive().optional(),
+	prUrl: z.string().optional(),
 	repoUrl: z.string().optional(),
 	upstreamUrl: z.string().optional(),
 	isFork: z.boolean().optional(),
+	forceFresh: z.boolean().optional(),
 });
 
 function resolveCommentsPullRequestTarget({
@@ -58,6 +61,7 @@ function resolveCommentsPullRequestTarget({
 
 	return {
 		prNumber,
+		prUrl: input.prUrl ?? githubStatus?.pr?.url,
 		repoContext: {
 			repoUrl,
 			upstreamUrl,
@@ -174,7 +178,12 @@ export const createGitStatusProcedures = () => {
 			}),
 
 		getGitHubStatus: publicProcedure
-			.input(z.object({ workspaceId: z.string() }))
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					forceFresh: z.boolean().optional(),
+				}),
+			)
 			.query(async ({ input }) => {
 				const workspace = getWorkspace(input.workspaceId);
 				if (!workspace) {
@@ -194,6 +203,10 @@ export const createGitStatusProcedures = () => {
 				}
 				if (!repoPath) {
 					return null;
+				}
+
+				if (input.forceFresh) {
+					clearGitHubCachesForWorktree(repoPath);
 				}
 
 				const freshStatus = await fetchGitHubPRStatus(repoPath);
@@ -235,6 +248,10 @@ export const createGitStatusProcedures = () => {
 				}
 				if (!repoPath) {
 					return [];
+				}
+
+				if (input.forceFresh) {
+					clearGitHubCachesForWorktree(repoPath);
 				}
 
 				const cachedGitHubStatus = worktree?.githubStatus ?? null;

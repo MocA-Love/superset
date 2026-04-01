@@ -1,5 +1,8 @@
+import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { VscRefresh } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	getGitHubPRCommentsQueryPolicy,
@@ -52,6 +55,44 @@ const MIN_REVIEW_PANE_HEIGHT = 180;
 interface PendingChangesRefresh {
 	invalidateBranches: boolean;
 	invalidateSelectedFile: boolean;
+}
+
+function buildGitHubCommentsQueryInput({
+	workspaceId,
+	githubStatus,
+	forceFresh,
+}: {
+	workspaceId: string;
+	githubStatus:
+		| {
+				pr?: {
+					number: number;
+					url: string;
+				} | null;
+				repoUrl?: string;
+				upstreamUrl?: string;
+				isFork?: boolean;
+		  }
+		| null
+		| undefined;
+	forceFresh?: boolean;
+}) {
+	if (!githubStatus?.pr) {
+		return {
+			workspaceId,
+			...(forceFresh ? { forceFresh: true } : {}),
+		};
+	}
+
+	return {
+		workspaceId,
+		prNumber: githubStatus.pr.number,
+		prUrl: githubStatus.pr.url,
+		repoUrl: githubStatus.repoUrl,
+		upstreamUrl: githubStatus.upstreamUrl,
+		isFork: githubStatus.isFork,
+		...(forceFresh ? { forceFresh: true } : {}),
+	};
 }
 
 function eventTargetsSelectedFile(
@@ -311,19 +352,13 @@ export function ChangesView({
 		isLoading: isGitHubCommentsLoading,
 		refetch: refetchGitHubComments,
 	} = electronTrpc.workspaces.getGitHubPRComments.useQuery(
-		{
+		buildGitHubCommentsQueryInput({
 			workspaceId: workspaceId ?? "",
-			...(activePullRequest
-				? {
-						prNumber: activePullRequest.number,
-						repoUrl: githubStatus?.repoUrl,
-						upstreamUrl: githubStatus?.upstreamUrl,
-						isFork: githubStatus?.isFork,
-					}
-				: {}),
-		},
+			githubStatus,
+		}),
 		githubPRCommentsQueryPolicy,
 	);
+	const [isReviewRefreshing, setIsReviewRefreshing] = useState(false);
 
 	useBranchSyncInvalidation({
 		gitBranch: status?.branch ?? branchData?.currentBranch ?? undefined,
@@ -336,6 +371,44 @@ export function ChangesView({
 		refetchGithubStatus();
 		if (activePullRequest) {
 			refetchGitHubComments();
+		}
+	};
+
+	const handleReviewRefresh = async () => {
+		if (!workspaceId || isReviewRefreshing) {
+			return;
+		}
+
+		setIsReviewRefreshing(true);
+		try {
+			const freshGitHubStatus = await trpcUtils.workspaces.getGitHubStatus.fetch({
+				workspaceId,
+				forceFresh: true,
+			});
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId },
+				freshGitHubStatus,
+			);
+
+			const freshComments = await trpcUtils.workspaces.getGitHubPRComments.fetch(
+				buildGitHubCommentsQueryInput({
+					workspaceId,
+					githubStatus: freshGitHubStatus,
+					forceFresh: true,
+				}),
+			);
+			trpcUtils.workspaces.getGitHubPRComments.setData(
+				buildGitHubCommentsQueryInput({
+					workspaceId,
+					githubStatus: freshGitHubStatus,
+				}),
+				freshComments,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to refresh review: ${message}`);
+		} finally {
+			setIsReviewRefreshing(false);
 		}
 	};
 
@@ -890,6 +963,26 @@ export function ChangesView({
 										.join(" ")}
 								/>
 							) : null}
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon"
+										onClick={() => {
+											void handleReviewRefresh();
+										}}
+										disabled={isReviewRefreshing || !workspaceId}
+										className="ml-auto size-6 p-0"
+									>
+										<VscRefresh
+											className={`size-3.5 ${isReviewRefreshing ? "animate-spin" : ""}`}
+										/>
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent side="top" showArrow={false}>
+									Refresh review
+								</TooltipContent>
+							</Tooltip>
 						</div>
 						<div className="min-h-0 flex-1">
 							<ReviewPanel

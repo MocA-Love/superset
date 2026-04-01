@@ -146,6 +146,29 @@ export function extractNwoFromUrl(normalizedUrl: string): string | null {
 	}
 }
 
+export function getPullRequestRepoNames(
+	repoContext?: Pick<RepoContext, "repoUrl" | "upstreamUrl" | "isFork"> | null,
+): string[] {
+	if (!repoContext) {
+		return [];
+	}
+
+	const candidates = [
+		repoContext.repoUrl,
+		repoContext.isFork ? repoContext.upstreamUrl : null,
+	];
+
+	return Array.from(
+		new Set(
+			candidates
+				.map((candidate) => normalizeGitHubUrl(candidate ?? ""))
+				.filter((candidate): candidate is string => Boolean(candidate))
+				.map((candidate) => extractNwoFromUrl(candidate))
+				.filter((candidate): candidate is string => Boolean(candidate)),
+		),
+	);
+}
+
 export function getPullRequestRepoArgs(
 	repoContext?: Pick<RepoContext, "isFork" | "upstreamUrl"> | null,
 ): string[] {
