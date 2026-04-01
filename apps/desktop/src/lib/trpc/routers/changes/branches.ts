@@ -20,13 +20,27 @@ const MAX_REF_SEARCH_LIMIT = 200;
 
 type SearchableRef = {
 	name: string;
+	displayName: string;
 	ref: string;
 	kind: "branch" | "tag";
+	scope: "local" | "remote" | "tag";
 	lastCommitDate: number;
-	isLocal: boolean;
-	isRemote: boolean;
+	shortHash: string | null;
+	authorName: string | null;
+	subject: string | null;
 	checkedOutPath: string | null;
 };
+
+type ParsedRefEntry = {
+	name: string;
+	shortHash: string | null;
+	authorName: string | null;
+	subject: string | null;
+	lastCommitDate: number;
+};
+
+const REF_FIELD_SEPARATOR = "\u001f";
+const REF_RECORD_SEPARATOR = "\u001e";
 
 export const createBranchesRouter = () => {
 	return router({
@@ -132,7 +146,7 @@ export const createBranchesRouter = () => {
 						includeTags: input.includeTags,
 					});
 					const remoteBranchNames = refs
-						.filter((ref) => ref.kind === "branch" && ref.isRemote)
+						.filter((ref) => ref.kind === "branch" && ref.scope === "remote")
 						.map((ref) => ref.name);
 					const defaultBranch = await getDefaultBranch(git, remoteBranchNames);
 
@@ -143,12 +157,12 @@ export const createBranchesRouter = () => {
 							if (b.name === currentBranch) return 1;
 							if (a.name === defaultBranch) return -1;
 							if (b.name === defaultBranch) return 1;
-							if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
+							if (a.scope !== b.scope) return a.scope === "local" ? -1 : 1;
 						}
 						if (a.lastCommitDate !== b.lastCommitDate) {
 							return b.lastCommitDate - a.lastCommitDate;
 						}
-						return a.name.localeCompare(b.name);
+						return a.displayName.localeCompare(b.displayName);
 					});
 
 					return {
@@ -375,71 +389,63 @@ async function getSearchableRefs(
 	},
 ): Promise<SearchableRef[]> {
 	const searchLower = search.trim().toLowerCase();
-	const refMap = new Map<string, SearchableRef>();
+	const refs: SearchableRef[] = [];
 
 	try {
-		const localOutput = await git.raw([
-			"for-each-ref",
-			"--sort=-committerdate",
-			"--format=%(refname:short) %(committerdate:unix)",
-			"refs/heads/",
-		]);
+		for (const localBranch of await getRefEntries(git, {
+			refPath: "refs/heads/",
+			dateField: "committerdate",
+			authorField: "authorname",
+		})) {
+			if (!matchesSearch(localBranch, searchLower)) continue;
 
-		for (const line of localOutput.trim().split("\n")) {
-			if (!line) continue;
-			const lastSpaceIdx = line.lastIndexOf(" ");
-			const name = line.substring(0, lastSpaceIdx);
-			const timestamp = Number.parseInt(line.substring(lastSpaceIdx + 1), 10);
-			if (!matchesSearch(name, searchLower)) continue;
-
-			refMap.set(name, {
-				name,
-				ref: name,
+			refs.push({
+				name: localBranch.name,
+				displayName: localBranch.name,
+				ref: localBranch.name,
 				kind: "branch",
-				lastCommitDate: Number.isNaN(timestamp) ? 0 : timestamp * 1000,
-				isLocal: true,
-				isRemote: false,
+				scope: "local",
+				lastCommitDate: localBranch.lastCommitDate,
+				shortHash: localBranch.shortHash,
+				authorName: localBranch.authorName,
+				subject: localBranch.subject,
 				checkedOutPath: null,
 			});
 		}
 	} catch {}
 
 	try {
-		const remoteOutput = await git.raw([
-			"for-each-ref",
-			"--sort=-committerdate",
-			"--format=%(refname:short) %(committerdate:unix)",
-			"refs/remotes/origin/",
-		]);
-
-		for (const line of remoteOutput.trim().split("\n")) {
-			if (!line) continue;
-			const lastSpaceIdx = line.lastIndexOf(" ");
-			let name = line.substring(0, lastSpaceIdx);
-			const timestamp = Number.parseInt(line.substring(lastSpaceIdx + 1), 10);
-			if (name === "origin/HEAD") continue;
-			if (name.startsWith("origin/")) {
-				name = name.replace("origin/", "");
-			}
-			if (!matchesSearch(name, searchLower)) continue;
-
-			const existing = refMap.get(name);
-			if (existing) {
-				existing.isRemote = true;
-				existing.lastCommitDate = Math.max(
-					existing.lastCommitDate,
-					Number.isNaN(timestamp) ? 0 : timestamp * 1000,
-				);
+		for (const remoteBranch of await getRefEntries(git, {
+			refPath: "refs/remotes/origin/",
+			dateField: "committerdate",
+			authorField: "authorname",
+		})) {
+			if (remoteBranch.name === "origin/HEAD") continue;
+			const canonicalName = remoteBranch.name.startsWith("origin/")
+				? remoteBranch.name.replace("origin/", "")
+				: remoteBranch.name;
+			const displayName = remoteBranch.name.startsWith("origin/")
+				? remoteBranch.name
+				: `origin/${remoteBranch.name}`;
+			if (
+				!matchesSearch(
+					{ ...remoteBranch, name: canonicalName, displayName },
+					searchLower,
+				)
+			) {
 				continue;
 			}
 
-			refMap.set(name, {
-				name,
-				ref: `origin/${name}`,
+			refs.push({
+				name: canonicalName,
+				displayName,
+				ref: displayName,
 				kind: "branch",
-				lastCommitDate: Number.isNaN(timestamp) ? 0 : timestamp * 1000,
-				isLocal: false,
-				isRemote: true,
+				scope: "remote",
+				lastCommitDate: remoteBranch.lastCommitDate,
+				shortHash: remoteBranch.shortHash,
+				authorName: remoteBranch.authorName,
+				subject: remoteBranch.subject,
 				checkedOutPath: null,
 			});
 		}
@@ -447,36 +453,101 @@ async function getSearchableRefs(
 
 	if (includeTags) {
 		try {
-			const tagOutput = await git.raw([
-				"for-each-ref",
-				"--sort=-creatordate",
-				"--format=%(refname:short) %(creatordate:unix)",
-				"refs/tags/",
-			]);
+			for (const tag of await getRefEntries(git, {
+				refPath: "refs/tags/",
+				dateField: "creatordate",
+				authorField: "creatorname",
+			})) {
+				if (!matchesSearch(tag, searchLower)) continue;
 
-			for (const line of tagOutput.trim().split("\n")) {
-				if (!line) continue;
-				const lastSpaceIdx = line.lastIndexOf(" ");
-				const name = line.substring(0, lastSpaceIdx);
-				const timestamp = Number.parseInt(line.substring(lastSpaceIdx + 1), 10);
-				if (!matchesSearch(name, searchLower)) continue;
-
-				refMap.set(`tag:${name}`, {
-					name,
-					ref: `refs/tags/${name}`,
+				refs.push({
+					name: tag.name,
+					displayName: tag.name,
+					ref: `refs/tags/${tag.name}`,
 					kind: "tag",
-					lastCommitDate: Number.isNaN(timestamp) ? 0 : timestamp * 1000,
-					isLocal: false,
-					isRemote: false,
+					scope: "tag",
+					lastCommitDate: tag.lastCommitDate,
+					shortHash: tag.shortHash,
+					authorName: tag.authorName,
+					subject: tag.subject,
 					checkedOutPath: null,
 				});
 			}
 		} catch {}
 	}
 
-	return Array.from(refMap.values());
+	return refs;
 }
 
-function matchesSearch(name: string, searchLower: string): boolean {
-	return !searchLower || name.toLowerCase().includes(searchLower);
+async function getRefEntries(
+	git: SimpleGit,
+	{
+		refPath,
+		dateField,
+		authorField,
+	}: {
+		refPath: string;
+		dateField: "committerdate" | "creatordate";
+		authorField: "authorname" | "creatorname";
+	},
+): Promise<ParsedRefEntry[]> {
+	const output = await git.raw([
+		"for-each-ref",
+		`--sort=-${dateField}`,
+		`--format=%(refname:short)${REF_FIELD_SEPARATOR}%(objectname:short)${REF_FIELD_SEPARATOR}%(${authorField})${REF_FIELD_SEPARATOR}%(subject)${REF_FIELD_SEPARATOR}%(${dateField}:unix)${REF_RECORD_SEPARATOR}`,
+		refPath,
+	]);
+
+	return output
+		.split(REF_RECORD_SEPARATOR)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => {
+			const [
+				name = "",
+				shortHash = "",
+				authorName = "",
+				subject = "",
+				timestamp = "0",
+			] = line.split(REF_FIELD_SEPARATOR);
+			const parsedTimestamp = Number.parseInt(timestamp, 10);
+
+			return {
+				name,
+				shortHash: normalizeRefField(shortHash),
+				authorName: normalizeRefField(authorName),
+				subject: normalizeRefField(subject),
+				lastCommitDate: Number.isNaN(parsedTimestamp)
+					? 0
+					: parsedTimestamp * 1000,
+			};
+		})
+		.filter((entry) => entry.name.length > 0);
+}
+
+function normalizeRefField(value: string): string | null {
+	const normalized = value.trim();
+	return normalized.length > 0 ? normalized : null;
+}
+
+function matchesSearch(
+	ref:
+		| ParsedRefEntry
+		| (ParsedRefEntry & { displayName?: string })
+		| SearchableRef,
+	searchLower: string,
+): boolean {
+	if (!searchLower) {
+		return true;
+	}
+
+	return [
+		ref.name,
+		"displayName" in ref ? ref.displayName : null,
+		ref.shortHash,
+		ref.authorName,
+		ref.subject,
+	]
+		.filter((value): value is string => Boolean(value))
+		.some((value) => value.toLowerCase().includes(searchLower));
 }

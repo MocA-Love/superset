@@ -13,6 +13,7 @@ import { Button } from "@superset/ui/button";
 import {
 	Command,
 	CommandEmpty,
+	CommandGroup,
 	CommandInput,
 	CommandItem,
 	CommandList,
@@ -36,7 +37,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { GoGitBranch } from "react-icons/go";
+import { GoGitBranch, GoGlobe } from "react-icons/go";
 import { LuArrowLeft, LuChevronDown, LuPlus, LuTag } from "react-icons/lu";
 import {
 	VscCheck,
@@ -47,6 +48,7 @@ import {
 	VscSparkle,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
 import type { ChangesViewMode } from "../../types";
 import { ViewModeToggle } from "../ViewModeToggle";
 import { PRButton } from "./components/PRButton";
@@ -102,12 +104,161 @@ type CurrentBranchSelectorMode =
 
 interface SearchableRefItem {
 	name: string;
+	displayName: string;
 	ref: string;
 	kind: "branch" | "tag";
+	scope: "local" | "remote" | "tag";
 	lastCommitDate: number;
-	isLocal: boolean;
-	isRemote: boolean;
+	shortHash: string | null;
+	authorName: string | null;
+	subject: string | null;
 	checkedOutPath: string | null;
+}
+
+function getSearchableRefIcon(ref: Pick<SearchableRefItem, "kind" | "scope">) {
+	if (ref.kind === "tag") {
+		return <LuTag className="size-3.5 shrink-0 text-muted-foreground" />;
+	}
+
+	if (ref.scope === "remote") {
+		return <GoGlobe className="size-3.5 shrink-0 text-muted-foreground" />;
+	}
+
+	return <GoGitBranch className="size-3.5 shrink-0 text-muted-foreground" />;
+}
+
+function getSearchableRefMeta(ref: SearchableRefItem): string | null {
+	return (
+		[ref.authorName, ref.shortHash, ref.subject]
+			.filter((value): value is string => Boolean(value))
+			.join(" • ") || null
+	);
+}
+
+function BranchNameWithOverflowTooltip({
+	name,
+	className,
+}: {
+	name: string;
+	className?: string;
+}) {
+	const textRef = useRef<HTMLSpanElement | null>(null);
+	const [isTruncated, setIsTruncated] = useState(false);
+
+	useEffect(() => {
+		const updateIsTruncated = () => {
+			const element = textRef.current;
+			if (!element) {
+				return;
+			}
+
+			setIsTruncated(element.scrollWidth > element.clientWidth + 1);
+		};
+
+		updateIsTruncated();
+
+		const element = textRef.current;
+		if (!element || typeof ResizeObserver === "undefined") {
+			return;
+		}
+
+		const observer = new ResizeObserver(() => {
+			updateIsTruncated();
+		});
+		observer.observe(element);
+
+		return () => {
+			observer.disconnect();
+		};
+	}, []);
+
+	const content = (
+		<span ref={textRef} className={cn("block truncate", className)}>
+			{name}
+		</span>
+	);
+
+	if (!isTruncated) {
+		return content;
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>{content}</TooltipTrigger>
+			<TooltipContent side="top" showArrow={false}>
+				{name}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+function BranchRefCommandItem({
+	refItem,
+	onSelect,
+	isCurrent = false,
+	isDefault = false,
+	isDisabled = false,
+	statusLabel,
+}: {
+	refItem: SearchableRefItem;
+	onSelect: () => void;
+	isCurrent?: boolean;
+	isDefault?: boolean;
+	isDisabled?: boolean;
+	statusLabel?: string | null;
+}) {
+	const meta = getSearchableRefMeta(refItem);
+
+	return (
+		<CommandItem
+			value={refItem.displayName}
+			onSelect={() => {
+				if (!isDisabled) {
+					onSelect();
+				}
+			}}
+			disabled={isDisabled}
+			className="group flex h-auto items-start justify-between gap-3 px-3 py-2.5 text-xs"
+		>
+			<span className="flex min-w-0 flex-1 items-start gap-2.5">
+				{getSearchableRefIcon(refItem)}
+				<span className="min-w-0 flex-1">
+					<span className="flex min-w-0 items-center gap-1.5">
+						<BranchNameWithOverflowTooltip
+							key={refItem.displayName}
+							name={refItem.displayName}
+							className="font-mono text-xs"
+						/>
+						{isDefault ? (
+							<span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+								default
+							</span>
+						) : null}
+					</span>
+					{meta ? (
+						<span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+							{meta}
+						</span>
+					) : null}
+				</span>
+			</span>
+			<span className="flex shrink-0 items-center gap-2 pt-0.5">
+				{refItem.lastCommitDate > 0 ? (
+					<span className="text-[10px] text-muted-foreground">
+						{formatRelativeTime(refItem.lastCommitDate)}
+					</span>
+				) : null}
+				{statusLabel ? (
+					<span className="text-[10px] text-muted-foreground">
+						{statusLabel}
+					</span>
+				) : null}
+				{isCurrent ? (
+					<VscCheck className="size-3.5 shrink-0 text-primary" />
+				) : null}
+			</span>
+		</CommandItem>
+	);
 }
 
 function CurrentBranchSelector({
@@ -247,6 +398,21 @@ function CurrentBranchSelector({
 			),
 		[refSearchData?.refs],
 	);
+	const localBranchResults = useMemo(
+		() => branchResults.filter((ref) => ref.scope === "local"),
+		[branchResults],
+	);
+	const remoteBranchResults = useMemo(
+		() => branchResults.filter((ref) => ref.scope === "remote"),
+		[branchResults],
+	);
+	const tagResults = useMemo(
+		() =>
+			(refSearchData?.refs ?? []).filter(
+				(ref): ref is SearchableRefItem => ref.kind === "tag",
+			),
+		[refSearchData?.refs],
+	);
 
 	const createBranchName = search.trim();
 	const isCreateBranchNameTaken = existingBranchNames.has(
@@ -307,83 +473,75 @@ function CurrentBranchSelector({
 
 	const renderDefaultList = () => (
 		<>
-			<CommandItem
-				onSelect={() => {
-					setMode("create");
-					setSearch("");
-					setSelectedStartPoint(null);
-				}}
-				className="gap-2 text-xs"
-			>
-				<LuPlus className="size-3.5 shrink-0" />
-				<span>Create new branch...</span>
-			</CommandItem>
-			<CommandItem
-				onSelect={() => {
-					setMode("create-from-ref");
-					setSearch("");
-					setSelectedStartPoint(null);
-				}}
-				className="gap-2 text-xs"
-			>
-				<LuPlus className="size-3.5 shrink-0" />
-				<span>Create new branch from...</span>
-			</CommandItem>
-			<CommandItem
-				onSelect={() => {
-					setMode("compare-base");
-					setSearch("");
-				}}
-				className="gap-2 text-xs"
-			>
-				<VscGitCompare className="size-3.5 shrink-0" />
-				<span>Change compare branch...</span>
-			</CommandItem>
-			<div className="mx-2 my-1 h-px bg-border" />
-			{branchResults.map((branch) => {
-				const isCurrent = branch.name === currentBranch;
-				const checkedOutPath = branch.checkedOutPath;
-				const isDisabled = !!checkedOutPath && !isCurrent;
+			<CommandGroup heading="Actions">
+				<CommandItem
+					onSelect={() => {
+						setMode("create");
+						setSearch("");
+						setSelectedStartPoint(null);
+					}}
+					className="gap-2 text-xs"
+				>
+					<LuPlus className="size-3.5 shrink-0" />
+					<span>Create new branch...</span>
+				</CommandItem>
+				<CommandItem
+					onSelect={() => {
+						setMode("create-from-ref");
+						setSearch("");
+						setSelectedStartPoint(null);
+					}}
+					className="gap-2 text-xs"
+				>
+					<LuPlus className="size-3.5 shrink-0" />
+					<span>Create new branch from...</span>
+				</CommandItem>
+				<CommandItem
+					onSelect={() => {
+						setMode("compare-base");
+						setSearch("");
+					}}
+					className="gap-2 text-xs"
+				>
+					<VscGitCompare className="size-3.5 shrink-0" />
+					<span>Change compare branch...</span>
+				</CommandItem>
+			</CommandGroup>
+			{localBranchResults.length > 0 ? (
+				<CommandGroup heading="Branches">
+					{localBranchResults.map((branch) => {
+						const isCurrent = branch.name === currentBranch;
+						const checkedOutPath = branch.checkedOutPath;
+						const isDisabled = !!checkedOutPath && !isCurrent;
 
-				return (
-					<CommandItem
-						key={`branch:${branch.name}`}
-						value={branch.name}
-						onSelect={() => {
-							if (!isDisabled) {
-								handleBranchSelect(branch.name);
-							}
-						}}
-						disabled={isDisabled}
-						className="flex items-center justify-between gap-3 text-xs"
-					>
-						<span className="flex min-w-0 flex-1 items-center gap-2 truncate">
-							<GoGitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-							<span className="truncate font-mono">{branch.name}</span>
-							{branch.name === branchData?.defaultBranch ? (
-								<span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-									default
-								</span>
-							) : null}
-							{!branch.isLocal && branch.isRemote ? (
-								<span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-									remote
-								</span>
-							) : null}
-						</span>
-						<span className="flex shrink-0 items-center gap-2">
-							{checkedOutPath && !isCurrent ? (
-								<span className="text-[10px] text-muted-foreground">
-									checked out
-								</span>
-							) : null}
-							{isCurrent ? (
-								<VscCheck className="size-3.5 shrink-0 text-primary" />
-							) : null}
-						</span>
-					</CommandItem>
-				);
-			})}
+						return (
+							<BranchRefCommandItem
+								key={`local:${branch.displayName}`}
+								refItem={branch}
+								onSelect={() => handleBranchSelect(branch.name)}
+								isCurrent={isCurrent}
+								isDefault={branch.name === branchData?.defaultBranch}
+								isDisabled={isDisabled}
+								statusLabel={
+									checkedOutPath && !isCurrent ? "checked out" : null
+								}
+							/>
+						);
+					})}
+				</CommandGroup>
+			) : null}
+			{remoteBranchResults.length > 0 ? (
+				<CommandGroup heading="Remote Branches">
+					{remoteBranchResults.map((branch) => (
+						<BranchRefCommandItem
+							key={`remote:${branch.displayName}`}
+							refItem={branch}
+							onSelect={() => handleBranchSelect(branch.name)}
+							isDefault={branch.name === branchData?.defaultBranch}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
 		</>
 	);
 
@@ -404,16 +562,14 @@ function CurrentBranchSelector({
 				<div className="px-3 py-2 text-[11px] text-muted-foreground">
 					<div className="mb-1">Start point</div>
 					<div className="flex items-center gap-2 font-mono text-foreground">
-						{selectedStartPoint.kind === "tag" ? (
-							<LuTag className="size-3.5 shrink-0" />
-						) : (
-							<GoGitBranch className="size-3.5 shrink-0" />
-						)}
-						<span className="truncate">{selectedStartPoint.name}</span>
+						{getSearchableRefIcon(selectedStartPoint)}
+						<BranchNameWithOverflowTooltip
+							key={selectedStartPoint.displayName}
+							name={selectedStartPoint.displayName}
+						/>
 					</div>
 				</div>
 			) : null}
-			<div className="mx-2 my-1 h-px bg-border" />
 			{createBranchName ? (
 				<CommandItem
 					onSelect={handleCreateBranch}
@@ -445,31 +601,53 @@ function CurrentBranchSelector({
 				<LuArrowLeft className="size-3.5 shrink-0" />
 				<span>Back</span>
 			</CommandItem>
-			<div className="mx-2 my-1 h-px bg-border" />
-			{(refSearchData?.refs ?? []).map((ref) => (
-				<CommandItem
-					key={`${ref.kind}:${ref.ref}`}
-					value={ref.name}
-					onSelect={() => {
-						setSelectedStartPoint(ref);
-						setMode("create");
-						setSearch("");
-					}}
-					className="flex items-center justify-between gap-3 text-xs"
-				>
-					<span className="flex min-w-0 items-center gap-2 truncate">
-						{ref.kind === "tag" ? (
-							<LuTag className="size-3.5 shrink-0 text-muted-foreground" />
-						) : (
-							<GoGitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-						)}
-						<span className="truncate font-mono">{ref.name}</span>
-					</span>
-					<span className="shrink-0 text-[10px] text-muted-foreground">
-						{ref.kind}
-					</span>
-				</CommandItem>
-			))}
+			{localBranchResults.length > 0 ? (
+				<CommandGroup heading="Branches">
+					{localBranchResults.map((ref) => (
+						<BranchRefCommandItem
+							key={`create-local:${ref.displayName}`}
+							refItem={ref}
+							onSelect={() => {
+								setSelectedStartPoint(ref);
+								setMode("create");
+								setSearch("");
+							}}
+							isDefault={ref.name === branchData?.defaultBranch}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
+			{remoteBranchResults.length > 0 ? (
+				<CommandGroup heading="Remote Branches">
+					{remoteBranchResults.map((ref) => (
+						<BranchRefCommandItem
+							key={`create-remote:${ref.displayName}`}
+							refItem={ref}
+							onSelect={() => {
+								setSelectedStartPoint(ref);
+								setMode("create");
+								setSearch("");
+							}}
+							isDefault={ref.name === branchData?.defaultBranch}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
+			{tagResults.length > 0 ? (
+				<CommandGroup heading="Tags">
+					{tagResults.map((ref) => (
+						<BranchRefCommandItem
+							key={`create-tag:${ref.displayName}`}
+							refItem={ref}
+							onSelect={() => {
+								setSelectedStartPoint(ref);
+								setMode("create");
+								setSearch("");
+							}}
+						/>
+					))}
+				</CommandGroup>
+			) : null}
 		</>
 	);
 
@@ -485,34 +663,35 @@ function CurrentBranchSelector({
 				<LuArrowLeft className="size-3.5 shrink-0" />
 				<span>Back</span>
 			</CommandItem>
-			<div className="mx-2 my-1 h-px bg-border" />
-			<CommandItem
-				onSelect={() =>
-					handleCompareBaseSelect(branchData?.defaultBranch ?? null)
-				}
-				className="flex items-center justify-between gap-3 text-xs"
-			>
-				<span className="truncate">
-					{branchData?.defaultBranch ?? "main"}
-					<span className="ml-1 text-muted-foreground">(default)</span>
-				</span>
-				{effectiveBaseBranch === branchData?.defaultBranch ? (
-					<VscCheck className="size-3.5 shrink-0 text-primary" />
-				) : null}
-			</CommandItem>
-			{compareBaseBranches.map((branch) => (
+			<CommandGroup heading="Compare Branches">
 				<CommandItem
-					key={`compare:${branch}`}
-					value={branch}
-					onSelect={() => handleCompareBaseSelect(branch)}
+					onSelect={() =>
+						handleCompareBaseSelect(branchData?.defaultBranch ?? null)
+					}
 					className="flex items-center justify-between gap-3 text-xs"
 				>
-					<span className="truncate">{branch}</span>
-					{branch === effectiveBaseBranch ? (
+					<span className="truncate">
+						{branchData?.defaultBranch ?? "main"}
+						<span className="ml-1 text-muted-foreground">(default)</span>
+					</span>
+					{effectiveBaseBranch === branchData?.defaultBranch ? (
 						<VscCheck className="size-3.5 shrink-0 text-primary" />
 					) : null}
 				</CommandItem>
-			))}
+				{compareBaseBranches.map((branch) => (
+					<CommandItem
+						key={`compare:${branch}`}
+						value={branch}
+						onSelect={() => handleCompareBaseSelect(branch)}
+						className="flex items-center justify-between gap-3 text-xs"
+					>
+						<span className="truncate">{branch}</span>
+						{branch === effectiveBaseBranch ? (
+							<VscCheck className="size-3.5 shrink-0 text-primary" />
+						) : null}
+					</CommandItem>
+				))}
+			</CommandGroup>
 		</>
 	);
 
