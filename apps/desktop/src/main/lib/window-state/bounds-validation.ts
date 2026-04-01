@@ -77,6 +77,10 @@ export interface InitialWindowBounds {
 	isMaximized: boolean;
 }
 
+interface GetInitialWindowBoundsOptions {
+	restorePosition?: boolean;
+}
+
 /**
  * Computes initial window bounds from saved state, with fallbacks.
  *
@@ -86,6 +90,7 @@ export interface InitialWindowBounds {
  */
 export function getInitialWindowBounds(
 	savedState: WindowState | null,
+	options: GetInitialWindowBoundsOptions = {},
 ): InitialWindowBounds {
 	const { workAreaSize } = getScreen().getPrimaryDisplay();
 
@@ -103,6 +108,15 @@ export function getInitialWindowBounds(
 		savedState.width,
 		savedState.height,
 	);
+
+	if (options.restorePosition === false) {
+		return {
+			width,
+			height,
+			center: true,
+			isMaximized: savedState.isMaximized,
+		};
+	}
 
 	const savedBounds: Rectangle = {
 		x: savedState.x,
