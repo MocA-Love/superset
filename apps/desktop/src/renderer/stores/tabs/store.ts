@@ -1435,7 +1435,10 @@ export const useTabsStore = create<TabsStore>()(
 						paneType === "chat"
 							? createChatPane(tabId)
 							: paneType === "webview"
-								? createBrowserPane(tabId)
+								? createBrowserPane(
+										tabId,
+										options?.url ? { url: options.url } : undefined,
+									)
 								: createPane(tabId, "terminal", options);
 					const panelType =
 						paneType === "chat"
@@ -1504,7 +1507,10 @@ export const useTabsStore = create<TabsStore>()(
 						paneType === "chat"
 							? createChatPane(tabId)
 							: paneType === "webview"
-								? createBrowserPane(tabId)
+								? createBrowserPane(
+										tabId,
+										options?.url ? { url: options.url } : undefined,
+									)
 								: createPane(tabId, "terminal", options);
 					const panelType =
 						paneType === "chat"

@@ -51,6 +51,7 @@ export interface AddTabOptions {
 export interface SplitPaneOptions {
 	initialCwd?: string;
 	paneType?: "terminal" | "chat" | "webview";
+	url?: string;
 }
 
 export interface AddChatTabOptions {

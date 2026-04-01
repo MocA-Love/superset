@@ -10,6 +10,7 @@ import {
 	useBrowserBookmarksStore,
 } from "renderer/stores/browser-bookmarks";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { BookmarkBar } from "./components/BookmarkBar";
 import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
@@ -28,6 +29,7 @@ interface BrowserPaneProps {
 		sourcePaneId: string,
 		dimensions: { width: number; height: number },
 		path?: MosaicBranch[],
+		options?: SplitPaneOptions,
 	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
@@ -77,7 +79,10 @@ export function BrowserPane({
 		canGoForward,
 	} = usePersistentWebview({
 		paneId,
+		tabId,
+		path,
 		initialUrl: currentUrl,
+		splitPaneAuto,
 	});
 
 	// -- Zoom (synced with Electron's built-in Cmd+/- zoom) -----------------
