@@ -33,9 +33,8 @@ async function findOpenPRByHeadCommit(
 				: [[]];
 
 		for (const repoArgs of repoArgSets) {
-			let stdout: string;
 			try {
-				({ stdout } = await execWithShellEnv(
+				const { stdout } = await execWithShellEnv(
 					"gh",
 					[
 						"pr",
@@ -51,7 +50,18 @@ async function findOpenPRByHeadCommit(
 						"url,headRefOid",
 					],
 					{ cwd: worktreePath },
-				));
+				);
+
+				const parsed = JSON.parse(stdout) as Array<{
+					url?: string;
+					headRefOid?: string;
+				}>;
+				const match = parsed.find(
+					(candidate) => candidate.headRefOid === headSha,
+				);
+				if (match?.url?.trim()) {
+					return match.url.trim();
+				}
 			} catch (error) {
 				console.warn(
 					"[git/findExistingOpenPRUrl] Failed repo-scoped commit-based PR lookup:",
@@ -61,18 +71,6 @@ async function findOpenPRByHeadCommit(
 						message: error instanceof Error ? error.message : String(error),
 					},
 				);
-				continue;
-			}
-
-			const parsed = JSON.parse(stdout) as Array<{
-				url?: string;
-				headRefOid?: string;
-			}>;
-			const match = parsed.find(
-				(candidate) => candidate.headRefOid === headSha,
-			);
-			if (match?.url?.trim()) {
-				return match.url.trim();
 			}
 		}
 

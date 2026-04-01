@@ -435,6 +435,34 @@ export function ReviewPanel({
 		[resolvedWorkspaceId, trpcUtils],
 	);
 
+	const restoreOptimisticMemberUpdate = useCallback(
+		({ kind, values }: { kind: "reviewer" | "assignee"; values: string[] }) => {
+			if (!resolvedWorkspaceId) {
+				return;
+			}
+
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId: resolvedWorkspaceId },
+				(current) => {
+					if (!current?.pr) {
+						return current;
+					}
+
+					return {
+						...current,
+						pr: {
+							...current.pr,
+							...(kind === "reviewer"
+								? { requestedReviewers: values }
+								: { assignees: values }),
+						},
+					};
+				},
+			);
+		},
+		[resolvedWorkspaceId, trpcUtils],
+	);
+
 	if (isLoading && !pr) {
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -494,6 +522,7 @@ export function ReviewPanel({
 			return;
 		}
 
+		const previousReviewers = [...requestedReviewers];
 		setPendingIdentityGroup("reviewers");
 		try {
 			applyOptimisticMemberUpdate({
@@ -511,6 +540,10 @@ export function ReviewPanel({
 			onSuccess?.();
 			void refreshReview("status");
 		} catch (error) {
+			restoreOptimisticMemberUpdate({
+				kind: "reviewer",
+				values: previousReviewers,
+			});
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to update reviewers: ${message}`);
 			void refreshReview("status");
@@ -534,6 +567,7 @@ export function ReviewPanel({
 			return;
 		}
 
+		const previousAssignees = [...assignees];
 		setPendingIdentityGroup("assignees");
 		try {
 			applyOptimisticMemberUpdate({
@@ -551,6 +585,10 @@ export function ReviewPanel({
 			onSuccess?.();
 			void refreshReview("status");
 		} catch (error) {
+			restoreOptimisticMemberUpdate({
+				kind: "assignee",
+				values: previousAssignees,
+			});
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to update assignees: ${message}`);
 			void refreshReview("status");

@@ -61,6 +61,7 @@ function createCodeMirrorAdapter(
 	let disposed = false;
 	let highlightResetTimeout: ReturnType<typeof setTimeout> | null = null;
 	let scrollStabilizeTimeout: ReturnType<typeof setTimeout> | null = null;
+	let highlightRequestId = 0;
 	let highlightedLine: HTMLElement | null = null;
 	let highlightAnimation: Animation | null = null;
 	let highlightedLinePreviousStyle: {
@@ -71,6 +72,14 @@ function createCodeMirrorAdapter(
 		borderRadius: string;
 		transition: string;
 	} | null = null;
+	const pendingHighlightTimeouts = new Set<number>();
+
+	const clearPendingHighlightTimeouts = () => {
+		for (const timeoutId of pendingHighlightTimeouts) {
+			window.clearTimeout(timeoutId);
+		}
+		pendingHighlightTimeouts.clear();
+	};
 
 	const clearLineHighlight = () => {
 		if (!highlightedLine) {
@@ -103,10 +112,11 @@ function createCodeMirrorAdapter(
 		highlightedLinePreviousStyle = null;
 	};
 
-	const highlightLineAt = (anchor: number, attempt = 0) => {
-		window.setTimeout(
+	const highlightLineAt = (anchor: number, requestId: number, attempt = 0) => {
+		const timeoutId = window.setTimeout(
 			() => {
-				if (disposed) {
+				pendingHighlightTimeouts.delete(timeoutId);
+				if (disposed || requestId !== highlightRequestId) {
 					return;
 				}
 
@@ -118,7 +128,7 @@ function createCodeMirrorAdapter(
 				const lineElement = domNode?.closest(".cm-line");
 				if (!(lineElement instanceof HTMLElement)) {
 					if (attempt < HIGHLIGHT_MAX_RETRIES) {
-						highlightLineAt(anchor, attempt + 1);
+						highlightLineAt(anchor, requestId, attempt + 1);
 					}
 					return;
 				}
@@ -169,6 +179,7 @@ function createCodeMirrorAdapter(
 			},
 			attempt === 0 ? 32 : HIGHLIGHT_RETRY_DELAY_MS,
 		);
+		pendingHighlightTimeouts.add(timeoutId);
 	};
 
 	return {
@@ -205,7 +216,10 @@ function createCodeMirrorAdapter(
 					yMargin: 48,
 				}),
 			});
-			highlightLineAt(anchor);
+			highlightRequestId += 1;
+			const currentHighlightRequestId = highlightRequestId;
+			clearPendingHighlightTimeouts();
+			highlightLineAt(anchor, currentHighlightRequestId);
 			if (scrollStabilizeTimeout) {
 				clearTimeout(scrollStabilizeTimeout);
 			}
@@ -224,7 +238,7 @@ function createCodeMirrorAdapter(
 			}, SCROLL_STABILIZE_DELAY_MS);
 
 			highlightResetTimeout = setTimeout(() => {
-				if (disposed) {
+				if (disposed || currentHighlightRequestId !== highlightRequestId) {
 					return;
 				}
 
@@ -324,6 +338,7 @@ function createCodeMirrorAdapter(
 				clearTimeout(scrollStabilizeTimeout);
 				scrollStabilizeTimeout = null;
 			}
+			clearPendingHighlightTimeouts();
 			clearLineHighlight();
 			view.destroy();
 		},
