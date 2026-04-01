@@ -102,7 +102,7 @@ export function sortFilesGroupedOrder(files: ChangedFile[]): ChangedFile[] {
 	return result;
 }
 
-export type FileListViewMode = "tree" | "grouped";
+export type FileListViewMode = "tree" | "grouped" | "compact";
 
 export function sortFiles(
 	files: ChangedFile[],

@@ -15,7 +15,8 @@ export function ViewModeToggle({
 }: ViewModeToggleProps) {
 	const modeOrder: ChangesViewMode[] = ["grouped", "compact", "tree"];
 	const currentIndex = modeOrder.indexOf(viewMode);
-	const nextMode = modeOrder[(currentIndex + 1) % modeOrder.length] ?? "grouped";
+	const nextMode =
+		modeOrder[(currentIndex + 1) % modeOrder.length] ?? "grouped";
 
 	const nextModeMeta: Record<
 		ChangesViewMode,

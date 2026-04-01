@@ -36,7 +36,7 @@ function getCellDimensions(
 function formatLastRunAgo(lastRunAt: number | null): string {
 	if (!lastRunAt) return "";
 
-	const diffMs = Date.now() - lastRunAt;
+	const diffMs = Math.max(0, Date.now() - lastRunAt);
 	const minuteMs = 60_000;
 	const hourMs = 60 * minuteMs;
 	const dayMs = 24 * hourMs;
@@ -81,6 +81,9 @@ export function TerminalSuggestion({
 	const listRef = useRef<HTMLDivElement>(null);
 	const itemTextRefs = useRef<Array<HTMLSpanElement | null>>([]);
 	const [isSelectedTruncated, setIsSelectedTruncated] = useState(false);
+	const selectedCommand = suggestions[selectedIndex]?.command ?? "";
+
+	itemTextRefs.current.length = suggestions.length;
 
 	useEffect(() => {
 		const list = listRef.current;
@@ -101,7 +104,7 @@ export function TerminalSuggestion({
 		setIsSelectedTruncated(
 			selectedText.scrollWidth > selectedText.clientWidth + 1,
 		);
-	}, [prefix, selectedIndex, suggestions]);
+	}, [selectedIndex]);
 
 	// Don't render in alternate screen (TUI apps like Claude Code)
 	if (xterm.buffer.active.type === "alternate") return null;
@@ -126,7 +129,8 @@ export function TerminalSuggestion({
 	const listMaxHeight = MAX_VISIBLE_ITEMS * ITEM_HEIGHT;
 	const FOOTER_HEIGHT = 24;
 	const dropdownHeight =
-		Math.min(suggestions.length, MAX_VISIBLE_ITEMS) * ITEM_HEIGHT + FOOTER_HEIGHT;
+		Math.min(suggestions.length, MAX_VISIBLE_ITEMS) * ITEM_HEIGHT +
+		FOOTER_HEIGHT;
 
 	const belowCursorTop = TERMINAL_PADDING + (cursorY + 1) * dims.height;
 	const spaceBelow = terminalHeight + TERMINAL_PADDING * 2 - belowCursorTop;
@@ -136,10 +140,6 @@ export function TerminalSuggestion({
 		spaceBelow >= dropdownHeight
 			? belowCursorTop
 			: Math.max(0, TERMINAL_PADDING + cursorY * dims.height - dropdownHeight);
-	const selected = suggestions[selectedIndex]?.command ?? "";
-	const suffix = selected.startsWith(prefix)
-		? selected.slice(prefix.length)
-		: "";
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: terminal overlay, not interactive
@@ -162,7 +162,7 @@ export function TerminalSuggestion({
 			}}
 			onMouseDown={(e) => e.preventDefault()}
 		>
-			{isSelectedTruncated && selected && (
+			{isSelectedTruncated && selectedCommand && (
 				<div
 					style={{
 						position: "absolute",
@@ -182,7 +182,7 @@ export function TerminalSuggestion({
 						zIndex: 21,
 					}}
 				>
-					{selected}
+					{selectedCommand}
 				</div>
 			)}
 			{/* Scrollable item list */}
@@ -203,10 +203,7 @@ export function TerminalSuggestion({
 							display: "flex",
 							alignItems: "center",
 							gap: 6,
-							color:
-								i === selectedIndex
-									? "#cdd6f4"
-									: "#a6adc8",
+							color: i === selectedIndex ? "#cdd6f4" : "#a6adc8",
 							backgroundColor:
 								i === selectedIndex
 									? "rgba(137, 180, 250, 0.15)"
@@ -229,8 +226,14 @@ export function TerminalSuggestion({
 								textOverflow: "ellipsis",
 							}}
 						>
-							<span style={{ color: "#89b4fa" }}>{prefix}</span>
-							{suggestion.command.slice(prefix.length)}
+							{suggestion.command.startsWith(prefix) ? (
+								<>
+									<span style={{ color: "#89b4fa" }}>{prefix}</span>
+									{suggestion.command.slice(prefix.length)}
+								</>
+							) : (
+								suggestion.command
+							)}
 						</span>
 						<span
 							style={{

@@ -350,9 +350,7 @@ export function CodeEditor({
 
 		view.dispatch({
 			effects: blameCompartment.reconfigure(
-				blameEntries
-					? createBlamePlugin(blameEntries, { worktreePath })
-					: [],
+				blameEntries ? createBlamePlugin(blameEntries, { worktreePath }) : [],
 			),
 		});
 	}, [blameEntries, blameCompartment, worktreePath]);

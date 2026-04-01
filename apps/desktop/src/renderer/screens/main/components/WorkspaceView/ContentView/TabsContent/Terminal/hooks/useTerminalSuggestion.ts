@@ -115,11 +115,7 @@ export function useTerminalSuggestion({
 	const openHistorySuggestions = useCallback(() => {
 		const promptBlocked =
 			hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
-		if (
-			!enabledRef.current ||
-			isAlternateScreenRef.current ||
-			promptBlocked
-		) {
+		if (!enabledRef.current || isAlternateScreenRef.current || promptBlocked) {
 			return;
 		}
 
@@ -189,8 +185,7 @@ export function useTerminalSuggestion({
 
 	const selected = displaySuggestions[selectedIndex] ?? null;
 	const suffix =
-		selected &&
-		selected.command.startsWith(trackedInput) &&
+		selected?.command.startsWith(trackedInput) &&
 		selected.command !== trackedInput
 			? selected.command.slice(trackedInput.length)
 			: null;

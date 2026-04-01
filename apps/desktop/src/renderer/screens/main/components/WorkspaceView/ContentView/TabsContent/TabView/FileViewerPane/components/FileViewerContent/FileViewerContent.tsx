@@ -397,14 +397,14 @@ export function FileViewerContent({
 							lastDiffLocationRef.current = { ...location, column };
 						}}
 					>
-							<CodeMirrorDiffViewer
-								original={diffData.original}
-								modified={diffData.modified}
-								language={diffData.language}
-								worktreePath={worktreePath}
-								viewMode={diffViewMode}
-								onChange={onContentChange}
-								onSave={onSaveFile}
+						<CodeMirrorDiffViewer
+							original={diffData.original}
+							modified={diffData.modified}
+							language={diffData.language}
+							worktreePath={worktreePath}
+							viewMode={diffViewMode}
+							onChange={onContentChange}
+							onSave={onSaveFile}
 							blameEntries={blameData?.entries}
 						/>
 					</div>
@@ -530,13 +530,13 @@ export function FileViewerContent({
 			onMoveToNewTab={onMoveToNewTab}
 		>
 			<div className="h-full w-full">
-					<CodeEditor
-						key={filePath}
-						language={detectLanguage(filePath)}
-						worktreePath={worktreePath}
-						value={renderedContent}
-						onChange={onContentChange}
-						onSave={onSaveFile}
+				<CodeEditor
+					key={filePath}
+					language={detectLanguage(filePath)}
+					worktreePath={worktreePath}
+					value={renderedContent}
+					onChange={onContentChange}
+					onSave={onSaveFile}
 					editorRef={editorRef}
 					fillHeight
 					blameEntries={blameData?.entries}

@@ -2,16 +2,16 @@ import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { toRegisteredWorktreeRelativePath } from "../workspace-fs-service";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
-import { execWithShellEnv } from "../workspaces/utils/shell-env";
 import {
-	makeGitHubCommitAuthorCacheKey,
 	type GitHubCommitAuthor,
+	makeGitHubCommitAuthorCacheKey,
 	readCachedGitHubCommitAuthor,
 } from "../workspaces/utils/github/cache";
 import {
 	extractNwoFromUrl,
 	getRepoContext,
 } from "../workspaces/utils/github/repo-context";
+import { execWithShellEnv } from "../workspaces/utils/shell-env";
 import { assertRegisteredWorktree } from "./security/path-validation";
 
 export interface BlameEntry {

@@ -80,7 +80,7 @@ const _ICON_ARROW =
 // Singleton tooltip element
 let activeTooltip: HTMLElement | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
-const commitAuthorCache = new Map<string, GitHubCommitAuthor | null>();
+const commitAuthorCache = new Map<string, GitHubCommitAuthor>();
 const commitAuthorInFlight = new Map<
 	string,
 	Promise<GitHubCommitAuthor | null>
@@ -153,13 +153,12 @@ function loadCommitAuthor({
 	const request = electronTrpcClient.changes.getGitHubCommitAuthor
 		.query({ worktreePath, commitHash })
 		.then((result) => {
-			commitAuthorCache.set(cacheKey, result);
+			if (result) {
+				commitAuthorCache.set(cacheKey, result);
+			}
 			return result;
 		})
-		.catch(() => {
-			commitAuthorCache.set(cacheKey, null);
-			return null;
-		})
+		.catch(() => null)
 		.finally(() => {
 			commitAuthorInFlight.delete(cacheKey);
 		});
@@ -593,14 +592,14 @@ export function createBlamePlugin(
 							this.lastCursorLine = newLine;
 						}
 					}
-						this.decorations = buildBlameDecorations(
-							update.view,
-							blameMap,
-							options,
-						);
-					}
+					this.decorations = buildBlameDecorations(
+						update.view,
+						blameMap,
+						options,
+					);
 				}
-			},
+			}
+		},
 		{ decorations: (v) => v.decorations },
 	);
 

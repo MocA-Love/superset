@@ -589,10 +589,7 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 				<div ref={terminalRef} className="h-full w-full" />
 			</div>
 			{xtermInstance && typingPreviewText && (
-				<TerminalTypingPreview
-					xterm={xtermInstance}
-					text={typingPreviewText}
-				/>
+				<TerminalTypingPreview xterm={xtermInstance} text={typingPreviewText} />
 			)}
 			{xtermInstance && displaySuggestions.length > 0 && (
 				<TerminalSuggestion

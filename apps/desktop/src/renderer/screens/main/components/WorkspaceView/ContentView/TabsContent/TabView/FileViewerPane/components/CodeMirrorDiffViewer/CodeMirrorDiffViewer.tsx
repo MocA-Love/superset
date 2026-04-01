@@ -282,9 +282,7 @@ export function CodeMirrorDiffViewer({
 
 		mv.b.dispatch({
 			effects: blameCompartmentB.reconfigure(
-				blameEntries
-					? createBlamePlugin(blameEntries, { worktreePath })
-					: [],
+				blameEntries ? createBlamePlugin(blameEntries, { worktreePath }) : [],
 			),
 		});
 	}, [blameEntries, blameCompartmentB, worktreePath]);
