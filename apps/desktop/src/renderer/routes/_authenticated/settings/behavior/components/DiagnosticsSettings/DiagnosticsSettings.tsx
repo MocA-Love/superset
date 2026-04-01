@@ -51,9 +51,10 @@ export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 
 			<div className="space-y-3">
 				{providers.map((provider) => {
-					const isKnownProvider = isKnownProviderId(provider.providerId);
+					const providerId = provider.providerId;
+					const isKnownProvider = isKnownProviderId(providerId);
 					const checked = isKnownProvider
-						? enabledProviders[provider.providerId]
+						? enabledProviders[providerId]
 						: provider.enabled;
 
 					return (
@@ -81,19 +82,16 @@ export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 										return;
 									}
 
-									const previous = enabledProviders[provider.providerId];
+									const previous = enabledProviders[providerId];
 									try {
 										await setProviderEnabled.mutateAsync({
-											providerId: provider.providerId,
+											providerId,
 											enabled: nextChecked,
 										});
-										setProviderEnabledPreference(
-											provider.providerId,
-											nextChecked,
-										);
+										setProviderEnabledPreference(providerId, nextChecked);
 										await utils.languageServices.getWorkspaceDiagnostics.invalidate();
 									} catch (error) {
-										setProviderEnabledPreference(provider.providerId, previous);
+										setProviderEnabledPreference(providerId, previous);
 										toast.error(
 											error instanceof Error
 												? error.message

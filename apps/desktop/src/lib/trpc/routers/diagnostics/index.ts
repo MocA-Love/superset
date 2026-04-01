@@ -121,14 +121,17 @@ function createOpenDocumentMap(
 	workspacePath: string,
 	openDocuments: Array<{ relativePath: string; content: string | null }>,
 ): Map<string, string> {
-	return new Map(
-		openDocuments
-			.filter((document) => document.content !== null)
-			.map((document) => [
-				path.resolve(workspacePath, document.relativePath),
-				document.content,
-			]),
-	);
+	return openDocuments.reduce((map, document) => {
+		if (document.content === null) {
+			return map;
+		}
+
+		map.set(
+			path.resolve(workspacePath, document.relativePath),
+			document.content,
+		);
+		return map;
+	}, new Map<string, string>());
 }
 
 function createCompilerHostWithOpenDocuments(

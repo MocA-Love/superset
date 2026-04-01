@@ -576,6 +576,9 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		if (!absolutePath) {
 			return;
 		}
+		if (!payload) {
+			return;
+		}
 
 		const buckets =
 			session.diagnosticBuckets.get(absolutePath) ?? createEmptyBuckets();

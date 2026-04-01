@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { TextDecoder } from "node:util";
-import { Taplo } from "@taplo/lib";
+import { type LintError, Taplo } from "@taplo/lib";
 import { languageDiagnosticsStore } from "../../diagnostics-store";
 import type {
 	LanguageServiceDiagnostic,
@@ -38,7 +38,7 @@ function createTaploInstance(workspacePath: string): Promise<Taplo> {
 		glob: () => [],
 		isAbsolute: (candidate) => path.isAbsolute(candidate),
 		now: () => new Date(),
-		readFile: async (target) => await fs.readFile(target, "utf8"),
+		readFile: async (target) => await fs.readFile(target),
 		writeFile: async () => {
 			throw new Error("Taplo writeFile is not implemented");
 		},
@@ -231,19 +231,19 @@ export class TomlLanguageProvider implements LanguageServiceProvider {
 
 	private mapDiagnostic(
 		document: LanguageServiceDocument,
-		error: {
-			range?: {
-				start?: number;
-				end?: number;
-			};
-			error: string;
-		},
+		error: LintError,
 	): LanguageServiceDiagnostic {
+		const byteRange = error.range as
+			| {
+					start?: number;
+					end?: number;
+			  }
+			| undefined;
 		const start = offsetToLineColumn(
 			document.content,
-			error.range?.start ?? null,
+			byteRange?.start ?? null,
 		);
-		const end = offsetToLineColumn(document.content, error.range?.end ?? null);
+		const end = offsetToLineColumn(document.content, byteRange?.end ?? null);
 
 		return {
 			providerId: this.id,

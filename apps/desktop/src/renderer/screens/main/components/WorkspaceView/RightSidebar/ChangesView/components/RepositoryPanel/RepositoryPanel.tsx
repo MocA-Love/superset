@@ -76,6 +76,17 @@ interface TrackedWorkflowRun {
 	dispatchedAt: string;
 }
 
+interface WorkflowRunSummary {
+	id: number;
+	status: string;
+	conclusion: string | null;
+	createdAt: string | null;
+	headBranch: string | null;
+	runStartedAt?: string | null;
+	runNumber?: number | null;
+	url?: string | null;
+}
+
 function buildSelectionSummary(items: string[], emptyLabel: string): string {
 	if (items.length === 0) {
 		return emptyLabel;
@@ -169,13 +180,7 @@ function getWorkflowRunStatusClassName(
 }
 
 function findTrackedWorkflowRun(
-	runs: Array<{
-		id: number;
-		status: string;
-		conclusion: string | null;
-		createdAt: string | null;
-		headBranch: string | null;
-	}>,
+	runs: WorkflowRunSummary[],
 	tracked: TrackedWorkflowRun,
 ) {
 	const dispatchedAtMs = Date.parse(tracked.dispatchedAt);
@@ -276,7 +281,11 @@ function WorkflowRunCard({
 						variant="ghost"
 						size="sm"
 						className="h-6 px-2 text-[10px]"
-						onClick={() => onOpenUrl(matchedRun.url)}
+						onClick={() => {
+							if (matchedRun.url) {
+								onOpenUrl(matchedRun.url);
+							}
+						}}
 					>
 						Open in GitHub
 					</Button>
@@ -469,7 +478,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 		event.preventDefault();
 		setIsUploadingAsset(true);
 		try {
-			const uploaded = [];
+			const uploaded: UploadedIssueAsset[] = [];
 			for (const file of files) {
 				const contentBase64 = await readFileAsBase64(file);
 				const result = await uploadIssueAssetMutation.mutateAsync({

@@ -64,7 +64,9 @@ function isJsonRpcRequestMessage(
 	return "id" in message && "method" in message;
 }
 
-function consumeMessage(buffer: Buffer): { body: string; rest: Buffer } | null {
+function consumeMessage(
+	buffer: Buffer<ArrayBufferLike>,
+): { body: string; rest: Buffer<ArrayBufferLike> } | null {
 	const separatorIndex = buffer.indexOf("\r\n\r\n");
 	if (separatorIndex === -1) {
 		return null;
@@ -94,7 +96,7 @@ export class StdioJsonRpcClient {
 
 	private nextId = 0;
 
-	private buffer = Buffer.alloc(0);
+	private buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
 	private readonly pendingRequests = new Map<number, PendingRequest>();
 
@@ -183,7 +185,7 @@ export class StdioJsonRpcClient {
 		this.pendingRequests.clear();
 	}
 
-	private handleStdout(chunk: Buffer): void {
+	private handleStdout(chunk: Buffer<ArrayBufferLike>): void {
 		this.buffer = Buffer.concat([this.buffer, chunk]);
 		while (true) {
 			const message = consumeMessage(this.buffer);
