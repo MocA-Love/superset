@@ -96,7 +96,6 @@ function severityLabel(severity: ProblemItem["severity"]): string {
 			return "Warning";
 		case "info":
 			return "Info";
-		case "hint":
 		default:
 			return "Hint";
 	}
@@ -105,15 +104,9 @@ function severityLabel(severity: ProblemItem["severity"]): string {
 function severityIcon(severity: ProblemItem["severity"]) {
 	switch (severity) {
 		case "error":
-			return (
-				<LuCircleAlert className="size-3.5 shrink-0 text-red-500" />
-			);
+			return <LuCircleAlert className="size-3.5 shrink-0 text-red-500" />;
 		case "warning":
-			return (
-				<LuTriangleAlert className="size-3.5 shrink-0 text-amber-500" />
-			);
-		case "info":
-		case "hint":
+			return <LuTriangleAlert className="size-3.5 shrink-0 text-amber-500" />;
 		default:
 			return <LuInfo className="size-3.5 shrink-0 text-blue-500" />;
 	}
@@ -127,7 +120,6 @@ function severityToMarkerSeverity(severity: ProblemItem["severity"]): number {
 			return 4;
 		case "info":
 			return 2;
-		case "hint":
 		default:
 			return 1;
 	}
@@ -156,7 +148,6 @@ function getSummaryCount(
 			return summary?.warningCount ?? 0;
 		case "info":
 			return summary?.infoCount ?? 0;
-		case "hint":
 		default:
 			return summary?.hintCount ?? 0;
 	}
@@ -206,11 +197,20 @@ function TruncatedWithTooltip({
 	return (
 		<Tooltip delayDuration={400}>
 			<TooltipTrigger asChild>
-				<div className={cn("min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap", className)}>
+				<div
+					className={cn(
+						"min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap",
+						className,
+					)}
+				>
 					{children}
 				</div>
 			</TooltipTrigger>
-			<TooltipContent side="top" align="start" className="max-w-[420px] text-xs">
+			<TooltipContent
+				side="top"
+				align="start"
+				className="max-w-[420px] text-xs"
+			>
 				<p className="whitespace-pre-wrap break-words">{tooltip ?? children}</p>
 			</TooltipContent>
 		</Tooltip>
@@ -332,9 +332,8 @@ export function ProblemsView({
 						value={severityFilters}
 						onValueChange={(nextValue) => {
 							setSeverityFilters(
-								nextValue.filter(
-									(value): value is ProblemItem["severity"] =>
-										SEVERITY_FILTERS.some((filter) => filter.value === value),
+								nextValue.filter((value): value is ProblemItem["severity"] =>
+									SEVERITY_FILTERS.some((filter) => filter.value === value),
 								),
 							);
 						}}
@@ -499,7 +498,7 @@ export function ProblemsView({
 																<div className="text-muted-foreground mt-0.5 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden text-[11px] leading-4">
 																	<div className="flex min-w-0 items-center gap-2 overflow-hidden">
 																		<span className="max-w-[56px] shrink-0 truncate">
-																		{severityLabel(problem.severity)}
+																			{severityLabel(problem.severity)}
 																		</span>
 																		<TruncatedWithTooltip
 																			className="min-w-0 flex-1"

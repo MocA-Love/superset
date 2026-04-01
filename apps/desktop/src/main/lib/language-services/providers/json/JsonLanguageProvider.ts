@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
+import {
+	type Diagnostic,
+	getLanguageService,
+} from "vscode-json-languageservice";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { getLanguageService, type Diagnostic } from "vscode-json-languageservice";
 import { languageDiagnosticsStore } from "../../diagnostics-store";
 import type {
 	LanguageServiceDiagnostic,
@@ -54,7 +57,8 @@ export class JsonLanguageProvider implements LanguageServiceProvider {
 
 	readonly label = "JSON";
 
-	readonly description = "JSON and JSONC diagnostics via vscode-json-languageservice.";
+	readonly description =
+		"JSON and JSONC diagnostics via vscode-json-languageservice.";
 
 	readonly languageIds = ["json", "jsonc"];
 
@@ -229,19 +233,23 @@ export class JsonLanguageProvider implements LanguageServiceProvider {
 							comments: "ignore",
 							trailingCommas: "ignore",
 							schemaRequest: "ignore",
-					  }
+						}
 					: {
 							comments: "error",
 							trailingCommas: "error",
 							schemaRequest: "ignore",
-					  },
+						},
 			);
 			workspaceState.lastError = null;
 			languageDiagnosticsStore.setFileDiagnostics(
 				document.workspaceId,
 				this.fileKey(document.absolutePath),
 				diagnostics.map((diagnostic) =>
-					this.mapDiagnostic(document.workspacePath, document.absolutePath, diagnostic),
+					this.mapDiagnostic(
+						document.workspacePath,
+						document.absolutePath,
+						diagnostic,
+					),
 				),
 			);
 		} catch (error) {

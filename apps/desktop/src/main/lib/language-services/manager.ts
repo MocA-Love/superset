@@ -4,9 +4,9 @@ import { JsonLanguageProvider } from "./providers/json/JsonLanguageProvider";
 import { TomlLanguageProvider } from "./providers/toml/TomlLanguageProvider";
 import { TypeScriptLanguageProvider } from "./providers/typescript/TypeScriptLanguageProvider";
 import type {
-	LanguageServiceProviderDescriptor,
 	LanguageServiceDocument,
 	LanguageServiceProvider,
+	LanguageServiceProviderDescriptor,
 	LanguageServiceWorkspaceSnapshot,
 } from "./types";
 
@@ -173,8 +173,9 @@ export class LanguageServiceManager {
 
 	private resolveProvider(languageId: string): LanguageServiceProvider | null {
 		return (
-			this.providers.find((provider) => provider.supportsLanguage(languageId)) ??
-			null
+			this.providers.find((provider) =>
+				provider.supportsLanguage(languageId),
+			) ?? null
 		);
 	}
 }

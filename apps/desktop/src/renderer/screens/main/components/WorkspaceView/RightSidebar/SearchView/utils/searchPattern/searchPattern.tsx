@@ -40,7 +40,9 @@ export function getSearchValidationError(
 		new RegExp(query, "u");
 		return null;
 	} catch (error) {
-		return error instanceof Error ? error.message : "Invalid regular expression";
+		return error instanceof Error
+			? error.message
+			: "Invalid regular expression";
 	}
 }
 

@@ -1,5 +1,5 @@
-import { observable } from "@trpc/server/observable";
 import { TRPCError } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import { languageServiceManager } from "main/lib/language-services/manager";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";

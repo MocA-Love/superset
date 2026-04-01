@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 
 type JsonRpcId = number | string | null;
 
@@ -45,7 +45,10 @@ type StdioJsonRpcClientOptions = {
 	shell?: boolean;
 	onNotification?: (message: JsonRpcNotificationMessage) => void;
 	onRequest?: (message: JsonRpcRequestMessage) => Promise<unknown> | unknown;
-	onExit?: (payload: { code: number | null; signal: NodeJS.Signals | null }) => void;
+	onExit?: (payload: {
+		code: number | null;
+		signal: NodeJS.Signals | null;
+	}) => void;
 	onStderr?: (chunk: string) => void;
 };
 
@@ -197,11 +200,14 @@ export class StdioJsonRpcClient {
 				const parsed = JSON.parse(message.body) as JsonRpcMessage;
 				this.handleMessage(parsed);
 			} catch (error) {
-				console.error("[language-services/lsp] Failed to parse JSON-RPC payload", {
-					name: this.options.name,
-					error,
-					body: message.body,
-				});
+				console.error(
+					"[language-services/lsp] Failed to parse JSON-RPC payload",
+					{
+						name: this.options.name,
+						error,
+						body: message.body,
+					},
+				);
 			}
 		}
 	}

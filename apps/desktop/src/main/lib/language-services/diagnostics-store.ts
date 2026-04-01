@@ -14,7 +14,6 @@ function diagnosticSortValue(severity: string): number {
 			return 1;
 		case "info":
 			return 2;
-		case "hint":
 		default:
 			return 3;
 	}
@@ -35,7 +34,8 @@ export class LanguageDiagnosticsStore {
 		diagnostics: LanguageServiceDiagnostic[],
 	): void {
 		const workspaceDiagnostics =
-			this.workspaces.get(workspaceId) ?? new Map<string, LanguageServiceDiagnostic[]>();
+			this.workspaces.get(workspaceId) ??
+			new Map<string, LanguageServiceDiagnostic[]>();
 		workspaceDiagnostics.set(fileKey, diagnostics);
 		this.workspaces.set(workspaceId, workspaceDiagnostics);
 		this.bump(workspaceId);
@@ -104,7 +104,10 @@ export class LanguageDiagnosticsStore {
 		return this.versions.get(workspaceId) ?? 0;
 	}
 
-	subscribe(workspaceId: string, listener: (payload: { version: number }) => void) {
+	subscribe(
+		workspaceId: string,
+		listener: (payload: { version: number }) => void,
+	) {
 		const eventName = this.eventName(workspaceId);
 		this.emitter.on(eventName, listener);
 		return () => {

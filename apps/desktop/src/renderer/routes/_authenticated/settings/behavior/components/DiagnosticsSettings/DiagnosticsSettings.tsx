@@ -1,6 +1,6 @@
 import { Label } from "@superset/ui/label";
-import { Switch } from "@superset/ui/switch";
 import { toast } from "@superset/ui/sonner";
+import { Switch } from "@superset/ui/switch";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type LanguageServiceProviderId,
@@ -17,9 +17,7 @@ function isKnownProviderId(
 	return ["typescript", "json", "toml", "dart"].includes(providerId);
 }
 
-export function DiagnosticsSettings({
-	visible,
-}: DiagnosticsSettingsProps) {
+export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 	const utils = electronTrpc.useUtils();
 	const enabledProviders = useLanguageServicePreferencesStore(
 		(state) => state.enabledProviders,
@@ -30,13 +28,12 @@ export function DiagnosticsSettings({
 	const { data: providers = [], isLoading } =
 		electronTrpc.languageServices.getProviders.useQuery();
 
-	const setProviderEnabled = electronTrpc.languageServices.setProviderEnabled.useMutation(
-		{
+	const setProviderEnabled =
+		electronTrpc.languageServices.setProviderEnabled.useMutation({
 			onSuccess: async () => {
 				await utils.languageServices.getProviders.invalidate();
 			},
-		},
-	);
+		});
 
 	if (!visible) {
 		return null;
@@ -47,8 +44,8 @@ export function DiagnosticsSettings({
 			<div className="space-y-0.5">
 				<Label className="text-sm font-medium">Language diagnostics</Label>
 				<p className="text-xs text-muted-foreground">
-					Problems とエディタ下線に使う言語サービスを切り替えます。TSX と
-					JSX は TypeScript provider に含まれます。
+					Problems とエディタ下線に使う言語サービスを切り替えます。TSX と JSX は
+					TypeScript provider に含まれます。
 				</p>
 			</div>
 
@@ -96,10 +93,7 @@ export function DiagnosticsSettings({
 										);
 										await utils.languageServices.getWorkspaceDiagnostics.invalidate();
 									} catch (error) {
-										setProviderEnabledPreference(
-											provider.providerId,
-											previous,
-										);
+										setProviderEnabledPreference(provider.providerId, previous);
 										toast.error(
 											error instanceof Error
 												? error.message

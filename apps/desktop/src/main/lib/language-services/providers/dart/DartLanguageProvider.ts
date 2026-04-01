@@ -92,7 +92,8 @@ function getEnvCandidateCommands(): string[] {
 }
 
 function resolveFlutterSdkCommands(): string[] {
-	const flutterCommand = process.platform === "win32" ? "flutter.bat" : "flutter";
+	const flutterCommand =
+		process.platform === "win32" ? "flutter.bat" : "flutter";
 	const locateCommand = process.platform === "win32" ? "where" : "which";
 	const locateResult = spawnSync(locateCommand, [flutterCommand], {
 		encoding: "utf8",
@@ -148,15 +149,17 @@ function resolveDartCommand(): ResolvedDartCommand | null {
 }
 
 function resolveTextDocumentSyncMode(result: unknown): "full" | "incremental" {
-	const textDocumentSync = (result as {
-		capabilities?: {
-			textDocumentSync?:
-				| number
-				| {
-						change?: number;
-				  };
-		};
-	})?.capabilities?.textDocumentSync;
+	const textDocumentSync = (
+		result as {
+			capabilities?: {
+				textDocumentSync?:
+					| number
+					| {
+							change?: number;
+					  };
+			};
+		}
+	)?.capabilities?.textDocumentSync;
 
 	if (typeof textDocumentSync === "number") {
 		return textDocumentSync === 2 ? "incremental" : "full";
@@ -178,7 +181,8 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 
 	readonly label = "Dart";
 
-	readonly description = "Dart and Flutter diagnostics via the Dart language server.";
+	readonly description =
+		"Dart and Flutter diagnostics via the Dart language server.";
 
 	readonly languageIds = ["dart"];
 
@@ -191,7 +195,10 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 	}
 
 	async openDocument(document: LanguageServiceDocument): Promise<void> {
-		const session = await this.ensureSession(document.workspaceId, document.workspacePath);
+		const session = await this.ensureSession(
+			document.workspaceId,
+			document.workspacePath,
+		);
 		const uri = absolutePathToFileUri(document.absolutePath);
 		session.openDocuments.set(document.absolutePath, {
 			languageId: document.languageId,
@@ -210,7 +217,10 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 	}
 
 	async changeDocument(document: LanguageServiceDocument): Promise<void> {
-		const session = await this.ensureSession(document.workspaceId, document.workspacePath);
+		const session = await this.ensureSession(
+			document.workspaceId,
+			document.workspacePath,
+		);
 		const previous = session.openDocuments.get(document.absolutePath);
 		if (!previous) {
 			await this.openDocument(document);
@@ -235,16 +245,19 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 							{
 								range: {
 									start: { line: 0, character: 0 },
-									end: offsetToLspPosition(previous.content, previous.content.length),
+									end: offsetToLspPosition(
+										previous.content,
+										previous.content.length,
+									),
 								},
 								text: document.content,
 							},
-					  ]
+						]
 					: [
 							{
 								text: document.content,
 							},
-					  ],
+						],
 		});
 	}
 
@@ -292,7 +305,8 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 			await session.client.request("dart/reanalyze");
 			session.lastError = null;
 		} catch (error) {
-			session.lastError = error instanceof Error ? error.message : String(error);
+			session.lastError =
+				error instanceof Error ? error.message : String(error);
 			this.workspaceErrors.set(args.workspaceId, session.lastError);
 		}
 	}
@@ -440,7 +454,8 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 				},
 			});
 			await client.notify("initialized", {});
-			session.textDocumentSyncMode = resolveTextDocumentSyncMode(initializeResult);
+			session.textDocumentSyncMode =
+				resolveTextDocumentSyncMode(initializeResult);
 			session.lastError = null;
 			this.workspaceErrors.delete(workspaceId);
 			this.sessions.set(workspaceId, session);
@@ -497,9 +512,9 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 			return undefined;
 		}
 
-		const items =
-			((message.params as { items?: Array<{ section?: string | null }> | null })?.items ??
-				[]) as Array<{ section?: string | null }>;
+		const items = ((
+			message.params as { items?: Array<{ section?: string | null }> | null }
+		)?.items ?? []) as Array<{ section?: string | null }>;
 		return items.map((item) => {
 			if (item.section === "dart") {
 				return {

@@ -75,7 +75,10 @@ export function offsetToLineColumn(
 	};
 }
 
-export function offsetToLspPosition(content: string, offset: number): {
+export function offsetToLspPosition(
+	content: string,
+	offset: number,
+): {
 	line: number;
 	character: number;
 } {
@@ -96,7 +99,6 @@ export function lspSeverityToLanguageServiceSeverity(
 			return "warning";
 		case 3:
 			return "info";
-		case 4:
 		default:
 			return "hint";
 	}

@@ -8,8 +8,8 @@ import {
 import { cn } from "@superset/ui/utils";
 import { LuChevronDown, LuChevronRight, LuReplace } from "react-icons/lu";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
-import { SearchMatchItem } from "../SearchMatchItem";
 import type { SearchResultGroup } from "../../types";
+import { SearchMatchItem } from "../SearchMatchItem";
 
 interface SearchFileGroupProps {
 	group: SearchResultGroup;
@@ -62,7 +62,10 @@ export function SearchFileGroup({
 									<LuChevronRight className="size-3.5" />
 								)}
 							</span>
-							<FileIcon fileName={group.name} className="mt-0.5 size-4 shrink-0" />
+							<FileIcon
+								fileName={group.name}
+								className="mt-0.5 size-4 shrink-0"
+							/>
 							<div className="min-w-0 flex-1">
 								<div className="truncate text-sm font-medium text-foreground">
 									{group.name}
@@ -81,7 +84,10 @@ export function SearchFileGroup({
 							type="button"
 							variant="ghost"
 							size="sm"
-							className={cn("h-7 shrink-0 gap-1 px-2 text-xs", isReplacing && "pointer-events-none")}
+							className={cn(
+								"h-7 shrink-0 gap-1 px-2 text-xs",
+								isReplacing && "pointer-events-none",
+							)}
 							disabled={isReplacing}
 							onClick={() => onReplaceInFile(group.absolutePath)}
 						>

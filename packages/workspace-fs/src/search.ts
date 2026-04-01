@@ -355,7 +355,10 @@ function compileSearchPattern({
 	query,
 	isRegex = false,
 	caseSensitive,
-}: Pick<SearchContentOptions, "query" | "isRegex" | "caseSensitive">): CompiledSearchPattern {
+}: Pick<
+	SearchContentOptions,
+	"query" | "isRegex" | "caseSensitive"
+>): CompiledSearchPattern {
 	const resolvedCaseSensitive = resolveCaseSensitive(
 		query,
 		caseSensitive,
@@ -931,12 +934,7 @@ async function searchContentWithScan({
 		} catch {}
 	}
 
-	return rankContentMatches(
-		matches,
-		query,
-		safeLimit,
-		pattern.isRegex,
-	);
+	return rankContentMatches(matches, query, safeLimit, pattern.isRegex);
 }
 
 function isHiddenRelativePath(relativePath: string): boolean {
@@ -1334,7 +1332,9 @@ export async function replaceContent({
 				absolutePath: candidate.absolutePath,
 				relativePath: candidate.relativePath,
 				message:
-					error instanceof Error ? error.message : "Replace failed unexpectedly",
+					error instanceof Error
+						? error.message
+						: "Replace failed unexpectedly",
 			});
 		}
 	}

@@ -83,7 +83,6 @@ function mapSeverity(
 			return "warning";
 		case ts.DiagnosticCategory.Suggestion:
 			return "hint";
-		case ts.DiagnosticCategory.Message:
 		default:
 			return "info";
 	}
@@ -113,7 +112,6 @@ function diagnosticSortValue(severity: string): number {
 			return 1;
 		case "info":
 			return 2;
-		case "hint":
 		default:
 			return 3;
 	}
@@ -186,17 +184,13 @@ function createCompilerHostWithOpenDocuments(
 	return compilerHost;
 }
 
-function getStandaloneCompilerOptions(
-	filePath: string,
-): ts.CompilerOptions {
+function getStandaloneCompilerOptions(filePath: string): ts.CompilerOptions {
 	const extension = path.extname(filePath).toLowerCase();
 	return {
 		noEmit: true,
 		allowJs: [".js", ".jsx", ".mjs", ".cjs"].includes(extension),
 		checkJs: [".js", ".jsx", ".mjs", ".cjs"].includes(extension),
-		jsx: [".jsx", ".tsx"].includes(extension)
-			? ts.JsxEmit.Preserve
-			: undefined,
+		jsx: [".jsx", ".tsx"].includes(extension) ? ts.JsxEmit.Preserve : undefined,
 		target: ts.ScriptTarget.ESNext,
 		module: ts.ModuleKind.ESNext,
 		skipLibCheck: true,
@@ -268,7 +262,9 @@ function mapDiagnosticsToProblems(
 				source: "typescript",
 			};
 		})
-		.filter((problem): problem is NonNullable<typeof problem> => problem !== null);
+		.filter(
+			(problem): problem is NonNullable<typeof problem> => problem !== null,
+		);
 }
 
 function filterProblemsForOpenDocuments(
@@ -384,7 +380,10 @@ export const createDiagnosticsRouter = () => {
 					};
 				}
 
-				const collectedProblems = new Map<string, z.infer<typeof typeScriptProblemSchema>>();
+				const collectedProblems = new Map<
+					string,
+					z.infer<typeof typeScriptProblemSchema>
+				>();
 				const configPathList = Array.from(configPaths);
 
 				console.log("[diagnostics] target documents", {
@@ -448,7 +447,9 @@ export const createDiagnosticsRouter = () => {
 						rootFileCount: rootNames.length,
 						sampleRootFiles: rootNames
 							.slice(0, 20)
-							.map((fileName) => normalizeRelativePath(workspacePath, fileName)),
+							.map((fileName) =>
+								normalizeRelativePath(workspacePath, fileName),
+							),
 					});
 
 					const compilerHost = createCompilerHostWithOpenDocuments(
@@ -465,13 +466,17 @@ export const createDiagnosticsRouter = () => {
 						...parsedConfig.errors,
 						...ts.getPreEmitDiagnostics(program),
 					];
-					for (const problem of mapDiagnosticsToProblems(diagnostics, workspacePath)) {
+					for (const problem of mapDiagnosticsToProblems(
+						diagnostics,
+						workspacePath,
+					)) {
 						collectedProblems.set(createProblemKey(problem), problem);
 					}
 				}
 
 				for (const standaloneFilePath of standaloneFiles) {
-					const compilerOptions = getStandaloneCompilerOptions(standaloneFilePath);
+					const compilerOptions =
+						getStandaloneCompilerOptions(standaloneFilePath);
 					const compilerHost = createCompilerHostWithOpenDocuments(
 						compilerOptions,
 						openDocumentMap,
@@ -492,24 +497,22 @@ export const createDiagnosticsRouter = () => {
 				const mappedProblems = filterProblemsForOpenDocuments(
 					Array.from(collectedProblems.values()),
 					input.openDocuments,
-				).sort(
-					(left, right) => {
-						const severityDiff =
-							diagnosticSortValue(left.severity) -
-							diagnosticSortValue(right.severity);
-						if (severityDiff !== 0) {
-							return severityDiff;
-						}
+				).sort((left, right) => {
+					const severityDiff =
+						diagnosticSortValue(left.severity) -
+						diagnosticSortValue(right.severity);
+					if (severityDiff !== 0) {
+						return severityDiff;
+					}
 
-						const pathDiff = (left.relativePath ?? "").localeCompare(
-							right.relativePath ?? "",
-						);
-						if (pathDiff !== 0) {
-							return pathDiff;
-						}
-						return (left.line ?? 0) - (right.line ?? 0);
-					},
-				);
+					const pathDiff = (left.relativePath ?? "").localeCompare(
+						right.relativePath ?? "",
+					);
+					if (pathDiff !== 0) {
+						return pathDiff;
+					}
+					return (left.line ?? 0) - (right.line ?? 0);
+				});
 
 				const summary = mappedProblems.reduce(
 					(acc, problem) => {

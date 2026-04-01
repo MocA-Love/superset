@@ -43,7 +43,10 @@ function createTaploInstance(workspacePath: string): Promise<Taplo> {
 			throw new Error("Taplo writeFile is not implemented");
 		},
 		stderr: async (chunk) => {
-			console.error("[language-services/toml] taplo stderr", decoder.decode(chunk));
+			console.error(
+				"[language-services/toml] taplo stderr",
+				decoder.decode(chunk),
+			);
 			return chunk.length;
 		},
 		stdErrAtty: () => false,
@@ -236,7 +239,10 @@ export class TomlLanguageProvider implements LanguageServiceProvider {
 			error: string;
 		},
 	): LanguageServiceDiagnostic {
-		const start = offsetToLineColumn(document.content, error.range?.start ?? null);
+		const start = offsetToLineColumn(
+			document.content,
+			error.range?.start ?? null,
+		);
 		const end = offsetToLineColumn(document.content, error.range?.end ?? null);
 
 		return {

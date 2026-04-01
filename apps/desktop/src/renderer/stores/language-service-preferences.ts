@@ -1,11 +1,7 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-export type LanguageServiceProviderId =
-	| "typescript"
-	| "json"
-	| "toml"
-	| "dart";
+export type LanguageServiceProviderId = "typescript" | "json" | "toml" | "dart";
 
 type LanguageServicePreferencesState = {
 	enabledProviders: Record<LanguageServiceProviderId, boolean>;

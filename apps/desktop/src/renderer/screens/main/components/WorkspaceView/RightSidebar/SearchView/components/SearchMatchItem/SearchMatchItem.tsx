@@ -1,5 +1,5 @@
-import { highlightSearchText } from "../../utils/searchPattern/searchPattern";
 import type { SearchContentResult } from "../../types";
+import { highlightSearchText } from "../../utils/searchPattern/searchPattern";
 
 interface SearchMatchItemProps {
 	match: SearchContentResult;

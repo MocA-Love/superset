@@ -102,7 +102,10 @@ export function LanguageServicesProvider() {
 		useState(false);
 
 	useEffect(() => {
-		if (!hasHydratedPreferences || hasAppliedInitialProviderPreferencesRef.current) {
+		if (
+			!hasHydratedPreferences ||
+			hasAppliedInitialProviderPreferencesRef.current
+		) {
 			return;
 		}
 

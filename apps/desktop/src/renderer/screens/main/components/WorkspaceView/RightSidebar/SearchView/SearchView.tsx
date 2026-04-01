@@ -13,7 +13,9 @@ import { SearchToolbar } from "./components/SearchToolbar";
 import { useContentSearch } from "./hooks/useContentSearch";
 import type { SearchContentResult, SearchResultGroup } from "./types";
 
-function groupSearchResults(results: SearchContentResult[]): SearchResultGroup[] {
+function groupSearchResults(
+	results: SearchContentResult[],
+): SearchResultGroup[] {
 	const groups = new Map<string, SearchResultGroup>();
 
 	for (const result of results) {
@@ -99,20 +101,16 @@ export function SearchView({
 	);
 	const replaceMutation = electronTrpc.filesystem.replaceContent.useMutation();
 
-	const {
-		searchResults,
-		isFetching,
-		hasQuery,
-		validationError,
-	} = useContentSearch({
-		workspaceId,
-		query,
-		includePattern,
-		excludePattern,
-		isRegex,
-		caseSensitive,
-		enabled: isActive,
-	});
+	const { searchResults, isFetching, hasQuery, validationError } =
+		useContentSearch({
+			workspaceId,
+			query,
+			includePattern,
+			excludePattern,
+			isRegex,
+			caseSensitive,
+			enabled: isActive,
+		});
 
 	const groupedResults = useMemo(
 		() => groupSearchResults(searchResults),
@@ -257,9 +255,7 @@ export function SearchView({
 				}
 				onToggleReplace={() => setReplaceOpen((current) => !current)}
 				onToggleRegex={() => setIsRegex((current) => !current)}
-				onToggleCaseSensitive={() =>
-					setCaseSensitive((current) => !current)
-				}
+				onToggleCaseSensitive={() => setCaseSensitive((current) => !current)}
 				onReplaceAll={() => {
 					void runReplace();
 				}}
@@ -298,7 +294,9 @@ export function SearchView({
 						</div>
 					) : null}
 
-					{hasQuery && validationError === null && groupedResults.length === 0 ? (
+					{hasQuery &&
+					validationError === null &&
+					groupedResults.length === 0 ? (
 						<div className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
 							{isFetching ? "Searching workspace..." : "No results found."}
 						</div>

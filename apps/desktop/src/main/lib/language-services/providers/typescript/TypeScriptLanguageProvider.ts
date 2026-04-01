@@ -1,14 +1,14 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { languageDiagnosticsStore } from "../../diagnostics-store";
 import type {
 	LanguageServiceDiagnostic,
-	LanguageServiceRelatedInformation,
 	LanguageServiceDocument,
 	LanguageServiceProvider,
 	LanguageServiceProviderSummary,
+	LanguageServiceRelatedInformation,
 	LanguageServiceSeverity,
 } from "../../types";
 
@@ -80,7 +80,10 @@ type WorkspaceSession = {
 	buffer: string;
 	requestResolvers: Map<
 		number,
-		{ resolve: (value: TsServerResponse) => void; reject: (error: Error) => void }
+		{
+			resolve: (value: TsServerResponse) => void;
+			reject: (error: Error) => void;
+		}
 	>;
 	openDocuments: Map<string, OpenDocumentEntry>;
 	diagnosticBuckets: Map<string, FileDiagnosticBuckets>;
@@ -176,7 +179,6 @@ function toSeverity(category: string | undefined): LanguageServiceSeverity {
 			return "warning";
 		case "suggestion":
 			return "hint";
-		case "message":
 		default:
 			return "info";
 	}
@@ -197,7 +199,10 @@ function resolveWorkspaceTsServerPath(workspacePath: string): string | null {
 	return fs.existsSync(candidate) ? candidate : null;
 }
 
-function computeEndPosition(content: string): { endLine: number; endOffset: number } {
+function computeEndPosition(content: string): {
+	endLine: number;
+	endOffset: number;
+} {
 	const lines = content.split(/\r\n|\r|\n/);
 	return {
 		endLine: lines.length,
@@ -232,7 +237,10 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 	}
 
 	async openDocument(document: LanguageServiceDocument): Promise<void> {
-		const session = await this.ensureSession(document.workspaceId, document.workspacePath);
+		const session = await this.ensureSession(
+			document.workspaceId,
+			document.workspacePath,
+		);
 		session.openDocuments.set(document.absolutePath, {
 			languageId: document.languageId,
 			version: document.version,
@@ -247,7 +255,10 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 	}
 
 	async changeDocument(document: LanguageServiceDocument): Promise<void> {
-		const session = await this.ensureSession(document.workspaceId, document.workspacePath);
+		const session = await this.ensureSession(
+			document.workspaceId,
+			document.workspacePath,
+		);
 		const previous = session.openDocuments.get(document.absolutePath);
 		if (!previous) {
 			await this.openDocument(document);
@@ -392,7 +403,8 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		}
 
 		const tsserverPath =
-			resolveWorkspaceTsServerPath(workspacePath) ?? resolveBundledTsServerPath();
+			resolveWorkspaceTsServerPath(workspacePath) ??
+			resolveBundledTsServerPath();
 		const child = spawn(process.execPath, [tsserverPath, "--stdio"], {
 			env: {
 				...process.env,
@@ -474,16 +486,22 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 				const message = JSON.parse(body) as TsServerMessage;
 				this.handleMessage(session, message);
 			} catch (error) {
-				console.error("[language-services/typescript] Failed to parse tsserver payload", {
-					workspaceId: session.workspaceId,
-					error,
-					body,
-				});
+				console.error(
+					"[language-services/typescript] Failed to parse tsserver payload",
+					{
+						workspaceId: session.workspaceId,
+						error,
+						body,
+					},
+				);
 			}
 		}
 	}
 
-	private handleMessage(session: WorkspaceSession, message: TsServerMessage): void {
+	private handleMessage(
+		session: WorkspaceSession,
+		message: TsServerMessage,
+	): void {
 		if (message.type === "response") {
 			const resolver = session.requestResolvers.get(message.request_seq);
 			if (!resolver) {
@@ -592,8 +610,12 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		diagnostic: TsServerDiagnostic,
 	): LanguageServiceDiagnostic {
 		const relatedInformation = diagnostic.relatedInformation
-			?.map((item) => this.mapRelatedInformation(workspacePath, absolutePath, item))
-			.filter((item): item is LanguageServiceRelatedInformation => item !== null);
+			?.map((item) =>
+				this.mapRelatedInformation(workspacePath, absolutePath, item),
+			)
+			.filter(
+				(item): item is LanguageServiceRelatedInformation => item !== null,
+			);
 
 		return {
 			providerId: this.id,
@@ -604,7 +626,8 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 			column: diagnostic.start?.offset ?? null,
 			endLine: diagnostic.end?.line ?? null,
 			endColumn: diagnostic.end?.offset ?? null,
-			message: diagnostic.text ?? diagnostic.message ?? "Unknown TypeScript error",
+			message:
+				diagnostic.text ?? diagnostic.message ?? "Unknown TypeScript error",
 			code: diagnostic.code ?? null,
 			severity: toSeverity(diagnostic.category),
 			relatedInformation,
