@@ -32,6 +32,7 @@ import {
 import { windowManager } from "../lib/window-manager";
 import {
 	getInitialWindowBounds,
+	isWindowPositionPersistenceEnabled,
 	loadWindowState,
 	saveWindowState,
 } from "../lib/window-state";
@@ -113,8 +114,11 @@ app.on("child-process-gone", (_event, details) => {
 });
 
 export async function MainWindow() {
+	const shouldPersistWindowPosition = isWindowPositionPersistenceEnabled();
 	const savedWindowState = loadWindowState();
-	const initialBounds = getInitialWindowBounds(savedWindowState);
+	const initialBounds = getInitialWindowBounds(savedWindowState, {
+		restorePosition: shouldPersistWindowPosition,
+	});
 	let persistedZoomLevel = savedWindowState?.zoomLevel;
 
 	const isDev = env.NODE_ENV === "development";
@@ -257,28 +261,36 @@ export async function MainWindow() {
 	let initialized = false;
 	let hasCompletedFirstLoad = false;
 	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	const getWindowStateSnapshot = () => {
+		const isMaximized = window.isMaximized();
+		const bounds = isMaximized
+			? window.getNormalBounds()
+			: window.getBounds();
+		const zoomLevel = window.webContents.getZoomLevel();
+		return {
+			x: shouldPersistWindowPosition ? bounds.x : 0,
+			y: shouldPersistWindowPosition ? bounds.y : 0,
+			width: bounds.width,
+			height: bounds.height,
+			isMaximized,
+			zoomLevel,
+		};
+	};
+
 	const debouncedSave = () => {
 		if (!initialized || window.isDestroyed()) return;
 		if (saveTimeout) clearTimeout(saveTimeout);
 		saveTimeout = setTimeout(() => {
 			if (window.isDestroyed()) return;
-			const isMaximized = window.isMaximized();
-			const bounds = isMaximized
-				? window.getNormalBounds()
-				: window.getBounds();
-			const zoomLevel = window.webContents.getZoomLevel();
-			saveWindowState({
-				x: bounds.x,
-				y: bounds.y,
-				width: bounds.width,
-				height: bounds.height,
-				isMaximized,
-				zoomLevel,
-			});
-			persistedZoomLevel = zoomLevel;
+			const state = getWindowStateSnapshot();
+			saveWindowState(state);
+			persistedZoomLevel = state.zoomLevel;
 		}, 500);
 	};
-	window.on("move", debouncedSave);
+	if (shouldPersistWindowPosition) {
+		window.on("move", debouncedSave);
+	}
 	window.on("resize", debouncedSave);
 	window.webContents.on("zoom-changed", () => {
 		setTimeout(() => {
@@ -361,18 +373,9 @@ export async function MainWindow() {
 			isVisible: window.isVisible(),
 		});
 		// Save window state first, before any cleanup
-		const isMaximized = window.isMaximized();
-		const bounds = isMaximized ? window.getNormalBounds() : window.getBounds();
-		const zoomLevel = window.webContents.getZoomLevel();
-		saveWindowState({
-			x: bounds.x,
-			y: bounds.y,
-			width: bounds.width,
-			height: bounds.height,
-			isMaximized,
-			zoomLevel,
-		});
-		persistedZoomLevel = zoomLevel;
+		const state = getWindowStateSnapshot();
+		saveWindowState(state);
+		persistedZoomLevel = state.zoomLevel;
 
 		browserManager.unregisterAll();
 		server.close();

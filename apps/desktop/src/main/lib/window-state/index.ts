@@ -9,3 +9,7 @@ export {
 	saveWindowState,
 	type WindowState,
 } from "./window-state";
+export {
+	isWindowPositionPersistenceEnabled,
+	setWindowStateEnvironmentForTesting,
+} from "./position-persistence";

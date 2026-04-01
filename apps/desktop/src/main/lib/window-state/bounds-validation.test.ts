@@ -302,6 +302,28 @@ describe("getInitialWindowBounds", () => {
 		});
 	});
 
+	describe("position restore disabled", () => {
+		it("should center while preserving saved size when position restore is disabled", () => {
+			const result = getInitialWindowBounds(
+				{
+					x: 100,
+					y: 200,
+					width: 800,
+					height: 600,
+					isMaximized: false,
+				},
+				{ restorePosition: false },
+			);
+
+			expect(result).toEqual({
+				width: 800,
+				height: 600,
+				center: true,
+				isMaximized: false,
+			});
+		});
+	});
+
 	describe("dimension clamping", () => {
 		it("should clamp width to work area size", () => {
 			const result = getInitialWindowBounds({
