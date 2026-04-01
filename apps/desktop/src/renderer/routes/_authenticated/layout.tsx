@@ -20,6 +20,7 @@ import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { authClient, getAuthToken } from "renderer/lib/auth-client";
 import { dragDropManager } from "renderer/lib/dnd";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showWorkspaceAutoNameWarningToast";
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
@@ -175,6 +176,7 @@ function AuthenticatedLayout() {
 		<DndProvider manager={dragDropManager}>
 			<CollectionsProvider>
 				<HostServiceProvider>
+					<LanguageServicesProvider />
 					<AgentHooks />
 					<Outlet />
 					<WorkspaceInitEffects />

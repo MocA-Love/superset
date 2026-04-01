@@ -24,6 +24,7 @@ import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceV
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
 import type { DiffViewMode } from "shared/changes-types";
+import { getEditorTheme } from "shared/themes";
 
 // Line decoration that suppresses inline cm-changedText highlights
 const suppressLineDeco = Decoration.line({ class: "cm-suppress-inline-diff" });
@@ -126,6 +127,74 @@ interface CodeMirrorDiffViewerProps {
 	onChange?: (value: string) => void;
 	onSave?: () => void;
 	blameEntries?: BlameEntry[];
+	diagnostics?: Array<{
+		line: number | null;
+		column: number | null;
+		endLine: number | null;
+		endColumn: number | null;
+		severity: "error" | "warning" | "info" | "hint";
+	}>;
+}
+
+function createDiagnosticsTheme(theme: ReturnType<typeof getEditorTheme>) {
+	return EditorView.theme({
+		".cm-problem-underline-error": {
+			textDecoration: `underline wavy ${theme.colors.deletion}`,
+			textUnderlineOffset: "3px",
+			textDecorationThickness: "1.5px",
+		},
+		".cm-problem-underline-warning": {
+			textDecoration: `underline wavy ${theme.colors.modified}`,
+			textUnderlineOffset: "3px",
+			textDecorationThickness: "1.5px",
+		},
+		".cm-problem-underline-info, .cm-problem-underline-hint": {
+			textDecoration: `underline dotted ${theme.colors.searchActive}`,
+			textUnderlineOffset: "3px",
+			textDecorationThickness: "1.5px",
+		},
+	});
+}
+
+function buildDiagnosticDecorations(
+	doc: EditorState["doc"],
+	diagnostics: NonNullable<CodeMirrorDiffViewerProps["diagnostics"]>,
+) {
+	const decorations = diagnostics
+		.filter((diagnostic) => diagnostic.line !== null)
+		.map((diagnostic) => {
+			const startLine = Math.max(1, Math.min(diagnostic.line ?? 1, doc.lines));
+			const startLineInfo = doc.line(startLine);
+			const startOffset = Math.max(0, (diagnostic.column ?? 1) - 1);
+			const from = Math.min(startLineInfo.from + startOffset, startLineInfo.to);
+
+			const endLineNumber = Math.max(
+				startLine,
+				Math.min(diagnostic.endLine ?? startLine, doc.lines),
+			);
+			const endLineInfo = doc.line(endLineNumber);
+			const endOffset = Math.max(
+				0,
+				(diagnostic.endColumn ??
+					(diagnostic.column !== null ? diagnostic.column + 1 : 2)) - 1,
+			);
+			let to = Math.min(endLineInfo.from + endOffset, endLineInfo.to);
+
+			if (to <= from) {
+				to = Math.min(from + 1, startLineInfo.to);
+			}
+
+			if (to <= from) {
+				return null;
+			}
+
+			return Decoration.mark({
+				class: `cm-problem-underline-${diagnostic.severity}`,
+			}).range(from, to);
+		})
+		.filter((decoration) => decoration !== null);
+
+	return Decoration.set(decorations, true);
 }
 
 export function CodeMirrorDiffViewer({
@@ -137,6 +206,7 @@ export function CodeMirrorDiffViewer({
 	onChange,
 	onSave,
 	blameEntries,
+	diagnostics = [],
 }: CodeMirrorDiffViewerProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const mergeViewRef = useRef<MergeView | null>(null);
@@ -145,6 +215,7 @@ export function CodeMirrorDiffViewer({
 	const themeCompartmentA = useRef(new Compartment()).current;
 	const themeCompartmentB = useRef(new Compartment()).current;
 	const blameCompartmentB = useRef(new Compartment()).current;
+	const diagnosticsCompartmentB = useRef(new Compartment()).current;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
 	const activeTheme = useResolvedTheme();
@@ -154,6 +225,7 @@ export function CodeMirrorDiffViewer({
 	);
 	const editorFontFamily = fontSettings?.editorFontFamily ?? undefined;
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
+	const editorTheme = getEditorTheme(activeTheme);
 
 	useEffect(() => {
 		onChangeRef.current = onChange;
@@ -234,6 +306,15 @@ export function CodeMirrorDiffViewer({
 					...editableExtensions,
 					themeCompartmentB.of(themeExts),
 					langCompartmentB.of([]),
+					diagnosticsCompartmentB.of([
+						createDiagnosticsTheme(editorTheme),
+						EditorView.decorations.of(
+							buildDiagnosticDecorations(
+								EditorState.create({ doc: modified }).doc,
+								diagnostics,
+							),
+						),
+					]),
 				],
 			},
 		});
@@ -275,6 +356,20 @@ export function CodeMirrorDiffViewer({
 		themeCompartmentA,
 		themeCompartmentB,
 	]);
+
+	useEffect(() => {
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+
+		mv.b.dispatch({
+			effects: diagnosticsCompartmentB.reconfigure([
+				createDiagnosticsTheme(editorTheme),
+				EditorView.decorations.of(
+					buildDiagnosticDecorations(mv.b.state.doc, diagnostics),
+				),
+			]),
+		});
+	}, [diagnostics, diagnosticsCompartmentB, editorTheme]);
 
 	useEffect(() => {
 		const mv = mergeViewRef.current;

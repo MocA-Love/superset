@@ -34,12 +34,14 @@ function TabButton({
 	icon,
 	label,
 	compact,
+	hasAlert,
 }: {
 	isActive: boolean;
 	onClick: () => void;
 	icon: React.ReactNode;
 	label: string;
 	compact?: boolean;
+	hasAlert?: boolean;
 }) {
 	if (compact) {
 		return (
@@ -53,7 +55,12 @@ function TabButton({
 							compact: true,
 						})}
 					>
-						{icon}
+						<span className="relative inline-flex">
+							{icon}
+							{hasAlert ? (
+								<span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500" />
+							) : null}
+						</span>
 					</button>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" showArrow={false}>
@@ -69,7 +76,12 @@ function TabButton({
 			onClick={onClick}
 			className={getSidebarHeaderTabButtonClassName({ isActive })}
 		>
-			{icon}
+			<span className="relative inline-flex">
+				{icon}
+				{hasAlert ? (
+					<span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500" />
+				) : null}
+			</span>
 			{label}
 		</button>
 	);
@@ -91,6 +103,31 @@ export function RightSidebar() {
 	const isExpanded = currentMode === SidebarMode.Changes;
 	const compactTabs = sidebarWidth < 250;
 	const showChangesTab = !!worktreePath;
+	const trpcUtils = electronTrpc.useUtils();
+	const { data: workspaceDiagnostics } =
+		electronTrpc.languageServices.getWorkspaceDiagnostics.useQuery(
+			{ workspaceId: workspaceId ?? "" },
+			{
+				enabled: Boolean(workspaceId),
+				staleTime: Infinity,
+			},
+		);
+	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
+
+	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: Boolean(workspaceId),
+			onData: () => {
+				if (!workspaceId) {
+					return;
+				}
+				void trpcUtils.languageServices.getWorkspaceDiagnostics.invalidate({
+					workspaceId,
+				});
+			},
+		},
+	);
 
 	const handleExpandToggle = () => {
 		setMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
@@ -98,7 +135,6 @@ export function RightSidebar() {
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 	const addDatabaseExplorerTab = useTabsStore((s) => s.addDatabaseExplorerTab);
-	const trpcUtils = electronTrpc.useUtils();
 	const { scrollToFile } = useScrollContext();
 
 	const invalidateFileContent = useCallback(
@@ -212,6 +248,7 @@ export function RightSidebar() {
 						icon={<LuCircleAlert className="size-3.5" />}
 						label="Problems"
 						compact={compactTabs}
+						hasAlert={hasProblemErrors}
 					/>
 					<TabButton
 						isActive={rightSidebarTab === RightSidebarTab.Databases}
