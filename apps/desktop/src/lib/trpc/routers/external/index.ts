@@ -21,6 +21,30 @@ const ExternalAppSchema = z.enum(EXTERNAL_APPS);
 
 const nonEditorSet = new Set<ExternalApp>(NON_EDITOR_APPS);
 
+function isMissingExternalAppError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	return (
+		error.message.includes("Unable to find application named") ||
+		error.message.includes("Ensure the application is installed.")
+	);
+}
+
+function normalizeOpenInAppError(error: unknown): never {
+	if (isMissingExternalAppError(error)) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message:
+				error instanceof Error
+					? error.message
+					: "Requested application is not available",
+		});
+	}
+	throw new TRPCError({
+		code: "INTERNAL_SERVER_ERROR",
+		message: error instanceof Error ? error.message : "Unknown error",
+	});
+}
+
 /** Sets the global default editor if one hasn't been set yet. Skips non-editor apps. */
 function ensureGlobalDefaultEditor(app: ExternalApp) {
 	if (nonEditorSet.has(app)) return;
@@ -118,7 +142,11 @@ export const createExternalRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				await openPathInApp(input.path, input.app);
+				try {
+					await openPathInApp(input.path, input.app);
+				} catch (error) {
+					normalizeOpenInAppError(error);
+				}
 
 				// Persist defaults only after successful launch
 				if (input.projectId) {
@@ -179,7 +207,11 @@ export const createExternalRouter = () => {
 					return;
 				}
 
-				await openPathInApp(filePath, app);
+				try {
+					await openPathInApp(filePath, app);
+				} catch (error) {
+					normalizeOpenInAppError(error);
+				}
 			}),
 	});
 };

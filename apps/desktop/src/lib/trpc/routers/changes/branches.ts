@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { worktrees } from "@superset/local-db";
+import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type { SimpleGit } from "simple-git";
@@ -57,6 +58,27 @@ type ParsedRefEntry = {
 const REF_FIELD_SEPARATOR = "\u001f";
 const REF_RECORD_SEPARATOR = "\u001e";
 
+function normalizeBranchRef(branch: string): string {
+	if (branch.startsWith("refs/heads/")) {
+		return branch.slice("refs/heads/".length);
+	}
+	if (branch.startsWith("refs/remotes/origin/")) {
+		return branch.slice("refs/remotes/origin/".length);
+	}
+	if (branch.startsWith("remotes/origin/")) {
+		return branch.slice("remotes/origin/".length);
+	}
+	return branch;
+}
+
+async function assertWorktreePathExists(worktreePath: string): Promise<void> {
+	if (await pathExists(worktreePath)) return;
+	throw new TRPCError({
+		code: "NOT_FOUND",
+		message: `Worktree path does not exist: ${worktreePath}`,
+	});
+}
+
 export const createBranchesRouter = () => {
 	return router({
 		getBranches: publicProcedure
@@ -73,6 +95,7 @@ export const createBranchesRouter = () => {
 					currentBranch: string | null;
 				}> => {
 					assertRegisteredWorktree(input.worktreePath);
+					await assertWorktreePathExists(input.worktreePath);
 
 					const git = await getSimpleGitWithShellPath(input.worktreePath);
 
@@ -204,9 +227,11 @@ export const createBranchesRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }): Promise<{ success: boolean }> => {
-				await gitSwitchBranch(input.worktreePath, input.branch);
+				await assertWorktreePathExists(input.worktreePath);
+				const branch = normalizeBranchRef(input.branch);
+				await gitSwitchBranch(input.worktreePath, branch);
 				const currentBranch =
-					(await getCurrentBranch(input.worktreePath)) ?? input.branch;
+					(await getCurrentBranch(input.worktreePath)) ?? branch;
 				persistWorktreeBranch(input.worktreePath, currentBranch);
 
 				clearStatusCacheForWorktree(input.worktreePath);
@@ -218,7 +243,9 @@ export const createBranchesRouter = () => {
 			.query(
 				async ({
 					input,
-				}): Promise<{ operationInProgress: BranchProgressOperation | null }> => {
+				}): Promise<{
+					operationInProgress: BranchProgressOperation | null;
+				}> => {
 					assertRegisteredWorktree(input.worktreePath);
 
 					const git = await getSimpleGitWithShellPath(input.worktreePath);
