@@ -10,10 +10,11 @@ import {
 } from "@superset/ui/dropdown-menu";
 import { useNavigate } from "@tanstack/react-router";
 import { FileCode2, Globe, MessageSquare, TerminalSquare } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { BsTerminalPlus } from "react-icons/bs";
 import { TbMessageCirclePlus, TbWorld } from "react-icons/tb";
 import { HotkeyMenuShortcut } from "renderer/components/HotkeyMenuShortcut";
+import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { WorkspaceChat } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/components/WorkspaceChat";
 import { WorkspaceFilePreview } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/components/WorkspaceFiles/components/WorkspaceFilePreview/WorkspaceFilePreview";
@@ -211,6 +212,7 @@ export function PaneViewer({
 					return (
 						<iframe
 							className="h-full w-full border-0 bg-background"
+							key={`${pane.id}:${data.reloadToken ?? "0"}`}
 							src={data.url}
 							title={pane.titleOverride ?? "Browser"}
 						/>
@@ -254,6 +256,26 @@ export function PaneViewer({
 	useAppHotkey("NEW_CHAT", addChatRoot, undefined, [addChatRoot]);
 	useAppHotkey("NEW_BROWSER", addBrowserRoot, undefined, [addBrowserRoot]);
 	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
+
+	useEffect(() => {
+		return addBrowserShortcutListener(() => {
+			const activePane = store.getState().getActivePane();
+			if (!activePane || activePane.pane.kind !== "browser") {
+				return;
+			}
+
+			const data = activePane.pane.data as BrowserPaneData;
+
+			// v2 browser is iframe-based, so remounting is the safest reload path.
+			store.getState().setPaneData({
+				paneId: activePane.pane.id,
+				data: {
+					...data,
+					reloadToken: crypto.randomUUID(),
+				},
+			});
+		});
+	}, [store]);
 
 	return (
 		<>

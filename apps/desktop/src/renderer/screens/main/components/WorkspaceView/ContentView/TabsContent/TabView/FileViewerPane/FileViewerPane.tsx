@@ -303,12 +303,15 @@ export function FileViewerPane({
 
 	useEffect(() => {
 		if (
-			viewMode === "diff" ||
 			viewMode === "conflict" ||
 			isLoadingRaw ||
 			!rawFileData?.ok ||
 			isDirty
 		) {
+			return;
+		}
+
+		if (viewMode === "diff") {
 			return;
 		}
 
@@ -322,6 +325,30 @@ export function FileViewerPane({
 		isDirty,
 		isLoadingRaw,
 		rawFileData,
+		rawRevision,
+		viewMode,
+		workingCopyRevision,
+	]);
+
+	useEffect(() => {
+		if (
+			viewMode !== "diff" ||
+			isDirty ||
+			!diffData ||
+			diffData.modified.length === 0
+		) {
+			return;
+		}
+
+		applyLoadedDocumentContent(
+			documentKey,
+			diffData.modified,
+			workingCopyRevision ?? rawRevision ?? null,
+		);
+	}, [
+		diffData,
+		documentKey,
+		isDirty,
 		rawRevision,
 		viewMode,
 		workingCopyRevision,

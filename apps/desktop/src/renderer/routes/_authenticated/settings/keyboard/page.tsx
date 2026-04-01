@@ -32,6 +32,7 @@ import {
 } from "shared/hotkeys";
 
 const CATEGORY_ORDER: HotkeyCategory[] = [
+	"Browser",
 	"Workspace",
 	"Terminal",
 	"Layout",

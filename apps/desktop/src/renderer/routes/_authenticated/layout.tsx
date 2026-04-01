@@ -18,9 +18,11 @@ import { useUpdateListener } from "renderer/components/UpdateToast";
 import { env } from "renderer/env.renderer";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { authClient, getAuthToken } from "renderer/lib/auth-client";
+import { dispatchBrowserShortcutEvent } from "renderer/lib/browser-shortcut-events";
 import { dragDropManager } from "renderer/lib/dnd";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showWorkspaceAutoNameWarningToast";
+import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
@@ -128,6 +130,8 @@ function AuthenticatedLayout() {
 				navigate({ to: `/settings/${section}` as "/settings/account" });
 			} else if (event.type === "open-workspace") {
 				navigate({ to: `/workspace/${event.data.workspaceId}` });
+			} else if (event.type === "browser-action") {
+				dispatchBrowserShortcutEvent(event.data.action);
 			}
 		},
 	});
@@ -175,6 +179,7 @@ function AuthenticatedLayout() {
 		<DndProvider manager={dragDropManager}>
 			<CollectionsProvider>
 				<HostServiceProvider>
+					<LanguageServicesProvider />
 					<AgentHooks />
 					<Outlet />
 					<WorkspaceInitEffects />

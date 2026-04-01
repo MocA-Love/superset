@@ -179,9 +179,11 @@ export function ResourceConsumption() {
 						>
 							<HiOutlineCpuChip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 							{normalizedSnapshot && (
-								<span className="text-xs font-medium tabular-nums text-muted-foreground hidden md:inline">
-									{formatMemory(normalizedSnapshot.totalMemory)}
-								</span>
+								<div className="hidden md:flex items-center gap-1.5 text-xs font-medium tabular-nums text-muted-foreground">
+									<span>{formatCpu(normalizedSnapshot.totalCpu)}</span>
+									<span className="text-muted-foreground/60">/</span>
+									<span>{formatMemory(normalizedSnapshot.totalMemory)}</span>
+								</div>
 							)}
 						</button>
 					</PopoverTrigger>
@@ -193,7 +195,10 @@ export function ResourceConsumption() {
 						showArrow={false}
 						className="md:hidden"
 					>
-						{formatMemory(normalizedSnapshot.totalMemory)}
+						<div className="flex flex-col gap-0.5 text-xs">
+							<span>CPU {formatCpu(normalizedSnapshot.totalCpu)}</span>
+							<span>Memory {formatMemory(normalizedSnapshot.totalMemory)}</span>
+						</div>
 					</TooltipContent>
 				)}
 			</Tooltip>

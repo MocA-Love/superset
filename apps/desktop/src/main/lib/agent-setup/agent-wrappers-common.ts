@@ -120,6 +120,8 @@ if [ -z "$REAL_BIN" ]; then
   exit 127
 fi
 
+export SUPERSET_WRAPPER_PID="$$"
+
 ${execLine}
 `;
 }

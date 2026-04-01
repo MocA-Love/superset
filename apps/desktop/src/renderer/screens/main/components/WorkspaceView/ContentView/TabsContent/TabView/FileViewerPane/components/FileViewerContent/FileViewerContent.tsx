@@ -14,7 +14,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import type { Tab } from "renderer/stores/tabs/types";
-import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
+import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
 import { isImageFile, isSpreadsheetFile } from "shared/file-types";
@@ -194,6 +194,42 @@ export function FileViewerContent({
 	const absoluteFilePath = useMemo(
 		() => (worktreePath ? toAbsoluteWorkspacePath(worktreePath, filePath) : ""),
 		[worktreePath, filePath],
+	);
+
+	const trpcUtils = electronTrpc.useUtils();
+	const { data: workspaceDiagnostics } =
+		electronTrpc.languageServices.getWorkspaceDiagnostics.useQuery(
+			{ workspaceId: workspaceId ?? "" },
+			{
+				enabled: Boolean(workspaceId),
+				staleTime: Infinity,
+			},
+		);
+
+	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: Boolean(workspaceId),
+			onData: () => {
+				if (!workspaceId) {
+					return;
+				}
+				void trpcUtils.languageServices.getWorkspaceDiagnostics.invalidate({
+					workspaceId,
+				});
+			},
+		},
+	);
+
+	const fileDiagnostics = useMemo(
+		() =>
+			(workspaceDiagnostics?.problems ?? []).filter(
+				(problem) =>
+					(problem.absolutePath && absoluteFilePath
+						? pathsMatch(problem.absolutePath, absoluteFilePath)
+						: false) || problem.relativePath === filePath,
+			),
+		[workspaceDiagnostics?.problems, absoluteFilePath, filePath],
 	);
 
 	const { data: blameData } = electronTrpc.changes.getGitBlame.useQuery(
@@ -406,6 +442,7 @@ export function FileViewerContent({
 							onChange={onContentChange}
 							onSave={onSaveFile}
 							blameEntries={blameData?.entries}
+							diagnostics={fileDiagnostics}
 						/>
 					</div>
 				</div>
@@ -540,6 +577,7 @@ export function FileViewerContent({
 					editorRef={editorRef}
 					fillHeight
 					blameEntries={blameData?.entries}
+					diagnostics={fileDiagnostics}
 				/>
 			</div>
 		</FileEditorContextMenu>

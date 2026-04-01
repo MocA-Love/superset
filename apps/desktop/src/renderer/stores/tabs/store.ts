@@ -35,6 +35,7 @@ import {
 	createBrowserTabWithPane,
 	createChatPane,
 	createChatTabWithPane,
+	createDatabaseExplorerTabWithPane,
 	createDevToolsPane,
 	createFileViewerPane,
 	createGitGraphTabWithPane,
@@ -1434,7 +1435,10 @@ export const useTabsStore = create<TabsStore>()(
 						paneType === "chat"
 							? createChatPane(tabId)
 							: paneType === "webview"
-								? createBrowserPane(tabId)
+								? createBrowserPane(
+										tabId,
+										options?.url ? { url: options.url } : undefined,
+									)
 								: createPane(tabId, "terminal", options);
 					const panelType =
 						paneType === "chat"
@@ -1503,7 +1507,10 @@ export const useTabsStore = create<TabsStore>()(
 						paneType === "chat"
 							? createChatPane(tabId)
 							: paneType === "webview"
-								? createBrowserPane(tabId)
+								? createBrowserPane(
+										tabId,
+										options?.url ? { url: options.url } : undefined,
+									)
 								: createPane(tabId, "terminal", options);
 					const panelType =
 						paneType === "chat"
@@ -1656,6 +1663,52 @@ export const useTabsStore = create<TabsStore>()(
 
 					posthog.capture("panel_opened", {
 						panel_type: "browser",
+						workspace_id: workspaceId,
+						pane_id: pane.id,
+					});
+
+					return { tabId: tab.id, paneId: pane.id };
+				},
+
+				addDatabaseExplorerTab: (
+					workspaceId: string,
+					connectionId?: string | null,
+				) => {
+					const state = get();
+
+					const { tab, pane } = createDatabaseExplorerTabWithPane(
+						workspaceId,
+						connectionId,
+					);
+
+					const currentActiveId = state.activeTabIds[workspaceId];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
+					const newHistoryStack = currentActiveId
+						? [
+								currentActiveId,
+								...historyStack.filter((id) => id !== currentActiveId),
+							]
+						: historyStack;
+
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, [pane.id]: pane },
+						activeTabIds: {
+							...state.activeTabIds,
+							[workspaceId]: tab.id,
+						},
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: pane.id,
+						},
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: newHistoryStack,
+						},
+					});
+
+					posthog.capture("panel_opened", {
+						panel_type: "database-explorer",
 						workspace_id: workspaceId,
 						pane_id: pane.id,
 					});
@@ -1816,6 +1869,31 @@ export const useTabsStore = create<TabsStore>()(
 							pane_id: newPane.id,
 						});
 					}
+				},
+
+				setDatabaseExplorerConnection: (paneId, connectionId) => {
+					set((state) => {
+						const pane = state.panes[paneId];
+						if (!pane || pane.type !== "database-explorer") {
+							return state;
+						}
+
+						if (pane.databaseExplorer?.connectionId === connectionId) {
+							return state;
+						}
+
+						return {
+							panes: {
+								...state.panes,
+								[paneId]: {
+									...pane,
+									databaseExplorer: {
+										connectionId,
+									},
+								},
+							},
+						};
+					});
 				},
 
 				updateBrowserUrl: (

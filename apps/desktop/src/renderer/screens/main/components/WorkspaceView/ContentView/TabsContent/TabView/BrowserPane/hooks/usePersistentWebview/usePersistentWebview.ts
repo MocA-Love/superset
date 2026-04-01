@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
+import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { PLATFORM } from "shared/constants";
 
 // ---------------------------------------------------------------------------
@@ -109,12 +111,24 @@ function sanitizeUrl(url: string): string {
 
 interface UsePersistentWebviewOptions {
 	paneId: string;
+	tabId: string;
+	path: MosaicBranch[];
 	initialUrl: string;
+	splitPaneAuto: (
+		tabId: string,
+		sourcePaneId: string,
+		dimensions: { width: number; height: number },
+		path?: MosaicBranch[],
+		options?: SplitPaneOptions,
+	) => void;
 }
 
 export function usePersistentWebview({
 	paneId,
+	tabId,
+	path,
 	initialUrl,
+	splitPaneAuto,
 }: UsePersistentWebviewOptions) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const isHistoryNavigation = useRef(false);
@@ -143,12 +157,13 @@ export function usePersistentWebview({
 		{
 			onData: ({ action, url }: { action: string; url: string }) => {
 				if (action === "open-in-split") {
-					const state = useTabsStore.getState();
-					const pane = state.panes[paneId];
-					if (!pane) return;
-					const tab = state.tabs.find((t) => t.id === pane.tabId);
-					if (!tab) return;
-					state.openInBrowserPane(tab.workspaceId, url);
+					const container = containerRef.current;
+					if (!container) return;
+					const { width, height } = container.getBoundingClientRect();
+					splitPaneAuto(tabId, paneId, { width, height }, path, {
+						paneType: "webview",
+						url,
+					});
 				}
 			},
 		},

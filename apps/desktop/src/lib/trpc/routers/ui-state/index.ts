@@ -50,6 +50,7 @@ const paneSchema = z.object({
 		"chat",
 		"devtools",
 		"git-graph",
+		"database-explorer",
 	]),
 	name: z.string(),
 	isNew: z.boolean().optional(),
@@ -91,6 +92,11 @@ const paneSchema = z.object({
 	devtools: z
 		.object({
 			targetPaneId: z.string(),
+		})
+		.optional(),
+	databaseExplorer: z
+		.object({
+			connectionId: z.string().nullable(),
 		})
 		.optional(),
 	workspaceRun: z

@@ -10,7 +10,7 @@ import {
 	writeFile,
 } from "../fs";
 import type { SearchContentOptions } from "../search";
-import { searchContent, searchFiles } from "../search";
+import { replaceContent, searchContent, searchFiles } from "../search";
 import type { FsWatchEvent } from "../types";
 import type { FsWatcherManager, WatchPathOptions } from "../watch";
 
@@ -225,9 +225,25 @@ export function createFsHostService(
 				includePattern: input.includePattern,
 				excludePattern: input.excludePattern,
 				limit: input.limit,
+				isRegex: input.isRegex,
+				caseSensitive: input.caseSensitive,
 				runRipgrep: options.runRipgrep,
 			});
 			return { matches };
+		},
+
+		async replaceContent(input) {
+			return await replaceContent({
+				rootPath,
+				query: input.query,
+				replacement: input.replacement,
+				includeHidden: input.includeHidden,
+				includePattern: input.includePattern,
+				excludePattern: input.excludePattern,
+				isRegex: input.isRegex,
+				caseSensitive: input.caseSensitive,
+				paths: input.paths,
+			});
 		},
 
 		watchPath(

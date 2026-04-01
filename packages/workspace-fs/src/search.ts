@@ -4,8 +4,17 @@ import path from "node:path";
 import { promisify } from "node:util";
 import fg from "fast-glob";
 import Fuse from "fuse.js";
-import { normalizeAbsolutePath, toRelativePath } from "./paths";
-import type { FsContentMatch, FsSearchMatch } from "./types";
+import { readFile as readFsFile, writeFile as writeFsFile } from "./fs";
+import {
+	isPathWithinRoot,
+	normalizeAbsolutePath,
+	toRelativePath,
+} from "./paths";
+import type {
+	FsContentMatch,
+	FsReplaceContentResult,
+	FsSearchMatch,
+} from "./types";
 
 const execFileAsync = promisify(execFile);
 
@@ -100,10 +109,35 @@ export interface SearchContentOptions {
 	includePattern?: string;
 	excludePattern?: string;
 	limit?: number;
+	isRegex?: boolean;
+	caseSensitive?: boolean;
 	runRipgrep?: (
 		args: string[],
 		options: RunRipgrepOptions,
 	) => Promise<{ stdout: string }>;
+}
+
+export interface ReplaceContentOptions {
+	rootPath: string;
+	query: string;
+	replacement: string;
+	includeHidden?: boolean;
+	includePattern?: string;
+	excludePattern?: string;
+	isRegex?: boolean;
+	caseSensitive?: boolean;
+	paths?: string[];
+}
+
+interface CompiledSearchPattern {
+	isRegex: boolean;
+	caseSensitive: boolean;
+	regex: RegExp;
+}
+
+interface LineSearchMatch {
+	index: number;
+	length: number;
 }
 
 const searchIndexCache = new Map<string, FileSearchCacheEntry>();
@@ -295,6 +329,104 @@ function globToRegExp(pattern: string): RegExp {
 
 	regex += "$";
 	return new RegExp(regex);
+}
+
+function escapeRegExp(input: string): string {
+	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function resolveCaseSensitive(
+	query: string,
+	caseSensitive: boolean | undefined,
+	isRegex: boolean,
+): boolean {
+	if (caseSensitive !== undefined) {
+		return caseSensitive;
+	}
+
+	if (isRegex) {
+		return true;
+	}
+
+	return /[A-Z]/.test(query);
+}
+
+function compileSearchPattern({
+	query,
+	isRegex = false,
+	caseSensitive,
+}: Pick<
+	SearchContentOptions,
+	"query" | "isRegex" | "caseSensitive"
+>): CompiledSearchPattern {
+	const resolvedCaseSensitive = resolveCaseSensitive(
+		query,
+		caseSensitive,
+		isRegex,
+	);
+	const flags = resolvedCaseSensitive ? "gu" : "giu";
+	const source = isRegex ? query : escapeRegExp(query);
+
+	return {
+		isRegex,
+		caseSensitive: resolvedCaseSensitive,
+		regex: new RegExp(source, flags),
+	};
+}
+
+function collectLineSearchMatches(
+	line: string,
+	pattern: CompiledSearchPattern,
+): LineSearchMatch[] {
+	const matches: LineSearchMatch[] = [];
+	const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+	let result = regex.exec(line);
+
+	while (result) {
+		const matchText = result[0] ?? "";
+		const matchLength = matchText.length > 0 ? matchText.length : 1;
+		matches.push({
+			index: result.index,
+			length: matchLength,
+		});
+
+		if (matchText.length === 0) {
+			regex.lastIndex += 1;
+		}
+
+		result = regex.exec(line);
+	}
+
+	return matches;
+}
+
+function countMatchesInText(
+	text: string,
+	pattern: CompiledSearchPattern,
+): number {
+	let count = 0;
+	const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+	let result = regex.exec(text);
+
+	while (result) {
+		count += 1;
+		const matchText = result[0] ?? "";
+		if (matchText.length === 0) {
+			regex.lastIndex += 1;
+		}
+		result = regex.exec(text);
+	}
+
+	return count;
+}
+
+function replaceTextContent(
+	text: string,
+	pattern: CompiledSearchPattern,
+	replacement: string,
+): string {
+	const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+	return text.replace(regex, replacement);
 }
 
 const defaultIgnoreMatchers = DEFAULT_IGNORE_PATTERNS.map(globToRegExp);
@@ -518,12 +650,17 @@ function rankContentMatches(
 	matches: InternalContentMatch[],
 	query: string,
 	limit: number,
+	isRegex = false,
 ): InternalContentMatch[] {
 	if (matches.length === 0) {
 		return [];
 	}
 
 	const safeLimit = safeSearchLimit(limit);
+	if (isRegex) {
+		return matches.slice(0, safeLimit);
+	}
+
 	const fuse = new Fuse(matches, {
 		keys: [
 			{ name: "preview", weight: 2 },
@@ -562,8 +699,12 @@ async function searchContentWithRipgrep({
 	includePattern,
 	excludePattern,
 	limit,
+	isRegex,
+	caseSensitive,
+	useSmartCase,
 	runRipgrep,
 }: Required<Omit<SearchContentOptions, "runRipgrep">> & {
+	useSmartCase: boolean;
 	runRipgrep: NonNullable<SearchContentOptions["runRipgrep"]>;
 }): Promise<InternalContentMatch[]> {
 	const safeLimit = safeSearchLimit(limit);
@@ -572,14 +713,29 @@ async function searchContentWithRipgrep({
 		"--json",
 		"--line-number",
 		"--column",
-		"--fixed-strings",
-		"--smart-case",
 		"--no-messages",
 		"--max-filesize",
 		`${Math.floor(MAX_KEYWORD_FILE_SIZE_BYTES / 1024)}K`,
 		"--max-count",
 		String(KEYWORD_SEARCH_MAX_COUNT_PER_FILE),
 	];
+
+	if (isRegex) {
+		if (caseSensitive) {
+			args.push("--case-sensitive");
+		} else {
+			args.push("--ignore-case");
+		}
+	} else {
+		if (caseSensitive) {
+			args.push("--case-sensitive");
+		} else if (useSmartCase) {
+			args.push("--smart-case");
+		} else {
+			args.push("--ignore-case");
+		}
+		args.push("--fixed-strings");
+	}
 
 	if (includeHidden) {
 		args.push("--hidden", "--no-ignore");
@@ -696,7 +852,7 @@ async function searchContentWithRipgrep({
 			});
 		}
 
-		return rankContentMatches(matches, query, safeLimit);
+		return rankContentMatches(matches, query, safeLimit, isRegex);
 	} catch (error) {
 		const err = error as NodeJS.ErrnoException & {
 			code?: string | number | null;
@@ -717,17 +873,18 @@ async function searchContentWithRipgrep({
 async function searchContentWithScan({
 	index,
 	query,
+	pattern,
 	pathMatcher,
 	limit,
 }: {
 	index: FileSearchIndex;
 	query: string;
+	pattern: CompiledSearchPattern;
 	pathMatcher: PathFilterMatcher;
 	limit: number;
 }): Promise<InternalContentMatch[]> {
 	const safeLimit = safeSearchLimit(limit);
 	const maxCandidates = safeLimit * KEYWORD_SEARCH_CANDIDATE_MULTIPLIER;
-	const lowerNeedle = query.toLowerCase();
 	const matches: InternalContentMatch[] = [];
 
 	for (const item of index.items) {
@@ -760,31 +917,24 @@ async function searchContentWithScan({
 				}
 
 				const line = lines[lineIndex] ?? "";
-				const lowerLine = line.toLowerCase();
-				let fromIndex = 0;
-
-				while (matches.length < maxCandidates) {
-					const matchIndex = lowerLine.indexOf(lowerNeedle, fromIndex);
-					if (matchIndex === -1) {
+				for (const match of collectLineSearchMatches(line, pattern)) {
+					if (matches.length >= maxCandidates) {
 						break;
 					}
-
 					matches.push({
 						absolutePath: item.absolutePath,
 						relativePath: item.relativePath,
 						name: item.name,
 						line: lineIndex + 1,
-						column: matchIndex + 1,
+						column: match.index + 1,
 						preview: formatPreviewLine(line),
 					});
-
-					fromIndex = matchIndex + lowerNeedle.length;
 				}
 			}
 		} catch {}
 	}
 
-	return rankContentMatches(matches, query, safeLimit);
+	return rankContentMatches(matches, query, safeLimit, pattern.isRegex);
 }
 
 function isHiddenRelativePath(relativePath: string): boolean {
@@ -999,12 +1149,20 @@ export async function searchContent({
 	includePattern = "",
 	excludePattern = "",
 	limit = 20,
+	isRegex = false,
+	caseSensitive,
 	runRipgrep = defaultRunRipgrep,
 }: SearchContentOptions): Promise<FsContentMatch[]> {
 	const trimmedQuery = query.trim();
 	if (!trimmedQuery) {
 		return [];
 	}
+
+	const pattern = compileSearchPattern({
+		query: trimmedQuery,
+		isRegex,
+		caseSensitive,
+	});
 
 	const index = await getSearchIndex({
 		rootPath,
@@ -1024,12 +1182,16 @@ export async function searchContent({
 			includePattern,
 			excludePattern,
 			limit,
+			isRegex,
+			caseSensitive: pattern.caseSensitive,
+			useSmartCase: !isRegex && caseSensitive === undefined,
 			runRipgrep,
 		});
 	} catch {
 		internalMatches = await searchContentWithScan({
 			index,
 			query: trimmedQuery,
+			pattern,
 			pathMatcher,
 			limit,
 		});
@@ -1044,4 +1206,144 @@ export async function searchContent({
 			preview,
 		}),
 	);
+}
+
+export async function replaceContent({
+	rootPath,
+	query,
+	replacement,
+	includeHidden = true,
+	includePattern = "",
+	excludePattern = "",
+	isRegex = false,
+	caseSensitive,
+	paths,
+}: ReplaceContentOptions): Promise<FsReplaceContentResult> {
+	const trimmedQuery = query.trim();
+	if (!trimmedQuery) {
+		return {
+			replacements: 0,
+			filesUpdated: 0,
+			updated: [],
+			conflicts: [],
+			failed: [],
+		};
+	}
+
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	const pattern = compileSearchPattern({
+		query: trimmedQuery,
+		isRegex,
+		caseSensitive,
+	});
+	const index = await getSearchIndex({
+		rootPath: normalizedRootPath,
+		includeHidden,
+	});
+	const pathMatcher = createPathFilterMatcher({
+		includePattern,
+		excludePattern,
+	});
+	const allowedPaths =
+		paths && paths.length > 0
+			? new Set(
+					paths
+						.map((item) => normalizeAbsolutePath(item))
+						.filter((item) => isPathWithinRoot(normalizedRootPath, item)),
+				)
+			: null;
+	const candidates = index.items.filter((item) => {
+		if (!matchesPathFilters(item.relativePath, pathMatcher)) {
+			return false;
+		}
+		if (allowedPaths) {
+			return allowedPaths.has(item.absolutePath);
+		}
+		return true;
+	});
+
+	const updated: FsReplaceContentResult["updated"] = [];
+	const conflicts: FsReplaceContentResult["conflicts"] = [];
+	const failed: FsReplaceContentResult["failed"] = [];
+	let replacementCount = 0;
+
+	for (const candidate of candidates) {
+		try {
+			const readResult = await readFsFile({
+				rootPath: normalizedRootPath,
+				absolutePath: candidate.absolutePath,
+				maxBytes: MAX_KEYWORD_FILE_SIZE_BYTES,
+			});
+			if (readResult.kind !== "bytes" || readResult.exceededLimit) {
+				continue;
+			}
+
+			const buffer = Buffer.from(readResult.content);
+			if (isBinaryContent(buffer)) {
+				continue;
+			}
+
+			const content = buffer.toString("utf8");
+			const matchesInFile = countMatchesInText(content, pattern);
+			if (matchesInFile === 0) {
+				continue;
+			}
+
+			const nextContent = replaceTextContent(content, pattern, replacement);
+			if (nextContent === content) {
+				continue;
+			}
+
+			const writeResult = await writeFsFile({
+				rootPath: normalizedRootPath,
+				absolutePath: candidate.absolutePath,
+				content: nextContent,
+				encoding: "utf-8",
+				precondition: { ifMatch: readResult.revision },
+			});
+
+			if (!writeResult.ok) {
+				if (writeResult.reason === "conflict") {
+					conflicts.push({
+						absolutePath: candidate.absolutePath,
+						relativePath: candidate.relativePath,
+						currentRevision: writeResult.currentRevision,
+					});
+					continue;
+				}
+
+				failed.push({
+					absolutePath: candidate.absolutePath,
+					relativePath: candidate.relativePath,
+					message: `Replace failed: ${writeResult.reason}`,
+				});
+				continue;
+			}
+
+			replacementCount += matchesInFile;
+			updated.push({
+				absolutePath: candidate.absolutePath,
+				relativePath: candidate.relativePath,
+				replacements: matchesInFile,
+				revision: writeResult.revision,
+			});
+		} catch (error) {
+			failed.push({
+				absolutePath: candidate.absolutePath,
+				relativePath: candidate.relativePath,
+				message:
+					error instanceof Error
+						? error.message
+						: "Replace failed unexpectedly",
+			});
+		}
+	}
+
+	return {
+		replacements: replacementCount,
+		filesUpdated: updated.length,
+		updated,
+		conflicts,
+		failed,
+	};
 }

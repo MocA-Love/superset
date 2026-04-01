@@ -28,6 +28,29 @@ const writeFileContentSchema = z.union([
 	}),
 ]);
 
+const searchContentInputSchema = z.object({
+	workspaceId: z.string(),
+	query: z.string(),
+	includeHidden: z.boolean().optional(),
+	includePattern: z.string().optional(),
+	excludePattern: z.string().optional(),
+	limit: z.number().optional(),
+	isRegex: z.boolean().optional(),
+	caseSensitive: z.boolean().optional(),
+});
+
+const replaceContentInputSchema = z.object({
+	workspaceId: z.string(),
+	query: z.string(),
+	replacement: z.string(),
+	includeHidden: z.boolean().optional(),
+	includePattern: z.string().optional(),
+	excludePattern: z.string().optional(),
+	isRegex: z.boolean().optional(),
+	caseSensitive: z.boolean().optional(),
+	paths: z.array(z.string()).optional(),
+});
+
 export const filesystemRouter = router({
 	listDirectory: protectedProcedure
 		.input(
@@ -196,16 +219,7 @@ export const filesystemRouter = router({
 		}),
 
 	searchContent: protectedProcedure
-		.input(
-			z.object({
-				workspaceId: z.string(),
-				query: z.string(),
-				includeHidden: z.boolean().optional(),
-				includePattern: z.string().optional(),
-				excludePattern: z.string().optional(),
-				limit: z.number().optional(),
-			}),
-		)
+		.input(searchContentInputSchema)
 		.query(async ({ ctx, input }) => {
 			const trimmedQuery = input.query.trim();
 			if (!trimmedQuery) {
@@ -215,6 +229,28 @@ export const filesystemRouter = router({
 			const { workspaceId, ...serviceInput } = input;
 			const service = getFilesystemService(ctx, workspaceId);
 			return await service.searchContent({
+				...serviceInput,
+				query: trimmedQuery,
+			});
+		}),
+
+	replaceContent: protectedProcedure
+		.input(replaceContentInputSchema)
+		.mutation(async ({ ctx, input }) => {
+			const trimmedQuery = input.query.trim();
+			if (!trimmedQuery) {
+				return {
+					replacements: 0,
+					filesUpdated: 0,
+					updated: [],
+					conflicts: [],
+					failed: [],
+				};
+			}
+
+			const { workspaceId, ...serviceInput } = input;
+			const service = getFilesystemService(ctx, workspaceId);
+			return await service.replaceContent({
 				...serviceInput,
 				query: trimmedQuery,
 			});

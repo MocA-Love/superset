@@ -5,8 +5,14 @@ import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	normalizeBookmarkUrl,
+	useBrowserBookmarksStore,
+} from "renderer/stores/browser-bookmarks";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
+import { BookmarkBar } from "./components/BookmarkBar";
 import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
@@ -23,6 +29,7 @@ interface BrowserPaneProps {
 		sourcePaneId: string,
 		dimensions: { width: number; height: number },
 		path?: MosaicBranch[],
+		options?: SplitPaneOptions,
 	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
@@ -43,9 +50,20 @@ export function BrowserPane({
 	const currentUrl = browserState?.currentUrl ?? DEFAULT_BROWSER_URL;
 	const pageTitle =
 		browserState?.history[browserState.historyIndex]?.title ?? "";
+	const currentFaviconUrl =
+		browserState?.history[browserState.historyIndex]?.faviconUrl;
 	const isLoading = browserState?.isLoading ?? false;
 	const loadError = browserState?.error ?? null;
 	const isBlankPage = currentUrl === "about:blank";
+	const currentBookmark = useBrowserBookmarksStore((state) =>
+		state.bookmarks.find(
+			(bookmark) =>
+				normalizeBookmarkUrl(bookmark.url) === normalizeBookmarkUrl(currentUrl),
+		),
+	);
+	const toggleBookmark = useBrowserBookmarksStore(
+		(state) => state.toggleBookmark,
+	);
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
 	const { mutate: setZoomLevel } =
@@ -61,7 +79,10 @@ export function BrowserPane({
 		canGoForward,
 	} = usePersistentWebview({
 		paneId,
+		tabId,
+		path,
 		initialUrl: currentUrl,
+		splitPaneAuto,
 	});
 
 	// -- Zoom (synced with Electron's built-in Cmd+/- zoom) -----------------
@@ -97,6 +118,14 @@ export function BrowserPane({
 	}, [openDevTools, paneId]);
 
 	const [isEditingUrl, setIsEditingUrl] = useState(false);
+	const handleToggleBookmark = useCallback(() => {
+		if (isBlankPage) return;
+		toggleBookmark({
+			url: currentUrl,
+			title: pageTitle || currentUrl,
+			faviconUrl: currentFaviconUrl,
+		});
+	}, [currentFaviconUrl, currentUrl, isBlankPage, pageTitle, toggleBookmark]);
 
 	return (
 		<BasePaneWindow
@@ -114,12 +143,15 @@ export function BrowserPane({
 						currentUrl={currentUrl}
 						pageTitle={pageTitle}
 						isLoading={isLoading}
+						hasPage={!isBlankPage}
+						isBookmarked={Boolean(currentBookmark)}
 						canGoBack={canGoBack}
 						canGoForward={canGoForward}
 						onGoBack={goBack}
 						onGoForward={goForward}
 						onReload={reload}
 						onNavigate={navigateTo}
+						onToggleBookmark={handleToggleBookmark}
 						onEditingChange={setIsEditingUrl}
 					/>
 					<div className="flex items-center shrink-0">
@@ -201,26 +233,33 @@ export function BrowserPane({
 				</div>
 			)}
 		>
-			<div className="relative flex flex-1 h-full">
-				<div ref={containerRef} className="w-full h-full" style={{ flex: 1 }} />
-				{loadError && !isLoading && (
-					<BrowserErrorOverlay error={loadError} onRetry={reload} />
-				)}
-				{isBlankPage && !isLoading && !loadError && (
-					<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background pointer-events-none">
-						<GlobeIcon className="size-10 text-muted-foreground/30" />
-						<div className="text-center">
-							<p className="text-sm font-medium text-muted-foreground/50">
-								Browser
-							</p>
-							<p className="mt-1 text-xs text-muted-foreground/30">
-								Enter a URL above, or instruct an agent to navigate
-								<br />
-								and use the browser
-							</p>
+			<div className="flex h-full flex-1 flex-col">
+				<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
+				<div className="relative flex flex-1 min-h-0">
+					<div
+						ref={containerRef}
+						className="h-full w-full"
+						style={{ flex: 1 }}
+					/>
+					{loadError && !isLoading && (
+						<BrowserErrorOverlay error={loadError} onRetry={reload} />
+					)}
+					{isBlankPage && !isLoading && !loadError && (
+						<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background pointer-events-none">
+							<GlobeIcon className="size-10 text-muted-foreground/30" />
+							<div className="text-center">
+								<p className="text-sm font-medium text-muted-foreground/50">
+									Browser
+								</p>
+								<p className="mt-1 text-xs text-muted-foreground/30">
+									Enter a URL above, or instruct an agent to navigate
+									<br />
+									and use the browser
+								</p>
+							</div>
 						</div>
-					</div>
-				)}
+					)}
+				</div>
 			</div>
 		</BasePaneWindow>
 	);

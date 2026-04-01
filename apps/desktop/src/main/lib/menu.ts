@@ -1,9 +1,10 @@
 import { COMPANY } from "@superset/shared/constants";
-import { app, BrowserWindow, Menu, shell } from "electron";
+import { app, BrowserWindow, Menu, shell, webContents } from "electron";
 import { env } from "main/env.main";
 import { appState } from "main/lib/app-state";
 import { hotkeysEmitter } from "main/lib/hotkeys-events";
 import { resetTerminalStateDev } from "main/lib/terminal/dev-reset";
+import type { BrowserShortcutAction } from "shared/browser-shortcuts";
 import {
 	getCurrentPlatform,
 	getEffectiveHotkey,
@@ -19,6 +20,26 @@ import {
 import { menuEmitter } from "./menu-events";
 
 let isHotkeyListenerRegistered = false;
+
+function getFocusedWebview() {
+	return webContents
+		.getAllWebContents()
+		.find((wc) => wc.getType() === "webview" && wc.isFocused());
+}
+
+function triggerBrowserShortcut(action: BrowserShortcutAction) {
+	const focusedGuest = getFocusedWebview();
+	if (focusedGuest) {
+		if (action === "hard-reload") {
+			focusedGuest.reloadIgnoringCache();
+		} else {
+			focusedGuest.reload();
+		}
+		return;
+	}
+
+	menuEmitter.emit("browser-action", action);
+}
 
 function getMenuAccelerator(id: HotkeyId): string | undefined {
 	const platform = getCurrentPlatform();
@@ -38,6 +59,10 @@ export function registerMenuHotkeyUpdates() {
 
 export function createApplicationMenu() {
 	const reloadAccelerator = getMenuAccelerator("RELOAD_WINDOW");
+	const browserReloadAccelerator = getMenuAccelerator("BROWSER_RELOAD");
+	const browserHardReloadAccelerator = getMenuAccelerator(
+		"BROWSER_HARD_RELOAD",
+	);
 	const closeAccelerator = getMenuAccelerator("CLOSE_WINDOW");
 	const showHotkeysAccelerator = getMenuAccelerator("SHOW_HOTKEYS");
 	const openSettingsAccelerator = getMenuAccelerator("OPEN_SETTINGS");
@@ -73,6 +98,25 @@ export function createApplicationMenu() {
 				{ role: "zoomOut" },
 				{ type: "separator" },
 				{ role: "togglefullscreen" },
+			],
+		},
+		{
+			label: "Browser",
+			submenu: [
+				{
+					label: "Reload Browser",
+					accelerator: browserReloadAccelerator,
+					click: () => {
+						triggerBrowserShortcut("reload");
+					},
+				},
+				{
+					label: "Hard Reload Browser",
+					accelerator: browserHardReloadAccelerator,
+					click: () => {
+						triggerBrowserShortcut("hard-reload");
+					},
+				},
 			],
 		},
 		{

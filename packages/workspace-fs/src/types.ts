@@ -59,6 +59,33 @@ export interface FsContentMatch {
 	preview: string;
 }
 
+export interface FsReplaceContentUpdatedFile {
+	absolutePath: string;
+	relativePath: string;
+	replacements: number;
+	revision: string;
+}
+
+export interface FsReplaceContentConflictFile {
+	absolutePath: string;
+	relativePath: string;
+	currentRevision: string;
+}
+
+export interface FsReplaceContentFailedFile {
+	absolutePath: string;
+	relativePath: string;
+	message: string;
+}
+
+export interface FsReplaceContentResult {
+	replacements: number;
+	filesUpdated: number;
+	updated: FsReplaceContentUpdatedFile[];
+	conflicts: FsReplaceContentConflictFile[];
+	failed: FsReplaceContentFailedFile[];
+}
+
 export type FsWatchEvent = {
 	kind: "create" | "update" | "delete" | "rename" | "overflow";
 	absolutePath: string;

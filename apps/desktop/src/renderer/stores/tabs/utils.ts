@@ -13,6 +13,7 @@ import { hasRenderedPreview, isImageFile } from "shared/file-types";
 import {
 	acknowledgedStatus,
 	type BrowserPaneState,
+	type DatabaseExplorerPaneState,
 	type DevToolsPaneState,
 	type DiffLayout,
 	type FileViewerMode,
@@ -374,6 +375,42 @@ export const createGitGraphTabWithPane = (
 	const tab: Tab = {
 		id: tabId,
 		name: "Git Graph",
+		workspaceId,
+		layout: pane.id,
+		createdAt: Date.now(),
+	};
+
+	return { tab, pane };
+};
+
+export const createDatabaseExplorerPane = (
+	tabId: string,
+	connectionId?: string | null,
+): Pane => {
+	const id = generateId("pane");
+	const databaseExplorer: DatabaseExplorerPaneState = {
+		connectionId: connectionId ?? null,
+	};
+
+	return {
+		id,
+		tabId,
+		type: "database-explorer",
+		name: "Database Explorer",
+		databaseExplorer,
+	};
+};
+
+export const createDatabaseExplorerTabWithPane = (
+	workspaceId: string,
+	connectionId?: string | null,
+): { tab: Tab; pane: Pane } => {
+	const tabId = generateId("tab");
+	const pane = createDatabaseExplorerPane(tabId, connectionId);
+
+	const tab: Tab = {
+		id: tabId,
+		name: "Database Explorer",
 		workspaceId,
 		layout: pane.id,
 		createdAt: Date.now(),

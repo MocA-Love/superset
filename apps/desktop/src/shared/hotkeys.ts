@@ -9,6 +9,7 @@ export type HotkeyPlatform = "darwin" | "win32" | "linux";
 
 export type HotkeyCategory =
 	| "Navigation"
+	| "Browser"
 	| "Workspace"
 	| "Layout"
 	| "Terminal"
@@ -403,6 +404,20 @@ export const HOTKEYS = {
 		description: "Go forward to the next page in history",
 	}),
 
+	// Browser
+	BROWSER_RELOAD: defineHotkey({
+		keys: null,
+		label: "Reload Browser",
+		category: "Browser",
+		description: "Reload the active browser pane",
+	}),
+	BROWSER_HARD_RELOAD: defineHotkey({
+		keys: null,
+		label: "Hard Reload Browser",
+		category: "Browser",
+		description: "Force reload the active browser pane",
+	}),
+
 	// Workspace - switch with ⌘+1-9
 	JUMP_TO_WORKSPACE_1: defineHotkey({
 		keys: "meta+1",
@@ -788,6 +803,12 @@ export const HOTKEYS = {
 		category: "Navigation",
 		description: "Search and open files in the current workspace",
 	}),
+	SEARCH_IN_FILES: defineHotkey({
+		keys: "meta+shift+f",
+		label: "Search in Files",
+		category: "Navigation",
+		description: "Search and replace across files in the current workspace",
+	}),
 
 	// Chat
 	FIND_IN_CHAT: defineHotkey({
@@ -849,6 +870,7 @@ export function getHotkeysByCategory(options?: {
 }): Record<HotkeyCategory, HotkeyWithId[]> {
 	const grouped: Record<HotkeyCategory, HotkeyWithId[]> = {
 		Navigation: [],
+		Browser: [],
 		Workspace: [],
 		Layout: [],
 		Terminal: [],

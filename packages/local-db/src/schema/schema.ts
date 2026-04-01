@@ -207,6 +207,7 @@ export const settings = sqliteTable("settings", {
 	notificationSoundsMuted: integer("notification_sounds_muted", {
 		mode: "boolean",
 	}),
+	preventAgentSleep: integer("prevent_agent_sleep", { mode: "boolean" }),
 	deleteLocalBranch: integer("delete_local_branch", { mode: "boolean" }),
 	fileOpenMode: text("file_open_mode").$type<FileOpenMode>(),
 	showPresetsBar: integer("show_presets_bar", { mode: "boolean" }),

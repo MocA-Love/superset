@@ -1,0 +1,1 @@
+export { DiagnosticsSettings } from "./DiagnosticsSettings";

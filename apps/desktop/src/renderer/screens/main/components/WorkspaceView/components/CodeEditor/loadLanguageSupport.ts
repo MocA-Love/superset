@@ -29,6 +29,10 @@ export async function loadLanguageSupport(
 			const { json } = await import("@codemirror/lang-json");
 			return json();
 		}
+		case "jsonc": {
+			const { json } = await import("@codemirror/lang-json");
+			return json();
+		}
 		case "html": {
 			const { html } = await import("@codemirror/lang-html");
 			return html();
@@ -100,6 +104,11 @@ export async function loadLanguageSupport(
 			return loadLegacyLanguage(
 				() => import("@codemirror/legacy-modes/mode/toml"),
 				"toml",
+			);
+		case "dart":
+			return loadLegacyLanguage(
+				() => import("@codemirror/legacy-modes/mode/clike"),
+				"dart",
 			);
 		case "ruby":
 			return loadLegacyLanguage(

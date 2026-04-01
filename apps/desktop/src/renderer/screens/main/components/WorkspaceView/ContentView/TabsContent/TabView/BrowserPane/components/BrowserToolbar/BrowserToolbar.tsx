@@ -7,6 +7,8 @@ import {
 	TbArrowRight,
 	TbLoader2,
 	TbRefresh,
+	TbStar,
+	TbStarFilled,
 } from "react-icons/tb";
 import { UrlSuggestions } from "./components/UrlSuggestions";
 import { useUrlAutocomplete } from "./hooks/useUrlAutocomplete";
@@ -21,12 +23,15 @@ interface BrowserToolbarProps {
 	currentUrl: string;
 	pageTitle: string;
 	isLoading: boolean;
+	hasPage: boolean;
+	isBookmarked: boolean;
 	canGoBack: boolean;
 	canGoForward: boolean;
 	onGoBack: () => void;
 	onGoForward: () => void;
 	onReload: () => void;
 	onNavigate: (url: string) => void;
+	onToggleBookmark: () => void;
 	onEditingChange?: (editing: boolean) => void;
 }
 
@@ -34,12 +39,15 @@ export function BrowserToolbar({
 	currentUrl,
 	pageTitle,
 	isLoading,
+	hasPage,
+	isBookmarked,
 	canGoBack,
 	canGoForward,
 	onGoBack,
 	onGoForward,
 	onReload,
 	onNavigate,
+	onToggleBookmark,
 	onEditingChange,
 }: BrowserToolbarProps) {
 	const [isEditing, setIsEditingRaw] = useState(false);
@@ -218,27 +226,6 @@ export function BrowserToolbar({
 								</>
 							)}
 						</button>
-						{!isBlank && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<button
-										type="button"
-										onClick={() => {
-											navigator.clipboard.writeText(currentUrl).then(
-												() => toast.success("URL copied"),
-												() => toast.error("Failed to copy URL"),
-											);
-										}}
-										className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition-all hover:text-muted-foreground group-hover:opacity-100"
-									>
-										<LuLink className="size-3" />
-									</button>
-								</TooltipTrigger>
-								<TooltipContent side="bottom" showArrow={false}>
-									Copy URL
-								</TooltipContent>
-							</Tooltip>
-						)}
 					</div>
 				)}
 				{isEditing && autocomplete.isOpen && (
@@ -247,6 +234,49 @@ export function BrowserToolbar({
 						highlightedIndex={autocomplete.highlightedIndex}
 						onSelect={autocomplete.selectSuggestion}
 					/>
+				)}
+			</div>
+			<div className="ml-1 flex shrink-0 items-center gap-0.5">
+				{hasPage && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								onClick={onToggleBookmark}
+								className="rounded p-1 text-muted-foreground/50 transition-colors hover:text-foreground"
+							>
+								{isBookmarked ? (
+									<TbStarFilled className="size-3.5 text-amber-500" />
+								) : (
+									<TbStar className="size-3.5" />
+								)}
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom" showArrow={false}>
+							{isBookmarked ? "Remove Bookmark" : "Add Bookmark"}
+						</TooltipContent>
+					</Tooltip>
+				)}
+				{!isBlank && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								onClick={() => {
+									navigator.clipboard.writeText(currentUrl).then(
+										() => toast.success("URL copied"),
+										() => toast.error("Failed to copy URL"),
+									);
+								}}
+								className="rounded p-1 text-muted-foreground/40 transition-colors hover:text-muted-foreground"
+							>
+								<LuLink className="size-3" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom" showArrow={false}>
+							Copy URL
+						</TooltipContent>
+					</Tooltip>
 				)}
 			</div>
 		</div>

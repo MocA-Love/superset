@@ -2,9 +2,12 @@ import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback } from "react";
 import {
+	LuCircleAlert,
+	LuDatabase,
 	LuExpand,
 	LuFile,
 	LuGitCompareArrows,
+	LuSearch,
 	LuShrink,
 	LuX,
 } from "react-icons/lu";
@@ -21,8 +24,11 @@ import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import { useScrollContext } from "../ChangesContent";
 import { ChangesView } from "./ChangesView";
+import { DatabasesView } from "./DatabasesView";
 import { FilesView } from "./FilesView";
 import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
+import { ProblemsView } from "./ProblemsView";
+import { SearchView } from "./SearchView";
 
 function TabButton({
 	isActive,
@@ -30,12 +36,14 @@ function TabButton({
 	icon,
 	label,
 	compact,
+	hasAlert,
 }: {
 	isActive: boolean;
 	onClick: () => void;
 	icon: React.ReactNode;
 	label: string;
 	compact?: boolean;
+	hasAlert?: boolean;
 }) {
 	if (compact) {
 		return (
@@ -49,7 +57,12 @@ function TabButton({
 							compact: true,
 						})}
 					>
-						{icon}
+						<span className="relative inline-flex">
+							{icon}
+							{hasAlert ? (
+								<span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500" />
+							) : null}
+						</span>
 					</button>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" showArrow={false}>
@@ -65,7 +78,12 @@ function TabButton({
 			onClick={onClick}
 			className={getSidebarHeaderTabButtonClassName({ isActive })}
 		>
-			{icon}
+			<span className="relative inline-flex">
+				{icon}
+				{hasAlert ? (
+					<span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500" />
+				) : null}
+			</span>
 			{label}
 		</button>
 	);
@@ -87,13 +105,38 @@ export function RightSidebar() {
 	const isExpanded = currentMode === SidebarMode.Changes;
 	const compactTabs = sidebarWidth < 250;
 	const showChangesTab = !!worktreePath;
+	const trpcUtils = electronTrpc.useUtils();
+	const { data: workspaceDiagnostics } =
+		electronTrpc.languageServices.getWorkspaceDiagnostics.useQuery(
+			{ workspaceId: workspaceId ?? "" },
+			{
+				enabled: Boolean(workspaceId),
+				staleTime: Infinity,
+			},
+		);
+	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
+
+	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: Boolean(workspaceId),
+			onData: () => {
+				if (!workspaceId) {
+					return;
+				}
+				void trpcUtils.languageServices.getWorkspaceDiagnostics.invalidate({
+					workspaceId,
+				});
+			},
+		},
+	);
 
 	const handleExpandToggle = () => {
 		setMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
 	};
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
-	const trpcUtils = electronTrpc.useUtils();
+	const addDatabaseExplorerTab = useTabsStore((s) => s.addDatabaseExplorerTab);
 	const { scrollToFile } = useScrollContext();
 
 	const invalidateFileContent = useCallback(
@@ -152,13 +195,14 @@ export function RightSidebar() {
 	);
 
 	const handleOpenFileAtLine = useCallback(
-		(path: string, line?: number) => {
+		(path: string, line?: number, column?: number) => {
 			if (!workspaceId || !worktreePath) return;
 			const absolutePath = toAbsoluteWorkspacePath(worktreePath, path);
 			addFileViewerPane(workspaceId, {
 				filePath: absolutePath,
 				viewMode: "raw",
 				line,
+				column,
 			});
 		},
 		[workspaceId, worktreePath, addFileViewerPane],
@@ -170,6 +214,16 @@ export function RightSidebar() {
 				? handleFileScrollTo
 				: handleFileOpenPane
 			: undefined;
+	const handleOpenDatabaseExplorer = useCallback(
+		(connectionId: string) => {
+			if (!workspaceId) {
+				return;
+			}
+
+			addDatabaseExplorerTab(workspaceId, connectionId);
+		},
+		[workspaceId, addDatabaseExplorerTab],
+	);
 
 	return (
 		<aside className="h-full flex flex-col overflow-hidden">
@@ -180,7 +234,7 @@ export function RightSidebar() {
 							isActive={rightSidebarTab === RightSidebarTab.Changes}
 							onClick={() => setRightSidebarTab(RightSidebarTab.Changes)}
 							icon={<LuGitCompareArrows className="size-3.5" />}
-							label="Changes"
+							label="Git"
 							compact={compactTabs}
 						/>
 					)}
@@ -189,6 +243,28 @@ export function RightSidebar() {
 						onClick={() => setRightSidebarTab(RightSidebarTab.Files)}
 						icon={<LuFile className="size-3.5" />}
 						label="Files"
+						compact={compactTabs}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Search}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Search)}
+						icon={<LuSearch className="size-3.5" />}
+						label="Search"
+						compact={compactTabs}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Problems}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Problems)}
+						icon={<LuCircleAlert className="size-3.5" />}
+						label="Problems"
+						compact={compactTabs}
+						hasAlert={hasProblemErrors}
+					/>
+					<TabButton
+						isActive={rightSidebarTab === RightSidebarTab.Databases}
+						onClick={() => setRightSidebarTab(RightSidebarTab.Databases)}
+						icon={<LuDatabase className="size-3.5" />}
+						label="Databases"
 						compact={compactTabs}
 					/>
 				</div>
@@ -254,12 +330,45 @@ export function RightSidebar() {
 			)}
 			<div
 				className={
-					rightSidebarTab === RightSidebarTab.Changes && showChangesTab
-						? "hidden"
-						: "flex-1 min-h-0 flex flex-col overflow-hidden"
+					rightSidebarTab === RightSidebarTab.Files
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
 				}
 			>
 				<FilesView />
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Search
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<SearchView
+					isActive={rightSidebarTab === RightSidebarTab.Search}
+					onOpenFileAtLine={handleOpenFileAtLine}
+				/>
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Problems
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<ProblemsView
+					isActive={rightSidebarTab === RightSidebarTab.Problems}
+					onOpenFileAtLine={handleOpenFileAtLine}
+				/>
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Databases
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<DatabasesView onOpenExplorer={handleOpenDatabaseExplorer} />
 			</div>
 		</aside>
 	);

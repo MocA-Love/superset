@@ -11,11 +11,14 @@ import { createChangesRouter } from "./changes";
 import { createChatRuntimeServiceRouter } from "./chat-runtime-service";
 import { createChatServiceRouter } from "./chat-service";
 import { createConfigRouter } from "./config";
+import { createDatabasesRouter } from "./databases";
+import { createDiagnosticsRouter } from "./diagnostics";
 import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
 import { createHostServiceManagerRouter } from "./host-service-manager";
 import { createHotkeysRouter } from "./hotkeys";
+import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
 import { createModelProvidersRouter } from "./model-providers";
 import { createNotificationsRouter } from "./notifications";
@@ -57,9 +60,12 @@ export const createAppRouter = (
 		resourceMetrics: createResourceMetricsRouter(),
 		menu: createMenuRouter(),
 		hotkeys: createHotkeysRouter(getWindow),
+		languageServices: createLanguageServicesRouter(),
 		external: createExternalRouter(),
 		settings: createSettingsRouter(),
 		config: createConfigRouter(),
+		databases: createDatabasesRouter(),
+		diagnostics: createDiagnosticsRouter(),
 		uiState: createUiStateRouter(),
 		ringtone: createRingtoneRouter(getWindow),
 		hostServiceManager: createHostServiceManagerRouter(),

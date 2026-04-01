@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
+import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
@@ -38,12 +39,17 @@ import {
 } from "renderer/stores/editor-state/editorCoordinator";
 import { useEditorSessionsStore } from "renderer/stores/editor-state/useEditorSessionsStore";
 import { useAppHotkey } from "renderer/stores/hotkeys";
-import { SidebarMode, useSidebarStore } from "renderer/stores/sidebar-state";
+import {
+	RightSidebarTab,
+	SidebarMode,
+	useSidebarStore,
+} from "renderer/stores/sidebar-state";
 import { getPaneDimensions } from "renderer/stores/tabs/pane-refs";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
 import { useTabsWithPresets } from "renderer/stores/tabs/useTabsWithPresets";
 import {
+	extractPaneIdsFromLayout,
 	findPanePath,
 	getFirstPaneId,
 	getNextPaneId,
@@ -187,6 +193,7 @@ export function WorkspacePage({
 	const setSidebarOpen = useSidebarStore((s) => s.setSidebarOpen);
 	const currentSidebarMode = useSidebarStore((s) => s.currentMode);
 	const setSidebarMode = useSidebarStore((s) => s.setMode);
+	const setRightSidebarTab = useSidebarStore((s) => s.setRightSidebarTab);
 
 	const tabs = useMemo(
 		() => allTabs.filter((tab) => tab.workspaceId === workspaceId),
@@ -468,6 +475,77 @@ export function WorkspacePage({
 		commandPalette.toggle();
 	}, [commandPalette.toggle]);
 	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
+
+	const handleBrowserShortcut = useCallback(
+		(action: "reload" | "hard-reload") => {
+			if (!isActive) return;
+
+			const state = useTabsStore.getState();
+			const workspaceTabs = state.tabs.filter(
+				(tab) => tab.workspaceId === workspaceId,
+			);
+			const resolvedActiveTabId = resolveActiveTabIdForWorkspace({
+				workspaceId,
+				tabs: workspaceTabs,
+				activeTabIds: state.activeTabIds,
+				tabHistoryStacks: state.tabHistoryStacks,
+			});
+
+			if (!resolvedActiveTabId) return;
+
+			const activeWorkspaceTab = workspaceTabs.find(
+				(tab) => tab.id === resolvedActiveTabId,
+			);
+			if (!activeWorkspaceTab) return;
+
+			const focusedWorkspacePaneId = state.focusedPaneIds[resolvedActiveTabId];
+			const focusedPane = focusedWorkspacePaneId
+				? state.panes[focusedWorkspacePaneId]
+				: null;
+
+			if (
+				focusedPane?.tabId === resolvedActiveTabId &&
+				focusedPane.type === "webview" &&
+				focusedPane.browser
+			) {
+				void trpcClient.browser.reload.mutate({
+					paneId: focusedPane.id,
+					hard: action === "hard-reload",
+				});
+				return;
+			}
+
+			const browserPanes = extractPaneIdsFromLayout(activeWorkspaceTab.layout)
+				.map((paneId) => state.panes[paneId])
+				.filter(
+					(pane): pane is NonNullable<typeof pane> =>
+						Boolean(pane) && pane.type === "webview" && Boolean(pane.browser),
+				);
+
+			if (browserPanes.length !== 1) return;
+
+			void trpcClient.browser.reload.mutate({
+				paneId: browserPanes[0].id,
+				hard: action === "hard-reload",
+			});
+		},
+		[isActive, workspaceId],
+	);
+
+	useEffect(() => {
+		return addBrowserShortcutListener(handleBrowserShortcut);
+	}, [handleBrowserShortcut]);
+
+	const handleSearchInFiles = useCallback(() => {
+		if (!isSidebarOpen) {
+			setSidebarOpen(true);
+		}
+		setSidebarMode(SidebarMode.Tabs);
+		setRightSidebarTab(RightSidebarTab.Search);
+	}, [isSidebarOpen, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
+	useAppHotkey("SEARCH_IN_FILES", handleSearchInFiles, undefined, [
+		handleSearchInFiles,
+	]);
 
 	// Toggle changes sidebar (⌘L)
 	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), hotkeyOptions, [

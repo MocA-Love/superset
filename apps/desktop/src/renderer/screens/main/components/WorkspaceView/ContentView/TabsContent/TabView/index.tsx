@@ -23,6 +23,7 @@ import { useTheme } from "renderer/stores/theme";
 import { BrowserPane } from "./BrowserPane";
 import { ChatPane } from "./ChatPane";
 import { MosaicSplitOverlay } from "./components";
+import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
 import { GitGraphPane } from "./GitGraphPane";
@@ -340,6 +341,26 @@ export function TabView({ tab }: TabViewProps) {
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			if (paneInfo.type === "database-explorer") {
+				return (
+					<DatabaseExplorerPane
+						paneId={paneId}
+						path={path}
+						tabId={tab.id}
+						workspaceId={tab.workspaceId}
+						splitPaneAuto={splitPaneAuto}
+						splitPaneHorizontal={splitPaneHorizontal}
+						splitPaneVertical={splitPaneVertical}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
+						availableTabs={workspaceTabs}
+						onMoveToTab={(targetTabId) => movePaneToTab(paneId, targetTabId)}
+						onMoveToNewTab={() => movePaneToNewTab(paneId)}
 						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);

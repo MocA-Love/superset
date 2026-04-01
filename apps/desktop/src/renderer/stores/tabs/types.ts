@@ -51,6 +51,7 @@ export interface AddTabOptions {
 export interface SplitPaneOptions {
 	initialCwd?: string;
 	paneType?: "terminal" | "chat" | "webview";
+	url?: string;
 }
 
 export interface AddChatTabOptions {
@@ -203,11 +204,19 @@ export interface TabsStore extends TabsState {
 		workspaceId: string,
 		url?: string,
 	) => { tabId: string; paneId: string };
+	addDatabaseExplorerTab: (
+		workspaceId: string,
+		connectionId?: string | null,
+	) => { tabId: string; paneId: string };
 	addGitGraphTab: (
 		workspaceId: string,
 		worktreePath: string,
 	) => { tabId: string; paneId: string };
 	openInBrowserPane: (workspaceId: string, url: string) => void;
+	setDatabaseExplorerConnection: (
+		paneId: string,
+		connectionId: string | null,
+	) => void;
 	updateBrowserUrl: (
 		paneId: string,
 		url: string,

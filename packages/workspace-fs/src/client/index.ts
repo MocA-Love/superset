@@ -53,6 +53,9 @@ export function createFsClient(transport: FsClientTransport): FsService {
 		async searchContent(input) {
 			return await transport.request("searchContent", input);
 		},
+		async replaceContent(input) {
+			return await transport.request("replaceContent", input);
+		},
 		watchPath(input) {
 			return transport.subscribe("watchPath", input);
 		},
