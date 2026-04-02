@@ -12,6 +12,7 @@ import {
 	postgresConnectionSourceSchema,
 	resolvePostgresConnectionStringFromSource,
 	saveWorkspaceDatabaseCredentials,
+	updateWorkspaceDatabaseDefinition,
 } from "./workspace-config";
 
 const SQLITE_FILE_GLOBS = [
@@ -381,21 +382,57 @@ export const createDatabasesRouter = () => {
 				.input(
 					z.object({
 						worktreePath: z.string().min(1),
-					definitionId: z.string().min(1),
-					username: z.string().min(1),
-					password: z.string(),
-				}),
-			)
-			.mutation(async ({ input }) => {
-				ensureAbsoluteFilesystemPath(input.worktreePath);
-				await ensureExistingDirectory(input.worktreePath);
-				await saveWorkspaceDatabaseCredentials({
-					workspacePath: input.worktreePath,
-					definitionId: input.definitionId,
-					username: input.username,
-					password: input.password,
+						definitionId: z.string().min(1),
+						username: z.string().min(1),
+						password: z.string(),
+					}),
+				)
+				.mutation(async ({ input }) => {
+					ensureAbsoluteFilesystemPath(input.worktreePath);
+					await ensureExistingDirectory(input.worktreePath);
+					await saveWorkspaceDatabaseCredentials({
+						workspacePath: input.worktreePath,
+						definitionId: input.definitionId,
+						username: input.username,
+						password: input.password,
 					});
 					return { ok: true };
+				}),
+
+			updateWorkspaceDatabaseDefinition: publicProcedure
+				.input(
+					z.object({
+						worktreePath: z.string().min(1),
+						definitionId: z.string().min(1),
+						definition: z.discriminatedUnion("dialect", [
+							z.object({
+								dialect: z.literal("sqlite"),
+								label: z.string().min(1),
+								group: z.string().trim().min(1).optional(),
+								databasePath: z.string().min(1),
+							}),
+							z.object({
+								dialect: z.literal("postgres"),
+								label: z.string().min(1),
+								group: z.string().trim().min(1).optional(),
+								host: z.string().min(1),
+								port: z.number().int().positive().max(65535),
+								database: z.string().optional(),
+								ssl: z.boolean(),
+								username: z.string().min(1).optional(),
+							}),
+						]),
+					}),
+				)
+				.mutation(async ({ input }) => {
+					ensureAbsoluteFilesystemPath(input.worktreePath);
+					await ensureExistingDirectory(input.worktreePath);
+					const definition = await updateWorkspaceDatabaseDefinition({
+						workspacePath: input.worktreePath,
+						definitionId: input.definitionId,
+						definition: input.definition,
+					});
+					return { definition };
 				}),
 
 			inspectSqlite: publicProcedure

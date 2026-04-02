@@ -193,6 +193,36 @@ export async function loadWorkspaceDatabaseDefinitions(
 	}
 }
 
+function toWorkspaceConfigSqlitePath(
+	workspacePath: string,
+	databasePath: string,
+): string {
+	const absoluteDatabasePath = path.resolve(workspacePath, databasePath);
+	const relativePath = path.relative(workspacePath, absoluteDatabasePath);
+
+	if (
+		relativePath.length > 0 &&
+		!relativePath.startsWith("..") &&
+		!path.isAbsolute(relativePath)
+	) {
+		return relativePath;
+	}
+
+	return absoluteDatabasePath;
+}
+
+async function writeWorkspaceDatabaseDefinitions(input: {
+	configPath: string;
+	config: Record<string, unknown>;
+}): Promise<void> {
+	await mkdir(path.dirname(input.configPath), { recursive: true });
+	await writeFile(
+		input.configPath,
+		`${JSON.stringify(input.config, null, 2)}\n`,
+		"utf8",
+	);
+}
+
 export async function discoverWorkspaceConfiguredDatabases(
 	workspacePath: string,
 ): Promise<WorkspaceConfiguredDatabaseDiscoveryItem[]> {
@@ -253,6 +283,153 @@ export async function saveWorkspaceDatabaseCredentials(input: {
 		updatedAt: Date.now(),
 	};
 	await saveWorkspaceDatabaseCredentialStore(store);
+}
+
+export async function updateWorkspaceDatabaseDefinition(input: {
+	workspacePath: string;
+	definitionId: string;
+	definition:
+		| {
+				dialect: "sqlite";
+				label: string;
+				group?: string;
+				databasePath: string;
+		  }
+		| {
+				dialect: "postgres";
+				label: string;
+				group?: string;
+				host: string;
+				port: number;
+				database?: string;
+				ssl: boolean;
+				username?: string;
+		  };
+}): Promise<WorkspaceDatabaseDefinition> {
+	const { configPath, definitions } = await loadWorkspaceDatabaseDefinitions(
+		input.workspacePath,
+	);
+	const definitionIndex = definitions.findIndex(
+		(candidate) => candidate.id === input.definitionId,
+	);
+
+	if (definitionIndex === -1) {
+		throw new TRPCError({
+			code: "NOT_FOUND",
+			message: "Workspace database definition not found.",
+		});
+	}
+
+	const currentDefinition = definitions[definitionIndex];
+	const nextDefinition = workspaceDatabaseDefinitionSchema.parse(
+		input.definition.dialect === "sqlite"
+			? {
+					id: input.definitionId,
+					dialect: "sqlite",
+					label: input.definition.label,
+					group: input.definition.group,
+					path: toWorkspaceConfigSqlitePath(
+						input.workspacePath,
+						input.definition.databasePath,
+					),
+			  }
+			: {
+					id: input.definitionId,
+					dialect: "postgres",
+					label: input.definition.label,
+					group: input.definition.group,
+					host: input.definition.host,
+					port: input.definition.port,
+					database: input.definition.database,
+					ssl: input.definition.ssl,
+					username: input.definition.username,
+			  },
+	);
+
+	const rawConfig = JSON.parse(await readFile(configPath, "utf8")) as {
+		databases?: unknown[];
+		[key: string]: unknown;
+	};
+	const rawDefinitions = Array.isArray(rawConfig.databases)
+		? [...rawConfig.databases]
+		: [];
+	const currentRawDefinition =
+		typeof rawDefinitions[definitionIndex] === "object" &&
+		rawDefinitions[definitionIndex] !== null
+			? (rawDefinitions[definitionIndex] as Record<string, unknown>)
+			: {};
+
+	const nextRawDefinition: Record<string, unknown> =
+		nextDefinition.dialect === "sqlite"
+			? {
+					...currentRawDefinition,
+					id: nextDefinition.id,
+					label: nextDefinition.label,
+					dialect: "sqlite",
+					path: nextDefinition.path,
+			  }
+			: {
+					...currentRawDefinition,
+					id: nextDefinition.id,
+					label: nextDefinition.label,
+					dialect: "postgres",
+					host: nextDefinition.host,
+					port: nextDefinition.port,
+					database: nextDefinition.database,
+					ssl: nextDefinition.ssl,
+					username: nextDefinition.username,
+			  };
+
+	if (nextDefinition.group) {
+		nextRawDefinition.group = nextDefinition.group;
+	} else {
+		delete nextRawDefinition.group;
+	}
+
+	if (nextDefinition.dialect === "postgres") {
+		delete nextRawDefinition.path;
+		if (!nextDefinition.username) {
+			delete nextRawDefinition.username;
+		}
+	} else {
+		delete nextRawDefinition.host;
+		delete nextRawDefinition.port;
+		delete nextRawDefinition.database;
+		delete nextRawDefinition.ssl;
+		delete nextRawDefinition.username;
+	}
+
+	rawDefinitions[definitionIndex] = nextRawDefinition;
+	await writeWorkspaceDatabaseDefinitions({
+		configPath,
+		config: {
+			...rawConfig,
+			databases: rawDefinitions,
+		},
+	});
+
+	if (
+		currentDefinition.dialect === "postgres" &&
+		nextDefinition.dialect === "postgres" &&
+		nextDefinition.username
+	) {
+		const store = await loadWorkspaceDatabaseCredentialStore();
+		const credentialKey = workspaceCredentialKey(
+			input.workspacePath,
+			input.definitionId,
+		);
+		const existingCredentials = store.entries[credentialKey];
+		if (existingCredentials) {
+			store.entries[credentialKey] = {
+				...existingCredentials,
+				username: nextDefinition.username,
+				updatedAt: Date.now(),
+			};
+			await saveWorkspaceDatabaseCredentialStore(store);
+		}
+	}
+
+	return nextDefinition;
 }
 
 export async function resolvePostgresConnectionStringFromSource(input: {

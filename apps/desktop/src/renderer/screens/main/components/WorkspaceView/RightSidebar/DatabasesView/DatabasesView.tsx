@@ -591,6 +591,20 @@ function getConnectionSubtitle(connection: SavedDatabaseConnection): string {
 		: (connection.connectionString ?? "");
 }
 
+function isWorkspaceConfigConnection(
+	connection: SavedDatabaseConnection | null,
+): connection is SavedDatabaseConnection & {
+	source: "workspace-config";
+	workspacePath: string;
+	workspaceDefinitionId: string;
+} {
+	return Boolean(
+		connection?.source === "workspace-config" &&
+			connection.workspacePath &&
+			connection.workspaceDefinitionId,
+	);
+}
+
 function getPostgresConnectionInput(connection: SavedDatabaseConnection | null) {
 	if (!connection || connection.dialect !== "postgres") {
 		return null;
@@ -802,6 +816,11 @@ export function DatabasesView({
 	const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
 		null,
 	);
+	const editingConnection =
+		connections.find((connection) => connection.id === editingConnectionId) ??
+		null;
+	const isEditingWorkspaceConfig =
+		editingConnection?.source === "workspace-config";
 	const [labelInput, setLabelInput] = useState("");
 	const [groupInput, setGroupInput] = useState("");
 	const [pathInput, setPathInput] = useState("");
@@ -909,6 +928,22 @@ export function DatabasesView({
 			setPostgresPassword("");
 			setPostgresDatabase("");
 			setPostgresSsl(false);
+			return;
+		}
+
+		if (connection.source === "workspace-config") {
+			setUseConnectionString(false);
+			setPathInput("");
+			setPostgresHost(connection.host ?? "127.0.0.1");
+			setPostgresPort(String(connection.port ?? 5432));
+			setPostgresUsername(connection.usernameHint ?? "");
+			setPostgresPassword("");
+			setPostgresDatabase(
+				connection.databaseName === "postgres"
+					? ""
+					: (connection.databaseName ?? ""),
+			);
+			setPostgresSsl(connection.ssl ?? false);
 			return;
 		}
 
@@ -1136,11 +1171,17 @@ export function DatabasesView({
 		});
 	const saveWorkspaceDatabaseCredentialsMutation =
 		electronTrpc.databases.saveWorkspaceDatabaseCredentials.useMutation();
+	const updateWorkspaceDatabaseDefinitionMutation =
+		electronTrpc.databases.updateWorkspaceDatabaseDefinition.useMutation();
 
 	const discoveredFiles = useMemo(() => {
 		const connectedPaths = new Set(
 			connections
-				.filter((connection) => connection.dialect === "sqlite")
+				.filter(
+					(connection) =>
+						connection.dialect === "sqlite" &&
+						connection.source !== "workspace-config",
+				)
 				.map((connection) => connection.databasePath)
 				.filter((value): value is string => Boolean(value)),
 		);
@@ -1148,7 +1189,6 @@ export function DatabasesView({
 			connections
 				.filter(
 					(connection) =>
-						connection.dialect === "postgres" &&
 						connection.source === "workspace-config" &&
 						connection.workspacePath &&
 						connection.workspaceDefinitionId,
@@ -1161,13 +1201,17 @@ export function DatabasesView({
 
 		return ((discoverQuery.data?.items ?? []) as DiscoveredWorkspaceDatabaseItem[])
 			.filter((item) => {
+				if (item.source === "config") {
+					return !connectedWorkspaceDefinitions.has(
+						`${worktreePath ?? ""}::${item.definitionId}`,
+					);
+				}
+
 				if (item.dialect === "sqlite") {
 					return !connectedPaths.has(item.absolutePath);
 				}
 
-				return !connectedWorkspaceDefinitions.has(
-					`${worktreePath ?? ""}::${item.definitionId}`,
-				);
+				return true;
 			});
 	}, [connections, discoverQuery.data?.items, worktreePath]);
 	const activePreviewQuery =
@@ -1477,18 +1521,24 @@ export function DatabasesView({
 		}
 	};
 
-	const handleAddConnection = () => {
+	const handleAddConnection = async () => {
 		setFormError(null);
 
 		const nextLabel = labelInputRef.current?.value ?? labelInput;
 		const nextGroup = groupInputRef.current?.value ?? groupInput;
+		const nextGroupValue = nextGroup.trim() || undefined;
+		const nextLabelValue = nextLabel.trim();
+		const currentEditingConnection = editingConnection;
 
 		if (connectionType === "sqlite") {
 			const nextPath = pathInputRef.current?.value ?? pathInput;
-			const resolvedPath = resolveSQLiteDatabasePath(nextPath, worktreePath);
+			const resolvedPath = resolveSQLiteDatabasePath(
+				nextPath,
+				currentEditingConnection?.workspacePath ?? worktreePath,
+			);
 			if (!resolvedPath) {
 				setFormError(
-					worktreePath
+					(currentEditingConnection?.workspacePath ?? worktreePath)
 						? "Database path is required."
 						: "Use an absolute database path when no workspace is available.",
 				);
@@ -1496,13 +1546,40 @@ export function DatabasesView({
 			}
 
 			const nextConnection = {
-				label: nextLabel.trim() || guessConnectionLabel(resolvedPath),
-				group: nextGroup.trim() || undefined,
+				label: nextLabelValue || guessConnectionLabel(resolvedPath),
+				group: nextGroupValue,
 				dialect: "sqlite" as const,
 				databasePath: resolvedPath,
 			};
 
-			if (editingConnectionId) {
+			if (
+				editingConnectionId &&
+				isWorkspaceConfigConnection(currentEditingConnection)
+			) {
+				try {
+					await updateWorkspaceDatabaseDefinitionMutation.mutateAsync({
+						worktreePath: currentEditingConnection.workspacePath,
+						definitionId: currentEditingConnection.workspaceDefinitionId,
+						definition: nextConnection,
+					});
+					updateConnection({
+						id: editingConnectionId,
+						source: "workspace-config",
+						workspacePath: currentEditingConnection.workspacePath,
+						workspaceDefinitionId:
+							currentEditingConnection.workspaceDefinitionId,
+						...nextConnection,
+					});
+					await discoverQuery.refetch();
+				} catch (error) {
+					setFormError(
+						error instanceof Error
+							? error.message
+							: "Failed to update workspace database config.",
+					);
+					return;
+				}
+			} else if (editingConnectionId) {
 				updateConnection({
 					id: editingConnectionId,
 					...nextConnection,
@@ -1521,6 +1598,16 @@ export function DatabasesView({
 			const nextDatabase =
 				postgresDatabaseRef.current?.value ?? postgresDatabase;
 
+			if (
+				isWorkspaceConfigConnection(currentEditingConnection) &&
+				useConnectionString
+			) {
+				setFormError(
+					"Workspace-config の Postgres 接続は接続文字列では編集できません。",
+				);
+				return;
+			}
+
 			const connectionString = useConnectionString
 				? nextPath.trim()
 				: buildPostgresConnectionString({
@@ -1537,25 +1624,92 @@ export function DatabasesView({
 				return;
 			}
 
-			if (!useConnectionString && (!nextHost.trim() || !nextUsername.trim())) {
-				setFormError("Host and username are required.");
+			if (
+				!useConnectionString &&
+				(!nextHost.trim() ||
+					(!nextUsername.trim() &&
+						!isWorkspaceConfigConnection(currentEditingConnection)))
+			) {
+				setFormError(
+					isWorkspaceConfigConnection(currentEditingConnection)
+						? "Host is required."
+						: "Host and username are required.",
+				);
 				return;
 			}
 
-			const nextConnection = {
-				label: nextLabel.trim() || guessPostgresLabel(connectionString),
-				group: nextGroup.trim() || undefined,
-				dialect: "postgres" as const,
-				connectionString,
-			};
-
-			if (editingConnectionId) {
-				updateConnection({
-					id: editingConnectionId,
-					...nextConnection,
-				});
+			if (
+				editingConnectionId &&
+				isWorkspaceConfigConnection(currentEditingConnection)
+			) {
+				try {
+					const nextPortValue = Number.parseInt(nextPort.trim() || "5432", 10);
+					const nextDatabaseValue = nextDatabase.trim() || "postgres";
+					const nextUsernameValue = nextUsername.trim() || undefined;
+					await updateWorkspaceDatabaseDefinitionMutation.mutateAsync({
+						worktreePath: currentEditingConnection.workspacePath,
+						definitionId: currentEditingConnection.workspaceDefinitionId,
+						definition: {
+							dialect: "postgres",
+							label:
+								nextLabelValue ||
+								getWorkspaceConfigPostgresLabel({
+									host: nextHost.trim(),
+									databaseName: nextDatabaseValue,
+								}),
+							group: nextGroupValue,
+							host: nextHost.trim(),
+							port: nextPortValue,
+							database: nextDatabase.trim() || undefined,
+							ssl: postgresSsl,
+							username: nextUsernameValue,
+						},
+					});
+					updateConnection({
+						id: editingConnectionId,
+						source: "workspace-config",
+						dialect: "postgres",
+						label:
+							nextLabelValue ||
+							getWorkspaceConfigPostgresLabel({
+								host: nextHost.trim(),
+								databaseName: nextDatabaseValue,
+							}),
+						group: nextGroupValue,
+						workspacePath: currentEditingConnection.workspacePath,
+						workspaceDefinitionId:
+							currentEditingConnection.workspaceDefinitionId,
+						host: nextHost.trim(),
+						port: nextPortValue,
+						databaseName: nextDatabaseValue,
+						ssl: postgresSsl,
+						usernameHint: nextUsernameValue,
+					});
+					await discoverQuery.refetch();
+				} catch (error) {
+					setFormError(
+						error instanceof Error
+							? error.message
+							: "Failed to update workspace database config.",
+					);
+					return;
+				}
 			} else {
-				addConnection(nextConnection);
+				const nextConnection = {
+					label: nextLabelValue || guessPostgresLabel(connectionString),
+					group: nextGroupValue,
+					dialect: "postgres" as const,
+					connectionString,
+				};
+
+				if (editingConnectionId) {
+					updateConnection({
+						id: editingConnectionId,
+						...nextConnection,
+					});
+				} else {
+					addConnection(nextConnection);
+				}
 			}
 		}
 
@@ -1598,9 +1752,32 @@ export function DatabasesView({
 
 	const handleAttachDiscoveredFile = (
 		absolutePath: string,
-		options?: { label?: string; group?: string },
+		options?: {
+			label?: string;
+			group?: string;
+			source?: "manual" | "workspace-config";
+			workspacePath?: string;
+			workspaceDefinitionId?: string;
+		},
 	) => {
+		if (
+			options?.source === "workspace-config" &&
+			options.workspacePath &&
+			options.workspaceDefinitionId
+		) {
 			addConnection({
+				label: options.label ?? guessConnectionLabel(absolutePath),
+				group: options.group ?? (groupInput.trim() || undefined),
+				dialect: "sqlite",
+				databasePath: absolutePath,
+				source: "workspace-config",
+				workspacePath: options.workspacePath,
+				workspaceDefinitionId: options.workspaceDefinitionId,
+			});
+			return;
+		}
+
+		addConnection({
 				label: options?.label ?? guessConnectionLabel(absolutePath),
 				group: options?.group ?? (groupInput.trim() || undefined),
 				dialect: "sqlite",
@@ -1615,6 +1792,11 @@ export function DatabasesView({
 			handleAttachDiscoveredFile(item.absolutePath, {
 				label: item.source === "config" ? item.label : undefined,
 				group: item.source === "config" ? item.group : undefined,
+				source: item.source === "config" ? "workspace-config" : "manual",
+				workspacePath:
+					item.source === "config" ? worktreePath ?? undefined : undefined,
+				workspaceDefinitionId:
+					item.source === "config" ? item.definitionId : undefined,
 			});
 			return;
 		}
@@ -2208,6 +2390,7 @@ export function DatabasesView({
 										}
 										size="sm"
 										onClick={() => setConnectionType("sqlite")}
+										disabled={isEditingWorkspaceConfig}
 									>
 										SQLite
 									</Button>
@@ -2218,6 +2401,7 @@ export function DatabasesView({
 										}
 										size="sm"
 										onClick={() => setConnectionType("postgres")}
+										disabled={isEditingWorkspaceConfig}
 									>
 										Postgres
 									</Button>
@@ -2272,6 +2456,12 @@ export function DatabasesView({
 									</div>
 								) : (
 									<div className="space-y-3">
+										{isEditingWorkspaceConfig ? (
+											<p className="text-muted-foreground text-[11px]">
+												workspace-config 接続は `.superset/databases.json`
+												を書き換えます。パスワードはローカルに暗号化保存されたまま維持されます。
+											</p>
+										) : null}
 										<div className="flex items-center justify-between rounded-md border px-3 py-2">
 											<div>
 												<p className="text-sm font-medium">接続文字列を使用</p>
@@ -2282,6 +2472,7 @@ export function DatabasesView({
 											<Switch
 												checked={useConnectionString}
 												onCheckedChange={setUseConnectionString}
+												disabled={isEditingWorkspaceConfig}
 											/>
 										</div>
 
@@ -2344,43 +2535,59 @@ export function DatabasesView({
 															placeholder="postgres"
 														/>
 													</div>
-													<div className="space-y-1">
-														<Label htmlFor="postgres-password">
-															パスワード
-														</Label>
-														<div className="relative">
-															<Input
-																id="postgres-password"
-																ref={postgresPasswordRef}
-																type={showPassword ? "text" : "password"}
-																value={postgresPassword}
-																onChange={(event) => {
-																	setPostgresPassword(event.target.value);
-																	setFormError(null);
-																}}
-																placeholder="password"
-																className="pr-10"
-															/>
-															<button
-																type="button"
-																aria-label={
-																	showPassword
-																		? "Hide password"
-																		: "Show password"
-																}
-																onClick={() =>
-																	setShowPassword((value) => !value)
-																}
-																className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
-															>
-																{showPassword ? (
-																	<LuEyeOff className="size-4" />
-																) : (
-																	<LuEye className="size-4" />
-																)}
-															</button>
+													{isEditingWorkspaceConfig ? (
+														<div className="flex items-end">
+															<div className="bg-muted/40 flex w-full items-center justify-between rounded-md border px-3 py-2">
+																<div>
+																	<p className="text-sm font-medium">
+																		パスワード
+																	</p>
+																	<p className="text-muted-foreground text-[11px]">
+																		保存済みのローカル資格情報をそのまま使います
+																	</p>
+																</div>
+																<Badge variant="outline">保持</Badge>
+															</div>
 														</div>
-													</div>
+													) : (
+														<div className="space-y-1">
+															<Label htmlFor="postgres-password">
+																パスワード
+															</Label>
+															<div className="relative">
+																<Input
+																	id="postgres-password"
+																	ref={postgresPasswordRef}
+																	type={showPassword ? "text" : "password"}
+																	value={postgresPassword}
+																	onChange={(event) => {
+																		setPostgresPassword(event.target.value);
+																		setFormError(null);
+																	}}
+																	placeholder="password"
+																	className="pr-10"
+																/>
+																<button
+																	type="button"
+																	aria-label={
+																		showPassword
+																			? "Hide password"
+																			: "Show password"
+																	}
+																	onClick={() =>
+																		setShowPassword((value) => !value)
+																	}
+																	className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+																>
+																	{showPassword ? (
+																		<LuEyeOff className="size-4" />
+																	) : (
+																		<LuEye className="size-4" />
+																	)}
+																</button>
+															</div>
+														</div>
+													)}
 												</div>
 
 												<div className="grid grid-cols-2 gap-3">
@@ -2423,10 +2630,12 @@ export function DatabasesView({
 								<div className="flex items-center justify-between gap-2">
 									<p className="text-muted-foreground truncate text-[11px]">
 										{connectionType === "sqlite"
-											? worktreePath
-												? `Workspace root: ${worktreePath}`
+											? (editingConnection?.workspacePath ?? worktreePath)
+												? `Workspace root: ${editingConnection?.workspacePath ?? worktreePath}`
 												: "No workspace root available"
-											: "Use a PostgreSQL connection string"}
+											: isEditingWorkspaceConfig
+												? "`.superset/databases.json` を更新します"
+												: "Use a PostgreSQL connection string"}
 									</p>
 									<div className="flex items-center gap-2">
 										{editingConnectionId ? (
@@ -2563,14 +2772,10 @@ export function DatabasesView({
 														}
 													: undefined
 											}
-											onEdit={
-												connection.source === "workspace-config"
-													? undefined
-													: () => {
-															populateConnectionForm(connection);
-															setIsAddConnectionOpen(true);
-														}
-											}
+											onEdit={() => {
+												populateConnectionForm(connection);
+												setIsAddConnectionOpen(true);
+											}}
 											onSelect={() => handleSelectConnectionId(connection.id)}
 											onRemove={() => removeConnection(connection.id)}
 										/>

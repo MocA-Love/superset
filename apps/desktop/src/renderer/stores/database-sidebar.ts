@@ -42,6 +42,15 @@ interface DatabaseSidebarState {
 			| {
 					label: string;
 					group?: string;
+					source: "workspace-config";
+					dialect: "sqlite";
+					databasePath: string;
+					workspacePath: string;
+					workspaceDefinitionId: string;
+			  }
+			| {
+					label: string;
+					group?: string;
 					source?: "manual";
 					dialect: "postgres";
 					connectionString: string;
@@ -70,6 +79,16 @@ interface DatabaseSidebarState {
 					dialect: "sqlite";
 					databasePath: string;
 			  }
+			| {
+					id: string;
+					label: string;
+					group?: string;
+					source: "workspace-config";
+					dialect: "sqlite";
+					databasePath: string;
+					workspacePath: string;
+					workspaceDefinitionId: string;
+			  }
 				| {
 						id: string;
 						label: string;
@@ -77,6 +96,20 @@ interface DatabaseSidebarState {
 						source?: "manual";
 						dialect: "postgres";
 						connectionString: string;
+				  }
+				| {
+						id: string;
+						label: string;
+						group?: string;
+						source: "workspace-config";
+						dialect: "postgres";
+						workspacePath: string;
+						workspaceDefinitionId: string;
+						host: string;
+						port: number;
+						databaseName: string;
+						ssl: boolean;
+						usernameHint?: string;
 				  }
 	) => SavedDatabaseConnection | null;
 	removeConnection: (id: string) => void;
@@ -104,6 +137,15 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						}
 
 						if (input.dialect === "sqlite") {
+							if (input.source === "workspace-config") {
+								return (
+									connection.source === "workspace-config" &&
+									connection.workspacePath === input.workspacePath &&
+									connection.workspaceDefinitionId ===
+										input.workspaceDefinitionId
+								);
+							}
+
 							return connection.databasePath === input.databasePath;
 						}
 
@@ -137,13 +179,15 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 								? input.connectionString
 								: undefined,
 						workspacePath:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
+							input.source === "workspace-config" &&
+							(input.dialect === "sqlite" ||
+								input.dialect === "postgres")
 								? input.workspacePath
 								: undefined,
 						workspaceDefinitionId:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
+							input.source === "workspace-config" &&
+							(input.dialect === "sqlite" ||
+								input.dialect === "postgres")
 								? input.workspaceDefinitionId
 								: undefined,
 						host:
@@ -195,18 +239,47 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						label: input.label,
 						group: input.group,
 						dialect: input.dialect,
-						source: "manual",
+						source: input.source ?? "manual",
 						databasePath:
 							input.dialect === "sqlite" ? input.databasePath : undefined,
 						connectionString:
-							input.dialect === "postgres" ? input.connectionString : undefined,
-						workspacePath: undefined,
-						workspaceDefinitionId: undefined,
-						host: undefined,
-						port: undefined,
-						databaseName: undefined,
-						ssl: undefined,
-						usernameHint: undefined,
+							input.dialect === "postgres" &&
+							input.source !== "workspace-config"
+								? input.connectionString
+								: undefined,
+						workspacePath:
+							input.source === "workspace-config"
+								? input.workspacePath
+								: undefined,
+						workspaceDefinitionId:
+							input.source === "workspace-config"
+								? input.workspaceDefinitionId
+								: undefined,
+						host:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.host
+								: undefined,
+						port:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.port
+								: undefined,
+						databaseName:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.databaseName
+								: undefined,
+						ssl:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.ssl
+								: undefined,
+						usernameHint:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.usernameHint
+								: undefined,
 					};
 
 					set((state) => ({
