@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "shared/env.shared";
+import { getSleepInhibitorShellSnippet } from "./agent-wrappers-common";
 import { HOOKS_DIR } from "./paths";
 
 export const NOTIFY_SCRIPT_NAME = "notify.sh";
@@ -41,6 +42,7 @@ export function getNotifyScriptContent(): string {
 	const template = fs.readFileSync(NOTIFY_SCRIPT_TEMPLATE_PATH, "utf-8");
 	return template
 		.replaceAll("{{MARKER}}", NOTIFY_SCRIPT_MARKER)
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
 		.replaceAll("{{DEFAULT_PORT}}", String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 

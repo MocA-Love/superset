@@ -5,6 +5,7 @@ import { env } from "shared/env.shared";
 import {
 	buildWrapperScript,
 	createWrapper,
+	getSleepInhibitorShellSnippet,
 	isSupersetManagedHookCommand,
 	reconcileManagedEntries,
 	writeFileIfChanged,
@@ -46,6 +47,7 @@ export function getCursorHookScriptContent(): string {
 	const template = fs.readFileSync(CURSOR_HOOK_TEMPLATE_PATH, "utf-8");
 	return template
 		.replace("{{MARKER}}", CURSOR_HOOK_MARKER)
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
 		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 

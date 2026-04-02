@@ -5,6 +5,7 @@ import { env } from "shared/env.shared";
 import {
 	buildWrapperScript,
 	createWrapper,
+	getSleepInhibitorShellSnippet,
 	isSupersetManagedHookCommand,
 	reconcileManagedEntries,
 	writeFileIfChanged,
@@ -52,6 +53,7 @@ export function getGeminiHookScriptContent(): string {
 	const template = fs.readFileSync(GEMINI_HOOK_TEMPLATE_PATH, "utf-8");
 	return template
 		.replace("{{MARKER}}", GEMINI_HOOK_MARKER)
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
 		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 
