@@ -264,9 +264,7 @@ export async function MainWindow() {
 
 	const getWindowStateSnapshot = () => {
 		const isMaximized = window.isMaximized();
-		const bounds = isMaximized
-			? window.getNormalBounds()
-			: window.getBounds();
+		const bounds = isMaximized ? window.getNormalBounds() : window.getBounds();
 		const zoomLevel = window.webContents.getZoomLevel();
 		return {
 			x: shouldPersistWindowPosition ? bounds.x : 0,

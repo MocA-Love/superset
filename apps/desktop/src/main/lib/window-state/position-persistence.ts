@@ -10,12 +10,10 @@ function getEnv(): NodeJS.ProcessEnv {
 }
 
 export function setWindowStateEnvironmentForTesting(
-	override:
-		| {
-				platform?: NodeJS.Platform;
-				env?: NodeJS.ProcessEnv;
-		  }
-		| null,
+	override: {
+		platform?: NodeJS.Platform;
+		env?: NodeJS.ProcessEnv;
+	} | null,
 ): void {
 	platformOverride = override?.platform ?? null;
 	envOverride = override?.env ?? null;

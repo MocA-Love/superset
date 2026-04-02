@@ -4,12 +4,12 @@ export {
 	isVisibleOnAnyDisplay,
 } from "./bounds-validation";
 export {
+	isWindowPositionPersistenceEnabled,
+	setWindowStateEnvironmentForTesting,
+} from "./position-persistence";
+export {
 	isValidWindowState,
 	loadWindowState,
 	saveWindowState,
 	type WindowState,
 } from "./window-state";
-export {
-	isWindowPositionPersistenceEnabled,
-	setWindowStateEnvironmentForTesting,
-} from "./position-persistence";
