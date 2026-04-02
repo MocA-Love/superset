@@ -39,6 +39,7 @@ export function WorkspaceFilePreviewContent({
 				<SpreadsheetViewer
 					workspaceId={workspaceId}
 					filePath={selectedFilePath}
+					absoluteFilePath={selectedFilePath}
 				/>
 			);
 		}
