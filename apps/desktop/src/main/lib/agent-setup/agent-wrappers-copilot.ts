@@ -4,6 +4,7 @@ import { env } from "shared/env.shared";
 import {
 	buildWrapperScript,
 	createWrapper,
+	getSleepInhibitorShellSnippet,
 	writeFileIfChanged,
 } from "./agent-wrappers-common";
 import { HOOKS_DIR } from "./paths";
@@ -28,6 +29,7 @@ export function getCopilotHookScriptContent(): string {
 	const template = fs.readFileSync(COPILOT_HOOK_TEMPLATE_PATH, "utf-8");
 	return template
 		.replace("{{MARKER}}", COPILOT_HOOK_MARKER)
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
 		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 

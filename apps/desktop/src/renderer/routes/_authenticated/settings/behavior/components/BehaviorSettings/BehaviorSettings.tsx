@@ -9,6 +9,7 @@ import {
 } from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { SUPPORTS_AGENT_SLEEP_PREVENTION } from "shared/constants";
 import {
 	isItemVisible,
 	SETTING_ITEM_ID,
@@ -29,10 +30,9 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,
 		visibleItems,
 	);
-	const showPreventAgentSleep = isItemVisible(
-		SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
-		visibleItems,
-	);
+	const showPreventAgentSleep =
+		SUPPORTS_AGENT_SLEEP_PREVENTION &&
+		isItemVisible(SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP, visibleItems);
 	const showFileOpenMode = isItemVisible(
 		SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
 		visibleItems,
@@ -227,11 +227,12 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 								htmlFor="prevent-agent-sleep"
 								className="text-sm font-medium"
 							>
-								Prevent Mac sleep during agent tasks
+								Prevent system sleep during agent tasks
 							</Label>
 							<p className="text-xs text-muted-foreground">
-								Keep macOS awake while Claude, Codex, and other agents are
-								running in Superset terminals
+								Keep your computer awake while Claude, Codex, and other agents
+								are running in Superset terminals on supported macOS and Linux
+								systems
 							</p>
 						</div>
 						<Switch

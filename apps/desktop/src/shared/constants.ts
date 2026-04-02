@@ -51,6 +51,8 @@ export const DEFAULT_TELEMETRY_ENABLED = true;
 export const DEFAULT_SHOW_RESOURCE_MONITOR = true;
 export const DEFAULT_OPEN_LINKS_IN_APP = false;
 export const DEFAULT_PREVENT_AGENT_SLEEP = false;
+export const SUPPORTS_AGENT_SLEEP_PREVENTION =
+	PLATFORM.IS_MAC || PLATFORM.IS_LINUX;
 
 // External links (documentation, help resources, etc.)
 export const EXTERNAL_LINKS = {

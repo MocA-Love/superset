@@ -24,6 +24,27 @@ This document tracks the IDE-oriented diagnostics stack used by the desktop app.
 - Source:
   - https://github.com/microsoft/vscode-json-languageservice
 
+### YAML
+
+- Backend: `yaml-language-server`
+- Reason: This is the YAML language server used by the Red Hat YAML extension and supports schema-backed validation through SchemaStore.
+- Source:
+  - https://github.com/redhat-developer/yaml-language-server
+
+### HTML
+
+- Backend: `vscode-html-language-server` from `vscode-langservers-extracted`
+- Reason: The language service package itself does not expose diagnostics, so HTML now uses the bundled VS Code language server path.
+- Source:
+  - https://www.npmjs.com/package/vscode-langservers-extracted
+
+### CSS / SCSS / LESS
+
+- Backend: `vscode-css-languageservice`
+- Reason: This is the CSS language service used in the VS Code ecosystem.
+- Source:
+  - https://github.com/microsoft/vscode-css-languageservice
+
 ### TOML
 
 - Backend: `@taplo/lib`
@@ -39,6 +60,41 @@ This document tracks the IDE-oriented diagnostics stack used by the desktop app.
   - https://dart.dev/tools/analysis-server
   - https://raw.githubusercontent.com/dart-lang/sdk/main/pkg/analysis_server/tool/lsp_spec/README.md
 
+### Python
+
+- Backend: `pyright-langserver`
+- Reason: Pyright is the TypeScript-based Python language server behind the Pyright ecosystem and is close to the VS Code extension path.
+- Source:
+  - https://github.com/microsoft/pyright
+
+### Go
+
+- Backend: `gopls`
+- Reason: `gopls` is the official Go language server maintained by the Go team.
+- Source:
+  - https://go.dev/gopls/
+
+### Rust
+
+- Backend: `rust-analyzer`
+- Reason: `rust-analyzer` is the standard Rust language server used by most editors, including VS Code setups.
+- Source:
+  - https://rust-analyzer.github.io/book/
+
+### Dockerfile
+
+- Backend: `dockerfile-language-server-nodejs`
+- Reason: This is the Dockerfile language server used by the VS Code Docker tooling ecosystem.
+- Source:
+  - https://github.com/rcjsuen/dockerfile-language-server-nodejs
+
+### GraphQL
+
+- Backend: `graphql-language-service-cli`
+- Reason: This provides the `graphql-lsp` server from the GraphiQL language-service stack.
+- Source:
+  - https://github.com/graphql/graphiql/tree/main/packages/graphql-language-service-cli
+
 ## Architecture
 
 - `main/lib/language-services/manager.ts`
@@ -49,6 +105,8 @@ This document tracks the IDE-oriented diagnostics stack used by the desktop app.
   - Holds normalized diagnostics per provider/file/workspace
 - `main/lib/language-services/lsp/StdioJsonRpcClient.ts`
   - Shared stdio JSON-RPC transport for LSP-based providers
+- `main/lib/language-services/lsp/ExternalLspLanguageProvider.ts`
+  - Shared LSP provider implementation for stdio-based language servers
 - `renderer/providers/LanguageServicesProvider`
   - Syncs open editor documents to enabled providers
 - `renderer/routes/_authenticated/settings/behavior/components/DiagnosticsSettings`
@@ -62,3 +120,9 @@ This document tracks the IDE-oriented diagnostics stack used by the desktop app.
 4. Add a renderer-side language mapping in `LanguageServicesProvider`.
 5. Add syntax highlighting support if needed in `detect-language.ts` and `loadLanguageSupport.ts`.
 6. Extend the settings store/provider ID union if the provider should be user-toggleable.
+
+## Runtime Notes
+
+- TypeScript, Python, YAML, Dockerfile and GraphQL diagnostics are bundled from Node packages and launched with `ELECTRON_RUN_AS_NODE=1`.
+- Go diagnostics require `gopls` to be available on the user's PATH.
+- Rust diagnostics require `rust-analyzer` to be available on the user's PATH.

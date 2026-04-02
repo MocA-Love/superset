@@ -126,6 +126,69 @@ ${execLine}
 `;
 }
 
+export function getSleepInhibitorShellSnippet(): string {
+	return `_superset_manage_sleep_inhibitor() {
+  [ -n "$SUPERSET_WRAPPER_PID" ] || return 0
+  [ "$SUPERSET_PREVENT_AGENT_SLEEP" = "1" ] || return 0
+
+  _superset_platform="$(uname -s 2>/dev/null)"
+  case "$_superset_platform" in
+    Darwin)
+      command -v caffeinate >/dev/null 2>&1 || return 0
+      ;;
+    Linux)
+      command -v systemd-inhibit >/dev/null 2>&1 || return 0
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  _superset_sleep_dir="\${TMPDIR:-/tmp}/superset-sleep-inhibitors"
+  mkdir -p "$_superset_sleep_dir" >/dev/null 2>&1 || return 0
+  _superset_pid_file="$_superset_sleep_dir/\${SUPERSET_WRAPPER_PID}.pid"
+
+  case "$EVENT_TYPE" in
+    Start|PermissionRequest)
+      if [ -f "$_superset_pid_file" ]; then
+        _superset_inhibitor_pid=$(cat "$_superset_pid_file" 2>/dev/null)
+        if [ -n "$_superset_inhibitor_pid" ] && kill -0 "$_superset_inhibitor_pid" 2>/dev/null; then
+          return 0
+        fi
+        rm -f "$_superset_pid_file" >/dev/null 2>&1 || true
+      fi
+
+      kill -0 "$SUPERSET_WRAPPER_PID" 2>/dev/null || return 0
+
+      case "$_superset_platform" in
+        Darwin)
+          caffeinate -i -w "$SUPERSET_WRAPPER_PID" >/dev/null 2>&1 &
+          ;;
+        Linux)
+          systemd-inhibit --what=idle:sleep --who="Superset" --why="Agent task in progress" \\
+            /bin/sh -c 'wrapper_pid="$1"; while kill -0 "$wrapper_pid" 2>/dev/null; do sleep 15; done' \\
+            _ "$SUPERSET_WRAPPER_PID" >/dev/null 2>&1 &
+          ;;
+      esac
+
+      echo "$!" > "$_superset_pid_file"
+      ;;
+    Stop)
+      if [ -f "$_superset_pid_file" ]; then
+        _superset_inhibitor_pid=$(cat "$_superset_pid_file" 2>/dev/null)
+        if [ -n "$_superset_inhibitor_pid" ] && kill -0 "$_superset_inhibitor_pid" 2>/dev/null; then
+          kill "$_superset_inhibitor_pid" >/dev/null 2>&1 || true
+        fi
+        rm -f "$_superset_pid_file" >/dev/null 2>&1 || true
+      fi
+      ;;
+  esac
+}
+
+_superset_manage_sleep_inhibitor
+`;
+}
+
 export function createWrapper(binaryName: string, script: string): void {
 	const changed = writeFileIfChanged(getWrapperPath(binaryName), script, 0o755);
 	console.log(

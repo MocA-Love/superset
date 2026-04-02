@@ -1,8 +1,16 @@
 import { languageDiagnosticsStore } from "./diagnostics-store";
+import { CssLanguageProvider } from "./providers/css/CssLanguageProvider";
 import { DartLanguageProvider } from "./providers/dart/DartLanguageProvider";
+import { DockerfileLanguageProvider } from "./providers/dockerfile/DockerfileLanguageProvider";
+import { GoLanguageProvider } from "./providers/go/GoLanguageProvider";
+import { GraphqlLanguageProvider } from "./providers/graphql/GraphqlLanguageProvider";
+import { HtmlLanguageProvider } from "./providers/html/HtmlLanguageProvider";
 import { JsonLanguageProvider } from "./providers/json/JsonLanguageProvider";
+import { PythonLanguageProvider } from "./providers/python/PythonLanguageProvider";
+import { RustLanguageProvider } from "./providers/rust/RustLanguageProvider";
 import { TomlLanguageProvider } from "./providers/toml/TomlLanguageProvider";
 import { TypeScriptLanguageProvider } from "./providers/typescript/TypeScriptLanguageProvider";
+import { YamlLanguageProvider } from "./providers/yaml/YamlLanguageProvider";
 import type {
 	LanguageServiceDocument,
 	LanguageServiceProvider,
@@ -14,8 +22,16 @@ export class LanguageServiceManager {
 	private readonly providers: LanguageServiceProvider[] = [
 		new TypeScriptLanguageProvider(),
 		new JsonLanguageProvider(),
+		new YamlLanguageProvider(),
+		new HtmlLanguageProvider(),
+		new CssLanguageProvider(),
 		new TomlLanguageProvider(),
 		new DartLanguageProvider(),
+		new PythonLanguageProvider(),
+		new GoLanguageProvider(),
+		new RustLanguageProvider(),
+		new DockerfileLanguageProvider(),
+		new GraphqlLanguageProvider(),
 	];
 
 	private readonly enabledProviders = new Map<string, boolean>(

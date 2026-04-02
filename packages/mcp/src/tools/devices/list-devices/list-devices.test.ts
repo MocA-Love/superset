@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { z } from "zod";
 
 const getMcpContextMock = mock(() => ({ organizationId: "org-1" }));
+const executeOnDeviceMock = mock(
+	async (input: Record<string, unknown>) => input,
+);
 
 let fetchedDevices = [
 	{
@@ -41,6 +44,7 @@ mock.module("@superset/db/client", () => ({
 }));
 
 mock.module("../../utils", () => ({
+	executeOnDevice: executeOnDeviceMock,
 	getMcpContext: getMcpContextMock,
 }));
 
@@ -120,6 +124,7 @@ describe("list_devices MCP tool", () => {
 				ownerEmail: "grace@example.com",
 			},
 		];
+		executeOnDeviceMock.mockClear();
 		getMcpContextMock.mockClear();
 		selectMock.mockClear();
 	});

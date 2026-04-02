@@ -14,7 +14,7 @@ import {
 	readCachedGitHubStatus,
 	readCachedPullRequestComments,
 } from "./cache";
-import { fetchPullRequestComments } from "./comments";
+import { fetchPullRequestComments, resolveReviewThread } from "./comments";
 import { getPRForBranch } from "./pr-resolution";
 import { extractNwoFromUrl, getRepoContext } from "./repo-context";
 import {
@@ -30,7 +30,7 @@ export interface PullRequestCommentsTarget {
 	prUrl?: string | null;
 }
 
-export { clearGitHubCachesForWorktree };
+export { clearGitHubCachesForWorktree, resolveReviewThread };
 
 function getPullRequestCommentsRepoNameWithOwner(
 	target: PullRequestCommentsTarget,

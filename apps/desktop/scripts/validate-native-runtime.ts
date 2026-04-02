@@ -19,6 +19,7 @@ import {
 const projectRoot = join(import.meta.dirname, "..");
 const allowedBareRequirePackages = new Set([
 	"electron",
+	"source-map-support",
 	...mainExternalizedDependencies,
 ]);
 const builtinModuleSpecifiers = new Set([

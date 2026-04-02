@@ -1,4 +1,5 @@
 import type { SettingsSection } from "renderer/stores/settings-state";
+import { SUPPORTS_AGENT_SLEEP_PREVENTION } from "shared/constants";
 
 export const SETTING_ITEM_ID = {
 	ACCOUNT_PROFILE: "account-profile",
@@ -419,25 +420,33 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"disable",
 		],
 	},
-	{
-		id: SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
-		section: "behavior",
-		title: "Prevent Mac sleep during agent tasks",
-		description:
-			"Keep macOS awake while agents are running in Superset terminals",
-		keywords: [
-			"sleep",
-			"mac",
-			"macos",
-			"awake",
-			"caffeinate",
-			"agent",
-			"claude",
-			"codex",
-			"terminal",
-			"power",
-		],
-	},
+	...(SUPPORTS_AGENT_SLEEP_PREVENTION
+		? [
+				{
+					id: SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
+					section: "behavior",
+					title: "Prevent system sleep during agent tasks",
+					description:
+						"Keep your computer awake while agents are running in Superset terminals on supported macOS and Linux systems",
+					keywords: [
+						"sleep",
+						"mac",
+						"macos",
+						"linux",
+						"arch",
+						"awake",
+						"caffeinate",
+						"systemd",
+						"systemd-inhibit",
+						"agent",
+						"claude",
+						"codex",
+						"terminal",
+						"power",
+					],
+				} satisfies SettingsItem,
+			]
+		: []),
 	{
 		id: SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
 		section: "behavior",

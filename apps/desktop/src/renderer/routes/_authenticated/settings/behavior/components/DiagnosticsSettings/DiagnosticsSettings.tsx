@@ -14,7 +14,20 @@ interface DiagnosticsSettingsProps {
 function isKnownProviderId(
 	providerId: string,
 ): providerId is LanguageServiceProviderId {
-	return ["typescript", "json", "toml", "dart"].includes(providerId);
+	return [
+		"typescript",
+		"json",
+		"yaml",
+		"html",
+		"css",
+		"toml",
+		"dart",
+		"python",
+		"go",
+		"rust",
+		"dockerfile",
+		"graphql",
+	].includes(providerId);
 }
 
 export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
@@ -54,7 +67,7 @@ export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 					const providerId = provider.providerId;
 					const isKnownProvider = isKnownProviderId(providerId);
 					const checked = isKnownProvider
-						? enabledProviders[providerId]
+						? (enabledProviders[providerId] ?? true)
 						: provider.enabled;
 					const isSwitchDisabled =
 						isLoading || setProviderEnabled.isPending || !isKnownProvider;

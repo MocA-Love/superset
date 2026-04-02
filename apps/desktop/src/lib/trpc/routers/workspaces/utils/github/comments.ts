@@ -100,6 +100,56 @@ function sortPullRequestComments(
 	return comments.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 }
 
+const RESOLVE_REVIEW_THREAD_MUTATION = `
+mutation ResolveReviewThread($threadId: ID!) {
+	resolveReviewThread(input: {threadId: $threadId}) {
+		thread {
+			id
+			isResolved
+		}
+	}
+}
+`;
+
+const UNRESOLVE_REVIEW_THREAD_MUTATION = `
+mutation UnresolveReviewThread($threadId: ID!) {
+	unresolveReviewThread(input: {threadId: $threadId}) {
+		thread {
+			id
+			isResolved
+		}
+	}
+}
+`;
+
+export async function resolveReviewThread({
+	worktreePath,
+	threadId,
+	resolve,
+}: {
+	worktreePath: string;
+	threadId: string;
+	resolve: boolean;
+}): Promise<void> {
+	const mutation = resolve
+		? RESOLVE_REVIEW_THREAD_MUTATION
+		: UNRESOLVE_REVIEW_THREAD_MUTATION;
+
+	const { stdout } = await execWithShellEnv(
+		"gh",
+		["api", "graphql", "-f", `query=${mutation}`, "-F", `threadId=${threadId}`],
+		{ cwd: worktreePath },
+	);
+
+	const json = JSON.parse(stdout.trim());
+	if (Array.isArray(json.errors) && json.errors.length > 0) {
+		const msg = json.errors
+			.map((e: { message?: string }) => e.message)
+			.join("; ");
+		throw new Error(msg || "GraphQL mutation failed");
+	}
+}
+
 function getReviewThreadCommentId(
 	comment: ReviewThreadCommentNode,
 ): string | null {

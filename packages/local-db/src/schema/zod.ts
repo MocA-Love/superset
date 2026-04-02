@@ -33,10 +33,10 @@ export const pullRequestCommentSchema = z.object({
 	createdAt: z.number().optional(),
 	url: z.string().optional(),
 	kind: z.enum(["review", "conversation"]).optional(),
-	threadId: z.string().optional(),
 	path: z.string().optional(),
 	line: z.number().optional(),
 	isResolved: z.boolean().optional(),
+	threadId: z.string().optional(),
 });
 
 export type PullRequestComment = z.infer<typeof pullRequestCommentSchema>;
