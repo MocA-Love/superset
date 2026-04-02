@@ -6,6 +6,7 @@ import {
 	HiOutlineCommandLine,
 	HiOutlineCpuChip,
 	HiOutlineCreditCard,
+	HiOutlineExclamationCircle,
 	HiOutlineKey,
 	HiOutlinePaintBrush,
 	HiOutlinePuzzlePiece,
@@ -29,6 +30,7 @@ type SettingsRoute =
 	| "/settings/ringtones"
 	| "/settings/keyboard"
 	| "/settings/behavior"
+	| "/settings/diagnostics"
 	| "/settings/git"
 	| "/settings/agents"
 	| "/settings/terminal"
@@ -90,6 +92,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "behavior",
 				label: "General",
 				icon: <HiOutlineSparkles className="h-4 w-4" />,
+			},
+			{
+				id: "/settings/diagnostics",
+				section: "diagnostics",
+				label: "Diagnostics",
+				icon: <HiOutlineExclamationCircle className="h-4 w-4" />,
 			},
 			{
 				id: "/settings/git",

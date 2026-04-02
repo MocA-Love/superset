@@ -55,7 +55,7 @@ export function DiagnosticsSettings({ visible }: DiagnosticsSettingsProps) {
 	return (
 		<div className="space-y-4">
 			<div className="space-y-0.5">
-				<Label className="text-sm font-medium">Language diagnostics</Label>
+				<Label className="text-sm font-medium">Enabled providers</Label>
 				<p className="text-xs text-muted-foreground">
 					Problems とエディタ下線に使う言語サービスを切り替えます。TSX と JSX は
 					TypeScript provider に含まれます。

@@ -15,7 +15,6 @@ import {
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
-import { DiagnosticsSettings } from "../DiagnosticsSettings";
 
 interface BehaviorSettingsProps {
 	visibleItems?: SettingItemId[] | null;
@@ -45,11 +44,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP,
 		visibleItems,
 	);
-	const showLanguageDiagnostics = isItemVisible(
-		SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS,
-		visibleItems,
-	);
-
 	const utils = electronTrpc.useUtils();
 
 	const { data: confirmOnQuit, isLoading: isConfirmLoading } =
@@ -321,9 +315,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 						/>
 					</div>
 				)}
-
-				<DiagnosticsSettings visible={showLanguageDiagnostics} />
-
 				{false && showTelemetry && (
 					<div className="flex items-center justify-between">
 						<div className="space-y-0.5">

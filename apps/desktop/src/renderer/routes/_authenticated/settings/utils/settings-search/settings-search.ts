@@ -521,7 +521,7 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 	},
 	{
 		id: SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS,
-		section: "behavior",
+		section: "diagnostics",
 		title: "Language diagnostics",
 		description:
 			"Choose which language services report errors and warnings in Problems",

@@ -6,6 +6,7 @@ export type SettingsSection =
 	| "appearance"
 	| "keyboard"
 	| "behavior"
+	| "diagnostics"
 	| "git"
 	| "terminal"
 	| "integrations";

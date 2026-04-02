@@ -8,6 +8,7 @@ export type SettingsSection =
 	| "ringtones"
 	| "keyboard"
 	| "behavior"
+	| "diagnostics"
 	| "git"
 	| "agents"
 	| "terminal"
