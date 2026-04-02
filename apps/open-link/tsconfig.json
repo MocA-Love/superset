@@ -1,7 +1,7 @@
 {
 	"extends": "../../tooling/typescript/base.json",
 	"compilerOptions": {
-		"lib": ["ES2022", "ES2021.String", "WebWorker"],
+		"lib": ["ES2022", "ES2021.String", "ES2015.Iterable", "WebWorker"],
 		"moduleResolution": "Bundler",
 		"module": "ESNext",
 		"noEmit": true

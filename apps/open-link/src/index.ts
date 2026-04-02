@@ -16,7 +16,7 @@ function buildDeepLink(requestUrl: URL, env: Env): string {
 	const scheme = env.DEEP_LINK_SCHEME?.trim() || "superset";
 	const deepLink = new URL(`${scheme}://open`);
 
-	for (const [key, value] of requestUrl.searchParams) {
+	for (const [key, value] of requestUrl.searchParams.entries()) {
 		deepLink.searchParams.append(key, value);
 	}
 
