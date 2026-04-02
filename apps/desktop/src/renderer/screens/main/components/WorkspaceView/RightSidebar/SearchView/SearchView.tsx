@@ -293,11 +293,7 @@ export function SearchView({
 				return;
 			}
 
-			void copyToClipboard(link)
-				.then(() => {
-					toast.success("Superset link copied");
-				})
-				.catch((error) => {
+			void copyToClipboard(link).catch((error) => {
 					console.error("[superset-link] Failed to copy link:", error);
 					toast.error("Failed to copy Superset link", {
 						description: error instanceof Error ? error.message : undefined,

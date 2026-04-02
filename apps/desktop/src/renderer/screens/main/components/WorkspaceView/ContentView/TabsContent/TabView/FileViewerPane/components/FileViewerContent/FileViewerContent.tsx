@@ -195,6 +195,26 @@ export function FileViewerContent({
 		() => (worktreePath ? toAbsoluteWorkspacePath(worktreePath, filePath) : ""),
 		[worktreePath, filePath],
 	);
+	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+		{ id: workspaceId ?? "" },
+		{ enabled: !!workspaceId },
+	);
+	const projectId = workspace?.projectId ?? workspace?.project?.id;
+	const { data: project } = electronTrpc.projects.get.useQuery(
+		{ id: projectId ?? "" },
+		{ enabled: !!projectId },
+	);
+	const supersetLinkProject = useMemo(
+		() =>
+			project
+				? {
+						githubOwner: project.githubOwner ?? null,
+						githubRepoName: null,
+						mainRepoPath: project.mainRepoPath,
+					}
+				: null,
+		[project],
+	);
 
 	const trpcUtils = electronTrpc.useUtils();
 	const { data: workspaceDiagnostics } =
@@ -386,6 +406,9 @@ export function FileViewerContent({
 			<DiffViewerContextMenu
 				containerRef={diffContainerRef}
 				filePath={filePath}
+				branch={workspace?.branch}
+				worktreePath={worktreePath}
+				supersetLinkProject={supersetLinkProject}
 				getSelectionLines={getDiffSelectionLines}
 				onSplitHorizontal={onSplitHorizontal}
 				onSplitVertical={onSplitVertical}
@@ -562,6 +585,9 @@ export function FileViewerContent({
 		<FileEditorContextMenu
 			editorRef={editorRef}
 			filePath={filePath}
+			branch={workspace?.branch}
+			worktreePath={worktreePath}
+			supersetLinkProject={supersetLinkProject}
 			onSplitHorizontal={onSplitHorizontal}
 			onSplitVertical={onSplitVertical}
 			onSplitWithNewChat={onSplitWithNewChat}

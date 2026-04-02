@@ -147,9 +147,20 @@ export function FilesView() {
 		{ enabled: !!workspaceId },
 	);
 	const worktreePath = workspace?.worktreePath;
+	const projectId = workspace?.project?.id;
+	const { data: project } = electronTrpc.projects.get.useQuery(
+		{ id: projectId ?? "" },
+		{ enabled: !!projectId },
+	);
+	const supersetLinkProject = project
+		? {
+				githubOwner: project.githubOwner ?? null,
+				githubRepoName: null,
+				mainRepoPath: project.mainRepoPath,
+			}
+		: null;
 
 	const [searchTerm, setSearchTerm] = useState("");
-	const projectId = workspace?.project?.id;
 
 	// Refs avoid stale closure in dataLoader callbacks
 	const worktreePathRef = useRef(worktreePath);
@@ -592,6 +603,8 @@ export function FilesView() {
 													entry={entry}
 													worktreePath={worktreePath}
 													projectId={projectId}
+													branch={workspace?.branch}
+													supersetLinkProject={supersetLinkProject}
 													onActivate={handleFileActivate}
 													onOpenInEditor={handleOpenInEditor}
 													onNewFile={handleNewFile}
@@ -636,6 +649,8 @@ export function FilesView() {
 														indent={TREE_INDENT}
 														worktreePath={worktreePath}
 														projectId={projectId}
+														branch={workspace?.branch}
+														supersetLinkProject={supersetLinkProject}
 														onActivate={handleFileActivate}
 														onOpenInEditor={handleOpenInEditor}
 														onNewFile={handleNewFile}

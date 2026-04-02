@@ -1,4 +1,5 @@
 import { type MutableRefObject, type ReactNode, useCallback } from "react";
+import type { SupersetLinkProject } from "renderer/lib/superset-open-links";
 import type { Tab } from "renderer/stores/tabs/types";
 import {
 	type CodeEditorAdapter,
@@ -10,6 +11,9 @@ interface FileEditorContextMenuProps {
 	children: ReactNode;
 	editorRef: MutableRefObject<CodeEditorAdapter | null>;
 	filePath: string;
+	branch?: string | null;
+	worktreePath?: string | null;
+	supersetLinkProject?: SupersetLinkProject | null;
 	onSplitHorizontal: () => void;
 	onSplitVertical: () => void;
 	onSplitWithNewChat?: () => void;
@@ -26,6 +30,9 @@ export function FileEditorContextMenu({
 	children,
 	editorRef,
 	filePath,
+	branch,
+	worktreePath,
+	supersetLinkProject,
 	onSplitHorizontal,
 	onSplitVertical,
 	onSplitWithNewChat,
@@ -42,6 +49,9 @@ export function FileEditorContextMenu({
 	const editorActions = useEditorActions({
 		getEditor,
 		filePath,
+		branch,
+		worktreePath,
+		supersetLinkProject,
 		editable: true,
 	});
 

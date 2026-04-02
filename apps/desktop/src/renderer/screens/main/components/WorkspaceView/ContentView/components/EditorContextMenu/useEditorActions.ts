@@ -1,11 +1,19 @@
+import { toast } from "@superset/ui/sonner";
 import { useCallback } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
+import {
+	buildSupersetOpenLink,
+	type SupersetLinkProject,
+} from "renderer/lib/superset-open-links";
 import type { CodeEditorAdapter } from "../CodeEditorAdapter";
 import type { EditorActions } from "./EditorContextMenu";
 
 interface UseEditorActionsProps {
 	getEditor: () => CodeEditorAdapter | null | undefined;
 	filePath: string;
+	branch?: string | null;
+	worktreePath?: string | null;
+	supersetLinkProject?: SupersetLinkProject | null;
 	/** If true, includes cut/paste actions (for editable editors) */
 	editable?: boolean;
 }
@@ -17,6 +25,9 @@ interface UseEditorActionsProps {
 export function useEditorActions({
 	getEditor,
 	filePath,
+	branch,
+	worktreePath,
+	supersetLinkProject,
 	editable = true,
 }: UseEditorActionsProps): EditorActions {
 	const { copyToClipboard } = useCopyToClipboard();
@@ -71,6 +82,75 @@ export function useEditorActions({
 		copyToClipboard(pathWithLine);
 	}, [filePath, getEditor, copyToClipboard]);
 
+	const handleCopySupersetLink = useCallback(() => {
+		if (!supersetLinkProject) {
+			toast.error("Superset link is unavailable", {
+				description: "Project metadata is still loading.",
+			});
+			return;
+		}
+
+		const link = buildSupersetOpenLink({
+			project: supersetLinkProject,
+			branch,
+			worktreePath,
+			filePath,
+		});
+
+		if (!link) {
+			toast.error("Failed to build Superset link", {
+				description: "Repository metadata is incomplete.",
+			});
+			return;
+		}
+
+		void copyToClipboard(link).catch((error) => {
+			console.error("[superset-link] Failed to copy link:", error);
+			toast.error("Failed to copy Superset link", {
+				description: error instanceof Error ? error.message : undefined,
+			});
+		});
+	}, [branch, copyToClipboard, filePath, supersetLinkProject, worktreePath]);
+
+	const handleCopySupersetLinkWithLine = useCallback(() => {
+		if (!supersetLinkProject) {
+			toast.error("Superset link is unavailable", {
+				description: "Project metadata is still loading.",
+			});
+			return;
+		}
+
+		const selection = getEditor()?.getSelectionLines();
+		const link = buildSupersetOpenLink({
+			project: supersetLinkProject,
+			branch,
+			worktreePath,
+			filePath,
+			line: selection?.startLine,
+		});
+
+		if (!link) {
+			toast.error("Failed to build Superset link", {
+				description: "Repository metadata is incomplete.",
+			});
+			return;
+		}
+
+		void copyToClipboard(link).catch((error) => {
+			console.error("[superset-link] Failed to copy link:", error);
+			toast.error("Failed to copy Superset link", {
+				description: error instanceof Error ? error.message : undefined,
+			});
+		});
+	}, [
+		branch,
+		copyToClipboard,
+		filePath,
+		getEditor,
+		supersetLinkProject,
+		worktreePath,
+	]);
+
 	const handleFind = useCallback(() => {
 		const editor = getEditor();
 		if (!editor) return;
@@ -84,6 +164,8 @@ export function useEditorActions({
 		onSelectAll: handleSelectAll,
 		onCopyPath: handleCopyPath,
 		onCopyPathWithLine: handleCopyPathWithLine,
+		onCopySupersetLink: handleCopySupersetLink,
+		onCopySupersetLinkWithLine: handleCopySupersetLinkWithLine,
 		onFind: handleFind,
 	};
 }
