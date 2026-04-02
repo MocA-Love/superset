@@ -3,6 +3,7 @@ import { updateTree } from "react-mosaic-component";
 import { getFileOpenMode } from "renderer/hooks/useFileOpenMode";
 import { posthog } from "renderer/lib/posthog";
 import { trpcTabsStorage } from "renderer/lib/trpc-storage";
+import { navigatePersistentWebview } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/BrowserPane/hooks/usePersistentWebview/runtime";
 import { tearoffPaneIds } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/pane-guards";
 import { deleteDocumentBuffer } from "renderer/stores/editor-state/editorBufferRegistry";
 import { useEditorDocumentsStore } from "renderer/stores/editor-state/useEditorDocumentsStore";
@@ -1814,6 +1815,7 @@ export const useTabsStore = create<TabsStore>()(
 								t.id === existingPane.tabId ? { ...t, name: tabName } : t,
 							),
 						});
+						navigatePersistentWebview(existingPane.id, url);
 					} else {
 						// No existing browser pane — add one to the active tab
 						const resolvedActiveTabId = resolveActiveTabIdForWorkspace({

@@ -4,12 +4,29 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { PLATFORM } from "shared/constants";
+import {
+	clearPendingPersistentWebviewNavigation,
+	clearPersistentWebviewDomReady,
+	deletePersistentWebview,
+	deletePersistentWrapper,
+	deleteRegisteredWebContentsId,
+	forEachPersistentWebview,
+	getPendingPersistentWebviewNavigation,
+	getPersistentWebview,
+	getPersistentWrapper,
+	getRegisteredWebContentsId,
+	markPersistentWebviewDomReady,
+	navigatePersistentWebview,
+	sanitizeUrl,
+	setPersistentWebview,
+	setPersistentWrapper,
+	setRegisteredWebContentsId,
+} from "./runtime";
 
 // ---------------------------------------------------------------------------
 // Module-level singletons
 // ---------------------------------------------------------------------------
 
-const webviewRegistry = new Map<string, Electron.WebviewTag>();
 /**
  * A persistent wrapper div per pane that ALWAYS contains its webview.
  *
@@ -23,9 +40,6 @@ const webviewRegistry = new Map<string, Electron.WebviewTag>();
  * reparent. The wrapper moves between React's container div (visible) and a
  * hidden parking container, but the webview inside is untouched.
  */
-const wrapperRegistry = new Map<string, HTMLDivElement>();
-/** Tracks paneId → last-registered webContentsId so we can re-register if it changes. */
-const registeredWebContentsIds = new Map<string, number>();
 let hiddenContainer: HTMLDivElement | null = null;
 
 function getHiddenContainer(): HTMLDivElement {
@@ -56,9 +70,9 @@ function getHiddenContainer(): HTMLDivElement {
 // ---------------------------------------------------------------------------
 
 function setWebviewsDragPassthrough(passthrough: boolean) {
-	for (const webview of webviewRegistry.values()) {
+	forEachPersistentWebview((webview) => {
 		webview.style.pointerEvents = passthrough ? "none" : "";
-	}
+	});
 }
 
 window.addEventListener(
@@ -75,34 +89,19 @@ window.addEventListener("drop", () => setWebviewsDragPassthrough(false), true);
 
 /** Call from useBrowserLifecycle when a pane is removed. */
 export function destroyPersistentWebview(paneId: string): void {
-	const wrapper = wrapperRegistry.get(paneId);
+	const wrapper = getPersistentWrapper(paneId);
 	if (wrapper) {
 		wrapper.remove();
-		wrapperRegistry.delete(paneId);
+		deletePersistentWrapper(paneId);
 	}
-	const webview = webviewRegistry.get(paneId);
+	const webview = getPersistentWebview(paneId);
 	if (webview) {
 		webview.remove();
-		webviewRegistry.delete(paneId);
+		deletePersistentWebview(paneId);
 	}
-	registeredWebContentsIds.delete(paneId);
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function sanitizeUrl(url: string): string {
-	if (/^https?:\/\//i.test(url) || url.startsWith("about:")) {
-		return url;
-	}
-	if (url.startsWith("localhost") || url.startsWith("127.0.0.1")) {
-		return `http://${url}`;
-	}
-	if (url.includes(".")) {
-		return `https://${url}`;
-	}
-	return `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+	clearPendingPersistentWebviewNavigation(paneId);
+	clearPersistentWebviewDomReady(paneId);
+	deleteRegisteredWebContentsId(paneId);
 }
 
 // ---------------------------------------------------------------------------
@@ -199,8 +198,8 @@ export function usePersistentWebview({
 		const container = containerRef.current;
 		if (!container) return;
 
-		let wrapper = wrapperRegistry.get(paneId);
-		let webview = webviewRegistry.get(paneId);
+		let wrapper = getPersistentWrapper(paneId);
+		let webview = getPersistentWebview(paneId);
 
 		if (wrapper && webview) {
 			// Reclaim: move the wrapper (with webview inside) into React's container.
@@ -216,6 +215,7 @@ export function usePersistentWebview({
 			wrapper.style.height = "100%";
 
 			webview = document.createElement("webview") as Electron.WebviewTag;
+			clearPersistentWebviewDomReady(paneId);
 			webview.setAttribute("partition", "persist:superset");
 			webview.setAttribute("allowpopups", "");
 			webview.style.display = "flex";
@@ -226,8 +226,8 @@ export function usePersistentWebview({
 
 			// webview goes into wrapper, wrapper goes into container
 			wrapper.appendChild(webview);
-			wrapperRegistry.set(paneId, wrapper);
-			webviewRegistry.set(paneId, webview);
+			setPersistentWrapper(paneId, wrapper);
+			setPersistentWebview(paneId, webview);
 			container.appendChild(wrapper);
 
 			const finalUrl = sanitizeUrl(initialUrlRef.current);
@@ -239,12 +239,18 @@ export function usePersistentWebview({
 		// -- Event handlers ------------------------------------------------
 
 		const handleDomReady = () => {
+			markPersistentWebviewDomReady(paneId);
 			const webContentsId = wv.getWebContentsId();
-			const previousId = registeredWebContentsIds.get(paneId);
+			const previousId = getRegisteredWebContentsId(paneId);
 			// Register on first load, or re-register if webContentsId changed
 			if (previousId !== webContentsId) {
-				registeredWebContentsIds.set(paneId, webContentsId);
+				setRegisteredWebContentsId(paneId, webContentsId);
 				registerBrowser({ paneId, webContentsId });
+			}
+
+			const pendingUrl = getPendingPersistentWebviewNavigation(paneId);
+			if (pendingUrl) {
+				navigatePersistentWebview(paneId, pendingUrl);
 			}
 
 			// Inject mouse back/forward button support into the guest page.
@@ -445,7 +451,7 @@ export function usePersistentWebview({
 			// Park the WRAPPER (which contains the webview) in the hidden
 			// container. The webview's parentNode remains `wrapper` throughout
 			// — no reparent, no reload.
-			const w = wrapperRegistry.get(paneId);
+			const w = getPersistentWrapper(paneId);
 			if (w) {
 				getHiddenContainer().appendChild(w);
 			}
@@ -453,13 +459,17 @@ export function usePersistentWebview({
 		// paneId is stable for the lifetime of a pane; initialUrlRef only used on first create.
 	}, [paneId, registerBrowser, syncStoreFromWebview, upsertHistory]);
 
+	useEffect(() => {
+		navigatePersistentWebview(paneId, initialUrl);
+	}, [initialUrl, paneId]);
+
 	// -- Navigation methods (operate directly on the webview) ---------------
 
 	const goBack = useCallback(() => {
 		const url = navigateBrowserHistory(paneId, "back");
 		if (url) {
 			isHistoryNavigation.current = true;
-			const webview = webviewRegistry.get(paneId);
+			const webview = getPersistentWebview(paneId);
 			if (webview) webview.loadURL(sanitizeUrl(url));
 		}
 	}, [paneId, navigateBrowserHistory]);
@@ -468,19 +478,19 @@ export function usePersistentWebview({
 		const url = navigateBrowserHistory(paneId, "forward");
 		if (url) {
 			isHistoryNavigation.current = true;
-			const webview = webviewRegistry.get(paneId);
+			const webview = getPersistentWebview(paneId);
 			if (webview) webview.loadURL(sanitizeUrl(url));
 		}
 	}, [paneId, navigateBrowserHistory]);
 
 	const reload = useCallback(() => {
-		const webview = webviewRegistry.get(paneId);
+		const webview = getPersistentWebview(paneId);
 		if (webview) webview.reload();
 	}, [paneId]);
 
 	const navigateTo = useCallback(
 		(url: string) => {
-			const webview = webviewRegistry.get(paneId);
+			const webview = getPersistentWebview(paneId);
 			if (webview) webview.loadURL(sanitizeUrl(url));
 		},
 		[paneId],

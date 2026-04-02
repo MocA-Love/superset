@@ -60,6 +60,10 @@ import {
 	useHasWorkspaceFailed,
 	useIsWorkspaceInitializing,
 } from "renderer/stores/workspace-init";
+import {
+	normalizeComparablePath,
+	toAbsoluteWorkspacePath,
+} from "shared/absolute-paths";
 
 const EMPTY_HISTORY_STACK: string[] = [];
 
@@ -71,6 +75,27 @@ export const Route = createFileRoute(
 	validateSearch: (search: Record<string, unknown>): WorkspaceSearchParams => ({
 		tabId: typeof search.tabId === "string" ? search.tabId : undefined,
 		paneId: typeof search.paneId === "string" ? search.paneId : undefined,
+		file: typeof search.file === "string" ? search.file : undefined,
+		line: (() => {
+			const v =
+				typeof search.line === "number"
+					? search.line
+					: typeof search.line === "string" &&
+							Number.isFinite(Number(search.line))
+						? Number(search.line)
+						: undefined;
+			return v !== undefined && Number.isInteger(v) && v > 0 ? v : undefined;
+		})(),
+		column: (() => {
+			const v =
+				typeof search.column === "number"
+					? search.column
+					: typeof search.column === "string" &&
+							Number.isFinite(Number(search.column))
+						? Number(search.column)
+						: undefined;
+			return v !== undefined && Number.isInteger(v) && v > 0 ? v : undefined;
+		})(),
 	}),
 	loader: async ({ params, context }) => {
 		const queryKey = [
@@ -125,9 +150,14 @@ export function WorkspacePage({
 	}) as Partial<WorkspaceSearchParams>;
 	const searchTabId = searchParams?.tabId;
 	const searchPaneId = searchParams?.paneId;
+	const searchFile = searchParams?.file;
+	const searchLine = searchParams?.line;
+	const searchColumn = searchParams?.column;
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
+
+	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
 	// Handle search-param-driven tab/pane activation (e.g. from notification clicks)
 	useEffect(() => {
@@ -152,6 +182,55 @@ export function WorkspacePage({
 			replace: true,
 		});
 	}, [searchTabId, searchPaneId, workspaceId, navigate]);
+
+	useEffect(() => {
+		if (!searchFile || !workspace?.worktreePath) return;
+
+		const filePath = toAbsoluteWorkspacePath(
+			workspace.worktreePath,
+			searchFile,
+		);
+
+		// Security: reject paths that resolve outside the workspace root to
+		// prevent arbitrary local file access via deep links.
+		const normalizedRoot = normalizeComparablePath(workspace.worktreePath);
+		const normalizedFile = normalizeComparablePath(filePath);
+		if (
+			normalizedFile !== normalizedRoot &&
+			!normalizedFile.startsWith(`${normalizedRoot}/`)
+		) {
+			navigate({
+				to: "/workspace/$workspaceId",
+				params: { workspaceId },
+				search: {},
+				replace: true,
+			});
+			return;
+		}
+
+		addFileViewerPane(workspaceId, {
+			filePath,
+			line: searchLine,
+			column: searchColumn,
+			viewMode: "raw",
+			isPinned: true,
+		});
+
+		navigate({
+			to: "/workspace/$workspaceId",
+			params: { workspaceId },
+			search: {},
+			replace: true,
+		});
+	}, [
+		addFileViewerPane,
+		navigate,
+		searchColumn,
+		searchFile,
+		searchLine,
+		workspace?.worktreePath,
+		workspaceId,
+	]);
 
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
@@ -470,11 +549,12 @@ export function WorkspacePage({
 	const commandPalette = useCommandPalette({
 		workspaceId,
 		navigate,
+		enabled: isActive,
 	});
 	const handleQuickOpen = useCallback(() => {
 		commandPalette.toggle();
 	}, [commandPalette.toggle]);
-	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
+	useAppHotkey("QUICK_OPEN", handleQuickOpen, hotkeyOptions, [handleQuickOpen]);
 
 	const handleBrowserShortcut = useCallback(
 		(action: "reload" | "hard-reload") => {
@@ -766,7 +846,7 @@ export function WorkspacePage({
 					)}
 				</div>
 				<CommandPalette
-					open={commandPalette.open}
+					open={isActive ? commandPalette.open : false}
 					onOpenChange={commandPalette.handleOpenChange}
 					query={commandPalette.query}
 					onQueryChange={commandPalette.setQuery}

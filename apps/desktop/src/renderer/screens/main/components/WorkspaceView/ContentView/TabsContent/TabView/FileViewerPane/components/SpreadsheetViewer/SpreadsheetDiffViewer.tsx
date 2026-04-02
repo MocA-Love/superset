@@ -9,10 +9,12 @@ import {
 import { createPortal } from "react-dom";
 import type { ChangeCategory } from "shared/changes-types";
 import useResizeObserver from "use-resize-observer";
+import { SpreadsheetDefaultAppButton } from "./components/SpreadsheetDefaultAppButton";
 import type { ParsedCell, RichTextPart } from "./parseWorkbook";
 import {
 	type DiffParsedCell,
 	type DiffParsedRow,
+	type DiffParsedSheet,
 	type DiffSegment,
 	useSpreadsheetDiff,
 } from "./useSpreadsheetDiff";
@@ -21,6 +23,7 @@ interface SpreadsheetDiffViewerProps {
 	workspaceId: string;
 	worktreePath: string;
 	filePath: string;
+	absoluteFilePath: string;
 	diffCategory?: ChangeCategory;
 	commitHash?: string;
 }
@@ -150,6 +153,11 @@ function DiffCellTooltip({
 interface DiffCellProps {
 	cell: DiffParsedCell;
 	cellKey: string;
+}
+
+interface DiffLocation {
+	sheetIndex: number;
+	rowIndex: number;
 }
 
 function DiffCell({ cell, cellKey }: DiffCellProps) {
@@ -334,6 +342,7 @@ export function SpreadsheetDiffViewer({
 	workspaceId,
 	worktreePath,
 	filePath,
+	absoluteFilePath,
 	diffCategory,
 	commitHash,
 }: SpreadsheetDiffViewerProps) {
@@ -346,6 +355,7 @@ export function SpreadsheetDiffViewer({
 	});
 	const leftScrollRef = useRef<HTMLDivElement>(null);
 	const rightScrollRef = useRef<HTMLDivElement>(null);
+	const pendingJumpRef = useRef<DiffLocation | null>(null);
 	const [activeSheetIndex, setActiveSheetIndex] = useState(0);
 
 	const activeSheet =
@@ -353,57 +363,114 @@ export function SpreadsheetDiffViewer({
 			? diffSheets[Math.min(activeSheetIndex, diffSheets.length - 1)]
 			: null;
 
-	const diffRowIndices = useMemo(() => {
-		if (!activeSheet) return [];
-		const indices: number[] = [];
-		for (let r = 0; r < activeSheet.modifiedRows.length; r++) {
-			if (activeSheet.modifiedRows[r].cells.some((c) => c.diffStatus)) {
-				indices.push(r);
-			}
-		}
-		return indices;
-	}, [activeSheet]);
+	const diffLocations = useMemo(
+		() =>
+			diffSheets.flatMap((sheet, sheetIndex) =>
+				getDiffRowIndices(sheet).map((rowIndex) => ({
+					sheetIndex,
+					rowIndex,
+				})),
+			),
+		[diffSheets],
+	);
 
 	const [currentDiffIdx, setCurrentDiffIdx] = useState(0);
 
+	const scrollToDiffRow = useCallback((rowIndex: number) => {
+		const left = leftScrollRef.current;
+		const right = rightScrollRef.current;
+		const leftTarget = left?.querySelectorAll("tbody tr")[rowIndex] as
+			| HTMLElement
+			| undefined;
+		const rightTarget = right?.querySelectorAll("tbody tr")[rowIndex] as
+			| HTMLElement
+			| undefined;
+		const target = leftTarget ?? rightTarget;
+		const container = leftTarget ? left : rightTarget ? right : null;
+		if (!target || !container) return;
+		const containerRect = container.getBoundingClientRect();
+		const targetRect = target.getBoundingClientRect();
+		const scrollTop =
+			container.scrollTop +
+			targetRect.top -
+			containerRect.top -
+			containerRect.height / 2 +
+			targetRect.height / 2;
+		if (left) left.scrollTop = scrollTop;
+		if (right) right.scrollTop = scrollTop;
+	}, []);
+
 	const jumpToDiff = useCallback(
 		(idx: number) => {
-			const rowIdx = diffRowIndices[idx];
-			if (rowIdx === undefined) return;
+			const location = diffLocations[idx];
+			if (!location) return;
 			setCurrentDiffIdx(idx);
-			const left = leftScrollRef.current;
-			const right = rightScrollRef.current;
-			if (!left) return;
-			const rows = left.querySelectorAll("tbody tr");
-			const target = rows[rowIdx] as HTMLElement | undefined;
-			if (!target) return;
-			const containerRect = left.getBoundingClientRect();
-			const targetRect = target.getBoundingClientRect();
-			const scrollTop =
-				left.scrollTop +
-				targetRect.top -
-				containerRect.top -
-				containerRect.height / 2 +
-				targetRect.height / 2;
-			left.scrollTop = scrollTop;
-			if (right) right.scrollTop = scrollTop;
+			if (location.sheetIndex !== activeSheetIndex) {
+				pendingJumpRef.current = location;
+				setActiveSheetIndex(location.sheetIndex);
+				return;
+			}
+			pendingJumpRef.current = null;
+			scrollToDiffRow(location.rowIndex);
 		},
-		[diffRowIndices],
+		[activeSheetIndex, diffLocations, scrollToDiffRow],
 	);
 
 	const goNext = useCallback(() => {
-		if (diffRowIndices.length === 0) return;
+		if (diffLocations.length === 0) return;
 		const next =
-			currentDiffIdx + 1 < diffRowIndices.length ? currentDiffIdx + 1 : 0;
+			currentDiffIdx + 1 < diffLocations.length ? currentDiffIdx + 1 : 0;
 		jumpToDiff(next);
-	}, [currentDiffIdx, diffRowIndices, jumpToDiff]);
+	}, [currentDiffIdx, diffLocations.length, jumpToDiff]);
 
 	const goPrev = useCallback(() => {
-		if (diffRowIndices.length === 0) return;
+		if (diffLocations.length === 0) return;
 		const prev =
-			currentDiffIdx - 1 >= 0 ? currentDiffIdx - 1 : diffRowIndices.length - 1;
+			currentDiffIdx - 1 >= 0 ? currentDiffIdx - 1 : diffLocations.length - 1;
 		jumpToDiff(prev);
-	}, [currentDiffIdx, diffRowIndices, jumpToDiff]);
+	}, [currentDiffIdx, diffLocations.length, jumpToDiff]);
+
+	useEffect(() => {
+		setActiveSheetIndex((current) =>
+			diffSheets.length === 0 ? 0 : Math.min(current, diffSheets.length - 1),
+		);
+	}, [diffSheets.length]);
+
+	useEffect(() => {
+		if (diffLocations.length === 0) {
+			setCurrentDiffIdx(0);
+			return;
+		}
+		setCurrentDiffIdx((current) =>
+			Math.min(current, Math.max(diffLocations.length - 1, 0)),
+		);
+	}, [diffLocations.length]);
+
+	useEffect(() => {
+		const pendingJump = pendingJumpRef.current;
+		if (!pendingJump || pendingJump.sheetIndex !== activeSheetIndex) {
+			return;
+		}
+		const frame = window.requestAnimationFrame(() => {
+			scrollToDiffRow(pendingJump.rowIndex);
+			pendingJumpRef.current = null;
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [activeSheetIndex, scrollToDiffRow]);
+
+	useEffect(() => {
+		if (pendingJumpRef.current || diffLocations.length === 0) {
+			return;
+		}
+		const preferredIndex = findPreferredDiffIndex(
+			diffLocations,
+			activeSheetIndex,
+		);
+		if (preferredIndex === -1) {
+			return;
+		}
+		jumpToDiff(preferredIndex);
+	}, [activeSheetIndex, diffLocations, jumpToDiff]);
 
 	if (isLoading) {
 		return (
@@ -441,52 +508,57 @@ export function SpreadsheetDiffViewer({
 					flexShrink: 0,
 					display: "flex",
 					alignItems: "center",
-					justifyContent: "flex-end",
+					justifyContent: "space-between",
 					gap: 12,
 				}}
 			>
-				<span style={{ color: "#a6adc8" }}>
-					{diffRowIndices.length > 0
-						? `${diffRowIndices.length} changes`
-						: "No changes"}
-				</span>
-				{diffRowIndices.length > 0 && (
-					<>
-						<button
-							type="button"
-							onClick={goPrev}
-							style={{
-								background: "#313244",
-								border: "1px solid #45475a",
-								borderRadius: 4,
-								color: "#cdd6f4",
-								padding: "2px 10px",
-								cursor: "pointer",
-								fontSize: "11px",
-							}}
-						>
-							Prev
-						</button>
-						<span style={{ fontSize: "11px", color: "#a6adc8" }}>
-							{currentDiffIdx + 1} / {diffRowIndices.length}
-						</span>
-						<button
-							type="button"
-							onClick={goNext}
-							style={{
-								background: "#313244",
-								border: "1px solid #45475a",
-								borderRadius: 4,
-								color: "#cdd6f4",
-								padding: "2px 10px",
-								cursor: "pointer",
-								fontSize: "11px",
-							}}
-						>
-							Next
-						</button>
-					</>
+				{!commitHash && (
+					<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
 				)}
+				<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+					<span style={{ color: "#a6adc8" }}>
+						{diffLocations.length > 0
+							? `${diffLocations.length} changes`
+							: "No changes"}
+					</span>
+					{diffLocations.length > 0 && (
+						<>
+							<button
+								type="button"
+								onClick={goPrev}
+								style={{
+									background: "#313244",
+									border: "1px solid #45475a",
+									borderRadius: 4,
+									color: "#cdd6f4",
+									padding: "2px 10px",
+									cursor: "pointer",
+									fontSize: "11px",
+								}}
+							>
+								Prev
+							</button>
+							<span style={{ fontSize: "11px", color: "#a6adc8" }}>
+								{currentDiffIdx + 1} / {diffLocations.length}
+							</span>
+							<button
+								type="button"
+								onClick={goNext}
+								style={{
+									background: "#313244",
+									border: "1px solid #45475a",
+									borderRadius: 4,
+									color: "#cdd6f4",
+									padding: "2px 10px",
+									cursor: "pointer",
+									fontSize: "11px",
+								}}
+							>
+								Next
+							</button>
+						</>
+					)}
+				</div>
 			</div>
 			<div className="flex min-h-0 flex-1">
 				<DiffTable
@@ -538,4 +610,48 @@ function getColumnLabel(index: number): string {
 		n = Math.floor(n / 26) - 1;
 	} while (n >= 0);
 	return label;
+}
+
+function getDiffRowIndices(sheet: DiffParsedSheet): number[] {
+	const rowCount = Math.max(
+		sheet.originalRows.length,
+		sheet.modifiedRows.length,
+	);
+	const indices: number[] = [];
+	for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+		const originalHasDiff =
+			sheet.originalRows[rowIndex]?.cells.some((cell) => cell.diffStatus) ??
+			false;
+		const modifiedHasDiff =
+			sheet.modifiedRows[rowIndex]?.cells.some((cell) => cell.diffStatus) ??
+			false;
+		if (originalHasDiff || modifiedHasDiff) {
+			indices.push(rowIndex);
+		}
+	}
+	// Empty added/removed sheet: synthesise one location so the header shows
+	// "1 change" instead of "No changes" and navigation can reach the sheet.
+	if (
+		indices.length === 0 &&
+		(sheet.sheetStatus === "added" || sheet.sheetStatus === "removed")
+	) {
+		return [0];
+	}
+	return indices;
+}
+
+function findPreferredDiffIndex(
+	diffLocations: DiffLocation[],
+	activeSheetIndex: number,
+): number {
+	const sameSheetIndex = diffLocations.findIndex(
+		(location) => location.sheetIndex === activeSheetIndex,
+	);
+	if (sameSheetIndex !== -1) {
+		return sameSheetIndex;
+	}
+	const nextSheetIndex = diffLocations.findIndex(
+		(location) => location.sheetIndex > activeSheetIndex,
+	);
+	return nextSheetIndex !== -1 ? nextSheetIndex : 0;
 }

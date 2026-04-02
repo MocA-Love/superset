@@ -3,24 +3,32 @@ import { toast } from "@superset/ui/sonner";
 import { useCallback } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	buildSupersetOpenLink,
+	type SupersetLinkProject,
+} from "renderer/lib/superset-open-links";
 
 interface UsePathActionsProps {
 	absolutePath: string | null;
 	relativePath?: string;
+	branch?: string | null;
 	/** For files: pass cwd to use openFileInEditor. For folders: omit to use openInApp */
 	cwd?: string;
 	/** Pre-resolved app to avoid per-row default-app queries */
 	defaultApp?: ExternalApp | null;
 	/** Project identifier for project-scoped actions/metadata */
 	projectId?: string;
+	supersetLinkProject?: SupersetLinkProject | null;
 }
 
 export function usePathActions({
 	absolutePath,
 	relativePath,
+	branch,
 	cwd,
 	defaultApp,
 	projectId,
+	supersetLinkProject,
 }: UsePathActionsProps) {
 	const openInFinderMutation = electronTrpc.external.openInFinder.useMutation();
 	const openInAppMutation = electronTrpc.external.openInApp.useMutation({
@@ -50,6 +58,35 @@ export function usePathActions({
 			copyToClipboard(relativePath);
 		}
 	}, [relativePath, copyToClipboard]);
+
+	const copySupersetLink = useCallback(() => {
+		if (!relativePath || !supersetLinkProject) {
+			toast.error("Superset link is unavailable", {
+				description: "Project metadata is still loading.",
+			});
+			return;
+		}
+
+		const link = buildSupersetOpenLink({
+			project: supersetLinkProject,
+			branch,
+			filePath: relativePath,
+		});
+
+		if (!link) {
+			toast.error("Failed to build Superset link", {
+				description: "Repository metadata is incomplete.",
+			});
+			return;
+		}
+
+		void copyToClipboard(link).catch((error) => {
+			console.error("[superset-link] Failed to copy link:", error);
+			toast.error("Failed to copy Superset link", {
+				description: error instanceof Error ? error.message : undefined,
+			});
+		});
+	}, [branch, copyToClipboard, relativePath, supersetLinkProject]);
 
 	const revealInFinder = useCallback(() => {
 		if (absolutePath) {
@@ -97,8 +134,18 @@ export function usePathActions({
 	return {
 		copyPath,
 		copyRelativePath,
+		copySupersetLink,
 		revealInFinder,
 		openInEditor,
 		hasRelativePath: Boolean(relativePath),
+		hasSupersetLink: Boolean(
+			relativePath &&
+				supersetLinkProject &&
+				buildSupersetOpenLink({
+					project: supersetLinkProject,
+					branch,
+					filePath: relativePath,
+				}),
+		),
 	};
 }

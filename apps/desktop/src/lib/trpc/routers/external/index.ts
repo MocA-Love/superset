@@ -136,6 +136,18 @@ export const createExternalRouter = () => {
 				shell.showItemInFolder(input);
 			}),
 
+		openInDefaultApp: publicProcedure
+			.input(z.string())
+			.mutation(async ({ input }) => {
+				const openError = await shell.openPath(input);
+				if (openError) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: openError,
+					});
+				}
+			}),
+
 		openInApp: publicProcedure
 			.input(
 				z.object({

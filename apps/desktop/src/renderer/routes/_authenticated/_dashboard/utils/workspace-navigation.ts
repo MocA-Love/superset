@@ -6,6 +6,9 @@ import type {
 export interface WorkspaceSearchParams {
 	tabId?: string;
 	paneId?: string;
+	file?: string;
+	line?: number;
+	column?: number;
 }
 
 /**

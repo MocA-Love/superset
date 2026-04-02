@@ -4,7 +4,7 @@ function escapeRegExp(input: string): string {
 	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function createSearchRegExp({
+export function createSearchRegExp({
 	query,
 	isRegex,
 	caseSensitive,
@@ -26,6 +26,128 @@ function createSearchRegExp({
 	} catch {
 		return null;
 	}
+}
+
+function getContentIndexForLineColumn(
+	content: string,
+	line: number,
+	column: number,
+): number | null {
+	if (line < 1 || column < 1) {
+		return null;
+	}
+
+	let lineStartIndex = 0;
+	let currentLine = 1;
+
+	while (currentLine < line) {
+		const nextLineBreak = content.indexOf("\n", lineStartIndex);
+		if (nextLineBreak === -1) {
+			return null;
+		}
+		lineStartIndex = nextLineBreak + 1;
+		currentLine += 1;
+	}
+
+	return lineStartIndex + column - 1;
+}
+
+export function replaceSingleSearchMatchInContent(
+	content: string,
+	{
+		query,
+		replacement,
+		line,
+		column,
+		isRegex,
+		caseSensitive,
+	}: {
+		query: string;
+		replacement: string;
+		line: number;
+		column: number;
+		isRegex: boolean;
+		caseSensitive: boolean;
+	},
+): string | null {
+	const regex = createSearchRegExp({
+		query,
+		isRegex,
+		caseSensitive,
+	});
+	if (!regex) {
+		return null;
+	}
+
+	const startIndex = getContentIndexForLineColumn(content, line, column);
+	if (startIndex === null) {
+		return null;
+	}
+
+	regex.lastIndex = startIndex;
+	const match = regex.exec(content);
+	if (!match || match.index !== startIndex) {
+		return null;
+	}
+
+	const matchedText = match[0] ?? "";
+	const replacementPattern = new RegExp(
+		regex.source,
+		regex.flags.replace("g", ""),
+	);
+	const nextText = matchedText.replace(replacementPattern, replacement);
+
+	return (
+		content.slice(0, startIndex) +
+		nextText +
+		content.slice(startIndex + matchedText.length)
+	);
+}
+
+export function replaceSearchMatchesInLineInContent(
+	content: string,
+	{
+		query,
+		replacement,
+		line,
+		isRegex,
+		caseSensitive,
+	}: {
+		query: string;
+		replacement: string;
+		line: number;
+		isRegex: boolean;
+		caseSensitive: boolean;
+	},
+): string | null {
+	const regex = createSearchRegExp({
+		query,
+		isRegex,
+		caseSensitive,
+	});
+	if (!regex) {
+		return null;
+	}
+
+	const lineStartIndex = getContentIndexForLineColumn(content, line, 1);
+	if (lineStartIndex === null) {
+		return null;
+	}
+
+	const nextLineBreak = content.indexOf("\n", lineStartIndex);
+	const lineEndIndex = nextLineBreak === -1 ? content.length : nextLineBreak;
+	const lineContent = content.slice(lineStartIndex, lineEndIndex);
+	const nextLineContent = lineContent.replace(regex, replacement);
+
+	if (nextLineContent === lineContent) {
+		return null;
+	}
+
+	return (
+		content.slice(0, lineStartIndex) +
+		nextLineContent +
+		content.slice(lineEndIndex)
+	);
 }
 
 export function getSearchValidationError(

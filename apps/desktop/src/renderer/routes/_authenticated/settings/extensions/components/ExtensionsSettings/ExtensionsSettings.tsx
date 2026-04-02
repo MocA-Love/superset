@@ -7,6 +7,7 @@ import {
 	CardHeader,
 } from "@superset/ui/card";
 import { Input } from "@superset/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback, useState } from "react";
 import {
 	HiOutlineGlobeAlt,
@@ -173,17 +174,24 @@ export function ExtensionsSettings() {
 										>
 											{ext.enabled ? "Disable" : "Enable"}
 										</Button>
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											onClick={() =>
-												uninstallMutation.mutate({
-													extensionId: ext.id,
-												})
-											}
-										>
-											<HiOutlineTrash className="size-4 text-destructive" />
-										</Button>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() =>
+														uninstallMutation.mutate({
+															extensionId: ext.id,
+														})
+													}
+												>
+													<HiOutlineTrash className="size-4 text-destructive" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" showArrow={false}>
+												Uninstall extension
+											</TooltipContent>
+										</Tooltip>
 									</div>
 								</div>
 							</CardHeader>

@@ -1,14 +1,19 @@
-import { Badge } from "@superset/ui/badge";
-import { Button } from "@superset/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@superset/ui/collapsible";
-import { cn } from "@superset/ui/utils";
-import { LuChevronDown, LuChevronRight, LuReplace } from "react-icons/lu";
+import { memo } from "react";
+import {
+	LuChevronDown,
+	LuChevronRight,
+	LuLink,
+	LuReplace,
+} from "react-icons/lu";
+import type { RowHoverAction } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
+import { RowHoverActions } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
-import type { SearchResultGroup } from "../../types";
+import type { SearchLineResult, SearchResultGroup } from "../../types";
 import { SearchMatchItem } from "../SearchMatchItem";
 
 interface SearchFileGroupProps {
@@ -19,9 +24,15 @@ interface SearchFileGroupProps {
 	caseSensitive: boolean;
 	isReplacing: boolean;
 	showReplaceAction: boolean;
+	showParentPath?: boolean;
+	variant?: "default" | "tree" | "list";
 	onOpenChange: (open: boolean) => void;
 	onOpenMatch: (absolutePath: string, line: number, column: number) => void;
+	onCopyFileLink: (group: SearchResultGroup) => void;
+	onCopyMatchLink: (lineMatch: SearchLineResult) => void;
 	onReplaceInFile: (absolutePath: string) => void;
+	onReplaceMatch: (lineMatch: SearchLineResult) => void;
+	onIgnoreMatch: (lineMatch: SearchLineResult) => void;
 }
 
 function getParentPath(relativePath: string): string {
@@ -32,7 +43,33 @@ function getParentPath(relativePath: string): string {
 	return segments.slice(0, -1).join("/");
 }
 
-export function SearchFileGroup({
+function groupMatchesByLine(group: SearchResultGroup): SearchLineResult[] {
+	const lineMap = new Map<number, SearchLineResult>();
+
+	for (const match of group.matches) {
+		const existing = lineMap.get(match.line);
+		if (existing) {
+			existing.matches.push(match);
+			continue;
+		}
+
+		lineMap.set(match.line, {
+			id: `${group.absolutePath}:${match.line}`,
+			absolutePath: group.absolutePath,
+			relativePath: group.relativePath,
+			name: group.name,
+			line: match.line,
+			preview: match.preview,
+			matches: [match],
+		});
+	}
+
+	return Array.from(lineMap.values()).sort(
+		(left, right) => left.line - right.line,
+	);
+}
+
+export const SearchFileGroup = memo(function SearchFileGroup({
 	group,
 	isOpen,
 	query,
@@ -40,22 +77,81 @@ export function SearchFileGroup({
 	caseSensitive,
 	isReplacing,
 	showReplaceAction,
+	showParentPath = true,
+	variant = "default",
 	onOpenChange,
 	onOpenMatch,
+	onCopyFileLink,
+	onCopyMatchLink,
 	onReplaceInFile,
+	onReplaceMatch,
+	onIgnoreMatch,
 }: SearchFileGroupProps) {
 	const parentPath = getParentPath(group.relativePath);
+	const matchCount = group.matches.length;
+	const hoverActions: RowHoverAction[] = [
+		{
+			key: "copy-file-link",
+			label: "Copy Superset link",
+			icon: <LuLink className="size-3.5" />,
+			onClick: () => onCopyFileLink(group),
+		},
+		...(showReplaceAction
+			? [
+					{
+						key: "replace-file",
+						label: "Replace in file",
+						icon: <LuReplace className="size-3.5" />,
+						onClick: () => onReplaceInFile(group.absolutePath),
+						disabled: isReplacing,
+					},
+				]
+			: []),
+	];
+	const isTreeVariant = variant === "tree";
+	const isListVariant = variant === "list";
+	const lineMatches = groupMatchesByLine(group);
 
 	return (
 		<Collapsible open={isOpen} onOpenChange={onOpenChange}>
-			<div className="rounded-md border border-border/60 bg-background/60">
-				<div className="flex items-start gap-1 px-1.5 py-1.5">
+			<div
+				className={
+					isTreeVariant
+						? "rounded-sm"
+						: isListVariant
+							? "rounded-sm"
+							: "rounded-md border border-border/60 bg-background/60"
+				}
+			>
+				<div
+					className={
+						isTreeVariant
+							? "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 py-0.5"
+							: isListVariant
+								? "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 py-0.5"
+								: "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 px-1.5 py-1.5"
+					}
+				>
 					<CollapsibleTrigger asChild>
 						<button
 							type="button"
-							className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent/40"
+							className={
+								isTreeVariant
+									? "flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-1 text-left text-xs transition-colors hover:bg-accent/40"
+									: isListVariant
+										? "flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-1 text-left text-xs transition-colors hover:bg-accent/40"
+										: "flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent/40"
+							}
 						>
-							<span className="mt-0.5 shrink-0 text-muted-foreground">
+							<span
+								className={
+									isTreeVariant
+										? "shrink-0 text-muted-foreground"
+										: isListVariant
+											? "shrink-0 text-muted-foreground"
+											: "mt-0.5 shrink-0 text-muted-foreground"
+								}
+							>
 								{isOpen ? (
 									<LuChevronDown className="size-3.5" />
 								) : (
@@ -64,48 +160,87 @@ export function SearchFileGroup({
 							</span>
 							<FileIcon
 								fileName={group.name}
-								className="mt-0.5 size-4 shrink-0"
+								className={
+									isTreeVariant || isListVariant
+										? "size-4 shrink-0"
+										: "mt-0.5 size-4 shrink-0"
+								}
 							/>
 							<div className="min-w-0 flex-1">
-								<div className="truncate text-sm font-medium text-foreground">
-									{group.name}
-								</div>
-								<div className="truncate text-xs text-muted-foreground">
-									{parentPath}
-								</div>
+								{isListVariant ? (
+									<div className="flex min-w-0 items-center gap-1.5">
+										<div className="truncate text-xs text-foreground">
+											{group.name}
+										</div>
+										{showParentPath ? (
+											<div className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground/80">
+												{parentPath}
+											</div>
+										) : null}
+									</div>
+								) : (
+									<>
+										<div
+											className={
+												isTreeVariant
+													? "truncate text-xs text-foreground"
+													: "truncate text-sm font-medium text-foreground"
+											}
+										>
+											{group.name}
+										</div>
+										{showParentPath ? (
+											<div className="truncate text-xs text-muted-foreground">
+												{parentPath}
+											</div>
+										) : null}
+									</>
+								)}
 							</div>
 						</button>
 					</CollapsibleTrigger>
-					<Badge variant="outline" className="mt-1 shrink-0">
-						{group.matches.length}
-					</Badge>
-					{showReplaceAction ? (
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							className={cn(
-								"h-7 shrink-0 gap-1 px-2 text-xs",
-								isReplacing && "pointer-events-none",
-							)}
-							disabled={isReplacing}
-							onClick={() => onReplaceInFile(group.absolutePath)}
-						>
-							<LuReplace className="size-3.5" />
-							Replace
-						</Button>
-					) : null}
+					<div className="flex self-center items-center justify-end pl-1">
+						<div className="relative flex h-5 min-w-5 items-center justify-end">
+							<span
+								className={
+									showReplaceAction
+										? "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 px-1.5 text-[10px] leading-none tabular-nums text-muted-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+										: "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 px-1.5 text-[10px] leading-none tabular-nums text-muted-foreground"
+								}
+							>
+								{matchCount}
+							</span>
+							<div className="absolute inset-0 flex items-center justify-end">
+								<RowHoverActions actions={hoverActions} />
+							</div>
+						</div>
+					</div>
 				</div>
-				<CollapsibleContent className="border-t border-border/50 px-1.5 py-1">
+				<CollapsibleContent
+					className={
+						isTreeVariant
+							? "ml-4 border-l border-border/50 pl-2"
+							: isListVariant
+								? "ml-4 border-l border-border/50 pl-2"
+								: "border-t border-border/50 px-1.5 py-1"
+					}
+				>
 					<div className="space-y-1">
-						{group.matches.map((match) => (
+						{lineMatches.map((lineMatch) => (
 							<SearchMatchItem
-								key={match.id}
-								match={match}
+								key={lineMatch.id}
+								lineMatch={lineMatch}
 								query={query}
 								isRegex={isRegex}
 								caseSensitive={caseSensitive}
+								isReplaceEnabled={showReplaceAction && !isReplacing}
+								variant={
+									isTreeVariant ? "tree" : isListVariant ? "list" : "default"
+								}
 								onOpen={onOpenMatch}
+								onCopyLink={onCopyMatchLink}
+								onReplace={onReplaceMatch}
+								onIgnore={onIgnoreMatch}
 							/>
 						))}
 					</div>
@@ -113,4 +248,4 @@ export function SearchFileGroup({
 			</div>
 		</Collapsible>
 	);
-}
+});

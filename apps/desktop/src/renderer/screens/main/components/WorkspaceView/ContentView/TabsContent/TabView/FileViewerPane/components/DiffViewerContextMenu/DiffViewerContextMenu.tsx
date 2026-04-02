@@ -2,6 +2,7 @@ import { ContextMenuItem } from "@superset/ui/context-menu";
 import { type MutableRefObject, type ReactNode, useCallback } from "react";
 import { LuSquarePen } from "react-icons/lu";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
+import type { SupersetLinkProject } from "renderer/lib/superset-open-links";
 import type { Tab } from "renderer/stores/tabs/types";
 import {
 	type CodeEditorAdapter,
@@ -14,6 +15,9 @@ interface DiffViewerContextMenuProps {
 	children: ReactNode;
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	filePath: string;
+	branch?: string | null;
+	worktreePath?: string | null;
+	supersetLinkProject?: SupersetLinkProject | null;
 	getSelectionLines: () => EditorSelectionLines | null;
 	onSplitHorizontal: () => void;
 	onSplitVertical: () => void;
@@ -50,6 +54,9 @@ export function DiffViewerContextMenu({
 	children,
 	containerRef,
 	filePath,
+	branch,
+	worktreePath,
+	supersetLinkProject,
 	getSelectionLines,
 	onSplitHorizontal,
 	onSplitVertical,
@@ -111,6 +118,9 @@ export function DiffViewerContextMenu({
 	const editorActions = useEditorActions({
 		getEditor,
 		filePath,
+		branch,
+		worktreePath,
+		supersetLinkProject,
 		editable: false,
 	});
 

@@ -68,6 +68,7 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 			title={title}
 			description={description}
 			showCloseButton={false}
+			commandProps={{ shouldFilter: false }}
 		>
 			<div className="relative">
 				<CommandInput

@@ -178,6 +178,10 @@ export default defineConfig({
 				process.env.NEXT_PUBLIC_MARKETING_URL,
 				"https://superset.sh",
 			),
+			"process.env.NEXT_PUBLIC_OPEN_LINK_URL": defineEnv(
+				process.env.NEXT_PUBLIC_OPEN_LINK_URL,
+				"https://superset.m4gu.dev",
+			),
 			"process.env.NEXT_PUBLIC_ELECTRIC_URL": defineEnv(
 				process.env.NEXT_PUBLIC_ELECTRIC_URL,
 				"https://electric-proxy.avi-6ac.workers.dev",

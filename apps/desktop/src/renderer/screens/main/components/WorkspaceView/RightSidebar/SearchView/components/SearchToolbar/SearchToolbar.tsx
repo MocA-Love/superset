@@ -132,15 +132,17 @@ export function SearchToolbar({
 						value={replacement}
 						onChange={(event) => onReplacementChange(event.target.value)}
 						placeholder="Replace"
-						className="h-8 min-w-0 flex-1 text-sm"
+						className="h-8 min-w-0 flex-1 border-border/70 bg-background/80 text-sm"
 					/>
 					<Button
 						type="button"
 						size="sm"
-						className="h-8 shrink-0"
+						variant="outline"
+						className="h-8 shrink-0 gap-1.5 border-border/70 bg-background/80 px-3 text-xs font-medium shadow-none hover:bg-accent/60"
 						disabled={!canReplaceAll || isReplacing}
 						onClick={onReplaceAll}
 					>
+						<LuReplace className="size-3.5" />
 						Replace All
 					</Button>
 				</div>

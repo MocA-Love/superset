@@ -1,0 +1,15 @@
+{
+	"name": "superset-open-link",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-02",
+	"routes": [
+		{
+			"pattern": "superset.m4gu.dev",
+			"custom_domain": true
+		}
+	],
+	"vars": {
+		"DEEP_LINK_SCHEME": "superset",
+		"FALLBACK_URL": "https://github.com/MocA-Love/superset"
+	}
+}

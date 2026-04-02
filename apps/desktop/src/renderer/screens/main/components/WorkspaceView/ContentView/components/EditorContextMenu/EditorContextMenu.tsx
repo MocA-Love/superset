@@ -29,6 +29,8 @@ export interface EditorActions {
 	onSelectAll: () => void;
 	onCopyPath?: () => void;
 	onCopyPathWithLine?: () => void;
+	onCopySupersetLink?: () => void;
+	onCopySupersetLinkWithLine?: () => void;
 	onFind?: () => void;
 }
 
@@ -58,6 +60,8 @@ export function EditorContextMenu({
 		onSelectAll,
 		onCopyPath,
 		onCopyPathWithLine,
+		onCopySupersetLink,
+		onCopySupersetLinkWithLine,
 		onFind,
 	} = editorActions;
 	const showCutPaste = !!onCut && !!onPaste;
@@ -97,6 +101,18 @@ export function EditorContextMenu({
 						<LuLink className="size-4" />
 						Copy Path:Line
 						<ContextMenuShortcut>{cmdKey}+Shift+C</ContextMenuShortcut>
+					</ContextMenuItem>
+				)}
+				{onCopySupersetLink && (
+					<ContextMenuItem onSelect={onCopySupersetLink}>
+						<LuLink className="size-4" />
+						Copy Superset Link
+					</ContextMenuItem>
+				)}
+				{onCopySupersetLinkWithLine && (
+					<ContextMenuItem onSelect={onCopySupersetLinkWithLine}>
+						<LuLink className="size-4" />
+						Copy Superset Link to Line
 					</ContextMenuItem>
 				)}
 				{showCutPaste && (

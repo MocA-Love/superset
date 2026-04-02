@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useResizeObserver from "use-resize-observer";
+import { SpreadsheetDefaultAppButton } from "./components/SpreadsheetDefaultAppButton";
 import {
 	type ParsedCell,
 	type RenderAnchor,
@@ -29,6 +30,7 @@ function getDashPattern(dash: string): string {
 interface SpreadsheetViewerProps {
 	workspaceId: string;
 	filePath: string;
+	absoluteFilePath: string;
 }
 
 function RichTextContent({ parts }: { parts: RichTextPart[] }) {
@@ -111,6 +113,7 @@ const DEFAULT_ROW_HEIGHT = 20;
 export function SpreadsheetViewer({
 	workspaceId,
 	filePath,
+	absoluteFilePath,
 }: SpreadsheetViewerProps) {
 	const { sheets, isLoading, error } = useSpreadsheetData(
 		workspaceId,
@@ -335,6 +338,9 @@ export function SpreadsheetViewer({
 
 	return (
 		<div className="flex h-full flex-col">
+			<div className="flex items-center justify-end border-b border-border bg-muted/20 px-3 py-2">
+				<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
+			</div>
 			<div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-white">
 				{/* Outer wrapper: clips to container width */}
 				<div

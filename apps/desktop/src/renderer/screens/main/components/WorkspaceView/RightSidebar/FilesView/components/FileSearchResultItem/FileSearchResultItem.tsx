@@ -13,9 +13,11 @@ import {
 	LuFile,
 	LuFolder,
 	LuFolderOpen,
+	LuLink,
 	LuPencil,
 	LuTrash2,
 } from "react-icons/lu";
+import type { SupersetLinkProject } from "renderer/lib/superset-open-links";
 import type { DirectoryEntry } from "shared/file-tree-types";
 import { useFileDrag, usePathActions } from "../../../ChangesView/hooks";
 import { SEARCH_RESULT_ROW_HEIGHT } from "../../constants";
@@ -25,6 +27,8 @@ interface FileSearchResultItemProps {
 	entry: DirectoryEntry;
 	worktreePath: string;
 	projectId?: string;
+	branch?: string | null;
+	supersetLinkProject?: SupersetLinkProject | null;
 	onActivate: (entry: DirectoryEntry, openInNewTab?: boolean) => void;
 	onOpenInEditor: (entry: DirectoryEntry) => void;
 	onNewFile: (parentPath: string) => void;
@@ -56,6 +60,8 @@ export function FileSearchResultItem({
 	entry,
 	worktreePath,
 	projectId,
+	branch,
+	supersetLinkProject,
 	onActivate,
 	onOpenInEditor,
 	onNewFile,
@@ -73,13 +79,21 @@ export function FileSearchResultItem({
 		? entry.path
 		: entry.path.split("/").slice(0, -1).join("/") || worktreePath;
 
-	const { copyPath, copyRelativePath, revealInFinder, openInEditor } =
-		usePathActions({
-			absolutePath: entry.path,
-			relativePath: entry.relativePath,
-			cwd: worktreePath,
-			projectId,
-		});
+	const {
+		copyPath,
+		copyRelativePath,
+		copySupersetLink,
+		revealInFinder,
+		openInEditor,
+		hasSupersetLink,
+	} = usePathActions({
+		absolutePath: entry.path,
+		relativePath: entry.relativePath,
+		branch,
+		cwd: worktreePath,
+		projectId,
+		supersetLinkProject,
+	});
 
 	const fileDragProps = useFileDrag({ absolutePath: entry.path });
 
@@ -163,6 +177,12 @@ export function FileSearchResultItem({
 					<LuCopy className="mr-2 size-4" />
 					Copy Relative Path
 				</ContextMenuItem>
+				{hasSupersetLink ? (
+					<ContextMenuItem onClick={copySupersetLink}>
+						<LuLink className="mr-2 size-4" />
+						Copy Superset Link
+					</ContextMenuItem>
+				) : null}
 
 				<ContextMenuSeparator />
 

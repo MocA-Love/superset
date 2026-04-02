@@ -304,27 +304,42 @@ export function ProblemsView({
 							total
 						</Badge>
 					</div>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						className="size-7 shrink-0"
-						onClick={() => {
-							if (!workspaceId) {
-								return;
-							}
-							void refreshDiagnostics.mutateAsync({ workspaceId });
-							void refetch();
-						}}
-						disabled={isFetching || refreshDiagnostics.isPending}
-					>
-						<LuRefreshCw
-							className={cn(
-								"size-3.5",
-								(isFetching || refreshDiagnostics.isPending) && "animate-spin",
-							)}
-						/>
-					</Button>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<span>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									className="size-7 shrink-0"
+									onClick={() => {
+										if (!workspaceId) {
+											return;
+										}
+										void refreshDiagnostics.mutateAsync({ workspaceId });
+										void refetch();
+									}}
+									disabled={isFetching || refreshDiagnostics.isPending}
+									style={
+										isFetching || refreshDiagnostics.isPending
+											? { pointerEvents: "none" }
+											: undefined
+									}
+								>
+									<LuRefreshCw
+										className={cn(
+											"size-3.5",
+											(isFetching || refreshDiagnostics.isPending) &&
+												"animate-spin",
+										)}
+									/>
+								</Button>
+							</span>
+						</TooltipTrigger>
+						<TooltipContent side="bottom" showArrow={false}>
+							Refresh diagnostics
+						</TooltipContent>
+					</Tooltip>
 				</div>
 				<div className="mt-2 flex min-w-0 flex-wrap items-start gap-2 overflow-hidden">
 					<ToggleGroup
