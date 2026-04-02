@@ -7,6 +7,12 @@ import fg from "fast-glob";
 import { Client } from "pg";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import {
+	discoverWorkspaceConfiguredDatabases,
+	postgresConnectionSourceSchema,
+	resolvePostgresConnectionStringFromSource,
+	saveWorkspaceDatabaseCredentials,
+} from "./workspace-config";
 
 const SQLITE_FILE_GLOBS = [
 	"**/*.db",
@@ -280,8 +286,46 @@ function canApplyPostgresReadLimit(sql: string): boolean {
 }
 
 export const createDatabasesRouter = () => {
-	return router({
-		discoverSqliteFiles: publicProcedure
+		return router({
+			discoverSqliteFiles: publicProcedure
+				.input(
+					z.object({
+						worktreePath: z.string().min(1),
+						limit: z.number().int().positive().max(200).optional(),
+					}),
+				)
+				.query(async ({ input }) => {
+					ensureAbsoluteFilesystemPath(input.worktreePath);
+					await ensureExistingDirectory(input.worktreePath);
+
+					const limit = input.limit ?? 50;
+					const files = await fg(SQLITE_FILE_GLOBS, {
+						absolute: true,
+						cwd: input.worktreePath,
+						onlyFiles: true,
+						unique: true,
+						suppressErrors: true,
+						ignore: [
+							"**/.git/**",
+							"**/.next/**",
+							"**/.turbo/**",
+							"**/dist/**",
+							"**/node_modules/**",
+						],
+					});
+
+					return {
+						files: files
+							.sort((left, right) => left.localeCompare(right))
+							.slice(0, limit)
+							.map((absolutePath) => ({
+								absolutePath,
+								relativePath: path.relative(input.worktreePath, absolutePath),
+							})),
+					};
+				}),
+
+			discoverWorkspaceDatabases: publicProcedure
 			.input(
 				z.object({
 					worktreePath: z.string().min(1),
@@ -308,18 +352,53 @@ export const createDatabasesRouter = () => {
 					],
 				});
 
-				return {
-					files: files
-						.sort((left, right) => left.localeCompare(right))
-						.slice(0, limit)
-						.map((absolutePath) => ({
-							absolutePath,
-							relativePath: path.relative(input.worktreePath, absolutePath),
-						})),
-				};
+				const configuredDatabases = await discoverWorkspaceConfiguredDatabases(
+					input.worktreePath,
+				);
+				const configuredSqlitePaths = new Set(
+					configuredDatabases
+						.filter((item) => item.dialect === "sqlite")
+						.map((item) => item.absolutePath),
+				);
+
+				const fileItems = files
+					.filter((absolutePath) => !configuredSqlitePaths.has(absolutePath))
+					.map((absolutePath) => ({
+						source: "file" as const,
+						dialect: "sqlite" as const,
+						absolutePath,
+						relativePath: path.relative(input.worktreePath, absolutePath),
+					}));
+
+				const items = [...fileItems, ...configuredDatabases]
+					.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+					.slice(0, limit);
+
+				return { items };
 			}),
 
-		inspectSqlite: publicProcedure
+			saveWorkspaceDatabaseCredentials: publicProcedure
+				.input(
+					z.object({
+						worktreePath: z.string().min(1),
+					definitionId: z.string().min(1),
+					username: z.string().min(1),
+					password: z.string(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				ensureAbsoluteFilesystemPath(input.worktreePath);
+				await ensureExistingDirectory(input.worktreePath);
+				await saveWorkspaceDatabaseCredentials({
+					workspacePath: input.worktreePath,
+					definitionId: input.definitionId,
+					username: input.username,
+					password: input.password,
+					});
+					return { ok: true };
+				}),
+
+			inspectSqlite: publicProcedure
 			.input(
 				z.object({
 					databasePath: z.string().min(1),
@@ -374,12 +453,15 @@ export const createDatabasesRouter = () => {
 		inspectPostgres: publicProcedure
 			.input(
 				z.object({
-					connectionString: z.string().min(1),
+					connection: postgresConnectionSourceSchema,
 				}),
 			)
 			.query(async ({ input }) => {
+				const connectionString = await resolvePostgresConnectionStringFromSource(
+					{ source: input.connection },
+				);
 				return await withPostgresClient(
-					input.connectionString,
+					connectionString,
 					async (client) => {
 						const result = await client.query<{
 							table_schema: string;
@@ -634,7 +716,7 @@ export const createDatabasesRouter = () => {
 		previewPostgresTable: publicProcedure
 			.input(
 				z.object({
-					connectionString: z.string().min(1),
+					connection: postgresConnectionSourceSchema,
 					schema: z.string().min(1),
 					tableName: z.string().min(1),
 					limit: z.number().int().positive().max(200).optional(),
@@ -645,9 +727,12 @@ export const createDatabasesRouter = () => {
 				const limit = input.limit ?? 50;
 				const offset = input.offset ?? 0;
 				const startedAt = performance.now();
+				const connectionString = await resolvePostgresConnectionStringFromSource(
+					{ source: input.connection },
+				);
 
 				return await withPostgresClient(
-					input.connectionString,
+					connectionString,
 					async (client) => {
 						const columnInfo = await client.query<{
 							column_name: string;
@@ -701,15 +786,18 @@ export const createDatabasesRouter = () => {
 		getPostgresRowDetail: publicProcedure
 			.input(
 				z.object({
-					connectionString: z.string().min(1),
+					connection: postgresConnectionSourceSchema,
 					schema: z.string().min(1),
 					tableName: z.string().min(1),
 					ctid: z.string().min(1),
 				}),
 			)
 			.query(async ({ input }) => {
+				const connectionString = await resolvePostgresConnectionStringFromSource(
+					{ source: input.connection },
+				);
 				return await withPostgresClient(
-					input.connectionString,
+					connectionString,
 					async (client) => {
 						const qualifiedTableName = `${quotePostgresIdentifier(input.schema)}.${quotePostgresIdentifier(input.tableName)}`;
 						const result = await client.query(
@@ -811,7 +899,7 @@ export const createDatabasesRouter = () => {
 		executePostgres: publicProcedure
 			.input(
 				z.object({
-					connectionString: z.string().min(1),
+					connection: postgresConnectionSourceSchema,
 					sql: z.string().min(1),
 					limit: z.number().int().positive().max(1000).optional(),
 				}),
@@ -826,8 +914,11 @@ export const createDatabasesRouter = () => {
 				}
 
 				const startedAt = performance.now();
+				const connectionString = await resolvePostgresConnectionStringFromSource(
+					{ source: input.connection },
+				);
 				return await withPostgresClient(
-					input.connectionString,
+					connectionString,
 					async (client) => {
 						const limit = input.limit ?? 200;
 						if (canApplyPostgresReadLimit(sql)) {

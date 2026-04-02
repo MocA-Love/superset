@@ -204,6 +204,15 @@ function guessPostgresLabel(connectionString: string): string {
 	}
 }
 
+function getWorkspaceConfigPostgresLabel(input: {
+	host: string;
+	databaseName: string;
+}): string {
+	return input.databaseName
+		? `${input.host}/${input.databaseName}`
+		: input.host;
+}
+
 function buildPostgresConnectionString(input: {
 	host: string;
 	port: string;
@@ -567,9 +576,46 @@ const PreviewTableRowView = memo(function PreviewTableRowView({
 });
 
 function getConnectionSubtitle(connection: SavedDatabaseConnection): string {
+	if (
+		connection.dialect === "postgres" &&
+		connection.source === "workspace-config"
+	) {
+		return getWorkspaceConfigPostgresLabel({
+			host: connection.host ?? "postgres",
+			databaseName: connection.databaseName ?? "",
+		});
+	}
+
 	return connection.dialect === "sqlite"
 		? (connection.databasePath ?? "")
 		: (connection.connectionString ?? "");
+}
+
+function getPostgresConnectionInput(connection: SavedDatabaseConnection | null) {
+	if (!connection || connection.dialect !== "postgres") {
+		return null;
+	}
+
+	if (
+		connection.source === "workspace-config" &&
+		connection.workspacePath &&
+		connection.workspaceDefinitionId
+	) {
+		return {
+			kind: "workspaceConfig" as const,
+			workspacePath: connection.workspacePath,
+			definitionId: connection.workspaceDefinitionId,
+		};
+	}
+
+	if (connection.connectionString) {
+		return {
+			kind: "connectionString" as const,
+			connectionString: connection.connectionString,
+		};
+	}
+
+	return null;
 }
 
 function getTableKey(table: { schema: string | null; name: string }): string {
@@ -666,6 +712,37 @@ interface DatabasesViewProps {
 	workspaceId?: string;
 }
 
+type DiscoveredWorkspaceDatabaseItem =
+	| {
+			source: "file";
+			dialect: "sqlite";
+			absolutePath: string;
+			relativePath: string;
+	  }
+	| {
+			source: "config";
+			dialect: "sqlite";
+			definitionId: string;
+			label: string;
+			group?: string;
+			absolutePath: string;
+			relativePath: string;
+	  }
+	| {
+			source: "config";
+			dialect: "postgres";
+			definitionId: string;
+			label: string;
+			group?: string;
+			host: string;
+			port: number;
+			database: string;
+			ssl: boolean;
+			usernameHint?: string;
+			relativePath: string;
+			hasSavedCredentials: boolean;
+	  };
+
 export function DatabasesView({
 	mode = "sidebar",
 	onOpenExplorer,
@@ -736,6 +813,16 @@ export function DatabasesView({
 	const [postgresDatabase, setPostgresDatabase] = useState("");
 	const [postgresSsl, setPostgresSsl] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
+	const [isCredentialPromptOpen, setIsCredentialPromptOpen] = useState(false);
+	const [credentialPromptTarget, setCredentialPromptTarget] =
+		useState<Extract<DiscoveredWorkspaceDatabaseItem, { dialect: "postgres" }> | null>(
+			null,
+		);
+	const [configUsername, setConfigUsername] = useState("");
+	const [configPassword, setConfigPassword] = useState("");
+	const [configCredentialError, setConfigCredentialError] = useState<string | null>(
+		null,
+	);
 	const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
 	const [tablePreviewPage, setTablePreviewPage] = useState(0);
 	const [tableSearchInput, setTableSearchInput] = useState("");
@@ -767,6 +854,8 @@ export function DatabasesView({
 	const [isCellDetailCopying, setIsCellDetailCopying] = useState(false);
 	const [isCellDetailExporting, setIsCellDetailExporting] = useState(false);
 	const [isCellContextMenuOpen, setIsCellContextMenuOpen] = useState(false);
+	const [isSavingWorkspaceCredentials, setIsSavingWorkspaceCredentials] =
+		useState(false);
 	const [contextCell, setContextCell] = useState<ContextCellState | null>(null);
 	const [pendingEditRequest, setPendingEditRequest] =
 		useState<PendingEditRequest | null>(null);
@@ -879,7 +968,7 @@ export function DatabasesView({
 		);
 	}, [connectionType]);
 
-	const discoverQuery = electronTrpc.databases.discoverSqliteFiles.useQuery(
+	const discoverQuery = electronTrpc.databases.discoverWorkspaceDatabases.useQuery(
 		{ worktreePath: worktreePath ?? "", limit: 25 },
 		{ enabled: Boolean(worktreePath) },
 	);
@@ -893,12 +982,23 @@ export function DatabasesView({
 		},
 	);
 
+	const activePostgresConnectionInput = useMemo(
+		() => getPostgresConnectionInput(activeConnection),
+		[activeConnection],
+	);
+
 	const inspectPostgresQuery = electronTrpc.databases.inspectPostgres.useQuery(
-		{ connectionString: activeConnection?.connectionString ?? "" },
+		{
+			connection:
+				activePostgresConnectionInput ?? {
+					kind: "connectionString",
+					connectionString: "",
+				},
+		},
 		{
 			enabled:
 				activeConnection?.dialect === "postgres" &&
-				Boolean(activeConnection.connectionString),
+				Boolean(activePostgresConnectionInput),
 		},
 	);
 
@@ -989,23 +1089,27 @@ export function DatabasesView({
 	);
 
 	const previewPostgresQuery =
-		electronTrpc.databases.previewPostgresTable.useQuery(
-			{
-				connectionString: activeConnection?.connectionString ?? "",
-				schema: selectedTable?.schema ?? "public",
-				tableName: selectedTable?.name ?? "",
-				limit: TABLE_PREVIEW_PAGE_SIZE,
+			electronTrpc.databases.previewPostgresTable.useQuery(
+				{
+					connection:
+						activePostgresConnectionInput ?? {
+							kind: "connectionString",
+							connectionString: "",
+						},
+					schema: selectedTable?.schema ?? "public",
+					tableName: selectedTable?.name ?? "",
+					limit: TABLE_PREVIEW_PAGE_SIZE,
 				offset: tablePreviewPage * TABLE_PREVIEW_PAGE_SIZE,
 			},
-			{
-				enabled:
-					activeConnection?.dialect === "postgres" &&
-					Boolean(activeConnection.connectionString) &&
-					Boolean(selectedTable?.schema) &&
-					Boolean(selectedTable?.name),
-				placeholderData: (previousData) => previousData,
-			},
-		);
+				{
+					enabled:
+						activeConnection?.dialect === "postgres" &&
+						Boolean(activePostgresConnectionInput) &&
+						Boolean(selectedTable?.schema) &&
+						Boolean(selectedTable?.name),
+					placeholderData: (previousData) => previousData,
+				},
+			);
 
 	const executeSQLiteMutation =
 		electronTrpc.databases.executeSqlite.useMutation({
@@ -1030,6 +1134,8 @@ export function DatabasesView({
 				setQueryError(error.message);
 			},
 		});
+	const saveWorkspaceDatabaseCredentialsMutation =
+		electronTrpc.databases.saveWorkspaceDatabaseCredentials.useMutation();
 
 	const discoveredFiles = useMemo(() => {
 		const connectedPaths = new Set(
@@ -1038,11 +1144,32 @@ export function DatabasesView({
 				.map((connection) => connection.databasePath)
 				.filter((value): value is string => Boolean(value)),
 		);
-
-		return (discoverQuery.data?.files ?? []).filter(
-			(file) => !connectedPaths.has(file.absolutePath),
+		const connectedWorkspaceDefinitions = new Set(
+			connections
+				.filter(
+					(connection) =>
+						connection.dialect === "postgres" &&
+						connection.source === "workspace-config" &&
+						connection.workspacePath &&
+						connection.workspaceDefinitionId,
+				)
+				.map(
+					(connection) =>
+						`${connection.workspacePath}::${connection.workspaceDefinitionId}`,
+				),
 		);
-	}, [connections, discoverQuery.data?.files]);
+
+		return ((discoverQuery.data?.items ?? []) as DiscoveredWorkspaceDatabaseItem[])
+			.filter((item) => {
+				if (item.dialect === "sqlite") {
+					return !connectedPaths.has(item.absolutePath);
+				}
+
+				return !connectedWorkspaceDefinitions.has(
+					`${worktreePath ?? ""}::${item.definitionId}`,
+				);
+			});
+	}, [connections, discoverQuery.data?.items, worktreePath]);
 	const activePreviewQuery =
 		activeConnection?.dialect === "postgres"
 			? previewPostgresQuery
@@ -1218,10 +1345,10 @@ export function DatabasesView({
 
 		if (
 			activeConnection.dialect === "postgres" &&
-			activeConnection.connectionString
+			activePostgresConnectionInput
 		) {
 			return await executePostgresMutation.mutateAsync({
-				connectionString: activeConnection.connectionString,
+				connection: activePostgresConnectionInput,
 				sql: nextSql,
 				limit: 200,
 			});
@@ -1436,13 +1563,104 @@ export function DatabasesView({
 		setIsAddConnectionOpen(false);
 	};
 
-	const handleAttachDiscoveredFile = (absolutePath: string) => {
+	const attachWorkspaceConfigPostgresConnection = (
+		item: Extract<DiscoveredWorkspaceDatabaseItem, { dialect: "postgres" }>,
+	) => {
+		if (!worktreePath) {
+			setFormError("Open a workspace before attaching this database.");
+			return;
+		}
+
 		addConnection({
-			label: guessConnectionLabel(absolutePath),
-			group: groupInput.trim() || undefined,
-			dialect: "sqlite",
-			databasePath: absolutePath,
+			label: item.label,
+			group: item.group,
+			dialect: "postgres",
+			source: "workspace-config",
+			workspacePath: worktreePath,
+			workspaceDefinitionId: item.definitionId,
+			host: item.host,
+			port: item.port,
+			databaseName: item.database,
+			ssl: item.ssl,
+			usernameHint: item.usernameHint,
 		});
+	};
+
+	const openWorkspaceCredentialPrompt = (
+		item: Extract<DiscoveredWorkspaceDatabaseItem, { dialect: "postgres" }>,
+	) => {
+		setCredentialPromptTarget(item);
+		setConfigUsername(item.usernameHint ?? "");
+		setConfigPassword("");
+		setConfigCredentialError(null);
+		setIsCredentialPromptOpen(true);
+	};
+
+	const handleAttachDiscoveredFile = (
+		absolutePath: string,
+		options?: { label?: string; group?: string },
+	) => {
+			addConnection({
+				label: options?.label ?? guessConnectionLabel(absolutePath),
+				group: options?.group ?? (groupInput.trim() || undefined),
+				dialect: "sqlite",
+				databasePath: absolutePath,
+			});
+	};
+
+	const handleAttachDiscoveredDatabase = (
+		item: DiscoveredWorkspaceDatabaseItem,
+	) => {
+		if (item.dialect === "sqlite") {
+			handleAttachDiscoveredFile(item.absolutePath, {
+				label: item.source === "config" ? item.label : undefined,
+				group: item.source === "config" ? item.group : undefined,
+			});
+			return;
+		}
+
+		if (item.hasSavedCredentials) {
+			attachWorkspaceConfigPostgresConnection(item);
+			return;
+		}
+
+		openWorkspaceCredentialPrompt(item);
+	};
+
+	const handleSaveWorkspaceCredentials = async () => {
+		if (!credentialPromptTarget || !worktreePath) {
+			return;
+		}
+
+		const nextUsername = configUsername.trim();
+		if (!nextUsername) {
+			setConfigCredentialError("Username is required.");
+			return;
+		}
+
+		setIsSavingWorkspaceCredentials(true);
+		setConfigCredentialError(null);
+		try {
+			await saveWorkspaceDatabaseCredentialsMutation.mutateAsync({
+				worktreePath,
+				definitionId: credentialPromptTarget.definitionId,
+				username: nextUsername,
+				password: configPassword,
+			});
+			await discoverQuery.refetch();
+			attachWorkspaceConfigPostgresConnection(credentialPromptTarget);
+			setIsCredentialPromptOpen(false);
+			setCredentialPromptTarget(null);
+			setConfigPassword("");
+		} catch (error) {
+			setConfigCredentialError(
+				error instanceof Error
+					? error.message
+					: "Failed to save workspace database credentials.",
+			);
+		} finally {
+			setIsSavingWorkspaceCredentials(false);
+		}
 	};
 
 	const handleRunQuery = async () => {
@@ -1507,7 +1725,11 @@ export function DatabasesView({
 			}
 
 			const detail = await trpcUtils.databases.getPostgresRowDetail.fetch({
-				connectionString: activeConnection.connectionString ?? "",
+				connection:
+					getPostgresConnectionInput(activeConnection) ?? {
+						kind: "connectionString",
+						connectionString: "",
+					},
 				schema: selectedTable.schema ?? "public",
 				tableName: selectedTable.name,
 				ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
@@ -2243,6 +2465,81 @@ export function DatabasesView({
 				) : null}
 			</div>
 
+			<Dialog
+				open={isCredentialPromptOpen}
+				onOpenChange={(nextOpen) => {
+					setIsCredentialPromptOpen(nextOpen);
+					if (!nextOpen) {
+						setCredentialPromptTarget(null);
+						setConfigCredentialError(null);
+						setConfigPassword("");
+					}
+				}}
+			>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>Workspace database credentials</DialogTitle>
+						<DialogDescription>
+							{credentialPromptTarget
+								? `${credentialPromptTarget.label} に接続するための認証情報を一度だけ入力します。以降はローカルに暗号化して保存され、再入力は不要です。`
+								: "Enter database credentials."}
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className="space-y-3">
+						<div className="space-y-1">
+							<Label htmlFor="workspace-db-username">ユーザー名</Label>
+							<Input
+								id="workspace-db-username"
+								value={configUsername}
+								onChange={(event) => {
+									setConfigUsername(event.target.value);
+									setConfigCredentialError(null);
+								}}
+								placeholder={credentialPromptTarget?.usernameHint ?? "postgres"}
+							/>
+						</div>
+						<div className="space-y-1">
+							<Label htmlFor="workspace-db-password">パスワード</Label>
+							<Input
+								id="workspace-db-password"
+								type="password"
+								value={configPassword}
+								onChange={(event) => {
+									setConfigPassword(event.target.value);
+									setConfigCredentialError(null);
+								}}
+								placeholder="password"
+							/>
+						</div>
+
+						{configCredentialError ? (
+							<Alert variant="destructive">
+								<AlertTitle>Save credentials failed</AlertTitle>
+								<AlertDescription>{configCredentialError}</AlertDescription>
+							</Alert>
+						) : null}
+					</div>
+
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setIsCredentialPromptOpen(false)}
+						>
+							キャンセル
+						</Button>
+						<Button
+							type="button"
+							onClick={handleSaveWorkspaceCredentials}
+							disabled={isSavingWorkspaceCredentials}
+						>
+							保存して Attach
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
 			<div className="flex-1 min-h-0 overflow-hidden">
 				{isSidebarMode ? (
 					<div className="h-full overflow-y-auto">
@@ -2266,10 +2563,14 @@ export function DatabasesView({
 														}
 													: undefined
 											}
-											onEdit={() => {
-												populateConnectionForm(connection);
-												setIsAddConnectionOpen(true);
-											}}
+											onEdit={
+												connection.source === "workspace-config"
+													? undefined
+													: () => {
+															populateConnectionForm(connection);
+															setIsAddConnectionOpen(true);
+														}
+											}
 											onSelect={() => handleSelectConnectionId(connection.id)}
 											onRemove={() => removeConnection(connection.id)}
 										/>
@@ -2319,31 +2620,38 @@ export function DatabasesView({
 									Detected workspace databases
 								</h3>
 								<Badge variant="outline">
-									{discoverQuery.data?.files.length ?? 0}
+									{discoverQuery.data?.items.length ?? 0}
 								</Badge>
 							</div>
 							{discoveredFiles.length > 0 ? (
 								<div className="space-y-2">
 									{discoveredFiles.map((file) => (
 										<div
-											key={file.absolutePath}
+											key={
+												file.source === "config"
+													? `${file.source}:${file.definitionId}`
+													: file.absolutePath
+											}
 											className="flex items-center gap-2 rounded-md border p-2"
 										>
 											<div className="min-w-0 flex-1">
 												<p className="truncate text-sm font-medium">
-													{guessConnectionLabel(file.absolutePath)}
+													{file.source === "config"
+														? file.label
+														: guessConnectionLabel(file.absolutePath)}
 												</p>
 												<p className="text-muted-foreground truncate font-mono text-[11px]">
-													{file.relativePath}
+													{file.dialect === "postgres"
+														? `${file.host}/${file.database}`
+														: file.relativePath}
 												</p>
 											</div>
+											<Badge variant="outline">{file.dialect}</Badge>
 											<Button
 												type="button"
 												size="sm"
 												variant="outline"
-												onClick={() =>
-													handleAttachDiscoveredFile(file.absolutePath)
-												}
+												onClick={() => handleAttachDiscoveredDatabase(file)}
 											>
 												<LuPlus className="mr-1.5 size-3.5" />
 												Attach

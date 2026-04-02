@@ -6,8 +6,16 @@ export interface SavedDatabaseConnection {
 	label: string;
 	group?: string;
 	dialect: "sqlite" | "postgres";
+	source?: "manual" | "workspace-config";
 	databasePath?: string;
 	connectionString?: string;
+	workspacePath?: string;
+	workspaceDefinitionId?: string;
+	host?: string;
+	port?: number;
+	databaseName?: string;
+	ssl?: boolean;
+	usernameHint?: string;
 	createdAt: number;
 }
 
@@ -27,14 +35,29 @@ interface DatabaseSidebarState {
 			| {
 					label: string;
 					group?: string;
+					source?: "manual";
 					dialect: "sqlite";
 					databasePath: string;
 			  }
 			| {
 					label: string;
 					group?: string;
+					source?: "manual";
 					dialect: "postgres";
 					connectionString: string;
+			  }
+			| {
+					label: string;
+					group?: string;
+					dialect: "postgres";
+					source: "workspace-config";
+					workspacePath: string;
+					workspaceDefinitionId: string;
+					host: string;
+					port: number;
+					databaseName: string;
+					ssl: boolean;
+					usernameHint?: string;
 			  },
 	) => SavedDatabaseConnection;
 	updateConnection: (
@@ -43,16 +66,18 @@ interface DatabaseSidebarState {
 					id: string;
 					label: string;
 					group?: string;
+					source?: "manual";
 					dialect: "sqlite";
 					databasePath: string;
 			  }
-			| {
-					id: string;
-					label: string;
-					group?: string;
-					dialect: "postgres";
-					connectionString: string;
-			  },
+				| {
+						id: string;
+						label: string;
+						group?: string;
+						source?: "manual";
+						dialect: "postgres";
+						connectionString: string;
+				  }
 	) => SavedDatabaseConnection | null;
 	removeConnection: (id: string) => void;
 	setActiveConnectionId: (id: string | null) => void;
@@ -82,6 +107,15 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							return connection.databasePath === input.databasePath;
 						}
 
+						if (input.source === "workspace-config") {
+							return (
+								connection.source === "workspace-config" &&
+								connection.workspacePath === input.workspacePath &&
+								connection.workspaceDefinitionId ===
+									input.workspaceDefinitionId
+							);
+						}
+
 						return connection.connectionString === input.connectionString;
 					});
 					if (existingConnection) {
@@ -94,10 +128,49 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						label: input.label,
 						group: input.group,
 						dialect: input.dialect,
+						source: input.source ?? "manual",
 						databasePath:
 							input.dialect === "sqlite" ? input.databasePath : undefined,
 						connectionString:
-							input.dialect === "postgres" ? input.connectionString : undefined,
+							input.dialect === "postgres" &&
+							input.source !== "workspace-config"
+								? input.connectionString
+								: undefined,
+						workspacePath:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.workspacePath
+								: undefined,
+						workspaceDefinitionId:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.workspaceDefinitionId
+								: undefined,
+						host:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.host
+								: undefined,
+						port:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.port
+								: undefined,
+						databaseName:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.databaseName
+								: undefined,
+						ssl:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.ssl
+								: undefined,
+						usernameHint:
+							input.dialect === "postgres" &&
+							input.source === "workspace-config"
+								? input.usernameHint
+								: undefined,
 						createdAt: Date.now(),
 					};
 
@@ -122,10 +195,18 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						label: input.label,
 						group: input.group,
 						dialect: input.dialect,
+						source: "manual",
 						databasePath:
 							input.dialect === "sqlite" ? input.databasePath : undefined,
 						connectionString:
 							input.dialect === "postgres" ? input.connectionString : undefined,
+						workspacePath: undefined,
+						workspaceDefinitionId: undefined,
+						host: undefined,
+						port: undefined,
+						databaseName: undefined,
+						ssl: undefined,
+						usernameHint: undefined,
 					};
 
 					set((state) => ({
@@ -202,7 +283,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 			}),
 			{
 				name: "database-sidebar-store",
-				version: 3,
+				version: 4,
 				migrate: (persistedState) => {
 					const state = persistedState as {
 						connections?: Array<{
@@ -211,7 +292,15 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							group?: string;
 							databasePath?: string;
 							dialect?: "sqlite" | "postgres";
+							source?: "manual" | "workspace-config";
 							connectionString?: string;
+							workspacePath?: string;
+							workspaceDefinitionId?: string;
+							host?: string;
+							port?: number;
+							databaseName?: string;
+							ssl?: boolean;
+							usernameHint?: string;
 							createdAt: number;
 						}>;
 						queryHistory?: SavedDatabaseQueryHistoryItem[];
@@ -222,6 +311,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						connections: (state.connections ?? []).map((connection) => ({
 							...connection,
 							dialect: connection.dialect ?? "sqlite",
+							source: connection.source ?? "manual",
 						})),
 						queryHistory: state.queryHistory ?? [],
 						activeConnectionId: state.activeConnectionId ?? null,
