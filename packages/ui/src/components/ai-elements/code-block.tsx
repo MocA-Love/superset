@@ -9,14 +9,23 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki";
+import {
+	type BundledLanguage,
+	codeToHtml,
+	type ShikiTransformer,
+	type ThemeRegistrationAny,
+} from "shiki";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+
+export type CodeBlockTheme = ThemeRegistrationAny;
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
 	code: string;
 	language: BundledLanguage;
 	showLineNumbers?: boolean;
+	lightTheme?: CodeBlockTheme;
+	darkTheme?: CodeBlockTheme;
 };
 
 type CodeBlockContextType = {
@@ -52,6 +61,10 @@ export async function highlightCode(
 	code: string,
 	language: BundledLanguage,
 	showLineNumbers = false,
+	options?: {
+		lightTheme?: CodeBlockTheme;
+		darkTheme?: CodeBlockTheme;
+	},
 ) {
 	const transformers: ShikiTransformer[] = showLineNumbers
 		? [lineNumberTransformer]
@@ -60,12 +73,12 @@ export async function highlightCode(
 	return await Promise.all([
 		codeToHtml(code, {
 			lang: language,
-			theme: "one-light",
+			theme: options?.lightTheme ?? "one-light",
 			transformers,
 		}),
 		codeToHtml(code, {
 			lang: language,
-			theme: "one-dark-pro",
+			theme: options?.darkTheme ?? "one-dark-pro",
 			transformers,
 		}),
 	]);
@@ -75,6 +88,8 @@ export const CodeBlock = ({
 	code,
 	language,
 	showLineNumbers = false,
+	lightTheme,
+	darkTheme,
 	className,
 	children,
 	...props
@@ -84,7 +99,10 @@ export const CodeBlock = ({
 
 	useEffect(() => {
 		let cancelled = false;
-		highlightCode(code, language, showLineNumbers).then(([light, dark]) => {
+		highlightCode(code, language, showLineNumbers, {
+			lightTheme,
+			darkTheme,
+		}).then(([light, dark]) => {
 			if (!cancelled) {
 				setHtml(light);
 				setDarkHtml(dark);
@@ -93,7 +111,7 @@ export const CodeBlock = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [code, language, showLineNumbers]);
+	}, [code, language, showLineNumbers, lightTheme, darkTheme]);
 
 	return (
 		<CodeBlockContext.Provider value={{ code }}>

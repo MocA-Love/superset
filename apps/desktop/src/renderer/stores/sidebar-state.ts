@@ -8,6 +8,7 @@ export enum SidebarMode {
 
 export enum RightSidebarTab {
 	Changes = "changes",
+	Docker = "docker",
 	Files = "files",
 	Search = "search",
 	Problems = "problems",

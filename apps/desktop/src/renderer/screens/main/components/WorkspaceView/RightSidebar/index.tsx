@@ -6,9 +6,17 @@ import {
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import type { IconType } from "react-icons";
 import {
+	LuBox,
 	LuCircleAlert,
 	LuDatabase,
 	LuEllipsisVertical,
@@ -33,6 +41,7 @@ import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import { useScrollContext } from "../ChangesContent";
 import { ChangesView } from "./ChangesView";
 import { DatabasesView } from "./DatabasesView";
+import { DockerView } from "./DockerView";
 import { FilesView } from "./FilesView";
 import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
 import { ProblemsView } from "./ProblemsView";
@@ -140,7 +149,16 @@ export function RightSidebar() {
 				staleTime: Infinity,
 			},
 		);
+	const { data: dockerComposeFiles } =
+		electronTrpc.docker.getComposeFiles.useQuery(
+			{ workspaceId: workspaceId ?? "" },
+			{
+				enabled: Boolean(workspaceId),
+				staleTime: 10000,
+			},
+		);
 	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
+	const showDockerTab = (dockerComposeFiles?.composeFiles.length ?? 0) > 0;
 	const sidebarTabs = useMemo<SidebarTabDefinition[]>(() => {
 		const tabs: SidebarTabDefinition[] = [];
 
@@ -153,6 +171,11 @@ export function RightSidebar() {
 		}
 
 		tabs.push(
+			{
+				id: RightSidebarTab.Docker,
+				label: "Docker",
+				icon: LuBox,
+			},
 			{
 				id: RightSidebarTab.Files,
 				label: "Files",
@@ -176,8 +199,21 @@ export function RightSidebar() {
 			},
 		);
 
-		return tabs;
-	}, [hasProblemErrors, showChangesTab]);
+		return showDockerTab
+			? tabs
+			: tabs.filter((tab) => tab.id !== RightSidebarTab.Docker);
+	}, [hasProblemErrors, showChangesTab, showDockerTab]);
+
+	useEffect(() => {
+		if (sidebarTabs.some((tab) => tab.id === rightSidebarTab)) {
+			return;
+		}
+
+		const fallbackTabId = sidebarTabs[0]?.id;
+		if (fallbackTabId) {
+			setRightSidebarTab(fallbackTabId);
+		}
+	}, [rightSidebarTab, setRightSidebarTab, sidebarTabs]);
 
 	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
 		{ workspaceId: workspaceId ?? "" },
@@ -534,6 +570,15 @@ export function RightSidebar() {
 					/>
 				</div>
 			)}
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Docker
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<DockerView isActive={rightSidebarTab === RightSidebarTab.Docker} />
+			</div>
 			<div
 				className={
 					rightSidebarTab === RightSidebarTab.Files

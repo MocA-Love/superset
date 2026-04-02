@@ -13,6 +13,7 @@ import { createChatServiceRouter } from "./chat-service";
 import { createConfigRouter } from "./config";
 import { createDatabasesRouter } from "./databases";
 import { createDiagnosticsRouter } from "./diagnostics";
+import { createDockerRouter } from "./docker";
 import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
@@ -66,6 +67,7 @@ export const createAppRouter = (
 		config: createConfigRouter(),
 		databases: createDatabasesRouter(),
 		diagnostics: createDiagnosticsRouter(),
+		docker: createDockerRouter(),
 		uiState: createUiStateRouter(),
 		ringtone: createRingtoneRouter(getWindow),
 		hostServiceManager: createHostServiceManagerRouter(),
