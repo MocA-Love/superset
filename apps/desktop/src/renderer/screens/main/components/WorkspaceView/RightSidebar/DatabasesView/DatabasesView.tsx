@@ -521,7 +521,7 @@ const PreviewTableCellValue = memo(function PreviewTableCellValue({
 					<TooltipTrigger asChild>
 						<button
 							type="button"
-							className="text-muted-foreground hover:text-foreground size-5 shrink-0 rounded opacity-0 transition-opacity group-hover:opacity-100"
+							className="text-muted-foreground hover:text-foreground size-5 shrink-0 rounded opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
 							onClick={(event) => {
 								event.stopPropagation();
 								onOpenDetail(row, column);
@@ -1246,8 +1246,10 @@ export function DatabasesView({
 						source: "manual",
 						connectionStringId: connection.connectionStringId,
 					});
-				} catch {
-					// silently ignore migration errors
+				} catch (error) {
+					toast.error("Failed to migrate saved connection", {
+						description: error instanceof Error ? error.message : undefined,
+					});
 				}
 			}
 		})();

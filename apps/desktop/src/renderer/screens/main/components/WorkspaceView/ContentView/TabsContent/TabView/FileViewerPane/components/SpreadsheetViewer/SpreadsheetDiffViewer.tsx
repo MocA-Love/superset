@@ -466,10 +466,11 @@ export function SpreadsheetDiffViewer({
 			diffLocations,
 			activeSheetIndex,
 		);
-		if (preferredIndex !== -1) {
-			setCurrentDiffIdx(preferredIndex);
+		if (preferredIndex === -1) {
+			return;
 		}
-	}, [activeSheetIndex, diffLocations]);
+		jumpToDiff(preferredIndex);
+	}, [activeSheetIndex, diffLocations, jumpToDiff]);
 
 	if (isLoading) {
 		return (

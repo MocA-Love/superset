@@ -1,6 +1,22 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
+
+// Simple per-file async mutex to prevent concurrent read/modify/write races.
+function createFileMutex() {
+	let queue = Promise.resolve();
+	return function withLock<T>(fn: () => Promise<T>): Promise<T> {
+		const next = queue.then(fn, fn);
+		queue = next.then(
+			() => undefined,
+			() => undefined,
+		);
+		return next;
+	};
+}
+const withCredentialStoreLock = createFileMutex();
+const withManualConnectionStoreLock = createFileMutex();
+
 import {
 	SUPERSET_HOME_DIR,
 	SUPERSET_SENSITIVE_FILE_MODE,
@@ -276,7 +292,8 @@ export async function discoverWorkspaceConfiguredDatabases(
 			port: definition.port ?? 5432,
 			database: getPostgresDatabaseName(definition),
 			ssl: definition.ssl ?? false,
-			usernameHint: definition.username,
+			usernameHint:
+				definition.username ?? credentialStore.entries[key]?.username,
 			relativePath: path.join(
 				WORKSPACE_DATABASES_CONFIG_FILE,
 				`#${definition.id}`,
@@ -292,15 +309,17 @@ export async function saveWorkspaceDatabaseCredentials(input: {
 	username: string;
 	password: string;
 }): Promise<void> {
-	const store = await loadWorkspaceDatabaseCredentialStore();
-	store.entries[
-		workspaceCredentialKey(input.workspacePath, input.definitionId)
-	] = {
-		username: input.username.trim(),
-		password: input.password,
-		updatedAt: Date.now(),
-	};
-	await saveWorkspaceDatabaseCredentialStore(store);
+	await withCredentialStoreLock(async () => {
+		const store = await loadWorkspaceDatabaseCredentialStore();
+		store.entries[
+			workspaceCredentialKey(input.workspacePath, input.definitionId)
+		] = {
+			username: input.username.trim(),
+			password: input.password,
+			updatedAt: Date.now(),
+		};
+		await saveWorkspaceDatabaseCredentialStore(store);
+	});
 }
 
 export async function updateWorkspaceDatabaseDefinition(input: {
@@ -431,20 +450,23 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 		nextDefinition.dialect === "postgres" &&
 		nextDefinition.username
 	) {
-		const store = await loadWorkspaceDatabaseCredentialStore();
-		const credentialKey = workspaceCredentialKey(
-			input.workspacePath,
-			input.definitionId,
-		);
-		const existingCredentials = store.entries[credentialKey];
-		if (existingCredentials) {
-			store.entries[credentialKey] = {
-				...existingCredentials,
-				username: nextDefinition.username,
-				updatedAt: Date.now(),
-			};
-			await saveWorkspaceDatabaseCredentialStore(store);
-		}
+		await withCredentialStoreLock(async () => {
+			const store = await loadWorkspaceDatabaseCredentialStore();
+			const credentialKey = workspaceCredentialKey(
+				input.workspacePath,
+				input.definitionId,
+			);
+			const existingCredentials = store.entries[credentialKey];
+			if (existingCredentials) {
+				store.entries[credentialKey] = {
+					...existingCredentials,
+					username:
+						nextDefinition.username ?? existingCredentials.username,
+					updatedAt: Date.now(),
+				};
+				await saveWorkspaceDatabaseCredentialStore(store);
+			}
+		});
 	}
 
 	return nextDefinition;
@@ -500,12 +522,14 @@ export async function saveManualPostgresConnectionString(
 	connectionId: string,
 	connectionString: string,
 ): Promise<void> {
-	const store = await loadManualPostgresConnectionStore();
-	store.entries[connectionId] = {
-		connectionString,
-		updatedAt: Date.now(),
-	};
-	await saveManualPostgresConnectionStore(store);
+	await withManualConnectionStoreLock(async () => {
+		const store = await loadManualPostgresConnectionStore();
+		store.entries[connectionId] = {
+			connectionString,
+			updatedAt: Date.now(),
+		};
+		await saveManualPostgresConnectionStore(store);
+	});
 }
 
 export async function getManualPostgresConnectionString(
@@ -518,9 +542,11 @@ export async function getManualPostgresConnectionString(
 export async function deleteManualPostgresConnectionString(
 	connectionId: string,
 ): Promise<void> {
-	const store = await loadManualPostgresConnectionStore();
-	delete store.entries[connectionId];
-	await saveManualPostgresConnectionStore(store);
+	await withManualConnectionStoreLock(async () => {
+		const store = await loadManualPostgresConnectionStore();
+		delete store.entries[connectionId];
+		await saveManualPostgresConnectionStore(store);
+	});
 }
 
 export async function resolvePostgresConnectionStringFromSource(input: {
