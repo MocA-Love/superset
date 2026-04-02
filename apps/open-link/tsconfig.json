@@ -1,0 +1,11 @@
+{
+	"extends": "../../tooling/typescript/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "ES2021.String", "WebWorker"],
+		"moduleResolution": "Bundler",
+		"module": "ESNext",
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules"]
+}
