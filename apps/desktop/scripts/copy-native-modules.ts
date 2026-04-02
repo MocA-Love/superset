@@ -24,8 +24,8 @@ import {
 	realpathSync,
 	rmSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
-import { satisfies } from "semver";
+import { dirname, join, relative } from "node:path";
+import { maxSatisfying, satisfies } from "semver";
 import { requiredMaterializedNodeModules } from "../runtime-dependencies";
 
 // Target architecture for cross-compilation. When set, platform-specific
@@ -53,15 +53,37 @@ function getBunStoreDir(nodeModulesDir: string): string {
 function findBunStoreFolderName(
 	bunStoreDir: string,
 	moduleName: string,
-	version: string,
+	versionRange: string,
 ): string | null {
 	if (!existsSync(bunStoreDir)) return null;
 	const entries = readdirSync(bunStoreDir);
 	const modulePrefix = `${moduleName.replace("/", "+")}@`;
-	const exactPrefix = `${modulePrefix}${version}`;
-	const exactMatch = entries.find((entry) => entry.startsWith(exactPrefix));
-	if (exactMatch) return exactMatch;
-	return entries.find((entry) => entry.startsWith(modulePrefix)) ?? null;
+	const matchingEntries = entries.filter((entry) => entry.startsWith(modulePrefix));
+
+	const extractVersion = (entry: string): string | null => {
+		const remainder = entry.slice(modulePrefix.length);
+		const candidate = remainder.split("_")[0];
+		return candidate.length > 0 ? candidate : null;
+	};
+
+	const versions = matchingEntries
+		.map((entry) => ({ entry, version: extractVersion(entry) }))
+		.filter((item): item is { entry: string; version: string } =>
+			item.version !== null,
+		);
+
+	const exactMatch = versions.find((item) => item.version === versionRange);
+	if (exactMatch) return exactMatch.entry;
+
+	const bestMatch = maxSatisfying(
+		versions.map((item) => item.version),
+		versionRange,
+	);
+	if (!bestMatch) {
+		return null;
+	}
+
+	return versions.find((item) => item.version === bestMatch)?.entry ?? null;
 }
 
 function copyModuleIfSymlink(
@@ -142,6 +164,7 @@ function copyExactModuleVersion(
 			moduleName,
 		);
 		if (existsSync(sourcePath)) {
+			rmSync(destPath, { recursive: true, force: true });
 			mkdirSync(dirname(destPath), { recursive: true });
 			cpSync(sourcePath, destPath, { recursive: true });
 			console.log(`    Copied ${moduleName}@${version} to: ${destPath}`);
@@ -163,43 +186,177 @@ function copyExactModuleVersion(
 	return false;
 }
 
+function resolveDependencySource(
+	moduleName: string,
+	versionRange: string,
+): {
+	sourceModuleName: string;
+	sourceVersionRange: string;
+} {
+	if (!versionRange.startsWith("npm:")) {
+		return {
+			sourceModuleName: moduleName,
+			sourceVersionRange: versionRange,
+		};
+	}
+
+	const aliasSpec = versionRange.slice(4);
+	const match = aliasSpec.match(/^((?:@[^/]+\/)?[^@]+)@(.+)$/);
+	if (!match) {
+		return {
+			sourceModuleName: moduleName,
+			sourceVersionRange: versionRange,
+		};
+	}
+
+	return {
+		sourceModuleName: match[1],
+		sourceVersionRange: match[2],
+	};
+}
+
 function copyDependencyForPackage(
 	nodeModulesDir: string,
 	parentModuleName: string,
 	dependencyName: string,
 	dependencyRange: string,
 	required: boolean,
-): void {
+	options?: {
+		preferNested?: boolean;
+	},
+): string | null {
+	const resolvedDependency = resolveDependencySource(
+		dependencyName,
+		dependencyRange,
+	);
 	const topLevelDependencyPath = join(nodeModulesDir, dependencyName);
 	const topLevelVersion = readInstalledModuleVersion(topLevelDependencyPath);
-
-	if (topLevelVersion && satisfies(topLevelVersion, dependencyRange)) {
-		copyModuleIfSymlink(nodeModulesDir, dependencyName, required);
-		return;
-	}
-
-	if (!topLevelVersion) {
-		console.log(
-			`  ${dependencyName}: top-level version missing; materializing ${dependencyRange} at the workspace root`,
-		);
-		copyExactModuleVersion(
-			nodeModulesDir,
-			dependencyName,
-			dependencyRange,
-			topLevelDependencyPath,
-			required,
-		);
-		return;
-	}
-
+	const sourceTopLevelDependencyPath = join(
+		nodeModulesDir,
+		resolvedDependency.sourceModuleName,
+	);
+	const sourceTopLevelVersion = readInstalledModuleVersion(
+		sourceTopLevelDependencyPath,
+	);
 	const nestedDependencyPath = join(
 		nodeModulesDir,
 		parentModuleName,
 		"node_modules",
 		dependencyName,
 	);
+	const preferNested = options?.preferNested ?? false;
+
+	const materializeNestedFromSource = (sourcePath: string): string => {
+		rmSync(nestedDependencyPath, { recursive: true, force: true });
+		mkdirSync(dirname(nestedDependencyPath), { recursive: true });
+		cpSync(sourcePath, nestedDependencyPath, {
+			recursive: true,
+		});
+		return nestedDependencyPath;
+	};
+	const materializeTopLevelFromSource = (sourcePath: string): string => {
+		rmSync(topLevelDependencyPath, { recursive: true, force: true });
+		mkdirSync(dirname(topLevelDependencyPath), { recursive: true });
+		cpSync(sourcePath, topLevelDependencyPath, {
+			recursive: true,
+		});
+		return topLevelDependencyPath;
+	};
+
+	if (preferNested) {
+		const nestedVersion = readInstalledModuleVersion(nestedDependencyPath);
+		if (
+			nestedVersion &&
+			satisfies(nestedVersion, resolvedDependency.sourceVersionRange)
+		) {
+			const nestedStats = lstatSync(nestedDependencyPath);
+			if (nestedStats.isSymbolicLink()) {
+				const realPath = realpathSync(nestedDependencyPath);
+				rmSync(nestedDependencyPath);
+				cpSync(realPath, nestedDependencyPath, {
+					recursive: true,
+				});
+			}
+			return nestedDependencyPath;
+		}
+
+		if (
+			topLevelVersion &&
+			satisfies(topLevelVersion, resolvedDependency.sourceVersionRange)
+		) {
+			copyModuleIfSymlink(nodeModulesDir, dependencyName, required);
+			return materializeNestedFromSource(topLevelDependencyPath);
+		}
+
+		if (
+			resolvedDependency.sourceModuleName !== dependencyName &&
+			sourceTopLevelVersion &&
+			satisfies(
+				sourceTopLevelVersion,
+				resolvedDependency.sourceVersionRange,
+			)
+		) {
+			copyModuleIfSymlink(
+				nodeModulesDir,
+				resolvedDependency.sourceModuleName,
+				required,
+			);
+			return materializeNestedFromSource(sourceTopLevelDependencyPath);
+		}
+
+		console.log(
+			`  ${dependencyName}: materializing nested copy for ${parentModuleName} (${topLevelVersion ?? sourceTopLevelVersion ?? "missing"} does not satisfy ${resolvedDependency.sourceVersionRange})`,
+		);
+		copyExactModuleVersion(
+			nodeModulesDir,
+			resolvedDependency.sourceModuleName,
+			resolvedDependency.sourceVersionRange,
+			nestedDependencyPath,
+			required,
+		);
+		return nestedDependencyPath;
+	}
+
+	if (
+		topLevelVersion &&
+		satisfies(topLevelVersion, resolvedDependency.sourceVersionRange)
+	) {
+		copyModuleIfSymlink(nodeModulesDir, dependencyName, required);
+		return topLevelDependencyPath;
+	}
+
+	if (
+		resolvedDependency.sourceModuleName !== dependencyName &&
+		sourceTopLevelVersion &&
+		satisfies(sourceTopLevelVersion, resolvedDependency.sourceVersionRange)
+	) {
+		copyModuleIfSymlink(
+			nodeModulesDir,
+			resolvedDependency.sourceModuleName,
+			required,
+		);
+		return materializeTopLevelFromSource(sourceTopLevelDependencyPath);
+	}
+
+	if (!topLevelVersion) {
+		console.log(
+			`  ${dependencyName}: top-level version missing; materializing ${resolvedDependency.sourceVersionRange} at the workspace root`,
+		);
+		copyExactModuleVersion(
+			nodeModulesDir,
+			resolvedDependency.sourceModuleName,
+			resolvedDependency.sourceVersionRange,
+			topLevelDependencyPath,
+			required,
+		);
+		return topLevelDependencyPath;
+	}
+
 	const nestedVersion = readInstalledModuleVersion(nestedDependencyPath);
-	if (nestedVersion && satisfies(nestedVersion, dependencyRange)) {
+	if (
+		nestedVersion &&
+		satisfies(nestedVersion, resolvedDependency.sourceVersionRange)
+	) {
 		const nestedStats = lstatSync(nestedDependencyPath);
 		if (nestedStats.isSymbolicLink()) {
 			const realPath = realpathSync(nestedDependencyPath);
@@ -208,20 +365,80 @@ function copyDependencyForPackage(
 				recursive: true,
 			});
 		}
-		return;
+		return nestedDependencyPath;
 	}
 
 	console.log(
-		`  ${dependencyName}: top-level version ${topLevelVersion ?? "missing"} does not satisfy ${dependencyRange}; materializing nested copy for ${parentModuleName}`,
+		`  ${dependencyName}: top-level version ${topLevelVersion ?? sourceTopLevelVersion ?? "missing"} does not satisfy ${resolvedDependency.sourceVersionRange}; materializing nested copy for ${parentModuleName}`,
 	);
 
 	copyExactModuleVersion(
 		nodeModulesDir,
-		dependencyName,
-		dependencyRange,
+		resolvedDependency.sourceModuleName,
+		resolvedDependency.sourceVersionRange,
 		nestedDependencyPath,
 		required,
 	);
+
+	return nestedDependencyPath;
+}
+
+function materializeProductionDependencyTree(
+	nodeModulesDir: string,
+	packageRelativePath: string,
+	seen: Set<string>,
+): void {
+	const packagePath = join(nodeModulesDir, packageRelativePath);
+	const packageJsonPath = join(packagePath, "package.json");
+
+	if (!existsSync(packageJsonPath)) {
+		return;
+	}
+
+	type PackageJson = {
+		name?: string;
+		version?: string;
+		dependencies?: Record<string, string>;
+	};
+
+	const packageJson = JSON.parse(
+		readFileSync(packageJsonPath, "utf8"),
+	) as PackageJson;
+	const packageKey = packageJson.name
+		? `${packageJson.name}@${packageJson.version ?? "0.0.0"}`
+		: realpathSync(packagePath);
+
+	if (seen.has(packageKey)) {
+		return;
+	}
+	seen.add(packageKey);
+
+	try {
+		for (const [dependencyName, dependencyRange] of Object.entries(
+			packageJson.dependencies ?? {},
+		)) {
+			const dependencyPath = copyDependencyForPackage(
+				nodeModulesDir,
+				packageRelativePath,
+				dependencyName,
+				dependencyRange,
+				true,
+				{ preferNested: true },
+			);
+
+			if (!dependencyPath) {
+				continue;
+			}
+
+			materializeProductionDependencyTree(
+				nodeModulesDir,
+				relative(nodeModulesDir, dependencyPath),
+				seen,
+			);
+		}
+	} finally {
+		seen.delete(packageKey);
+	}
 }
 
 /**
@@ -482,6 +699,25 @@ function prepareNativeModules() {
 	console.log("\nMaterializing packaged runtime modules...");
 	for (const moduleName of requiredMaterializedNodeModules) {
 		copyModuleIfSymlink(nodeModulesDir, moduleName, true);
+	}
+
+	console.log("\nMaterializing runtime dependency trees...");
+	const runtimeDependencyRoots = [
+		"yaml-language-server",
+		"dockerfile-language-server-nodejs",
+		"graphql-language-service-cli",
+		"pyright",
+		"vscode-css-languageservice",
+		"vscode-html-languageservice",
+		"vscode-json-languageservice",
+		"vscode-languageserver-textdocument",
+		"vscode-langservers-extracted",
+		"strip-ansi",
+	];
+	const seenPackages = new Set<string>();
+	for (const moduleName of runtimeDependencyRoots) {
+		copyModuleIfSymlink(nodeModulesDir, moduleName, true);
+		materializeProductionDependencyTree(nodeModulesDir, moduleName, seenPackages);
 	}
 
 	console.log("\nPreparing ast-grep platform package...");

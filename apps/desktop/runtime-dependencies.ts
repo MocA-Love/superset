@@ -89,6 +89,10 @@ const packagedSupportModules = [
 	copyWholeModule("graphql-language-service-cli"),
 	copyWholeModule("graphql"),
 	copyWholeModule("pyright"),
+	copyWholeModule("vscode-css-languageservice"),
+	copyWholeModule("vscode-html-languageservice"),
+	copyWholeModule("vscode-json-languageservice"),
+	copyWholeModule("vscode-languageserver-textdocument"),
 	copyWholeModule("vscode-langservers-extracted"),
 ];
 
@@ -123,5 +127,9 @@ export const requiredMaterializedNodeModules = [
 	"graphql-language-service-cli",
 	"graphql",
 	"pyright",
+	"vscode-css-languageservice",
+	"vscode-html-languageservice",
+	"vscode-json-languageservice",
+	"vscode-languageserver-textdocument",
 	"vscode-langservers-extracted",
 ];
