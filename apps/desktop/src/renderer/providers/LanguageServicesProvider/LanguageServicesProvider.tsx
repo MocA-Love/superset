@@ -61,8 +61,46 @@ function resolveLanguageId(absolutePath: string): string | null {
 	if (normalizedPath.endsWith(".toml")) {
 		return "toml";
 	}
+	if (normalizedPath.endsWith(".py") || normalizedPath.endsWith(".pyi")) {
+		return "python";
+	}
+	if (normalizedPath.endsWith(".go")) {
+		return "go";
+	}
+	if (normalizedPath.endsWith(".rs")) {
+		return "rust";
+	}
 	if (normalizedPath.endsWith(".dart")) {
 		return "dart";
+	}
+	if (normalizedPath.endsWith(".yaml") || normalizedPath.endsWith(".yml")) {
+		return "yaml";
+	}
+	if (normalizedPath.endsWith(".html") || normalizedPath.endsWith(".htm")) {
+		return "html";
+	}
+	if (normalizedPath.endsWith(".scss")) {
+		return "scss";
+	}
+	if (normalizedPath.endsWith(".less")) {
+		return "less";
+	}
+	if (normalizedPath.endsWith(".css")) {
+		return "css";
+	}
+	if (
+		fileName === "dockerfile" ||
+		fileName === "containerfile" ||
+		normalizedPath.endsWith(".dockerfile")
+	) {
+		return "dockerfile";
+	}
+	if (
+		normalizedPath.endsWith(".graphql") ||
+		normalizedPath.endsWith(".gql") ||
+		normalizedPath.endsWith(".graphqls")
+	) {
+		return "graphql";
 	}
 	return null;
 }
@@ -79,10 +117,28 @@ function resolveProviderId(
 		case "json":
 		case "jsonc":
 			return "json";
+		case "yaml":
+			return "yaml";
+		case "html":
+			return "html";
+		case "css":
+		case "scss":
+		case "less":
+			return "css";
 		case "toml":
 			return "toml";
 		case "dart":
 			return "dart";
+		case "python":
+			return "python";
+		case "go":
+			return "go";
+		case "rust":
+			return "rust";
+		case "dockerfile":
+			return "dockerfile";
+		case "graphql":
+			return "graphql";
 		default:
 			return null;
 	}
@@ -143,7 +199,7 @@ export function LanguageServicesProvider() {
 			}
 
 			const providerId = resolveProviderId(languageId);
-			if (providerId && !enabledProviders[providerId]) {
+			if (providerId && enabledProviders[providerId] === false) {
 				continue;
 			}
 

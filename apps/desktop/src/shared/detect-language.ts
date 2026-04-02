@@ -1,5 +1,15 @@
 export function detectLanguage(filePath: string): string {
-	const ext = filePath.split(".").pop()?.toLowerCase();
+	const normalizedPath = filePath.toLowerCase().replaceAll("\\", "/");
+	const fileName = normalizedPath.split("/").pop() ?? normalizedPath;
+	const ext = normalizedPath.split(".").pop()?.toLowerCase();
+
+	if (
+		fileName === "dockerfile" ||
+		fileName === "containerfile" ||
+		normalizedPath.endsWith(".dockerfile")
+	) {
+		return "dockerfile";
+	}
 
 	const languageMap: Record<string, string> = {
 		// JavaScript/TypeScript
@@ -42,6 +52,7 @@ export function detectLanguage(filePath: string): string {
 
 		// Other languages
 		py: "python",
+		pyi: "python",
 		dart: "dart",
 		rb: "ruby",
 		go: "go",
@@ -58,6 +69,7 @@ export function detectLanguage(filePath: string): string {
 		sql: "sql",
 		graphql: "graphql",
 		gql: "graphql",
+		graphqls: "graphql",
 	};
 
 	return languageMap[ext || ""] || "plaintext";

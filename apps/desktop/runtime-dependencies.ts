@@ -83,6 +83,13 @@ const packagedSupportModules = [
 	copyWholeModule("is-extglob"),
 	copyWholeModule("picomatch"),
 	copyWholeModule("node-addon-api"),
+	copyWholeModule("typescript"),
+	copyWholeModule("yaml-language-server"),
+	copyWholeModule("dockerfile-language-server-nodejs"),
+	copyWholeModule("graphql-language-service-cli"),
+	copyWholeModule("graphql"),
+	copyWholeModule("pyright"),
+	copyWholeModule("vscode-langservers-extracted"),
 ];
 
 export const mainExternalizedDependencies = [
@@ -110,4 +117,11 @@ export const requiredMaterializedNodeModules = [
 	"is-extglob",
 	"picomatch",
 	"node-addon-api",
+	"typescript",
+	"yaml-language-server",
+	"dockerfile-language-server-nodejs",
+	"graphql-language-service-cli",
+	"graphql",
+	"pyright",
+	"vscode-langservers-extracted",
 ];
