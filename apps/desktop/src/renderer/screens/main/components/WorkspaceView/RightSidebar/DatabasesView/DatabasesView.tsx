@@ -596,7 +596,7 @@ function getConnectionSubtitle(connection: SavedDatabaseConnection): string {
 		connection.source === "workspace-config"
 	) {
 		return getWorkspaceConfigPostgresLabel({
-			host: connection.host ?? "postgres",
+			host: connection.host ?? "unknown",
 			databaseName: connection.databaseName ?? "",
 		});
 	}
@@ -1245,6 +1245,7 @@ export function DatabasesView({
 						dialect: "postgres",
 						source: "manual",
 						connectionStringId: connection.connectionStringId,
+						_pendingConnectionString: undefined,
 					});
 				} catch (error) {
 					toast.error("Failed to migrate saved connection", {

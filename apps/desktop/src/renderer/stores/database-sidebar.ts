@@ -99,6 +99,7 @@ interface DatabaseSidebarState {
 					source?: "manual";
 					dialect: "postgres";
 					connectionStringId: string;
+					_pendingConnectionString?: undefined;
 			  }
 			| {
 					id: string;
