@@ -287,8 +287,13 @@ function copyDependencyForPackage(
 			topLevelVersion &&
 			satisfies(topLevelVersion, resolvedDependency.sourceVersionRange)
 		) {
-			copyModuleIfSymlink(nodeModulesDir, dependencyName, required);
-			return materializeNestedFromSource(topLevelDependencyPath);
+			// Do NOT materialize the top-level symlink; electron-builder would then
+			// traverse it and find its deps missing (they are placed nested here).
+			// Instead, dereference the symlink and copy directly to the nested path.
+			const realSource = lstatSync(topLevelDependencyPath).isSymbolicLink()
+				? realpathSync(topLevelDependencyPath)
+				: topLevelDependencyPath;
+			return materializeNestedFromSource(realSource);
 		}
 
 		if (
@@ -296,12 +301,12 @@ function copyDependencyForPackage(
 			sourceTopLevelVersion &&
 			satisfies(sourceTopLevelVersion, resolvedDependency.sourceVersionRange)
 		) {
-			copyModuleIfSymlink(
-				nodeModulesDir,
-				resolvedDependency.sourceModuleName,
-				required,
-			);
-			return materializeNestedFromSource(sourceTopLevelDependencyPath);
+			const realSource = lstatSync(
+				sourceTopLevelDependencyPath,
+			).isSymbolicLink()
+				? realpathSync(sourceTopLevelDependencyPath)
+				: sourceTopLevelDependencyPath;
+			return materializeNestedFromSource(realSource);
 		}
 
 		console.log(
