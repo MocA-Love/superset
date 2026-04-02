@@ -1,4 +1,3 @@
-import { Badge } from "@superset/ui/badge";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -79,6 +78,7 @@ export function SearchFileGroup({
 	onIgnoreMatch,
 }: SearchFileGroupProps) {
 	const parentPath = getParentPath(group.relativePath);
+	const matchCount = group.matches.length;
 	const hoverActions: RowHoverAction[] = showReplaceAction
 		? [
 				{
@@ -181,19 +181,18 @@ export function SearchFileGroup({
 							</div>
 						</button>
 					</CollapsibleTrigger>
-					<div className="flex items-center justify-end pl-1">
-						<div className="grid justify-items-end">
-							<Badge
-								variant="outline"
+					<div className="flex self-center items-center justify-end pl-1">
+						<div className="relative flex h-5 min-w-5 items-center justify-end">
+							<span
 								className={
 									showReplaceAction
-										? "shrink-0 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-										: "shrink-0"
+										? "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 px-1.5 text-[10px] leading-none tabular-nums text-muted-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+										: "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 px-1.5 text-[10px] leading-none tabular-nums text-muted-foreground"
 								}
 							>
-								{group.matches.length}
-							</Badge>
-							<div className="col-start-1 row-start-1 flex items-center justify-end">
+								{matchCount}
+							</span>
+							<div className="absolute inset-0 flex items-center justify-end">
 								<RowHoverActions actions={hoverActions} />
 							</div>
 						</div>

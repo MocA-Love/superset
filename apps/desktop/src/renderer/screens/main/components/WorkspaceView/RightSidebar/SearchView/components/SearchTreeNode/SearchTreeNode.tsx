@@ -50,6 +50,9 @@ export function SearchTreeNode({
 	onReplaceMatch,
 	onIgnoreMatch,
 }: SearchTreeNodeProps) {
+	const folderPath = node.type === "folder" ? node.path : null;
+	const isOpen = folderPath ? (openFolders[folderPath] ?? true) : false;
+
 	if (node.type === "file") {
 		return (
 			<div style={{ marginLeft: `${level * 12}px` }}>
@@ -74,8 +77,6 @@ export function SearchTreeNode({
 			</div>
 		);
 	}
-
-	const isOpen = openFolders[node.path] ?? true;
 	const FolderIcon = isOpen ? LuFolderOpen : LuFolder;
 
 	return (
@@ -100,7 +101,7 @@ export function SearchTreeNode({
 						<span className="min-w-0 flex-1 truncate text-foreground">
 							{node.name}
 						</span>
-						<span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+						<span className="shrink-0 text-[10px] leading-none tabular-nums text-muted-foreground">
 							{node.matchCount}
 						</span>
 					</button>

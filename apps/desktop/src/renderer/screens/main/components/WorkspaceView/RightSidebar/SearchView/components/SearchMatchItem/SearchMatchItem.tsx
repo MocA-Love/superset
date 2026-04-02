@@ -82,7 +82,7 @@ export function SearchMatchItem({
 					</div>
 				</div>
 			</button>
-			<div className="flex items-start pr-1 pt-1.5">
+			<div className="flex self-center items-center pr-1">
 				<RowHoverActions actions={hoverActions} />
 			</div>
 		</div>
