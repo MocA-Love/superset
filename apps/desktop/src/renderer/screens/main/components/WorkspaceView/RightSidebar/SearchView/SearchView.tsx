@@ -298,12 +298,13 @@ export function SearchView({
 	const totalMatches = visibleResults.length;
 	const totalFiles = groupedResults.length;
 	const hiddenMatches = searchResults.length - visibleResults.length;
-	const canReplace =
+	const canReplaceAll =
 		replaceOpen &&
 		hasQuery &&
 		validationError === null &&
 		!replaceMutation.isPending &&
 		!writeFileMutation.isPending;
+	const canInlineReplace = hasQuery && validationError === null;
 
 	const runReplace = useCallback(
 		async (paths?: string[]) => {
@@ -500,7 +501,7 @@ export function SearchView({
 				excludePattern={excludePattern}
 				isRegex={isRegex}
 				caseSensitive={caseSensitive}
-				canReplaceAll={canReplace && totalMatches > 0}
+				canReplaceAll={canReplaceAll && totalMatches > 0}
 				isReplacing={replaceMutation.isPending || writeFileMutation.isPending}
 				onQueryChange={setQuery}
 				onReplacementChange={setReplacement}
@@ -652,7 +653,7 @@ export function SearchView({
 									isReplacing={
 										replaceMutation.isPending || writeFileMutation.isPending
 									}
-									showReplaceAction={canReplace}
+									showReplaceAction={canInlineReplace}
 									openGroups={openGroups}
 									openFolders={openFolders}
 									onOpenGroupChange={handleOpenGroupChange}
@@ -683,7 +684,7 @@ export function SearchView({
 									isReplacing={
 										replaceMutation.isPending || writeFileMutation.isPending
 									}
-									showReplaceAction={canReplace}
+									showReplaceAction={canInlineReplace}
 									showParentPath
 									variant="list"
 									onOpenChange={(nextOpen) =>
