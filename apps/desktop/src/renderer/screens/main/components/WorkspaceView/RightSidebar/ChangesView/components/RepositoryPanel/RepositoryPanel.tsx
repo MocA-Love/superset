@@ -964,15 +964,14 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																		variant="ghost"
 																		size="sm"
 																		className="h-6 px-1.5 text-[10px]"
-																		onClick={() => removeUploadedAsset(asset.id)}
+																		onClick={() =>
+																			removeUploadedAsset(asset.id)
+																		}
 																	>
 																		<LuX className="size-3" />
 																	</Button>
 																</TooltipTrigger>
-																<TooltipContent
-																	side="top"
-																	showArrow={false}
-																>
+																<TooltipContent side="top" showArrow={false}>
 																	Remove attachment
 																</TooltipContent>
 															</Tooltip>
@@ -1014,7 +1013,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 								) : null}
 							</div>
 
-							<Collapsible open={pullRequestsOpen} onOpenChange={setPullRequestsOpen}>
+							<Collapsible
+								open={pullRequestsOpen}
+								onOpenChange={setPullRequestsOpen}
+							>
 								<CollapsibleTrigger className="flex w-full items-center justify-between gap-2">
 									<div className="flex items-center gap-1.5">
 										<LuChevronDown
@@ -1089,76 +1091,79 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 									</span>
 								</CollapsibleTrigger>
 								<CollapsibleContent className="mt-1.5 space-y-1.5">
-								{workspaceId && trackedWorkflowRuns.length > 0 ? (
-									<div className="space-y-1">
-										<p className="text-[11px] font-medium text-muted-foreground">
-											Recent Runs
-										</p>
-										{trackedWorkflowRuns.map((tracked) => (
-											<WorkflowRunCard
-												key={`${tracked.workflowId}-${tracked.dispatchedAt}`}
-												workspaceId={workspaceId}
-												tracked={tracked}
-												onOpenUrl={openUrl}
-												onRemove={(workflowId) => {
-													setTrackedWorkflowRuns((current) =>
-														current.filter(
-															(item) => item.workflowId !== workflowId,
-														),
-													);
-												}}
-											/>
-										))}
-									</div>
-								) : null}
-								<Input
-									value={workflowRef}
-									onChange={(event) => setWorkflowRef(event.target.value)}
-									placeholder="Branch or ref to run"
-								/>
-								{repositoryOverview.workflows.length === 0 ? (
-									<p className="text-xs text-muted-foreground">
-										No workflows available.
-									</p>
-								) : (
-									<div className="space-y-1">
-										{repositoryOverview.workflows.map((workflow) => (
-											<div
-												key={workflow.id}
-												className="flex items-center justify-between gap-2 rounded-sm border border-border/50 px-2 py-1.5"
-											>
-												<div className="min-w-0 flex-1">
-													<p className="truncate text-xs font-medium text-foreground">
-														{workflow.name}
-													</p>
-													<p className="truncate text-[11px] text-muted-foreground">
-														{workflow.path || workflow.state}
-													</p>
-												</div>
-												<Button
-													type="button"
-													variant="outline"
-													size="sm"
-													className="h-7 shrink-0 px-2 text-[11px]"
-													onClick={() => {
-														void handleRunWorkflow(workflow.id, workflow.name);
+									{workspaceId && trackedWorkflowRuns.length > 0 ? (
+										<div className="space-y-1">
+											<p className="text-[11px] font-medium text-muted-foreground">
+												Recent Runs
+											</p>
+											{trackedWorkflowRuns.map((tracked) => (
+												<WorkflowRunCard
+													key={`${tracked.workflowId}-${tracked.dispatchedAt}`}
+													workspaceId={workspaceId}
+													tracked={tracked}
+													onOpenUrl={openUrl}
+													onRemove={(workflowId) => {
+														setTrackedWorkflowRuns((current) =>
+															current.filter(
+																(item) => item.workflowId !== workflowId,
+															),
+														);
 													}}
-													disabled={
-														pendingWorkflowId === workflow.id ||
-														!workflowRef.trim()
-													}
+												/>
+											))}
+										</div>
+									) : null}
+									<Input
+										value={workflowRef}
+										onChange={(event) => setWorkflowRef(event.target.value)}
+										placeholder="Branch or ref to run"
+									/>
+									{repositoryOverview.workflows.length === 0 ? (
+										<p className="text-xs text-muted-foreground">
+											No workflows available.
+										</p>
+									) : (
+										<div className="space-y-1">
+											{repositoryOverview.workflows.map((workflow) => (
+												<div
+													key={workflow.id}
+													className="flex items-center justify-between gap-2 rounded-sm border border-border/50 px-2 py-1.5"
 												>
-													{pendingWorkflowId === workflow.id ? (
-														<LuLoaderCircle className="mr-1 size-3 animate-spin" />
-													) : (
-														<LuPlay className="mr-1 size-3" />
-													)}
-													Run
-												</Button>
-											</div>
-										))}
-									</div>
-								)}
+													<div className="min-w-0 flex-1">
+														<p className="truncate text-xs font-medium text-foreground">
+															{workflow.name}
+														</p>
+														<p className="truncate text-[11px] text-muted-foreground">
+															{workflow.path || workflow.state}
+														</p>
+													</div>
+													<Button
+														type="button"
+														variant="outline"
+														size="sm"
+														className="h-7 shrink-0 px-2 text-[11px]"
+														onClick={() => {
+															void handleRunWorkflow(
+																workflow.id,
+																workflow.name,
+															);
+														}}
+														disabled={
+															pendingWorkflowId === workflow.id ||
+															!workflowRef.trim()
+														}
+													>
+														{pendingWorkflowId === workflow.id ? (
+															<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+														) : (
+															<LuPlay className="mr-1 size-3" />
+														)}
+														Run
+													</Button>
+												</div>
+											))}
+										</div>
+									)}
 								</CollapsibleContent>
 							</Collapsible>
 						</>
