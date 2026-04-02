@@ -161,8 +161,9 @@
 		"diff": "^7.0.0",
 		"dnd-core": "^16.0.1",
 		"dockerfile-ast": "0.7.1",
-		"dockerfile-language-service": "0.16.1",
 		"dockerfile-language-server-nodejs": "^0.15.0",
+		"dockerfile-language-service": "0.16.1",
+		"dockerfile-utils": "0.16.3",
 		"dotenv": "^17.3.1",
 		"drizzle-orm": "0.45.1",
 		"electron-updater": "^6.7.3",
@@ -235,6 +236,7 @@
 		"vscode-json-languageservice": "^5.7.2",
 		"vscode-langservers-extracted": "^4.10.0",
 		"vscode-languageserver-textdocument": "^1.0.12",
+		"vscode-languageserver-types": "3.17.3",
 		"yaml-language-server": "^1.21.0",
 		"zod": "^4.3.5",
 		"zustand": "^5.0.8"
