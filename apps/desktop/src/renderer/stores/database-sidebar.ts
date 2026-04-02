@@ -281,6 +281,8 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							input.source === "workspace-config"
 								? input.usernameHint
 								: undefined,
+						// Always clear migration state on any update
+						_pendingConnectionString: undefined,
 					};
 
 					set((state) => ({

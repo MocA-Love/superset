@@ -60,7 +60,10 @@ import {
 	useHasWorkspaceFailed,
 	useIsWorkspaceInitializing,
 } from "renderer/stores/workspace-init";
-import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
+import {
+	normalizeComparablePath,
+	toAbsoluteWorkspacePath,
+} from "shared/absolute-paths";
 
 const EMPTY_HISTORY_STACK: string[] = [];
 
@@ -187,6 +190,24 @@ export function WorkspacePage({
 			workspace.worktreePath,
 			searchFile,
 		);
+
+		// Security: reject paths that resolve outside the workspace root to
+		// prevent arbitrary local file access via deep links.
+		const normalizedRoot = normalizeComparablePath(workspace.worktreePath);
+		const normalizedFile = normalizeComparablePath(filePath);
+		if (
+			normalizedFile !== normalizedRoot &&
+			!normalizedFile.startsWith(`${normalizedRoot}/`)
+		) {
+			navigate({
+				to: "/workspace/$workspaceId",
+				params: { workspaceId },
+				search: {},
+				replace: true,
+			});
+			return;
+		}
+
 		addFileViewerPane(workspaceId, {
 			filePath,
 			line: searchLine,

@@ -1790,23 +1790,38 @@ export function DatabasesView({
 					return;
 				}
 			} else {
-				const connectionStringId =
-					editingConnectionId && currentEditingConnection?.connectionStringId
+				// When editing an existing manual connection and the password field is
+				// blank, keep the existing connectionStringId and skip re-saving the
+				// credential store so we don't overwrite with a password-less DSN.
+				const isEditingWithoutPasswordChange =
+					Boolean(editingConnectionId) &&
+					Boolean(currentEditingConnection?.connectionStringId) &&
+					!useConnectionString &&
+					!nextPassword;
+
+				const connectionStringId = isEditingWithoutPasswordChange
+					? (currentEditingConnection?.connectionStringId ??
+						crypto.randomUUID())
+					: editingConnectionId && currentEditingConnection?.connectionStringId
 						? currentEditingConnection.connectionStringId
 						: crypto.randomUUID();
-				try {
-					await saveManualPostgresConnectionStringMutation.mutateAsync({
-						connectionId: connectionStringId,
-						connectionString,
-					});
-				} catch (error) {
-					setFormError(
-						error instanceof Error
-							? error.message
-							: "Failed to save connection string.",
-					);
-					return;
+
+				if (!isEditingWithoutPasswordChange) {
+					try {
+						await saveManualPostgresConnectionStringMutation.mutateAsync({
+							connectionId: connectionStringId,
+							connectionString,
+						});
+					} catch (error) {
+						setFormError(
+							error instanceof Error
+								? error.message
+								: "Failed to save connection string.",
+						);
+						return;
+					}
 				}
+
 				const parsedForStore = useConnectionString
 					? parsePostgresConnectionString(connectionString)
 					: null;
