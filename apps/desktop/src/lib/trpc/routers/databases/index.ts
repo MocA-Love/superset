@@ -8,9 +8,12 @@ import { Client } from "pg";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import {
+	deleteManualPostgresConnectionString,
 	discoverWorkspaceConfiguredDatabases,
+	getManualPostgresConnectionString,
 	postgresConnectionSourceSchema,
 	resolvePostgresConnectionStringFromSource,
+	saveManualPostgresConnectionString,
 	saveWorkspaceDatabaseCredentials,
 	updateWorkspaceDatabaseDefinition,
 } from "./workspace-config";
@@ -439,6 +442,51 @@ export const createDatabasesRouter = () => {
 					definition: input.definition,
 				});
 				return { definition };
+			}),
+
+		saveManualPostgresConnectionString: publicProcedure
+			.input(
+				z.object({
+					connectionId: z.string().min(1),
+					connectionString: z.string().min(1),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				await saveManualPostgresConnectionString(
+					input.connectionId,
+					input.connectionString,
+				);
+				return { ok: true };
+			}),
+
+		getManualPostgresConnectionString: publicProcedure
+			.input(
+				z.object({
+					connectionId: z.string().min(1),
+				}),
+			)
+			.query(async ({ input }) => {
+				const connectionString = await getManualPostgresConnectionString(
+					input.connectionId,
+				);
+				if (connectionString === null) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Manual Postgres connection string not found.",
+					});
+				}
+				return { connectionString };
+			}),
+
+		deleteManualPostgresConnectionString: publicProcedure
+			.input(
+				z.object({
+					connectionId: z.string().min(1),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				await deleteManualPostgresConnectionString(input.connectionId);
+				return { ok: true };
 			}),
 
 		inspectSqlite: publicProcedure

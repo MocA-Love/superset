@@ -14,6 +14,7 @@ import type { ParsedCell, RichTextPart } from "./parseWorkbook";
 import {
 	type DiffParsedCell,
 	type DiffParsedRow,
+	type DiffParsedSheet,
 	type DiffSegment,
 	useSpreadsheetDiff,
 } from "./useSpreadsheetDiff";
@@ -610,10 +611,10 @@ function getColumnLabel(index: number): string {
 	return label;
 }
 
-function getDiffRowIndices(sheet: {
-	originalRows: DiffParsedRow[];
-	modifiedRows: DiffParsedRow[];
-}): number[] {
+function getDiffRowIndices(sheet: DiffParsedSheet): number[] {
+	if (sheet.sheetStatus === "added" || sheet.sheetStatus === "removed") {
+		return [0];
+	}
 	const rowCount = Math.max(
 		sheet.originalRows.length,
 		sheet.modifiedRows.length,

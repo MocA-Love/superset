@@ -55,7 +55,7 @@ const workspaceDatabaseConfigSchema = z.object({
 export const postgresConnectionSourceSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("connectionString"),
-		connectionString: z.string().min(1),
+		connectionStringId: z.string().min(1),
 	}),
 	z.object({
 		kind: z.literal("workspaceConfig"),
@@ -124,7 +124,8 @@ function buildPostgresConnectionString(input: {
 			? `${encodeURIComponent(input.username)}:${encodeURIComponent(input.password)}`
 			: encodeURIComponent(input.username);
 	const query = input.ssl ? "?sslmode=require" : "";
-	return `postgres://${auth}@${input.host}:${input.port}/${input.database}${query}`;
+	const host = input.host.includes(":") ? `[${input.host}]` : input.host;
+	return `postgres://${auth}@${host}:${input.port}/${input.database}${query}`;
 }
 
 function getPostgresDatabaseName(
@@ -443,12 +444,94 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 	return nextDefinition;
 }
 
+const manualPostgresConnectionStoreSchema = z.object({
+	entries: z
+		.record(
+			z.string(),
+			z.object({
+				connectionString: z.string().min(1),
+				updatedAt: z.number().int().nonnegative(),
+			}),
+		)
+		.default({}),
+});
+
+const MANUAL_POSTGRES_CONNECTIONS_FILE = path.join(
+	SUPERSET_HOME_DIR,
+	"manual-postgres-connections.enc",
+);
+
+async function loadManualPostgresConnectionStore(): Promise<
+	z.infer<typeof manualPostgresConnectionStoreSchema>
+> {
+	try {
+		const decrypted = decrypt(await readFile(MANUAL_POSTGRES_CONNECTIONS_FILE));
+		return manualPostgresConnectionStoreSchema.parse(JSON.parse(decrypted));
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+			return { entries: {} };
+		}
+		throw error;
+	}
+}
+
+async function saveManualPostgresConnectionStore(
+	store: z.infer<typeof manualPostgresConnectionStoreSchema>,
+): Promise<void> {
+	await mkdir(SUPERSET_HOME_DIR, { recursive: true, mode: 0o700 });
+	await writeFile(
+		MANUAL_POSTGRES_CONNECTIONS_FILE,
+		encrypt(JSON.stringify(store)),
+		{ mode: SUPERSET_SENSITIVE_FILE_MODE },
+	);
+	await chmod(
+		MANUAL_POSTGRES_CONNECTIONS_FILE,
+		SUPERSET_SENSITIVE_FILE_MODE,
+	).catch(() => undefined);
+}
+
+export async function saveManualPostgresConnectionString(
+	connectionId: string,
+	connectionString: string,
+): Promise<void> {
+	const store = await loadManualPostgresConnectionStore();
+	store.entries[connectionId] = {
+		connectionString,
+		updatedAt: Date.now(),
+	};
+	await saveManualPostgresConnectionStore(store);
+}
+
+export async function getManualPostgresConnectionString(
+	connectionId: string,
+): Promise<string | null> {
+	const store = await loadManualPostgresConnectionStore();
+	return store.entries[connectionId]?.connectionString ?? null;
+}
+
+export async function deleteManualPostgresConnectionString(
+	connectionId: string,
+): Promise<void> {
+	const store = await loadManualPostgresConnectionStore();
+	delete store.entries[connectionId];
+	await saveManualPostgresConnectionStore(store);
+}
+
 export async function resolvePostgresConnectionStringFromSource(input: {
 	source: z.infer<typeof postgresConnectionSourceSchema>;
 }): Promise<string> {
 	const source = input.source;
 	if (source.kind === "connectionString") {
-		return source.connectionString;
+		const connectionString = await getManualPostgresConnectionString(
+			source.connectionStringId,
+		);
+		if (!connectionString) {
+			throw new TRPCError({
+				code: "NOT_FOUND",
+				message: "Manual Postgres connection string not found.",
+			});
+		}
+		return connectionString;
 	}
 
 	const { definitions } = await loadWorkspaceDatabaseDefinitions(

@@ -228,8 +228,9 @@ function buildPostgresConnectionString(input: {
 			: encodeURIComponent(input.username);
 	const query = input.ssl ? "?sslmode=require" : "";
 	const databaseName = input.database?.trim() || "postgres";
+	const host = input.host.includes(":") ? `[${input.host}]` : input.host;
 
-	return `postgres://${auth}@${input.host}:${input.port}/${databaseName}${query}`;
+	return `postgres://${auth}@${host}:${input.port}/${databaseName}${query}`;
 }
 
 function parsePostgresConnectionString(connectionString: string): {
@@ -632,10 +633,10 @@ function getPostgresConnectionInput(
 		};
 	}
 
-	if (connection.connectionString) {
+	if (connection.connectionStringId) {
 		return {
 			kind: "connectionString" as const,
-			connectionString: connection.connectionString,
+			connectionStringId: connection.connectionStringId,
 		};
 	}
 
@@ -906,6 +907,8 @@ export function DatabasesView({
 	const [isCellContextMenuOpen, setIsCellContextMenuOpen] = useState(false);
 	const [isSavingWorkspaceCredentials, setIsSavingWorkspaceCredentials] =
 		useState(false);
+	const [isResettingWorkspacePassword, setIsResettingWorkspacePassword] =
+		useState(false);
 	const [contextCell, setContextCell] = useState<ContextCellState | null>(null);
 	const [pendingEditRequest, setPendingEditRequest] =
 		useState<PendingEditRequest | null>(null);
@@ -949,6 +952,7 @@ export function DatabasesView({
 		setGroupInput(connection.group ?? "");
 		setFormError(null);
 		setShowPassword(false);
+		setIsResettingWorkspacePassword(false);
 
 		if (connection.dialect === "sqlite") {
 			setPathInput(connection.databasePath ?? "");
@@ -1058,7 +1062,7 @@ export function DatabasesView({
 		{
 			connection: activePostgresConnectionInput ?? {
 				kind: "connectionString",
-				connectionString: "",
+				connectionStringId: "",
 			},
 		},
 		{
@@ -1159,7 +1163,7 @@ export function DatabasesView({
 			{
 				connection: activePostgresConnectionInput ?? {
 					kind: "connectionString",
-					connectionString: "",
+					connectionStringId: "",
 				},
 				schema: selectedTable?.schema ?? "public",
 				tableName: selectedTable?.name ?? "",
@@ -1203,6 +1207,49 @@ export function DatabasesView({
 		electronTrpc.databases.saveWorkspaceDatabaseCredentials.useMutation();
 	const updateWorkspaceDatabaseDefinitionMutation =
 		electronTrpc.databases.updateWorkspaceDatabaseDefinition.useMutation();
+	const saveManualPostgresConnectionStringMutation =
+		electronTrpc.databases.saveManualPostgresConnectionString.useMutation();
+	const deleteManualPostgresConnectionStringMutation =
+		electronTrpc.databases.deleteManualPostgresConnectionString.useMutation();
+
+	// Migrate connections that have _pendingConnectionString to encrypted store
+	useEffect(() => {
+		const pendingConnections = connections.filter(
+			(c) => c._pendingConnectionString && c.connectionStringId,
+		);
+		if (pendingConnections.length === 0) return;
+
+		void (async () => {
+			for (const connection of pendingConnections) {
+				if (
+					!connection.connectionStringId ||
+					!connection._pendingConnectionString
+				) {
+					continue;
+				}
+				try {
+					await saveManualPostgresConnectionStringMutation.mutateAsync({
+						connectionId: connection.connectionStringId,
+						connectionString: connection._pendingConnectionString,
+					});
+					updateConnection({
+						id: connection.id,
+						label: connection.label,
+						group: connection.group,
+						dialect: "postgres",
+						source: "manual",
+						connectionStringId: connection.connectionStringId,
+					});
+				} catch {
+					// silently ignore migration errors
+				}
+			}
+		})();
+	}, [
+		connections,
+		saveManualPostgresConnectionStringMutation.mutateAsync,
+		updateConnection,
+	]);
 
 	const discoveredFiles = useMemo(() => {
 		const connectedPaths = new Set(
@@ -1696,6 +1743,14 @@ export function DatabasesView({
 							username: nextUsernameValue,
 						},
 					});
+					if (isResettingWorkspacePassword && nextUsername.trim()) {
+						await saveWorkspaceDatabaseCredentialsMutation.mutateAsync({
+							worktreePath: currentEditingConnection.workspacePath,
+							definitionId: currentEditingConnection.workspaceDefinitionId,
+							username: nextUsername.trim(),
+							password: nextPassword,
+						});
+					}
 					updateConnection({
 						id: editingConnectionId,
 						source: "workspace-config",
@@ -1726,11 +1781,28 @@ export function DatabasesView({
 					return;
 				}
 			} else {
+				const connectionStringId =
+					editingConnectionId && currentEditingConnection?.connectionStringId
+						? currentEditingConnection.connectionStringId
+						: crypto.randomUUID();
+				try {
+					await saveManualPostgresConnectionStringMutation.mutateAsync({
+						connectionId: connectionStringId,
+						connectionString,
+					});
+				} catch (error) {
+					setFormError(
+						error instanceof Error
+							? error.message
+							: "Failed to save connection string.",
+					);
+					return;
+				}
 				const nextConnection = {
 					label: nextLabelValue || guessPostgresLabel(connectionString),
 					group: nextGroupValue,
 					dialect: "postgres" as const,
-					connectionString,
+					connectionStringId,
 				};
 
 				if (editingConnectionId) {
@@ -1940,7 +2012,7 @@ export function DatabasesView({
 			const detail = await trpcUtils.databases.getPostgresRowDetail.fetch({
 				connection: getPostgresConnectionInput(activeConnection) ?? {
 					kind: "connectionString",
-					connectionString: "",
+					connectionStringId: "",
 				},
 				schema: selectedTable.schema ?? "public",
 				tableName: selectedTable.name,
@@ -2565,7 +2637,8 @@ export function DatabasesView({
 															placeholder="postgres"
 														/>
 													</div>
-													{isEditingWorkspaceConfig ? (
+													{isEditingWorkspaceConfig &&
+													!isResettingWorkspacePassword ? (
 														<div className="flex items-end">
 															<div className="bg-muted/40 flex w-full items-center justify-between rounded-md border px-3 py-2">
 																<div>
@@ -2576,7 +2649,19 @@ export function DatabasesView({
 																		保存済みのローカル資格情報をそのまま使います
 																	</p>
 																</div>
-																<Badge variant="outline">保持</Badge>
+																<div className="flex items-center gap-2">
+																	<Badge variant="outline">保持</Badge>
+																	<Button
+																		type="button"
+																		size="sm"
+																		variant="outline"
+																		onClick={() =>
+																			setIsResettingWorkspacePassword(true)
+																		}
+																	>
+																		変更
+																	</Button>
+																</div>
 															</div>
 														</div>
 													) : (
@@ -2807,7 +2892,16 @@ export function DatabasesView({
 												setIsAddConnectionOpen(true);
 											}}
 											onSelect={() => handleSelectConnectionId(connection.id)}
-											onRemove={() => removeConnection(connection.id)}
+											onRemove={async () => {
+												if (connection.connectionStringId) {
+													await deleteManualPostgresConnectionStringMutation
+														.mutateAsync({
+															connectionId: connection.connectionStringId,
+														})
+														.catch(() => undefined);
+												}
+												removeConnection(connection.id);
+											}}
 										/>
 									))
 								) : (
