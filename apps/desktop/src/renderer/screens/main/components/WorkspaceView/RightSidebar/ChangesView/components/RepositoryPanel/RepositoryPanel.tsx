@@ -308,6 +308,8 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((state) => state.addBrowserTab);
 	const [open, setOpen] = useState(false);
+	const [pullRequestsOpen, setPullRequestsOpen] = useState(true);
+	const [workflowsOpen, setWorkflowsOpen] = useState(true);
 	const [issueComposerOpen, setIssueComposerOpen] = useState(false);
 	const [issueTitle, setIssueTitle] = useState("");
 	const [issueBody, setIssueBody] = useState("");
@@ -967,7 +969,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																		<LuX className="size-3" />
 																	</Button>
 																</TooltipTrigger>
-																<TooltipContent side="top" showArrow={false}>
+																<TooltipContent
+																	side="top"
+																	showArrow={false}
+																>
 																	Remove attachment
 																</TooltipContent>
 															</Tooltip>
@@ -1009,62 +1014,81 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 								) : null}
 							</div>
 
-							<div className="space-y-1.5">
-								<div className="flex items-center justify-between gap-2">
-									<p className="text-xs font-medium text-foreground">
-										Open Pull Requests
-									</p>
+							<Collapsible open={pullRequestsOpen} onOpenChange={setPullRequestsOpen}>
+								<CollapsibleTrigger className="flex w-full items-center justify-between gap-2">
+									<div className="flex items-center gap-1.5">
+										<LuChevronDown
+											className={cn(
+												"size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+												!pullRequestsOpen && "-rotate-90",
+											)}
+										/>
+										<p className="text-xs font-medium text-foreground">
+											Open Pull Requests
+										</p>
+									</div>
 									<span className="text-[11px] text-muted-foreground">
 										{repositoryOverview.pullRequests.length}
 									</span>
-								</div>
-								{repositoryOverview.pullRequests.length === 0 ? (
-									<p className="text-xs text-muted-foreground">
-										No open pull requests.
-									</p>
-								) : (
-									<div className="space-y-1">
-										{repositoryOverview.pullRequests.map((pullRequest) => (
-											<button
-												key={pullRequest.number}
-												type="button"
-												className="flex w-full items-start justify-between gap-2 rounded-sm border border-border/50 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
-												onClick={() => openUrl(pullRequest.url)}
-											>
-												<div className="min-w-0 flex-1">
-													<p className="truncate text-xs font-medium text-foreground">
-														#{pullRequest.number} {pullRequest.title}
-													</p>
-													<p className="truncate text-[11px] text-muted-foreground">
-														{pullRequest.headRefName}
-														{pullRequest.authorLogin
-															? ` by ${pullRequest.authorLogin}`
-															: ""}
-													</p>
-												</div>
-												<div className="shrink-0 text-right">
-													<p className="text-[10px] uppercase text-muted-foreground">
-														{pullRequest.state}
-													</p>
-													<p className="text-[10px] text-muted-foreground">
-														{formatRepositoryTimestamp(pullRequest.updatedAt)}
-													</p>
-												</div>
-											</button>
-										))}
-									</div>
-								)}
-							</div>
+								</CollapsibleTrigger>
+								<CollapsibleContent className="mt-1.5 space-y-1.5">
+									{repositoryOverview.pullRequests.length === 0 ? (
+										<p className="text-xs text-muted-foreground">
+											No open pull requests.
+										</p>
+									) : (
+										<div className="space-y-1">
+											{repositoryOverview.pullRequests.map((pullRequest) => (
+												<button
+													key={pullRequest.number}
+													type="button"
+													className="flex w-full items-start justify-between gap-2 rounded-sm border border-border/50 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+													onClick={() => openUrl(pullRequest.url)}
+												>
+													<div className="min-w-0 flex-1">
+														<p className="truncate text-xs font-medium text-foreground">
+															#{pullRequest.number} {pullRequest.title}
+														</p>
+														<p className="truncate text-[11px] text-muted-foreground">
+															{pullRequest.headRefName}
+															{pullRequest.authorLogin
+																? ` by ${pullRequest.authorLogin}`
+																: ""}
+														</p>
+													</div>
+													<div className="shrink-0 text-right">
+														<p className="text-[10px] uppercase text-muted-foreground">
+															{pullRequest.state}
+														</p>
+														<p className="text-[10px] text-muted-foreground">
+															{formatRepositoryTimestamp(pullRequest.updatedAt)}
+														</p>
+													</div>
+												</button>
+											))}
+										</div>
+									)}
+								</CollapsibleContent>
+							</Collapsible>
 
-							<div className="space-y-1.5">
-								<div className="flex items-center justify-between gap-2">
-									<p className="text-xs font-medium text-foreground">
-										Workflows
-									</p>
+							<Collapsible open={workflowsOpen} onOpenChange={setWorkflowsOpen}>
+								<CollapsibleTrigger className="flex w-full items-center justify-between gap-2">
+									<div className="flex items-center gap-1.5">
+										<LuChevronDown
+											className={cn(
+												"size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+												!workflowsOpen && "-rotate-90",
+											)}
+										/>
+										<p className="text-xs font-medium text-foreground">
+											Workflows
+										</p>
+									</div>
 									<span className="text-[11px] text-muted-foreground">
 										{repositoryOverview.workflows.length}
 									</span>
-								</div>
+								</CollapsibleTrigger>
+								<CollapsibleContent className="mt-1.5 space-y-1.5">
 								{workspaceId && trackedWorkflowRuns.length > 0 ? (
 									<div className="space-y-1">
 										<p className="text-[11px] font-medium text-muted-foreground">
@@ -1135,7 +1159,8 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 										))}
 									</div>
 								)}
-							</div>
+								</CollapsibleContent>
+							</Collapsible>
 						</>
 					)}
 				</div>
