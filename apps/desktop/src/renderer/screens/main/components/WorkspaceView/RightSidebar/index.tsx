@@ -1,3 +1,18 @@
+import {
+	DndContext,
+	type DragEndEvent,
+	KeyboardSensor,
+	MouseSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	horizontalListSortingStrategy,
+	SortableContext,
+	sortableKeyboardCoordinates,
+	useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@superset/ui/button";
 import {
 	DropdownMenu,
@@ -54,6 +69,36 @@ interface SidebarTabDefinition {
 	hasAlert?: boolean;
 }
 
+const RIGHT_SIDEBAR_TAB_METADATA: Record<
+	RightSidebarTab,
+	Omit<SidebarTabDefinition, "hasAlert" | "id">
+> = {
+	[RightSidebarTab.Changes]: {
+		label: "Git",
+		icon: LuGitCompareArrows,
+	},
+	[RightSidebarTab.Docker]: {
+		label: "Docker",
+		icon: LuBox,
+	},
+	[RightSidebarTab.Files]: {
+		label: "Files",
+		icon: LuFile,
+	},
+	[RightSidebarTab.Search]: {
+		label: "Search",
+		icon: LuSearch,
+	},
+	[RightSidebarTab.Problems]: {
+		label: "Problems",
+		icon: LuCircleAlert,
+	},
+	[RightSidebarTab.Databases]: {
+		label: "Databases",
+		icon: LuDatabase,
+	},
+};
+
 function TabButton({
 	isActive,
 	onClick,
@@ -65,6 +110,7 @@ function TabButton({
 	disableTooltip = false,
 	tabIndex,
 	ariaHidden,
+	buttonProps,
 }: {
 	isActive: boolean;
 	onClick: () => void;
@@ -76,14 +122,21 @@ function TabButton({
 	disableTooltip?: boolean;
 	tabIndex?: number;
 	ariaHidden?: boolean;
+	buttonProps?: React.ComponentPropsWithoutRef<"button">;
 }) {
 	const button = (
 		<button
+			{...buttonProps}
 			ref={buttonRef}
 			type="button"
-			onClick={onClick}
-			tabIndex={tabIndex}
-			aria-hidden={ariaHidden}
+			onClick={(event) => {
+				buttonProps?.onClick?.(event);
+				if (!event.defaultPrevented) {
+					onClick();
+				}
+			}}
+			tabIndex={buttonProps?.tabIndex ?? tabIndex}
+			aria-hidden={buttonProps?.["aria-hidden"] ?? ariaHidden}
 			className={getSidebarHeaderTabButtonClassName({
 				isActive,
 				compact,
@@ -117,6 +170,59 @@ function TabButton({
 	return button;
 }
 
+function SortableTabButton({
+	tab,
+	isActive,
+	onClick,
+	compact,
+}: {
+	tab: SidebarTabDefinition;
+	isActive: boolean;
+	onClick: () => void;
+	compact?: boolean;
+}) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({
+		id: tab.id,
+	});
+
+	const style = useMemo(
+		() => ({
+			transform: CSS.Transform.toString(transform),
+			transition,
+		}),
+		[transform, transition],
+	);
+	const Icon = tab.icon;
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={style}
+			className={isDragging ? "shrink-0 opacity-45" : "shrink-0"}
+		>
+			<TabButton
+				isActive={isActive}
+				onClick={onClick}
+				icon={<Icon className="size-3.5" />}
+				label={tab.label}
+				compact={compact}
+				hasAlert={tab.hasAlert}
+				buttonProps={{
+					...attributes,
+					...listeners,
+				}}
+			/>
+		</div>
+	);
+}
+
 export function RightSidebar() {
 	const workspaceId = useWorkspaceId();
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
@@ -126,7 +232,9 @@ export function RightSidebar() {
 	const worktreePath = workspace?.worktreePath;
 	const currentMode = useSidebarStore((s) => s.currentMode);
 	const rightSidebarTab = useSidebarStore((s) => s.rightSidebarTab);
+	const rightSidebarTabOrder = useSidebarStore((s) => s.rightSidebarTabOrder);
 	const setRightSidebarTab = useSidebarStore((s) => s.setRightSidebarTab);
+	const moveRightSidebarTab = useSidebarStore((s) => s.moveRightSidebarTab);
 	const toggleSidebar = useSidebarStore((s) => s.toggleSidebar);
 	const setMode = useSidebarStore((s) => s.setMode);
 	const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
@@ -159,50 +267,32 @@ export function RightSidebar() {
 		);
 	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
 	const showDockerTab = (dockerComposeFiles?.composeFiles.length ?? 0) > 0;
+	const tabSensors = useSensors(
+		useSensor(MouseSensor, {
+			activationConstraint: { distance: 8 },
+		}),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		}),
+	);
 	const sidebarTabs = useMemo<SidebarTabDefinition[]>(() => {
-		const tabs: SidebarTabDefinition[] = [];
-
-		if (showChangesTab) {
-			tabs.push({
-				id: RightSidebarTab.Changes,
-				label: "Git",
-				icon: LuGitCompareArrows,
-			});
-		}
-
-		tabs.push(
-			{
-				id: RightSidebarTab.Docker,
-				label: "Docker",
-				icon: LuBox,
-			},
-			{
-				id: RightSidebarTab.Files,
-				label: "Files",
-				icon: LuFile,
-			},
-			{
-				id: RightSidebarTab.Search,
-				label: "Search",
-				icon: LuSearch,
-			},
-			{
-				id: RightSidebarTab.Problems,
-				label: "Problems",
-				icon: LuCircleAlert,
-				hasAlert: hasProblemErrors,
-			},
-			{
-				id: RightSidebarTab.Databases,
-				label: "Databases",
-				icon: LuDatabase,
-			},
-		);
-
-		return showDockerTab
-			? tabs
-			: tabs.filter((tab) => tab.id !== RightSidebarTab.Docker);
-	}, [hasProblemErrors, showChangesTab, showDockerTab]);
+		return rightSidebarTabOrder
+			.filter((tabId) => {
+				if (tabId === RightSidebarTab.Changes) {
+					return showChangesTab;
+				}
+				if (tabId === RightSidebarTab.Docker) {
+					return showDockerTab;
+				}
+				return true;
+			})
+			.map((tabId) => ({
+				id: tabId,
+				...RIGHT_SIDEBAR_TAB_METADATA[tabId],
+				hasAlert:
+					tabId === RightSidebarTab.Problems ? hasProblemErrors : undefined,
+			}));
+	}, [hasProblemErrors, rightSidebarTabOrder, showChangesTab, showDockerTab]);
 
 	useEffect(() => {
 		if (sidebarTabs.some((tab) => tab.id === rightSidebarTab)) {
@@ -214,6 +304,19 @@ export function RightSidebar() {
 			setRightSidebarTab(fallbackTabId);
 		}
 	}, [rightSidebarTab, setRightSidebarTab, sidebarTabs]);
+	const handleTabDragEnd = useCallback(
+		({ active, over }: DragEndEvent) => {
+			if (!over || active.id === over.id) {
+				return;
+			}
+
+			moveRightSidebarTab(
+				active.id as RightSidebarTab,
+				over.id as RightSidebarTab,
+			);
+		},
+		[moveRightSidebarTab],
+	);
 
 	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
 		{ workspaceId: workspaceId ?? "" },
@@ -415,26 +518,27 @@ export function RightSidebar() {
 	return (
 		<aside className="h-full flex flex-col overflow-hidden">
 			<div className="relative flex items-center bg-background shrink-0 h-10 border-b">
-				<div
-					ref={tabsViewportRef}
-					className="flex min-w-0 flex-1 items-center overflow-hidden"
-				>
-					{visibleTabs.map((tab) => {
-						const Icon = tab.icon;
-
-						return (
-							<TabButton
-								key={tab.id}
-								isActive={rightSidebarTab === tab.id}
-								onClick={() => setRightSidebarTab(tab.id)}
-								icon={<Icon className="size-3.5" />}
-								label={tab.label}
-								compact={compactTabs}
-								hasAlert={tab.hasAlert}
-							/>
-						);
-					})}
-				</div>
+				<DndContext sensors={tabSensors} onDragEnd={handleTabDragEnd}>
+					<SortableContext
+						items={visibleTabs.map((tab) => tab.id)}
+						strategy={horizontalListSortingStrategy}
+					>
+						<div
+							ref={tabsViewportRef}
+							className="flex min-w-0 flex-1 items-center overflow-hidden"
+						>
+							{visibleTabs.map((tab) => (
+								<SortableTabButton
+									key={tab.id}
+									tab={tab}
+									isActive={rightSidebarTab === tab.id}
+									onClick={() => setRightSidebarTab(tab.id)}
+									compact={compactTabs}
+								/>
+							))}
+						</div>
+					</SortableContext>
+				</DndContext>
 				<div className="flex shrink-0 items-center h-10 pr-2 gap-0.5">
 					{hiddenTabs.length > 0 ? (
 						<DropdownMenu>
