@@ -1,12 +1,14 @@
 import { Badge } from "@superset/ui/badge";
 import { Button } from "@superset/ui/button";
-import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronsDownUp, LuRefreshCw, LuX } from "react-icons/lu";
+import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { buildSupersetOpenLink } from "renderer/lib/superset-open-links";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useSearchDialogStore } from "renderer/stores/search-dialog-state";
@@ -130,14 +132,17 @@ function buildSearchTree(groups: SearchResultGroup[]): SearchTreeNodeType[] {
 		nodes: Record<string, SearchTreeNodeType | SearchTreeFolderNodeInternal>,
 	): SearchTreeNodeType[] {
 		return Object.values(nodes)
-			.map((node) =>
-				node.type === "folder"
-					? {
-							...node,
-							children: toArray(node.children),
-						}
-					: node,
-			)
+			.map((node) => {
+				if (node.type !== "folder") {
+					return node;
+				}
+
+				const folderNode = node as SearchTreeFolderNodeInternal;
+				return {
+					...folderNode,
+					children: toArray(folderNode.children),
+				};
+			})
 			.sort((left, right) => {
 				if (left.type !== right.type) {
 					return left.type === "folder" ? -1 : 1;
@@ -177,7 +182,9 @@ export function SearchView({
 }) {
 	const workspaceId = useWorkspaceId();
 	const utils = electronTrpc.useUtils();
+	const { copyToClipboard } = useCopyToClipboard();
 	const searchInputRef = useRef<HTMLInputElement>(null);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [query, setQuery] = useState("");
 	const [replacement, setReplacement] = useState("");
 	const [replaceOpen, setReplaceOpen] = useState(false);
@@ -204,6 +211,26 @@ export function SearchView({
 	);
 	const replaceMutation = electronTrpc.filesystem.replaceContent.useMutation();
 	const writeFileMutation = electronTrpc.filesystem.writeFile.useMutation();
+	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+		{ id: workspaceId ?? "" },
+		{ enabled: !!workspaceId },
+	);
+	const projectId = workspace?.projectId ?? workspace?.project?.id;
+	const { data: project } = electronTrpc.projects.get.useQuery(
+		{ id: projectId ?? "" },
+		{ enabled: !!projectId },
+	);
+	const supersetLinkProject = useMemo(
+		() =>
+			project
+				? {
+						githubOwner: project.githubOwner ?? null,
+						githubRepoName: null,
+						mainRepoPath: project.mainRepoPath,
+					}
+				: null,
+		[project],
+	);
 
 	const { searchResults, isFetching, hasQuery, validationError } =
 		useContentSearch({
@@ -233,6 +260,68 @@ export function SearchView({
 		[treeResults],
 	);
 	const searchResultResetKey = `${query}\u0000${includePattern}\u0000${excludePattern}\u0000${isRegex}\u0000${caseSensitive}`;
+
+	const copySupersetLink = useCallback(
+		({
+			filePath,
+			line,
+			column,
+		}: {
+			filePath: string;
+			line?: number;
+			column?: number;
+		}) => {
+			if (!supersetLinkProject) {
+				toast.error("Superset link is unavailable", {
+					description: "Project metadata is still loading.",
+				});
+				return;
+			}
+
+			const link = buildSupersetOpenLink({
+				project: supersetLinkProject,
+				branch: workspace?.branch,
+				filePath,
+				line,
+				column,
+			});
+
+			if (!link) {
+				toast.error("Failed to build Superset link", {
+					description: "Repository metadata is incomplete.",
+				});
+				return;
+			}
+
+			void copyToClipboard(link)
+				.then(() => {
+					toast.success("Superset link copied");
+				})
+				.catch((error) => {
+					console.error("[superset-link] Failed to copy link:", error);
+					toast.error("Failed to copy Superset link", {
+						description: error instanceof Error ? error.message : undefined,
+					});
+				});
+		},
+		[copyToClipboard, supersetLinkProject, workspace?.branch],
+	);
+	const handleCopyFileLink = useCallback(
+		(group: SearchResultGroup) => {
+			void copySupersetLink({ filePath: group.relativePath });
+		},
+		[copySupersetLink],
+	);
+	const handleCopyMatchLink = useCallback(
+		(lineMatch: SearchLineResult) => {
+			void copySupersetLink({
+				filePath: lineMatch.relativePath,
+				line: lineMatch.line,
+				column: lineMatch.matches[0]?.column ?? 1,
+			});
+		},
+		[copySupersetLink],
+	);
 
 	useEffect(() => {
 		if (!isActive) {
@@ -462,6 +551,15 @@ export function SearchView({
 		},
 		[],
 	);
+	const handleOpenFolderChange = useCallback(
+		(path: string, nextOpen: boolean) => {
+			setOpenFolders((current) => ({
+				...current,
+				[path]: nextOpen,
+			}));
+		},
+		[],
+	);
 	const handleIgnoreLine = useCallback((lineMatch: SearchLineResult) => {
 		setIgnoredMatchIds((current) => ({
 			...current,
@@ -476,6 +574,17 @@ export function SearchView({
 		(folderPaths.length > 0 || groupedResults.length > 0) &&
 		folderPaths.every((folderPath) => openFolders[folderPath] ?? true) &&
 		groupedResults.every((group) => openGroups[group.absolutePath] ?? true);
+
+	const listItems = useMemo(
+		() => (resultViewMode === "tree" ? treeResults : groupedResults),
+		[resultViewMode, treeResults, groupedResults],
+	);
+	const virtualizer = useVirtualizer({
+		count: listItems.length,
+		getScrollElement: () => scrollContainerRef.current,
+		estimateSize: () => 28,
+		overscan: 10,
+	});
 	const handleToggleExpandAll = useCallback(() => {
 		const nextOpen = !areAllGroupsExpanded;
 		setOpenGroups(
@@ -626,8 +735,8 @@ export function SearchView({
 				</div>
 			) : null}
 
-			<ScrollArea className="flex-1 min-h-0">
-				<div className="space-y-2 p-2">
+			<div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto">
+				<div className="p-2">
 					{!hasQuery ? (
 						<div className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
 							Enter a search query to find matches across the workspace.
@@ -642,66 +751,101 @@ export function SearchView({
 						</div>
 					) : null}
 
-					{resultViewMode === "tree"
-						? treeResults.map((node) => (
-								<SearchTreeNode
-									key={node.id}
-									node={node}
-									query={query}
-									isRegex={isRegex}
-									caseSensitive={caseSensitive}
-									isReplacing={
-										replaceMutation.isPending || writeFileMutation.isPending
-									}
-									showReplaceAction={canInlineReplace}
-									openGroups={openGroups}
-									openFolders={openFolders}
-									onOpenGroupChange={handleOpenGroupChange}
-									onOpenFolderChange={(path, nextOpen) => {
-										setOpenFolders((current) => ({
-											...current,
-											[path]: nextOpen,
-										}));
-									}}
-									onOpenMatch={onOpenFileAtLine}
-									onReplaceInFile={(absolutePath) => {
-										void runReplace([absolutePath]);
-									}}
-									onReplaceMatch={(match) => {
-										void replaceLineMatch(match);
-									}}
-									onIgnoreMatch={handleIgnoreLine}
-								/>
-							))
-						: groupedResults.map((group) => (
-								<SearchFileGroup
-									key={group.absolutePath}
-									group={group}
-									isOpen={openGroups[group.absolutePath] ?? true}
-									query={query}
-									isRegex={isRegex}
-									caseSensitive={caseSensitive}
-									isReplacing={
-										replaceMutation.isPending || writeFileMutation.isPending
-									}
-									showReplaceAction={canInlineReplace}
-									showParentPath
-									variant="list"
-									onOpenChange={(nextOpen) =>
-										handleOpenGroupChange(group.absolutePath, nextOpen)
-									}
-									onOpenMatch={onOpenFileAtLine}
-									onReplaceInFile={(absolutePath) => {
-										void runReplace([absolutePath]);
-									}}
-									onReplaceMatch={(match) => {
-										void replaceLineMatch(match);
-									}}
-									onIgnoreMatch={handleIgnoreLine}
-								/>
-							))}
+					{listItems.length > 0 ? (
+						<div
+							style={{
+								height: `${virtualizer.getTotalSize()}px`,
+								position: "relative",
+							}}
+						>
+							{virtualizer.getVirtualItems().map((virtualItem) => {
+								const item = listItems[virtualItem.index];
+								if (!item) return null;
+								return (
+									<div
+										key={virtualItem.key}
+										data-index={virtualItem.index}
+										ref={virtualizer.measureElement}
+										style={{
+											position: "absolute",
+											top: 0,
+											left: 0,
+											width: "100%",
+											transform: `translateY(${virtualItem.start}px)`,
+										}}
+										className="pb-2"
+									>
+										{resultViewMode === "tree" ? (
+											<SearchTreeNode
+												node={item as (typeof treeResults)[number]}
+												query={query}
+												isRegex={isRegex}
+												caseSensitive={caseSensitive}
+												isReplacing={
+													replaceMutation.isPending ||
+													writeFileMutation.isPending
+												}
+												showReplaceAction={canInlineReplace}
+												openGroups={openGroups}
+												openFolders={openFolders}
+												onOpenGroupChange={handleOpenGroupChange}
+												onOpenFolderChange={handleOpenFolderChange}
+												onOpenMatch={onOpenFileAtLine}
+												onCopyFileLink={handleCopyFileLink}
+												onCopyMatchLink={handleCopyMatchLink}
+												onReplaceInFile={(absolutePath) => {
+													void runReplace([absolutePath]);
+												}}
+												onReplaceMatch={(match) => {
+													void replaceLineMatch(match);
+												}}
+												onIgnoreMatch={handleIgnoreLine}
+											/>
+										) : (
+											<SearchFileGroup
+												group={item as (typeof groupedResults)[number]}
+												isOpen={
+													openGroups[
+														(item as (typeof groupedResults)[number])
+															.absolutePath
+													] ?? true
+												}
+												query={query}
+												isRegex={isRegex}
+												caseSensitive={caseSensitive}
+												isReplacing={
+													replaceMutation.isPending ||
+													writeFileMutation.isPending
+												}
+												showReplaceAction={canInlineReplace}
+												showParentPath
+												variant="list"
+												onOpenChange={(nextOpen) =>
+													handleOpenGroupChange(
+														(item as (typeof groupedResults)[number])
+															.absolutePath,
+														nextOpen,
+													)
+												}
+												onOpenMatch={onOpenFileAtLine}
+												onCopyFileLink={handleCopyFileLink}
+												onCopyMatchLink={handleCopyMatchLink}
+												onReplaceInFile={(absolutePath) => {
+													void runReplace([absolutePath]);
+												}}
+												onReplaceMatch={(match) => {
+													void replaceLineMatch(match);
+												}}
+												onIgnoreMatch={handleIgnoreLine}
+											/>
+										)}
+									</div>
+								);
+							})}
+						</div>
+					) : null}
 				</div>
-			</ScrollArea>
+			</div>
 		</div>
 	);
 }

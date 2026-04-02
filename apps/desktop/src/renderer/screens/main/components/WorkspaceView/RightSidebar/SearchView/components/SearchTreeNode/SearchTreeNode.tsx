@@ -3,6 +3,7 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@superset/ui/collapsible";
+import { memo } from "react";
 import {
 	LuChevronDown,
 	LuChevronRight,
@@ -11,6 +12,7 @@ import {
 } from "react-icons/lu";
 import type {
 	SearchLineResult,
+	SearchResultGroup,
 	SearchTreeNode as SearchTreeNodeType,
 } from "../../types";
 import { SearchFileGroup } from "../SearchFileGroup";
@@ -28,12 +30,14 @@ interface SearchTreeNodeProps {
 	onOpenGroupChange: (path: string, open: boolean) => void;
 	onOpenFolderChange: (path: string, open: boolean) => void;
 	onOpenMatch: (absolutePath: string, line: number, column: number) => void;
+	onCopyFileLink: (group: SearchResultGroup) => void;
+	onCopyMatchLink: (lineMatch: SearchLineResult) => void;
 	onReplaceInFile: (absolutePath: string) => void;
 	onReplaceMatch: (lineMatch: SearchLineResult) => void;
 	onIgnoreMatch: (lineMatch: SearchLineResult) => void;
 }
 
-export function SearchTreeNode({
+export const SearchTreeNode = memo(function SearchTreeNode({
 	node,
 	level = 0,
 	query,
@@ -46,6 +50,8 @@ export function SearchTreeNode({
 	onOpenGroupChange,
 	onOpenFolderChange,
 	onOpenMatch,
+	onCopyFileLink,
+	onCopyMatchLink,
 	onReplaceInFile,
 	onReplaceMatch,
 	onIgnoreMatch,
@@ -70,6 +76,8 @@ export function SearchTreeNode({
 						onOpenGroupChange(node.group.absolutePath, nextOpen)
 					}
 					onOpenMatch={onOpenMatch}
+					onCopyFileLink={onCopyFileLink}
+					onCopyMatchLink={onCopyMatchLink}
 					onReplaceInFile={onReplaceInFile}
 					onReplaceMatch={onReplaceMatch}
 					onIgnoreMatch={onIgnoreMatch}
@@ -122,6 +130,8 @@ export function SearchTreeNode({
 							onOpenGroupChange={onOpenGroupChange}
 							onOpenFolderChange={onOpenFolderChange}
 							onOpenMatch={onOpenMatch}
+							onCopyFileLink={onCopyFileLink}
+							onCopyMatchLink={onCopyMatchLink}
 							onReplaceInFile={onReplaceInFile}
 							onReplaceMatch={onReplaceMatch}
 							onIgnoreMatch={onIgnoreMatch}
@@ -131,4 +141,4 @@ export function SearchTreeNode({
 			</div>
 		</Collapsible>
 	);
-}
+});

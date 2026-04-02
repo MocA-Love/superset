@@ -1,5 +1,6 @@
 import { cn } from "@superset/ui/utils";
-import { LuEyeOff, LuReplace } from "react-icons/lu";
+import { memo, useMemo } from "react";
+import { LuEyeOff, LuLink, LuReplace } from "react-icons/lu";
 import type { RowHoverAction } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import { RowHoverActions } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import type { SearchLineResult } from "../../types";
@@ -13,11 +14,12 @@ interface SearchMatchItemProps {
 	isReplaceEnabled: boolean;
 	variant?: "default" | "tree" | "list";
 	onOpen: (absolutePath: string, line: number, column: number) => void;
+	onCopyLink: (lineMatch: SearchLineResult) => void;
 	onReplace: (lineMatch: SearchLineResult) => void;
 	onIgnore: (lineMatch: SearchLineResult) => void;
 }
 
-export function SearchMatchItem({
+export const SearchMatchItem = memo(function SearchMatchItem({
 	lineMatch,
 	query,
 	isRegex,
@@ -25,10 +27,16 @@ export function SearchMatchItem({
 	isReplaceEnabled,
 	variant = "default",
 	onOpen,
+	onCopyLink,
 	onReplace,
 	onIgnore,
 }: SearchMatchItemProps) {
 	const primaryMatch = lineMatch.matches[0];
+	const highlightedText = useMemo(
+		() =>
+			highlightSearchText(lineMatch.preview, { query, isRegex, caseSensitive }),
+		[lineMatch.preview, query, isRegex, caseSensitive],
+	);
 	const hoverActions: RowHoverAction[] = [
 		...(isReplaceEnabled
 			? [
@@ -40,6 +48,12 @@ export function SearchMatchItem({
 					},
 				]
 			: []),
+		{
+			key: "copy-link",
+			label: "Copy Superset link",
+			icon: <LuLink className="size-3.5" />,
+			onClick: () => onCopyLink(lineMatch),
+		},
 		{
 			key: "ignore",
 			label: "Ignore result",
@@ -74,11 +88,7 @@ export function SearchMatchItem({
 					<div
 						className={cn("break-words pr-1", isCompactVariant && "leading-4")}
 					>
-						{highlightSearchText(lineMatch.preview, {
-							query,
-							isRegex,
-							caseSensitive,
-						})}
+						{highlightedText}
 					</div>
 				</div>
 			</button>
@@ -87,4 +97,4 @@ export function SearchMatchItem({
 			</div>
 		</div>
 	);
-}
+});

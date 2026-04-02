@@ -3,7 +3,13 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@superset/ui/collapsible";
-import { LuChevronDown, LuChevronRight, LuReplace } from "react-icons/lu";
+import { memo } from "react";
+import {
+	LuChevronDown,
+	LuChevronRight,
+	LuLink,
+	LuReplace,
+} from "react-icons/lu";
 import type { RowHoverAction } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import { RowHoverActions } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
@@ -22,6 +28,8 @@ interface SearchFileGroupProps {
 	variant?: "default" | "tree" | "list";
 	onOpenChange: (open: boolean) => void;
 	onOpenMatch: (absolutePath: string, line: number, column: number) => void;
+	onCopyFileLink: (group: SearchResultGroup) => void;
+	onCopyMatchLink: (lineMatch: SearchLineResult) => void;
 	onReplaceInFile: (absolutePath: string) => void;
 	onReplaceMatch: (lineMatch: SearchLineResult) => void;
 	onIgnoreMatch: (lineMatch: SearchLineResult) => void;
@@ -61,7 +69,7 @@ function groupMatchesByLine(group: SearchResultGroup): SearchLineResult[] {
 	);
 }
 
-export function SearchFileGroup({
+export const SearchFileGroup = memo(function SearchFileGroup({
 	group,
 	isOpen,
 	query,
@@ -73,23 +81,33 @@ export function SearchFileGroup({
 	variant = "default",
 	onOpenChange,
 	onOpenMatch,
+	onCopyFileLink,
+	onCopyMatchLink,
 	onReplaceInFile,
 	onReplaceMatch,
 	onIgnoreMatch,
 }: SearchFileGroupProps) {
 	const parentPath = getParentPath(group.relativePath);
 	const matchCount = group.matches.length;
-	const hoverActions: RowHoverAction[] = showReplaceAction
-		? [
-				{
-					key: "replace-file",
-					label: "Replace in file",
-					icon: <LuReplace className="size-3.5" />,
-					onClick: () => onReplaceInFile(group.absolutePath),
-					disabled: isReplacing,
-				},
-			]
-		: [];
+	const hoverActions: RowHoverAction[] = [
+		{
+			key: "copy-file-link",
+			label: "Copy Superset link",
+			icon: <LuLink className="size-3.5" />,
+			onClick: () => onCopyFileLink(group),
+		},
+		...(showReplaceAction
+			? [
+					{
+						key: "replace-file",
+						label: "Replace in file",
+						icon: <LuReplace className="size-3.5" />,
+						onClick: () => onReplaceInFile(group.absolutePath),
+						disabled: isReplacing,
+					},
+				]
+			: []),
+	];
 	const isTreeVariant = variant === "tree";
 	const isListVariant = variant === "list";
 	const lineMatches = groupMatchesByLine(group);
@@ -220,6 +238,7 @@ export function SearchFileGroup({
 									isTreeVariant ? "tree" : isListVariant ? "list" : "default"
 								}
 								onOpen={onOpenMatch}
+								onCopyLink={onCopyMatchLink}
 								onReplace={onReplaceMatch}
 								onIgnore={onIgnoreMatch}
 							/>
@@ -229,4 +248,4 @@ export function SearchFileGroup({
 			</div>
 		</Collapsible>
 	);
-}
+});
