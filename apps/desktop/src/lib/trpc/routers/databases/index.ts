@@ -371,11 +371,15 @@ export const createDatabasesRouter = () => {
 						relativePath: path.relative(input.worktreePath, absolutePath),
 					}));
 
-				const items = [...fileItems, ...configuredDatabases]
-					.sort((left, right) =>
-						left.relativePath.localeCompare(right.relativePath),
-					)
-					.slice(0, limit);
+				const items = [
+					...fileItems.slice(
+						0,
+						Math.max(0, limit - configuredDatabases.length),
+					),
+					...configuredDatabases,
+				].sort((left, right) =>
+					left.relativePath.localeCompare(right.relativePath),
+				);
 
 				return { items };
 			}),

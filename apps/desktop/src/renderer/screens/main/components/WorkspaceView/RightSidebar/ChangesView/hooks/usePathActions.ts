@@ -138,6 +138,14 @@ export function usePathActions({
 		revealInFinder,
 		openInEditor,
 		hasRelativePath: Boolean(relativePath),
-		hasSupersetLink: Boolean(relativePath && supersetLinkProject),
+		hasSupersetLink: Boolean(
+			relativePath &&
+				supersetLinkProject &&
+				buildSupersetOpenLink({
+					project: supersetLinkProject,
+					branch,
+					filePath: relativePath,
+				}),
+		),
 	};
 }

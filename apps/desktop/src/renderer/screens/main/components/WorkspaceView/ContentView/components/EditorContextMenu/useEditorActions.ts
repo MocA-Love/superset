@@ -164,8 +164,26 @@ export function useEditorActions({
 		onSelectAll: handleSelectAll,
 		onCopyPath: handleCopyPath,
 		onCopyPathWithLine: handleCopyPathWithLine,
-		onCopySupersetLink: handleCopySupersetLink,
-		onCopySupersetLinkWithLine: handleCopySupersetLinkWithLine,
+		onCopySupersetLink:
+			supersetLinkProject &&
+			buildSupersetOpenLink({
+				project: supersetLinkProject,
+				branch,
+				worktreePath,
+				filePath,
+			})
+				? handleCopySupersetLink
+				: undefined,
+		onCopySupersetLinkWithLine:
+			supersetLinkProject &&
+			buildSupersetOpenLink({
+				project: supersetLinkProject,
+				branch,
+				worktreePath,
+				filePath,
+			})
+				? handleCopySupersetLinkWithLine
+				: undefined,
 		onFind: handleFind,
 	};
 }

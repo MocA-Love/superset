@@ -1,5 +1,5 @@
 import { highlightCode } from "@superset/ui/ai-elements/code-block";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createShikiTheme } from "renderer/screens/main/components/WorkspaceView/utils/code-theme/shiki-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
 
@@ -10,7 +10,10 @@ interface InspectCodeBlockProps {
 
 export function InspectCodeBlock({ code, language }: InspectCodeBlockProps) {
 	const activeTheme = useResolvedTheme();
-	const theme = activeTheme ? createShikiTheme(activeTheme) : undefined;
+	const theme = useMemo(
+		() => (activeTheme ? createShikiTheme(activeTheme) : undefined),
+		[activeTheme],
+	);
 	const [html, setHtml] = useState("");
 
 	useEffect(() => {

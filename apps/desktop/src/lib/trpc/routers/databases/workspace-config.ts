@@ -141,8 +141,11 @@ async function loadWorkspaceDatabaseCredentialStore(): Promise<
 			await readFile(WORKSPACE_DATABASE_CREDENTIALS_FILE),
 		);
 		return workspaceDatabaseCredentialStoreSchema.parse(JSON.parse(decrypted));
-	} catch {
-		return { entries: {} };
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+			return { entries: {} };
+		}
+		throw error;
 	}
 }
 

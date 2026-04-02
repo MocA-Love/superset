@@ -73,20 +73,26 @@ export const Route = createFileRoute(
 		tabId: typeof search.tabId === "string" ? search.tabId : undefined,
 		paneId: typeof search.paneId === "string" ? search.paneId : undefined,
 		file: typeof search.file === "string" ? search.file : undefined,
-		line:
-			typeof search.line === "number"
-				? search.line
-				: typeof search.line === "string" &&
-						Number.isFinite(Number(search.line))
-					? Number(search.line)
-					: undefined,
-		column:
-			typeof search.column === "number"
-				? search.column
-				: typeof search.column === "string" &&
-						Number.isFinite(Number(search.column))
-					? Number(search.column)
-					: undefined,
+		line: (() => {
+			const v =
+				typeof search.line === "number"
+					? search.line
+					: typeof search.line === "string" &&
+							Number.isFinite(Number(search.line))
+						? Number(search.line)
+						: undefined;
+			return v !== undefined && Number.isInteger(v) && v > 0 ? v : undefined;
+		})(),
+		column: (() => {
+			const v =
+				typeof search.column === "number"
+					? search.column
+					: typeof search.column === "string" &&
+							Number.isFinite(Number(search.column))
+						? Number(search.column)
+						: undefined;
+			return v !== undefined && Number.isInteger(v) && v > 0 ? v : undefined;
+		})(),
 	}),
 	loader: async ({ params, context }) => {
 		const queryKey = [
@@ -192,10 +198,7 @@ export function WorkspacePage({
 		navigate({
 			to: "/workspace/$workspaceId",
 			params: { workspaceId },
-			search: {
-				tabId: searchTabId,
-				paneId: searchPaneId,
-			},
+			search: {},
 			replace: true,
 		});
 	}, [
@@ -204,8 +207,6 @@ export function WorkspacePage({
 		searchColumn,
 		searchFile,
 		searchLine,
-		searchPaneId,
-		searchTabId,
 		workspace?.worktreePath,
 		workspaceId,
 	]);

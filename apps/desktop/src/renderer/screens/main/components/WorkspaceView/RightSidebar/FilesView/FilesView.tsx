@@ -147,7 +147,7 @@ export function FilesView() {
 		{ enabled: !!workspaceId },
 	);
 	const worktreePath = workspace?.worktreePath;
-	const projectId = workspace?.project?.id;
+	const projectId = workspace?.projectId ?? workspace?.project?.id;
 	const { data: project } = electronTrpc.projects.get.useQuery(
 		{ id: projectId ?? "" },
 		{ enabled: !!projectId },

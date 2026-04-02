@@ -510,7 +510,9 @@ export function SpreadsheetDiffViewer({
 					gap: 12,
 				}}
 			>
-				<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
+				{!commitHash && (
+					<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
+				)}
 				<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
 					<span style={{ color: "#a6adc8" }}>
 						{diffLocations.length > 0
