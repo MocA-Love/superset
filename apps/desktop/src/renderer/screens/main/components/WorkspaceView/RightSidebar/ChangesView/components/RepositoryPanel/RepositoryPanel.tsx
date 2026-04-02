@@ -19,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import type { ClipboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -254,15 +255,22 @@ function WorkflowRunCard({
 						) : null}
 						{statusLabel}
 					</Badge>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						className="h-6 px-1.5 text-[10px]"
-						onClick={() => onRemove(tracked.workflowId)}
-					>
-						<LuX className="size-3" />
-					</Button>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-6 px-1.5 text-[10px]"
+								onClick={() => onRemove(tracked.workflowId)}
+							>
+								<LuX className="size-3" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side="top" showArrow={false}>
+							Stop tracking workflow
+						</TooltipContent>
+					</Tooltip>
 				</div>
 			</div>
 			<div className="mt-2 flex items-center justify-between gap-2">
@@ -947,15 +955,22 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 															>
 																{asset.name}
 															</button>
-															<Button
-																type="button"
-																variant="ghost"
-																size="sm"
-																className="h-6 px-1.5 text-[10px]"
-																onClick={() => removeUploadedAsset(asset.id)}
-															>
-																<LuX className="size-3" />
-															</Button>
+															<Tooltip>
+																<TooltipTrigger asChild>
+																	<Button
+																		type="button"
+																		variant="ghost"
+																		size="sm"
+																		className="h-6 px-1.5 text-[10px]"
+																		onClick={() => removeUploadedAsset(asset.id)}
+																	>
+																		<LuX className="size-3" />
+																	</Button>
+																</TooltipTrigger>
+																<TooltipContent side="top" showArrow={false}>
+																	Remove attachment
+																</TooltipContent>
+															</Tooltip>
 														</div>
 													))}
 												</div>

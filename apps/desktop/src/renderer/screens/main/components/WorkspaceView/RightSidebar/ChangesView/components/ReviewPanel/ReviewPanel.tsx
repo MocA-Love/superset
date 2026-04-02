@@ -17,6 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -950,14 +951,21 @@ export function ReviewPanel({
 						)}
 					>
 						{comment.url ? (
-							<button
-								type="button"
-								className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-								aria-label="Open comment on GitHub"
-								onClick={(e) => handleOpenUrl(comment.url as string, e)}
-							>
-								<LuArrowUpRight className="size-3" />
-							</button>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										type="button"
+										className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+										aria-label="Open comment on GitHub"
+										onClick={(e) => handleOpenUrl(comment.url as string, e)}
+									>
+										<LuArrowUpRight className="size-3" />
+									</button>
+								</TooltipTrigger>
+								<TooltipContent side="left" showArrow={false}>
+									Open comment on GitHub
+								</TooltipContent>
+							</Tooltip>
 						) : null}
 						<button
 							type="button"

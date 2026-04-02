@@ -56,6 +56,7 @@ import {
 	TableRow,
 } from "@superset/ui/table";
 import { Textarea } from "@superset/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -509,17 +510,24 @@ const PreviewTableCellValue = memo(function PreviewTableCellValue({
 				{formattedValue}
 			</button>
 			{canOpenDetail ? (
-				<button
-					type="button"
-					className="text-muted-foreground hover:text-foreground size-5 shrink-0 rounded opacity-0 transition-opacity group-hover:opacity-100"
-					onClick={(event) => {
-						event.stopPropagation();
-						onOpenDetail(row, column);
-					}}
-					aria-label={`Open full value for ${column}`}
-				>
-					<LuSearch className="size-3.5" />
-				</button>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<button
+							type="button"
+							className="text-muted-foreground hover:text-foreground size-5 shrink-0 rounded opacity-0 transition-opacity group-hover:opacity-100"
+							onClick={(event) => {
+								event.stopPropagation();
+								onOpenDetail(row, column);
+							}}
+							aria-label={`Open full value for ${column}`}
+						>
+							<LuSearch className="size-3.5" />
+						</button>
+					</TooltipTrigger>
+					<TooltipContent side="top" showArrow={false}>
+						Open full value
+					</TooltipContent>
+				</Tooltip>
 			) : null}
 		</div>
 	);
@@ -682,37 +690,58 @@ function ConnectionItem({
 				</p>
 			</button>
 			{onOpen ? (
-				<Button
-					variant="ghost"
-					size="icon"
-					type="button"
-					className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
-					onClick={onOpen}
-				>
-					<LuExternalLink className="size-3.5" />
-				</Button>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							type="button"
+							className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
+							onClick={onOpen}
+						>
+							<LuExternalLink className="size-3.5" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="top" showArrow={false}>
+						Open in Explorer
+					</TooltipContent>
+				</Tooltip>
 			) : null}
 			{onEdit ? (
-				<Button
-					variant="ghost"
-					size="icon"
-					type="button"
-					className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
-					onClick={onEdit}
-				>
-					<LuPencil className="size-3.5" />
-				</Button>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							type="button"
+							className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
+							onClick={onEdit}
+						>
+							<LuPencil className="size-3.5" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="top" showArrow={false}>
+						Edit connection
+					</TooltipContent>
+				</Tooltip>
 			) : null}
 			{onRemove ? (
-				<Button
-					variant="ghost"
-					size="icon"
-					type="button"
-					className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
-					onClick={onRemove}
-				>
-					<LuTrash2 className="size-3.5" />
-				</Button>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							type="button"
+							className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
+							onClick={onRemove}
+						>
+							<LuTrash2 className="size-3.5" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="top" showArrow={false}>
+						Remove connection
+					</TooltipContent>
+				</Tooltip>
 			) : null}
 		</div>
 	);
@@ -3233,22 +3262,32 @@ export function DatabasesView({
 																							)}
 																						</button>
 																						<Popover>
-																							<PopoverTrigger asChild>
-																								<Button
-																									type="button"
-																									size="icon"
-																									variant="ghost"
-																									className={cn(
-																										"size-6",
-																										columnFilters[column] &&
-																											"text-primary",
-																									)}
+																							<Tooltip>
+																								<TooltipTrigger asChild>
+																									<PopoverTrigger asChild>
+																										<Button
+																											type="button"
+																											size="icon"
+																											variant="ghost"
+																											className={cn(
+																												"size-6",
+																												columnFilters[column] &&
+																													"text-primary",
+																											)}
+																										>
+																											<LuFilter className="size-3.5" />
+																										</Button>
+																									</PopoverTrigger>
+																								</TooltipTrigger>
+																								<TooltipContent
+																									side="top"
+																									showArrow={false}
 																								>
-																									<LuFilter className="size-3.5" />
-																								</Button>
-																							</PopoverTrigger>
-																							<PopoverContent
-																								align="start"
+																									フィルター条件を設定
+																								</TooltipContent>
+																							</Tooltip>
+																					<PopoverContent
+																						align="start"
 																								className="w-72 space-y-3"
 																							>
 																								<div className="space-y-1">
@@ -3573,14 +3612,24 @@ export function DatabasesView({
 														>
 															Load
 														</Button>
-														<Button
-															type="button"
-															size="sm"
-															variant="ghost"
-															onClick={() => removeQueryHistoryItem(item.id)}
-														>
-															<LuTrash2 className="size-3.5" />
-														</Button>
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	type="button"
+																	size="sm"
+																	variant="ghost"
+																	onClick={() => removeQueryHistoryItem(item.id)}
+																>
+																	<LuTrash2 className="size-3.5" />
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent
+																side="top"
+																showArrow={false}
+															>
+																Remove from history
+															</TooltipContent>
+														</Tooltip>
 													</div>
 												</div>
 											),
