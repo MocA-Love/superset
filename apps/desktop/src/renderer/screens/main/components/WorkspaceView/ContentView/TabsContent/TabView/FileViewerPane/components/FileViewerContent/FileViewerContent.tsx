@@ -349,6 +349,7 @@ export function FileViewerContent({
 				workspaceId={workspaceId}
 				worktreePath={worktreePath}
 				filePath={filePath}
+				absoluteFilePath={absoluteFilePath}
 				diffCategory={diffCategory}
 				commitHash={commitHash}
 			/>
@@ -503,7 +504,13 @@ export function FileViewerContent({
 		isSpreadsheetFile(filePath) &&
 		workspaceId
 	) {
-		return <SpreadsheetViewer workspaceId={workspaceId} filePath={filePath} />;
+		return (
+			<SpreadsheetViewer
+				workspaceId={workspaceId}
+				filePath={filePath}
+				absoluteFilePath={absoluteFilePath}
+			/>
+		);
 	}
 
 	if (!rawFileData?.ok) {

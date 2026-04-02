@@ -9,6 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import type { ChangeCategory } from "shared/changes-types";
 import useResizeObserver from "use-resize-observer";
+import { SpreadsheetDefaultAppButton } from "./components/SpreadsheetDefaultAppButton";
 import type { ParsedCell, RichTextPart } from "./parseWorkbook";
 import {
 	type DiffParsedCell,
@@ -21,6 +22,7 @@ interface SpreadsheetDiffViewerProps {
 	workspaceId: string;
 	worktreePath: string;
 	filePath: string;
+	absoluteFilePath: string;
 	diffCategory?: ChangeCategory;
 	commitHash?: string;
 }
@@ -339,6 +341,7 @@ export function SpreadsheetDiffViewer({
 	workspaceId,
 	worktreePath,
 	filePath,
+	absoluteFilePath,
 	diffCategory,
 	commitHash,
 }: SpreadsheetDiffViewerProps) {
@@ -503,52 +506,55 @@ export function SpreadsheetDiffViewer({
 					flexShrink: 0,
 					display: "flex",
 					alignItems: "center",
-					justifyContent: "flex-end",
+					justifyContent: "space-between",
 					gap: 12,
 				}}
 			>
-				<span style={{ color: "#a6adc8" }}>
-					{diffLocations.length > 0
-						? `${diffLocations.length} changes`
-						: "No changes"}
-				</span>
-				{diffLocations.length > 0 && (
-					<>
-						<button
-							type="button"
-							onClick={goPrev}
-							style={{
-								background: "#313244",
-								border: "1px solid #45475a",
-								borderRadius: 4,
-								color: "#cdd6f4",
-								padding: "2px 10px",
-								cursor: "pointer",
-								fontSize: "11px",
-							}}
-						>
-							Prev
-						</button>
-						<span style={{ fontSize: "11px", color: "#a6adc8" }}>
-							{currentDiffIdx + 1} / {diffLocations.length}
-						</span>
-						<button
-							type="button"
-							onClick={goNext}
-							style={{
-								background: "#313244",
-								border: "1px solid #45475a",
-								borderRadius: 4,
-								color: "#cdd6f4",
-								padding: "2px 10px",
-								cursor: "pointer",
-								fontSize: "11px",
-							}}
-						>
-							Next
-						</button>
-					</>
-				)}
+				<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
+				<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+					<span style={{ color: "#a6adc8" }}>
+						{diffLocations.length > 0
+							? `${diffLocations.length} changes`
+							: "No changes"}
+					</span>
+					{diffLocations.length > 0 && (
+						<>
+							<button
+								type="button"
+								onClick={goPrev}
+								style={{
+									background: "#313244",
+									border: "1px solid #45475a",
+									borderRadius: 4,
+									color: "#cdd6f4",
+									padding: "2px 10px",
+									cursor: "pointer",
+									fontSize: "11px",
+								}}
+							>
+								Prev
+							</button>
+							<span style={{ fontSize: "11px", color: "#a6adc8" }}>
+								{currentDiffIdx + 1} / {diffLocations.length}
+							</span>
+							<button
+								type="button"
+								onClick={goNext}
+								style={{
+									background: "#313244",
+									border: "1px solid #45475a",
+									borderRadius: 4,
+									color: "#cdd6f4",
+									padding: "2px 10px",
+									cursor: "pointer",
+									fontSize: "11px",
+								}}
+							>
+								Next
+							</button>
+						</>
+					)}
+				</div>
 			</div>
 			<div className="flex min-h-0 flex-1">
 				<DiffTable
