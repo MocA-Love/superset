@@ -58,7 +58,9 @@ function findBunStoreFolderName(
 	if (!existsSync(bunStoreDir)) return null;
 	const entries = readdirSync(bunStoreDir);
 	const modulePrefix = `${moduleName.replace("/", "+")}@`;
-	const matchingEntries = entries.filter((entry) => entry.startsWith(modulePrefix));
+	const matchingEntries = entries.filter((entry) =>
+		entry.startsWith(modulePrefix),
+	);
 
 	const extractVersion = (entry: string): string | null => {
 		const remainder = entry.slice(modulePrefix.length);
@@ -68,8 +70,9 @@ function findBunStoreFolderName(
 
 	const versions = matchingEntries
 		.map((entry) => ({ entry, version: extractVersion(entry) }))
-		.filter((item): item is { entry: string; version: string } =>
-			item.version !== null,
+		.filter(
+			(item): item is { entry: string; version: string } =>
+				item.version !== null,
 		);
 
 	const exactMatch = versions.find((item) => item.version === versionRange);
@@ -291,10 +294,7 @@ function copyDependencyForPackage(
 		if (
 			resolvedDependency.sourceModuleName !== dependencyName &&
 			sourceTopLevelVersion &&
-			satisfies(
-				sourceTopLevelVersion,
-				resolvedDependency.sourceVersionRange,
-			)
+			satisfies(sourceTopLevelVersion, resolvedDependency.sourceVersionRange)
 		) {
 			copyModuleIfSymlink(
 				nodeModulesDir,
@@ -717,7 +717,11 @@ function prepareNativeModules() {
 	const seenPackages = new Set<string>();
 	for (const moduleName of runtimeDependencyRoots) {
 		copyModuleIfSymlink(nodeModulesDir, moduleName, true);
-		materializeProductionDependencyTree(nodeModulesDir, moduleName, seenPackages);
+		materializeProductionDependencyTree(
+			nodeModulesDir,
+			moduleName,
+			seenPackages,
+		);
 	}
 
 	console.log("\nPreparing ast-grep platform package...");
