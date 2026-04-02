@@ -460,8 +460,7 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 			if (existingCredentials) {
 				store.entries[credentialKey] = {
 					...existingCredentials,
-					username:
-						nextDefinition.username ?? existingCredentials.username,
+					username: nextDefinition.username ?? existingCredentials.username,
 					updatedAt: Date.now(),
 				};
 				await saveWorkspaceDatabaseCredentialStore(store);
