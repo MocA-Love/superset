@@ -705,12 +705,16 @@ function prepareNativeModules() {
 	const runtimeDependencyRoots = [
 		"yaml-language-server",
 		"dockerfile-language-server-nodejs",
+		"dockerfile-language-service",
+		"dockerfile-ast",
+		"dockerfile-utils",
 		"graphql-language-service-cli",
 		"pyright",
 		"vscode-css-languageservice",
 		"vscode-html-languageservice",
 		"vscode-json-languageservice",
 		"vscode-languageserver-textdocument",
+		"vscode-languageserver-types",
 		"vscode-langservers-extracted",
 		"strip-ansi",
 	];
