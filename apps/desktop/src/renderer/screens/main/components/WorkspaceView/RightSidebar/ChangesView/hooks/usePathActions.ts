@@ -81,11 +81,11 @@ export function usePathActions({
 		}
 
 		void copyToClipboard(link).catch((error) => {
-				console.error("[superset-link] Failed to copy link:", error);
-				toast.error("Failed to copy Superset link", {
-					description: error instanceof Error ? error.message : undefined,
-				});
+			console.error("[superset-link] Failed to copy link:", error);
+			toast.error("Failed to copy Superset link", {
+				description: error instanceof Error ? error.message : undefined,
 			});
+		});
 	}, [branch, copyToClipboard, relativePath, supersetLinkProject]);
 
 	const revealInFinder = useCallback(() => {

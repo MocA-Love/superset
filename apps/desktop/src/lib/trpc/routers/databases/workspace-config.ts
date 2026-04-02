@@ -1,11 +1,11 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
-import { z } from "zod";
 import {
 	SUPERSET_HOME_DIR,
 	SUPERSET_SENSITIVE_FILE_MODE,
 } from "main/lib/app-environment";
+import { z } from "zod";
 import { decrypt, encrypt } from "../auth/utils/crypto-storage";
 
 const WORKSPACE_DATABASES_CONFIG_FILE = path.join(
@@ -34,7 +34,9 @@ const postgresWorkspaceDatabaseSchema = workspaceDatabaseBaseSchema.extend({
 	port: z.number().int().positive().max(65535).optional(),
 	database: z.preprocess(
 		(value) =>
-			typeof value === "string" && value.trim().length === 0 ? undefined : value,
+			typeof value === "string" && value.trim().length === 0
+				? undefined
+				: value,
 		z.string().min(1).default("postgres"),
 	),
 	ssl: z.boolean().optional(),
@@ -69,7 +71,9 @@ const workspaceDatabaseCredentialEntrySchema = z.object({
 });
 
 const workspaceDatabaseCredentialStoreSchema = z.object({
-	entries: z.record(z.string(), workspaceDatabaseCredentialEntrySchema).default({}),
+	entries: z
+		.record(z.string(), workspaceDatabaseCredentialEntrySchema)
+		.default({}),
 });
 
 export type WorkspaceDatabaseDefinition = z.infer<
@@ -133,7 +137,9 @@ async function loadWorkspaceDatabaseCredentialStore(): Promise<
 	z.infer<typeof workspaceDatabaseCredentialStoreSchema>
 > {
 	try {
-		const decrypted = decrypt(await readFile(WORKSPACE_DATABASE_CREDENTIALS_FILE));
+		const decrypted = decrypt(
+			await readFile(WORKSPACE_DATABASE_CREDENTIALS_FILE),
+		);
 		return workspaceDatabaseCredentialStoreSchema.parse(JSON.parse(decrypted));
 	} catch {
 		return { entries: {} };
@@ -277,7 +283,9 @@ export async function saveWorkspaceDatabaseCredentials(input: {
 	password: string;
 }): Promise<void> {
 	const store = await loadWorkspaceDatabaseCredentialStore();
-	store.entries[workspaceCredentialKey(input.workspacePath, input.definitionId)] = {
+	store.entries[
+		workspaceCredentialKey(input.workspacePath, input.definitionId)
+	] = {
 		username: input.username.trim(),
 		password: input.password,
 		updatedAt: Date.now(),
@@ -332,7 +340,7 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 						input.workspacePath,
 						input.definition.databasePath,
 					),
-			  }
+				}
 			: {
 					id: input.definitionId,
 					dialect: "postgres",
@@ -343,7 +351,7 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 					database: input.definition.database,
 					ssl: input.definition.ssl,
 					username: input.definition.username,
-			  },
+				},
 	);
 
 	const rawConfig = JSON.parse(await readFile(configPath, "utf8")) as {
@@ -367,7 +375,7 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 					label: nextDefinition.label,
 					dialect: "sqlite",
 					path: nextDefinition.path,
-			  }
+				}
 			: {
 					...currentRawDefinition,
 					id: nextDefinition.id,
@@ -378,7 +386,7 @@ export async function updateWorkspaceDatabaseDefinition(input: {
 					database: nextDefinition.database,
 					ssl: nextDefinition.ssl,
 					username: nextDefinition.username,
-			  };
+				};
 
 	if (nextDefinition.group) {
 		nextRawDefinition.group = nextDefinition.group;
@@ -457,10 +465,7 @@ export async function resolvePostgresConnectionStringFromSource(input: {
 	const credentialStore = await loadWorkspaceDatabaseCredentialStore();
 	const credentials =
 		credentialStore.entries[
-			workspaceCredentialKey(
-				source.workspacePath,
-				source.definitionId,
-			)
+			workspaceCredentialKey(source.workspacePath, source.definitionId)
 		];
 
 	if (!credentials) {

@@ -89,28 +89,28 @@ interface DatabaseSidebarState {
 					workspacePath: string;
 					workspaceDefinitionId: string;
 			  }
-				| {
-						id: string;
-						label: string;
-						group?: string;
-						source?: "manual";
-						dialect: "postgres";
-						connectionString: string;
-				  }
-				| {
-						id: string;
-						label: string;
-						group?: string;
-						source: "workspace-config";
-						dialect: "postgres";
-						workspacePath: string;
-						workspaceDefinitionId: string;
-						host: string;
-						port: number;
-						databaseName: string;
-						ssl: boolean;
-						usernameHint?: string;
-				  }
+			| {
+					id: string;
+					label: string;
+					group?: string;
+					source?: "manual";
+					dialect: "postgres";
+					connectionString: string;
+			  }
+			| {
+					id: string;
+					label: string;
+					group?: string;
+					source: "workspace-config";
+					dialect: "postgres";
+					workspacePath: string;
+					workspaceDefinitionId: string;
+					host: string;
+					port: number;
+					databaseName: string;
+					ssl: boolean;
+					usernameHint?: string;
+			  },
 	) => SavedDatabaseConnection | null;
 	removeConnection: (id: string) => void;
 	setActiveConnectionId: (id: string | null) => void;
@@ -153,8 +153,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							return (
 								connection.source === "workspace-config" &&
 								connection.workspacePath === input.workspacePath &&
-								connection.workspaceDefinitionId ===
-									input.workspaceDefinitionId
+								connection.workspaceDefinitionId === input.workspaceDefinitionId
 							);
 						}
 
@@ -180,14 +179,12 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 								: undefined,
 						workspacePath:
 							input.source === "workspace-config" &&
-							(input.dialect === "sqlite" ||
-								input.dialect === "postgres")
+							(input.dialect === "sqlite" || input.dialect === "postgres")
 								? input.workspacePath
 								: undefined,
 						workspaceDefinitionId:
 							input.source === "workspace-config" &&
-							(input.dialect === "sqlite" ||
-								input.dialect === "postgres")
+							(input.dialect === "sqlite" || input.dialect === "postgres")
 								? input.workspaceDefinitionId
 								: undefined,
 						host:

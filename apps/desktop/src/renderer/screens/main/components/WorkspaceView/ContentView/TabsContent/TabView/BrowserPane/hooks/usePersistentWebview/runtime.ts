@@ -46,9 +46,7 @@ export function deletePersistentWrapper(paneId: string): void {
 	wrapperRegistry.delete(paneId);
 }
 
-export function getRegisteredWebContentsId(
-	paneId: string,
-): number | undefined {
+export function getRegisteredWebContentsId(paneId: string): number | undefined {
 	return registeredWebContentsIds.get(paneId);
 }
 

@@ -162,8 +162,11 @@ const worker = {
 		}
 
 		const deepLink = buildDeepLink(url, env);
-		const fallbackUrl = env.FALLBACK_URL?.trim() || "https://github.com/MocA-Love/superset";
-		const queryPreview = url.search ? `${url.pathname}${url.search}` : url.pathname;
+		const fallbackUrl =
+			env.FALLBACK_URL?.trim() || "https://github.com/MocA-Love/superset";
+		const queryPreview = url.search
+			? `${url.pathname}${url.search}`
+			: url.pathname;
 		const html = buildHtml({ deepLink, fallbackUrl, queryPreview });
 
 		return new Response(html, {

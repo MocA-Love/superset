@@ -613,7 +613,9 @@ function isWorkspaceConfigConnection(
 	);
 }
 
-function getPostgresConnectionInput(connection: SavedDatabaseConnection | null) {
+function getPostgresConnectionInput(
+	connection: SavedDatabaseConnection | null,
+) {
 	if (!connection || connection.dialect !== "postgres") {
 		return null;
 	}
@@ -862,15 +864,15 @@ export function DatabasesView({
 	const [postgresSsl, setPostgresSsl] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const [isCredentialPromptOpen, setIsCredentialPromptOpen] = useState(false);
-	const [credentialPromptTarget, setCredentialPromptTarget] =
-		useState<Extract<DiscoveredWorkspaceDatabaseItem, { dialect: "postgres" }> | null>(
-			null,
-		);
+	const [credentialPromptTarget, setCredentialPromptTarget] = useState<Extract<
+		DiscoveredWorkspaceDatabaseItem,
+		{ dialect: "postgres" }
+	> | null>(null);
 	const [configUsername, setConfigUsername] = useState("");
 	const [configPassword, setConfigPassword] = useState("");
-	const [configCredentialError, setConfigCredentialError] = useState<string | null>(
-		null,
-	);
+	const [configCredentialError, setConfigCredentialError] = useState<
+		string | null
+	>(null);
 	const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
 	const [tablePreviewPage, setTablePreviewPage] = useState(0);
 	const [tableSearchInput, setTableSearchInput] = useState("");
@@ -1032,10 +1034,11 @@ export function DatabasesView({
 		);
 	}, [connectionType]);
 
-	const discoverQuery = electronTrpc.databases.discoverWorkspaceDatabases.useQuery(
-		{ worktreePath: worktreePath ?? "", limit: 25 },
-		{ enabled: Boolean(worktreePath) },
-	);
+	const discoverQuery =
+		electronTrpc.databases.discoverWorkspaceDatabases.useQuery(
+			{ worktreePath: worktreePath ?? "", limit: 25 },
+			{ enabled: Boolean(worktreePath) },
+		);
 
 	const inspectSqliteQuery = electronTrpc.databases.inspectSqlite.useQuery(
 		{ databasePath: activeConnection?.databasePath ?? "" },
@@ -1053,11 +1056,10 @@ export function DatabasesView({
 
 	const inspectPostgresQuery = electronTrpc.databases.inspectPostgres.useQuery(
 		{
-			connection:
-				activePostgresConnectionInput ?? {
-					kind: "connectionString",
-					connectionString: "",
-				},
+			connection: activePostgresConnectionInput ?? {
+				kind: "connectionString",
+				connectionString: "",
+			},
 		},
 		{
 			enabled:
@@ -1153,27 +1155,26 @@ export function DatabasesView({
 	);
 
 	const previewPostgresQuery =
-			electronTrpc.databases.previewPostgresTable.useQuery(
-				{
-					connection:
-						activePostgresConnectionInput ?? {
-							kind: "connectionString",
-							connectionString: "",
-						},
-					schema: selectedTable?.schema ?? "public",
-					tableName: selectedTable?.name ?? "",
-					limit: TABLE_PREVIEW_PAGE_SIZE,
+		electronTrpc.databases.previewPostgresTable.useQuery(
+			{
+				connection: activePostgresConnectionInput ?? {
+					kind: "connectionString",
+					connectionString: "",
+				},
+				schema: selectedTable?.schema ?? "public",
+				tableName: selectedTable?.name ?? "",
+				limit: TABLE_PREVIEW_PAGE_SIZE,
 				offset: tablePreviewPage * TABLE_PREVIEW_PAGE_SIZE,
 			},
-				{
-					enabled:
-						activeConnection?.dialect === "postgres" &&
-						Boolean(activePostgresConnectionInput) &&
-						Boolean(selectedTable?.schema) &&
-						Boolean(selectedTable?.name),
-					placeholderData: (previousData) => previousData,
-				},
-			);
+			{
+				enabled:
+					activeConnection?.dialect === "postgres" &&
+					Boolean(activePostgresConnectionInput) &&
+					Boolean(selectedTable?.schema) &&
+					Boolean(selectedTable?.name),
+				placeholderData: (previousData) => previousData,
+			},
+		);
 
 	const executeSQLiteMutation =
 		electronTrpc.databases.executeSqlite.useMutation({
@@ -1228,20 +1229,21 @@ export function DatabasesView({
 				),
 		);
 
-		return ((discoverQuery.data?.items ?? []) as DiscoveredWorkspaceDatabaseItem[])
-			.filter((item) => {
-				if (item.source === "config") {
-					return !connectedWorkspaceDefinitions.has(
-						`${worktreePath ?? ""}::${item.definitionId}`,
-					);
-				}
+		return (
+			(discoverQuery.data?.items ?? []) as DiscoveredWorkspaceDatabaseItem[]
+		).filter((item) => {
+			if (item.source === "config") {
+				return !connectedWorkspaceDefinitions.has(
+					`${worktreePath ?? ""}::${item.definitionId}`,
+				);
+			}
 
-				if (item.dialect === "sqlite") {
-					return !connectedPaths.has(item.absolutePath);
-				}
+			if (item.dialect === "sqlite") {
+				return !connectedPaths.has(item.absolutePath);
+			}
 
-				return true;
-			});
+			return true;
+		});
 	}, [connections, discoverQuery.data?.items, worktreePath]);
 	const activePreviewQuery =
 		activeConnection?.dialect === "postgres"
@@ -1807,11 +1809,11 @@ export function DatabasesView({
 		}
 
 		addConnection({
-				label: options?.label ?? guessConnectionLabel(absolutePath),
-				group: options?.group ?? (groupInput.trim() || undefined),
-				dialect: "sqlite",
-				databasePath: absolutePath,
-			});
+			label: options?.label ?? guessConnectionLabel(absolutePath),
+			group: options?.group ?? (groupInput.trim() || undefined),
+			dialect: "sqlite",
+			databasePath: absolutePath,
+		});
 	};
 
 	const handleAttachDiscoveredDatabase = (
@@ -1823,7 +1825,7 @@ export function DatabasesView({
 				group: item.source === "config" ? item.group : undefined,
 				source: item.source === "config" ? "workspace-config" : "manual",
 				workspacePath:
-					item.source === "config" ? worktreePath ?? undefined : undefined,
+					item.source === "config" ? (worktreePath ?? undefined) : undefined,
 				workspaceDefinitionId:
 					item.source === "config" ? item.definitionId : undefined,
 			});
@@ -1936,11 +1938,10 @@ export function DatabasesView({
 			}
 
 			const detail = await trpcUtils.databases.getPostgresRowDetail.fetch({
-				connection:
-					getPostgresConnectionInput(activeConnection) ?? {
-						kind: "connectionString",
-						connectionString: "",
-					},
+				connection: getPostgresConnectionInput(activeConnection) ?? {
+					kind: "connectionString",
+					connectionString: "",
+				},
 				schema: selectedTable.schema ?? "public",
 				tableName: selectedTable.name,
 				ctid: String(row[POSTGRES_ROW_ID_COLUMN] ?? ""),
@@ -3286,8 +3287,8 @@ export function DatabasesView({
 																									フィルター条件を設定
 																								</TooltipContent>
 																							</Tooltip>
-																					<PopoverContent
-																						align="start"
+																							<PopoverContent
+																								align="start"
 																								className="w-72 space-y-3"
 																							>
 																								<div className="space-y-1">
@@ -3618,15 +3619,14 @@ export function DatabasesView({
 																	type="button"
 																	size="sm"
 																	variant="ghost"
-																	onClick={() => removeQueryHistoryItem(item.id)}
+																	onClick={() =>
+																		removeQueryHistoryItem(item.id)
+																	}
 																>
 																	<LuTrash2 className="size-3.5" />
 																</Button>
 															</TooltipTrigger>
-															<TooltipContent
-																side="top"
-																showArrow={false}
-															>
+															<TooltipContent side="top" showArrow={false}>
 																Remove from history
 															</TooltipContent>
 														</Tooltip>

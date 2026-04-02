@@ -1,6 +1,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { projects, settings, workspaces } from "@superset/local-db";
+import { desc, eq, isNull } from "drizzle-orm";
 import {
 	app,
 	BrowserWindow,
@@ -10,7 +11,6 @@ import {
 	protocol,
 	session,
 } from "electron";
-import { desc, eq, isNull } from "drizzle-orm";
 import { makeAppSetup } from "lib/electron-app/factories/app/setup";
 import {
 	handleAuthCallback,
