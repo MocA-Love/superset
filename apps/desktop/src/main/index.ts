@@ -1,6 +1,6 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { settings } from "@superset/local-db";
+import { projects, settings, workspaces } from "@superset/local-db";
 import {
 	app,
 	BrowserWindow,
@@ -10,6 +10,7 @@ import {
 	protocol,
 	session,
 } from "electron";
+import { desc, eq, isNull } from "drizzle-orm";
 import { makeAppSetup } from "lib/electron-app/factories/app/setup";
 import {
 	handleAuthCallback,
@@ -67,6 +68,144 @@ if (process.defaultApp) {
 	app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
 }
 
+function normalizeRepoValue(
+	value: string,
+): { owner: string | null; repo: string } | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	let candidate = trimmed.replace(/\.git$/i, "");
+
+	if (/^https?:\/\//i.test(candidate)) {
+		try {
+			const url = new URL(candidate);
+			candidate = url.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+		} catch {
+			return null;
+		}
+	}
+
+	candidate = candidate.replace(/^github\.com[/:]/i, "");
+	const parts = candidate
+		.split("/")
+		.map((part) => part.trim())
+		.filter(Boolean);
+
+	if (parts.length >= 2) {
+		return {
+			owner: parts[parts.length - 2].toLowerCase(),
+			repo: parts[parts.length - 1].toLowerCase(),
+		};
+	}
+
+	if (parts.length === 1) {
+		return {
+			owner: null,
+			repo: parts[0].toLowerCase(),
+		};
+	}
+
+	return null;
+}
+
+function normalizeOptionalPositiveInt(value: string | null): string | null {
+	if (!value) return null;
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed <= 0) return null;
+	return String(parsed);
+}
+
+function resolveWorkspaceOpenRouteFromDeepLink(url: URL): string | null {
+	const repoParam = url.searchParams.get("repo");
+	const fileParam = url.searchParams.get("file");
+	const branchParam = url.searchParams.get("branch")?.trim() || null;
+	const normalizedRepo = repoParam ? normalizeRepoValue(repoParam) : null;
+
+	if (!normalizedRepo) {
+		return null;
+	}
+
+	const candidates = localDb
+		.select({
+			workspaceId: workspaces.id,
+			workspaceBranch: workspaces.branch,
+			lastOpenedAt: workspaces.lastOpenedAt,
+			projectGithubOwner: projects.githubOwner,
+			projectMainRepoPath: projects.mainRepoPath,
+		})
+		.from(workspaces)
+		.innerJoin(projects, eq(workspaces.projectId, projects.id))
+		.where(isNull(workspaces.deletingAt))
+		.orderBy(desc(workspaces.lastOpenedAt))
+		.all()
+		.filter((row) => {
+			const repoName = path.basename(row.projectMainRepoPath).toLowerCase();
+			if (repoName !== normalizedRepo.repo) {
+				return false;
+			}
+
+			if (!normalizedRepo.owner) {
+				return true;
+			}
+
+			return (
+				(row.projectGithubOwner ?? "").toLowerCase() === normalizedRepo.owner
+			);
+		});
+
+	if (candidates.length === 0) {
+		return null;
+	}
+
+	const match =
+		(branchParam
+			? candidates.find(
+					(candidate) => candidate.workspaceBranch === branchParam,
+				)
+			: null) ?? candidates[0];
+
+	if (!match) {
+		return null;
+	}
+
+	const params = new URLSearchParams();
+	if (fileParam?.trim()) {
+		params.set("file", fileParam.trim());
+	}
+
+	const line = normalizeOptionalPositiveInt(url.searchParams.get("line"));
+	if (line) {
+		params.set("line", line);
+	}
+
+	const column = normalizeOptionalPositiveInt(url.searchParams.get("column"));
+	if (column) {
+		params.set("column", column);
+	}
+
+	const search = params.toString();
+	return `/workspace/${match.workspaceId}${search ? `?${search}` : ""}`;
+}
+
+function getRendererPathFromDeepLink(urlString: string): string | null {
+	let parsed: URL;
+	try {
+		parsed = new URL(urlString);
+	} catch {
+		return null;
+	}
+
+	if (parsed.hostname === "open") {
+		return resolveWorkspaceOpenRouteFromDeepLink(parsed) ?? "/workspace";
+	}
+
+	const host = parsed.hostname ? `/${parsed.hostname}` : "";
+	const routePath = parsed.pathname === "/" ? "" : parsed.pathname;
+	const search = parsed.search || "";
+	const hash = parsed.hash || "";
+	return `${host}${routePath}${search}${hash}` || "/";
+}
+
 async function processDeepLink(url: string): Promise<void> {
 	console.log("[main] Processing deep link:", url);
 
@@ -81,9 +220,12 @@ async function processDeepLink(url: string): Promise<void> {
 		return;
 	}
 
-	// Non-auth deep links: extract path and navigate in renderer
-	// e.g. superset://tasks/my-slug -> /tasks/my-slug
-	const path = `/${url.split("://")[1]}`;
+	const path = getRendererPathFromDeepLink(url);
+	if (!path) {
+		console.error("[main] Failed to resolve deep link route:", url);
+		return;
+	}
+
 	focusMainWindow();
 
 	const windows = BrowserWindow.getAllWindows();

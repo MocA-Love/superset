@@ -60,6 +60,7 @@ import {
 	useHasWorkspaceFailed,
 	useIsWorkspaceInitializing,
 } from "renderer/stores/workspace-init";
+import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 
 const EMPTY_HISTORY_STACK: string[] = [];
 
@@ -71,6 +72,21 @@ export const Route = createFileRoute(
 	validateSearch: (search: Record<string, unknown>): WorkspaceSearchParams => ({
 		tabId: typeof search.tabId === "string" ? search.tabId : undefined,
 		paneId: typeof search.paneId === "string" ? search.paneId : undefined,
+		file: typeof search.file === "string" ? search.file : undefined,
+		line:
+			typeof search.line === "number"
+				? search.line
+				: typeof search.line === "string" &&
+						Number.isFinite(Number(search.line))
+					? Number(search.line)
+					: undefined,
+		column:
+			typeof search.column === "number"
+				? search.column
+				: typeof search.column === "string" &&
+						Number.isFinite(Number(search.column))
+					? Number(search.column)
+					: undefined,
 	}),
 	loader: async ({ params, context }) => {
 		const queryKey = [
@@ -125,9 +141,14 @@ export function WorkspacePage({
 	}) as Partial<WorkspaceSearchParams>;
 	const searchTabId = searchParams?.tabId;
 	const searchPaneId = searchParams?.paneId;
+	const searchFile = searchParams?.file;
+	const searchLine = searchParams?.line;
+	const searchColumn = searchParams?.column;
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
+
+	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
 	// Handle search-param-driven tab/pane activation (e.g. from notification clicks)
 	useEffect(() => {
@@ -152,6 +173,42 @@ export function WorkspacePage({
 			replace: true,
 		});
 	}, [searchTabId, searchPaneId, workspaceId, navigate]);
+
+	useEffect(() => {
+		if (!searchFile || !workspace?.worktreePath) return;
+
+		const filePath = toAbsoluteWorkspacePath(
+			workspace.worktreePath,
+			searchFile,
+		);
+		addFileViewerPane(workspaceId, {
+			filePath,
+			line: searchLine,
+			column: searchColumn,
+			viewMode: "raw",
+			isPinned: true,
+		});
+
+		navigate({
+			to: "/workspace/$workspaceId",
+			params: { workspaceId },
+			search: {
+				tabId: searchTabId,
+				paneId: searchPaneId,
+			},
+			replace: true,
+		});
+	}, [
+		addFileViewerPane,
+		navigate,
+		searchColumn,
+		searchFile,
+		searchLine,
+		searchPaneId,
+		searchTabId,
+		workspace?.worktreePath,
+		workspaceId,
+	]);
 
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
