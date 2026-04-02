@@ -77,7 +77,7 @@ export function CommandPalette({
 			emptyMessage="No files found."
 			isLoading={isLoading}
 			results={searchResults}
-			getItemValue={(file) => `${file.path} ${query}`}
+			getItemValue={(file) => file.path}
 			onSelectItem={(file) => onSelectFile(file.path, file.workspaceId)}
 			headerExtra={
 				<ScopeToggle

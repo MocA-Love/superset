@@ -527,11 +527,12 @@ export function WorkspacePage({
 	const commandPalette = useCommandPalette({
 		workspaceId,
 		navigate,
+		enabled: isActive,
 	});
 	const handleQuickOpen = useCallback(() => {
 		commandPalette.toggle();
 	}, [commandPalette.toggle]);
-	useAppHotkey("QUICK_OPEN", handleQuickOpen, undefined, [handleQuickOpen]);
+	useAppHotkey("QUICK_OPEN", handleQuickOpen, hotkeyOptions, [handleQuickOpen]);
 
 	const handleBrowserShortcut = useCallback(
 		(action: "reload" | "hard-reload") => {
@@ -823,7 +824,7 @@ export function WorkspacePage({
 					)}
 				</div>
 				<CommandPalette
-					open={commandPalette.open}
+					open={isActive ? commandPalette.open : false}
 					onOpenChange={commandPalette.handleOpenChange}
 					query={commandPalette.query}
 					onQueryChange={commandPalette.setQuery}

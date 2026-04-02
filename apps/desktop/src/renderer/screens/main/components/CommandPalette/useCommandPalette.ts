@@ -1,5 +1,5 @@
 import type { UseNavigateResult } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "renderer/hooks/useDebouncedValue";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
@@ -16,6 +16,7 @@ const SEARCH_LIMIT = 50;
 interface UseCommandPaletteParams {
 	workspaceId: string;
 	navigate: UseNavigateResult<string>;
+	enabled?: boolean;
 	onSelectFile?: (input: {
 		filePath: string;
 		targetWorkspaceId: string;
@@ -27,6 +28,7 @@ interface UseCommandPaletteParams {
 export function useCommandPalette({
 	workspaceId,
 	navigate,
+	enabled = true,
 	onSelectFile,
 }: UseCommandPaletteParams) {
 	const [open, setOpen] = useState(false);
@@ -161,14 +163,21 @@ export function useCommandPalette({
 		}
 	}, []);
 
+	useEffect(() => {
+		if (!enabled) {
+			handleOpenChange(false);
+		}
+	}, [enabled, handleOpenChange]);
+
 	const toggle = useCallback(() => {
+		if (!enabled) return;
 		setOpen((prev) => {
 			if (prev) {
 				setQuery("");
 			}
 			return !prev;
 		});
-	}, []);
+	}, [enabled]);
 
 	const selectFile = useCallback(
 		(filePath: string, resultWorkspaceId?: string) => {
