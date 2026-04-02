@@ -612,9 +612,6 @@ function getColumnLabel(index: number): string {
 }
 
 function getDiffRowIndices(sheet: DiffParsedSheet): number[] {
-	if (sheet.sheetStatus === "added" || sheet.sheetStatus === "removed") {
-		return [0];
-	}
 	const rowCount = Math.max(
 		sheet.originalRows.length,
 		sheet.modifiedRows.length,
@@ -630,6 +627,14 @@ function getDiffRowIndices(sheet: DiffParsedSheet): number[] {
 		if (originalHasDiff || modifiedHasDiff) {
 			indices.push(rowIndex);
 		}
+	}
+	// Empty added/removed sheet: synthesise one location so the header shows
+	// "1 change" instead of "No changes" and navigation can reach the sheet.
+	if (
+		indices.length === 0 &&
+		(sheet.sheetStatus === "added" || sheet.sheetStatus === "removed")
+	) {
+		return [0];
 	}
 	return indices;
 }

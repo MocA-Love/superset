@@ -306,28 +306,35 @@ export function ProblemsView({
 					</div>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								className="size-7 shrink-0"
-								onClick={() => {
-									if (!workspaceId) {
-										return;
+							<span>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									className="size-7 shrink-0"
+									onClick={() => {
+										if (!workspaceId) {
+											return;
+										}
+										void refreshDiagnostics.mutateAsync({ workspaceId });
+										void refetch();
+									}}
+									disabled={isFetching || refreshDiagnostics.isPending}
+									style={
+										isFetching || refreshDiagnostics.isPending
+											? { pointerEvents: "none" }
+											: undefined
 									}
-									void refreshDiagnostics.mutateAsync({ workspaceId });
-									void refetch();
-								}}
-								disabled={isFetching || refreshDiagnostics.isPending}
-							>
-								<LuRefreshCw
-									className={cn(
-										"size-3.5",
-										(isFetching || refreshDiagnostics.isPending) &&
-											"animate-spin",
-									)}
-								/>
-							</Button>
+								>
+									<LuRefreshCw
+										className={cn(
+											"size-3.5",
+											(isFetching || refreshDiagnostics.isPending) &&
+												"animate-spin",
+										)}
+									/>
+								</Button>
+							</span>
 						</TooltipTrigger>
 						<TooltipContent side="bottom" showArrow={false}>
 							Refresh diagnostics

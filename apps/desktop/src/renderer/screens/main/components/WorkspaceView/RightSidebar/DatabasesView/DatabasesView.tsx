@@ -228,7 +228,13 @@ function buildPostgresConnectionString(input: {
 			: encodeURIComponent(input.username);
 	const query = input.ssl ? "?sslmode=require" : "";
 	const databaseName = input.database?.trim() || "postgres";
-	const host = input.host.includes(":") ? `[${input.host}]` : input.host;
+	const trimmedHost = input.host.trim();
+	const host =
+		trimmedHost.startsWith("[") && trimmedHost.endsWith("]")
+			? trimmedHost
+			: trimmedHost.includes(":")
+				? `[${trimmedHost}]`
+				: trimmedHost;
 
 	return `postgres://${auth}@${host}:${input.port}/${databaseName}${query}`;
 }
@@ -595,9 +601,16 @@ function getConnectionSubtitle(connection: SavedDatabaseConnection): string {
 		});
 	}
 
-	return connection.dialect === "sqlite"
-		? (connection.databasePath ?? "")
-		: (connection.connectionString ?? "");
+	if (connection.dialect === "sqlite") {
+		return connection.databasePath ?? "";
+	}
+	if (connection.host) {
+		return getWorkspaceConfigPostgresLabel({
+			host: connection.host,
+			databaseName: connection.databaseName ?? "",
+		});
+	}
+	return "";
 }
 
 function isWorkspaceConfigConnection(
@@ -717,6 +730,7 @@ function ConnectionItem({
 							variant="ghost"
 							size="icon"
 							type="button"
+							aria-label="Edit connection"
 							className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
 							onClick={onEdit}
 						>
@@ -735,6 +749,7 @@ function ConnectionItem({
 							variant="ghost"
 							size="icon"
 							type="button"
+							aria-label="Remove connection"
 							className="size-7 shrink-0 opacity-70 group-hover:opacity-100"
 							onClick={onRemove}
 						>
@@ -982,29 +997,20 @@ export function DatabasesView({
 			return;
 		}
 
-		const parsed = parsePostgresConnectionString(
-			connection.connectionString ?? "",
-		);
-		if (parsed) {
-			setUseConnectionString(false);
-			setPathInput("");
-			setPostgresHost(parsed.host);
-			setPostgresPort(parsed.port);
-			setPostgresUsername(parsed.username);
-			setPostgresPassword(parsed.password);
-			setPostgresDatabase(parsed.database);
-			setPostgresSsl(parsed.ssl);
-			return;
-		}
-
-		setUseConnectionString(true);
-		setPathInput(connection.connectionString ?? "");
-		setPostgresHost("127.0.0.1");
-		setPostgresPort("5432");
-		setPostgresUsername("postgres");
+		// Manual postgres: use stored host/port/db/username metadata for display.
+		// Password is not stored in renderer state; user must re-enter to change it.
+		setUseConnectionString(false);
+		setPathInput("");
+		setPostgresHost(connection.host ?? "127.0.0.1");
+		setPostgresPort(String(connection.port ?? 5432));
+		setPostgresUsername(connection.usernameHint ?? "");
 		setPostgresPassword("");
-		setPostgresDatabase("");
-		setPostgresSsl(false);
+		setPostgresDatabase(
+			connection.databaseName === "postgres"
+				? ""
+				: (connection.databaseName ?? ""),
+		);
+		setPostgresSsl(connection.ssl ?? false);
 	};
 
 	useEffect(() => {
@@ -1798,11 +1804,30 @@ export function DatabasesView({
 					);
 					return;
 				}
+				const parsedForStore = useConnectionString
+					? parsePostgresConnectionString(connectionString)
+					: null;
 				const nextConnection = {
 					label: nextLabelValue || guessPostgresLabel(connectionString),
 					group: nextGroupValue,
 					dialect: "postgres" as const,
+					source: "manual" as const,
 					connectionStringId,
+					host: useConnectionString
+						? (parsedForStore?.host ?? nextHost.trim())
+						: nextHost.trim(),
+					port: useConnectionString
+						? Number.parseInt(parsedForStore?.port ?? "5432", 10)
+						: Number.parseInt(nextPort.trim() || "5432", 10),
+					databaseName: useConnectionString
+						? (parsedForStore?.database ?? "postgres")
+						: nextDatabase.trim() || "postgres",
+					usernameHint: useConnectionString
+						? (parsedForStore?.username ?? "")
+						: nextUsername.trim(),
+					ssl: useConnectionString
+						? (parsedForStore?.ssl ?? false)
+						: postgresSsl,
 				};
 
 				if (editingConnectionId) {
@@ -2635,6 +2660,10 @@ export function DatabasesView({
 																setFormError(null);
 															}}
 															placeholder="postgres"
+															disabled={
+																isEditingWorkspaceConfig &&
+																!isResettingWorkspacePassword
+															}
 														/>
 													</div>
 													{isEditingWorkspaceConfig &&
@@ -3364,6 +3393,7 @@ export function DatabasesView({
 																											type="button"
 																											size="icon"
 																											variant="ghost"
+																											aria-label="フィルター条件を設定"
 																											className={cn(
 																												"size-6",
 																												columnFilters[column] &&
@@ -3713,6 +3743,7 @@ export function DatabasesView({
 																	type="button"
 																	size="sm"
 																	variant="ghost"
+																	aria-label="Remove from history"
 																	onClick={() =>
 																		removeQueryHistoryItem(item.id)
 																	}

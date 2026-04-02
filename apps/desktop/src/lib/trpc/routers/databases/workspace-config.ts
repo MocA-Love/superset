@@ -124,7 +124,13 @@ function buildPostgresConnectionString(input: {
 			? `${encodeURIComponent(input.username)}:${encodeURIComponent(input.password)}`
 			: encodeURIComponent(input.username);
 	const query = input.ssl ? "?sslmode=require" : "";
-	const host = input.host.includes(":") ? `[${input.host}]` : input.host;
+	const trimmedHost = input.host.trim();
+	const host =
+		trimmedHost.startsWith("[") && trimmedHost.endsWith("]")
+			? trimmedHost
+			: trimmedHost.includes(":")
+				? `[${trimmedHost}]`
+				: trimmedHost;
 	return `postgres://${auth}@${host}:${input.port}/${input.database}${query}`;
 }
 
