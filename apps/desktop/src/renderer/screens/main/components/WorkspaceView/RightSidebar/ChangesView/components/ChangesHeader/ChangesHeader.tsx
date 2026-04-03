@@ -1136,12 +1136,15 @@ function StashDropdown({
 function FetchRemoteButton({
 	worktreePath,
 	onRefresh,
-}: { worktreePath: string; onRefresh: () => void }) {
+}: {
+	worktreePath: string;
+	onRefresh: () => void;
+}) {
 	const utils = electronTrpc.useUtils();
 	const [isDisabled, setIsDisabled] = useState(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-	const fetchMutation = electronTrpc.gitOperations.fetch.useMutation({
+	const fetchMutation = electronTrpc.changes.fetch.useMutation({
 		onSuccess: () => {
 			void utils.changes.getBranches.invalidate({ worktreePath });
 			void utils.changes.getStatus.invalidate();

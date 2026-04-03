@@ -41,6 +41,7 @@ import {
  * hidden parking container, but the webview inside is untouched.
  */
 let hiddenContainer: HTMLDivElement | null = null;
+const webviewInteractionLocks = new Set<string>();
 
 function getHiddenContainer(): HTMLDivElement {
 	if (!hiddenContainer) {
@@ -75,17 +76,34 @@ function setWebviewsDragPassthrough(passthrough: boolean) {
 	});
 }
 
+export function setPersistentWebviewInteractionLock(
+	lockId: string,
+	enabled: boolean,
+) {
+	if (enabled) {
+		webviewInteractionLocks.add(lockId);
+	} else {
+		webviewInteractionLocks.delete(lockId);
+	}
+
+	setWebviewsDragPassthrough(webviewInteractionLocks.size > 0);
+}
+
 window.addEventListener(
 	"dragstart",
-	() => setWebviewsDragPassthrough(true),
+	() => setPersistentWebviewInteractionLock("native-drag", true),
 	true,
 );
 window.addEventListener(
 	"dragend",
-	() => setWebviewsDragPassthrough(false),
+	() => setPersistentWebviewInteractionLock("native-drag", false),
 	true,
 );
-window.addEventListener("drop", () => setWebviewsDragPassthrough(false), true);
+window.addEventListener(
+	"drop",
+	() => setPersistentWebviewInteractionLock("native-drag", false),
+	true,
+);
 
 /** Call from useBrowserLifecycle when a pane is removed. */
 export function destroyPersistentWebview(paneId: string): void {
