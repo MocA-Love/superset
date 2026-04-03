@@ -163,9 +163,7 @@ interface CsvState {
 	inQuote: boolean;
 }
 
-function createCsvStreamLanguage(
-	delimiter: string,
-): StreamParser<CsvState> {
+function createCsvStreamLanguage(delimiter: string): StreamParser<CsvState> {
 	return {
 		name: delimiter === "\t" ? "tsv" : "csv",
 		startState: () => ({ column: 0, inQuote: false }),
