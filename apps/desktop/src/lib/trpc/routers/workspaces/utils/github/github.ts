@@ -4,7 +4,7 @@ import {
 	getCurrentBranch,
 	isUnbornHeadError,
 } from "../git";
-import { execGitWithShellPath } from "../git-client";
+import { execGitWithShellPath, getSimpleGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
 import { parseUpstreamRef } from "../upstream-ref";
 import {
@@ -15,6 +15,10 @@ import {
 	readCachedPullRequestComments,
 } from "./cache";
 import { fetchPullRequestComments, resolveReviewThread } from "./comments";
+import {
+	canAttachPullRequestToWorkspace,
+	type GitRemoteInfo,
+} from "./pr-attachment";
 import { getPRForBranch } from "./pr-resolution";
 import { extractNwoFromUrl, getRepoContext } from "./repo-context";
 import {
@@ -49,30 +53,34 @@ function getPullRequestCommentsRepoNameWithOwner(
 	return extractNwoFromUrl(targetUrl);
 }
 
-async function resolvePullRequestCommentsTarget(
+async function getGitRemoteInfos(
 	worktreePath: string,
-): Promise<PullRequestCommentsTarget | null> {
-	const repoContext = await getRepoContext(worktreePath);
-	if (!repoContext) {
-		return null;
-	}
+): Promise<GitRemoteInfo[]> {
+	const git = await getSimpleGitWithShellPath(worktreePath);
+	const remotes = await git.getRemotes(true);
+	return remotes.map((remote) => ({
+		name: remote.name,
+		fetchUrl: remote.refs.fetch,
+		pushUrl: remote.refs.push,
+	}));
+}
 
-	const branchName = await getCurrentBranch(worktreePath);
-	if (!branchName) {
-		return null;
-	}
-	const shaResult = await execGitWithShellPath(["rev-parse", "HEAD"], {
-		cwd: worktreePath,
-	}).catch((error) => {
-		if (isUnbornHeadError(error)) {
-			return { stdout: "", stderr: "" };
-		}
-		throw error;
-	});
-	const headSha = shaResult.stdout.trim() || undefined;
+async function resolveAttachedPullRequest({
+	worktreePath,
+	localBranch,
+	repoContext,
+	headSha,
+	fallbackRemote,
+}: {
+	worktreePath: string;
+	localBranch: string;
+	repoContext: RepoContext;
+	headSha?: string;
+	fallbackRemote: string;
+}): Promise<GitHubStatus["pr"]> {
 	const prInfo = await getPRForBranch(
 		worktreePath,
-		branchName,
+		localBranch,
 		repoContext,
 		headSha,
 	);
@@ -80,10 +88,32 @@ async function resolvePullRequestCommentsTarget(
 		return null;
 	}
 
+	const remotes = await getGitRemoteInfos(worktreePath);
+	return canAttachPullRequestToWorkspace({
+		pr: prInfo,
+		remotes,
+		fallbackRemote,
+	})
+		? prInfo
+		: null;
+}
+
+async function resolvePullRequestCommentsTarget(
+	worktreePath: string,
+): Promise<PullRequestCommentsTarget | null> {
+	const githubStatus = await fetchGitHubPRStatus(worktreePath);
+	if (!githubStatus?.pr) {
+		return null;
+	}
+
 	return {
-		prNumber: prInfo.number,
-		repoContext,
-		prUrl: prInfo.url,
+		prNumber: githubStatus.pr.number,
+		repoContext: {
+			repoUrl: githubStatus.repoUrl,
+			upstreamUrl: githubStatus.upstreamUrl ?? githubStatus.repoUrl,
+			isFork: githubStatus.isFork ?? false,
+		},
+		prUrl: githubStatus.pr.url,
 	};
 }
 
@@ -135,7 +165,13 @@ async function refreshGitHubPRStatus(
 		});
 
 		const [prInfo, previewUrl] = await Promise.all([
-			getPRForBranch(worktreePath, branchName, repoContext, headSha),
+			resolveAttachedPullRequest({
+				worktreePath,
+				localBranch: branchName,
+				repoContext,
+				headSha,
+				fallbackRemote: trackingRemote,
+			}),
 			fetchPreviewDeploymentUrl(
 				worktreePath,
 				headSha,

@@ -7,6 +7,10 @@ import {
 } from "./comments";
 import { resolveRemoteBranchNameForGitHubStatus } from "./github";
 import {
+	canAttachPullRequestToWorkspace,
+	resolveOpenPullRequestPushTarget,
+} from "./pr-attachment";
+import {
 	branchMatchesPR,
 	getPRHeadBranchCandidates,
 	prMatchesLocalBranch,
@@ -71,6 +75,95 @@ describe("getPullRequestRepoArgs", () => {
 				upstreamUrl: "not-a-github-url",
 			}),
 		).toEqual([]);
+	});
+});
+
+describe("pull request attachment", () => {
+	test("attaches same-repo open PRs using the fallback remote", () => {
+		expect(
+			resolveOpenPullRequestPushTarget({
+				pr: {
+					headRefName: "feature/my-thing",
+					isCrossRepository: false,
+					state: "open",
+				},
+				remotes: [
+					{
+						name: "origin",
+						fetchUrl: "git@github.com:superset-sh/superset.git",
+					},
+				],
+				fallbackRemote: "origin",
+			}),
+		).toEqual({
+			remote: "origin",
+			targetBranch: "feature/my-thing",
+		});
+	});
+
+	test("does not attach cross-repo open PRs when the fork remote is missing", () => {
+		expect(
+			canAttachPullRequestToWorkspace({
+				pr: {
+					headRefName: "feature/my-thing",
+					headRepositoryOwner: "forkowner",
+					headRepositoryName: "superset",
+					isCrossRepository: true,
+					state: "open",
+				},
+				remotes: [
+					{
+						name: "origin",
+						fetchUrl: "git@github.com:superset-sh/superset.git",
+					},
+				],
+				fallbackRemote: "origin",
+			}),
+		).toBe(false);
+	});
+
+	test("attaches cross-repo open PRs when the fork remote exists", () => {
+		expect(
+			resolveOpenPullRequestPushTarget({
+				pr: {
+					headRefName: "feature/my-thing",
+					headRepositoryOwner: "forkowner",
+					headRepositoryName: "superset",
+					isCrossRepository: true,
+					state: "draft",
+				},
+				remotes: [
+					{
+						name: "origin",
+						fetchUrl: "git@github.com:superset-sh/superset.git",
+					},
+					{
+						name: "forkowner",
+						fetchUrl: "git@github.com:forkowner/superset.git",
+					},
+				],
+				fallbackRemote: "origin",
+			}),
+		).toEqual({
+			remote: "forkowner",
+			targetBranch: "feature/my-thing",
+		});
+	});
+
+	test("keeps historical PRs attached even without a fork remote", () => {
+		expect(
+			canAttachPullRequestToWorkspace({
+				pr: {
+					headRefName: "feature/my-thing",
+					headRepositoryOwner: "forkowner",
+					headRepositoryName: "superset",
+					isCrossRepository: true,
+					state: "merged",
+				},
+				remotes: [],
+				fallbackRemote: "origin",
+			}),
+		).toBe(true);
 	});
 });
 
