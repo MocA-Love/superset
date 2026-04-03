@@ -223,11 +223,11 @@ function SortableTabButton({
 	);
 }
 
-export function RightSidebar() {
+export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 	const workspaceId = useWorkspaceId();
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },
-		{ enabled: !!workspaceId },
+		{ enabled: Boolean(workspaceId) && isActive },
 	);
 	const worktreePath = workspace?.worktreePath;
 	const currentMode = useSidebarStore((s) => s.currentMode);
@@ -253,14 +253,14 @@ export function RightSidebar() {
 		electronTrpc.languageServices.getWorkspaceDiagnostics.useQuery(
 			{ workspaceId: workspaceId ?? "" },
 			{
-				enabled: Boolean(workspaceId),
+				enabled: Boolean(workspaceId) && isActive,
 				staleTime: Infinity,
 			},
 		);
 	const dockerComposeFilesQuery = electronTrpc.docker.getComposeFiles.useQuery(
 		{ workspaceId: workspaceId ?? "" },
 		{
-			enabled: Boolean(workspaceId),
+			enabled: Boolean(workspaceId) && isActive,
 			staleTime: 10000,
 		},
 	);
@@ -268,6 +268,7 @@ export function RightSidebar() {
 	const dockerComposeFiles = dockerComposeFilesQuery.data;
 	const isResolvingDockerVisibility =
 		Boolean(workspaceId) &&
+		isActive &&
 		rightSidebarTab === RightSidebarTab.Docker &&
 		dockerComposeFilesQuery.status === "pending";
 	const showDockerTab = isResolvingDockerVisibility
@@ -301,6 +302,10 @@ export function RightSidebar() {
 	}, [hasProblemErrors, rightSidebarTabOrder, showChangesTab, showDockerTab]);
 
 	useEffect(() => {
+		if (!isActive) {
+			return;
+		}
+
 		if (isResolvingDockerVisibility) {
 			return;
 		}
@@ -314,11 +319,18 @@ export function RightSidebar() {
 			setRightSidebarTab(fallbackTabId);
 		}
 	}, [
+		isActive,
 		isResolvingDockerVisibility,
 		rightSidebarTab,
 		setRightSidebarTab,
 		sidebarTabs,
 	]);
+	const handleSelectSidebarTab = useCallback(
+		(tabId: RightSidebarTab) => {
+			setRightSidebarTab(tabId);
+		},
+		[setRightSidebarTab],
+	);
 	const handleTabDragEnd = useCallback(
 		({ active, over }: DragEndEvent) => {
 			if (!over || active.id === over.id) {
@@ -336,7 +348,7 @@ export function RightSidebar() {
 	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
 		{ workspaceId: workspaceId ?? "" },
 		{
-			enabled: Boolean(workspaceId),
+			enabled: Boolean(workspaceId) && isActive,
 			onData: () => {
 				if (!workspaceId) {
 					return;
@@ -547,7 +559,7 @@ export function RightSidebar() {
 									key={tab.id}
 									tab={tab}
 									isActive={rightSidebarTab === tab.id}
-									onClick={() => setRightSidebarTab(tab.id)}
+									onClick={() => handleSelectSidebarTab(tab.id)}
 									compact={compactTabs}
 								/>
 							))}
@@ -579,7 +591,7 @@ export function RightSidebar() {
 									return (
 										<DropdownMenuItem
 											key={tab.id}
-											onClick={() => setRightSidebarTab(tab.id)}
+											onClick={() => handleSelectSidebarTab(tab.id)}
 											className="gap-2"
 										>
 											<span className="relative inline-flex">

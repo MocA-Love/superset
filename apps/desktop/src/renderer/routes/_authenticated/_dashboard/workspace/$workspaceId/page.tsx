@@ -842,6 +842,7 @@ export function WorkspacePage({
 					) : (
 						<WorkspaceLayout
 							workspaceId={workspaceId}
+							isActive={isActive}
 							defaultExternalApp={resolvedDefaultApp}
 							onOpenInApp={handleOpenInApp}
 							onOpenQuickOpen={handleQuickOpen}
