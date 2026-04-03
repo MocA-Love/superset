@@ -343,6 +343,15 @@ export const createGitOperationsRouter = () => {
 				},
 			),
 
+		fetchRemote: publicProcedure
+			.input(z.object({ worktreePath: z.string() }))
+			.mutation(async ({ input }): Promise<{ success: boolean }> => {
+				assertRegisteredWorktree(input.worktreePath);
+				const git = await getGitWithShellPath(input.worktreePath);
+				await git.fetch(["--prune"]);
+				return { success: true };
+			}),
+
 		generateCommitMessage: publicProcedure
 			.input(z.object({ worktreePath: z.string() }))
 			.mutation(async ({ input }): Promise<{ message: string | null }> => {
