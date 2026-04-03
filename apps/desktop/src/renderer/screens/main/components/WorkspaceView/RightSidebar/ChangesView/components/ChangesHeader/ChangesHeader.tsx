@@ -28,6 +28,7 @@ import {
 	useState,
 } from "react";
 import { GoGitBranch, GoGlobe } from "react-icons/go";
+import { IoCloudDownloadOutline } from "react-icons/io5";
 import { LuArrowLeft, LuChevronDown, LuPlus, LuTag } from "react-icons/lu";
 import {
 	VscCheck,
@@ -1132,6 +1133,50 @@ function StashDropdown({
 	);
 }
 
+function FetchRemoteButton({
+	worktreePath,
+	onRefresh,
+}: {
+	worktreePath: string;
+	onRefresh: () => void;
+}) {
+	const [isFetching, setIsFetching] = useState(false);
+	const fetchRemote = electronTrpc.changes.fetchRemote.useMutation();
+
+	const handleClick = async () => {
+		setIsFetching(true);
+		try {
+			await fetchRemote.mutateAsync({ worktreePath });
+			onRefresh();
+		} catch {
+			toast.error("Failed to fetch remote");
+		} finally {
+			setIsFetching(false);
+		}
+	};
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={handleClick}
+					disabled={isFetching}
+					className="size-6 p-0"
+				>
+					<IoCloudDownloadOutline
+						className={`size-3.5 ${isFetching ? "animate-pulse" : ""}`}
+					/>
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="top" showArrow={false}>
+				Fetch remote
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
 function RefreshButton({ onRefresh }: { onRefresh: () => void }) {
 	const [isSpinning, setIsSpinning] = useState(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1212,6 +1257,7 @@ export function ChangesHeader({
 						onViewModeChange={onViewModeChange}
 					/>
 				)}
+				<FetchRemoteButton worktreePath={worktreePath} onRefresh={onRefresh} />
 				<RefreshButton onRefresh={onRefresh} />
 				<PRButton
 					pr={pr}
