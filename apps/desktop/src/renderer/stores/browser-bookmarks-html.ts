@@ -1,5 +1,6 @@
 import type {
 	BrowserBookmark,
+	BrowserBookmarkFolder,
 	BrowserBookmarkTreeNode,
 } from "./browser-bookmarks";
 import { isBrowserBookmark, normalizeBookmarkUrl } from "./browser-bookmarks";
@@ -62,36 +63,115 @@ function parseBookmarkAnchor(
 	};
 }
 
-function parseBookmarkList(list: Element | null): BrowserBookmarkTreeNode[] {
-	if (!list) return [];
+function parseElementFragment<T extends Element>(
+	parser: DOMParser,
+	html: string,
+	selector: string,
+): T | null {
+	const document = parser.parseFromString(html, "text/html");
+	const element = document.body.firstElementChild;
+	if (!element?.matches(selector)) {
+		return null;
+	}
+	return element as T;
+}
 
+function parseFolderHeading(
+	parser: DOMParser,
+	html: string,
+): BrowserBookmarkFolder | null {
+	const heading = parseElementFragment<HTMLHeadingElement>(
+		parser,
+		html,
+		"h1, h2, h3, h4, h5, h6",
+	);
+	if (!heading) {
+		return null;
+	}
+
+	return {
+		id: crypto.randomUUID(),
+		type: "folder",
+		title: heading.textContent?.trim() || "Untitled Folder",
+		createdAt: parseTimestamp(heading.getAttribute("add_date")),
+		children: [],
+	};
+}
+
+function parseBookmarkListFromHtml(html: string): BrowserBookmarkTreeNode[] {
+	const parser = new DOMParser();
 	const nodes: BrowserBookmarkTreeNode[] = [];
-	for (const child of Array.from(list.children)) {
-		if (child.tagName !== "DT") continue;
+	const listStack: BrowserBookmarkTreeNode[][] = [];
+	let pendingFolder: BrowserBookmarkFolder | null = null;
 
-		const heading = Array.from(child.children).find((element) =>
-			/^H[1-6]$/i.test(element.tagName),
-		);
-		if (heading) {
-			const nestedList =
-				child.nextElementSibling?.tagName === "DL"
-					? child.nextElementSibling
-					: null;
-			nodes.push({
-				id: crypto.randomUUID(),
-				type: "folder",
-				title: heading.textContent?.trim() || "Untitled Folder",
-				createdAt: parseTimestamp(heading.getAttribute("add_date")),
-				children: parseBookmarkList(nestedList),
-			});
+	// Netscape bookmark exports commonly omit closing </DT> tags, so we parse the
+	// raw token stream instead of relying on the browser's repaired DOM tree shape.
+	const tokenPattern =
+		/<a\b[^>]*>[\s\S]*?<\/a\s*>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]\s*>|<\/?dl\b[^>]*>|<\/?dt\b[^>]*>/gi;
+
+	for (const match of html.matchAll(tokenPattern)) {
+		const token = match[0];
+		if (!token) continue;
+
+		if (/^<dl\b/i.test(token)) {
+			if (listStack.length === 0) {
+				listStack.push(nodes);
+				pendingFolder = null;
+				continue;
+			}
+
+			if (pendingFolder) {
+				listStack.push(pendingFolder.children);
+				pendingFolder = null;
+				continue;
+			}
+
+			listStack.push(listStack[listStack.length - 1] ?? nodes);
 			continue;
 		}
 
-		const anchor = child.querySelector("a");
-		if (!anchor) continue;
-		const bookmark = parseBookmarkAnchor(anchor);
-		if (bookmark) {
-			nodes.push(bookmark);
+		if (/^<\/dl\b/i.test(token)) {
+			pendingFolder = null;
+			if (listStack.length > 0) {
+				listStack.pop();
+			}
+			continue;
+		}
+
+		if (listStack.length === 0) {
+			continue;
+		}
+
+		if (/^<h[1-6]\b/i.test(token)) {
+			const folder = parseFolderHeading(parser, token);
+			if (!folder) {
+				pendingFolder = null;
+				continue;
+			}
+
+			const currentList = listStack[listStack.length - 1];
+			if (!currentList) {
+				pendingFolder = null;
+				continue;
+			}
+
+			currentList.push(folder);
+			pendingFolder = folder;
+			continue;
+		}
+
+		if (/^<a\b/i.test(token)) {
+			const anchor = parseElementFragment<HTMLAnchorElement>(
+				parser,
+				token,
+				"a",
+			);
+			const bookmark = anchor ? parseBookmarkAnchor(anchor) : null;
+			if (bookmark) {
+				const currentList = listStack[listStack.length - 1];
+				currentList?.push(bookmark);
+			}
+			pendingFolder = null;
 		}
 	}
 
@@ -116,10 +196,5 @@ export function exportBrowserBookmarksToHtml(
 export function importBrowserBookmarksFromHtml(
 	html: string,
 ): BrowserBookmarkTreeNode[] {
-	const parser = new DOMParser();
-	const document = parser.parseFromString(html, "text/html");
-	const rootList =
-		document.querySelector("body > dl") ?? document.querySelector("dl");
-
-	return parseBookmarkList(rootList);
+	return parseBookmarkListFromHtml(html);
 }

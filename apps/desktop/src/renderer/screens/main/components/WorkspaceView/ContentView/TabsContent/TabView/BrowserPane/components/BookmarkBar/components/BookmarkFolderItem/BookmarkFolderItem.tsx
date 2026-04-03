@@ -21,13 +21,15 @@ import {
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { toast } from "@superset/ui/sonner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { GripVerticalIcon } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserBookmarkFolderIcon } from "renderer/stores/browser-bookmark-folder-icons";
 import {
 	type BrowserBookmarkFolder,
@@ -42,7 +44,6 @@ import { BookmarkBarItem } from "../BookmarkBarItem";
 
 interface BookmarkFolderItemProps {
 	folder: BrowserBookmarkFolder;
-	isActive: boolean;
 	currentUrl: string;
 	onNavigate: (url: string) => void;
 }
@@ -53,20 +54,21 @@ interface FolderTreeSectionProps {
 	onNavigate: (url: string) => void;
 	currentUrl: string;
 	onReorder: (folderId: string, activeId: string, overId: string) => void;
-	depth?: number;
 }
 
-interface SortableFolderTreeNodeProps {
+interface SortableFolderMenuNodeProps {
 	folder: BrowserBookmarkFolder;
-	depth: number;
-	children: ReactNode;
+	onNavigate: (url: string) => void;
+	currentUrl: string;
+	onReorder: (folderId: string, activeId: string, overId: string) => void;
 }
 
-function SortableFolderTreeNode({
+function SortableFolderMenuNode({
 	folder,
-	depth,
-	children,
-}: SortableFolderTreeNodeProps) {
+	onNavigate,
+	currentUrl,
+	onReorder,
+}: SortableFolderMenuNodeProps) {
 	const FolderIcon = getBrowserBookmarkFolderIcon(folder.iconKey);
 	const {
 		attributes,
@@ -90,31 +92,47 @@ function SortableFolderTreeNode({
 	);
 
 	return (
-		<div
-			ref={setNodeRef}
-			style={style}
-			className={cn("space-y-1", isDragging && "opacity-45")}
-		>
-			<div
-				className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground/75"
-				style={{ marginLeft: depth * 10 }}
-			>
-				<FolderIcon
-					className="size-3.5 shrink-0"
-					style={folder.color ? { color: folder.color } : undefined}
-				/>
-				<span className="min-w-0 flex-1 truncate">{folder.title}</span>
-				<button
-					type="button"
-					{...attributes}
-					{...listeners}
-					className="flex shrink-0 items-center text-muted-foreground/55 transition-colors hover:text-foreground active:cursor-grabbing"
-					aria-label={`Reorder ${folder.title}`}
+		<div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-45")}>
+			<DropdownMenuSub>
+				<DropdownMenuSubTrigger className="gap-2 pr-1.5">
+					<FolderIcon
+						className="size-3.5 shrink-0"
+						style={folder.color ? { color: folder.color } : undefined}
+					/>
+					<span className="min-w-0 flex-1 truncate">{folder.title}</span>
+					<button
+						type="button"
+						{...attributes}
+						{...listeners}
+						onClick={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+						}}
+						className="flex shrink-0 items-center text-muted-foreground/55 transition-colors hover:text-foreground active:cursor-grabbing"
+						aria-label={`Reorder ${folder.title}`}
+					>
+						<GripVerticalIcon className="size-3.5 shrink-0" />
+					</button>
+				</DropdownMenuSubTrigger>
+				<DropdownMenuSubContent
+					sideOffset={8}
+					className="max-h-[28rem] w-80 overflow-y-auto p-1.5"
 				>
-					<GripVerticalIcon className="size-3.5 shrink-0" />
-				</button>
-			</div>
-			{children}
+					{folder.children.length > 0 ? (
+						<FolderTreeSection
+							folderId={folder.id}
+							nodes={folder.children}
+							onNavigate={onNavigate}
+							currentUrl={currentUrl}
+							onReorder={onReorder}
+						/>
+					) : (
+						<div className="px-2 py-1 text-xs text-muted-foreground/60">
+							Folder is empty.
+						</div>
+					)}
+				</DropdownMenuSubContent>
+			</DropdownMenuSub>
 		</div>
 	);
 }
@@ -125,7 +143,6 @@ function FolderTreeSection({
 	onNavigate,
 	currentUrl,
 	onReorder,
-	depth = 0,
 }: FolderTreeSectionProps) {
 	const dragLockId = `bookmark-folder-dnd-${folderId}`;
 	const sensors = useSensors(
@@ -180,18 +197,13 @@ function FolderTreeSection({
 						}
 
 						return (
-							<SortableFolderTreeNode key={node.id} folder={node} depth={depth}>
-								{node.children.length > 0 ? (
-									<FolderTreeSection
-										folderId={node.id}
-										nodes={node.children}
-										onNavigate={onNavigate}
-										currentUrl={currentUrl}
-										onReorder={onReorder}
-										depth={depth + 1}
-									/>
-								) : null}
-							</SortableFolderTreeNode>
+							<SortableFolderMenuNode
+								key={node.id}
+								folder={node}
+								onNavigate={onNavigate}
+								currentUrl={currentUrl}
+								onReorder={onReorder}
+							/>
 						);
 					})}
 				</div>
@@ -202,7 +214,6 @@ function FolderTreeSection({
 
 export function BookmarkFolderItem({
 	folder,
-	isActive,
 	currentUrl,
 	onNavigate,
 }: BookmarkFolderItemProps) {
@@ -266,6 +277,11 @@ export function BookmarkFolderItem({
 		}, 0);
 	};
 
+	const handleNavigateFromFolder = (url: string) => {
+		setIsMenuOpen(false);
+		onNavigate(url);
+	};
+
 	return (
 		<>
 			<ContextMenu>
@@ -280,31 +296,20 @@ export function BookmarkFolderItem({
 								className={cn(
 									"flex h-7 min-w-0 max-w-56 items-center rounded-md border transition-colors",
 									"border-transparent bg-transparent text-muted-foreground/75 hover:bg-accent/70 hover:text-foreground",
-									isActive &&
-										"border-border bg-accent text-foreground shadow-sm",
 								)}
 							>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<DropdownMenuTrigger asChild>
-											<button
-												type="button"
-												className="flex min-w-0 flex-1 items-center gap-2 px-2 text-xs"
-											>
-												<FolderIcon
-													className="size-3.5 shrink-0"
-													style={
-														folder.color ? { color: folder.color } : undefined
-													}
-												/>
-												<span className="truncate">{folder.title}</span>
-											</button>
-										</DropdownMenuTrigger>
-									</TooltipTrigger>
-									<TooltipContent side="bottom" showArrow={false}>
-										{folder.title}
-									</TooltipContent>
-								</Tooltip>
+								<DropdownMenuTrigger asChild>
+									<button
+										type="button"
+										className="flex min-w-0 flex-1 items-center gap-2 px-2 text-xs"
+									>
+										<FolderIcon
+											className="size-3.5 shrink-0"
+											style={folder.color ? { color: folder.color } : undefined}
+										/>
+										<span className="truncate">{folder.title}</span>
+									</button>
+								</DropdownMenuTrigger>
 								<button
 									type="button"
 									{...attributes}
@@ -323,7 +328,7 @@ export function BookmarkFolderItem({
 									<FolderTreeSection
 										folderId={folder.id}
 										nodes={folder.children}
-										onNavigate={onNavigate}
+										onNavigate={handleNavigateFromFolder}
 										currentUrl={currentUrl}
 										onReorder={reorderFolderChildren}
 									/>
