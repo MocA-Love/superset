@@ -39,6 +39,7 @@ export interface Tab extends BaseTab {
 export interface TabsState extends Omit<BaseTabsState, "tabs"> {
 	tabs: Tab[];
 	closedTabsStack: ClosedTabEntry[];
+	hasHydrated?: boolean;
 }
 
 /**
@@ -97,6 +98,8 @@ export interface AddFileViewerPaneOptions {
  * Actions available on the tabs store
  */
 export interface TabsStore extends TabsState {
+	setHasHydrated: (hasHydrated: boolean) => void;
+
 	// Tab operations
 	addTab: (
 		workspaceId: string,
