@@ -266,8 +266,11 @@ export const useSidebarStore = create<SidebarState>()(
 				merge: (persistedState, currentState) => ({
 					...currentState,
 					...sanitizeSidebarState(
-						(persistedState as Partial<SidebarState> | undefined)?.state ??
-							(persistedState as Partial<SidebarState> | undefined),
+						(
+							persistedState as
+								| (Partial<SidebarState> & { state?: Partial<SidebarState> })
+								| undefined
+						)?.state ?? (persistedState as Partial<SidebarState> | undefined),
 					),
 				}),
 				version: 2,

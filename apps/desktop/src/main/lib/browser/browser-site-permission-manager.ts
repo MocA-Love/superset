@@ -73,7 +73,9 @@ class BrowserSitePermissionManager extends EventEmitter {
 				}
 
 				const origin =
-					normalizeOrigin(details.securityOrigin ?? "") ??
+					normalizeOrigin(
+						(details as { securityOrigin?: string }).securityOrigin ?? "",
+					) ??
 					normalizeOrigin(requestingOrigin) ??
 					normalizeOrigin(webContents?.getURL() ?? "");
 
@@ -100,7 +102,9 @@ class BrowserSitePermissionManager extends EventEmitter {
 				}
 
 				const origin =
-					normalizeOrigin(details.securityOrigin ?? "") ??
+					normalizeOrigin(
+						(details as { securityOrigin?: string }).securityOrigin ?? "",
+					) ??
 					normalizeOrigin(details.requestingUrl ?? "") ??
 					normalizeOrigin(webContents.getURL());
 
@@ -111,7 +115,10 @@ class BrowserSitePermissionManager extends EventEmitter {
 
 				const requestedPermissions = [
 					...new Set(
-						(details.mediaTypes ?? [])
+						(
+							(details as { mediaTypes?: ("audio" | "video" | "unknown")[] })
+								.mediaTypes ?? []
+						)
 							.map((mediaType) => mediaTypeToPermissionKind(mediaType))
 							.filter((value): value is SitePermissionKind => value !== null),
 					),

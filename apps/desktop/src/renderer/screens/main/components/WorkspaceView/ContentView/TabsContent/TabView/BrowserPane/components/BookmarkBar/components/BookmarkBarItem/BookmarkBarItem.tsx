@@ -217,7 +217,7 @@ export function BookmarkBarItem({
 
 	useEffect(() => {
 		setFaviconFailed(false);
-	}, [bookmark.faviconUrl]);
+	}, []);
 
 	const scheduleEditDialogOpen = () => {
 		if (pendingOpenTimerRef.current !== null) {

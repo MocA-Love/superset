@@ -92,7 +92,11 @@ function SortableFolderMenuNode({
 	);
 
 	return (
-		<div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-45")}>
+		<div
+			ref={setNodeRef}
+			style={style}
+			className={cn(isDragging && "opacity-45")}
+		>
 			<DropdownMenuSub>
 				<DropdownMenuSubTrigger className="gap-2 pr-1.5">
 					<FolderIcon

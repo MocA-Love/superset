@@ -8,6 +8,8 @@ import {
 	resolveRemoteNameForPullRequestHead,
 } from "../../workspaces/utils/github/pr-attachment";
 
+export type { GitRemoteInfo };
+
 type ExistingPullRequest = NonNullable<GitHubStatus["pr"]>;
 export type ExistingPullRequestPushTargetInfo = PullRequestPushTargetInfo;
 export { isOpenPullRequestState };
