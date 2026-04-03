@@ -27,6 +27,8 @@ import { setupAgentHooks } from "./lib/agent-setup";
 import { initAppState } from "./lib/app-state";
 import { requestAppleEventsAccess } from "./lib/apple-events-permission";
 import { setupAutoUpdater } from "./lib/auto-updater";
+import { initializeBrowserIdentityManager } from "./lib/browser/browser-identity-manager";
+import { browserSitePermissionManager } from "./lib/browser/browser-site-permission-manager";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
@@ -469,6 +471,8 @@ if (!gotTheLock) {
 		await app.whenReady();
 		registerWithMacOSNotificationCenter();
 		requestAppleEventsAccess();
+		initializeBrowserIdentityManager();
+		browserSitePermissionManager.initialize();
 
 		// Must register on both default session and the app's custom partition
 		const iconProtocolHandler = (request: Request) => {

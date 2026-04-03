@@ -1,6 +1,12 @@
+import {
+	SITE_PERMISSION_KINDS,
+	SITE_PERMISSION_VALUES,
+} from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
 import { session } from "electron";
+import { requestMediaAccess } from "lib/electron/request-media-access";
 import { browserManager } from "main/lib/browser/browser-manager";
+import { browserSitePermissionManager } from "main/lib/browser/browser-site-permission-manager";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
@@ -188,6 +194,71 @@ export const createBrowserRouter = () => {
 					canGoForward: wc.canGoForward(),
 					isLoading: wc.isLoading(),
 				};
+			}),
+
+		getSitePermissions: publicProcedure
+			.input(z.object({ url: z.string() }))
+			.query(({ input }) => {
+				return browserSitePermissionManager.getPermissionsForUrl(input.url);
+			}),
+
+		setSitePermission: publicProcedure
+			.input(
+				z.object({
+					origin: z.string(),
+					kind: z.enum(SITE_PERMISSION_KINDS),
+					value: z.enum(SITE_PERMISSION_VALUES),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const sitePermissions = browserSitePermissionManager.setPermission(
+					input.origin,
+					input.kind,
+					input.value,
+				);
+
+				const mediaAccess =
+					input.value === "allow" ? await requestMediaAccess(input.kind) : null;
+
+				return {
+					...sitePermissions,
+					mediaAccess,
+				};
+			}),
+
+		resetSitePermissions: publicProcedure
+			.input(z.object({ origin: z.string() }))
+			.mutation(({ input }) => {
+				browserSitePermissionManager.resetPermissions(input.origin);
+				return { success: true };
+			}),
+
+		onSitePermissionRequested: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{
+					paneId: string;
+					origin: string;
+					permissions: ("microphone" | "camera")[];
+				}>((emit) => {
+					const handler = (event: {
+						paneId: string;
+						origin: string;
+						permissions: ("microphone" | "camera")[];
+					}) => {
+						emit.next(event);
+					};
+					browserSitePermissionManager.on(
+						`permission-requested:${input.paneId}`,
+						handler,
+					);
+					return () => {
+						browserSitePermissionManager.off(
+							`permission-requested:${input.paneId}`,
+							handler,
+						);
+					};
+				});
 			}),
 
 		clearBrowsingData: publicProcedure

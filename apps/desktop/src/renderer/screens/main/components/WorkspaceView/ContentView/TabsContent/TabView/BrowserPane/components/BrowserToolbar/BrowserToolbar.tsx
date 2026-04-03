@@ -10,6 +10,7 @@ import {
 	TbStar,
 	TbStarFilled,
 } from "react-icons/tb";
+import { SitePermissionsMenu } from "./components/SitePermissionsMenu";
 import { UrlSuggestions } from "./components/UrlSuggestions";
 import { useUrlAutocomplete } from "./hooks/useUrlAutocomplete";
 
@@ -20,6 +21,7 @@ function displayUrl(url: string): string {
 }
 
 interface BrowserToolbarProps {
+	paneId: string;
 	currentUrl: string;
 	pageTitle: string;
 	isLoading: boolean;
@@ -36,6 +38,7 @@ interface BrowserToolbarProps {
 }
 
 export function BrowserToolbar({
+	paneId,
 	currentUrl,
 	pageTitle,
 	isLoading,
@@ -237,6 +240,11 @@ export function BrowserToolbar({
 				)}
 			</div>
 			<div className="ml-1 flex shrink-0 items-center gap-0.5">
+				<SitePermissionsMenu
+					paneId={paneId}
+					currentUrl={currentUrl}
+					hasPage={hasPage}
+				/>
 				{hasPage && (
 					<Tooltip>
 						<TooltipTrigger asChild>

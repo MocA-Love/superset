@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { shell, systemPreferences } from "electron";
+import { requestMediaAccess } from "lib/electron/request-media-access";
 import { publicProcedure, router } from "..";
 
 function checkFullDiskAccess(): boolean {
@@ -30,6 +31,14 @@ function checkMicrophone(): boolean {
 	}
 }
 
+function checkCamera(): boolean {
+	try {
+		return systemPreferences.getMediaAccessStatus("camera") === "granted";
+	} catch {
+		return false;
+	}
+}
+
 export const createPermissionsRouter = () => {
 	return router({
 		getStatus: publicProcedure.query(() => {
@@ -37,6 +46,7 @@ export const createPermissionsRouter = () => {
 				fullDiskAccess: checkFullDiskAccess(),
 				accessibility: checkAccessibility(),
 				microphone: checkMicrophone(),
+				camera: checkCamera(),
 			};
 		}),
 
@@ -53,22 +63,11 @@ export const createPermissionsRouter = () => {
 		}),
 
 		requestMicrophone: publicProcedure.mutation(async () => {
-			try {
-				if (process.platform === "darwin") {
-					const granted =
-						await systemPreferences.askForMediaAccess("microphone");
-					if (granted) {
-						return { granted: true };
-					}
-				}
-			} catch {
-				// Fall through to opening System Settings.
-			}
+			return requestMediaAccess("microphone");
+		}),
 
-			await shell.openExternal(
-				"x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-			);
-			return { granted: false };
+		requestCamera: publicProcedure.mutation(async () => {
+			return requestMediaAccess("camera");
 		}),
 
 		requestAppleEvents: publicProcedure.mutation(async () => {

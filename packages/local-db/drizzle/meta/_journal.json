@@ -281,6 +281,13 @@
       "when": 1775066140568,
       "tag": "0039_quick_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1775214744592,
+      "tag": "0040_illegal_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

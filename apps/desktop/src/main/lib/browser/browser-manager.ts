@@ -84,6 +84,16 @@ class BrowserManager extends EventEmitter {
 		return wc;
 	}
 
+	getPaneIdForWebContents(webContentsId: number): string | null {
+		for (const [paneId, registeredWebContentsId] of this.paneWebContentsIds) {
+			if (registeredWebContentsId === webContentsId) {
+				return paneId;
+			}
+		}
+
+		return null;
+	}
+
 	navigate(paneId: string, url: string): void {
 		const wc = this.getWebContents(paneId);
 		if (!wc) throw new Error(`No webContents for pane ${paneId}`);

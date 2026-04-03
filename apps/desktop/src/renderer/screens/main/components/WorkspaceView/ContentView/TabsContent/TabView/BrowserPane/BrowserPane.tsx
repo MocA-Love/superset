@@ -158,6 +158,7 @@ export function BrowserPane({
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
+						paneId={paneId}
 						currentUrl={currentUrl}
 						pageTitle={pageTitle}
 						isLoading={isLoading}
