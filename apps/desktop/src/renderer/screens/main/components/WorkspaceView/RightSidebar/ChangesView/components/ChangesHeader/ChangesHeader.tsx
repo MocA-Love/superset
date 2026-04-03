@@ -1133,7 +1133,13 @@ function StashDropdown({
 	);
 }
 
-function FetchRemoteButton({ worktreePath }: { worktreePath: string }) {
+function FetchRemoteButton({
+	worktreePath,
+	onRefresh,
+}: {
+	worktreePath: string;
+	onRefresh: () => void;
+}) {
 	const [isFetching, setIsFetching] = useState(false);
 	const fetchRemote = electronTrpc.changes.fetchRemote.useMutation();
 
@@ -1141,8 +1147,9 @@ function FetchRemoteButton({ worktreePath }: { worktreePath: string }) {
 		setIsFetching(true);
 		try {
 			await fetchRemote.mutateAsync({ worktreePath });
+			onRefresh();
 		} catch {
-			// ignore fetch errors (e.g., offline)
+			toast.error("Failed to fetch remote");
 		} finally {
 			setIsFetching(false);
 		}
@@ -1250,7 +1257,7 @@ export function ChangesHeader({
 						onViewModeChange={onViewModeChange}
 					/>
 				)}
-				<FetchRemoteButton worktreePath={worktreePath} />
+				<FetchRemoteButton worktreePath={worktreePath} onRefresh={onRefresh} />
 				<RefreshButton onRefresh={onRefresh} />
 				<PRButton
 					pr={pr}

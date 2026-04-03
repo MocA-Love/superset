@@ -349,6 +349,7 @@ export const createGitOperationsRouter = () => {
 				assertRegisteredWorktree(input.worktreePath);
 				const git = await getGitWithShellPath(input.worktreePath);
 				await git.fetch(["--prune"]);
+				clearStatusCacheForWorktree(input.worktreePath);
 				return { success: true };
 			}),
 
