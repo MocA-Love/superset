@@ -1,126 +1,26 @@
 import { TRPCError } from "@trpc/server";
 import type { SimpleGit } from "simple-git";
 import { z } from "zod";
-import { execGitWithShellPath } from "../../workspaces/utils/git-client";
-import { getRepoContext } from "../../workspaces/utils/github";
-import { getPullRequestRepoNames } from "../../workspaces/utils/github/repo-context";
+import { fetchGitHubPRStatus } from "../../workspaces/utils/github";
 import { execWithShellEnv } from "../../workspaces/utils/shell-env";
 import {
 	buildPullRequestCompareUrl,
 	normalizeGitHubRepoUrl,
 	parseUpstreamRef,
 } from "./pull-request-url";
-
-async function findOpenPRByHeadCommit(
-	worktreePath: string,
-): Promise<string | null> {
-	try {
-		const { stdout: headOutput } = await execGitWithShellPath(
-			["rev-parse", "HEAD"],
-			{ cwd: worktreePath },
-		);
-		const headSha = headOutput.trim();
-		if (!headSha) {
-			return null;
-		}
-
-		const repoNames = getPullRequestRepoNames(
-			await getRepoContext(worktreePath),
-		);
-		const repoArgSets =
-			repoNames.length > 0
-				? repoNames.map((repoName) => ["--repo", repoName])
-				: [[]];
-
-		for (const repoArgs of repoArgSets) {
-			try {
-				const { stdout } = await execWithShellEnv(
-					"gh",
-					[
-						"pr",
-						"list",
-						...repoArgs,
-						"--state",
-						"open",
-						"--search",
-						`${headSha} is:pr`,
-						"--limit",
-						"20",
-						"--json",
-						"url,headRefOid",
-					],
-					{ cwd: worktreePath },
-				);
-
-				const parsed = JSON.parse(stdout) as Array<{
-					url?: string;
-					headRefOid?: string;
-				}>;
-				const match = parsed.find(
-					(candidate) => candidate.headRefOid === headSha,
-				);
-				if (match?.url?.trim()) {
-					return match.url.trim();
-				}
-			} catch (error) {
-				console.warn(
-					"[git/findExistingOpenPRUrl] Failed repo-scoped commit-based PR lookup:",
-					{
-						worktreePath,
-						repoArgs,
-						message: error instanceof Error ? error.message : String(error),
-					},
-				);
-			}
-		}
-
-		return null;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn(
-			"[git/findExistingOpenPRUrl] Failed commit-based PR lookup:",
-			message,
-		);
-		return null;
-	}
-}
+import { clearWorktreeStatusCaches } from "./worktree-status-caches";
 
 export async function findExistingOpenPRUrl(
 	worktreePath: string,
 ): Promise<string | null> {
-	// Prefer tracking-based lookup first for fork/branch-name mismatch scenarios.
-	try {
-		const { stdout } = await execWithShellEnv(
-			"gh",
-			[
-				"pr",
-				"view",
-				"--json",
-				"url,state",
-				"--jq",
-				'if .state == "OPEN" then .url else "" end',
-			],
-			{ cwd: worktreePath },
-		);
-		const url = stdout.trim();
-		if (url) {
-			return url;
-		}
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		const isNoPROpenError = message
-			.toLowerCase()
-			.includes("no pull requests found");
-		if (!isNoPROpenError) {
-			console.warn(
-				"[git/findExistingOpenPRUrl] Failed tracking-branch PR lookup:",
-				message,
-			);
-		}
-		// Fallback to commit-SHA search below.
+	clearWorktreeStatusCaches(worktreePath);
+	const githubStatus = await fetchGitHubPRStatus(worktreePath);
+	const pullRequest = githubStatus?.pr;
+	if (pullRequest?.state !== "open" && pullRequest?.state !== "draft") {
+		return null;
 	}
 
-	return findOpenPRByHeadCommit(worktreePath);
+	return pullRequest.url.trim() || null;
 }
 
 const ghRepoMetadataSchema = z.object({

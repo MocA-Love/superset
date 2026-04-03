@@ -1,5 +1,6 @@
 import {
 	projects,
+	type SelectProject,
 	workspaceSections,
 	workspaces,
 	worktrees,
@@ -9,6 +10,7 @@ import { eq, isNotNull, isNull } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
+import { fetchGitHubOwner } from "../../projects/utils/github";
 import { getWorkspace } from "../utils/db-helpers";
 import { getProjectChildItems } from "../utils/project-children-order";
 import { loadSetupConfig } from "../utils/setup";
@@ -36,6 +38,30 @@ function getWorkspacesInVisualOrder(): string[] {
 	return computeVisualOrder(activeProjects, allWorkspaces, allSections);
 }
 
+async function ensureProjectHasGitHubOwner(
+	project: SelectProject,
+): Promise<SelectProject> {
+	if (project.githubOwner) {
+		return project;
+	}
+
+	const githubOwner = await fetchGitHubOwner(project.mainRepoPath);
+	if (!githubOwner) {
+		return project;
+	}
+
+	localDb
+		.update(projects)
+		.set({ githubOwner })
+		.where(eq(projects.id, project.id))
+		.run();
+
+	return {
+		...project,
+		githubOwner,
+	};
+}
+
 export const createQueryProcedures = () => {
 	return router({
 		get: publicProcedure
@@ -54,6 +80,9 @@ export const createQueryProcedures = () => {
 					.from(projects)
 					.where(eq(projects.id, workspace.projectId))
 					.get();
+				const resolvedProject = project
+					? await ensureProjectHasGitHubOwner(project)
+					: null;
 				const worktree = workspace.worktreeId
 					? localDb
 							.select()
@@ -66,13 +95,13 @@ export const createQueryProcedures = () => {
 					...workspace,
 					type: workspace.type as "worktree" | "branch",
 					worktreePath: getWorkspacePath(workspace) ?? "",
-					project: project
+					project: resolvedProject
 						? {
-								id: project.id,
-								name: project.name,
-								mainRepoPath: project.mainRepoPath,
-								githubOwner: project.githubOwner ?? null,
-								defaultBranch: project.defaultBranch ?? null,
+								id: resolvedProject.id,
+								name: resolvedProject.name,
+								mainRepoPath: resolvedProject.mainRepoPath,
+								githubOwner: resolvedProject.githubOwner ?? null,
+								defaultBranch: resolvedProject.defaultBranch ?? null,
 							}
 						: null,
 					worktree: worktree
@@ -95,7 +124,7 @@ export const createQueryProcedures = () => {
 				.sort((a, b) => a.tabOrder - b.tabOrder);
 		}),
 
-		getAllGrouped: publicProcedure.query(() => {
+		getAllGrouped: publicProcedure.query(async () => {
 			type WorkspaceItem = {
 				id: string;
 				projectId: string;
@@ -135,6 +164,9 @@ export const createQueryProcedures = () => {
 				.from(projects)
 				.where(isNotNull(projects.tabOrder))
 				.all();
+			const resolvedProjects = await Promise.all(
+				activeProjects.map((project) => ensureProjectHasGitHubOwner(project)),
+			);
 
 			const allWorktrees = localDb.select().from(worktrees).all();
 			const worktreePathMap: WorktreePathMap = new Map(
@@ -165,7 +197,7 @@ export const createQueryProcedures = () => {
 				}
 			>();
 
-			for (const project of activeProjects) {
+			for (const project of resolvedProjects) {
 				const projectSections = allSections
 					.filter((s) => s.projectId === project.id)
 					.sort((a, b) => a.tabOrder - b.tabOrder)

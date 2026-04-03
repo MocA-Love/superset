@@ -13,7 +13,6 @@ import {
 import { cn } from "@superset/ui/utils";
 import { useEffect, useMemo } from "react";
 import {
-	folderContainsBookmarkUrl,
 	isBrowserBookmark,
 	normalizeBookmarkUrl,
 	useBrowserBookmarksStore,
@@ -93,10 +92,6 @@ export function BookmarkBar({ currentUrl, onNavigate }: BookmarkBarProps) {
 										key={bookmark.id}
 										folder={bookmark}
 										currentUrl={currentUrl}
-										isActive={folderContainsBookmarkUrl(
-											bookmark,
-											normalizedCurrentUrl,
-										)}
 										onNavigate={onNavigate}
 									/>
 								),

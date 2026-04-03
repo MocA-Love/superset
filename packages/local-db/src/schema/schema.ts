@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+	index,
+	integer,
+	sqliteTable,
+	text,
+	uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import { v4 as uuidv4 } from "uuid";
 
 import type {
@@ -9,6 +15,8 @@ import type {
 	FileOpenMode,
 	GitHubStatus,
 	GitStatus,
+	SitePermissionKind,
+	SitePermissionValue,
 	TerminalLinkBehavior,
 	TerminalPreset,
 	WorkspaceType,
@@ -388,3 +396,36 @@ export const browserHistory = sqliteTable(
 
 export type InsertBrowserHistory = typeof browserHistory.$inferInsert;
 export type SelectBrowserHistory = typeof browserHistory.$inferSelect;
+
+/**
+ * Browser site permissions table - persists per-origin microphone/camera access
+ */
+export const browserSitePermissions = sqliteTable(
+	"browser_site_permissions",
+	{
+		id: text("id")
+			.primaryKey()
+			.$defaultFn(() => uuidv4()),
+		origin: text("origin").notNull(),
+		kind: text("kind").notNull().$type<SitePermissionKind>(),
+		value: text("value").notNull().$type<SitePermissionValue>().default("ask"),
+		createdAt: integer("created_at")
+			.notNull()
+			.$defaultFn(() => Date.now()),
+		updatedAt: integer("updated_at")
+			.notNull()
+			.$defaultFn(() => Date.now()),
+	},
+	(table) => [
+		index("browser_site_permissions_origin_idx").on(table.origin),
+		uniqueIndex("browser_site_permissions_origin_kind_unique").on(
+			table.origin,
+			table.kind,
+		),
+	],
+);
+
+export type InsertBrowserSitePermission =
+	typeof browserSitePermissions.$inferInsert;
+export type SelectBrowserSitePermission =
+	typeof browserSitePermissions.$inferSelect;

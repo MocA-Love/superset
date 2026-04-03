@@ -161,6 +161,7 @@ export function WorkspacePage({
 
 	// Handle search-param-driven tab/pane activation (e.g. from notification clicks)
 	useEffect(() => {
+		if (!isActive) return;
 		if (!searchTabId) return;
 
 		const state = useTabsStore.getState();
@@ -181,9 +182,10 @@ export function WorkspacePage({
 			search: {},
 			replace: true,
 		});
-	}, [searchTabId, searchPaneId, workspaceId, navigate]);
+	}, [isActive, searchTabId, searchPaneId, workspaceId, navigate]);
 
 	useEffect(() => {
+		if (!isActive) return;
 		if (!searchFile || !workspace?.worktreePath) return;
 
 		const filePath = toAbsoluteWorkspacePath(
@@ -224,6 +226,7 @@ export function WorkspacePage({
 		});
 	}, [
 		addFileViewerPane,
+		isActive,
 		navigate,
 		searchColumn,
 		searchFile,
@@ -839,6 +842,7 @@ export function WorkspacePage({
 					) : (
 						<WorkspaceLayout
 							workspaceId={workspaceId}
+							isActive={isActive}
 							defaultExternalApp={resolvedDefaultApp}
 							onOpenInApp={handleOpenInApp}
 							onOpenQuickOpen={handleQuickOpen}

@@ -39,6 +39,47 @@ function isRightSidebarTab(value: unknown): value is RightSidebarTab {
 	);
 }
 
+function sanitizeSidebarState(
+	state: Partial<SidebarState> | undefined,
+): Partial<SidebarState> {
+	if (!state) {
+		return {};
+	}
+
+	const sidebarWidth =
+		typeof state.sidebarWidth === "number" && state.sidebarWidth > 0
+			? Math.max(
+					MIN_SIDEBAR_WIDTH,
+					Math.min(MAX_SIDEBAR_WIDTH, state.sidebarWidth),
+				)
+			: state.sidebarWidth === 0
+				? 0
+				: DEFAULT_SIDEBAR_WIDTH;
+	const lastOpenSidebarWidth =
+		typeof state.lastOpenSidebarWidth === "number" &&
+		state.lastOpenSidebarWidth > 0
+			? Math.max(
+					MIN_SIDEBAR_WIDTH,
+					Math.min(MAX_SIDEBAR_WIDTH, state.lastOpenSidebarWidth),
+				)
+			: sidebarWidth > 0
+				? sidebarWidth
+				: DEFAULT_SIDEBAR_WIDTH;
+
+	return {
+		...state,
+		sidebarWidth,
+		lastOpenSidebarWidth,
+		isResizing: false,
+		rightSidebarTab: isRightSidebarTab(state.rightSidebarTab)
+			? state.rightSidebarTab
+			: RightSidebarTab.Changes,
+		rightSidebarTabOrder: normalizeRightSidebarTabOrder(
+			state.rightSidebarTabOrder,
+		),
+	};
+}
+
 export function normalizeRightSidebarTabOrder(
 	order: readonly RightSidebarTab[] | undefined,
 ): RightSidebarTab[] {
@@ -215,19 +256,23 @@ export const useSidebarStore = create<SidebarState>()(
 				name: "sidebar-store",
 				migrate: (persistedState: unknown, _version: number) => {
 					const state = persistedState as Partial<SidebarState>;
-					// Convert old percentage-based values (<100) to pixel widths
+					// Convert legacy percentage-based widths before general sanitization.
 					if (state.sidebarWidth !== undefined && state.sidebarWidth < 100) {
 						state.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
 						state.lastOpenSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
 					}
-					state.rightSidebarTabOrder = normalizeRightSidebarTabOrder(
-						state.rightSidebarTabOrder,
-					);
-					if (!isRightSidebarTab(state.rightSidebarTab)) {
-						state.rightSidebarTab = RightSidebarTab.Changes;
-					}
-					return state as SidebarState;
+					return sanitizeSidebarState(state) as SidebarState;
 				},
+				merge: (persistedState, currentState) => ({
+					...currentState,
+					...sanitizeSidebarState(
+						(
+							persistedState as
+								| (Partial<SidebarState> & { state?: Partial<SidebarState> })
+								| undefined
+						)?.state ?? (persistedState as Partial<SidebarState> | undefined),
+					),
+				}),
 				version: 2,
 			},
 		),

@@ -171,6 +171,28 @@ function upsertProject(mainRepoPath: string, defaultBranch: string): Project {
 	return project;
 }
 
+async function ensureProjectGitHubOwner(project: Project): Promise<Project> {
+	if (project.githubOwner) {
+		return project;
+	}
+
+	const githubOwner = await fetchGitHubOwner(project.mainRepoPath);
+	if (!githubOwner) {
+		return project;
+	}
+
+	localDb
+		.update(projects)
+		.set({ githubOwner })
+		.where(eq(projects.id, project.id))
+		.run();
+
+	return {
+		...project,
+		githubOwner,
+	};
+}
+
 async function ensureMainWorkspace(project: Project): Promise<void> {
 	const existingBranchWorkspace = getBranchWorkspace(project.id);
 
@@ -1070,7 +1092,9 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 					const mainRepoPath = await getGitRoot(selectedPath);
 					const defaultBranch = await getDefaultBranch(mainRepoPath);
 
-					const project = upsertProject(mainRepoPath, defaultBranch);
+					const project = await ensureProjectGitHubOwner(
+						upsertProject(mainRepoPath, defaultBranch),
+					);
 					await ensureMainWorkspace(project);
 
 					track("project_opened", {
@@ -1142,7 +1166,9 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 
 				const defaultBranch = await getDefaultBranch(mainRepoPath);
 
-				const project = upsertProject(mainRepoPath, defaultBranch);
+				const project = await ensureProjectGitHubOwner(
+					upsertProject(mainRepoPath, defaultBranch),
+				);
 				await ensureMainWorkspace(project);
 
 				track("project_opened", {
@@ -1161,7 +1187,9 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 			.mutation(async ({ input }) => {
 				const { defaultBranch } = await initGitRepo(input.path);
 
-				const project = upsertProject(input.path, defaultBranch);
+				const project = await ensureProjectGitHubOwner(
+					upsertProject(input.path, defaultBranch),
+				);
 				await ensureMainWorkspace(project);
 
 				track("project_opened", {
@@ -1252,11 +1280,13 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 								.where(eq(projects.id, existingProject.id))
 								.run();
 
-							// Auto-create main workspace if it doesn't exist
-							await ensureMainWorkspace({
+							const hydratedProject = await ensureProjectGitHubOwner({
 								...existingProject,
 								lastOpenedAt: Date.now(),
 							});
+
+							// Auto-create main workspace if it doesn't exist
+							await ensureMainWorkspace(hydratedProject);
 
 							track("project_opened", {
 								project_id: existingProject.id,
@@ -1266,7 +1296,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 							return {
 								canceled: false as const,
 								success: true as const,
-								project: { ...existingProject, lastOpenedAt: Date.now() },
+								project: hydratedProject,
 							};
 						} catch {
 							// Directory is missing - remove the stale project record and continue with clone
@@ -1293,16 +1323,18 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 					// Create new project
 					const name = basename(clonePath);
 					const defaultBranch = await getDefaultBranch(clonePath);
-					const project = localDb
-						.insert(projects)
-						.values({
-							mainRepoPath: clonePath,
-							name,
-							color: getDefaultProjectColor(),
-							defaultBranch,
-						})
-						.returning()
-						.get();
+					const project = await ensureProjectGitHubOwner(
+						localDb
+							.insert(projects)
+							.values({
+								mainRepoPath: clonePath,
+								name,
+								color: getDefaultProjectColor(),
+								defaultBranch,
+							})
+							.returning()
+							.get(),
+					);
 
 					// Auto-create main workspace if it doesn't exist
 					await ensureMainWorkspace(project);
@@ -1365,7 +1397,9 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						await rm(repoPath, { recursive: true, force: true });
 						throw gitErr;
 					}
-					const project = upsertProject(repoPath, defaultBranch);
+					const project = await ensureProjectGitHubOwner(
+						upsertProject(repoPath, defaultBranch),
+					);
 					await ensureMainWorkspace(project);
 
 					track("project_opened", {

@@ -59,35 +59,41 @@ function BookmarkButton({
 	attributes,
 	listeners,
 }: BookmarkButtonProps) {
+	const button = (
+		<button
+			type="button"
+			{...(attributes ?? {})}
+			{...(listeners ?? {})}
+			onClick={() => onNavigate(bookmark.url)}
+			className={cn(
+				"flex h-7 cursor-pointer items-center gap-2 rounded-md border px-2 text-xs transition-colors",
+				compact ? "w-full max-w-full" : "max-w-52",
+				"border-transparent bg-transparent text-muted-foreground/75 hover:bg-accent/70 hover:text-foreground",
+				sortable && "active:cursor-grabbing",
+				isActive && "border-border bg-accent text-foreground shadow-sm",
+			)}
+		>
+			{bookmark.faviconUrl && !faviconFailed ? (
+				<img
+					src={bookmark.faviconUrl}
+					alt=""
+					className="size-3.5 shrink-0 rounded-sm"
+					onError={onFaviconError}
+				/>
+			) : (
+				<GlobeIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
+			)}
+			<span className="truncate">{label}</span>
+		</button>
+	);
+
+	if (compact) {
+		return button;
+	}
+
 	return (
 		<Tooltip>
-			<TooltipTrigger asChild>
-				<button
-					type="button"
-					{...(attributes ?? {})}
-					{...(listeners ?? {})}
-					onClick={() => onNavigate(bookmark.url)}
-					className={cn(
-						"flex h-7 cursor-pointer items-center gap-2 rounded-md border px-2 text-xs transition-colors",
-						compact ? "w-full max-w-full" : "max-w-52",
-						"border-transparent bg-transparent text-muted-foreground/75 hover:bg-accent/70 hover:text-foreground",
-						sortable && "active:cursor-grabbing",
-						isActive && "border-border bg-accent text-foreground shadow-sm",
-					)}
-				>
-					{bookmark.faviconUrl && !faviconFailed ? (
-						<img
-							src={bookmark.faviconUrl}
-							alt=""
-							className="size-3.5 shrink-0 rounded-sm"
-							onError={onFaviconError}
-						/>
-					) : (
-						<GlobeIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
-					)}
-					<span className="truncate">{label}</span>
-				</button>
-			</TooltipTrigger>
+			<TooltipTrigger asChild>{button}</TooltipTrigger>
 			<TooltipContent side="bottom" showArrow={false}>
 				{bookmark.url}
 			</TooltipContent>
@@ -207,6 +213,10 @@ export function BookmarkBarItem({
 				clearTimeout(pendingOpenTimerRef.current);
 			}
 		};
+	}, []);
+
+	useEffect(() => {
+		setFaviconFailed(false);
 	}, []);
 
 	const scheduleEditDialogOpen = () => {

@@ -71,6 +71,7 @@ export const SETTING_ITEM_ID = {
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
+	PERMISSIONS_CAMERA: "permissions-camera",
 	PERMISSIONS_APPLE_EVENTS: "permissions-apple-events",
 	PERMISSIONS_LOCAL_NETWORK: "permissions-local-network",
 } as const;
@@ -1038,6 +1039,24 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"push to talk",
 			"codex",
 			"privacy",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.PERMISSIONS_CAMERA,
+		section: "permissions",
+		title: "Camera",
+		description:
+			"Use video input in websites and tools running inside Superset",
+		keywords: [
+			"permissions",
+			"camera",
+			"webcam",
+			"video",
+			"recording",
+			"capture",
+			"privacy",
+			"browser",
+			"website",
 		],
 	},
 	{

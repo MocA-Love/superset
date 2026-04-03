@@ -43,6 +43,14 @@ import {
 let hiddenContainer: HTMLDivElement | null = null;
 const webviewInteractionLocks = new Set<string>();
 
+function getChromeLikeUserAgent(): string {
+	// Electron's default UA typically appends `Electron/<version>`, which some
+	// sites treat as an unsupported browser even though the engine is Chromium.
+	// Strip that token so embedded pages see a standard Chrome-style UA.
+	const defaultUserAgent = window.navigator.userAgent;
+	return defaultUserAgent.replace(/\sElectron\/[^\s]+/g, "").trim();
+}
+
 function getHiddenContainer(): HTMLDivElement {
 	if (!hiddenContainer) {
 		hiddenContainer = document.createElement("div");
@@ -218,8 +226,10 @@ export function usePersistentWebview({
 
 		let wrapper = getPersistentWrapper(paneId);
 		let webview = getPersistentWebview(paneId);
+		const chromeLikeUserAgent = getChromeLikeUserAgent();
 
 		if (wrapper && webview) {
+			webview.setAttribute("useragent", chromeLikeUserAgent);
 			// Reclaim: move the wrapper (with webview inside) into React's container.
 			// The webview's parentNode stays as `wrapper` — no reparent, no reload.
 			container.appendChild(wrapper);
@@ -236,6 +246,7 @@ export function usePersistentWebview({
 			clearPersistentWebviewDomReady(paneId);
 			webview.setAttribute("partition", "persist:superset");
 			webview.setAttribute("allowpopups", "");
+			webview.setAttribute("useragent", chromeLikeUserAgent);
 			webview.style.display = "flex";
 			webview.style.flex = "1";
 			webview.style.width = "100%";

@@ -65,6 +65,7 @@ interface BrowserBookmarksState {
 	removeNode: (nodeId: string) => void;
 	moveNode: (activeId: string, overId: string) => void;
 	toggleBookmark: (bookmark: BrowserBookmarkInput) => boolean;
+	syncBookmarkFaviconByUrl: (url: string, faviconUrl: string) => boolean;
 	importBookmarks: (nodes: BrowserBookmarkTreeNode[]) => {
 		bookmarksAdded: number;
 		foldersAdded: number;
@@ -330,6 +331,49 @@ function reorderFolderChildrenInTree(
 	});
 
 	return { nodes: nextNodes, reordered };
+}
+
+function syncBookmarkFaviconInTree(
+	nodes: BrowserBookmarkTreeNode[],
+	url: string,
+	faviconUrl: string,
+): { nodes: BrowserBookmarkTreeNode[]; updated: boolean } {
+	const normalizedUrl = normalizeBookmarkUrl(url);
+	let updated = false;
+
+	const nextNodes = nodes.map((node) => {
+		if (isBrowserBookmark(node)) {
+			if (normalizeBookmarkUrl(node.url) !== normalizedUrl) {
+				return node;
+			}
+			if (node.faviconUrl === faviconUrl) {
+				return node;
+			}
+
+			updated = true;
+			return {
+				...node,
+				faviconUrl,
+			};
+		}
+
+		const childResult = syncBookmarkFaviconInTree(
+			node.children,
+			normalizedUrl,
+			faviconUrl,
+		);
+		if (!childResult.updated) {
+			return node;
+		}
+
+		updated = true;
+		return {
+			...node,
+			children: childResult.nodes,
+		};
+	});
+
+	return { nodes: nextNodes, updated };
 }
 
 function sanitizeLegacyNodes(value: unknown): BrowserBookmarkTreeNode[] {
@@ -683,6 +727,26 @@ export const useBrowserBookmarksStore = create<BrowserBookmarksState>()(
 					}
 
 					return get().addBookmark(bookmark) !== null;
+				},
+
+				syncBookmarkFaviconByUrl: (url, faviconUrl) => {
+					const normalizedUrl = normalizeBookmarkUrl(url);
+					if (!normalizedUrl || normalizedUrl === "about:blank") {
+						return false;
+					}
+
+					let didUpdate = false;
+					set((state) => {
+						const result = syncBookmarkFaviconInTree(
+							state.bookmarks,
+							normalizedUrl,
+							faviconUrl,
+						);
+						didUpdate = result.updated;
+						return result.updated ? { bookmarks: result.nodes } : state;
+					});
+
+					return didUpdate;
 				},
 
 				importBookmarks: (nodes) => {

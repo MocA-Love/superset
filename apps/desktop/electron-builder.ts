@@ -105,6 +105,9 @@ const config: Configuration = {
 			// Required for macOS microphone permission prompt
 			NSMicrophoneUsageDescription:
 				"Superset needs microphone access so voice-enabled tools like Codex transcription can capture audio input.",
+			// Required for macOS camera permission prompt
+			NSCameraUsageDescription:
+				"Superset needs camera access so websites and tools running inside the app can capture video input.",
 			// Required for macOS local network permission prompt
 			NSLocalNetworkUsageDescription:
 				"Superset needs access to your local network to discover and connect to development servers running on your network.",

@@ -58,6 +58,7 @@ export function PermissionsSettings({
 		electronTrpc.permissions.requestAccessibility.useMutation();
 	const requestMicrophone =
 		electronTrpc.permissions.requestMicrophone.useMutation();
+	const requestCamera = electronTrpc.permissions.requestCamera.useMutation();
 	const requestAppleEvents =
 		electronTrpc.permissions.requestAppleEvents.useMutation();
 	const requestLocalNetwork =
@@ -108,6 +109,15 @@ export function PermissionsSettings({
 						description="Use voice transcription and push-to-talk features"
 						granted={status?.microphone}
 						onRequest={() => requestMicrophone.mutate()}
+					/>
+				)}
+
+				{isItemVisible(SETTING_ITEM_ID.PERMISSIONS_CAMERA, visibleItems) && (
+					<PermissionRow
+						label="Camera"
+						description="Use video input in websites and tools running inside Superset"
+						granted={status?.camera}
+						onRequest={() => requestCamera.mutate()}
 					/>
 				)}
 

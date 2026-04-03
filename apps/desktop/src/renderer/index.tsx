@@ -38,8 +38,18 @@ const unsubscribe = router.subscribe("onResolved", (event) => {
 	});
 });
 
+function persistDeepLinkedWorkspace(path: string): void {
+	const match = /^\/workspace\/([^/?#]+)/.exec(path);
+	if (!match?.[1]) {
+		return;
+	}
+
+	localStorage.setItem("lastViewedWorkspaceId", decodeURIComponent(match[1]));
+}
+
 const handleDeepLink = (path: string) => {
 	console.log("[deep-link] Navigating to:", path);
+	persistDeepLinkedWorkspace(path);
 	router.navigate({ to: path });
 };
 const ipcRenderer = window.ipcRenderer as typeof window.ipcRenderer | undefined;

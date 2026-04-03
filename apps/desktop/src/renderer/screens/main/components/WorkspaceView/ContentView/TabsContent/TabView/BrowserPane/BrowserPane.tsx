@@ -1,6 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
@@ -63,6 +63,9 @@ export function BrowserPane({
 	const toggleBookmark = useBrowserBookmarksStore(
 		(state) => state.toggleBookmark,
 	);
+	const syncBookmarkFaviconByUrl = useBrowserBookmarksStore(
+		(state) => state.syncBookmarkFaviconByUrl,
+	);
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
 	const { mutate: setZoomLevel } =
@@ -117,6 +120,22 @@ export function BrowserPane({
 	}, [openDevTools, paneId]);
 
 	const [isEditingUrl, setIsEditingUrl] = useState(false);
+
+	useEffect(() => {
+		if (!currentBookmark || !currentFaviconUrl) {
+			return;
+		}
+		if (currentBookmark.faviconUrl === currentFaviconUrl) {
+			return;
+		}
+		syncBookmarkFaviconByUrl(currentUrl, currentFaviconUrl);
+	}, [
+		currentBookmark,
+		currentFaviconUrl,
+		currentUrl,
+		syncBookmarkFaviconByUrl,
+	]);
+
 	const handleToggleBookmark = useCallback(() => {
 		if (isBlankPage) return;
 		toggleBookmark({
@@ -139,6 +158,7 @@ export function BrowserPane({
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
+						paneId={paneId}
 						currentUrl={currentUrl}
 						pageTitle={pageTitle}
 						isLoading={isLoading}

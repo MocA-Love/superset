@@ -15,6 +15,7 @@ import { RightSidebar } from "../RightSidebar";
 
 interface WorkspaceLayoutProps {
 	workspaceId: string;
+	isActive?: boolean;
 	defaultExternalApp?: ExternalApp | null;
 	onOpenInApp: () => void;
 	onOpenQuickOpen: () => void;
@@ -22,6 +23,7 @@ interface WorkspaceLayoutProps {
 
 export function WorkspaceLayout({
 	workspaceId,
+	isActive = true,
 	defaultExternalApp,
 	onOpenInApp,
 	onOpenQuickOpen,
@@ -62,7 +64,7 @@ export function WorkspaceLayout({
 					className={isExpanded ? "border-l-0" : undefined}
 					onDoubleClickHandle={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
 				>
-					<RightSidebar />
+					<RightSidebar isActive={isActive} />
 				</ResizablePanel>
 			)}
 		</ScrollProvider>

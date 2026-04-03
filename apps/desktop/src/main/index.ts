@@ -16,6 +16,7 @@ import {
 	handleAuthCallback,
 	parseAuthDeepLink,
 } from "lib/trpc/routers/auth/utils/auth-functions";
+import { fetchGitHubOwner } from "lib/trpc/routers/projects/utils/github";
 import { applyShellEnvToProcess } from "lib/trpc/routers/workspaces/utils/shell-env";
 import {
 	DEFAULT_CONFIRM_ON_QUIT,
@@ -26,6 +27,8 @@ import { setupAgentHooks } from "./lib/agent-setup";
 import { initAppState } from "./lib/app-state";
 import { requestAppleEventsAccess } from "./lib/apple-events-permission";
 import { setupAutoUpdater } from "./lib/auto-updater";
+import { initializeBrowserIdentityManager } from "./lib/browser/browser-identity-manager";
+import { browserSitePermissionManager } from "./lib/browser/browser-site-permission-manager";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
@@ -115,7 +118,9 @@ function normalizeOptionalPositiveInt(value: string | null): string | null {
 	return String(parsed);
 }
 
-function resolveWorkspaceOpenRouteFromDeepLink(url: URL): string | null {
+async function resolveWorkspaceOpenRouteFromDeepLink(
+	url: URL,
+): Promise<string | null> {
 	const repoParam = url.searchParams.get("repo");
 	const fileParam = url.searchParams.get("file");
 	const branchParam = url.searchParams.get("branch")?.trim() || null;
@@ -131,38 +136,64 @@ function resolveWorkspaceOpenRouteFromDeepLink(url: URL): string | null {
 			workspaceBranch: workspaces.branch,
 			lastOpenedAt: workspaces.lastOpenedAt,
 			projectGithubOwner: projects.githubOwner,
+			projectId: projects.id,
 			projectMainRepoPath: projects.mainRepoPath,
 		})
 		.from(workspaces)
 		.innerJoin(projects, eq(workspaces.projectId, projects.id))
 		.where(isNull(workspaces.deletingAt))
 		.orderBy(desc(workspaces.lastOpenedAt))
-		.all()
-		.filter((row) => {
-			const repoName = path.basename(row.projectMainRepoPath).toLowerCase();
-			if (repoName !== normalizedRepo.repo) {
-				return false;
+		.all();
+	const candidatesWithOwner = await Promise.all(
+		candidates.map(async (row) => {
+			if (row.projectGithubOwner) {
+				return row;
 			}
 
-			if (!normalizedRepo.owner) {
-				return true;
-			}
-
-			return (
-				(row.projectGithubOwner ?? "").toLowerCase() === normalizedRepo.owner
+			const projectGithubOwner = await fetchGitHubOwner(
+				row.projectMainRepoPath,
 			);
-		});
+			if (!projectGithubOwner) {
+				return row;
+			}
 
-	if (candidates.length === 0) {
+			localDb
+				.update(projects)
+				.set({ githubOwner: projectGithubOwner })
+				.where(eq(projects.id, row.projectId))
+				.run();
+
+			return {
+				...row,
+				projectGithubOwner,
+			};
+		}),
+	);
+	const filteredCandidates = candidatesWithOwner.filter((row) => {
+		const repoName = path.basename(row.projectMainRepoPath).toLowerCase();
+		if (repoName !== normalizedRepo.repo) {
+			return false;
+		}
+
+		if (!normalizedRepo.owner) {
+			return true;
+		}
+
+		return (
+			(row.projectGithubOwner ?? "").toLowerCase() === normalizedRepo.owner
+		);
+	});
+
+	if (filteredCandidates.length === 0) {
 		return null;
 	}
 
 	const match =
 		(branchParam
-			? candidates.find(
+			? filteredCandidates.find(
 					(candidate) => candidate.workspaceBranch === branchParam,
 				)
-			: null) ?? candidates[0];
+			: null) ?? filteredCandidates[0];
 
 	if (!match) {
 		return null;
@@ -187,7 +218,9 @@ function resolveWorkspaceOpenRouteFromDeepLink(url: URL): string | null {
 	return `/workspace/${match.workspaceId}${search ? `?${search}` : ""}`;
 }
 
-function getRendererPathFromDeepLink(urlString: string): string | null {
+async function getRendererPathFromDeepLink(
+	urlString: string,
+): Promise<string | null> {
 	let parsed: URL;
 	try {
 		parsed = new URL(urlString);
@@ -196,7 +229,9 @@ function getRendererPathFromDeepLink(urlString: string): string | null {
 	}
 
 	if (parsed.hostname === "open") {
-		return resolveWorkspaceOpenRouteFromDeepLink(parsed) ?? "/workspace";
+		return (
+			(await resolveWorkspaceOpenRouteFromDeepLink(parsed)) ?? "/workspace"
+		);
 	}
 
 	const host = parsed.hostname ? `/${parsed.hostname}` : "";
@@ -220,7 +255,7 @@ async function processDeepLink(url: string): Promise<void> {
 		return;
 	}
 
-	const path = getRendererPathFromDeepLink(url);
+	const path = await getRendererPathFromDeepLink(url);
 	if (!path) {
 		console.error("[main] Failed to resolve deep link route:", url);
 		return;
@@ -436,6 +471,8 @@ if (!gotTheLock) {
 		await app.whenReady();
 		registerWithMacOSNotificationCenter();
 		requestAppleEventsAccess();
+		initializeBrowserIdentityManager();
+		browserSitePermissionManager.initialize();
 
 		// Must register on both default session and the app's custom partition
 		const iconProtocolHandler = (request: Request) => {
