@@ -1,12 +1,12 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
-	normalizeBookmarkUrl,
+	findBookmarkByUrl,
 	useBrowserBookmarksStore,
 } from "renderer/stores/browser-bookmarks";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -55,11 +55,10 @@ export function BrowserPane({
 	const isLoading = browserState?.isLoading ?? false;
 	const loadError = browserState?.error ?? null;
 	const isBlankPage = currentUrl === "about:blank";
-	const currentBookmark = useBrowserBookmarksStore((state) =>
-		state.bookmarks.find(
-			(bookmark) =>
-				normalizeBookmarkUrl(bookmark.url) === normalizeBookmarkUrl(currentUrl),
-		),
+	const bookmarks = useBrowserBookmarksStore((state) => state.bookmarks);
+	const currentBookmark = useMemo(
+		() => findBookmarkByUrl(bookmarks, currentUrl),
+		[bookmarks, currentUrl],
 	);
 	const toggleBookmark = useBrowserBookmarksStore(
 		(state) => state.toggleBookmark,

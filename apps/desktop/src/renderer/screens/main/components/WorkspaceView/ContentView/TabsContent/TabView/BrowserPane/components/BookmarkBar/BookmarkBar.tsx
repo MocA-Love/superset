@@ -1,4 +1,5 @@
 import {
+	closestCenter,
 	DndContext,
 	type DragEndEvent,
 	MouseSensor,
@@ -10,12 +11,16 @@ import {
 	SortableContext,
 } from "@dnd-kit/sortable";
 import { cn } from "@superset/ui/utils";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
+	folderContainsBookmarkUrl,
+	isBrowserBookmark,
 	normalizeBookmarkUrl,
 	useBrowserBookmarksStore,
 } from "renderer/stores/browser-bookmarks";
+import { setPersistentWebviewInteractionLock } from "../../hooks/usePersistentWebview";
 import { BookmarkBarItem } from "./components/BookmarkBarItem";
+import { BookmarkFolderItem } from "./components/BookmarkFolderItem";
 
 interface BookmarkBarProps {
 	currentUrl: string;
@@ -24,11 +29,7 @@ interface BookmarkBarProps {
 
 export function BookmarkBar({ currentUrl, onNavigate }: BookmarkBarProps) {
 	const bookmarks = useBrowserBookmarksStore((state) => state.bookmarks);
-	const moveBookmark = useBrowserBookmarksStore((state) => state.moveBookmark);
-	const removeBookmark = useBrowserBookmarksStore(
-		(state) => state.removeBookmark,
-	);
-
+	const moveNode = useBrowserBookmarksStore((state) => state.moveNode);
 	const normalizedCurrentUrl = useMemo(
 		() => normalizeBookmarkUrl(currentUrl),
 		[currentUrl],
@@ -40,31 +41,66 @@ export function BookmarkBar({ currentUrl, onNavigate }: BookmarkBarProps) {
 		}),
 	);
 
+	useEffect(() => {
+		return () => {
+			setPersistentWebviewInteractionLock("bookmark-bar-dnd", false);
+		};
+	}, []);
+
 	const handleDragEnd = ({ active, over }: DragEndEvent) => {
+		setPersistentWebviewInteractionLock("bookmark-bar-dnd", false);
 		if (!over) return;
-		moveBookmark(String(active.id), String(over.id));
+		moveNode(String(active.id), String(over.id));
 	};
+
+	const rootIds = useMemo(
+		() => bookmarks.map((bookmark) => bookmark.id),
+		[bookmarks],
+	);
 
 	return (
 		<div className="flex h-9 shrink-0 items-center border-b border-border/70 bg-background/95 px-2">
 			{bookmarks.length > 0 ? (
-				<DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+				<DndContext
+					sensors={sensors}
+					collisionDetection={closestCenter}
+					onDragStart={() => {
+						setPersistentWebviewInteractionLock("bookmark-bar-dnd", true);
+					}}
+					onDragCancel={() => {
+						setPersistentWebviewInteractionLock("bookmark-bar-dnd", false);
+					}}
+					onDragEnd={handleDragEnd}
+				>
 					<SortableContext
-						items={bookmarks.map((bookmark) => bookmark.id)}
+						items={rootIds}
 						strategy={horizontalListSortingStrategy}
 					>
-						<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pb-0.5">
-							{bookmarks.map((bookmark) => (
-								<BookmarkBarItem
-									key={bookmark.id}
-									bookmark={bookmark}
-									isActive={
-										normalizeBookmarkUrl(bookmark.url) === normalizedCurrentUrl
-									}
-									onNavigate={onNavigate}
-									onRemove={removeBookmark}
-								/>
-							))}
+						<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-y-none pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+							{bookmarks.map((bookmark) =>
+								isBrowserBookmark(bookmark) ? (
+									<BookmarkBarItem
+										key={bookmark.id}
+										bookmark={bookmark}
+										isActive={
+											normalizeBookmarkUrl(bookmark.url) ===
+											normalizedCurrentUrl
+										}
+										onNavigate={onNavigate}
+									/>
+								) : (
+									<BookmarkFolderItem
+										key={bookmark.id}
+										folder={bookmark}
+										currentUrl={currentUrl}
+										isActive={folderContainsBookmarkUrl(
+											bookmark,
+											normalizedCurrentUrl,
+										)}
+										onNavigate={onNavigate}
+									/>
+								),
+							)}
 						</div>
 					</SortableContext>
 				</DndContext>

@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import {
 	EXTERNAL_APPS,
 	NON_EDITOR_APPS,
@@ -6,7 +7,13 @@ import {
 } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
-import { clipboard, shell } from "electron";
+import {
+	BrowserWindow,
+	clipboard,
+	dialog,
+	type OpenDialogOptions,
+	shell,
+} from "electron";
 import { localDb } from "main/lib/local-db";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
@@ -18,6 +25,10 @@ import {
 } from "./helpers";
 
 const ExternalAppSchema = z.enum(EXTERNAL_APPS);
+const FileFilterSchema = z.object({
+	name: z.string(),
+	extensions: z.array(z.string()),
+});
 
 const nonEditorSet = new Set<ExternalApp>(NON_EDITOR_APPS);
 
@@ -190,6 +201,74 @@ export const createExternalRouter = () => {
 		copyText: publicProcedure.input(z.string()).mutation(async ({ input }) => {
 			clipboard.writeText(input);
 		}),
+
+		openTextFile: publicProcedure
+			.input(
+				z.object({
+					title: z.string().optional(),
+					buttonLabel: z.string().optional(),
+					filters: z.array(FileFilterSchema).optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const window = BrowserWindow.getFocusedWindow();
+				const options: OpenDialogOptions = {
+					title: input.title,
+					buttonLabel: input.buttonLabel,
+					filters: input.filters,
+					properties: ["openFile"],
+				};
+				const result = window
+					? await dialog.showOpenDialog(window, options)
+					: await dialog.showOpenDialog(options);
+
+				if (result.canceled || result.filePaths.length === 0) {
+					return null;
+				}
+
+				const filePath = result.filePaths[0];
+				if (!filePath) {
+					return null;
+				}
+
+				const content = await readFile(filePath, "utf-8");
+				return {
+					path: filePath,
+					content,
+				};
+			}),
+
+		saveTextFile: publicProcedure
+			.input(
+				z.object({
+					title: z.string().optional(),
+					defaultPath: z.string().optional(),
+					buttonLabel: z.string().optional(),
+					filters: z.array(FileFilterSchema).optional(),
+					content: z.string(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const window = BrowserWindow.getFocusedWindow();
+				const options = {
+					title: input.title,
+					defaultPath: input.defaultPath,
+					buttonLabel: input.buttonLabel,
+					filters: input.filters,
+				};
+				const result = window
+					? await dialog.showSaveDialog(window, options)
+					: await dialog.showSaveDialog(options);
+
+				if (result.canceled || !result.filePath) {
+					return null;
+				}
+
+				await writeFile(result.filePath, input.content, "utf-8");
+				return {
+					path: result.filePath,
+				};
+			}),
 
 		resolvePath: publicProcedure
 			.input(
