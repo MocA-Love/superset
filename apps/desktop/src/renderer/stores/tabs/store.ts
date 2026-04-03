@@ -213,6 +213,9 @@ export const useTabsStore = create<TabsStore>()(
 					? { [_tearoffData.tab.workspaceId]: [] }
 					: {},
 				closedTabsStack: [],
+				hasHydrated: Boolean(_tearoffData),
+
+				setHasHydrated: (hasHydrated) => set({ hasHydrated }),
 
 				// Tab operations
 				addTab: (workspaceId, options?: CreatePaneOptions) => {
@@ -2354,6 +2357,14 @@ export const useTabsStore = create<TabsStore>()(
 				name: "tabs-storage",
 				version: 9,
 				storage: trpcTabsStorage,
+				partialize: (state) => ({
+					tabs: state.tabs,
+					panes: state.panes,
+					activeTabIds: state.activeTabIds,
+					focusedPaneIds: state.focusedPaneIds,
+					tabHistoryStacks: state.tabHistoryStacks,
+					closedTabsStack: state.closedTabsStack,
+				}),
 				migrate: (persistedState, version) => {
 					const state = persistedState as TabsState;
 					if (version < 2 && state.panes) {
@@ -2482,6 +2493,9 @@ export const useTabsStore = create<TabsStore>()(
 						tabHistoryStacks: nextHistoryStacks,
 						focusedPaneIds: nextFocusedPaneIds,
 					};
+				},
+				onRehydrateStorage: () => (state) => {
+					state?.setHasHydrated(true);
 				},
 			},
 		),

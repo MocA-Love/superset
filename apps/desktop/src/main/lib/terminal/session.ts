@@ -10,7 +10,8 @@ import {
 	containsClearScrollbackSequence,
 	extractContentAfterClear,
 } from "../terminal-escape-filter";
-import { buildTerminalEnv, FALLBACK_SHELL, getDefaultShell } from "./env";
+import { FALLBACK_SHELL, getDefaultShell } from "./env";
+import { buildTerminalEnv } from "./env-terminal";
 import { PtyWriteQueue } from "./pty-write-queue";
 import type { InternalCreateSessionParams, TerminalSession } from "./types";
 

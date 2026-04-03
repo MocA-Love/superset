@@ -1,23 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	buildSafeEnv,
-	buildTerminalEnv,
 	FALLBACK_SHELL,
 	getLocale,
 	normalizeDefaultShell,
-	removeAppEnvVars,
 	resetTerminalEnvCachesForTests,
 	SHELL_CRASH_THRESHOLD_MS,
 	sanitizeEnv,
 } from "./env";
+import {
+	buildTerminalEnv,
+	removeAppEnvVars,
+	resetTerminalEnvCachesForTests as resetEnvTerminalCaches,
+} from "./env-terminal";
 
 describe("env", () => {
 	beforeEach(() => {
 		resetTerminalEnvCachesForTests();
+		resetEnvTerminalCaches();
 	});
 
 	afterEach(() => {
 		resetTerminalEnvCachesForTests();
+		resetEnvTerminalCaches();
 	});
 
 	describe("constants", () => {

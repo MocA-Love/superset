@@ -176,8 +176,11 @@ mock.module("main/lib/analytics", () => ({
 }));
 
 mock.module("../env", () => ({
-	buildTerminalEnv: () => ({}),
 	getDefaultShell: () => "/bin/zsh",
+}));
+
+mock.module("../env-terminal", () => ({
+	buildTerminalEnv: () => ({}),
 }));
 
 mock.module("main/lib/app-state", () => ({

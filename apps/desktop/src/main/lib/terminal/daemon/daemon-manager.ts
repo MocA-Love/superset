@@ -11,7 +11,8 @@ import {
 } from "../../terminal-host/client";
 import type { ListSessionsResponse } from "../../terminal-host/types";
 import { raceWithAbort, throwIfAborted } from "../abort";
-import { buildTerminalEnv, getDefaultShell } from "../env";
+import { getDefaultShell } from "../env";
+import { buildTerminalEnv } from "../env-terminal";
 import { TerminalKilledError } from "../errors";
 import { portManager } from "../port-manager";
 import type { CreateSessionParams, SessionResult } from "../types";

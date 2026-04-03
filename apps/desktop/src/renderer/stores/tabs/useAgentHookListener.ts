@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
+import { useDeepLinkNavigationStore } from "renderer/stores/deep-link-navigation";
 import { NOTIFICATION_EVENTS } from "shared/constants";
 import { debugLog } from "shared/debug";
 import { useTabsStore } from "./store";
@@ -94,11 +95,14 @@ export function useAgentHookListener() {
 					state.setPaneStatus(paneId, "idle");
 				}
 			} else if (event.type === NOTIFICATION_EVENTS.FOCUS_TAB) {
+				useDeepLinkNavigationStore.getState().replacePendingWorkspaceIntent({
+					workspaceId,
+					tabId: target.tabId,
+					paneId: target.paneId,
+					source: "notification",
+				});
 				navigateToWorkspace(workspaceId, navigate, {
-					search: {
-						tabId: target.tabId,
-						paneId: target.paneId,
-					},
+					search: {},
 				});
 			}
 		},

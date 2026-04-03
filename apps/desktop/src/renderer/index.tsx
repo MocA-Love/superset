@@ -16,6 +16,7 @@ import { persistentHistory } from "./lib/persistent-hash-history";
 import { posthog } from "./lib/posthog";
 import { electronQueryClient } from "./providers/ElectronTRPCProvider";
 import { routeTree } from "./routeTree.gen";
+import { useDeepLinkNavigationStore } from "./stores/deep-link-navigation";
 
 import "./globals.css";
 import "./styles/bundled-fonts.css";
@@ -36,6 +37,7 @@ const unsubscribe = router.subscribe("onResolved", (event) => {
 	posthog.capture("$pageview", {
 		$current_url: event.toLocation.pathname,
 	});
+	useDeepLinkNavigationStore.getState().prunePendingWorkspaceIntent();
 });
 
 function persistDeepLinkedWorkspace(path: string): void {
@@ -47,10 +49,59 @@ function persistDeepLinkedWorkspace(path: string): void {
 	localStorage.setItem("lastViewedWorkspaceId", decodeURIComponent(match[1]));
 }
 
+function parsePositiveInteger(value: string | null): number | undefined {
+	if (!value) {
+		return undefined;
+	}
+
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function consumeWorkspaceDeepLink(path: string): string | null {
+	try {
+		const url = new URL(path, "https://superset.invalid");
+		const workspaceMatch = /^\/workspace\/([^/]+)\/?$/.exec(url.pathname);
+		if (!workspaceMatch?.[1]) {
+			return null;
+		}
+
+		const tabId = url.searchParams.get("tabId")?.trim() || undefined;
+		const paneId = url.searchParams.get("paneId")?.trim() || undefined;
+		const file = url.searchParams.get("file")?.trim() || undefined;
+		const line = parsePositiveInteger(url.searchParams.get("line"));
+		const column = parsePositiveInteger(url.searchParams.get("column"));
+		if (
+			!tabId &&
+			!paneId &&
+			!file &&
+			line === undefined &&
+			column === undefined
+		) {
+			return null;
+		}
+
+		const workspaceId = decodeURIComponent(workspaceMatch[1]);
+		useDeepLinkNavigationStore.getState().replacePendingWorkspaceIntent({
+			workspaceId,
+			tabId,
+			paneId,
+			file,
+			line,
+			column,
+			source: "deep-link",
+		});
+		return `/workspace/${encodeURIComponent(workspaceId)}`;
+	} catch {
+		return null;
+	}
+}
+
 const handleDeepLink = (path: string) => {
 	console.log("[deep-link] Navigating to:", path);
 	persistDeepLinkedWorkspace(path);
-	router.navigate({ to: path });
+	const resolvedPath = consumeWorkspaceDeepLink(path) ?? path;
+	router.navigate({ to: resolvedPath });
 };
 const ipcRenderer = window.ipcRenderer as typeof window.ipcRenderer | undefined;
 if (ipcRenderer) {

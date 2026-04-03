@@ -30,6 +30,7 @@ import { WorkspaceIdProvider } from "renderer/screens/main/components/WorkspaceV
 import { WorkspaceInitializingView } from "renderer/screens/main/components/WorkspaceView/WorkspaceInitializingView";
 import { WorkspaceLayout } from "renderer/screens/main/components/WorkspaceView/WorkspaceLayout";
 import { useCreateOrOpenPR, usePRStatus } from "renderer/screens/main/hooks";
+import { useDeepLinkNavigationStore } from "renderer/stores/deep-link-navigation";
 import {
 	cancelPendingTabClose,
 	discardAndClosePendingTab,
@@ -153,69 +154,46 @@ export function WorkspacePage({
 	const searchFile = searchParams?.file;
 	const searchLine = searchParams?.line;
 	const searchColumn = searchParams?.column;
+	const hasRouteWorkspaceIntent =
+		Boolean(searchTabId) ||
+		Boolean(searchPaneId) ||
+		Boolean(searchFile) ||
+		searchLine !== undefined ||
+		searchColumn !== undefined;
+	const pendingWorkspaceIntent = useDeepLinkNavigationStore(
+		(s) => s.pendingWorkspaceIntent,
+	);
+	const replacePendingWorkspaceIntent = useDeepLinkNavigationStore(
+		(s) => s.replacePendingWorkspaceIntent,
+	);
+	const clearPendingWorkspaceIntent = useDeepLinkNavigationStore(
+		(s) => s.clearPendingWorkspaceIntent,
+	);
+	const markPendingWorkspaceIntentTabHandled = useDeepLinkNavigationStore(
+		(s) => s.markPendingWorkspaceIntentTabHandled,
+	);
+	const markPendingWorkspaceIntentFileHandled = useDeepLinkNavigationStore(
+		(s) => s.markPendingWorkspaceIntentFileHandled,
+	);
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
-
-	// Handle search-param-driven tab/pane activation (e.g. from notification clicks)
-	useEffect(() => {
-		if (!isActive) return;
-		if (!searchTabId) return;
-
-		const state = useTabsStore.getState();
-		const tab = state.tabs.find(
-			(t) => t.id === searchTabId && t.workspaceId === workspaceId,
-		);
-		if (!tab) return;
-
-		state.setActiveTab(workspaceId, searchTabId);
-
-		if (searchPaneId && state.panes[searchPaneId]) {
-			state.setFocusedPane(searchTabId, searchPaneId);
-		}
-
-		navigate({
-			to: "/workspace/$workspaceId",
-			params: { workspaceId },
-			search: {},
-			replace: true,
-		});
-	}, [isActive, searchTabId, searchPaneId, workspaceId, navigate]);
+	const hasTabsHydrated = useTabsStore((s) => s.hasHydrated ?? false);
 
 	useEffect(() => {
 		if (!isActive) return;
-		if (!searchFile || !workspace?.worktreePath) return;
+		if (!hasRouteWorkspaceIntent) return;
 
-		const filePath = toAbsoluteWorkspacePath(
-			workspace.worktreePath,
-			searchFile,
-		);
-
-		// Security: reject paths that resolve outside the workspace root to
-		// prevent arbitrary local file access via deep links.
-		const normalizedRoot = normalizeComparablePath(workspace.worktreePath);
-		const normalizedFile = normalizeComparablePath(filePath);
-		if (
-			normalizedFile !== normalizedRoot &&
-			!normalizedFile.startsWith(`${normalizedRoot}/`)
-		) {
-			navigate({
-				to: "/workspace/$workspaceId",
-				params: { workspaceId },
-				search: {},
-				replace: true,
-			});
-			return;
-		}
-
-		addFileViewerPane(workspaceId, {
-			filePath,
+		replacePendingWorkspaceIntent({
+			workspaceId,
+			tabId: searchTabId,
+			paneId: searchPaneId,
+			file: searchFile,
 			line: searchLine,
 			column: searchColumn,
-			viewMode: "raw",
-			isPinned: true,
+			source: "route-search",
 		});
 
 		navigate({
@@ -225,13 +203,116 @@ export function WorkspacePage({
 			replace: true,
 		});
 	}, [
-		addFileViewerPane,
+		hasRouteWorkspaceIntent,
 		isActive,
 		navigate,
+		replacePendingWorkspaceIntent,
 		searchColumn,
 		searchFile,
 		searchLine,
+		searchPaneId,
+		searchTabId,
+		workspaceId,
+	]);
+
+	useEffect(() => {
+		if (!isActive) return;
+		if (!pendingWorkspaceIntent) return;
+		if (pendingWorkspaceIntent.workspaceId !== workspaceId) return;
+		if (pendingWorkspaceIntent.expiresAt <= Date.now()) {
+			clearPendingWorkspaceIntent(pendingWorkspaceIntent.id);
+			return;
+		}
+		if (pendingWorkspaceIntent.tabHandled) return;
+		if (!pendingWorkspaceIntent.tabId) return;
+		if (!hasTabsHydrated) return;
+
+		const { tabId, paneId } = pendingWorkspaceIntent;
+		const state = useTabsStore.getState();
+		const tab = state.tabs.find(
+			(t) => t.id === tabId && t.workspaceId === workspaceId,
+		);
+		if (!tab) {
+			markPendingWorkspaceIntentTabHandled(pendingWorkspaceIntent.id);
+			return;
+		}
+
+		state.setActiveTab(workspaceId, tabId);
+
+		if (paneId && state.panes[paneId]) {
+			state.setFocusedPane(tabId, paneId);
+		}
+
+		markPendingWorkspaceIntentTabHandled(pendingWorkspaceIntent.id);
+	}, [
+		hasTabsHydrated,
+		clearPendingWorkspaceIntent,
+		isActive,
+		markPendingWorkspaceIntentTabHandled,
+		pendingWorkspaceIntent,
+		workspaceId,
+	]);
+
+	useEffect(() => {
+		if (!isActive) return;
+		if (!pendingWorkspaceIntent) return;
+		if (pendingWorkspaceIntent.workspaceId !== workspaceId) return;
+		if (pendingWorkspaceIntent.expiresAt <= Date.now()) {
+			clearPendingWorkspaceIntent(pendingWorkspaceIntent.id);
+			return;
+		}
+		if (pendingWorkspaceIntent.fileHandled) return;
+		if (!pendingWorkspaceIntent.file || !workspace?.worktreePath) return;
+		if (pendingWorkspaceIntent.tabId && !pendingWorkspaceIntent.tabHandled) {
+			return;
+		}
+
+		const filePath = toAbsoluteWorkspacePath(
+			workspace.worktreePath,
+			pendingWorkspaceIntent.file,
+		);
+
+		const normalizedRoot = normalizeComparablePath(workspace.worktreePath);
+		const normalizedFile = normalizeComparablePath(filePath);
+		if (
+			normalizedFile !== normalizedRoot &&
+			!normalizedFile.startsWith(`${normalizedRoot}/`)
+		) {
+			markPendingWorkspaceIntentFileHandled(pendingWorkspaceIntent.id);
+			return;
+		}
+
+		addFileViewerPane(workspaceId, {
+			filePath,
+			line: pendingWorkspaceIntent.line,
+			column: pendingWorkspaceIntent.column,
+			viewMode: "raw",
+			isPinned: true,
+		});
+
+		markPendingWorkspaceIntentFileHandled(pendingWorkspaceIntent.id);
+	}, [
+		addFileViewerPane,
+		clearPendingWorkspaceIntent,
+		isActive,
+		markPendingWorkspaceIntentFileHandled,
+		pendingWorkspaceIntent,
 		workspace?.worktreePath,
+		workspaceId,
+	]);
+
+	useEffect(() => {
+		if (!isActive) return;
+		if (!pendingWorkspaceIntent) return;
+		if (pendingWorkspaceIntent.workspaceId !== workspaceId) return;
+		if (!pendingWorkspaceIntent.tabHandled) return;
+		if (!pendingWorkspaceIntent.fileHandled) return;
+
+		clearPendingWorkspaceIntent(pendingWorkspaceIntent.id);
+	}, [
+		clearPendingWorkspaceIntent,
+		isActive,
+		pendingWorkspaceIntent,
 		workspaceId,
 	]);
 
