@@ -61,6 +61,11 @@ Works with any CLI agent. Built for local worktree-based development.
 | **マージコンフリクト解消 UI** | diff ビューア内でコンフリクトマーカーをインラインで検出し、VSCode スタイルの「Accept Current / Accept Incoming / Accept Both」ボタンを表示。ワンクリックでコンフリクトを解消可能 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
 | **GitGraph 詳細パネル修正** | GitGraph の詳細パネルがペイン外にはみ出る問題を修正。パネルの位置計算を改善し、画面端でも正しく収まるよう対応 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
 | **ConflictViewer 表示・スタイル修正** | ConflictViewer の表示条件とスタイルを修正 | [#38](https://github.com/MocA-Love/superset/pull/38) | 2026-03-31 |
+| **ワークスペース切替・レビュー系 UX 強化** | Branch picker の検索・作成導線とブランチ情報表示を改善、blame tooltip に GitHub avatar を追加。ターミナル履歴サジェストの Enter/補完・プレビュー挙動を改善 | [#40](https://github.com/MocA-Love/superset/pull/40) | 2026-03-31 |
+| **Review パネル URL ナビゲーション改善** | Review 内のコメント・PR タイトル・Markdown 内リンクを Superset のブラウザタブで新規開くよう統一。既存ブラウザタブの URL 差し替え問題を回避 | [#35](https://github.com/MocA-Love/superset/pull/35) | 2026-03-30 |
+| **Problems / Database Explorer / Search 強化** | エディターの問題診断 `Problems` タブを追加し、Workspace 全体の警告・エラーを絞り込み・再取得・該当行ジャンプ可能に。右サイドバーへ Database Explorer と Search（glob/正規表現/置換）を追加 | [#44](https://github.com/MocA-Love/superset/pull/44) | 2026-04-01 |
+| **言語診断の多言語対応拡張** | Diagnostics の LSP 基盤を外部 Language Server 化し、YAML / HTML / CSS / Python / Go / Rust / Dockerfile / GraphQL に対応。provider の ON/OFF 切替と runtime materialization を整備 | [#48](https://github.com/MocA-Love/superset/pull/48) | 2026-04-02 |
+| **Docker サイドバーと検索・DB設定の大規模追加** | 右サイドバーに Docker ビューを追加してコンテナ/イメージ/ボリュームを管理。Search を木構造・仮想スクロール化し大量件数を高速化。workspace DB 設定の読み書き UI を追加 | [#51](https://github.com/MocA-Love/superset/pull/51) | 2026-04-02 |
 
 ## Fork のビルド方法 (macOS)
 
