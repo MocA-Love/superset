@@ -138,6 +138,7 @@ describe("pane operations", () => {
 		store.getState().addTab({ id: "t1", panes: [tp("p1")] });
 
 		store.getState().setPanePinned({
+			tabId: "t1",
 			paneId: "p1",
 			pinned: true,
 		});

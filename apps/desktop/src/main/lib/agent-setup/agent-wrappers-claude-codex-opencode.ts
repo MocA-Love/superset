@@ -385,7 +385,12 @@ export function getCodexGlobalHooksJsonContent(
 	}
 
 	const managedEvents: Array<{
-		eventName: "SessionStart" | "UserPromptSubmit" | "Stop";
+		eventName:
+			| "SessionStart"
+			| "UserPromptSubmit"
+			| "PreToolUse"
+			| "PostToolUse"
+			| "Stop";
 		definition: ClaudeHookDefinition;
 	}> = [
 		{
@@ -397,6 +402,20 @@ export function getCodexGlobalHooksJsonContent(
 		{
 			eventName: "UserPromptSubmit",
 			definition: {
+				hooks: [{ type: "command", command: notifyScriptPath }],
+			},
+		},
+		{
+			eventName: "PreToolUse",
+			definition: {
+				matcher: "*",
+				hooks: [{ type: "command", command: notifyScriptPath }],
+			},
+		},
+		{
+			eventName: "PostToolUse",
+			definition: {
+				matcher: "*",
 				hooks: [{ type: "command", command: notifyScriptPath }],
 			},
 		},

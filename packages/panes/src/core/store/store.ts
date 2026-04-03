@@ -105,7 +105,11 @@ export interface WorkspaceStore<TData> extends WorkspaceState<TData> {
 		paneId: string;
 		titleOverride?: string;
 	}) => void;
-	setPanePinned: (args: { paneId: string; pinned: boolean }) => void;
+	setPanePinned: (args: {
+		tabId: string;
+		paneId: string;
+		pinned: boolean;
+	}) => void;
 	replacePane: (args: {
 		tabId: string;
 		paneId: string;
@@ -330,25 +334,26 @@ export function createWorkspaceStore<TData>(
 
 		setPanePinned: (args) => {
 			set((s) => {
-				for (const tab of s.tabs) {
-					const pane = tab.panes[args.paneId];
-					if (pane) {
-						return {
-							tabs: s.tabs.map((t) =>
-								t.id === tab.id
-									? {
-											...t,
-											panes: {
-												...t.panes,
-												[args.paneId]: { ...pane, pinned: args.pinned },
-											},
-										}
-									: t,
-							),
-						};
-					}
-				}
-				return s;
+				const tab = s.tabs.find((t) => t.id === args.tabId);
+				const pane = tab?.panes[args.paneId];
+				if (!tab || !pane) return s;
+
+				return {
+					tabs: s.tabs.map((t) =>
+						t.id === args.tabId
+							? {
+									...t,
+									panes: {
+										...t.panes,
+										[args.paneId]: {
+											...pane,
+											pinned: args.pinned,
+										},
+									},
+								}
+							: t,
+					),
+				};
 			});
 		},
 

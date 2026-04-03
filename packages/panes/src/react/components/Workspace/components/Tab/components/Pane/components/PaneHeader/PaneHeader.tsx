@@ -12,8 +12,6 @@ interface PaneHeaderProps {
 	actionsContent: ReactNode;
 	toolbar?: ReactNode;
 	paneId?: string;
-	onClick?: () => void;
-	onMiddleClick?: () => void;
 }
 
 export const PANE_DRAG_TYPE = "pane";
@@ -27,8 +25,6 @@ export function PaneHeader({
 	actionsContent,
 	toolbar,
 	paneId,
-	onClick,
-	onMiddleClick,
 }: PaneHeaderProps) {
 	const [{ isDragging }, connectDrag] = useDrag(
 		() => ({
@@ -52,8 +48,6 @@ export function PaneHeader({
 	);
 
 	return (
-		// biome-ignore lint/a11y/useKeyWithClickEvents: pane header click-to-pin doesn't need keyboard equivalent
-		// biome-ignore lint/a11y/noStaticElementInteractions: click to pin, middle-click to close
 		<div
 			ref={setRef}
 			className={cn(
@@ -61,13 +55,6 @@ export function PaneHeader({
 				isActive ? "bg-secondary" : "bg-tertiary",
 				isDragging && "opacity-30",
 			)}
-			onClick={onClick}
-			onAuxClick={(e) => {
-				if (e.button === 1 && onMiddleClick) {
-					e.preventDefault();
-					onMiddleClick();
-				}
-			}}
 		>
 			{toolbar ?? (
 				<DefaultHeaderContent

@@ -36,10 +36,9 @@ export function InviteMemberButton({
 				title: "This will affect your billing",
 				description:
 					"Adding members will increase your subscription cost, prorated to your billing cycle.",
-				actions: [
-					{ label: "Cancel", variant: "outline", onClick: () => {} },
-					{ label: "Continue", onClick: () => setOpen(true) },
-				],
+				confirmText: "Continue",
+				cancelText: "Cancel",
+				onConfirm: () => setOpen(true),
 			});
 		});
 	};

@@ -90,19 +90,16 @@ export function MemberActions({
 				? " Your subscription will be adjusted accordingly."
 				: "";
 
-		alert({
+		alert.destructive({
 			title: isCurrentUser ? "Leave organization?" : "Remove team member?",
 			description: isCurrentUser
 				? `Are you sure you want to leave this organization? You will lose access immediately.${billingNote}`
 				: `Are you sure you want to remove ${member.name} (${member.email}) from the organization? They will lose access immediately.${billingNote}`,
-			actions: [
-				{ label: "Cancel", variant: "outline", onClick: () => {} },
-				{
-					label: isCurrentUser ? "Leave Organization" : "Remove Member",
-					variant: "destructive",
-					onClick: () => handleRemove(),
-				},
-			],
+			confirmText: isCurrentUser ? "Leave Organization" : "Remove Member",
+			cancelText: "Cancel",
+			onConfirm: () => {
+				handleRemove();
+			},
 		});
 	};
 
@@ -129,17 +126,14 @@ export function MemberActions({
 			isCurrentUser && getRoleLevel(newRole) < getRoleLevel(member.role);
 
 		if (isSelfDemotion) {
-			alert({
+			alert.destructive({
 				title: "Demote yourself?",
 				description: `You're about to change your role from ${ORGANIZATION_ROLES[member.role].name} to ${ORGANIZATION_ROLES[newRole].name}. Another owner will need to restore your permissions. Are you sure?`,
-				actions: [
-					{ label: "Cancel", variant: "outline", onClick: () => {} },
-					{
-						label: "Yes, demote me",
-						variant: "destructive",
-						onClick: () => handleChangeRole(newRole),
-					},
-				],
+				confirmText: "Yes, demote me",
+				cancelText: "Cancel",
+				onConfirm: async () => {
+					await handleChangeRole(newRole);
+				},
 			});
 		} else {
 			handleChangeRole(newRole);

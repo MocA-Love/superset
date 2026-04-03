@@ -61,18 +61,12 @@ export function useDashboardSidebarProjectSectionActions({
 	};
 
 	const confirmRemoveFromSidebar = () => {
-		alert({
+		alert.destructive({
 			title: "Remove project from sidebar?",
 			description:
 				"This will remove workspaces from the sidebar and delete all project sections. The workspaces or projects won't be deleted.",
-			actions: [
-				{ label: "Cancel", variant: "outline", onClick: () => {} },
-				{
-					label: "Remove",
-					variant: "destructive",
-					onClick: () => removeProjectFromSidebar(project.id),
-				},
-			],
+			confirmText: "Remove",
+			onConfirm: () => removeProjectFromSidebar(project.id),
 		});
 	};
 

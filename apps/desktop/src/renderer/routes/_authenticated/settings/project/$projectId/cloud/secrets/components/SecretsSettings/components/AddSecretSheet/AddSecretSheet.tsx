@@ -73,18 +73,12 @@ export function AddSecretSheet({
 
 	const handleOpenChange = (nextOpen: boolean) => {
 		if (!nextOpen && hasContent) {
-			alert({
+			alert.destructive({
 				title: "Discard unsaved changes?",
 				description:
 					"You have unsaved environment variables. Are you sure you want to close?",
-				actions: [
-					{ label: "Cancel", variant: "outline", onClick: () => {} },
-					{
-						label: "Discard",
-						variant: "destructive",
-						onClick: () => onOpenChange(false),
-					},
-				],
+				confirmText: "Discard",
+				onConfirm: () => onOpenChange(false),
 			});
 			return;
 		}

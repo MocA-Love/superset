@@ -28,7 +28,6 @@ export interface UseFileTreeResult {
 	toggle: (path: string) => Promise<void>;
 	refreshAll: () => Promise<void>;
 	refreshPath: (path: string) => Promise<void>;
-	reveal: (path: string) => Promise<void>;
 }
 
 interface FileTreeState {
@@ -215,10 +214,10 @@ export function useFileTree({
 			});
 
 			try {
-				const result = await utils.filesystem.listDirectory.fetch(
-					{ workspaceId, absolutePath },
-					{ staleTime: 0 },
-				);
+				const result = await utils.filesystem.listDirectory.fetch({
+					workspaceId,
+					absolutePath,
+				});
 
 				updateState((current) => {
 					const nextEntries = new Map(current.entriesByPath);
@@ -480,27 +479,6 @@ export function useFileTree({
 		state.loadingDirectories,
 	]);
 
-	const reveal = useCallback(
-		async (absolutePath: string): Promise<void> => {
-			if (!rootPath || !absolutePath.startsWith(rootPath)) return;
-
-			// Collect ancestor directories from rootPath down to the parent of the target
-			const ancestors: string[] = [];
-			let current = getParentPath(absolutePath);
-			while (current.length >= rootPath.length && current !== absolutePath) {
-				ancestors.unshift(current);
-				if (current === rootPath) break;
-				current = getParentPath(current);
-			}
-
-			// Expand all ancestors and load their contents
-			for (const dir of ancestors) {
-				await expand(dir);
-			}
-		},
-		[expand, rootPath],
-	);
-
 	return {
 		isLoadingRoot: state.loadingDirectories.has(rootPath),
 		collapseAll,
@@ -510,6 +488,5 @@ export function useFileTree({
 		toggle,
 		refreshAll,
 		refreshPath,
-		reveal,
 	};
 }

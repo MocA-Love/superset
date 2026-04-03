@@ -888,7 +888,7 @@ describe("agent-wrappers codex hooks.json", () => {
 		rmSync(TEST_ROOT, { recursive: true, force: true });
 	});
 
-	it("creates Codex hooks.json with prompt and lifecycle hooks when no file exists", () => {
+	it("creates Codex hooks.json with prompt and tool lifecycle hooks when no file exists", () => {
 		const notifyPath = "/tmp/.superset/hooks/notify.sh";
 		const content = getCodexGlobalHooksJsonContent(notifyPath);
 		expect(content).not.toBeNull();
@@ -907,6 +907,8 @@ describe("agent-wrappers codex hooks.json", () => {
 		for (const eventName of [
 			"SessionStart",
 			"UserPromptSubmit",
+			"PreToolUse",
+			"PostToolUse",
 			"Stop",
 		] as const) {
 			const hooks = parsed.hooks[eventName];
@@ -918,8 +920,12 @@ describe("agent-wrappers codex hooks.json", () => {
 			).toBe(true);
 		}
 
-		expect(parsed.hooks.PreToolUse).toBeUndefined();
-		expect(parsed.hooks.PostToolUse).toBeUndefined();
+		expect(parsed.hooks.PreToolUse?.every((def) => def.matcher === "*")).toBe(
+			true,
+		);
+		expect(parsed.hooks.PostToolUse?.every((def) => def.matcher === "*")).toBe(
+			true,
+		);
 	});
 
 	it("preserves user hooks when merging", () => {
@@ -981,7 +987,7 @@ describe("agent-wrappers codex hooks.json", () => {
 
 		const parsed = JSON.parse(content);
 
-		// Preserves user hooks (including PreToolUse/PostToolUse which we don't manage)
+		// Preserves user hook
 		expect(
 			parsed.hooks.Stop.some((def: { hooks: Array<{ command: string }> }) =>
 				def.hooks.some(
@@ -1018,19 +1024,32 @@ describe("agent-wrappers codex hooks.json", () => {
 			),
 		).toBe(true);
 
-		// Adds managed hooks for SessionStart, UserPromptSubmit, Stop
-		for (const eventName of ["SessionStart", "UserPromptSubmit", "Stop"]) {
-			expect(
-				parsed.hooks[eventName].some(
-					(def: { hooks: Array<{ command: string }> }) =>
-						def.hooks.some(
-							(hook: { command: string }) => hook.command === notifyPath,
-						),
+		// Adds managed hook
+		expect(
+			parsed.hooks.Stop.some((def: { hooks: Array<{ command: string }> }) =>
+				def.hooks.some(
+					(hook: { command: string }) => hook.command === notifyPath,
 				),
-			).toBe(true);
-		}
+			),
+		).toBe(true);
 
-		// Does NOT inject managed hooks for PreToolUse/PostToolUse
+		// Also creates prompt + start hooks
+		expect(
+			parsed.hooks.SessionStart.some(
+				(def: { hooks: Array<{ command: string }> }) =>
+					def.hooks.some(
+						(hook: { command: string }) => hook.command === notifyPath,
+					),
+			),
+		).toBe(true);
+		expect(
+			parsed.hooks.UserPromptSubmit.some(
+				(def: { hooks: Array<{ command: string }> }) =>
+					def.hooks.some(
+						(hook: { command: string }) => hook.command === notifyPath,
+					),
+			),
+		).toBe(true);
 		expect(
 			parsed.hooks.PreToolUse.some(
 				(def: { hooks: Array<{ command: string }> }) =>
@@ -1038,7 +1057,7 @@ describe("agent-wrappers codex hooks.json", () => {
 						(hook: { command: string }) => hook.command === notifyPath,
 					),
 			),
-		).toBe(false);
+		).toBe(true);
 		expect(
 			parsed.hooks.PostToolUse.some(
 				(def: { hooks: Array<{ command: string }> }) =>
@@ -1046,7 +1065,37 @@ describe("agent-wrappers codex hooks.json", () => {
 						(hook: { command: string }) => hook.command === notifyPath,
 					),
 			),
-		).toBe(false);
+		).toBe(true);
+	});
+
+	it("adds UserPromptSubmit, PreToolUse, and PostToolUse to the Codex hooks.json merge", () => {
+		const notifyPath = "/tmp/.superset/hooks/notify.sh";
+		const content = getCodexGlobalHooksJsonContent(notifyPath);
+		expect(content).not.toBeNull();
+		if (content === null) throw new Error("Expected content");
+
+		const parsed = JSON.parse(content) as {
+			hooks: Record<
+				string,
+				Array<{
+					matcher?: string;
+					hooks: Array<{ type: string; command: string }>;
+				}>
+			>;
+		};
+
+		for (const eventName of [
+			"UserPromptSubmit",
+			"PreToolUse",
+			"PostToolUse",
+		] as const) {
+			expect(parsed.hooks[eventName]).toBeDefined();
+			expect(
+				parsed.hooks[eventName]?.some((def) =>
+					def.hooks.some((hook) => hook.command === notifyPath),
+				),
+			).toBe(true);
+		}
 	});
 
 	it("replaces stale Codex hook commands from old superset paths", () => {
@@ -1101,6 +1150,8 @@ describe("agent-wrappers codex hooks.json", () => {
 		for (const eventName of [
 			"SessionStart",
 			"UserPromptSubmit",
+			"PreToolUse",
+			"PostToolUse",
 			"Stop",
 		] as const) {
 			const hooks = parsed.hooks[eventName];

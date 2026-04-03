@@ -23,7 +23,6 @@ export const workspaceLocalStateSchema = z.object({
 		sectionId: z.string().uuid().nullable().default(null),
 	}),
 	paneLayout: paneWorkspaceStateSchema,
-	rightSidebarOpen: z.boolean().default(false),
 });
 
 export const dashboardSidebarSectionSchema = z.object({

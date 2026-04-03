@@ -52,16 +52,5 @@
 	"patchedDependencies": {
 		"@durable-streams/state@0.2.1": "patches/@durable-streams%2Fstate@0.2.1.patch",
 		"fstream@1.0.12": "patches/fstream@1.0.12.patch"
-	},
-	"trustedDependencies": [
-		"better-sqlite3",
-		"bufferutil",
-		"electron",
-		"esbuild",
-		"koffi",
-		"node-pty",
-		"sharp",
-		"utf-8-validate",
-		"workerd"
-	]
+	}
 }
