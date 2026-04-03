@@ -27,7 +27,7 @@ import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { GripVerticalIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserBookmarkFolderIcon } from "renderer/stores/browser-bookmark-folder-icons";
 import {
 	type BrowserBookmarkFolder,
@@ -54,6 +54,69 @@ interface FolderTreeSectionProps {
 	currentUrl: string;
 	onReorder: (folderId: string, activeId: string, overId: string) => void;
 	depth?: number;
+}
+
+interface SortableFolderTreeNodeProps {
+	folder: BrowserBookmarkFolder;
+	depth: number;
+	children: ReactNode;
+}
+
+function SortableFolderTreeNode({
+	folder,
+	depth,
+	children,
+}: SortableFolderTreeNodeProps) {
+	const FolderIcon = getBrowserBookmarkFolderIcon(folder.iconKey);
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({
+		id: folder.id,
+	});
+
+	const style = useMemo(
+		() => ({
+			transform: CSS.Transform.toString(
+				transform ? { ...transform, x: 0 } : null,
+			),
+			transition,
+		}),
+		[transform, transition],
+	);
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={style}
+			className={cn("space-y-1", isDragging && "opacity-45")}
+		>
+			<div
+				className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground/75"
+				style={{ marginLeft: depth * 10 }}
+			>
+				<FolderIcon
+					className="size-3.5 shrink-0"
+					style={folder.color ? { color: folder.color } : undefined}
+				/>
+				<span className="min-w-0 flex-1 truncate">{folder.title}</span>
+				<button
+					type="button"
+					{...attributes}
+					{...listeners}
+					className="flex shrink-0 items-center text-muted-foreground/55 transition-colors hover:text-foreground active:cursor-grabbing"
+					aria-label={`Reorder ${folder.title}`}
+				>
+					<GripVerticalIcon className="size-3.5 shrink-0" />
+				</button>
+			</div>
+			{children}
+		</div>
+	);
 }
 
 function FolderTreeSection({
@@ -116,20 +179,8 @@ function FolderTreeSection({
 							);
 						}
 
-						const NestedFolderIcon = getBrowserBookmarkFolderIcon(node.iconKey);
-
 						return (
-							<div key={node.id} className="space-y-1">
-								<div
-									className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground/75"
-									style={{ marginLeft: depth * 10 }}
-								>
-									<NestedFolderIcon
-										className="size-3.5 shrink-0"
-										style={node.color ? { color: node.color } : undefined}
-									/>
-									<span className="truncate">{node.title}</span>
-								</div>
+							<SortableFolderTreeNode key={node.id} folder={node} depth={depth}>
 								{node.children.length > 0 ? (
 									<FolderTreeSection
 										folderId={node.id}
@@ -140,7 +191,7 @@ function FolderTreeSection({
 										depth={depth + 1}
 									/>
 								) : null}
-							</div>
+							</SortableFolderTreeNode>
 						);
 					})}
 				</div>

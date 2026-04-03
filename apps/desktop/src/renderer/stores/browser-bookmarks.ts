@@ -411,7 +411,7 @@ function cloneImportedNodes(nodes: BrowserBookmarkTreeNode[]): {
 						url: normalizedUrl,
 						title: node.title.trim() || normalizedUrl,
 						faviconUrl: node.faviconUrl,
-						createdAt: Date.now(),
+						createdAt: node.createdAt || Date.now(),
 					},
 				];
 			}
@@ -428,7 +428,7 @@ function cloneImportedNodes(nodes: BrowserBookmarkTreeNode[]): {
 					title: node.title.trim() || "Untitled Folder",
 					iconKey: node.iconKey,
 					color: node.color ?? null,
-					createdAt: Date.now(),
+					createdAt: node.createdAt || Date.now(),
 					children: nestedResult.nodes,
 				},
 			];

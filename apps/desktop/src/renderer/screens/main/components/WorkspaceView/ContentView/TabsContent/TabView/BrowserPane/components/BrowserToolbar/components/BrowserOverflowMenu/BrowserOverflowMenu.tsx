@@ -91,44 +91,58 @@ export function BrowserOverflowMenu({
 	};
 
 	const handleImportBookmarks = async () => {
-		const file = await openTextFileMutation.mutateAsync({
-			title: "Import Bookmarks",
-			buttonLabel: "Import",
-			filters: [{ name: "Bookmarks HTML", extensions: ["html", "htm"] }],
-		});
+		try {
+			const file = await openTextFileMutation.mutateAsync({
+				title: "Import Bookmarks",
+				buttonLabel: "Import",
+				filters: [{ name: "Bookmarks HTML", extensions: ["html", "htm"] }],
+			});
 
-		if (!file) {
-			return;
+			if (!file) {
+				return;
+			}
+
+			const importedNodes = importBrowserBookmarksFromHtml(file.content);
+			const result = importBookmarks(importedNodes);
+
+			if (result.bookmarksAdded === 0 && result.foldersAdded === 0) {
+				toast.error("No bookmarks were imported");
+				return;
+			}
+
+			toast.success(
+				`Imported ${result.bookmarksAdded} bookmarks and ${result.foldersAdded} folders`,
+			);
+		} catch (error) {
+			console.error("[browser-bookmarks/import]", error);
+			toast.error("Failed to import bookmarks", {
+				description: error instanceof Error ? error.message : "Unknown error",
+			});
 		}
-
-		const importedNodes = importBrowserBookmarksFromHtml(file.content);
-		const result = importBookmarks(importedNodes);
-
-		if (result.bookmarksAdded === 0 && result.foldersAdded === 0) {
-			toast.error("No bookmarks were imported");
-			return;
-		}
-
-		toast.success(
-			`Imported ${result.bookmarksAdded} bookmarks and ${result.foldersAdded} folders`,
-		);
 	};
 
 	const handleExportBookmarks = async () => {
-		const content = exportBrowserBookmarksToHtml(bookmarks);
-		const saved = await saveTextFileMutation.mutateAsync({
-			title: "Export Bookmarks",
-			defaultPath: "bookmarks.html",
-			buttonLabel: "Export",
-			filters: [{ name: "Bookmarks HTML", extensions: ["html"] }],
-			content,
-		});
+		try {
+			const content = exportBrowserBookmarksToHtml(bookmarks);
+			const saved = await saveTextFileMutation.mutateAsync({
+				title: "Export Bookmarks",
+				defaultPath: "bookmarks.html",
+				buttonLabel: "Export",
+				filters: [{ name: "Bookmarks HTML", extensions: ["html"] }],
+				content,
+			});
 
-		if (!saved) {
-			return;
+			if (!saved) {
+				return;
+			}
+
+			toast.success("Bookmarks exported");
+		} catch (error) {
+			console.error("[browser-bookmarks/export]", error);
+			toast.error("Failed to export bookmarks", {
+				description: error instanceof Error ? error.message : "Unknown error",
+			});
 		}
-
-		toast.success("Bookmarks exported");
 	};
 
 	const handleClearCookies = () => {

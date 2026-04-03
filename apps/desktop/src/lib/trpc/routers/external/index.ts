@@ -231,11 +231,19 @@ export const createExternalRouter = () => {
 					return null;
 				}
 
-				const content = await readFile(filePath, "utf-8");
-				return {
-					path: filePath,
-					content,
-				};
+				try {
+					const content = await readFile(filePath, "utf-8");
+					return {
+						path: filePath,
+						content,
+					};
+				} catch (error) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: `Failed to read file: ${filePath}`,
+						cause: error,
+					});
+				}
 			}),
 
 		saveTextFile: publicProcedure
@@ -264,7 +272,16 @@ export const createExternalRouter = () => {
 					return null;
 				}
 
-				await writeFile(result.filePath, input.content, "utf-8");
+				try {
+					await writeFile(result.filePath, input.content, "utf-8");
+				} catch (error) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: `Failed to write file: ${result.filePath}`,
+						cause: error,
+					});
+				}
+
 				return {
 					path: result.filePath,
 				};
