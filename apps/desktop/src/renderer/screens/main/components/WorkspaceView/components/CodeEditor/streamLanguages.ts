@@ -171,9 +171,8 @@ function createCsvStreamLanguage(
 		startState: () => ({ column: 0, inQuote: false }),
 		token(stream, state) {
 			// Start of line resets column
-			if (stream.sol()) {
+			if (stream.sol() && !state.inQuote) {
 				state.column = 0;
-				state.inQuote = false;
 			}
 
 			const tag = COLUMN_TAGS[state.column % COLUMN_TAGS.length];
