@@ -28,6 +28,7 @@ import {
 	useState,
 } from "react";
 import { GoGitBranch, GoGlobe } from "react-icons/go";
+import { IoCloudDownloadOutline } from "react-icons/io5";
 import { LuArrowLeft, LuChevronDown, LuPlus, LuTag } from "react-icons/lu";
 import {
 	VscCheck,
@@ -1132,6 +1133,63 @@ function StashDropdown({
 	);
 }
 
+function FetchRemoteButton({
+	worktreePath,
+	onRefresh,
+}: { worktreePath: string; onRefresh: () => void }) {
+	const utils = electronTrpc.useUtils();
+	const [isDisabled, setIsDisabled] = useState(false);
+	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+	const fetchMutation = electronTrpc.gitOperations.fetch.useMutation({
+		onSuccess: () => {
+			void utils.changes.getBranches.invalidate({ worktreePath });
+			void utils.changes.getStatus.invalidate();
+			void utils.changes.searchRefs.invalidate();
+			onRefresh();
+		},
+		onError: (error) => {
+			toast.error("Fetch failed", {
+				description: error.message,
+			});
+		},
+		onSettled: () => {
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+			timeoutRef.current = setTimeout(() => setIsDisabled(false), 600);
+		},
+	});
+
+	useEffect(() => {
+		return () => {
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+		};
+	}, []);
+
+	const handleClick = () => {
+		setIsDisabled(true);
+		fetchMutation.mutate({ worktreePath });
+	};
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={handleClick}
+					disabled={isDisabled}
+					className="size-6 p-0"
+				>
+					<IoCloudDownloadOutline className="size-3.5" />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="top" showArrow={false}>
+				Fetch remote
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
 function RefreshButton({ onRefresh }: { onRefresh: () => void }) {
 	const [isSpinning, setIsSpinning] = useState(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1212,6 +1270,7 @@ export function ChangesHeader({
 						onViewModeChange={onViewModeChange}
 					/>
 				)}
+				<FetchRemoteButton worktreePath={worktreePath} onRefresh={onRefresh} />
 				<RefreshButton onRefresh={onRefresh} />
 				<PRButton
 					pr={pr}
