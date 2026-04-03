@@ -257,16 +257,22 @@ export function RightSidebar() {
 				staleTime: Infinity,
 			},
 		);
-	const { data: dockerComposeFiles } =
-		electronTrpc.docker.getComposeFiles.useQuery(
-			{ workspaceId: workspaceId ?? "" },
-			{
-				enabled: Boolean(workspaceId),
-				staleTime: 10000,
-			},
-		);
+	const dockerComposeFilesQuery = electronTrpc.docker.getComposeFiles.useQuery(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: Boolean(workspaceId),
+			staleTime: 10000,
+		},
+	);
 	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
-	const showDockerTab = (dockerComposeFiles?.composeFiles.length ?? 0) > 0;
+	const dockerComposeFiles = dockerComposeFilesQuery.data;
+	const isResolvingDockerVisibility =
+		Boolean(workspaceId) &&
+		rightSidebarTab === RightSidebarTab.Docker &&
+		dockerComposeFilesQuery.status === "pending";
+	const showDockerTab = isResolvingDockerVisibility
+		? true
+		: (dockerComposeFiles?.composeFiles.length ?? 0) > 0;
 	const tabSensors = useSensors(
 		useSensor(MouseSensor, {
 			activationConstraint: { distance: 8 },
@@ -295,6 +301,10 @@ export function RightSidebar() {
 	}, [hasProblemErrors, rightSidebarTabOrder, showChangesTab, showDockerTab]);
 
 	useEffect(() => {
+		if (isResolvingDockerVisibility) {
+			return;
+		}
+
 		if (sidebarTabs.some((tab) => tab.id === rightSidebarTab)) {
 			return;
 		}
@@ -303,7 +313,12 @@ export function RightSidebar() {
 		if (fallbackTabId) {
 			setRightSidebarTab(fallbackTabId);
 		}
-	}, [rightSidebarTab, setRightSidebarTab, sidebarTabs]);
+	}, [
+		isResolvingDockerVisibility,
+		rightSidebarTab,
+		setRightSidebarTab,
+		sidebarTabs,
+	]);
 	const handleTabDragEnd = useCallback(
 		({ active, over }: DragEndEvent) => {
 			if (!over || active.id === over.id) {
