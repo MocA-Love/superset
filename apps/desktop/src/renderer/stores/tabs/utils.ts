@@ -9,11 +9,7 @@ import {
 	type FileStatus,
 	isNewFile,
 } from "shared/changes-types";
-import {
-	hasRenderedPreview,
-	isHtmlFile,
-	isImageFile,
-} from "shared/file-types";
+import { hasRenderedPreview, isHtmlFile, isImageFile } from "shared/file-types";
 import {
 	acknowledgedStatus,
 	type BrowserPaneState,

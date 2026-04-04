@@ -410,13 +410,7 @@ export const createDockerRouter = () => {
 				);
 
 				try {
-					const args = [
-						"compose",
-						"-f",
-						composeFile.absolutePath,
-						"up",
-						"-d",
-					];
+					const args = ["compose", "-f", composeFile.absolutePath, "up", "-d"];
 					if (input.rebuild) {
 						args.push("--build", "--force-recreate");
 					}

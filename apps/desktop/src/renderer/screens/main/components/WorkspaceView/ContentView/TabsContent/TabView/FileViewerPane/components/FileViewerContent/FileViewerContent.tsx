@@ -42,7 +42,10 @@ function HtmlPreviewWebview({ absolutePath }: { absolutePath: string }) {
 
 		const webview = document.createElement("webview") as Electron.WebviewTag;
 		webview.src = `file://${absolutePath}`;
-		webview.setAttribute("webpreferences", "sandbox=true,nodeIntegration=false,contextIsolation=true");
+		webview.setAttribute(
+			"webpreferences",
+			"sandbox=true,nodeIntegration=false,contextIsolation=true",
+		);
 		webview.style.width = "100%";
 		webview.style.height = "100%";
 		webview.style.border = "none";
@@ -528,10 +531,7 @@ export function FileViewerContent({
 		}
 
 		return (
-			<HtmlPreviewWebview
-				key={filePath}
-				absolutePath={absoluteFilePath}
-			/>
+			<HtmlPreviewWebview key={filePath} absolutePath={absoluteFilePath} />
 		);
 	}
 

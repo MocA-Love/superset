@@ -129,5 +129,7 @@ export function isSpreadsheetFile(filePath: string): boolean {
  * Checks if a file supports rendered preview (markdown, image, or HTML)
  */
 export function hasRenderedPreview(filePath: string): boolean {
-	return isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath);
+	return (
+		isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath)
+	);
 }

@@ -12,11 +12,7 @@ import {
 } from "@superset/ui/dialog";
 import { ScrollArea, ScrollBar } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@superset/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	LuBox,
@@ -163,22 +159,21 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 		},
 	});
 
-	const removeProjectMutation =
-		electronTrpc.docker.removeProject.useMutation({
-			onMutate: () => {
-				return { toastId: toast.loading("コンテナを削除中...") };
-			},
-			onSuccess: (_data, _variables, context) => {
-				toast.success("削除しました", { id: context?.toastId });
-				void invalidateDockerQueries();
-			},
-			onError: (error, _variables, context) => {
-				toast.error("Docker compose down に失敗しました", {
-					id: context?.toastId,
-					description: error.message,
-				});
-			},
-		});
+	const removeProjectMutation = electronTrpc.docker.removeProject.useMutation({
+		onMutate: () => {
+			return { toastId: toast.loading("コンテナを削除中...") };
+		},
+		onSuccess: (_data, _variables, context) => {
+			toast.success("削除しました", { id: context?.toastId });
+			void invalidateDockerQueries();
+		},
+		onError: (error, _variables, context) => {
+			toast.error("Docker compose down に失敗しました", {
+				id: context?.toastId,
+				description: error.message,
+			});
+		},
+	});
 
 	const startContainerMutation = electronTrpc.docker.startContainer.useMutation(
 		{
@@ -418,14 +413,11 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 													{(() => {
 														const isAllRunning =
 															group.totalContainers > 0 &&
-															group.runningContainers ===
-																group.totalContainers;
-														const isAllStopped =
-															group.runningContainers === 0;
+															group.runningContainers === group.totalContainers;
+														const isAllStopped = group.runningContainers === 0;
 														const isStartPending =
 															startProjectMutation.isPending;
-														const isStopPending =
-															stopProjectMutation.isPending;
+														const isStopPending = stopProjectMutation.isPending;
 														const isRemovePending =
 															removeProjectMutation.isPending;
 														const isBusy =
@@ -518,7 +510,8 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 																				})
 																			}
 																			disabled={
-																				(isAllStopped && group.totalContainers === 0) ||
+																				(isAllStopped &&
+																					group.totalContainers === 0) ||
 																				isBusy
 																			}
 																		>
