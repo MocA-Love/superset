@@ -15,6 +15,7 @@ import {
 	parseGitStatus,
 	parseNameStatus,
 } from "../utils/parse-status";
+import { withTimeout } from "../utils/with-timeout";
 import type {
 	GitTaskPayloadMap,
 	GitTaskResultMap,
@@ -37,6 +38,12 @@ interface TrackingStatus {
 const MAX_LINE_COUNT_SIZE = 1 * 1024 * 1024;
 const MAX_UNTRACKED_LINE_COUNT_FILES = 200;
 const WORKER_DEBUG = process.env.SUPERSET_WORKER_DEBUG === "1";
+
+/**
+ * Per-operation timeout for individual git commands.
+ * Prevents a single slow operation from consuming the entire task budget.
+ */
+const GIT_OP_TIMEOUT_MS = 15_000;
 
 function logWorkerWarning(message: string, error: unknown): void {
 	console.warn(`[changes-git-worker] ${message}`, error);
@@ -127,30 +134,38 @@ async function getBranchComparison(
 	let behind = 0;
 
 	try {
-		const tracking = await git.raw([
-			"rev-list",
-			"--left-right",
-			"--count",
-			`origin/${defaultBranch}...HEAD`,
-		]);
+		const tracking = await withTimeout(
+			git.raw([
+				"rev-list",
+				"--left-right",
+				"--count",
+				`origin/${defaultBranch}...HEAD`,
+			]),
+			GIT_OP_TIMEOUT_MS,
+			"rev-list count",
+		);
 		const [behindStr, aheadStr] = tracking.trim().split(/\s+/);
 		behind = Number.parseInt(behindStr || "0", 10);
 		ahead = Number.parseInt(aheadStr || "0", 10);
 
-		const logOutput = await git.raw([
-			"log",
-			`origin/${defaultBranch}..HEAD`,
-			"--max-count=500",
-			"--format=%H|%h|%s|%an|%aI",
-		]);
+		const logOutput = await withTimeout(
+			git.raw([
+				"log",
+				`origin/${defaultBranch}..HEAD`,
+				"--max-count=500",
+				"--format=%H|%h|%s|%an|%aI",
+			]),
+			GIT_OP_TIMEOUT_MS,
+			"log commits",
+		);
 		commits = parseGitLog(logOutput);
 
 		if (ahead > 0) {
-			const nameStatus = await git.raw([
-				"diff",
-				"--name-status",
-				`origin/${defaultBranch}...HEAD`,
-			]);
+			const nameStatus = await withTimeout(
+				git.raw(["diff", "--name-status", `origin/${defaultBranch}...HEAD`]),
+				GIT_OP_TIMEOUT_MS,
+				"diff name-status",
+			);
 			againstBase = parseNameStatus(nameStatus);
 
 			await applyNumstatToFiles(git, againstBase, [
@@ -173,21 +188,20 @@ async function getTrackingBranchStatus(
 	git: SimpleGit,
 ): Promise<TrackingStatus> {
 	try {
-		const upstream = await git.raw([
-			"rev-parse",
-			"--abbrev-ref",
-			"@{upstream}",
-		]);
+		const upstream = await withTimeout(
+			git.raw(["rev-parse", "--abbrev-ref", "@{upstream}"]),
+			GIT_OP_TIMEOUT_MS,
+			"rev-parse upstream",
+		);
 		if (!upstream.trim()) {
 			return { pushCount: 0, pullCount: 0, hasUpstream: false };
 		}
 
-		const tracking = await git.raw([
-			"rev-list",
-			"--left-right",
-			"--count",
-			"@{upstream}...HEAD",
-		]);
+		const tracking = await withTimeout(
+			git.raw(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]),
+			GIT_OP_TIMEOUT_MS,
+			"rev-list tracking",
+		);
 		const [pullStr, pushStr] = tracking.trim().split(/\s+/);
 		return {
 			pushCount: Number.parseInt(pushStr || "0", 10),

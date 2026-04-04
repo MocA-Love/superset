@@ -1,6 +1,9 @@
 import type { ChangedFile } from "shared/changes-types";
 import type { SimpleGit } from "simple-git";
 import { parseDiffNumstat } from "./parse-status";
+import { withTimeout } from "./with-timeout";
+
+const NUMSTAT_TIMEOUT_MS = 15_000;
 
 export async function applyNumstatToFiles(
 	git: SimpleGit,
@@ -10,7 +13,11 @@ export async function applyNumstatToFiles(
 	if (files.length === 0) return;
 
 	try {
-		const numstat = await git.raw(diffArgs);
+		const numstat = await withTimeout(
+			git.raw(diffArgs),
+			NUMSTAT_TIMEOUT_MS,
+			"diff numstat",
+		);
 		const stats = parseDiffNumstat(numstat);
 
 		for (const file of files) {
