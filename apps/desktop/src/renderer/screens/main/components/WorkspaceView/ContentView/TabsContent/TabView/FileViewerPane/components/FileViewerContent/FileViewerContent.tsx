@@ -33,8 +33,15 @@ import {
 	mapDiffLocationToRawPosition,
 } from "./utils/diff-location";
 
-function HtmlPreviewWebview({ absolutePath }: { absolutePath: string }) {
+function HtmlPreviewWebview({
+	absolutePath,
+	zoomLevel,
+}: {
+	absolutePath: string;
+	zoomLevel: number;
+}) {
 	const containerRef = useRef<HTMLDivElement>(null);
+	const webviewRef = useRef<Electron.WebviewTag | null>(null);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -54,9 +61,15 @@ function HtmlPreviewWebview({ absolutePath }: { absolutePath: string }) {
 			e.preventDefault();
 		});
 
+		webview.addEventListener("dom-ready", () => {
+			webviewRef.current = webview;
+			webview.setZoomLevel(zoomLevel);
+		});
+
 		container.appendChild(webview);
 
 		return () => {
+			webviewRef.current = null;
 			try {
 				if (webview.isConnected) {
 					webview.stop();
@@ -66,7 +79,14 @@ function HtmlPreviewWebview({ absolutePath }: { absolutePath: string }) {
 				// already removed
 			}
 		};
+		// biome-ignore lint/correctness/useExhaustiveDependencies: zoomLevel is handled by a separate effect to avoid recreating the webview
 	}, [absolutePath]);
+
+	useEffect(() => {
+		if (webviewRef.current) {
+			webviewRef.current.setZoomLevel(zoomLevel);
+		}
+	}, [zoomLevel]);
 
 	return <div ref={containerRef} className="h-full w-full bg-white" />;
 }
@@ -179,6 +199,7 @@ interface FileViewerContentProps {
 	diffSearch: TextSearchState;
 	markdownContainerRef: RefObject<HTMLDivElement | null>;
 	markdownSearch: TextSearchState;
+	htmlZoomLevel?: number;
 }
 
 export function FileViewerContent({
@@ -219,6 +240,7 @@ export function FileViewerContent({
 	diffSearch,
 	markdownContainerRef,
 	markdownSearch,
+	htmlZoomLevel = 0,
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 	const isHtml = isHtmlFile(filePath);
@@ -531,7 +553,11 @@ export function FileViewerContent({
 		}
 
 		return (
-			<HtmlPreviewWebview key={filePath} absolutePath={absoluteFilePath} />
+			<HtmlPreviewWebview
+				key={filePath}
+				absolutePath={absoluteFilePath}
+				zoomLevel={htmlZoomLevel}
+			/>
 		);
 	}
 
