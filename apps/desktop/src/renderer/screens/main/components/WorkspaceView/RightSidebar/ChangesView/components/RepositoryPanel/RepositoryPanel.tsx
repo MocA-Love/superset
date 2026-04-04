@@ -639,6 +639,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 				workspaceId,
 				jobs,
 				failedIdx >= 0 ? failedIdx : undefined,
+				runId,
 			);
 		} catch {
 			toast.error("Failed to fetch workflow jobs");

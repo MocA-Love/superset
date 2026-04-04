@@ -427,9 +427,10 @@ export const createActionLogsPane = (
 	tabId: string,
 	jobs: ActionLogsJob[],
 	initialJobIndex?: number,
+	runId?: number,
 ): Pane => {
 	const id = generateId("pane");
-	const actionLogs: ActionLogsPaneState = { jobs, initialJobIndex };
+	const actionLogs: ActionLogsPaneState = { jobs, initialJobIndex, runId };
 	return {
 		id,
 		tabId,
@@ -443,9 +444,10 @@ export const createActionLogsTabWithPane = (
 	workspaceId: string,
 	jobs: ActionLogsJob[],
 	initialJobIndex?: number,
+	runId?: number,
 ): { tab: Tab; pane: Pane } => {
 	const tabId = generateId("tab");
-	const pane = createActionLogsPane(tabId, jobs, initialJobIndex);
+	const pane = createActionLogsPane(tabId, jobs, initialJobIndex, runId);
 
 	const tab: Tab = {
 		id: tabId,

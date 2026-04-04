@@ -1766,6 +1766,7 @@ export const useTabsStore = create<TabsStore>()(
 						status: "success" | "failure" | "pending" | "skipped" | "cancelled";
 					}>,
 					initialJobIndex?: number,
+					runId?: number,
 				) => {
 					const state = get();
 
@@ -1773,6 +1774,7 @@ export const useTabsStore = create<TabsStore>()(
 						workspaceId,
 						jobs,
 						initialJobIndex,
+						runId,
 					);
 
 					const currentActiveId = state.activeTabIds[workspaceId];

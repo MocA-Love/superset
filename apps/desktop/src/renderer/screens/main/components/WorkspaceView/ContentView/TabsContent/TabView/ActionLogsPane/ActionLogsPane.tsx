@@ -9,7 +9,7 @@ import {
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { AnsiUp } from "ansi_up";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
 	LuCheck,
 	LuChevronRight,
@@ -365,6 +365,7 @@ export function ActionLogsPane({
 	const pane = useTabsStore((s) => s.panes[paneId]);
 	const initialJobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
 	const initialIndex = pane?.actionLogs?.initialJobIndex ?? 0;
+	const runId = pane?.actionLogs?.runId;
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 	const [showTimestamps, setShowTimestamps] = useState(false);
 
@@ -376,18 +377,43 @@ export function ActionLogsPane({
 		);
 	const checks = githubStatus?.pr?.checks ?? [];
 
-	// Build live job list: match by name to track across re-runs (URLs change on re-run)
-	const jobs: ActionLogsJob[] = initialJobs.map((job) => {
-		const liveCheck = checks.find((c) => c.name === job.name);
-		if (liveCheck) {
-			return {
-				detailsUrl: liveCheck.url ?? job.detailsUrl,
-				name: liveCheck.name ?? job.name,
-				status: liveCheck.status,
-			};
+	// Poll workflow run jobs when runId is present (workflow dispatch case)
+	const { data: polledJobs } =
+		electronTrpc.workspaces.getWorkflowRunJobs.useQuery(
+			{ workspaceId, runId: runId ?? 0 },
+			{
+				enabled: !!runId,
+				staleTime: 0,
+				refetchInterval: (query) => {
+					const data = query.state.data;
+					if (!data || data.length === 0) return 3_000;
+					const allCompleted = data.every((j) => j.status !== "pending");
+					return allCompleted ? false : 3_000;
+				},
+				refetchIntervalInBackground: true,
+			},
+		);
+
+	// Build live job list
+	const jobs: ActionLogsJob[] = useMemo(() => {
+		// When polling by runId, use polled data as the source of truth
+		if (runId && polledJobs && polledJobs.length > 0) {
+			return polledJobs;
 		}
-		return job;
-	});
+
+		// Fallback: match by name against PR checks (original behavior)
+		return initialJobs.map((job) => {
+			const liveCheck = checks.find((c) => c.name === job.name);
+			if (liveCheck) {
+				return {
+					detailsUrl: liveCheck.url ?? job.detailsUrl,
+					name: liveCheck.name ?? job.name,
+					status: liveCheck.status,
+				};
+			}
+			return job;
+		});
+	}, [runId, polledJobs, initialJobs, checks]);
 
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
