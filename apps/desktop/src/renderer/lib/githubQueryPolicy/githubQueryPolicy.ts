@@ -36,9 +36,10 @@ interface GitHubPRCommentsQueryPolicyOptions {
  * Centralizes GitHub query behavior so passive hover surfaces stay cheap while
  * active workspace surfaces still revalidate when they become relevant again.
  *
- * Note: refetchOnWindowFocus is disabled for all surfaces because the
- * GitHubSyncService handles window-focus refresh centrally from the main
- * process, preventing burst API calls on focus.
+ * Note: refetchOnWindowFocus is disabled for all GitHub surfaces because
+ * the GitHubSyncService keeps the backend cache warm via periodic polling
+ * (PR status every 5s, comments every 20s). This prevents burst API calls
+ * on window focus that contributed to secondary rate limit errors.
  */
 export function getGitHubStatusQueryPolicy(
 	surface: GitHubStatusQuerySurface,

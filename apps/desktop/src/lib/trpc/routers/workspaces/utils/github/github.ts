@@ -252,15 +252,16 @@ async function refreshGitHubPRComments({
 export async function fetchGitHubPRStatus(
 	worktreePath: string,
 ): Promise<GitHubStatus | null> {
+	if (isRateLimited()) {
+		// When rate limited, return stale cache or null — never throw
+		return readCachedGitHubStatus(worktreePath, () => Promise.resolve(null));
+	}
 	return readCachedGitHubStatus(worktreePath, () =>
 		rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
 	);
 }
 
 async function rateLimitedRefresh<T>(fn: () => Promise<T>): Promise<T> {
-	if (isRateLimited()) {
-		throw new Error("[GitHub] Rate limited — skipping API call");
-	}
 	try {
 		const result = await fn();
 		onRateLimitSuccess();

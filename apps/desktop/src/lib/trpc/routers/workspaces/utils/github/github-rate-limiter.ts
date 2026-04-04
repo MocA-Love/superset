@@ -45,14 +45,19 @@ export function onRateLimitSuccess(): void {
 export function isSecondaryRateLimitError(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
 
-	const message = error.message || "";
+	const message = (error.message || "").toLowerCase();
 	const stdout =
-		"stdout" in error && typeof error.stdout === "string" ? error.stdout : "";
+		"stdout" in error && typeof error.stdout === "string"
+			? error.stdout.toLowerCase()
+			: "";
+	const stderr =
+		"stderr" in error && typeof error.stderr === "string"
+			? error.stderr.toLowerCase()
+			: "";
 
+	const haystack = `${message} ${stdout} ${stderr}`;
 	return (
-		message.includes("secondary rate limit") ||
-		message.includes("HTTP 403") ||
-		stdout.includes("secondary rate limit") ||
-		stdout.includes("exceeded a secondary rate limit")
+		haystack.includes("secondary rate limit") ||
+		haystack.includes("exceeded a secondary rate limit")
 	);
 }

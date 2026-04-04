@@ -145,6 +145,7 @@ export function useDashboardSidebarData() {
 		],
 		enabled: activeHostService !== null && localWorkspaceIds.length > 0,
 		staleTime: 30_000,
+		refetchInterval: 60_000,
 		refetchOnWindowFocus: false,
 		queryFn: () =>
 			activeHostService?.client.pullRequests.getByWorkspaces.query({

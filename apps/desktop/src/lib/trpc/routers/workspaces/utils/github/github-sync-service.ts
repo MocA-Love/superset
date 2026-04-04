@@ -14,15 +14,14 @@
  *   - Centralized rate limit detection + exponential backoff
  *   - Single API call path (no duplicate requests)
  *   - Immediate invalidation after user mutations
+ *
+ * Rate limiting is handled by rateLimitedRefresh() in github.ts — the
+ * SyncService does NOT call onRateLimitHit/Success directly to avoid
+ * double-counting with the lower-level wrapper.
  */
 
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
-import {
-	isRateLimited,
-	isSecondaryRateLimitError,
-	onRateLimitHit,
-	onRateLimitSuccess,
-} from "./github-rate-limiter";
+import { isRateLimited } from "./github-rate-limiter";
 
 export const SYNC_PR_STATUS_INTERVAL_MS = 5_000;
 export const SYNC_PR_COMMENTS_INTERVAL_MS = 20_000;
@@ -37,6 +36,8 @@ interface WorkspaceSyncState {
 	prStatusTimer: ReturnType<typeof setInterval> | null;
 	prCommentsTimer: ReturnType<typeof setInterval> | null;
 	isActive: boolean;
+	prStatusInFlight: boolean;
+	prCommentsInFlight: boolean;
 }
 
 interface SyncServiceDeps {
@@ -70,6 +71,8 @@ class GitHubSyncServiceImpl {
 			prStatusTimer: null,
 			prCommentsTimer: null,
 			isActive: true,
+			prStatusInFlight: false,
+			prCommentsInFlight: false,
 		};
 
 		this.workspaces.set(worktreePath, state);
@@ -84,6 +87,7 @@ class GitHubSyncServiceImpl {
 		if (!state) return;
 
 		this.stopTimers(state);
+		state.isActive = false;
 		this.workspaces.delete(worktreePath);
 	}
 
@@ -109,12 +113,13 @@ class GitHubSyncServiceImpl {
 	/**
 	 * Notify the service about a window focus event.
 	 * Triggers one immediate sync cycle for all active workspaces.
+	 * Errors are handled internally — fire-and-forget is intentional.
 	 */
 	onWindowFocus(): void {
 		for (const state of this.workspaces.values()) {
 			if (state.isActive) {
-				this.syncPRStatus(state.worktreePath);
-				this.syncPRComments(state.worktreePath);
+				void this.syncPRStatus(state.worktreePath);
+				void this.syncPRComments(state.worktreePath);
 			}
 		}
 	}
@@ -125,6 +130,7 @@ class GitHubSyncServiceImpl {
 	destroy(): void {
 		for (const state of this.workspaces.values()) {
 			this.stopTimers(state);
+			state.isActive = false;
 		}
 		this.workspaces.clear();
 	}
@@ -134,16 +140,12 @@ class GitHubSyncServiceImpl {
 	}
 
 	private startTimers(state: WorkspaceSyncState): void {
-		// Initial sync
-		this.syncPRStatus(state.worktreePath);
-		this.syncPRComments(state.worktreePath);
-
 		state.prStatusTimer = setInterval(() => {
-			this.syncPRStatus(state.worktreePath);
+			void this.syncPRStatus(state.worktreePath);
 		}, SYNC_PR_STATUS_INTERVAL_MS);
 
 		state.prCommentsTimer = setInterval(() => {
-			this.syncPRComments(state.worktreePath);
+			void this.syncPRComments(state.worktreePath);
 		}, SYNC_PR_COMMENTS_INTERVAL_MS);
 	}
 
@@ -160,32 +162,36 @@ class GitHubSyncServiceImpl {
 
 	private async syncPRStatus(worktreePath: string): Promise<void> {
 		if (!this.deps || isRateLimited()) return;
+		const state = this.workspaces.get(worktreePath);
+		if (!state || state.prStatusInFlight) return;
+		state.prStatusInFlight = true;
 
 		try {
 			const status = await this.deps.fetchPRStatus(worktreePath);
-			onRateLimitSuccess();
+			if (!this.workspaces.has(worktreePath)) return;
 			this.deps.onPRStatusUpdate?.(worktreePath, status);
 		} catch (error) {
-			if (isSecondaryRateLimitError(error)) {
-				onRateLimitHit();
-			} else {
-				console.warn("[GitHub SyncService] PR status sync failed:", error);
-			}
+			console.warn("[GitHub SyncService] PR status sync failed:", error);
+		} finally {
+			const current = this.workspaces.get(worktreePath);
+			if (current) current.prStatusInFlight = false;
 		}
 	}
 
 	private async syncPRComments(worktreePath: string): Promise<void> {
 		if (!this.deps || isRateLimited()) return;
+		const state = this.workspaces.get(worktreePath);
+		if (!state || state.prCommentsInFlight) return;
+		state.prCommentsInFlight = true;
 
 		try {
 			await this.deps.fetchPRComments({ worktreePath });
-			onRateLimitSuccess();
+			if (!this.workspaces.has(worktreePath)) return;
 		} catch (error) {
-			if (isSecondaryRateLimitError(error)) {
-				onRateLimitHit();
-			} else {
-				console.warn("[GitHub SyncService] PR comments sync failed:", error);
-			}
+			console.warn("[GitHub SyncService] PR comments sync failed:", error);
+		} finally {
+			const current = this.workspaces.get(worktreePath);
+			if (current) current.prCommentsInFlight = false;
 		}
 	}
 }
