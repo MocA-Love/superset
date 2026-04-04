@@ -53,7 +53,7 @@ export function useContentSearch({
 				enabled &&
 				debouncedQuery.length > 0 &&
 				validationError === null,
-			staleTime: 1000,
+			staleTime: 30_000,
 			placeholderData: (previous) => previous ?? { matches: [] },
 		},
 	);

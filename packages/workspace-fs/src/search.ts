@@ -27,6 +27,8 @@ const KEYWORD_SEARCH_CANDIDATE_MULTIPLIER = 4;
 const KEYWORD_SEARCH_MAX_COUNT_PER_FILE = 3;
 const KEYWORD_SEARCH_RIPGREP_BUFFER_BYTES = 10 * 1024 * 1024;
 
+const activeSearchControllers = new Map<string, AbortController>();
+
 export const DEFAULT_IGNORE_PATTERNS = [
 	"**/node_modules/**",
 	"**/.git/**",
@@ -100,6 +102,7 @@ export interface SearchFilesOptions {
 export interface RunRipgrepOptions {
 	cwd: string;
 	maxBuffer: number;
+	signal?: AbortSignal;
 }
 
 export interface SearchContentOptions {
@@ -648,34 +651,15 @@ function formatPreviewLine(line: string): string {
 
 function rankContentMatches(
 	matches: InternalContentMatch[],
-	query: string,
+	_query: string,
 	limit: number,
-	isRegex = false,
+	_isRegex = false,
 ): InternalContentMatch[] {
 	if (matches.length === 0) {
 		return [];
 	}
 
-	const safeLimit = safeSearchLimit(limit);
-	if (isRegex) {
-		return matches.slice(0, safeLimit);
-	}
-
-	const fuse = new Fuse(matches, {
-		keys: [
-			{ name: "preview", weight: 2 },
-			{ name: "name", weight: 1.2 },
-			{ name: "relativePath", weight: 1 },
-		],
-		threshold: 0.45,
-		includeScore: true,
-		ignoreLocation: true,
-	});
-
-	const ranked = fuse
-		.search(query, { limit: safeLimit })
-		.map((result) => result.item);
-	return ranked.length > 0 ? ranked : matches.slice(0, safeLimit);
+	return matches.slice(0, safeSearchLimit(limit));
 }
 
 async function defaultRunRipgrep(
@@ -687,6 +671,7 @@ async function defaultRunRipgrep(
 		encoding: "utf8",
 		maxBuffer: options.maxBuffer,
 		windowsHide: true,
+		signal: options.signal,
 	});
 
 	return { stdout: result.stdout };
@@ -707,6 +692,13 @@ async function searchContentWithRipgrep({
 	useSmartCase: boolean;
 	runRipgrep: NonNullable<SearchContentOptions["runRipgrep"]>;
 }): Promise<InternalContentMatch[]> {
+	const prevController = activeSearchControllers.get(rootPath);
+	if (prevController) {
+		prevController.abort();
+	}
+	const controller = new AbortController();
+	activeSearchControllers.set(rootPath, controller);
+
 	const safeLimit = safeSearchLimit(limit);
 	const maxCandidates = safeLimit * KEYWORD_SEARCH_CANDIDATE_MULTIPLIER;
 	const args = [
@@ -759,6 +751,7 @@ async function searchContentWithRipgrep({
 		const { stdout } = await runRipgrep(args, {
 			cwd: normalizeAbsolutePath(rootPath),
 			maxBuffer: KEYWORD_SEARCH_RIPGREP_BUFFER_BYTES,
+			signal: controller.signal,
 		});
 		const matches: InternalContentMatch[] = [];
 		const seen = new Set<string>();
@@ -852,8 +845,20 @@ async function searchContentWithRipgrep({
 			});
 		}
 
+		if (activeSearchControllers.get(rootPath) === controller) {
+			activeSearchControllers.delete(rootPath);
+		}
+
 		return rankContentMatches(matches, query, safeLimit, isRegex);
 	} catch (error) {
+		if (activeSearchControllers.get(rootPath) === controller) {
+			activeSearchControllers.delete(rootPath);
+		}
+
+		if (error instanceof Error && error.name === "AbortError") {
+			throw error;
+		}
+
 		const err = error as NodeJS.ErrnoException & {
 			code?: string | number | null;
 		};
@@ -1158,23 +1163,14 @@ export async function searchContent({
 		return [];
 	}
 
-	const pattern = compileSearchPattern({
-		query: trimmedQuery,
-		isRegex,
-		caseSensitive,
-	});
-
-	const index = await getSearchIndex({
-		rootPath,
-		includeHidden,
-	});
-	const pathMatcher = createPathFilterMatcher({
-		includePattern,
-		excludePattern,
-	});
-
 	let internalMatches: InternalContentMatch[];
 	try {
+		const pattern = compileSearchPattern({
+			query: trimmedQuery,
+			isRegex,
+			caseSensitive,
+		});
+
 		internalMatches = await searchContentWithRipgrep({
 			rootPath,
 			query: trimmedQuery,
@@ -1187,7 +1183,25 @@ export async function searchContent({
 			useSmartCase: !isRegex && caseSensitive === undefined,
 			runRipgrep,
 		});
-	} catch {
+	} catch (error) {
+		if (error instanceof Error && error.name === "AbortError") {
+			return [];
+		}
+
+		const pattern = compileSearchPattern({
+			query: trimmedQuery,
+			isRegex,
+			caseSensitive,
+		});
+		const index = await getSearchIndex({
+			rootPath,
+			includeHidden,
+		});
+		const pathMatcher = createPathFilterMatcher({
+			includePattern,
+			excludePattern,
+		});
+
 		internalMatches = await searchContentWithScan({
 			index,
 			query: trimmedQuery,
