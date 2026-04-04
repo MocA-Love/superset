@@ -27,6 +27,7 @@ import {
 	listExternalWorktrees,
 	worktreeExists,
 } from "../utils/git";
+import { githubSyncService } from "../utils/github/github-sync-service";
 import { removeWorktreeFromDisk, runTeardown } from "../utils/teardown";
 
 const normalizePath = (p: string): string => {
@@ -325,6 +326,12 @@ export const createDeleteProcedures = () => {
 					}
 				}
 
+				// Stop SyncService polling for this workspace
+				const repoPath = worktree?.path ?? project?.mainRepoPath;
+				if (repoPath) {
+					githubSyncService.unregisterWorkspace(repoPath);
+				}
+
 				deleteWorkspace(input.id);
 
 				if (worktree) {
@@ -359,6 +366,14 @@ export const createDeleteProcedures = () => {
 				const terminalResult = await getWorkspaceRuntimeRegistry()
 					.getForWorkspaceId(input.id)
 					.terminal.killByWorkspaceId(input.id);
+
+				// Stop SyncService polling for this workspace
+				if (workspace.worktreeId) {
+					const wt = getWorktree(workspace.worktreeId);
+					if (wt?.path) {
+						githubSyncService.unregisterWorkspace(wt.path);
+					}
+				}
 
 				deleteWorkspace(input.id);
 				hideProjectIfNoWorkspaces(workspace.projectId);

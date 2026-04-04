@@ -6,14 +6,13 @@
  * cache warm. Frontend tRPC queries read from the always-warm cache
  * without triggering additional API calls.
  *
+ * Only the **active** workspace is polled. When the user switches to a
+ * different workspace, the previous one is deactivated (timers stopped)
+ * and the new one is activated (timers started).
+ *
  * Intervals:
  *   - PR status: 5 seconds
  *   - PR comments: 20 seconds
- *
- * All GitHub API calls flow through this service, which provides:
- *   - Centralized rate limit detection + exponential backoff
- *   - Single API call path (no duplicate requests)
- *   - Immediate invalidation after user mutations
  *
  * Rate limiting is handled by rateLimitedRefresh() in github.ts — the
  * SyncService does NOT call onRateLimitHit/Success directly to avoid
@@ -58,8 +57,7 @@ class GitHubSyncServiceImpl {
 	}
 
 	/**
-	 * Register a workspace for proactive syncing.
-	 * Called when a workspace becomes active (e.g., user opens it).
+	 * Register a workspace and start polling immediately.
 	 */
 	registerWorkspace(worktreePath: string): void {
 		if (this.workspaces.has(worktreePath)) {
@@ -80,7 +78,8 @@ class GitHubSyncServiceImpl {
 	}
 
 	/**
-	 * Unregister a workspace when it's no longer active.
+	 * Unregister a workspace completely (e.g., workspace deleted).
+	 * Stops timers and removes from the registry.
 	 */
 	unregisterWorkspace(worktreePath: string): void {
 		const state = this.workspaces.get(worktreePath);
@@ -89,6 +88,59 @@ class GitHubSyncServiceImpl {
 		this.stopTimers(state);
 		state.isActive = false;
 		this.workspaces.delete(worktreePath);
+	}
+
+	/**
+	 * Activate a workspace, resuming its polling timers.
+	 * If not yet registered, registers it first.
+	 */
+	activateWorkspace(worktreePath: string): void {
+		const state = this.workspaces.get(worktreePath);
+
+		if (!state) {
+			this.registerWorkspace(worktreePath);
+			return;
+		}
+
+		if (state.isActive) return;
+
+		state.isActive = true;
+		this.startTimers(state);
+	}
+
+	/**
+	 * Deactivate a workspace, pausing its polling timers.
+	 * The workspace remains in the registry and can be reactivated.
+	 */
+	deactivateWorkspace(worktreePath: string): void {
+		const state = this.workspaces.get(worktreePath);
+		if (!state || !state.isActive) return;
+
+		state.isActive = false;
+		this.stopTimers(state);
+	}
+
+	/**
+	 * Deactivate all workspaces except the given one.
+	 * Activates the given workspace if not already active.
+	 */
+	setActiveWorkspace(worktreePath: string): void {
+		for (const state of this.workspaces.values()) {
+			if (state.worktreePath === worktreePath) {
+				if (!state.isActive) {
+					state.isActive = true;
+					this.startTimers(state);
+				}
+			} else if (state.isActive) {
+				state.isActive = false;
+				this.stopTimers(state);
+			}
+		}
+
+		// Register if not yet known
+		if (!this.workspaces.has(worktreePath)) {
+			this.registerWorkspace(worktreePath);
+		}
 	}
 
 	/**

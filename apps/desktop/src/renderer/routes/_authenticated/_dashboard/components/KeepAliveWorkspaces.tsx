@@ -27,12 +27,23 @@ export function KeepAliveWorkspaces() {
 	const [visitedIds, setVisitedIds] = useState<string[]>([]);
 	const visitedSetRef = useRef(new Set<string>());
 
+	// Notify SyncService which workspace is active so only it gets polled
+	const setActiveSyncWorkspace =
+		electronTrpc.workspaces.setActiveSyncWorkspace.useMutation();
+	const prevActiveIdRef = useRef<string | null>(null);
+
 	useEffect(() => {
 		if (activeWorkspaceId && !visitedSetRef.current.has(activeWorkspaceId)) {
 			visitedSetRef.current.add(activeWorkspaceId);
 			setVisitedIds(Array.from(visitedSetRef.current));
 		}
-	}, [activeWorkspaceId]);
+
+		// Tell the backend to only poll for this workspace
+		if (activeWorkspaceId && activeWorkspaceId !== prevActiveIdRef.current) {
+			prevActiveIdRef.current = activeWorkspaceId;
+			setActiveSyncWorkspace.mutate({ workspaceId: activeWorkspaceId });
+		}
+	}, [activeWorkspaceId, setActiveSyncWorkspace.mutate]);
 
 	// Evict deleted workspaces: compare visited IDs against the live list.
 	const { data: workspaceGroups } =
