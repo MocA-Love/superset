@@ -273,7 +273,8 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 		dockerComposeFilesQuery.status === "pending";
 	const showDockerTab = isResolvingDockerVisibility
 		? true
-		: (dockerComposeFiles?.composeFiles.length ?? 0) > 0;
+		: (dockerComposeFiles?.composeFiles.length ?? 0) > 0 ||
+			(dockerComposeFiles?.dockerfiles?.length ?? 0) > 0;
 	const tabSensors = useSensors(
 		useSensor(MouseSensor, {
 			activationConstraint: { distance: 8 },

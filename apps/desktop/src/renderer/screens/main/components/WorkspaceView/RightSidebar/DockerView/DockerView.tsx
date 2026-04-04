@@ -18,6 +18,8 @@ import {
 	LuBox,
 	LuBug,
 	LuChevronRight,
+	LuFileCode,
+	LuHammer,
 	LuLoaderCircle,
 	LuPlay,
 	LuRefreshCw,
@@ -40,6 +42,7 @@ interface DockerViewProps {
 type DockerListResult = ElectronRouterOutputs["docker"]["list"];
 type DockerComposeGroup = DockerListResult["composeFiles"][number];
 type DockerContainer = DockerComposeGroup["containers"][number];
+type DockerfileEntry = DockerListResult["dockerfiles"][number];
 
 function quoteShellLiteral(value: string): string {
 	return `'${value.replaceAll("'", `'"'"'`)}'`;
@@ -211,6 +214,39 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 			},
 		});
 
+	const buildDockerfileMutation =
+		electronTrpc.docker.buildDockerfile.useMutation({
+			onMutate: () => {
+				return { toastId: toast.loading("イメージをビルド中...") };
+			},
+			onSuccess: (_data, _variables, context) => {
+				toast.success("ビルドが完了しました", { id: context?.toastId });
+				void invalidateDockerQueries();
+			},
+			onError: (error, _variables, context) => {
+				toast.error("Docker build に失敗しました", {
+					id: context?.toastId,
+					description: error.message,
+				});
+			},
+		});
+
+	const removeDockerImageMutation =
+		electronTrpc.docker.removeDockerImage.useMutation({
+			onMutate: () => {
+				return { toastId: toast.loading("イメージを削除中...") };
+			},
+			onSuccess: (_data, _variables, context) => {
+				toast.success("イメージを削除しました", { id: context?.toastId });
+			},
+			onError: (error, _variables, context) => {
+				toast.error("イメージの削除に失敗しました", {
+					id: context?.toastId,
+					description: error.message,
+				});
+			},
+		});
+
 	const openCommandInTerminal = useCallback(
 		async ({
 			command,
@@ -321,7 +357,7 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 					<div>
 						<h2 className="text-sm font-medium">Docker</h2>
 						<p className="text-xs text-muted-foreground">
-							Compose files in this workspace
+							Docker files in this workspace
 						</p>
 					</div>
 					<Button
@@ -355,13 +391,111 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 					) : null}
 
 					{dockerListQuery.data &&
-					dockerListQuery.data.composeFiles.length === 0 ? (
+					dockerListQuery.data.composeFiles.length === 0 &&
+					dockerListQuery.data.dockerfiles.length === 0 ? (
 						<div className="p-3 text-sm text-muted-foreground">
-							この workspace では compose file が見つかりませんでした。
+							この workspace では Docker 関連ファイルが見つかりませんでした。
 						</div>
 					) : null}
 
 					<div className="space-y-3 p-3">
+						{dockerListQuery.data?.dockerfiles.map(
+							(dockerfile: DockerfileEntry) => {
+								const defaultTag = `${dockerfile.name.toLowerCase().replace(/\./g, "-")}:latest`;
+
+								return (
+									<div
+										key={dockerfile.absolutePath}
+										className="rounded-lg border bg-card/40"
+									>
+										<div className="flex flex-col gap-2 px-3 py-2">
+											<div className="flex items-start justify-between gap-2">
+												<div className="flex min-w-0 flex-1 items-start gap-2">
+													<LuFileCode className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+													<div className="min-w-0">
+														<span className="truncate text-sm font-medium">
+															{dockerfile.name}
+														</span>
+														<div className="mt-1 text-xs text-muted-foreground">
+															{dockerfile.relativePath}
+														</div>
+													</div>
+												</div>
+												<div className="flex items-center gap-1">
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																size="icon"
+																variant="outline"
+																className="size-7"
+																onClick={() =>
+																	buildDockerfileMutation.mutate({
+																		dockerfilePath: dockerfile.absolutePath,
+																		tag: defaultTag,
+																		workspaceId,
+																	})
+																}
+																disabled={buildDockerfileMutation.isPending}
+															>
+																{buildDockerfileMutation.isPending ? (
+																	<LuLoaderCircle className="size-3.5 animate-spin" />
+																) : (
+																	<LuHammer className="size-3.5" />
+																)}
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>Build</TooltipContent>
+													</Tooltip>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																size="icon"
+																variant="outline"
+																className="size-7"
+																onClick={() =>
+																	void openCommandInTerminal({
+																		command: `docker run --rm -it ${quoteShellLiteral(defaultTag)}`,
+																		cwd: dockerfile.directoryPath,
+																		title: `Run: ${dockerfile.name}`,
+																	})
+																}
+															>
+																<LuPlay className="size-3.5" />
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>Run</TooltipContent>
+													</Tooltip>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																size="icon"
+																variant="outline"
+																className="size-7 text-destructive"
+																onClick={() =>
+																	removeDockerImageMutation.mutate({
+																		imageTag: defaultTag,
+																		workspaceId,
+																	})
+																}
+																disabled={removeDockerImageMutation.isPending}
+															>
+																{removeDockerImageMutation.isPending ? (
+																	<LuLoaderCircle className="size-3.5 animate-spin" />
+																) : (
+																	<LuTrash2 className="size-3.5" />
+																)}
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>Remove Image</TooltipContent>
+													</Tooltip>
+												</div>
+											</div>
+										</div>
+									</div>
+								);
+							},
+						)}
+
 						{dockerListQuery.data?.composeFiles.map((group) => {
 							const isExpanded =
 								expandedComposeGroups[group.absolutePath] ?? true;
