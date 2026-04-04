@@ -168,13 +168,13 @@ describe("pull request attachment", () => {
 });
 
 describe("shouldRefreshCachedRepoContext", () => {
-	test("returns false when no cached repo context exists", () => {
+	test("returns true when no cached repo context exists", () => {
 		expect(
 			shouldRefreshCachedRepoContext({
 				originUrl: "https://github.com/superset-sh/superset",
 				cachedRepoContext: null,
 			}),
-		).toBe(false);
+		).toBe(true);
 	});
 
 	test("returns false when the cached repo still matches origin", () => {
