@@ -15,6 +15,7 @@ import {
 	parseGitStatus,
 	parseNameStatus,
 } from "../utils/parse-status";
+import { withTimeout } from "../utils/with-timeout";
 import type {
 	GitTaskPayloadMap,
 	GitTaskResultMap,
@@ -43,28 +44,6 @@ const WORKER_DEBUG = process.env.SUPERSET_WORKER_DEBUG === "1";
  * Prevents a single slow operation from consuming the entire task budget.
  */
 const GIT_OP_TIMEOUT_MS = 15_000;
-
-function withTimeout<T>(
-	promise: Promise<T>,
-	ms: number,
-	label: string,
-): Promise<T> {
-	return new Promise<T>((resolve, reject) => {
-		const timer = setTimeout(() => {
-			reject(new Error(`git operation timed out after ${ms}ms: ${label}`));
-		}, ms);
-		promise.then(
-			(value) => {
-				clearTimeout(timer);
-				resolve(value);
-			},
-			(error) => {
-				clearTimeout(timer);
-				reject(error);
-			},
-		);
-	});
-}
 
 function logWorkerWarning(message: string, error: unknown): void {
 	console.warn(`[changes-git-worker] ${message}`, error);

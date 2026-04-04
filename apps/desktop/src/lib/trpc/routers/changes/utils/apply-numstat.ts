@@ -1,6 +1,9 @@
 import type { ChangedFile } from "shared/changes-types";
 import type { SimpleGit } from "simple-git";
 import { parseDiffNumstat } from "./parse-status";
+import { withTimeout } from "./with-timeout";
+
+const NUMSTAT_TIMEOUT_MS = 15_000;
 
 export async function applyNumstatToFiles(
 	git: SimpleGit,
@@ -9,20 +12,12 @@ export async function applyNumstatToFiles(
 ): Promise<void> {
 	if (files.length === 0) return;
 
-	const NUMSTAT_TIMEOUT_MS = 15_000;
 	try {
-		const numstat = await Promise.race([
+		const numstat = await withTimeout(
 			git.raw(diffArgs),
-			new Promise<never>((_, reject) =>
-				setTimeout(
-					() =>
-						reject(
-							new Error(`numstat timed out after ${NUMSTAT_TIMEOUT_MS}ms`),
-						),
-					NUMSTAT_TIMEOUT_MS,
-				),
-			),
-		]);
+			NUMSTAT_TIMEOUT_MS,
+			"diff numstat",
+		);
 		const stats = parseDiffNumstat(numstat);
 
 		for (const file of files) {
