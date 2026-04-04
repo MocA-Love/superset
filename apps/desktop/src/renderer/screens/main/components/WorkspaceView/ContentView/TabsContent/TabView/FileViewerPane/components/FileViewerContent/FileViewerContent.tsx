@@ -17,7 +17,12 @@ import type { Tab } from "renderer/stores/tabs/types";
 import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
-import { isHtmlFile, isImageFile, isSpreadsheetFile } from "shared/file-types";
+import {
+	isHtmlFile,
+	isImageFile,
+	isPdfFile,
+	isSpreadsheetFile,
+} from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
 import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
@@ -69,6 +74,44 @@ function HtmlPreviewWebview({ absolutePath }: { absolutePath: string }) {
 	}, [absolutePath]);
 
 	return <div ref={containerRef} className="h-full w-full bg-white" />;
+}
+
+function PdfPreviewWebview({ absolutePath }: { absolutePath: string }) {
+	const containerRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!container || !absolutePath) return;
+
+		const webview = document.createElement("webview") as Electron.WebviewTag;
+		webview.src = `file://${absolutePath}`;
+		webview.setAttribute(
+			"webpreferences",
+			"sandbox=true,nodeIntegration=false,contextIsolation=true,plugins=true",
+		);
+		webview.style.width = "100%";
+		webview.style.height = "100%";
+		webview.style.border = "none";
+
+		webview.addEventListener("will-navigate", (e) => {
+			e.preventDefault();
+		});
+
+		container.appendChild(webview);
+
+		return () => {
+			try {
+				if (webview.isConnected) {
+					webview.stop();
+				}
+				container.removeChild(webview);
+			} catch {
+				// already removed
+			}
+		};
+	}, [absolutePath]);
+
+	return <div ref={containerRef} className="h-full w-full bg-background" />;
 }
 
 interface RawFileData {
@@ -222,6 +265,7 @@ export function FileViewerContent({
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 	const isHtml = isHtmlFile(filePath);
+	const isPdf = isPdfFile(filePath);
 
 	useScrollToFirstDiffChange({
 		containerRef: diffContainerRef,
@@ -533,6 +577,10 @@ export function FileViewerContent({
 		return (
 			<HtmlPreviewWebview key={filePath} absolutePath={absoluteFilePath} />
 		);
+	}
+
+	if (viewMode === "rendered" && isPdf) {
+		return <PdfPreviewWebview key={filePath} absolutePath={absoluteFilePath} />;
 	}
 
 	if (viewMode === "rendered" && isImage) {

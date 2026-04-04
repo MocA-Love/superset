@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { ChangeCategory } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
-import { getImageMimeType, isImageFile } from "shared/file-types";
+import { getImageMimeType, isImageFile, isPdfFile } from "shared/file-types";
 
 const BRANCH_QUERY_STALE_TIME_MS = 10_000;
 
@@ -55,9 +55,15 @@ export function useFileContent({
 		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
 
 	const isImage = isImageFile(filePath);
+	const isPdf = isPdfFile(filePath);
 
 	const rawReadEnabled =
-		!isRemote && viewMode !== "diff" && !isImage && !!filePath && !!workspaceId;
+		!isRemote &&
+		viewMode !== "diff" &&
+		!isImage &&
+		!isPdf &&
+		!!filePath &&
+		!!workspaceId;
 	const rawQuery = electronTrpc.filesystem.readFile.useQuery(
 		{
 			workspaceId: workspaceId ?? "",
