@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
-import { shallow } from "zustand/shallow";
+import { useShallow } from "zustand/shallow";
 
 export interface SavedDatabaseConnection {
 	id: string;
@@ -561,8 +561,7 @@ function selectQueryHistory(
 
 export function useDatabaseConnections(workspaceId: string | undefined) {
 	return useDatabaseSidebarStore(
-		(state) => selectConnections(state, workspaceId),
-		shallow,
+		useShallow((state) => selectConnections(state, workspaceId)),
 	);
 }
 
@@ -579,7 +578,6 @@ export function useDatabaseActiveConnectionId(workspaceId: string | undefined) {
 
 export function useDatabaseQueryHistory(workspaceId: string | undefined) {
 	return useDatabaseSidebarStore(
-		(state) => selectQueryHistory(state, workspaceId),
-		shallow,
+		useShallow((state) => selectQueryHistory(state, workspaceId)),
 	);
 }
