@@ -540,7 +540,7 @@ export async function fetchStructuredJobLogs(
 		}
 
 		const jobData = result.data;
-		const steps = jobData.steps;
+		const steps = jobData.steps ?? [];
 		const jobCompleted = jobData.status === "completed";
 
 		// Only fetch logs if job is completed (API returns 404 for in-progress)

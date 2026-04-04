@@ -148,7 +148,6 @@ function JobSteps({
 			toast.success(
 				`Re-running ${mode === "failed" ? "failed" : "all"} jobs (${result.rerunCount})`,
 			);
-			void trpcUtils.workspaces.getReviewStatus.invalidate();
 			void trpcUtils.workspaces.getJobLogs.invalidate();
 			void trpcUtils.workspaces.getGitHubStatus.invalidate();
 		} catch {
