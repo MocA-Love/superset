@@ -6,8 +6,8 @@ import {
 } from "./cached-resource";
 import type { RepoContext } from "./types";
 
-const GITHUB_STATUS_CACHE_TTL_MS = 10_000;
-const GITHUB_PR_COMMENTS_CACHE_TTL_MS = 30_000;
+const GITHUB_STATUS_CACHE_TTL_MS = 5_000;
+const GITHUB_PR_COMMENTS_CACHE_TTL_MS = 20_000;
 const GITHUB_REPO_CONTEXT_CACHE_TTL_MS = 300_000;
 const GITHUB_COMMIT_AUTHOR_CACHE_TTL_MS = 300_000;
 

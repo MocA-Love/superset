@@ -16,6 +16,12 @@ import {
 } from "./cache";
 import { fetchPullRequestComments, resolveReviewThread } from "./comments";
 import {
+	isRateLimited,
+	isSecondaryRateLimitError,
+	onRateLimitHit,
+	onRateLimitSuccess,
+} from "./github-rate-limiter";
+import {
 	canAttachPullRequestToWorkspace,
 	type GitRemoteInfo,
 } from "./pr-attachment";
@@ -247,8 +253,24 @@ export async function fetchGitHubPRStatus(
 	worktreePath: string,
 ): Promise<GitHubStatus | null> {
 	return readCachedGitHubStatus(worktreePath, () =>
-		refreshGitHubPRStatus(worktreePath),
+		rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
 	);
+}
+
+async function rateLimitedRefresh<T>(fn: () => Promise<T>): Promise<T> {
+	if (isRateLimited()) {
+		throw new Error("[GitHub] Rate limited — skipping API call");
+	}
+	try {
+		const result = await fn();
+		onRateLimitSuccess();
+		return result;
+	} catch (error) {
+		if (isSecondaryRateLimitError(error)) {
+			onRateLimitHit();
+		}
+		throw error;
+	}
 }
 
 export async function fetchGitHubPRComments({
@@ -278,11 +300,13 @@ export async function fetchGitHubPRComments({
 		});
 		try {
 			return await readCachedPullRequestComments(cacheKey, () =>
-				refreshGitHubPRComments({
-					worktreePath,
-					repoNameWithOwner,
-					pullRequestNumber: pullRequestTarget.prNumber,
-				}),
+				rateLimitedRefresh(() =>
+					refreshGitHubPRComments({
+						worktreePath,
+						repoNameWithOwner,
+						pullRequestNumber: pullRequestTarget.prNumber,
+					}),
+				),
 			);
 		} catch (error) {
 			const cached = getCachedPullRequestCommentsState(cacheKey);

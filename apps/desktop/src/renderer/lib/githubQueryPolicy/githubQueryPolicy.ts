@@ -1,9 +1,9 @@
-const ACTIVE_GITHUB_STATUS_STALE_TIME_MS = 3_000;
-const ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS = 3_000;
+const ACTIVE_GITHUB_STATUS_STALE_TIME_MS = 5_000;
+const ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS = 5_000;
 const WORKSPACE_LIST_ITEM_GITHUB_STATUS_STALE_TIME_MS = 30_000;
 const PASSIVE_GITHUB_STATUS_STALE_TIME_MS = 5 * 60 * 1000;
-const GITHUB_PR_COMMENTS_STALE_TIME_MS = 30_000;
-const GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS = 30_000;
+const GITHUB_PR_COMMENTS_STALE_TIME_MS = 20_000;
+const GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS = 20_000;
 
 export type GitHubStatusQuerySurface =
 	| "changes-sidebar"
@@ -35,6 +35,10 @@ interface GitHubPRCommentsQueryPolicyOptions {
 /**
  * Centralizes GitHub query behavior so passive hover surfaces stay cheap while
  * active workspace surfaces still revalidate when they become relevant again.
+ *
+ * Note: refetchOnWindowFocus is disabled for all surfaces because the
+ * GitHubSyncService handles window-focus refresh centrally from the main
+ * process, preventing burst API calls on focus.
  */
 export function getGitHubStatusQueryPolicy(
 	surface: GitHubStatusQuerySurface,
@@ -54,7 +58,7 @@ export function getGitHubStatusQueryPolicy(
 					isEnabled && isReviewTabActive
 						? ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS
 						: false,
-				refetchOnWindowFocus: isEnabled,
+				refetchOnWindowFocus: false,
 				staleTime: isReviewTabActive ? ACTIVE_GITHUB_STATUS_STALE_TIME_MS : 0,
 			};
 		case "workspace-page":
@@ -96,7 +100,7 @@ export function getGitHubPRCommentsQueryPolicy({
 			isEnabled && isReviewTabActive
 				? GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS
 				: false,
-		refetchOnWindowFocus: isEnabled && isReviewTabActive,
+		refetchOnWindowFocus: false,
 		staleTime: GITHUB_PR_COMMENTS_STALE_TIME_MS,
 	};
 }
