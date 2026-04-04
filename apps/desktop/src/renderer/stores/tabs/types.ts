@@ -223,6 +223,7 @@ export interface TabsStore extends TabsState {
 			status: "success" | "failure" | "pending" | "skipped" | "cancelled";
 		}>,
 		initialJobIndex?: number,
+		runId?: number,
 	) => { tabId: string; paneId: string };
 	openInBrowserPane: (workspaceId: string, url: string) => void;
 	setDatabaseExplorerConnection: (

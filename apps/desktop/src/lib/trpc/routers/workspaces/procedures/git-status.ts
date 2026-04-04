@@ -4,6 +4,7 @@ import type { GitHubStatus } from "@superset/local-db";
 import { workspaces, worktrees } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
 import { and, eq, isNull } from "drizzle-orm";
+import yaml from "js-yaml";
 import { localDb } from "main/lib/local-db";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
@@ -241,31 +242,105 @@ function isGitHubActionsUrl(url?: string): boolean {
 	return parseRunIdFromActionsUrl(url) !== null;
 }
 
-function workflowSupportsDispatch({
+interface WorkflowDispatchInput {
+	name: string;
+	description: string;
+	required: boolean;
+	default: string;
+	type: "string" | "choice" | "boolean" | "number" | "environment";
+	options: string[];
+}
+
+interface WorkflowDispatchInfo {
+	supportsDispatch: boolean;
+	inputs: WorkflowDispatchInput[];
+}
+
+function parseWorkflowDispatchInfo({
 	repoPath,
 	workflowPath,
 }: {
 	repoPath: string;
 	workflowPath?: string;
-}): boolean {
+}): WorkflowDispatchInfo {
+	const noDispatch: WorkflowDispatchInfo = {
+		supportsDispatch: false,
+		inputs: [],
+	};
+
 	if (!workflowPath) {
-		return false;
+		return noDispatch;
 	}
 
 	const absolutePath = path.join(repoPath, workflowPath);
 	if (!existsSync(absolutePath)) {
-		return false;
+		return noDispatch;
+	}
+
+	let content: string;
+	try {
+		content = readFileSync(absolutePath, "utf8");
+	} catch {
+		return noDispatch;
+	}
+
+	const hasDispatch =
+		/^\s*workflow_dispatch\s*:/m.test(content) ||
+		/^\s*on\s*:\s*workflow_dispatch\s*$/m.test(content) ||
+		/^\s*on\s*:\s*\[[^\]]*\bworkflow_dispatch\b[^\]]*\]/m.test(content);
+
+	if (!hasDispatch) {
+		return noDispatch;
 	}
 
 	try {
-		const content = readFileSync(absolutePath, "utf8");
-		return (
-			/^\s*workflow_dispatch\s*:/m.test(content) ||
-			/^\s*on\s*:\s*workflow_dispatch\s*$/m.test(content) ||
-			/^\s*on\s*:\s*\[[^\]]*\bworkflow_dispatch\b[^\]]*\]/m.test(content)
-		);
+		const parsed = yaml.load(content) as Record<string, unknown> | null;
+		if (!parsed || typeof parsed !== "object") {
+			return { supportsDispatch: true, inputs: [] };
+		}
+
+		const onBlock = parsed.on ?? parsed.true;
+		if (!onBlock || typeof onBlock !== "object") {
+			return { supportsDispatch: true, inputs: [] };
+		}
+
+		const dispatchBlock = (onBlock as Record<string, unknown>)
+			.workflow_dispatch;
+		if (!dispatchBlock || typeof dispatchBlock !== "object") {
+			return { supportsDispatch: true, inputs: [] };
+		}
+
+		const rawInputs = (dispatchBlock as Record<string, unknown>).inputs;
+		if (!rawInputs || typeof rawInputs !== "object") {
+			return { supportsDispatch: true, inputs: [] };
+		}
+
+		const inputs: WorkflowDispatchInput[] = Object.entries(
+			rawInputs as Record<string, unknown>,
+		).map(([name, value]) => {
+			const input = (value ?? {}) as Record<string, unknown>;
+			const inputType = String(input.type ?? "string");
+			const options: string[] = Array.isArray(input.options)
+				? input.options.map(String)
+				: [];
+
+			return {
+				name,
+				description: String(input.description ?? ""),
+				required: Boolean(input.required ?? false),
+				default: String(input.default ?? ""),
+				type: (
+					["string", "choice", "boolean", "number", "environment"] as const
+				).includes(inputType as never)
+					? (inputType as WorkflowDispatchInput["type"])
+					: "string",
+				options,
+			};
+		});
+
+		return { supportsDispatch: true, inputs };
 	} catch {
-		return false;
+		return { supportsDispatch: true, inputs: [] };
 	}
 }
 
@@ -545,18 +620,21 @@ async function getGitHubRepositoryOverview(workspaceId: string) {
 		})),
 		workflows: workflows
 			.filter((workflow) => workflow.state !== "disabled_manually")
-			.filter((workflow) =>
-				workflowSupportsDispatch({
+			.map((workflow) => {
+				const dispatchInfo = parseWorkflowDispatchInfo({
 					repoPath,
 					workflowPath: workflow.path,
-				}),
-			)
-			.map((workflow) => ({
-				id: workflow.id,
-				name: workflow.name,
-				path: workflow.path ?? "",
-				state: workflow.state ?? "unknown",
-			})),
+				});
+				return {
+					id: workflow.id,
+					name: workflow.name,
+					path: workflow.path ?? "",
+					state: workflow.state ?? "unknown",
+					supportsDispatch: dispatchInfo.supportsDispatch,
+					inputs: dispatchInfo.inputs,
+				};
+			})
+			.filter((workflow) => workflow.supportsDispatch),
 	};
 }
 
@@ -665,10 +743,12 @@ async function dispatchGitHubWorkflowForWorkspace({
 	workspaceId,
 	workflowId,
 	ref,
+	inputs,
 }: {
 	workspaceId: string;
 	workflowId: number;
 	ref?: string;
+	inputs?: Record<string, string>;
 }) {
 	const { repoPath, repositoryNameWithOwner, currentBranch, defaultBranch } =
 		await resolveRepositoryTargetForWorkspace(workspaceId);
@@ -685,18 +765,22 @@ async function dispatchGitHubWorkflowForWorkspace({
 		}
 	}
 
-	await execWithShellEnv(
-		"gh",
-		[
-			"api",
-			"--method",
-			"POST",
-			`repos/${repositoryNameWithOwner}/actions/workflows/${workflowId}/dispatches`,
-			"-f",
-			`ref=${targetRef}`,
-		],
-		{ cwd: repoPath },
-	);
+	const args = [
+		"api",
+		"--method",
+		"POST",
+		`repos/${repositoryNameWithOwner}/actions/workflows/${workflowId}/dispatches`,
+		"-f",
+		`ref=${targetRef}`,
+	];
+
+	if (inputs) {
+		for (const [key, value] of Object.entries(inputs)) {
+			args.push("-f", `inputs[${key}]=${value}`);
+		}
+	}
+
+	await execWithShellEnv("gh", args, { cwd: repoPath });
 
 	return {
 		success: true as const,
@@ -743,6 +827,70 @@ async function getGitHubWorkflowRunsForWorkspace({
 		runNumber: run.run_number ?? null,
 		workflowId: run.workflow_id ?? workflowId,
 	}));
+}
+
+async function getWorkflowRunJobsForWorkspace({
+	workspaceId,
+	runId,
+}: {
+	workspaceId: string;
+	runId: number;
+}) {
+	const { repoPath, repositoryNameWithOwner } =
+		await resolveRepositoryTargetForWorkspace(workspaceId);
+	const { stdout } = await execWithShellEnv(
+		"gh",
+		[
+			"api",
+			`repos/${repositoryNameWithOwner}/actions/runs/${runId}/jobs?per_page=100`,
+		],
+		{ cwd: repoPath },
+	);
+
+	const raw: unknown = JSON.parse(stdout);
+	const parsed = z
+		.object({
+			jobs: z
+				.array(
+					z.object({
+						id: z.number(),
+						name: z.string(),
+						status: z.string(),
+						conclusion: z.string().nullable(),
+						html_url: z.string().nullable().optional(),
+					}),
+				)
+				.optional(),
+		})
+		.parse(raw);
+
+	return (parsed.jobs ?? []).map((job) => ({
+		detailsUrl: job.html_url ?? "",
+		name: job.name,
+		status: mapJobStatus(job.status, job.conclusion),
+	}));
+}
+
+function mapJobStatus(
+	status: string,
+	conclusion: string | null,
+): "success" | "failure" | "pending" | "skipped" | "cancelled" {
+	if (status !== "completed") {
+		return "pending";
+	}
+	switch (conclusion) {
+		case "success":
+			return "success";
+		case "failure":
+		case "timed_out":
+			return "failure";
+		case "cancelled":
+			return "cancelled";
+		case "skipped":
+			return "skipped";
+		default:
+			return "pending";
+	}
 }
 
 async function rerunPullRequestChecksForWorkspace({
@@ -1279,6 +1427,7 @@ export const createGitStatusProcedures = () => {
 					workspaceId: z.string(),
 					workflowId: z.number().int().positive(),
 					ref: z.string().optional(),
+					inputs: z.record(z.string(), z.string()).optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -1294,6 +1443,17 @@ export const createGitStatusProcedures = () => {
 			)
 			.query(async ({ input }) => {
 				return getGitHubWorkflowRunsForWorkspace(input);
+			}),
+
+		getWorkflowRunJobs: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					runId: z.number().int().positive(),
+				}),
+			)
+			.query(async ({ input }) => {
+				return getWorkflowRunJobsForWorkspace(input);
 			}),
 
 		rerunPullRequestChecks: publicProcedure

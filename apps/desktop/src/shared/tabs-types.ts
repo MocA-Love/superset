@@ -253,6 +253,8 @@ export interface ActionLogsPaneState {
 	jobs: ActionLogsJob[];
 	/** Initially selected job index */
 	initialJobIndex?: number;
+	/** Workflow run ID — when set, jobs are polled from the GitHub API */
+	runId?: number;
 }
 
 /**
