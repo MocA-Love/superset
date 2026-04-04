@@ -98,6 +98,7 @@ interface JobStepsProps {
 	jobConclusion: string | null;
 	showTimestamps: boolean;
 	searchQuery: string;
+	hideRerun?: boolean;
 }
 
 function JobSteps({
@@ -108,6 +109,7 @@ function JobSteps({
 	jobConclusion,
 	showTimestamps,
 	searchQuery,
+	hideRerun,
 }: JobStepsProps) {
 	const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
 	const rerunMutation =
@@ -207,40 +209,42 @@ function JobSteps({
 						</p>
 					)}
 				</div>
-				<div className="flex items-center gap-1">
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="h-6 px-2 text-[10px]"
-						disabled={rerunMutation.isPending}
-						onClick={() => void handleRerun("failed")}
-					>
-						<LuRefreshCw
-							className={cn(
-								"mr-1 size-3",
-								rerunMutation.isPending && "animate-spin",
-							)}
-						/>
-						Re-run failed
-					</Button>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="h-6 px-2 text-[10px]"
-						disabled={rerunMutation.isPending}
-						onClick={() => void handleRerun("all")}
-					>
-						<LuRefreshCw
-							className={cn(
-								"mr-1 size-3",
-								rerunMutation.isPending && "animate-spin",
-							)}
-						/>
-						Re-run all
-					</Button>
-				</div>
+				{!hideRerun ? (
+					<div className="flex items-center gap-1">
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-6 px-2 text-[10px]"
+							disabled={rerunMutation.isPending}
+							onClick={() => void handleRerun("failed")}
+						>
+							<LuRefreshCw
+								className={cn(
+									"mr-1 size-3",
+									rerunMutation.isPending && "animate-spin",
+								)}
+							/>
+							Re-run failed
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-6 px-2 text-[10px]"
+							disabled={rerunMutation.isPending}
+							onClick={() => void handleRerun("all")}
+						>
+							<LuRefreshCw
+								className={cn(
+									"mr-1 size-3",
+									rerunMutation.isPending && "animate-spin",
+								)}
+							/>
+							Re-run all
+						</Button>
+					</div>
+				) : null}
 			</div>
 
 			{/* Steps */}
@@ -627,6 +631,7 @@ export function ActionLogsPane({
 								jobConclusion={null}
 								showTimestamps={showTimestamps}
 								searchQuery={searchQuery}
+								hideRerun={!!runId}
 							/>
 						)}
 					</div>

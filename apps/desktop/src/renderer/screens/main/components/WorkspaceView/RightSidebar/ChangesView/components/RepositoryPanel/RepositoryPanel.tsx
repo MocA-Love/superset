@@ -362,7 +362,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 		null,
 	);
 	const [workflowInputValues, setWorkflowInputValues] = useState<
-		Record<string, string>
+		Record<number, Record<string, string>>
 	>({});
 	const [trackedWorkflowRuns, setTrackedWorkflowRuns] = useState<
 		TrackedWorkflowRun[]
@@ -580,16 +580,39 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const handleRunWorkflow = async (
 		workflowId: number,
 		workflowName: string,
-		inputs?: Record<string, string>,
+		workflowInputDefs?: Array<{
+			name: string;
+			required: boolean;
+		}>,
 	) => {
 		if (!workspaceId) {
 			return;
 		}
 
+		const rawInputs = workflowInputValues[workflowId];
+
+		// Validate required inputs
+		if (workflowInputDefs && rawInputs) {
+			const missing = workflowInputDefs.filter(
+				(def) => def.required && !rawInputs[def.name]?.trim(),
+			);
+			if (missing.length > 0) {
+				toast.error(`Required: ${missing.map((m) => m.name).join(", ")}`);
+				return;
+			}
+		}
+
+		// Strip empty values
+		let filteredInputs: Record<string, string> | undefined;
+		if (rawInputs) {
+			const cleaned = Object.fromEntries(
+				Object.entries(rawInputs).filter(([, v]) => v !== ""),
+			);
+			filteredInputs = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+		}
+
 		setPendingWorkflowId(workflowId);
 		try {
-			const filteredInputs =
-				inputs && Object.keys(inputs).length > 0 ? inputs : undefined;
 			const result = await dispatchWorkflowMutation.mutateAsync({
 				workspaceId,
 				workflowId,
@@ -630,10 +653,6 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 				workspaceId,
 				runId,
 			});
-			if (jobs.length === 0) {
-				toast.error("No jobs found for this workflow run");
-				return;
-			}
 			const failedIdx = jobs.findIndex((j) => j.status === "failure");
 			addActionLogsTab(
 				workspaceId,
@@ -1221,15 +1240,21 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																		onClick={() => {
 																			if (isExpanded) {
 																				setExpandedWorkflowId(null);
-																				setWorkflowInputValues({});
 																			} else {
-																				const defaults: Record<string, string> =
-																					{};
-																				for (const input of workflow.inputs) {
-																					defaults[input.name] =
-																						input.default ?? "";
+																				if (!workflowInputValues[workflow.id]) {
+																					const defaults: Record<
+																						string,
+																						string
+																					> = {};
+																					for (const input of workflow.inputs) {
+																						defaults[input.name] =
+																							input.default ?? "";
+																					}
+																					setWorkflowInputValues((prev) => ({
+																						...prev,
+																						[workflow.id]: defaults,
+																					}));
 																				}
-																				setWorkflowInputValues(defaults);
 																				setExpandedWorkflowId(workflow.id);
 																			}
 																		}}
@@ -1252,13 +1277,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																		void handleRunWorkflow(
 																			workflow.id,
 																			workflow.name,
-																			hasInputs
-																				? workflowInputValues
-																				: undefined,
+																			hasInputs ? workflow.inputs : undefined,
 																		);
 																		if (hasInputs) {
 																			setExpandedWorkflowId(null);
-																			setWorkflowInputValues({});
 																		}
 																	}}
 																	disabled={
@@ -1278,10 +1300,23 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 														{hasInputs && isExpanded ? (
 															<div className="space-y-2 border-t border-border/50 px-2 py-2">
 																{workflow.inputs.map((input) => {
+																	const wfValues =
+																		workflowInputValues[workflow.id] ?? {};
 																	const value =
-																		workflowInputValues[input.name] ??
-																		input.default ??
-																		"";
+																		wfValues[input.name] ?? input.default ?? "";
+
+																	const updateInput = (
+																		key: string,
+																		val: string,
+																	) => {
+																		setWorkflowInputValues((prev) => ({
+																			...prev,
+																			[workflow.id]: {
+																				...prev[workflow.id],
+																				[key]: val,
+																			},
+																		}));
+																	};
 
 																	if (input.type === "choice") {
 																		return (
@@ -1300,10 +1335,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																				<Select
 																					value={value}
 																					onValueChange={(newValue) => {
-																						setWorkflowInputValues((prev) => ({
-																							...prev,
-																							[input.name]: newValue,
-																						}));
+																						updateInput(input.name, newValue);
 																					}}
 																				>
 																					<SelectTrigger className="h-7 text-xs">
@@ -1334,10 +1366,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																					id={`wf-input-${workflow.id}-${input.name}`}
 																					checked={value === "true"}
 																					onCheckedChange={(checked) => {
-																						setWorkflowInputValues((prev) => ({
-																							...prev,
-																							[input.name]: String(checked),
-																						}));
+																						updateInput(
+																							input.name,
+																							String(checked),
+																						);
 																					}}
 																				/>
 																				<label
@@ -1368,10 +1400,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 																				}
 																				value={value}
 																				onChange={(event) => {
-																					setWorkflowInputValues((prev) => ({
-																						...prev,
-																						[input.name]: event.target.value,
-																					}));
+																					updateInput(
+																						input.name,
+																						event.target.value,
+																					);
 																				}}
 																				placeholder={
 																					input.default || input.name

@@ -277,17 +277,23 @@ function parseWorkflowDispatchInfo({
 		return noDispatch;
 	}
 
+	let content: string;
 	try {
-		const content = readFileSync(absolutePath, "utf8");
-		const hasDispatch =
-			/^\s*workflow_dispatch\s*:/m.test(content) ||
-			/^\s*on\s*:\s*workflow_dispatch\s*$/m.test(content) ||
-			/^\s*on\s*:\s*\[[^\]]*\bworkflow_dispatch\b[^\]]*\]/m.test(content);
+		content = readFileSync(absolutePath, "utf8");
+	} catch {
+		return noDispatch;
+	}
 
-		if (!hasDispatch) {
-			return noDispatch;
-		}
+	const hasDispatch =
+		/^\s*workflow_dispatch\s*:/m.test(content) ||
+		/^\s*on\s*:\s*workflow_dispatch\s*$/m.test(content) ||
+		/^\s*on\s*:\s*\[[^\]]*\bworkflow_dispatch\b[^\]]*\]/m.test(content);
 
+	if (!hasDispatch) {
+		return noDispatch;
+	}
+
+	try {
 		const parsed = yaml.load(content) as Record<string, unknown> | null;
 		if (!parsed || typeof parsed !== "object") {
 			return { supportsDispatch: true, inputs: [] };
@@ -334,7 +340,7 @@ function parseWorkflowDispatchInfo({
 
 		return { supportsDispatch: true, inputs };
 	} catch {
-		return noDispatch;
+		return { supportsDispatch: true, inputs: [] };
 	}
 }
 
