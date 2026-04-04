@@ -697,7 +697,6 @@ function CurrentBranchSelector({
 				<CommandItem
 					onSelect={() => {
 						setMode("create");
-						setSearch("");
 						setSelectedStartPoint(null);
 					}}
 					className="gap-2 text-xs"
@@ -708,7 +707,6 @@ function CurrentBranchSelector({
 				<CommandItem
 					onSelect={() => {
 						setMode("create-from-ref");
-						setSearch("");
 						setSelectedStartPoint(null);
 					}}
 					className="gap-2 text-xs"

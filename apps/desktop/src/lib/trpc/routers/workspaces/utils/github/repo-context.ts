@@ -33,10 +33,6 @@ async function refreshRepoContext(
 			const originUrl = await getOriginUrl(worktreePath);
 			const ghUrl = normalizeGitHubUrl(data.url);
 
-			if (data.isFork) {
-				return null;
-			}
-
 			if (originUrl && ghUrl && originUrl !== ghUrl) {
 				context = {
 					repoUrl: originUrl,
@@ -47,7 +43,7 @@ async function refreshRepoContext(
 				context = {
 					repoUrl: data.url,
 					upstreamUrl: data.url,
-					isFork: false,
+					isFork: data.isFork,
 				};
 			}
 		}
@@ -92,7 +88,7 @@ export function shouldRefreshCachedRepoContext({
 	cachedRepoContext: RepoContext | null;
 }): boolean {
 	if (!cachedRepoContext) {
-		return false;
+		return true;
 	}
 
 	const normalizedOriginUrl = normalizeGitHubUrl(

@@ -16,7 +16,7 @@ import { getCurrentBranch } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import { gitCreateBranch, gitSwitchBranch } from "./security/git-commands";
 import { assertRegisteredWorktree } from "./security/path-validation";
-import { clearStatusCacheForWorktree } from "./utils/status-cache";
+import { clearWorktreeStatusCaches } from "./utils/worktree-status-caches";
 
 const DEFAULT_REF_SEARCH_LIMIT = 50;
 const MAX_REF_SEARCH_LIMIT = 200;
@@ -234,7 +234,7 @@ export const createBranchesRouter = () => {
 					(await getCurrentBranch(input.worktreePath)) ?? branch;
 				persistWorktreeBranch(input.worktreePath, currentBranch);
 
-				clearStatusCacheForWorktree(input.worktreePath);
+				clearWorktreeStatusCaches(input.worktreePath);
 				return { success: true };
 			}),
 
@@ -286,7 +286,7 @@ export const createBranchesRouter = () => {
 						(await getCurrentBranch(input.worktreePath)) ?? input.branch;
 					persistWorktreeBranch(input.worktreePath, currentBranch);
 
-					clearStatusCacheForWorktree(input.worktreePath);
+					clearWorktreeStatusCaches(input.worktreePath);
 					return { success: true, branch: currentBranch };
 				},
 			),
@@ -329,7 +329,7 @@ export const createBranchesRouter = () => {
 						.run();
 				}
 
-				clearStatusCacheForWorktree(input.worktreePath);
+				clearWorktreeStatusCaches(input.worktreePath);
 				return { success: true };
 			}),
 	});
