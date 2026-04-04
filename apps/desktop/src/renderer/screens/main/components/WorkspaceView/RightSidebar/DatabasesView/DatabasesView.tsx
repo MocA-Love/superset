@@ -855,7 +855,9 @@ export function DatabasesView({
 	// Bind workspace-scoped wrappers
 	const addConnection = useCallback(
 		(input: Parameters<typeof storeAddConnection>[1]) => {
-			if (!workspaceId) return undefined as unknown as SavedDatabaseConnection;
+			if (!workspaceId) {
+				throw new Error("addConnection called without workspaceId");
+			}
 			return storeAddConnection(workspaceId, input);
 		},
 		[workspaceId, storeAddConnection],
@@ -872,8 +874,9 @@ export function DatabasesView({
 	);
 	const addQueryHistoryItem = useCallback(
 		(input: Parameters<typeof storeAddQueryHistoryItem>[1]) => {
-			if (!workspaceId)
-				return undefined as unknown as SavedDatabaseQueryHistoryItem;
+			if (!workspaceId) {
+				throw new Error("addQueryHistoryItem called without workspaceId");
+			}
 			return storeAddQueryHistoryItem(workspaceId, input);
 		},
 		[workspaceId, storeAddQueryHistoryItem],
