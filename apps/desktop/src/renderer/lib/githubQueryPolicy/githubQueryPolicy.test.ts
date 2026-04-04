@@ -46,7 +46,7 @@ describe("getGitHubStatusQueryPolicy", () => {
 			enabled: false,
 			refetchInterval: false,
 			refetchOnWindowFocus: false,
-			staleTime: 10_000,
+			staleTime: 3_000,
 		});
 	});
 

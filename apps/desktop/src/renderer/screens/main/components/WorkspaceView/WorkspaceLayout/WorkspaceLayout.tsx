@@ -1,6 +1,5 @@
 import type { ExternalApp } from "@superset/local-db";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
-import { useBrowserFullscreenStore } from "renderer/stores/browser-fullscreen";
 import {
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
