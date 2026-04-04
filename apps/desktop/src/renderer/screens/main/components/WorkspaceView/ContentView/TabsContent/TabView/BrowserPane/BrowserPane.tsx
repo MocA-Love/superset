@@ -9,6 +9,7 @@ import {
 	findBookmarkByUrl,
 	useBrowserBookmarksStore,
 } from "renderer/stores/browser-bookmarks";
+import { useBrowserFullscreenStore } from "renderer/stores/browser-fullscreen";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
@@ -65,6 +66,9 @@ export function BrowserPane({
 	);
 	const syncBookmarkFaviconByUrl = useBrowserBookmarksStore(
 		(state) => state.syncBookmarkFaviconByUrl,
+	);
+	const isFullscreen = useBrowserFullscreenStore(
+		(s) => s.fullscreenPaneId === paneId,
 	);
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
@@ -155,6 +159,7 @@ export function BrowserPane({
 			setFocusedPane={setFocusedPane}
 			onPopOut={onPopOut}
 			draggable={!isEditingUrl}
+			hideToolbar={isFullscreen}
 			renderToolbar={(handlers) => (
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
@@ -253,7 +258,9 @@ export function BrowserPane({
 			)}
 		>
 			<div className="flex h-full flex-1 flex-col">
-				<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
+				{!isFullscreen && (
+					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
+				)}
 				<div className="relative flex flex-1 min-h-0">
 					<div
 						ref={containerRef}

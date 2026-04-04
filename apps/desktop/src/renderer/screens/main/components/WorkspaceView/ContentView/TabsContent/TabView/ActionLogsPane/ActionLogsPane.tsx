@@ -94,38 +94,51 @@ interface JobStepsProps {
 	workspaceId: string;
 	detailsUrl: string;
 	jobName: string;
-	jobStatus: string;
 	showTimestamps: boolean;
 	searchQuery: string;
+	onJobStatusChange?: (status: string, conclusion: string | null) => void;
 }
 
 function JobSteps({
 	workspaceId,
 	detailsUrl,
 	jobName,
-	jobStatus,
 	showTimestamps,
 	searchQuery,
+	onJobStatusChange,
 }: JobStepsProps) {
 	const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
 	const rerunMutation =
 		electronTrpc.workspaces.rerunPullRequestChecks.useMutation();
 	const trpcUtils = electronTrpc.useUtils();
 
-	const { data: steps, isLoading } =
+	const { data: jobResult, isLoading } =
 		electronTrpc.workspaces.getJobLogs.useQuery(
 			{ workspaceId, detailsUrl },
 			{
 				staleTime: 3_000,
 				refetchInterval: (query) => {
-					// Poll every 3s while any step is not completed
 					const data = query.state.data;
-					if (!data || data.length === 0) return 3_000;
-					const allDone = data.every((s) => s.status === "completed");
-					return allDone ? false : 3_000;
+					if (!data) return 3_000;
+					return data.jobStatus === "completed" ? false : 3_000;
 				},
 			},
 		);
+
+	const steps = jobResult?.steps ?? [];
+	const liveJobStatus = jobResult?.jobStatus ?? "queued";
+	const liveJobConclusion = jobResult?.jobConclusion ?? null;
+
+	// Notify parent of job status changes for sidebar updates
+	const prevStatusRef = useRef<string | null>(null);
+	if (
+		onJobStatusChange &&
+		liveJobStatus !== prevStatusRef.current &&
+		jobResult
+	) {
+		prevStatusRef.current = liveJobStatus;
+		onJobStatusChange(liveJobStatus, liveJobConclusion);
+	}
 
 	const toggleStep = (n: number) => {
 		setExpandedSteps((prev) => {
@@ -172,8 +185,18 @@ function JobSteps({
 		(sum, s) => sum + (s.durationSeconds ?? 0),
 		0,
 	);
+	const resolvedStatus =
+		liveJobStatus === "completed"
+			? liveJobConclusion === "success"
+				? "success"
+				: liveJobConclusion === "cancelled"
+					? "cancelled"
+					: "failure"
+			: liveJobStatus === "in_progress"
+				? "pending"
+				: "pending";
 	const { icon: JobIcon, className: jobIconClass } =
-		statusIcon[jobStatus as keyof typeof statusIcon] ?? statusIcon.pending;
+		statusIcon[resolvedStatus as keyof typeof statusIcon] ?? statusIcon.pending;
 
 	const lowerQuery = searchQuery.toLowerCase();
 
@@ -351,6 +374,10 @@ export function ActionLogsPane({
 	const jobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
 	const initialIndex = pane?.actionLogs?.initialJobIndex ?? 0;
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+	// Track live job statuses from polling
+	const [liveJobStatuses, setLiveJobStatuses] = useState<
+		Map<number, { status: string; conclusion: string | null }>
+	>(new Map());
 	const [showTimestamps, setShowTimestamps] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -528,8 +555,19 @@ export function ActionLogsPane({
 							All jobs
 						</div>
 						{jobs.map((job, i) => {
+							const live = liveJobStatuses.get(i);
+							const displayStatus = live
+								? live.status === "completed"
+									? live.conclusion === "success"
+										? "success"
+										: live.conclusion === "cancelled"
+											? "cancelled"
+											: "failure"
+									: "pending"
+								: job.status;
 							const { icon: JobIcon, className: jobIconClass } =
-								statusIcon[job.status];
+								statusIcon[displayStatus as keyof typeof statusIcon] ??
+								statusIcon.pending;
 							return (
 								<button
 									key={job.detailsUrl}
@@ -563,9 +601,15 @@ export function ActionLogsPane({
 								workspaceId={workspaceId}
 								detailsUrl={selectedJob.detailsUrl}
 								jobName={selectedJob.name}
-								jobStatus={selectedJob.status}
 								showTimestamps={showTimestamps}
 								searchQuery={searchQuery}
+								onJobStatusChange={(status, conclusion) => {
+									setLiveJobStatuses((prev) => {
+										const next = new Map(prev);
+										next.set(selectedIndex, { status, conclusion });
+										return next;
+									});
+								}}
 							/>
 						)}
 					</div>

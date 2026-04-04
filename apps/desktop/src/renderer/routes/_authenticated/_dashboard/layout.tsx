@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useState } from "react";
+import { useBrowserFullscreenHandler } from "renderer/hooks/useBrowserFullscreenHandler";
 import { useBrowserNewWindowHandler } from "renderer/hooks/useBrowserNewWindowHandler";
 import {
 	isTearoffWindow,
@@ -105,6 +106,7 @@ function DashboardLayout() {
 	// Must live here (always-mounted) because webviews persist in a hidden
 	// container even when their BrowserPane component is unmounted.
 	useBrowserNewWindowHandler();
+	useBrowserFullscreenHandler();
 	useTearoffInit();
 	useReturnedTabListener();
 	const isTearoff = isTearoffWindow();

@@ -501,17 +501,28 @@ export interface StructuredJobStep {
 	logs: string;
 }
 
+export interface StructuredJobResult {
+	jobStatus: "queued" | "in_progress" | "completed" | "waiting";
+	jobConclusion: string | null;
+	steps: StructuredJobStep[];
+}
+
 /**
  * Fetches job step metadata and logs, returning structured per-step data.
  */
 export async function fetchStructuredJobLogs(
 	worktreePath: string,
 	detailsUrl: string,
-): Promise<StructuredJobStep[]> {
+): Promise<StructuredJobResult> {
 	const jobId = parseJobIdFromUrl(detailsUrl);
 	const nwo = parseNwoFromActionsUrl(detailsUrl);
+	const emptyResult: StructuredJobResult = {
+		jobStatus: "queued",
+		jobConclusion: null,
+		steps: [],
+	};
 	if (!jobId || !nwo) {
-		return [];
+		return emptyResult;
 	}
 
 	try {
@@ -525,11 +536,12 @@ export async function fetchStructuredJobLogs(
 		const raw: unknown = JSON.parse(jobResult.stdout.trim());
 		const result = GHJobResponseSchema.safeParse(raw);
 		if (!result.success || !result.data.steps) {
-			return [];
+			return emptyResult;
 		}
 
-		const steps = result.data.steps;
-		const jobCompleted = result.data.status === "completed";
+		const jobData = result.data;
+		const steps = jobData.steps;
+		const jobCompleted = jobData.status === "completed";
 
 		// Only fetch logs if job is completed (API returns 404 for in-progress)
 		let rawLogs = "";
@@ -582,26 +594,30 @@ export async function fetchStructuredJobLogs(
 			}
 		}
 
-		return steps.map((step) => {
-			let durationSeconds: number | null = null;
-			if (step.started_at && step.completed_at) {
-				durationSeconds = Math.round(
-					(new Date(step.completed_at).getTime() -
-						new Date(step.started_at).getTime()) /
-						1000,
-				);
-			}
-			return {
-				name: step.name,
-				number: step.number,
-				status: step.status,
-				conclusion: step.conclusion ?? null,
-				durationSeconds,
-				logs: stepLogs.get(step.number)?.join("\n") ?? "",
-			};
-		});
+		return {
+			jobStatus: jobData.status,
+			jobConclusion: jobData.conclusion ?? null,
+			steps: steps.map((step) => {
+				let durationSeconds: number | null = null;
+				if (step.started_at && step.completed_at) {
+					durationSeconds = Math.round(
+						(new Date(step.completed_at).getTime() -
+							new Date(step.started_at).getTime()) /
+							1000,
+					);
+				}
+				return {
+					name: step.name,
+					number: step.number,
+					status: step.status,
+					conclusion: step.conclusion ?? null,
+					durationSeconds,
+					logs: stepLogs.get(step.number)?.join("\n") ?? "",
+				};
+			}),
+		};
 	} catch (err) {
 		console.error("[fetchStructuredJobLogs] Failed:", err);
-		return [];
+		return emptyResult;
 	}
 }

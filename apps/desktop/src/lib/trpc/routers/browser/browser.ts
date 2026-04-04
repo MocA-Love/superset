@@ -134,6 +134,19 @@ export const createBrowserRouter = () => {
 			});
 		}),
 
+		/** Global subscription for HTML5 fullscreen enter/leave from any browser pane. */
+		onFullscreenChange: publicProcedure.subscription(() => {
+			return observable<{ paneId: string; isFullscreen: boolean }>((emit) => {
+				const handler = (data: { paneId: string; isFullscreen: boolean }) => {
+					emit.next(data);
+				};
+				browserManager.on("fullscreen-change", handler);
+				return () => {
+					browserManager.off("fullscreen-change", handler);
+				};
+			});
+		}),
+
 		onContextMenuAction: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
