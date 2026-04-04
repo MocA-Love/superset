@@ -20,6 +20,7 @@ import {
 	getPaneIdSetForTab,
 } from "renderer/stores/tabs/utils";
 import { useTheme } from "renderer/stores/theme";
+import { ActionLogsPane } from "./ActionLogsPane";
 import { BrowserPane } from "./BrowserPane";
 import { ChatPane } from "./ChatPane";
 import { MosaicSplitOverlay } from "./components";
@@ -306,6 +307,22 @@ export function TabView({ tab }: TabViewProps) {
 						paneId={paneId}
 						path={path}
 						tabId={tab.id}
+						splitPaneAuto={splitPaneAuto}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			// Route action-logs panes
+			if (paneInfo.type === "action-logs") {
+				return (
+					<ActionLogsPane
+						paneId={paneId}
+						path={path}
+						tabId={tab.id}
+						workspaceId={tab.workspaceId}
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}

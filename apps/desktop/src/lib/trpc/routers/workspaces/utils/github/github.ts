@@ -491,3 +491,106 @@ export async function fetchCheckJobSteps(
 		return [];
 	}
 }
+
+export interface StructuredJobStep {
+	name: string;
+	number: number;
+	status: "queued" | "in_progress" | "completed";
+	conclusion: string | null;
+	durationSeconds: number | null;
+	logs: string;
+}
+
+/**
+ * Fetches job step metadata and logs, returning structured per-step data.
+ */
+export async function fetchStructuredJobLogs(
+	worktreePath: string,
+	detailsUrl: string,
+): Promise<StructuredJobStep[]> {
+	const jobId = parseJobIdFromUrl(detailsUrl);
+	const nwo = parseNwoFromActionsUrl(detailsUrl);
+	if (!jobId || !nwo) {
+		return [];
+	}
+
+	try {
+		const [jobResult, logsResult] = await Promise.all([
+			execWithShellEnv("gh", ["api", `repos/${nwo}/actions/jobs/${jobId}`], {
+				cwd: worktreePath,
+			}),
+			execWithShellEnv(
+				"gh",
+				["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
+				{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
+			),
+		]);
+
+		const raw: unknown = JSON.parse(jobResult.stdout.trim());
+		const result = GHJobResponseSchema.safeParse(raw);
+		if (!result.success || !result.data.steps) {
+			return [];
+		}
+
+		const steps = result.data.steps;
+		const rawLogs = logsResult.stdout;
+
+		// Parse raw logs into per-step sections.
+		// GitHub log format: each line starts with a timestamp like "2024-01-01T00:00:00.0000000Z "
+		// Steps are separated by ##[group] / ##[endgroup] markers, but these aren't always reliable.
+		// Instead, match by step started_at/completed_at time ranges.
+		const logLines = rawLogs.split("\n");
+		const stepLogs: Map<number, string[]> = new Map();
+
+		// Build time ranges for each step
+		const stepRanges = steps.map((step) => ({
+			number: step.number,
+			start: step.started_at ? new Date(step.started_at).getTime() : 0,
+			end: step.completed_at
+				? new Date(step.completed_at).getTime()
+				: Number.POSITIVE_INFINITY,
+		}));
+
+		for (const line of logLines) {
+			const tsMatch = line.match(
+				/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s/,
+			);
+			if (!tsMatch) continue;
+			const lineTime = new Date(tsMatch[1]).getTime();
+			const lineContent = line.slice(tsMatch[0].length);
+
+			// Find which step this line belongs to
+			for (const range of stepRanges) {
+				if (lineTime >= range.start && lineTime <= range.end + 1000) {
+					if (!stepLogs.has(range.number)) {
+						stepLogs.set(range.number, []);
+					}
+					stepLogs.get(range.number)?.push(lineContent);
+					break;
+				}
+			}
+		}
+
+		return steps.map((step) => {
+			let durationSeconds: number | null = null;
+			if (step.started_at && step.completed_at) {
+				durationSeconds = Math.round(
+					(new Date(step.completed_at).getTime() -
+						new Date(step.started_at).getTime()) /
+						1000,
+				);
+			}
+			return {
+				name: step.name,
+				number: step.number,
+				status: step.status,
+				conclusion: step.conclusion ?? null,
+				durationSeconds,
+				logs: stepLogs.get(step.number)?.join("\n") ?? "",
+			};
+		});
+	} catch (err) {
+		console.error("[fetchStructuredJobLogs] Failed:", err);
+		return [];
+	}
+}

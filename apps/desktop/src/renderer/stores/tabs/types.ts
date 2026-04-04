@@ -215,6 +215,15 @@ export interface TabsStore extends TabsState {
 		workspaceId: string,
 		worktreePath: string,
 	) => { tabId: string; paneId: string };
+	addActionLogsTab: (
+		workspaceId: string,
+		jobs: Array<{
+			detailsUrl: string;
+			name: string;
+			status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+		}>,
+		initialJobIndex?: number,
+	) => { tabId: string; paneId: string };
 	openInBrowserPane: (workspaceId: string, url: string) => void;
 	setDatabaseExplorerConnection: (
 		paneId: string,

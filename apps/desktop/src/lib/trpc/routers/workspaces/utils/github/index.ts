@@ -4,6 +4,7 @@ export {
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchStructuredJobLogs,
 	resolveReviewThread,
 } from "./github";
 export { getPRForBranch } from "./pr-resolution";
