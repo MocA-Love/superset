@@ -1,7 +1,8 @@
 import { ToggleGroup, ToggleGroupItem } from "@superset/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
-
+import { useCallback, useMemo } from "react";
+import { LuMinus, LuPlus } from "react-icons/lu";
 import {
 	TbFold,
 	TbLayoutSidebarRightFilled,
@@ -10,6 +11,7 @@ import {
 } from "react-icons/tb";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import type { DiffViewMode } from "shared/changes-types";
+import { isHtmlFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { PaneToolbarActions } from "../../../components";
 import type { SplitOrientation } from "../../../hooks";
@@ -36,6 +38,8 @@ interface FileViewerToolbarProps {
 	onPin: () => void;
 	onClosePane: (e: React.MouseEvent) => void;
 	onPopOut?: (e: React.MouseEvent) => void;
+	htmlZoomLevel?: number;
+	onHtmlZoomChange?: (level: number) => void;
 }
 
 export function FileViewerToolbar({
@@ -56,8 +60,28 @@ export function FileViewerToolbar({
 	onPin,
 	onClosePane,
 	onPopOut,
+	htmlZoomLevel = 0,
+	onHtmlZoomChange,
 }: FileViewerToolbarProps) {
 	const { copyToClipboard, copied } = useCopyToClipboard(1500);
+
+	const ZOOM_STEP = 1;
+	const ZOOM_MIN = -3;
+	const ZOOM_MAX = 5;
+	const zoomPercent = useMemo(
+		() => Math.round(1.2 ** htmlZoomLevel * 100),
+		[htmlZoomLevel],
+	);
+	const isHtml = isHtmlFile(filePath);
+	const showHtmlZoom = viewMode === "rendered" && isHtml && onHtmlZoomChange;
+
+	const applyZoom = useCallback(
+		(level: number) => {
+			const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
+			onHtmlZoomChange?.(clamped);
+		},
+		[onHtmlZoomChange],
+	);
 
 	const handleCopyPath = () => {
 		copyToClipboard(filePath);
@@ -165,6 +189,54 @@ export function FileViewerToolbar({
 							</TooltipContent>
 						</Tooltip>
 					</>
+				)}
+				{showHtmlZoom && (
+					<div className="flex items-center gap-0.5">
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									onClick={() => applyZoom(htmlZoomLevel - ZOOM_STEP)}
+									disabled={htmlZoomLevel <= ZOOM_MIN}
+									className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-30"
+								>
+									<LuMinus className="size-3.5" />
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" showArrow={false}>
+								Zoom Out
+							</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									onClick={() => applyZoom(0)}
+									className="rounded px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+								>
+									{zoomPercent}%
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" showArrow={false}>
+								Reset Zoom
+							</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									onClick={() => applyZoom(htmlZoomLevel + ZOOM_STEP)}
+									disabled={htmlZoomLevel >= ZOOM_MAX}
+									className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-30"
+								>
+									<LuPlus className="size-3.5" />
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" showArrow={false}>
+								Zoom In
+							</TooltipContent>
+						</Tooltip>
+					</div>
 				)}
 				<PaneToolbarActions
 					splitOrientation={splitOrientation}

@@ -150,6 +150,8 @@ export function FileViewerPane({
 	const preserveDocumentStateRef = useRef(false);
 	const [isResolvingIntent, setIsResolvingIntent] = useState(false);
 
+	const [htmlZoomLevel, setHtmlZoomLevel] = useState(0);
+
 	const filePath = fileViewer?.filePath ?? "";
 	const viewMode = fileViewer?.viewMode ?? "raw";
 	const isPinned = fileViewer?.isPinned ?? false;
@@ -676,6 +678,8 @@ export function FileViewerPane({
 							onPin={handlePin}
 							onClosePane={handlers.onClosePane}
 							onPopOut={handlers.onPopOut}
+							htmlZoomLevel={htmlZoomLevel}
+							onHtmlZoomChange={setHtmlZoomLevel}
 						/>
 					</div>
 				)}
@@ -757,6 +761,7 @@ export function FileViewerPane({
 							diffSearch={diffSearch}
 							markdownContainerRef={markdownContainerRef}
 							markdownSearch={markdownSearch}
+							htmlZoomLevel={htmlZoomLevel}
 						/>
 					</div>
 				</div>
