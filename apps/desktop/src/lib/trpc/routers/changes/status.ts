@@ -53,7 +53,7 @@ export const createStatusRouter = () => {
 							{
 								dedupeKey: cacheKey,
 								strategy: "coalesce",
-								timeoutMs: 45_000,
+								timeoutMs: 90_000,
 							},
 						);
 

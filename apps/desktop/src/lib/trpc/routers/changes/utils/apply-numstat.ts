@@ -9,8 +9,20 @@ export async function applyNumstatToFiles(
 ): Promise<void> {
 	if (files.length === 0) return;
 
+	const NUMSTAT_TIMEOUT_MS = 15_000;
 	try {
-		const numstat = await git.raw(diffArgs);
+		const numstat = await Promise.race([
+			git.raw(diffArgs),
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() =>
+						reject(
+							new Error(`numstat timed out after ${NUMSTAT_TIMEOUT_MS}ms`),
+						),
+					NUMSTAT_TIMEOUT_MS,
+				),
+			),
+		]);
 		const stats = parseDiffNumstat(numstat);
 
 		for (const file of files) {
