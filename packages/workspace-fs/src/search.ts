@@ -4,6 +4,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 import fg from "fast-glob";
 import Fuse from "fuse.js";
+import {
+	compareItemsByFuzzyScore,
+	type FuzzyScorerCache,
+	type IItemAccessor,
+	prepareQuery,
+	scoreItemFuzzy,
+} from "./fuzzy-scorer";
 import { readFile as readFsFile, writeFile as writeFsFile } from "./fs";
 import {
 	isPathWithinRoot,
@@ -43,6 +50,8 @@ interface SearchIndexEntry {
 	absolutePath: string;
 	relativePath: string;
 	name: string;
+	/** Parent directory path (pre-computed for fuzzy scorer). */
+	description: string | undefined;
 	lowerName: string;
 	lowerRelativePath: string;
 	compactName: string;
@@ -176,6 +185,7 @@ function createSearchIndexEntry(
 		path.join(rootPath, normalizedRelativePath),
 	);
 	const name = path.basename(normalizedRelativePath);
+	const dir = normalizedRelativePath.slice(0, -(name.length + 1));
 	const lowerName = name.toLowerCase();
 	const lowerRelativePath = normalizedRelativePath.toLowerCase();
 
@@ -183,6 +193,7 @@ function createSearchIndexEntry(
 		absolutePath,
 		relativePath: normalizedRelativePath,
 		name,
+		description: dir || undefined,
 		lowerName,
 		lowerRelativePath,
 		compactName: normalizeSearchText(name),
@@ -1082,6 +1093,18 @@ export function patchSearchIndexesForRoot(
 	}
 }
 
+const searchEntryAccessor: IItemAccessor<SearchIndexEntry> = {
+	getItemLabel(item) {
+		return item.name;
+	},
+	getItemDescription(item) {
+		return item.description;
+	},
+	getItemPath(item) {
+		return item.relativePath;
+	},
+};
+
 export async function searchFiles({
 	rootPath,
 	query,
@@ -1131,19 +1154,41 @@ export async function searchFiles({
 		return [];
 	}
 
-	const fuse = pathMatcher.hasFilters
-		? createFileSearchFuse(searchableItems)
-		: index.fuse;
-	const results = fuse.search(trimmedQuery, {
-		limit: safeLimit,
-	});
+	// Use VS Code fuzzy scorer instead of Fuse.js for better path-aware matching
+	const prepared = prepareQuery(trimmedQuery);
+	const cache: FuzzyScorerCache = {};
 
-	return results.map((result) => ({
+	const scored: Array<{ item: SearchIndexEntry; score: number }> = [];
+	for (const item of searchableItems) {
+		const itemScore = scoreItemFuzzy(
+			item,
+			prepared,
+			true,
+			searchEntryAccessor,
+			cache,
+		);
+		if (itemScore.score > 0) {
+			scored.push({ item, score: itemScore.score });
+		}
+	}
+
+	scored.sort((a, b) =>
+		compareItemsByFuzzyScore(
+			a.item,
+			b.item,
+			prepared,
+			true,
+			searchEntryAccessor,
+			cache,
+		),
+	);
+
+	return scored.slice(0, safeLimit).map((result) => ({
 		absolutePath: result.item.absolutePath,
 		relativePath: result.item.relativePath,
 		name: result.item.name,
 		kind: "file" as const,
-		score: 1 - (result.score ?? 0),
+		score: result.score,
 	}));
 }
 
