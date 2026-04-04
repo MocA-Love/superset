@@ -15,7 +15,8 @@ export type PaneType =
 	| "chat"
 	| "devtools"
 	| "git-graph"
-	| "database-explorer";
+	| "database-explorer"
+	| "action-logs";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -146,6 +147,7 @@ export interface Pane {
 	devtools?: DevToolsPaneState; // For devtools panes
 	gitGraph?: GitGraphPaneState; // For git-graph panes
 	databaseExplorer?: DatabaseExplorerPaneState; // For database explorer panes
+	actionLogs?: ActionLogsPaneState; // For GitHub Actions log panes
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";
@@ -232,6 +234,25 @@ export interface GitGraphPaneState {
  */
 export interface DatabaseExplorerPaneState {
 	connectionId: string | null;
+}
+
+/**
+ * Action Logs pane-specific properties
+ */
+export interface ActionLogsJob {
+	/** The GitHub Actions job details URL */
+	detailsUrl: string;
+	/** Display name for the job */
+	name: string;
+	/** Check status */
+	status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+}
+
+export interface ActionLogsPaneState {
+	/** All action jobs to display */
+	jobs: ActionLogsJob[];
+	/** Initially selected job index */
+	initialJobIndex?: number;
 }
 
 /**

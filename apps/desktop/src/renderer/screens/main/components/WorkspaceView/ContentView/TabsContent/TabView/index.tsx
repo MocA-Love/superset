@@ -26,6 +26,7 @@ import { MosaicSplitOverlay } from "./components";
 import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
+import { ActionLogsPane } from "./ActionLogsPane";
 import { GitGraphPane } from "./GitGraphPane";
 import { TabPane } from "./TabPane";
 
@@ -306,6 +307,22 @@ export function TabView({ tab }: TabViewProps) {
 						paneId={paneId}
 						path={path}
 						tabId={tab.id}
+						splitPaneAuto={splitPaneAuto}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			// Route action-logs panes
+			if (paneInfo.type === "action-logs") {
+				return (
+					<ActionLogsPane
+						paneId={paneId}
+						path={path}
+						tabId={tab.id}
+						workspaceId={tab.workspaceId}
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}

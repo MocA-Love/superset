@@ -26,6 +26,7 @@ import {
 	LuChevronDown,
 	LuCode,
 	LuCopy,
+	LuExternalLink,
 	LuLoaderCircle,
 	LuRefreshCw,
 	LuX,
@@ -136,6 +137,7 @@ export function ReviewPanel({
 	const resolvedWorkspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
+	const addActionLogsTab = useTabsStore((s) => s.addActionLogsTab);
 	const handleOpenUrl = useCallback(
 		(url: string, e: React.MouseEvent) => {
 			e.preventDefault();
@@ -1094,6 +1096,34 @@ export function ReviewPanel({
 				<CollapsibleContent className="px-0.5 pb-1 min-w-0 overflow-hidden">
 					{actionChecks.length > 0 ? (
 						<div className="flex flex-wrap items-center justify-end gap-1 px-1.5 py-1">
+							{resolvedWorkspaceId && (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									className="h-6 px-2 text-[10px]"
+									onClick={() => {
+										const jobs = actionChecks
+											.filter((c) => c.url)
+											.map((c) => ({
+												detailsUrl: c.url!,
+												name: c.name,
+												status: c.status,
+											}));
+										const failedIdx = jobs.findIndex(
+											(j) => j.status === "failure",
+										);
+										addActionLogsTab(
+											resolvedWorkspaceId,
+											jobs,
+											failedIdx >= 0 ? failedIdx : undefined,
+										);
+									}}
+								>
+									<LuExternalLink className="mr-1 size-3" />
+									View logs
+								</Button>
+							)}
 							<Button
 								type="button"
 								variant="outline"

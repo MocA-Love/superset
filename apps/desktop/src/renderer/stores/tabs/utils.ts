@@ -19,6 +19,8 @@ import {
 	type FileViewerMode,
 	type FileViewerState,
 	type GitGraphPaneState,
+	type ActionLogsJob,
+	type ActionLogsPaneState,
 } from "shared/tabs-types";
 import type {
 	AddChatTabOptions,
@@ -413,6 +415,41 @@ export const createDatabaseExplorerTabWithPane = (
 	const tab: Tab = {
 		id: tabId,
 		name: "Database Explorer",
+		workspaceId,
+		layout: pane.id,
+		createdAt: Date.now(),
+	};
+
+	return { tab, pane };
+};
+
+export const createActionLogsPane = (
+	tabId: string,
+	jobs: ActionLogsJob[],
+	initialJobIndex?: number,
+): Pane => {
+	const id = generateId("pane");
+	const actionLogs: ActionLogsPaneState = { jobs, initialJobIndex };
+	return {
+		id,
+		tabId,
+		type: "action-logs",
+		name: "Action Logs",
+		actionLogs,
+	};
+};
+
+export const createActionLogsTabWithPane = (
+	workspaceId: string,
+	jobs: ActionLogsJob[],
+	initialJobIndex?: number,
+): { tab: Tab; pane: Pane } => {
+	const tabId = generateId("tab");
+	const pane = createActionLogsPane(tabId, jobs, initialJobIndex);
+
+	const tab: Tab = {
+		id: tabId,
+		name: "Action Logs",
 		workspaceId,
 		layout: pane.id,
 		createdAt: Date.now(),

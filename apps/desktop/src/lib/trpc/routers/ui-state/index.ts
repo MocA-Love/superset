@@ -51,6 +51,7 @@ const paneSchema = z.object({
 		"devtools",
 		"git-graph",
 		"database-explorer",
+		"action-logs",
 	]),
 	name: z.string(),
 	isNew: z.boolean().optional(),
@@ -97,6 +98,18 @@ const paneSchema = z.object({
 	databaseExplorer: z
 		.object({
 			connectionId: z.string().nullable(),
+		})
+		.optional(),
+	actionLogs: z
+		.object({
+			jobs: z.array(
+				z.object({
+					detailsUrl: z.string(),
+					name: z.string(),
+					status: z.enum(["success", "failure", "pending", "skipped", "cancelled"]),
+				}),
+			),
+			initialJobIndex: z.number().optional(),
 		})
 		.optional(),
 	workspaceRun: z
