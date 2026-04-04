@@ -41,7 +41,7 @@ export function usePaneRegistry(
 				getIcon: () => <TerminalSquare className="size-4" />,
 				getTitle: () => "Terminal",
 				renderPane: (ctx: RendererContext<PaneViewerData>) => (
-					<TerminalPane paneId={ctx.pane.id} workspaceId={workspaceId} />
+					<TerminalPane ctx={ctx} workspaceId={workspaceId} />
 				),
 			},
 			browser: {
