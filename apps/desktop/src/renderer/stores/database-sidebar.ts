@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
+import { shallow } from "zustand/shallow";
 
 export interface SavedDatabaseConnection {
 	id: string;
@@ -524,20 +525,45 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 
 // ── Workspace-scoped selector hooks ──
 
+const EMPTY_CONNECTIONS: SavedDatabaseConnection[] = [];
+const EMPTY_HISTORY: SavedDatabaseQueryHistoryItem[] = [];
+
+function selectConnections(
+	state: DatabaseSidebarState,
+	workspaceId: string | undefined,
+): SavedDatabaseConnection[] {
+	if (!workspaceId) return EMPTY_CONNECTIONS;
+	const ws = state.workspaces[workspaceId];
+	const unassigned = state.workspaces._unassigned;
+	const wsConnections = ws?.connections ?? EMPTY_CONNECTIONS;
+	const unassignedConnections = unassigned?.connections ?? EMPTY_CONNECTIONS;
+	if (unassignedConnections.length === 0) return wsConnections;
+	const ids = new Set(wsConnections.map((c) => c.id));
+	return [
+		...wsConnections,
+		...unassignedConnections.filter((c) => !ids.has(c.id)),
+	];
+}
+
+function selectQueryHistory(
+	state: DatabaseSidebarState,
+	workspaceId: string | undefined,
+): SavedDatabaseQueryHistoryItem[] {
+	if (!workspaceId) return EMPTY_HISTORY;
+	const ws = state.workspaces[workspaceId];
+	const unassigned = state.workspaces._unassigned;
+	const wsHistory = ws?.queryHistory ?? EMPTY_HISTORY;
+	const unassignedHistory = unassigned?.queryHistory ?? EMPTY_HISTORY;
+	if (unassignedHistory.length === 0) return wsHistory;
+	const ids = new Set(wsHistory.map((h) => h.id));
+	return [...wsHistory, ...unassignedHistory.filter((h) => !ids.has(h.id))];
+}
+
 export function useDatabaseConnections(workspaceId: string | undefined) {
-	return useDatabaseSidebarStore((state) => {
-		if (!workspaceId) return [];
-		const ws = state.workspaces[workspaceId];
-		const unassigned = state.workspaces._unassigned;
-		const wsConnections = ws?.connections ?? [];
-		const unassignedConnections = unassigned?.connections ?? [];
-		// Merge workspace-specific and unassigned connections, deduping by id
-		const ids = new Set(wsConnections.map((c) => c.id));
-		return [
-			...wsConnections,
-			...unassignedConnections.filter((c) => !ids.has(c.id)),
-		];
-	});
+	return useDatabaseSidebarStore(
+		(state) => selectConnections(state, workspaceId),
+		shallow,
+	);
 }
 
 export function useDatabaseActiveConnectionId(workspaceId: string | undefined) {
@@ -552,13 +578,8 @@ export function useDatabaseActiveConnectionId(workspaceId: string | undefined) {
 }
 
 export function useDatabaseQueryHistory(workspaceId: string | undefined) {
-	return useDatabaseSidebarStore((state) => {
-		if (!workspaceId) return [];
-		const ws = state.workspaces[workspaceId];
-		const unassigned = state.workspaces._unassigned;
-		const wsHistory = ws?.queryHistory ?? [];
-		const unassignedHistory = unassigned?.queryHistory ?? [];
-		const ids = new Set(wsHistory.map((h) => h.id));
-		return [...wsHistory, ...unassignedHistory.filter((h) => !ids.has(h.id))];
-	});
+	return useDatabaseSidebarStore(
+		(state) => selectQueryHistory(state, workspaceId),
+		shallow,
+	);
 }
