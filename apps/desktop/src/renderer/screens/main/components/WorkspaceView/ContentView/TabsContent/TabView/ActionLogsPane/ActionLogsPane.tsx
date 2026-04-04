@@ -150,7 +150,7 @@ function JobSteps({
 			);
 			void trpcUtils.workspaces.getReviewStatus.invalidate();
 			void trpcUtils.workspaces.getJobLogs.invalidate();
-			void trpcUtils.workspaces.getJobStatuses.invalidate();
+			void trpcUtils.workspaces.getGitHubStatus.invalidate();
 		} catch {
 			toast.error("Failed to re-run jobs");
 		}
@@ -177,6 +177,7 @@ function JobSteps({
 		(sum, s) => sum + (s.durationSeconds ?? 0),
 		0,
 	);
+	// jobStatus is already in check format (success/failure/pending/etc) or job API format
 	const resolvedStatus =
 		liveJobStatus === "completed"
 			? liveJobConclusion === "success"
@@ -184,9 +185,9 @@ function JobSteps({
 				: liveJobConclusion === "cancelled"
 					? "cancelled"
 					: "failure"
-			: liveJobStatus === "in_progress"
+			: liveJobStatus === "in_progress" || liveJobStatus === "pending"
 				? "pending"
-				: "pending";
+				: (liveJobStatus as keyof typeof statusIcon);
 	const { icon: JobIcon, className: jobIconClass } =
 		statusIcon[resolvedStatus as keyof typeof statusIcon] ?? statusIcon.pending;
 
@@ -368,21 +369,13 @@ export function ActionLogsPane({
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 	const [showTimestamps, setShowTimestamps] = useState(false);
 
-	// Poll all job statuses in parallel for sidebar updates
-	const detailsUrls = jobs.map((j) => j.detailsUrl);
-	const { data: jobStatuses } = electronTrpc.workspaces.getJobStatuses.useQuery(
-		{ workspaceId, detailsUrls },
-		{
-			enabled: jobs.length > 0,
-			staleTime: 3_000,
-			refetchInterval: (query) => {
-				const data = query.state.data;
-				if (!data || data.length === 0) return 3_000;
-				const allDone = data.every((s) => s.status === "completed");
-				return allDone ? false : 3_000;
-			},
-		},
-	);
+	// Read check statuses from the shared getGitHubStatus cache (same source as Review tab)
+	const { data: githubStatus } =
+		electronTrpc.workspaces.getGitHubStatus.useQuery(
+			{ workspaceId },
+			{ staleTime: 3_000, refetchInterval: 3_000 },
+		);
+	const checks = githubStatus?.pr?.checks ?? [];
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -559,18 +552,9 @@ export function ActionLogsPane({
 							All jobs
 						</div>
 						{jobs.map((job, i) => {
-							const live = jobStatuses?.[i];
-							const displayStatus = live
-								? live.status === "completed"
-									? live.conclusion === "success"
-										? "success"
-										: live.conclusion === "cancelled"
-											? "cancelled"
-											: "failure"
-									: live.status === "in_progress"
-										? "pending"
-										: "pending"
-								: job.status;
+							// Match by URL to find live status from shared cache
+							const liveCheck = checks.find((c) => c.url === job.detailsUrl);
+							const displayStatus = liveCheck ? liveCheck.status : job.status;
 							const { icon: JobIcon, className: jobIconClass } =
 								statusIcon[displayStatus as keyof typeof statusIcon] ??
 								statusIcon.pending;
@@ -607,8 +591,11 @@ export function ActionLogsPane({
 								workspaceId={workspaceId}
 								detailsUrl={selectedJob.detailsUrl}
 								jobName={selectedJob.name}
-								jobStatus={jobStatuses?.[selectedIndex]?.status ?? "queued"}
-								jobConclusion={jobStatuses?.[selectedIndex]?.conclusion ?? null}
+								jobStatus={
+									checks.find((c) => c.url === selectedJob.detailsUrl)
+										?.status ?? selectedJob.status
+								}
+								jobConclusion={null}
 								showTimestamps={showTimestamps}
 								searchQuery={searchQuery}
 							/>

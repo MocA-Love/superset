@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import {
-	BrowserWindow,
+	type BrowserWindow,
 	clipboard,
 	Menu,
 	nativeTheme,
@@ -42,6 +42,12 @@ class BrowserManager extends EventEmitter {
 	private popupListeners = new Map<string, () => void>();
 	/** Track which pane is currently in HTML fullscreen */
 	private fullscreenPaneId: string | null = null;
+	/** Reference to the main BrowserWindow for fullscreen control */
+	private mainWindow: BrowserWindow | null = null;
+
+	setMainWindow(window: BrowserWindow): void {
+		this.mainWindow = window;
+	}
 
 	getFullscreenPaneId(): string | null {
 		return this.fullscreenPaneId;
@@ -226,9 +232,10 @@ class BrowserManager extends EventEmitter {
 	}
 
 	/**
-	 * Track HTML5 fullscreen enter/leave on webview content (e.g. YouTube
-	 * video fullscreen). Emits events so the renderer can overlay the
-	 * webview pane on top of the entire window.
+	 * Handle HTML5 fullscreen enter/leave on webview content (e.g. YouTube
+	 * video fullscreen). We disable window-level fullscreen so the content
+	 * stays in fullscreen mode within the webview pane (`:fullscreen` CSS
+	 * still matches in the guest), while the BrowserWindow stays normal.
 	 */
 	private setupFullscreenHandler(
 		paneId: string,
@@ -236,20 +243,21 @@ class BrowserManager extends EventEmitter {
 	): void {
 		const handleEnter = () => {
 			this.fullscreenPaneId = paneId;
-			this.emit("fullscreen-change", { paneId, isFullscreen: true });
-
-			// Electron makes the host BrowserWindow fullscreen when a webview
-			// enters HTML fullscreen. Immediately revert so the fullscreen
-			// stays contained within the pane.
-			const win = BrowserWindow.fromWebContents(wc.hostWebContents ?? wc);
-			if (win && !win.isDestroyed() && win.isFullScreen()) {
-				win.setFullScreen(false);
+			// Disable window fullscreen so Electron can't promote the webview's
+			// HTML fullscreen into an OS-level window fullscreen.
+			if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+				this.mainWindow.setFullScreenable(false);
 			}
+			this.emit("fullscreen-change", { paneId, isFullscreen: true });
 		};
 
 		const handleLeave = () => {
 			if (this.fullscreenPaneId === paneId) {
 				this.fullscreenPaneId = null;
+			}
+			// Re-enable window fullscreen for normal use (menu toggle, etc.)
+			if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+				this.mainWindow.setFullScreenable(true);
 			}
 			this.emit("fullscreen-change", { paneId, isFullscreen: false });
 		};

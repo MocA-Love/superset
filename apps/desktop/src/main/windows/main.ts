@@ -144,7 +144,6 @@ export async function MainWindow() {
 		alwaysOnTop: false,
 		autoHideMenuBar: true,
 		frame: false,
-		fullscreenable: false,
 		titleBarStyle: "hidden",
 		trafficLightPosition: { x: 16, y: 16 },
 		webPreferences: {
@@ -161,6 +160,7 @@ export async function MainWindow() {
 
 	currentWindow = window;
 	windowManager.register("main", window);
+	browserManager.setMainWindow(window);
 
 	// macOS Sequoia+: background throttling can corrupt GPU compositor layers
 	if (PLATFORM.IS_MAC) {
@@ -350,13 +350,20 @@ export async function MainWindow() {
 		console.error(`  Error:`, error);
 	});
 
-	// Unconditionally prevent the BrowserWindow from entering fullscreen.
-	// Webview HTML5 fullscreen (YouTube etc.) is handled within the pane
-	// by the renderer. Window-level fullscreen is not needed for this app.
+	// Prevent webview HTML5 fullscreen from making the BrowserWindow go
+	// fullscreen. The renderer handles it visually within the pane.
+	// We listen on every webview's webContents for the fullscreen request
+	// and prevent the default window-level behavior in browser-manager.
+	// As a safety net, if the window still enters fullscreen due to a
+	// webview, revert it immediately.
 	window.on("enter-full-screen", () => {
-		setImmediate(() => {
-			if (!window.isDestroyed()) window.setFullScreen(false);
-		});
+		// If any webview just entered HTML fullscreen, this window-level
+		// fullscreen was triggered by it — revert.
+		if (browserManager.getFullscreenPaneId()) {
+			setImmediate(() => {
+				if (!window.isDestroyed()) window.setFullScreen(false);
+			});
+		}
 	});
 
 	// Handle mouse back/forward buttons for webview panes (Windows/Linux).
