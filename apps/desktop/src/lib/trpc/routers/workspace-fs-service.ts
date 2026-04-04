@@ -19,12 +19,13 @@ const sharedHostServiceOptions = {
 	},
 	runRipgrep: async (
 		args: string[],
-		options: { cwd: string; maxBuffer: number },
+		options: { cwd: string; maxBuffer: number; signal?: AbortSignal },
 	) => {
 		const result = await execWithShellEnv("rg", args, {
 			cwd: options.cwd,
 			maxBuffer: options.maxBuffer,
 			windowsHide: true,
+			signal: options.signal,
 		});
 		return { stdout: result.stdout };
 	},
