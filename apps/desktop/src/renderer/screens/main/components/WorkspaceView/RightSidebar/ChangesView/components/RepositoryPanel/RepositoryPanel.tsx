@@ -1,6 +1,7 @@
 import { Avatar } from "@superset/ui/atoms/Avatar";
 import { Badge } from "@superset/ui/badge";
 import { Button } from "@superset/ui/button";
+import { Checkbox } from "@superset/ui/checkbox";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -16,6 +17,13 @@ import {
 } from "@superset/ui/command";
 import { Input } from "@superset/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@superset/ui/select";
 import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
@@ -200,11 +208,13 @@ function WorkflowRunCard({
 	tracked,
 	onOpenUrl,
 	onRemove,
+	onViewLogs,
 }: {
 	workspaceId: string;
 	tracked: TrackedWorkflowRun;
 	onOpenUrl: (url: string) => void;
 	onRemove: (workflowId: number) => void;
+	onViewLogs: (runId: number) => void;
 }) {
 	const { data: runs = [], isFetching } =
 		electronTrpc.workspaces.getGitHubWorkflowRuns.useQuery(
@@ -283,21 +293,40 @@ function WorkflowRunCard({
 							? "Waiting for GitHub to create the run..."
 							: "Looking for the triggered run..."}
 				</p>
-				{matchedRun?.url ? (
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						className="h-6 px-2 text-[10px]"
-						onClick={() => {
-							if (matchedRun.url) {
-								onOpenUrl(matchedRun.url);
-							}
-						}}
-					>
-						Open in GitHub
-					</Button>
-				) : null}
+				<div className="flex items-center gap-1">
+					{matchedRun?.id ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-6 px-2 text-[10px]"
+							onClick={() => {
+								if (matchedRun.id) {
+									onViewLogs(matchedRun.id);
+								}
+							}}
+						>
+							<LuWorkflow className="mr-1 size-3" />
+							View logs
+						</Button>
+					) : null}
+					{matchedRun?.url ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-6 px-2 text-[10px]"
+							onClick={() => {
+								if (matchedRun.url) {
+									onOpenUrl(matchedRun.url);
+								}
+							}}
+						>
+							<LuArrowUpRight className="mr-1 size-3" />
+							GitHub
+						</Button>
+					) : null}
+				</div>
 			</div>
 		</div>
 	);
@@ -307,6 +336,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((state) => state.addBrowserTab);
+	const addActionLogsTab = useTabsStore((state) => state.addActionLogsTab);
 	const [open, setOpen] = useState(false);
 	const [pullRequestsOpen, setPullRequestsOpen] = useState(true);
 	const [workflowsOpen, setWorkflowsOpen] = useState(true);
@@ -328,6 +358,12 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const [pendingWorkflowId, setPendingWorkflowId] = useState<number | null>(
 		null,
 	);
+	const [expandedWorkflowId, setExpandedWorkflowId] = useState<number | null>(
+		null,
+	);
+	const [workflowInputValues, setWorkflowInputValues] = useState<
+		Record<string, string>
+	>({});
 	const [trackedWorkflowRuns, setTrackedWorkflowRuns] = useState<
 		TrackedWorkflowRun[]
 	>([]);
@@ -544,6 +580,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	const handleRunWorkflow = async (
 		workflowId: number,
 		workflowName: string,
+		inputs?: Record<string, string>,
 	) => {
 		if (!workspaceId) {
 			return;
@@ -551,10 +588,13 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 
 		setPendingWorkflowId(workflowId);
 		try {
+			const filteredInputs =
+				inputs && Object.keys(inputs).length > 0 ? inputs : undefined;
 			const result = await dispatchWorkflowMutation.mutateAsync({
 				workspaceId,
 				workflowId,
 				ref: workflowRef.trim() || undefined,
+				inputs: filteredInputs,
 			});
 			setTrackedWorkflowRuns((current) =>
 				[
@@ -578,6 +618,30 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 			setPendingWorkflowId((current) =>
 				current === workflowId ? null : current,
 			);
+		}
+	};
+
+	const handleViewWorkflowLogs = async (runId: number) => {
+		if (!workspaceId) {
+			return;
+		}
+		try {
+			const jobs = await trpcUtils.workspaces.getWorkflowRunJobs.fetch({
+				workspaceId,
+				runId,
+			});
+			if (jobs.length === 0) {
+				toast.error("No jobs found for this workflow run");
+				return;
+			}
+			const failedIdx = jobs.findIndex((j) => j.status === "failure");
+			addActionLogsTab(
+				workspaceId,
+				jobs,
+				failedIdx >= 0 ? failedIdx : undefined,
+			);
+		} catch {
+			toast.error("Failed to fetch workflow jobs");
 		}
 	};
 
@@ -1109,6 +1173,9 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 															),
 														);
 													}}
+													onViewLogs={(runId) => {
+														void handleViewWorkflowLogs(runId);
+													}}
 												/>
 											))}
 										</div>
@@ -1124,44 +1191,200 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 										</p>
 									) : (
 										<div className="space-y-1">
-											{repositoryOverview.workflows.map((workflow) => (
-												<div
-													key={workflow.id}
-													className="flex items-center justify-between gap-2 rounded-sm border border-border/50 px-2 py-1.5"
-												>
-													<div className="min-w-0 flex-1">
-														<p className="truncate text-xs font-medium text-foreground">
-															{workflow.name}
-														</p>
-														<p className="truncate text-[11px] text-muted-foreground">
-															{workflow.path || workflow.state}
-														</p>
-													</div>
-													<Button
-														type="button"
-														variant="outline"
-														size="sm"
-														className="h-7 shrink-0 px-2 text-[11px]"
-														onClick={() => {
-															void handleRunWorkflow(
-																workflow.id,
-																workflow.name,
-															);
-														}}
-														disabled={
-															pendingWorkflowId === workflow.id ||
-															!workflowRef.trim()
-														}
+											{repositoryOverview.workflows.map((workflow) => {
+												const hasInputs =
+													workflow.inputs && workflow.inputs.length > 0;
+												const isExpanded = expandedWorkflowId === workflow.id;
+
+												return (
+													<div
+														key={workflow.id}
+														className="rounded-sm border border-border/50"
 													>
-														{pendingWorkflowId === workflow.id ? (
-															<LuLoaderCircle className="mr-1 size-3 animate-spin" />
-														) : (
-															<LuPlay className="mr-1 size-3" />
-														)}
-														Run
-													</Button>
-												</div>
-											))}
+														<div className="flex items-center justify-between gap-2 px-2 py-1.5">
+															<div className="min-w-0 flex-1">
+																<p className="truncate text-xs font-medium text-foreground">
+																	{workflow.name}
+																</p>
+																<p className="truncate text-[11px] text-muted-foreground">
+																	{workflow.path || workflow.state}
+																</p>
+															</div>
+															<div className="flex items-center gap-1">
+																{hasInputs ? (
+																	<Button
+																		type="button"
+																		variant="outline"
+																		size="sm"
+																		className="h-7 shrink-0 px-2 text-[11px]"
+																		onClick={() => {
+																			if (isExpanded) {
+																				setExpandedWorkflowId(null);
+																				setWorkflowInputValues({});
+																			} else {
+																				const defaults: Record<string, string> =
+																					{};
+																				for (const input of workflow.inputs) {
+																					defaults[input.name] =
+																						input.default ?? "";
+																				}
+																				setWorkflowInputValues(defaults);
+																				setExpandedWorkflowId(workflow.id);
+																			}
+																		}}
+																	>
+																		<LuChevronDown
+																			className={cn(
+																				"mr-1 size-3 transition-transform duration-150",
+																				isExpanded && "rotate-180",
+																			)}
+																		/>
+																		Conf
+																	</Button>
+																) : null}
+																<Button
+																	type="button"
+																	variant="outline"
+																	size="sm"
+																	className="h-7 shrink-0 px-2 text-[11px]"
+																	onClick={() => {
+																		void handleRunWorkflow(
+																			workflow.id,
+																			workflow.name,
+																			hasInputs
+																				? workflowInputValues
+																				: undefined,
+																		);
+																		if (hasInputs) {
+																			setExpandedWorkflowId(null);
+																			setWorkflowInputValues({});
+																		}
+																	}}
+																	disabled={
+																		pendingWorkflowId === workflow.id ||
+																		!workflowRef.trim()
+																	}
+																>
+																	{pendingWorkflowId === workflow.id ? (
+																		<LuLoaderCircle className="mr-1 size-3 animate-spin" />
+																	) : (
+																		<LuPlay className="mr-1 size-3" />
+																	)}
+																	Run
+																</Button>
+															</div>
+														</div>
+														{hasInputs && isExpanded ? (
+															<div className="space-y-2 border-t border-border/50 px-2 py-2">
+																{workflow.inputs.map((input) => {
+																	const value =
+																		workflowInputValues[input.name] ??
+																		input.default ??
+																		"";
+
+																	if (input.type === "choice") {
+																		return (
+																			<div
+																				key={input.name}
+																				className="space-y-1"
+																			>
+																				<span className="text-[11px] text-muted-foreground">
+																					{input.description || input.name}
+																					{input.required ? (
+																						<span className="ml-0.5 text-destructive">
+																							*
+																						</span>
+																					) : null}
+																				</span>
+																				<Select
+																					value={value}
+																					onValueChange={(newValue) => {
+																						setWorkflowInputValues((prev) => ({
+																							...prev,
+																							[input.name]: newValue,
+																						}));
+																					}}
+																				>
+																					<SelectTrigger className="h-7 text-xs">
+																						<SelectValue />
+																					</SelectTrigger>
+																					<SelectContent>
+																						{input.options.map((option) => (
+																							<SelectItem
+																								key={option}
+																								value={option}
+																							>
+																								{option}
+																							</SelectItem>
+																						))}
+																					</SelectContent>
+																				</Select>
+																			</div>
+																		);
+																	}
+
+																	if (input.type === "boolean") {
+																		return (
+																			<div
+																				key={input.name}
+																				className="flex items-center gap-2"
+																			>
+																				<Checkbox
+																					id={`wf-input-${workflow.id}-${input.name}`}
+																					checked={value === "true"}
+																					onCheckedChange={(checked) => {
+																						setWorkflowInputValues((prev) => ({
+																							...prev,
+																							[input.name]: String(checked),
+																						}));
+																					}}
+																				/>
+																				<label
+																					htmlFor={`wf-input-${workflow.id}-${input.name}`}
+																					className="text-[11px] text-muted-foreground"
+																				>
+																					{input.description || input.name}
+																				</label>
+																			</div>
+																		);
+																	}
+
+																	return (
+																		<div key={input.name} className="space-y-1">
+																			<span className="text-[11px] text-muted-foreground">
+																				{input.description || input.name}
+																				{input.required ? (
+																					<span className="ml-0.5 text-destructive">
+																						*
+																					</span>
+																				) : null}
+																			</span>
+																			<Input
+																				type={
+																					input.type === "number"
+																						? "number"
+																						: "text"
+																				}
+																				value={value}
+																				onChange={(event) => {
+																					setWorkflowInputValues((prev) => ({
+																						...prev,
+																						[input.name]: event.target.value,
+																					}));
+																				}}
+																				placeholder={
+																					input.default || input.name
+																				}
+																				className="h-7 text-xs"
+																			/>
+																		</div>
+																	);
+																})}
+															</div>
+														) : null}
+													</div>
+												);
+											})}
 										</div>
 									)}
 								</CollapsibleContent>
