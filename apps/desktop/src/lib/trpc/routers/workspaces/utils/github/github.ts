@@ -515,16 +515,12 @@ export async function fetchStructuredJobLogs(
 	}
 
 	try {
-		const [jobResult, logsResult] = await Promise.all([
-			execWithShellEnv("gh", ["api", `repos/${nwo}/actions/jobs/${jobId}`], {
-				cwd: worktreePath,
-			}),
-			execWithShellEnv(
-				"gh",
-				["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
-				{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
-			),
-		]);
+		// Always fetch job metadata; logs may 404 for in-progress jobs
+		const jobResult = await execWithShellEnv(
+			"gh",
+			["api", `repos/${nwo}/actions/jobs/${jobId}`],
+			{ cwd: worktreePath },
+		);
 
 		const raw: unknown = JSON.parse(jobResult.stdout.trim());
 		const result = GHJobResponseSchema.safeParse(raw);
@@ -533,7 +529,22 @@ export async function fetchStructuredJobLogs(
 		}
 
 		const steps = result.data.steps;
-		const rawLogs = logsResult.stdout;
+		const jobCompleted = result.data.status === "completed";
+
+		// Only fetch logs if job is completed (API returns 404 for in-progress)
+		let rawLogs = "";
+		if (jobCompleted) {
+			try {
+				const logsResult = await execWithShellEnv(
+					"gh",
+					["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
+					{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
+				);
+				rawLogs = logsResult.stdout;
+			} catch {
+				// Logs not yet available
+			}
+		}
 
 		// Parse raw logs into per-step sections.
 		// GitHub log format: each line starts with a timestamp like "2024-01-01T00:00:00.0000000Z "

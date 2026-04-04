@@ -115,7 +115,16 @@ function JobSteps({
 	const { data: steps, isLoading } =
 		electronTrpc.workspaces.getJobLogs.useQuery(
 			{ workspaceId, detailsUrl },
-			{ staleTime: 30_000 },
+			{
+				staleTime: 3_000,
+				refetchInterval: (query) => {
+					// Poll every 3s while any step is not completed
+					const data = query.state.data;
+					if (!data || data.length === 0) return 3_000;
+					const allDone = data.every((s) => s.status === "completed");
+					return allDone ? false : 3_000;
+				},
+			},
 		);
 
 	const toggleStep = (n: number) => {
@@ -136,6 +145,7 @@ function JobSteps({
 				`Re-running ${mode === "failed" ? "failed" : "all"} jobs (${result.rerunCount})`,
 			);
 			void trpcUtils.workspaces.getReviewStatus.invalidate();
+			void trpcUtils.workspaces.getJobLogs.invalidate();
 		} catch {
 			toast.error("Failed to re-run jobs");
 		}
