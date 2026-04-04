@@ -364,7 +364,7 @@ export function ActionLogsPane({
 	onPopOut,
 }: ActionLogsPaneProps) {
 	const pane = useTabsStore((s) => s.panes[paneId]);
-	const jobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
+	const initialJobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
 	const initialIndex = pane?.actionLogs?.initialJobIndex ?? 0;
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 	const [showTimestamps, setShowTimestamps] = useState(false);
@@ -376,6 +376,20 @@ export function ActionLogsPane({
 			{ staleTime: 3_000, refetchInterval: 3_000 },
 		);
 	const checks = githubStatus?.pr?.checks ?? [];
+
+	// Build live job list: match by name to track across re-runs (URLs change on re-run)
+	const jobs: ActionLogsJob[] = initialJobs.map((job) => {
+		const liveCheck = checks.find((c) => c.name === job.name);
+		if (liveCheck) {
+			return {
+				detailsUrl: liveCheck.url ?? job.detailsUrl,
+				name: liveCheck.name ?? job.name,
+				status: liveCheck.status,
+			};
+		}
+		return job;
+	});
+
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -385,10 +399,6 @@ export function ActionLogsPane({
 
 	const browserUrl = selectedJob?.detailsUrl?.match(
 		/(https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+\/job\/\d+)/,
-	)?.[1];
-
-	const _runUrl = selectedJob?.detailsUrl?.match(
-		/(https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+)/,
 	)?.[1];
 
 	const handleResizeStart = useCallback(
@@ -552,11 +562,8 @@ export function ActionLogsPane({
 							All jobs
 						</div>
 						{jobs.map((job, i) => {
-							// Match by URL to find live status from shared cache
-							const liveCheck = checks.find((c) => c.url === job.detailsUrl);
-							const displayStatus = liveCheck ? liveCheck.status : job.status;
 							const { icon: JobIcon, className: jobIconClass } =
-								statusIcon[displayStatus as keyof typeof statusIcon] ??
+								statusIcon[job.status as keyof typeof statusIcon] ??
 								statusIcon.pending;
 							return (
 								<button
@@ -591,10 +598,7 @@ export function ActionLogsPane({
 								workspaceId={workspaceId}
 								detailsUrl={selectedJob.detailsUrl}
 								jobName={selectedJob.name}
-								jobStatus={
-									checks.find((c) => c.url === selectedJob.detailsUrl)
-										?.status ?? selectedJob.status
-								}
+								jobStatus={selectedJob.status}
 								jobConclusion={null}
 								showTimestamps={showTimestamps}
 								searchQuery={searchQuery}
