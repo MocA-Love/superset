@@ -34,6 +34,7 @@ import {
 	getRepoContext,
 	type PullRequestCommentsTarget,
 } from "../utils/github";
+import { githubSyncService } from "../utils/github/github-sync-service";
 import { GHIdentityCandidatesResponseSchema } from "../utils/github/types";
 import { execWithShellEnv } from "../utils/shell-env";
 
@@ -1202,6 +1203,13 @@ async function getPullRequestIdentityCandidates({
 	}));
 }
 
+// Initialize the SyncService with fetch dependencies (idempotent)
+githubSyncService.initialize({
+	fetchPRStatus: fetchGitHubPRStatus,
+	fetchPRComments: ({ worktreePath }) =>
+		fetchGitHubPRComments({ worktreePath }),
+});
+
 export const createGitStatusProcedures = () => {
 	return router({
 		refreshGitStatus: publicProcedure
@@ -1315,6 +1323,11 @@ export const createGitStatusProcedures = () => {
 
 				if (input.forceFresh) {
 					clearGitHubCachesForWorktree(repoPath);
+				}
+
+				// Register workspace with SyncService for proactive cache warming
+				if (!githubSyncService.isRegistered(repoPath)) {
+					githubSyncService.registerWorkspace(repoPath);
 				}
 
 				const freshStatus = await fetchGitHubPRStatus(repoPath);

@@ -9,12 +9,19 @@ import { execWithShellEnv } from "../shell-env";
 import { parseUpstreamRef } from "../upstream-ref";
 import {
 	clearGitHubCachesForWorktree,
+	getCachedGitHubStatus,
 	getCachedPullRequestCommentsState,
 	makePullRequestCommentsCacheKey,
 	readCachedGitHubStatus,
 	readCachedPullRequestComments,
 } from "./cache";
 import { fetchPullRequestComments, resolveReviewThread } from "./comments";
+import {
+	isRateLimited,
+	isSecondaryRateLimitError,
+	onRateLimitHit,
+	onRateLimitSuccess,
+} from "./github-rate-limiter";
 import {
 	canAttachPullRequestToWorkspace,
 	type GitRemoteInfo,
@@ -246,9 +253,27 @@ async function refreshGitHubPRComments({
 export async function fetchGitHubPRStatus(
 	worktreePath: string,
 ): Promise<GitHubStatus | null> {
+	if (isRateLimited()) {
+		// When rate limited, return stale cache or null — never throw,
+		// and never overwrite stale cache with null
+		return getCachedGitHubStatus(worktreePath);
+	}
 	return readCachedGitHubStatus(worktreePath, () =>
-		refreshGitHubPRStatus(worktreePath),
+		rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
 	);
+}
+
+async function rateLimitedRefresh<T>(fn: () => Promise<T>): Promise<T> {
+	try {
+		const result = await fn();
+		onRateLimitSuccess();
+		return result;
+	} catch (error) {
+		if (isSecondaryRateLimitError(error)) {
+			onRateLimitHit();
+		}
+		throw error;
+	}
 }
 
 export async function fetchGitHubPRComments({
@@ -258,6 +283,9 @@ export async function fetchGitHubPRComments({
 	worktreePath: string;
 	pullRequest?: PullRequestCommentsTarget | null;
 }): Promise<PullRequestComment[]> {
+	if (isRateLimited()) {
+		return [];
+	}
 	try {
 		const pullRequestTarget =
 			pullRequest ?? (await resolvePullRequestCommentsTarget(worktreePath));
@@ -278,11 +306,13 @@ export async function fetchGitHubPRComments({
 		});
 		try {
 			return await readCachedPullRequestComments(cacheKey, () =>
-				refreshGitHubPRComments({
-					worktreePath,
-					repoNameWithOwner,
-					pullRequestNumber: pullRequestTarget.prNumber,
-				}),
+				rateLimitedRefresh(() =>
+					refreshGitHubPRComments({
+						worktreePath,
+						repoNameWithOwner,
+						pullRequestNumber: pullRequestTarget.prNumber,
+					}),
+				),
 			);
 		} catch (error) {
 			const cached = getCachedPullRequestCommentsState(cacheKey);

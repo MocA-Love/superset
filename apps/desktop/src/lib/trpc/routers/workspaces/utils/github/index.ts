@@ -8,6 +8,8 @@ export {
 	fetchStructuredJobLogs,
 	resolveReviewThread,
 } from "./github";
+export { isRateLimited } from "./github-rate-limiter";
+export { githubSyncService } from "./github-sync-service";
 export { getPRForBranch } from "./pr-resolution";
 export {
 	extractNwoFromUrl,
