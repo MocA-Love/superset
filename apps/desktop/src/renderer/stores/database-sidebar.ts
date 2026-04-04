@@ -29,113 +29,187 @@ export interface SavedDatabaseQueryHistoryItem {
 	executedAt: number;
 }
 
-interface DatabaseSidebarState {
+type ConnectionInput =
+	| {
+			label: string;
+			group?: string;
+			source?: "manual";
+			dialect: "sqlite";
+			databasePath: string;
+	  }
+	| {
+			label: string;
+			group?: string;
+			source: "workspace-config";
+			dialect: "sqlite";
+			databasePath: string;
+			workspacePath: string;
+			workspaceDefinitionId: string;
+	  }
+	| {
+			label: string;
+			group?: string;
+			source?: "manual";
+			dialect: "postgres";
+			connectionStringId: string;
+	  }
+	| {
+			label: string;
+			group?: string;
+			dialect: "postgres";
+			source: "workspace-config";
+			workspacePath: string;
+			workspaceDefinitionId: string;
+			host: string;
+			port: number;
+			databaseName: string;
+			ssl: boolean;
+			usernameHint?: string;
+	  };
+
+type ConnectionUpdateInput =
+	| {
+			id: string;
+			label: string;
+			group?: string;
+			source?: "manual";
+			dialect: "sqlite";
+			databasePath: string;
+	  }
+	| {
+			id: string;
+			label: string;
+			group?: string;
+			source: "workspace-config";
+			dialect: "sqlite";
+			databasePath: string;
+			workspacePath: string;
+			workspaceDefinitionId: string;
+	  }
+	| {
+			id: string;
+			label: string;
+			group?: string;
+			source?: "manual";
+			dialect: "postgres";
+			connectionStringId: string;
+			_pendingConnectionString?: undefined;
+	  }
+	| {
+			id: string;
+			label: string;
+			group?: string;
+			source: "workspace-config";
+			dialect: "postgres";
+			workspacePath: string;
+			workspaceDefinitionId: string;
+			host: string;
+			port: number;
+			databaseName: string;
+			ssl: boolean;
+			usernameHint?: string;
+	  };
+
+interface WorkspaceDatabaseState {
 	connections: SavedDatabaseConnection[];
 	queryHistory: SavedDatabaseQueryHistoryItem[];
 	activeConnectionId: string | null;
+}
+
+const emptyWorkspaceState: WorkspaceDatabaseState = {
+	connections: [],
+	queryHistory: [],
+	activeConnectionId: null,
+};
+
+interface DatabaseSidebarState {
+	workspaces: Record<string, WorkspaceDatabaseState>;
 	addConnection: (
-		input:
-			| {
-					label: string;
-					group?: string;
-					source?: "manual";
-					dialect: "sqlite";
-					databasePath: string;
-			  }
-			| {
-					label: string;
-					group?: string;
-					source: "workspace-config";
-					dialect: "sqlite";
-					databasePath: string;
-					workspacePath: string;
-					workspaceDefinitionId: string;
-			  }
-			| {
-					label: string;
-					group?: string;
-					source?: "manual";
-					dialect: "postgres";
-					connectionStringId: string;
-			  }
-			| {
-					label: string;
-					group?: string;
-					dialect: "postgres";
-					source: "workspace-config";
-					workspacePath: string;
-					workspaceDefinitionId: string;
-					host: string;
-					port: number;
-					databaseName: string;
-					ssl: boolean;
-					usernameHint?: string;
-			  },
+		workspaceId: string,
+		input: ConnectionInput,
 	) => SavedDatabaseConnection;
 	updateConnection: (
-		input:
-			| {
-					id: string;
-					label: string;
-					group?: string;
-					source?: "manual";
-					dialect: "sqlite";
-					databasePath: string;
-			  }
-			| {
-					id: string;
-					label: string;
-					group?: string;
-					source: "workspace-config";
-					dialect: "sqlite";
-					databasePath: string;
-					workspacePath: string;
-					workspaceDefinitionId: string;
-			  }
-			| {
-					id: string;
-					label: string;
-					group?: string;
-					source?: "manual";
-					dialect: "postgres";
-					connectionStringId: string;
-					_pendingConnectionString?: undefined;
-			  }
-			| {
-					id: string;
-					label: string;
-					group?: string;
-					source: "workspace-config";
-					dialect: "postgres";
-					workspacePath: string;
-					workspaceDefinitionId: string;
-					host: string;
-					port: number;
-					databaseName: string;
-					ssl: boolean;
-					usernameHint?: string;
-			  },
+		workspaceId: string,
+		input: ConnectionUpdateInput,
 	) => SavedDatabaseConnection | null;
-	removeConnection: (id: string) => void;
-	setActiveConnectionId: (id: string | null) => void;
-	addQueryHistoryItem: (input: {
-		connectionId: string;
-		sql: string;
-	}) => SavedDatabaseQueryHistoryItem;
-	removeQueryHistoryItem: (id: string) => void;
-	clearQueryHistoryForConnection: (connectionId: string) => void;
+	removeConnection: (workspaceId: string, id: string) => void;
+	setActiveConnectionId: (workspaceId: string, id: string | null) => void;
+	addQueryHistoryItem: (
+		workspaceId: string,
+		input: {
+			connectionId: string;
+			sql: string;
+		},
+	) => SavedDatabaseQueryHistoryItem;
+	removeQueryHistoryItem: (workspaceId: string, id: string) => void;
+	clearQueryHistoryForConnection: (
+		workspaceId: string,
+		connectionId: string,
+	) => void;
+}
+
+function getWorkspace(
+	state: DatabaseSidebarState,
+	workspaceId: string,
+): WorkspaceDatabaseState {
+	return state.workspaces[workspaceId] ?? emptyWorkspaceState;
+}
+
+function buildConnection(input: ConnectionInput): SavedDatabaseConnection {
+	return {
+		id: crypto.randomUUID(),
+		label: input.label,
+		group: input.group,
+		dialect: input.dialect,
+		source: input.source ?? "manual",
+		databasePath: input.dialect === "sqlite" ? input.databasePath : undefined,
+		connectionStringId:
+			input.dialect === "postgres" && input.source !== "workspace-config"
+				? input.connectionStringId
+				: undefined,
+		workspacePath:
+			input.source === "workspace-config" &&
+			(input.dialect === "sqlite" || input.dialect === "postgres")
+				? input.workspacePath
+				: undefined,
+		workspaceDefinitionId:
+			input.source === "workspace-config" &&
+			(input.dialect === "sqlite" || input.dialect === "postgres")
+				? input.workspaceDefinitionId
+				: undefined,
+		host:
+			input.dialect === "postgres" && input.source === "workspace-config"
+				? input.host
+				: undefined,
+		port:
+			input.dialect === "postgres" && input.source === "workspace-config"
+				? input.port
+				: undefined,
+		databaseName:
+			input.dialect === "postgres" && input.source === "workspace-config"
+				? input.databaseName
+				: undefined,
+		ssl:
+			input.dialect === "postgres" && input.source === "workspace-config"
+				? input.ssl
+				: undefined,
+		usernameHint:
+			input.dialect === "postgres" && input.source === "workspace-config"
+				? input.usernameHint
+				: undefined,
+		createdAt: Date.now(),
+	};
 }
 
 export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 	devtools(
 		persist(
 			(set, get) => ({
-				connections: [],
-				queryHistory: [],
-				activeConnectionId: null,
+				workspaces: {},
 
-				addConnection: (input) => {
-					const existingConnection = get().connections.find((connection) => {
+				addConnection: (workspaceId, input) => {
+					const ws = getWorkspace(get(), workspaceId);
+					const existingConnection = ws.connections.find((connection) => {
 						if (connection.dialect !== input.dialect) {
 							return false;
 						}
@@ -164,71 +238,40 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						return connection.connectionStringId === input.connectionStringId;
 					});
 					if (existingConnection) {
-						set({ activeConnectionId: existingConnection.id });
+						set((state) => ({
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...getWorkspace(state, workspaceId),
+									activeConnectionId: existingConnection.id,
+								},
+							},
+						}));
 						return existingConnection;
 					}
 
-					const connection: SavedDatabaseConnection = {
-						id: crypto.randomUUID(),
-						label: input.label,
-						group: input.group,
-						dialect: input.dialect,
-						source: input.source ?? "manual",
-						databasePath:
-							input.dialect === "sqlite" ? input.databasePath : undefined,
-						connectionStringId:
-							input.dialect === "postgres" &&
-							input.source !== "workspace-config"
-								? input.connectionStringId
-								: undefined,
-						workspacePath:
-							input.source === "workspace-config" &&
-							(input.dialect === "sqlite" || input.dialect === "postgres")
-								? input.workspacePath
-								: undefined,
-						workspaceDefinitionId:
-							input.source === "workspace-config" &&
-							(input.dialect === "sqlite" || input.dialect === "postgres")
-								? input.workspaceDefinitionId
-								: undefined,
-						host:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
-								? input.host
-								: undefined,
-						port:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
-								? input.port
-								: undefined,
-						databaseName:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
-								? input.databaseName
-								: undefined,
-						ssl:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
-								? input.ssl
-								: undefined,
-						usernameHint:
-							input.dialect === "postgres" &&
-							input.source === "workspace-config"
-								? input.usernameHint
-								: undefined,
-						createdAt: Date.now(),
-					};
+					const connection = buildConnection(input);
 
-					set((state) => ({
-						connections: [connection, ...state.connections],
-						activeConnectionId: connection.id,
-					}));
+					set((state) => {
+						const current = getWorkspace(state, workspaceId);
+						return {
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...current,
+									connections: [connection, ...current.connections],
+									activeConnectionId: connection.id,
+								},
+							},
+						};
+					});
 
 					return connection;
 				},
 
-				updateConnection: (input) => {
-					const currentConnection = get().connections.find(
+				updateConnection: (workspaceId, input) => {
+					const ws = getWorkspace(get(), workspaceId);
+					const currentConnection = ws.connections.find(
 						(connection) => connection.id === input.id,
 					);
 					if (!currentConnection) {
@@ -281,43 +324,66 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 							input.source === "workspace-config"
 								? input.usernameHint
 								: undefined,
-						// Always clear migration state on any update
 						_pendingConnectionString: undefined,
 					};
 
-					set((state) => ({
-						connections: state.connections.map((connection) =>
-							connection.id === input.id ? updatedConnection : connection,
-						),
-						activeConnectionId: input.id,
-					}));
+					set((state) => {
+						const current = getWorkspace(state, workspaceId);
+						return {
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...current,
+									connections: current.connections.map((connection) =>
+										connection.id === input.id ? updatedConnection : connection,
+									),
+									activeConnectionId: input.id,
+								},
+							},
+						};
+					});
 
 					return updatedConnection;
 				},
 
-				removeConnection: (id) => {
+				removeConnection: (workspaceId, id) => {
 					set((state) => {
-						const nextConnections = state.connections.filter(
+						const current = getWorkspace(state, workspaceId);
+						const nextConnections = current.connections.filter(
 							(connection) => connection.id !== id,
 						);
 						return {
-							connections: nextConnections,
-							queryHistory: state.queryHistory.filter(
-								(item) => item.connectionId !== id,
-							),
-							activeConnectionId:
-								state.activeConnectionId === id
-									? (nextConnections[0]?.id ?? null)
-									: state.activeConnectionId,
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...current,
+									connections: nextConnections,
+									queryHistory: current.queryHistory.filter(
+										(item) => item.connectionId !== id,
+									),
+									activeConnectionId:
+										current.activeConnectionId === id
+											? (nextConnections[0]?.id ?? null)
+											: current.activeConnectionId,
+								},
+							},
 						};
 					});
 				},
 
-				setActiveConnectionId: (id) => {
-					set({ activeConnectionId: id });
+				setActiveConnectionId: (workspaceId, id) => {
+					set((state) => ({
+						workspaces: {
+							...state.workspaces,
+							[workspaceId]: {
+								...getWorkspace(state, workspaceId),
+								activeConnectionId: id,
+							},
+						},
+					}));
 				},
 
-				addQueryHistoryItem: ({ connectionId, sql }) => {
+				addQueryHistoryItem: (workspaceId, { connectionId, sql }) => {
 					const normalizedSql = sql.trim();
 					const item: SavedDatabaseQueryHistoryItem = {
 						id: crypto.randomUUID(),
@@ -327,7 +393,8 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 					};
 
 					set((state) => {
-						const deduped = state.queryHistory.filter(
+						const current = getWorkspace(state, workspaceId);
+						const deduped = current.queryHistory.filter(
 							(entry) =>
 								!(
 									entry.connectionId === connectionId &&
@@ -336,80 +403,162 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						);
 						const nextHistory = [item, ...deduped].slice(0, 100);
 						return {
-							queryHistory: nextHistory,
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...current,
+									queryHistory: nextHistory,
+								},
+							},
 						};
 					});
 
 					return item;
 				},
 
-				removeQueryHistoryItem: (id) => {
-					set((state) => ({
-						queryHistory: state.queryHistory.filter((item) => item.id !== id),
-					}));
+				removeQueryHistoryItem: (workspaceId, id) => {
+					set((state) => {
+						const current = getWorkspace(state, workspaceId);
+						return {
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...current,
+									queryHistory: current.queryHistory.filter(
+										(item) => item.id !== id,
+									),
+								},
+							},
+						};
+					});
 				},
 
-				clearQueryHistoryForConnection: (connectionId) => {
-					set((state) => ({
-						queryHistory: state.queryHistory.filter(
-							(item) => item.connectionId !== connectionId,
-						),
-					}));
+				clearQueryHistoryForConnection: (workspaceId, connectionId) => {
+					set((state) => {
+						const current = getWorkspace(state, workspaceId);
+						return {
+							workspaces: {
+								...state.workspaces,
+								[workspaceId]: {
+									...current,
+									queryHistory: current.queryHistory.filter(
+										(item) => item.connectionId !== connectionId,
+									),
+								},
+							},
+						};
+					});
 				},
 			}),
 			{
 				name: "database-sidebar-store",
-				version: 5,
-				migrate: (persistedState) => {
-					const state = persistedState as {
-						connections?: Array<{
-							id: string;
-							label: string;
-							group?: string;
-							databasePath?: string;
-							dialect?: "sqlite" | "postgres";
-							source?: "manual" | "workspace-config";
-							connectionString?: string;
-							connectionStringId?: string;
-							workspacePath?: string;
-							workspaceDefinitionId?: string;
-							host?: string;
-							port?: number;
-							databaseName?: string;
-							ssl?: boolean;
-							usernameHint?: string;
-							createdAt: number;
-							_pendingConnectionString?: string;
-						}>;
-						queryHistory?: SavedDatabaseQueryHistoryItem[];
-						activeConnectionId?: string | null;
-					};
+				version: 6,
+				migrate: (persistedState, version) => {
+					if (version < 6) {
+						// v5 → v6: migrate flat state to per-workspace structure
+						const old = persistedState as {
+							connections?: Array<{
+								id: string;
+								label: string;
+								group?: string;
+								databasePath?: string;
+								dialect?: "sqlite" | "postgres";
+								source?: "manual" | "workspace-config";
+								connectionString?: string;
+								connectionStringId?: string;
+								workspacePath?: string;
+								workspaceDefinitionId?: string;
+								host?: string;
+								port?: number;
+								databaseName?: string;
+								ssl?: boolean;
+								usernameHint?: string;
+								createdAt: number;
+								_pendingConnectionString?: string;
+							}>;
+							queryHistory?: SavedDatabaseQueryHistoryItem[];
+							activeConnectionId?: string | null;
+						};
 
-					return {
-						connections: (state.connections ?? []).map((connection) => {
-							const base = {
-								...connection,
-								dialect: connection.dialect ?? "sqlite",
-								source: connection.source ?? "manual",
-							};
-							// version 4→5 migration: move connectionString to encrypted store
-							if (base.connectionString && !base.connectionStringId) {
-								const newId = crypto.randomUUID();
-								return {
-									...base,
-									connectionStringId: newId,
-									connectionString: undefined,
-									_pendingConnectionString: base.connectionString,
+						const migratedConnections = (old.connections ?? []).map(
+							(connection) => {
+								const base = {
+									...connection,
+									dialect: connection.dialect ?? ("sqlite" as const),
+									source: connection.source ?? ("manual" as const),
 								};
-							}
-							return base;
-						}),
-						queryHistory: state.queryHistory ?? [],
-						activeConnectionId: state.activeConnectionId ?? null,
-					} as DatabaseSidebarState;
+								if (base.connectionString && !base.connectionStringId) {
+									const newId = crypto.randomUUID();
+									return {
+										...base,
+										connectionStringId: newId,
+										connectionString: undefined,
+										_pendingConnectionString: base.connectionString,
+									};
+								}
+								return base;
+							},
+						);
+
+						// Put all existing data under a special "_unassigned" key.
+						// They will be visible in all workspaces until the user
+						// re-adds them to specific workspaces.
+						return {
+							workspaces: {
+								_unassigned: {
+									connections: migratedConnections as SavedDatabaseConnection[],
+									queryHistory: old.queryHistory ?? [],
+									activeConnectionId: old.activeConnectionId ?? null,
+								},
+							},
+						} as unknown as DatabaseSidebarState;
+					}
+
+					return persistedState as DatabaseSidebarState;
 				},
 			},
 		),
 		{ name: "DatabaseSidebarStore" },
 	),
 );
+
+// ── Workspace-scoped selector hooks ──
+
+export function useDatabaseConnections(workspaceId: string | undefined) {
+	return useDatabaseSidebarStore((state) => {
+		if (!workspaceId) return [];
+		const ws = state.workspaces[workspaceId];
+		const unassigned = state.workspaces._unassigned;
+		const wsConnections = ws?.connections ?? [];
+		const unassignedConnections = unassigned?.connections ?? [];
+		// Merge workspace-specific and unassigned connections, deduping by id
+		const ids = new Set(wsConnections.map((c) => c.id));
+		return [
+			...wsConnections,
+			...unassignedConnections.filter((c) => !ids.has(c.id)),
+		];
+	});
+}
+
+export function useDatabaseActiveConnectionId(workspaceId: string | undefined) {
+	return useDatabaseSidebarStore((state) => {
+		if (!workspaceId) return null;
+		return (
+			state.workspaces[workspaceId]?.activeConnectionId ??
+			state.workspaces._unassigned?.activeConnectionId ??
+			null
+		);
+	});
+}
+
+export function useDatabaseQueryHistory(workspaceId: string | undefined) {
+	return useDatabaseSidebarStore((state) => {
+		if (!workspaceId) return [];
+		const ws = state.workspaces[workspaceId];
+		const unassigned = state.workspaces._unassigned;
+		const wsHistory = ws?.queryHistory ?? [];
+		const unassignedHistory = unassigned?.queryHistory ?? [];
+		const ids = new Set(wsHistory.map((h) => h.id));
+		return [...wsHistory, ...unassignedHistory.filter((h) => !ids.has(h.id))];
+	});
+}
