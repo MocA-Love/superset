@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import {
-	type BrowserWindow,
+	BrowserWindow,
 	clipboard,
 	Menu,
 	nativeTheme,
@@ -237,6 +237,14 @@ class BrowserManager extends EventEmitter {
 		const handleEnter = () => {
 			this.fullscreenPaneId = paneId;
 			this.emit("fullscreen-change", { paneId, isFullscreen: true });
+
+			// Electron makes the host BrowserWindow fullscreen when a webview
+			// enters HTML fullscreen. Immediately revert so the fullscreen
+			// stays contained within the pane.
+			const win = BrowserWindow.fromWebContents(wc.hostWebContents ?? wc);
+			if (win && !win.isDestroyed() && win.isFullScreen()) {
+				win.setFullScreen(false);
+			}
 		};
 
 		const handleLeave = () => {

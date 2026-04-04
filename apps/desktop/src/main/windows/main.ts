@@ -350,20 +350,13 @@ export async function MainWindow() {
 		console.error(`  Error:`, error);
 	});
 
-	// Prevent webview HTML5 fullscreen from making the BrowserWindow go
-	// fullscreen. The renderer handles it visually within the pane.
-	// We listen on every webview's webContents for the fullscreen request
-	// and prevent the default window-level behavior in browser-manager.
-	// As a safety net, if the window still enters fullscreen due to a
-	// webview, revert it immediately.
+	// Unconditionally prevent the BrowserWindow from entering fullscreen.
+	// Webview HTML5 fullscreen (YouTube etc.) is handled within the pane
+	// by the renderer. Window-level fullscreen is not needed for this app.
 	window.on("enter-full-screen", () => {
-		// If any webview just entered HTML fullscreen, this window-level
-		// fullscreen was triggered by it — revert.
-		if (browserManager.getFullscreenPaneId()) {
-			setImmediate(() => {
-				if (!window.isDestroyed()) window.setFullScreen(false);
-			});
-		}
+		setImmediate(() => {
+			if (!window.isDestroyed()) window.setFullScreen(false);
+		});
 	});
 
 	// Handle mouse back/forward buttons for webview panes (Windows/Linux).
