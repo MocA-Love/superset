@@ -1815,10 +1815,16 @@ export const createGitStatusProcedures = () => {
 		/**
 		 * Notify the SyncService which workspace is currently active.
 		 * Deactivates all other workspaces to stop their polling timers.
+		 * Pass empty workspaceId to deactivate all (e.g., dashboard view).
 		 */
 		setActiveSyncWorkspace: publicProcedure
 			.input(z.object({ workspaceId: z.string() }))
 			.mutation(({ input }) => {
+				if (!input.workspaceId) {
+					githubSyncService.deactivateAll();
+					return { success: true };
+				}
+
 				const workspace = getWorkspace(input.workspaceId);
 				if (!workspace) return { success: false };
 

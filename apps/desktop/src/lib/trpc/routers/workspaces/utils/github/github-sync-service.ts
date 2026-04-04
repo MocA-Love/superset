@@ -57,7 +57,12 @@ class GitHubSyncServiceImpl {
 	}
 
 	/**
-	 * Register a workspace and start polling immediately.
+	 * Register a workspace WITHOUT starting polling timers.
+	 * The workspace is registered as inactive — call activateWorkspace()
+	 * or setActiveWorkspace() to start polling.
+	 *
+	 * This prevents the "all workspaces poll until setActiveWorkspace
+	 * arrives" race condition at startup.
 	 */
 	registerWorkspace(worktreePath: string): void {
 		if (this.workspaces.has(worktreePath)) {
@@ -68,13 +73,12 @@ class GitHubSyncServiceImpl {
 			worktreePath,
 			prStatusTimer: null,
 			prCommentsTimer: null,
-			isActive: true,
+			isActive: false,
 			prStatusInFlight: false,
 			prCommentsInFlight: false,
 		};
 
 		this.workspaces.set(worktreePath, state);
-		this.startTimers(state);
 	}
 
 	/**
@@ -91,21 +95,25 @@ class GitHubSyncServiceImpl {
 	}
 
 	/**
-	 * Activate a workspace, resuming its polling timers.
-	 * If not yet registered, registers it first.
+	 * Activate a workspace, starting its polling timers and triggering
+	 * an immediate sync. If not yet registered, registers it first.
 	 */
 	activateWorkspace(worktreePath: string): void {
-		const state = this.workspaces.get(worktreePath);
+		let state = this.workspaces.get(worktreePath);
 
 		if (!state) {
 			this.registerWorkspace(worktreePath);
-			return;
+			state = this.workspaces.get(worktreePath)!;
 		}
 
 		if (state.isActive) return;
 
 		state.isActive = true;
 		this.startTimers(state);
+
+		// Immediate sync so the user doesn't wait up to 5s for fresh data
+		void this.syncPRStatus(worktreePath);
+		void this.syncPRComments(worktreePath);
 	}
 
 	/**
@@ -123,13 +131,17 @@ class GitHubSyncServiceImpl {
 	/**
 	 * Deactivate all workspaces except the given one.
 	 * Activates the given workspace if not already active.
+	 * Pass null to deactivate all workspaces (e.g., navigating away from workspaces).
 	 */
-	setActiveWorkspace(worktreePath: string): void {
+	setActiveWorkspace(worktreePath: string | null): void {
 		for (const state of this.workspaces.values()) {
-			if (state.worktreePath === worktreePath) {
+			if (worktreePath && state.worktreePath === worktreePath) {
 				if (!state.isActive) {
 					state.isActive = true;
 					this.startTimers(state);
+					// Immediate sync on activation
+					void this.syncPRStatus(state.worktreePath);
+					void this.syncPRComments(state.worktreePath);
 				}
 			} else if (state.isActive) {
 				state.isActive = false;
@@ -137,9 +149,22 @@ class GitHubSyncServiceImpl {
 			}
 		}
 
-		// Register if not yet known
-		if (!this.workspaces.has(worktreePath)) {
+		// Register and activate if not yet known
+		if (worktreePath && !this.workspaces.has(worktreePath)) {
 			this.registerWorkspace(worktreePath);
+			this.activateWorkspace(worktreePath);
+		}
+	}
+
+	/**
+	 * Deactivate all workspaces. Used when navigating away from workspace views.
+	 */
+	deactivateAll(): void {
+		for (const state of this.workspaces.values()) {
+			if (state.isActive) {
+				state.isActive = false;
+				this.stopTimers(state);
+			}
 		}
 	}
 
@@ -163,20 +188,6 @@ class GitHubSyncServiceImpl {
 	}
 
 	/**
-	 * Notify the service about a window focus event.
-	 * Triggers one immediate sync cycle for all active workspaces.
-	 * Errors are handled internally — fire-and-forget is intentional.
-	 */
-	onWindowFocus(): void {
-		for (const state of this.workspaces.values()) {
-			if (state.isActive) {
-				void this.syncPRStatus(state.worktreePath);
-				void this.syncPRComments(state.worktreePath);
-			}
-		}
-	}
-
-	/**
 	 * Clean up all timers (e.g., on app quit).
 	 */
 	destroy(): void {
@@ -192,6 +203,9 @@ class GitHubSyncServiceImpl {
 	}
 
 	private startTimers(state: WorkspaceSyncState): void {
+		// Defensive: stop existing timers to prevent leaks
+		this.stopTimers(state);
+
 		state.prStatusTimer = setInterval(() => {
 			void this.syncPRStatus(state.worktreePath);
 		}, SYNC_PR_STATUS_INTERVAL_MS);
