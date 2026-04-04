@@ -149,6 +149,8 @@ interface DatabaseSidebarState {
 	) => void;
 }
 
+const UNASSIGNED_KEY = "_unassigned";
+
 function getWorkspace(
 	state: DatabaseSidebarState,
 	workspaceId: string,
@@ -209,8 +211,11 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 				workspaces: {},
 
 				addConnection: (workspaceId, input) => {
-					const ws = getWorkspace(get(), workspaceId);
-					const existingConnection = ws.connections.find((connection) => {
+					const state = get();
+					const ws = getWorkspace(state, workspaceId);
+					const unassigned = getWorkspace(state, UNASSIGNED_KEY);
+					const allConnections = [...ws.connections, ...unassigned.connections];
+					const existingConnection = allConnections.find((connection) => {
 						if (connection.dialect !== input.dialect) {
 							return false;
 						}
@@ -239,11 +244,11 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						return connection.connectionStringId === input.connectionStringId;
 					});
 					if (existingConnection) {
-						set((state) => ({
+						set((s) => ({
 							workspaces: {
-								...state.workspaces,
+								...s.workspaces,
 								[workspaceId]: {
-									...getWorkspace(state, workspaceId),
+									...getWorkspace(s, workspaceId),
 									activeConnectionId: existingConnection.id,
 								},
 							},
@@ -271,10 +276,18 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 				},
 
 				updateConnection: (workspaceId, input) => {
-					const ws = getWorkspace(get(), workspaceId);
-					const currentConnection = ws.connections.find(
-						(connection) => connection.id === input.id,
-					);
+					const state = get();
+					const ws = getWorkspace(state, workspaceId);
+					const unassigned = getWorkspace(state, UNASSIGNED_KEY);
+					const isInWorkspace = ws.connections.some((c) => c.id === input.id);
+					const isInUnassigned =
+						!isInWorkspace &&
+						unassigned.connections.some((c) => c.id === input.id);
+					const currentConnection = isInWorkspace
+						? ws.connections.find((c) => c.id === input.id)
+						: isInUnassigned
+							? unassigned.connections.find((c) => c.id === input.id)
+							: undefined;
 					if (!currentConnection) {
 						return null;
 					}
@@ -328,20 +341,29 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						_pendingConnectionString: undefined,
 					};
 
-					set((state) => {
-						const current = getWorkspace(state, workspaceId);
-						return {
-							workspaces: {
-								...state.workspaces,
-								[workspaceId]: {
-									...current,
-									connections: current.connections.map((connection) =>
-										connection.id === input.id ? updatedConnection : connection,
-									),
-									activeConnectionId: input.id,
-								},
-							},
+					set((s) => {
+						const updates: Record<string, WorkspaceDatabaseState> = {
+							...s.workspaces,
 						};
+						if (isInUnassigned) {
+							const ua = getWorkspace(s, UNASSIGNED_KEY);
+							updates[UNASSIGNED_KEY] = {
+								...ua,
+								connections: ua.connections.map((c) =>
+									c.id === input.id ? updatedConnection : c,
+								),
+							};
+						} else {
+							const current = getWorkspace(s, workspaceId);
+							updates[workspaceId] = {
+								...current,
+								connections: current.connections.map((c) =>
+									c.id === input.id ? updatedConnection : c,
+								),
+								activeConnectionId: input.id,
+							};
+						}
+						return { workspaces: updates };
 					});
 
 					return updatedConnection;
@@ -349,26 +371,42 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 
 				removeConnection: (workspaceId, id) => {
 					set((state) => {
+						const updates: Record<string, WorkspaceDatabaseState> = {
+							...state.workspaces,
+						};
+
+						// Remove from workspace-scoped bucket
 						const current = getWorkspace(state, workspaceId);
 						const nextConnections = current.connections.filter(
-							(connection) => connection.id !== id,
+							(c) => c.id !== id,
 						);
-						return {
-							workspaces: {
-								...state.workspaces,
-								[workspaceId]: {
-									...current,
-									connections: nextConnections,
-									queryHistory: current.queryHistory.filter(
-										(item) => item.connectionId !== id,
-									),
-									activeConnectionId:
-										current.activeConnectionId === id
-											? (nextConnections[0]?.id ?? null)
-											: current.activeConnectionId,
-								},
-							},
+						updates[workspaceId] = {
+							...current,
+							connections: nextConnections,
+							queryHistory: current.queryHistory.filter(
+								(item) => item.connectionId !== id,
+							),
+							activeConnectionId:
+								current.activeConnectionId === id
+									? (nextConnections[0]?.id ?? null)
+									: current.activeConnectionId,
 						};
+
+						// Also remove from _unassigned if present
+						const ua = getWorkspace(state, UNASSIGNED_KEY);
+						if (ua.connections.some((c) => c.id === id)) {
+							updates[UNASSIGNED_KEY] = {
+								...ua,
+								connections: ua.connections.filter((c) => c.id !== id),
+								queryHistory: ua.queryHistory.filter(
+									(item) => item.connectionId !== id,
+								),
+								activeConnectionId:
+									ua.activeConnectionId === id ? null : ua.activeConnectionId,
+							};
+						}
+
+						return { workspaces: updates };
 					});
 				},
 
@@ -419,35 +457,51 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 
 				removeQueryHistoryItem: (workspaceId, id) => {
 					set((state) => {
-						const current = getWorkspace(state, workspaceId);
-						return {
-							workspaces: {
-								...state.workspaces,
-								[workspaceId]: {
-									...current,
-									queryHistory: current.queryHistory.filter(
-										(item) => item.id !== id,
-									),
-								},
-							},
+						const updates: Record<string, WorkspaceDatabaseState> = {
+							...state.workspaces,
 						};
+						const current = getWorkspace(state, workspaceId);
+						updates[workspaceId] = {
+							...current,
+							queryHistory: current.queryHistory.filter(
+								(item) => item.id !== id,
+							),
+						};
+						const ua = getWorkspace(state, UNASSIGNED_KEY);
+						if (ua.queryHistory.some((item) => item.id === id)) {
+							updates[UNASSIGNED_KEY] = {
+								...ua,
+								queryHistory: ua.queryHistory.filter((item) => item.id !== id),
+							};
+						}
+						return { workspaces: updates };
 					});
 				},
 
 				clearQueryHistoryForConnection: (workspaceId, connectionId) => {
 					set((state) => {
-						const current = getWorkspace(state, workspaceId);
-						return {
-							workspaces: {
-								...state.workspaces,
-								[workspaceId]: {
-									...current,
-									queryHistory: current.queryHistory.filter(
-										(item) => item.connectionId !== connectionId,
-									),
-								},
-							},
+						const updates: Record<string, WorkspaceDatabaseState> = {
+							...state.workspaces,
 						};
+						const current = getWorkspace(state, workspaceId);
+						updates[workspaceId] = {
+							...current,
+							queryHistory: current.queryHistory.filter(
+								(item) => item.connectionId !== connectionId,
+							),
+						};
+						const ua = getWorkspace(state, UNASSIGNED_KEY);
+						if (
+							ua.queryHistory.some((item) => item.connectionId === connectionId)
+						) {
+							updates[UNASSIGNED_KEY] = {
+								...ua,
+								queryHistory: ua.queryHistory.filter(
+									(item) => item.connectionId !== connectionId,
+								),
+							};
+						}
+						return { workspaces: updates };
 					});
 				},
 			}),
@@ -506,7 +560,7 @@ export const useDatabaseSidebarStore = create<DatabaseSidebarState>()(
 						// re-adds them to specific workspaces.
 						return {
 							workspaces: {
-								_unassigned: {
+								[UNASSIGNED_KEY]: {
 									connections: migratedConnections as SavedDatabaseConnection[],
 									queryHistory: old.queryHistory ?? [],
 									activeConnectionId: old.activeConnectionId ?? null,
@@ -534,7 +588,7 @@ function selectConnections(
 ): SavedDatabaseConnection[] {
 	if (!workspaceId) return EMPTY_CONNECTIONS;
 	const ws = state.workspaces[workspaceId];
-	const unassigned = state.workspaces._unassigned;
+	const unassigned = state.workspaces[UNASSIGNED_KEY];
 	const wsConnections = ws?.connections ?? EMPTY_CONNECTIONS;
 	const unassignedConnections = unassigned?.connections ?? EMPTY_CONNECTIONS;
 	if (unassignedConnections.length === 0) return wsConnections;
@@ -551,7 +605,7 @@ function selectQueryHistory(
 ): SavedDatabaseQueryHistoryItem[] {
 	if (!workspaceId) return EMPTY_HISTORY;
 	const ws = state.workspaces[workspaceId];
-	const unassigned = state.workspaces._unassigned;
+	const unassigned = state.workspaces[UNASSIGNED_KEY];
 	const wsHistory = ws?.queryHistory ?? EMPTY_HISTORY;
 	const unassignedHistory = unassigned?.queryHistory ?? EMPTY_HISTORY;
 	if (unassignedHistory.length === 0) return wsHistory;
@@ -570,7 +624,7 @@ export function useDatabaseActiveConnectionId(workspaceId: string | undefined) {
 		if (!workspaceId) return null;
 		return (
 			state.workspaces[workspaceId]?.activeConnectionId ??
-			state.workspaces._unassigned?.activeConnectionId ??
+			state.workspaces[UNASSIGNED_KEY]?.activeConnectionId ??
 			null
 		);
 	});
