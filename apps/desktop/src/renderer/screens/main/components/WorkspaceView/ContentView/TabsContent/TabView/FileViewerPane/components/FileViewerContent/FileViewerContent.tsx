@@ -17,7 +17,7 @@ import type { Tab } from "renderer/stores/tabs/types";
 import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
-import { isImageFile, isSpreadsheetFile } from "shared/file-types";
+import { isHtmlFile, isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
 import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
@@ -32,6 +32,41 @@ import {
 	getDiffLocationFromEvent,
 	mapDiffLocationToRawPosition,
 } from "./utils/diff-location";
+
+function HtmlPreviewWebview({ absolutePath }: { absolutePath: string }) {
+	const containerRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!container || !absolutePath) return;
+
+		const webview = document.createElement("webview") as Electron.WebviewTag;
+		webview.src = `file://${absolutePath}`;
+		webview.setAttribute("webpreferences", "sandbox=true,nodeIntegration=false,contextIsolation=true");
+		webview.style.width = "100%";
+		webview.style.height = "100%";
+		webview.style.border = "none";
+
+		webview.addEventListener("will-navigate", (e) => {
+			e.preventDefault();
+		});
+
+		container.appendChild(webview);
+
+		return () => {
+			try {
+				if (webview.isConnected) {
+					webview.stop();
+				}
+				container.removeChild(webview);
+			} catch {
+				// already removed
+			}
+		};
+	}, [absolutePath]);
+
+	return <div ref={containerRef} className="h-full w-full bg-white" />;
+}
 
 interface RawFileData {
 	ok: true;
@@ -183,6 +218,7 @@ export function FileViewerContent({
 	markdownSearch,
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
+	const isHtml = isHtmlFile(filePath);
 
 	useScrollToFirstDiffChange({
 		containerRef: diffContainerRef,
@@ -471,6 +507,31 @@ export function FileViewerContent({
 					</div>
 				</div>
 			</DiffViewerContextMenu>
+		);
+	}
+
+	if (viewMode === "rendered" && isHtml) {
+		if (isLoadingRaw) {
+			return (
+				<div className="flex h-full items-center justify-center text-muted-foreground">
+					Loading...
+				</div>
+			);
+		}
+
+		if (!rawFileData?.ok) {
+			return (
+				<div className="flex h-full items-center justify-center text-muted-foreground">
+					Cannot preview this file
+				</div>
+			);
+		}
+
+		return (
+			<HtmlPreviewWebview
+				key={filePath}
+				absolutePath={absoluteFilePath}
+			/>
 		);
 	}
 

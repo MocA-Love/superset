@@ -9,7 +9,11 @@ import {
 	type FileStatus,
 	isNewFile,
 } from "shared/changes-types";
-import { hasRenderedPreview, isImageFile } from "shared/file-types";
+import {
+	hasRenderedPreview,
+	isHtmlFile,
+	isImageFile,
+} from "shared/file-types";
 import {
 	acknowledgedStatus,
 	type BrowserPaneState,
@@ -46,6 +50,8 @@ export const resolveFileViewerMode = ({
 	if (isImageFile(filePath)) return "rendered";
 	// Conflicted files show the inline conflict resolver
 	if (diffCategory === "conflicted") return "conflict";
+	// HTML files always default to raw (preview available via toggle)
+	if (isHtmlFile(filePath)) return "raw";
 	// New files have no previous version — show raw/rendered instead of an all-green diff
 	if (diffCategory && fileStatus && isNewFile(fileStatus)) {
 		if (hasRenderedPreview(filePath)) return "rendered";
