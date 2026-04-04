@@ -56,6 +56,7 @@ function AuthenticatedLayout() {
 	const setOriginRoute = useSettingsStore((s) => s.setOriginRoute);
 	const utils = electronTrpc.useUtils();
 	const shownWorkspaceInitWarningsRef = useRef(new Set<string>());
+	const redirectingToSignIn = useRef(false);
 	const isV2CloudEnabled =
 		useFeatureFlagEnabled(FEATURE_FLAGS.V2_CLOUD) ?? false;
 
@@ -136,8 +137,27 @@ function AuthenticatedLayout() {
 		},
 	});
 
+	// Redirect to sign-in via useEffect to avoid React infinite update loops.
+	// <Navigate> can re-trigger during concurrent renders when already at the
+	// target URL, causing router.load() → setState → re-render cycles.
+	const shouldRedirectToSignIn =
+		(!env.SKIP_ENV_VALIDATION && isPending && !hasLocalToken) ||
+		(!isSignedIn &&
+			!(hasLocalToken && !isOnline) &&
+			!(isPending || (isRefetching && !session?.user && hasLocalToken)));
+
+	useEffect(() => {
+		if (shouldRedirectToSignIn && !redirectingToSignIn.current) {
+			redirectingToSignIn.current = true;
+			void navigate({ to: "/sign-in", replace: true });
+		}
+		if (!shouldRedirectToSignIn) {
+			redirectingToSignIn.current = false;
+		}
+	}, [shouldRedirectToSignIn, navigate]);
+
 	if (isPending && !hasLocalToken && !env.SKIP_ENV_VALIDATION) {
-		return <Navigate to="/sign-in" replace />;
+		return null;
 	}
 	if (
 		(isPending || (isRefetching && !session?.user && hasLocalToken)) &&
@@ -168,7 +188,7 @@ function AuthenticatedLayout() {
 	}
 
 	if (!isSignedIn) {
-		return <Navigate to="/sign-in" replace />;
+		return null;
 	}
 
 	if (!activeOrganizationId) {
