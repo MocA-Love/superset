@@ -141,6 +141,104 @@ export const graphqlStreamLanguage: StreamParser<GraphqlState> = {
 	},
 };
 
+// ---------------------------------------------------------------------------
+// CSV / TSV
+// ---------------------------------------------------------------------------
+
+/**
+ * Column tags cycle through existing syntax highlight token types so that each
+ * column gets a distinct color from the theme without any extra CSS.
+ */
+const COLUMN_TAGS = [
+	"string",
+	"keyword",
+	"typeName",
+	"variableName",
+	"number",
+	"className",
+] as const;
+
+interface CsvState {
+	column: number;
+	inQuote: boolean;
+}
+
+function createCsvStreamLanguage(delimiter: string): StreamParser<CsvState> {
+	return {
+		name: delimiter === "\t" ? "tsv" : "csv",
+		startState: () => ({ column: 0, inQuote: false }),
+		token(stream, state) {
+			// Start of line resets column
+			if (stream.sol() && !state.inQuote) {
+				state.column = 0;
+			}
+
+			const tag = COLUMN_TAGS[state.column % COLUMN_TAGS.length];
+
+			// Inside a quoted field
+			if (state.inQuote) {
+				while (!stream.eol()) {
+					if (stream.next() === '"') {
+						// Escaped quote ("") → stay in quote
+						if (stream.peek() === '"') {
+							stream.next();
+						} else {
+							state.inQuote = false;
+							// Consume trailing delimiter if present
+							if (stream.peek() === delimiter) {
+								stream.next();
+								state.column++;
+							}
+							return tag;
+						}
+					}
+				}
+				return tag;
+			}
+
+			// Opening quote at start of field
+			if (stream.peek() === '"') {
+				stream.next();
+				state.inQuote = true;
+				// Consume until closing quote or end of line
+				while (!stream.eol()) {
+					if (stream.next() === '"') {
+						if (stream.peek() === '"') {
+							stream.next();
+						} else {
+							state.inQuote = false;
+							if (stream.peek() === delimiter) {
+								stream.next();
+								state.column++;
+							}
+							return tag;
+						}
+					}
+				}
+				return tag;
+			}
+
+			// Unquoted field — consume until delimiter or eol
+			while (!stream.eol()) {
+				if (stream.peek() === delimiter) {
+					stream.next();
+					state.column++;
+					return tag;
+				}
+				stream.next();
+			}
+			return tag;
+		},
+	};
+}
+
+export const csvStreamLanguage = createCsvStreamLanguage(",");
+export const tsvStreamLanguage = createCsvStreamLanguage("\t");
+
+// ---------------------------------------------------------------------------
+// Makefile
+// ---------------------------------------------------------------------------
+
 const MAKEFILE_DIRECTIVES = new Set([
 	"-include",
 	"define",

@@ -11,6 +11,10 @@ export function detectLanguage(filePath: string): string {
 		return "dockerfile";
 	}
 
+	if (fileName === ".env" || fileName.startsWith(".env.")) {
+		return "dotenv";
+	}
+
 	const languageMap: Record<string, string> = {
 		// JavaScript/TypeScript
 		ts: "typescript",
@@ -35,6 +39,8 @@ export function detectLanguage(filePath: string): string {
 		yml: "yaml",
 		xml: "xml",
 		toml: "toml",
+		csv: "csv",
+		tsv: "tsv",
 
 		// Markdown/Documentation
 		md: "markdown",

@@ -1,8 +1,10 @@
 import { StreamLanguage, type StreamParser } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import {
+	csvStreamLanguage,
 	graphqlStreamLanguage,
 	makefileStreamLanguage,
+	tsvStreamLanguage,
 } from "./streamLanguages";
 
 async function loadLegacyLanguage(
@@ -130,6 +132,15 @@ export async function loadLanguageSupport(
 				() => import("@codemirror/legacy-modes/mode/clike"),
 				"kotlin",
 			);
+		case "dotenv":
+			return loadLegacyLanguage(
+				() => import("@codemirror/legacy-modes/mode/properties"),
+				"properties",
+			);
+		case "csv":
+			return StreamLanguage.define(csvStreamLanguage);
+		case "tsv":
+			return StreamLanguage.define(tsvStreamLanguage);
 		default:
 			return null;
 	}
