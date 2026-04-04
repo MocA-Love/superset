@@ -98,6 +98,9 @@ import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/W
 import {
 	type SavedDatabaseConnection,
 	type SavedDatabaseQueryHistoryItem,
+	useDatabaseActiveConnectionId,
+	useDatabaseConnections,
+	useDatabaseQueryHistory,
 	useDatabaseSidebarStore,
 } from "renderer/stores/database-sidebar";
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
@@ -823,29 +826,77 @@ export function DatabasesView({
 	const { copyToClipboard } = useCopyToClipboard();
 	const trpcUtils = electronTrpc.useUtils();
 
-	const connections = useDatabaseSidebarStore((state) => state.connections);
-	const sidebarSelectedConnectionId = useDatabaseSidebarStore(
-		(state) => state.activeConnectionId,
+	const connections = useDatabaseConnections(workspaceId);
+	const sidebarSelectedConnectionId =
+		useDatabaseActiveConnectionId(workspaceId);
+	const storeAddConnection = useDatabaseSidebarStore(
+		(state) => state.addConnection,
 	);
-	const addConnection = useDatabaseSidebarStore((state) => state.addConnection);
-	const updateConnection = useDatabaseSidebarStore(
+	const storeUpdateConnection = useDatabaseSidebarStore(
 		(state) => state.updateConnection,
 	);
-	const removeConnection = useDatabaseSidebarStore(
+	const storeRemoveConnection = useDatabaseSidebarStore(
 		(state) => state.removeConnection,
 	);
-	const queryHistory = useDatabaseSidebarStore((state) => state.queryHistory);
-	const addQueryHistoryItem = useDatabaseSidebarStore(
+	const queryHistory = useDatabaseQueryHistory(workspaceId);
+	const storeAddQueryHistoryItem = useDatabaseSidebarStore(
 		(state) => state.addQueryHistoryItem,
 	);
-	const removeQueryHistoryItem = useDatabaseSidebarStore(
+	const storeRemoveQueryHistoryItem = useDatabaseSidebarStore(
 		(state) => state.removeQueryHistoryItem,
 	);
-	const clearQueryHistoryForConnection = useDatabaseSidebarStore(
+	const storeClearQueryHistoryForConnection = useDatabaseSidebarStore(
 		(state) => state.clearQueryHistoryForConnection,
 	);
-	const setActiveConnectionId = useDatabaseSidebarStore(
+	const storeSetActiveConnectionId = useDatabaseSidebarStore(
 		(state) => state.setActiveConnectionId,
+	);
+
+	// Bind workspace-scoped wrappers
+	const addConnection = useCallback(
+		(input: Parameters<typeof storeAddConnection>[1]) => {
+			if (!workspaceId) {
+				throw new Error("addConnection called without workspaceId");
+			}
+			return storeAddConnection(workspaceId, input);
+		},
+		[workspaceId, storeAddConnection],
+	);
+	const updateConnection = useCallback(
+		(input: Parameters<typeof storeUpdateConnection>[1]) =>
+			workspaceId ? storeUpdateConnection(workspaceId, input) : null,
+		[workspaceId, storeUpdateConnection],
+	);
+	const removeConnection = useCallback(
+		(id: string) =>
+			workspaceId ? storeRemoveConnection(workspaceId, id) : undefined,
+		[workspaceId, storeRemoveConnection],
+	);
+	const addQueryHistoryItem = useCallback(
+		(input: Parameters<typeof storeAddQueryHistoryItem>[1]) => {
+			if (!workspaceId) {
+				throw new Error("addQueryHistoryItem called without workspaceId");
+			}
+			return storeAddQueryHistoryItem(workspaceId, input);
+		},
+		[workspaceId, storeAddQueryHistoryItem],
+	);
+	const removeQueryHistoryItem = useCallback(
+		(id: string) =>
+			workspaceId ? storeRemoveQueryHistoryItem(workspaceId, id) : undefined,
+		[workspaceId, storeRemoveQueryHistoryItem],
+	);
+	const clearQueryHistoryForConnection = useCallback(
+		(connectionId: string) =>
+			workspaceId
+				? storeClearQueryHistoryForConnection(workspaceId, connectionId)
+				: undefined,
+		[workspaceId, storeClearQueryHistoryForConnection],
+	);
+	const setActiveConnectionId = useCallback(
+		(id: string | null) =>
+			workspaceId ? storeSetActiveConnectionId(workspaceId, id) : undefined,
+		[workspaceId, storeSetActiveConnectionId],
 	);
 	const resolvedSelectedConnectionId =
 		selectedConnectionId ?? sidebarSelectedConnectionId;

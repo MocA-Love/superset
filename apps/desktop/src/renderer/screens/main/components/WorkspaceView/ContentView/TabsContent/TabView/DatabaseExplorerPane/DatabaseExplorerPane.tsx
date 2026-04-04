@@ -2,7 +2,7 @@ import { Badge } from "@superset/ui/badge";
 import { useEffect } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { DatabasesView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/DatabasesView";
-import { useDatabaseSidebarStore } from "renderer/stores/database-sidebar";
+import { useDatabaseConnections } from "renderer/stores/database-sidebar";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { SplitPaneOptions, Tab } from "renderer/stores/tabs/types";
 import { TabContentContextMenu } from "../../TabContentContextMenu";
@@ -61,7 +61,7 @@ export function DatabaseExplorerPane({
 	const setDatabaseExplorerConnection = useTabsStore(
 		(state) => state.setDatabaseExplorerConnection,
 	);
-	const connections = useDatabaseSidebarStore((state) => state.connections);
+	const connections = useDatabaseConnections(workspaceId);
 
 	const connectionId = pane?.databaseExplorer?.connectionId ?? null;
 	const currentConnection =
