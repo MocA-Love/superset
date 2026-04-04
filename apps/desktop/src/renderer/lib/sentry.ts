@@ -17,6 +17,15 @@ export async function initSentry(): Promise<void> {
 			dsn: env.SENTRY_DSN_DESKTOP,
 			environment: env.NODE_ENV,
 			tracesSampleRate: 0.1,
+			beforeSend(event) {
+				const message = event.exception?.values?.[0]?.value ?? "";
+				// Webview navigation errors (ERR_ABORTED, ERR_CONNECTION_REFUSED, etc.)
+				// are external-site issues, not actionable app bugs.
+				if (message.includes("GUEST_VIEW_MANAGER_CALL")) {
+					return null;
+				}
+				return event;
+			},
 		});
 
 		sentryInitialized = true;
