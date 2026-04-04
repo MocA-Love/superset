@@ -2,9 +2,9 @@ export type { PullRequestCommentsTarget } from "./github";
 export {
 	clearGitHubCachesForWorktree,
 	fetchCheckJobSteps,
-	fetchStructuredJobLogs,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchStructuredJobLogs,
 	resolveReviewThread,
 } from "./github";
 export { getPRForBranch } from "./pr-resolution";

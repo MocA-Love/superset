@@ -20,13 +20,13 @@ import {
 	getPaneIdSetForTab,
 } from "renderer/stores/tabs/utils";
 import { useTheme } from "renderer/stores/theme";
+import { ActionLogsPane } from "./ActionLogsPane";
 import { BrowserPane } from "./BrowserPane";
 import { ChatPane } from "./ChatPane";
 import { MosaicSplitOverlay } from "./components";
 import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
-import { ActionLogsPane } from "./ActionLogsPane";
 import { GitGraphPane } from "./GitGraphPane";
 import { TabPane } from "./TabPane";
 

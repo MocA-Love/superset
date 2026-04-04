@@ -11,6 +11,8 @@ import {
 } from "shared/changes-types";
 import { hasRenderedPreview, isHtmlFile, isImageFile } from "shared/file-types";
 import {
+	type ActionLogsJob,
+	type ActionLogsPaneState,
 	acknowledgedStatus,
 	type BrowserPaneState,
 	type DatabaseExplorerPaneState,
@@ -19,8 +21,6 @@ import {
 	type FileViewerMode,
 	type FileViewerState,
 	type GitGraphPaneState,
-	type ActionLogsJob,
-	type ActionLogsPaneState,
 } from "shared/tabs-types";
 import type {
 	AddChatTabOptions,

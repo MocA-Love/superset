@@ -1,18 +1,4 @@
-import { AnsiUp } from "ansi_up";
-import { useCallback, useRef, useState } from "react";
-import type { MosaicBranch } from "react-mosaic-component";
-import {
-	LuCheck,
-	LuChevronRight,
-	LuCircleSlash,
-	LuExternalLink,
-	LuLoaderCircle,
-	LuMinus,
-	LuRefreshCw,
-	LuSearch,
-	LuSettings,
-	LuX,
-} from "react-icons/lu";
+import { Button } from "@superset/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -20,11 +6,24 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
-import { Button } from "@superset/ui/button";
+import { toast } from "@superset/ui/sonner";
+import { cn } from "@superset/ui/utils";
+import { AnsiUp } from "ansi_up";
+import { useCallback, useRef, useState } from "react";
+import {
+	LuCheck,
+	LuChevronRight,
+	LuCircleSlash,
+	LuLoaderCircle,
+	LuMinus,
+	LuRefreshCw,
+	LuSearch,
+	LuSettings,
+	LuX,
+} from "react-icons/lu";
+import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
-import { cn } from "@superset/ui/utils";
-import { toast } from "@superset/ui/sonner";
 import type { ActionLogsJob } from "shared/tabs-types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 
@@ -80,6 +79,13 @@ function renderAnsiLine(line: string): string {
 		"",
 	);
 	return ansiUp.ansi_to_html(cleaned);
+}
+
+function AnsiLine({ html, className }: { html: string; className?: string }) {
+	return (
+		// biome-ignore lint/security/noDangerouslySetInnerHtml: ansi_up escapes HTML entities
+		<span className={className} dangerouslySetInnerHTML={{ __html: html }} />
+	);
 }
 
 // ── Job steps component ──
@@ -167,12 +173,8 @@ function JobSteps({
 			<div className="flex items-center justify-between border-b border-border px-4 py-3">
 				<div>
 					<div className="flex items-center gap-2">
-						<JobIcon
-							className={cn("size-4 shrink-0", jobIconClass)}
-						/>
-						<span className="text-sm font-medium text-primary">
-							{jobName}
-						</span>
+						<JobIcon className={cn("size-4 shrink-0", jobIconClass)} />
+						<span className="text-sm font-medium text-primary">{jobName}</span>
 					</div>
 					{totalSeconds > 0 && (
 						<p className="mt-0.5 pl-6 text-xs text-muted-foreground">
@@ -228,9 +230,7 @@ function JobSteps({
 				// Filter lines by search query
 				const filteredLines =
 					lowerQuery && rawLines.length > 0
-						? rawLines.filter((l) =>
-								l.toLowerCase().includes(lowerQuery),
-							)
+						? rawLines.filter((l) => l.toLowerCase().includes(lowerQuery))
 						: rawLines;
 
 				const matchesSearch =
@@ -256,12 +256,8 @@ function JobSteps({
 									isExpanded && "rotate-90",
 								)}
 							/>
-							<StepIcon
-								className={cn("size-4 shrink-0", iconClass)}
-							/>
-							<span className="min-w-0 flex-1 truncate">
-								{step.name}
-							</span>
+							<StepIcon className={cn("size-4 shrink-0", iconClass)} />
+							<span className="min-w-0 flex-1 truncate">{step.name}</span>
 							{step.durationSeconds !== null && (
 								<span className="shrink-0 text-xs text-muted-foreground">
 									{formatDuration(step.durationSeconds)}
@@ -286,20 +282,14 @@ function JobSteps({
 												);
 
 										return (
-											<div
-												key={i}
-												className="flex hover:bg-accent/30"
-											>
+											// biome-ignore lint/suspicious/noArrayIndexKey: log lines are static read-only content
+											<div key={i} className="flex hover:bg-accent/30">
 												<span className="w-10 shrink-0 select-none pr-2 text-right text-muted-foreground/50">
 													{i + 1}
 												</span>
-												<span
+												<AnsiLine
 													className="min-w-0 whitespace-pre-wrap break-all pr-3"
-													dangerouslySetInnerHTML={{
-														__html: renderAnsiLine(
-															displayLine,
-														),
-													}}
+													html={renderAnsiLine(displayLine)}
 												/>
 											</div>
 										);
@@ -309,9 +299,7 @@ function JobSteps({
 						)}
 						{isExpanded && filteredLines.length === 0 && (
 							<div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-								{lowerQuery
-									? "No matching lines"
-									: "No log output"}
+								{lowerQuery ? "No matching lines" : "No log output"}
 							</div>
 						)}
 					</div>
@@ -365,7 +353,7 @@ export function ActionLogsPane({
 		/(https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+\/job\/\d+)/,
 	)?.[1];
 
-	const runUrl = selectedJob?.detailsUrl?.match(
+	const _runUrl = selectedJob?.detailsUrl?.match(
 		/(https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+)/,
 	)?.[1];
 
@@ -433,9 +421,7 @@ export function ActionLogsPane({
 									type="text"
 									placeholder="Search logs"
 									value={searchQuery}
-									onChange={(e) =>
-										setSearchQuery(e.target.value)
-									}
+									onChange={(e) => setSearchQuery(e.target.value)}
 									className="h-5 w-36 bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
 									onKeyDown={(e) => {
 										if (e.key === "Escape") {
@@ -478,13 +464,8 @@ export function ActionLogsPane({
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-48">
-								<DropdownMenuItem
-									onClick={() =>
-										setShowTimestamps((p) => !p)
-									}
-								>
-									{showTimestamps ? "Hide" : "Show"}{" "}
-									timestamps
+								<DropdownMenuItem onClick={() => setShowTimestamps((p) => !p)}>
+									{showTimestamps ? "Hide" : "Show"} timestamps
 								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 								{browserUrl && (
@@ -530,7 +511,7 @@ export function ActionLogsPane({
 				<div className="flex h-full">
 					{/* Job sidebar */}
 					<div
-						className="relative flex shrink-0 flex-col overflow-y-auto"
+						className="relative flex shrink-0 flex-col overflow-y-auto border-r border-border bg-muted/30"
 						style={{ width: sidebarWidth }}
 					>
 						<div className="px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -551,21 +532,16 @@ export function ActionLogsPane({
 									)}
 									onClick={() => setSelectedIndex(i)}
 								>
-									<JobIcon
-										className={cn(
-											"size-3.5 shrink-0",
-											jobIconClass,
-										)}
-									/>
-									<span className="min-w-0 truncate">
-										{job.name}
-									</span>
+									<JobIcon className={cn("size-3.5 shrink-0", jobIconClass)} />
+									<span className="min-w-0 truncate">{job.name}</span>
 								</button>
 							);
 						})}
 						{/* Resize handle */}
-						<div
-							className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
+						<button
+							type="button"
+							aria-label="Resize sidebar"
+							className="absolute right-0 top-0 h-full w-1 cursor-col-resize border-none bg-transparent p-0 hover:bg-primary/30 active:bg-primary/50"
 							onMouseDown={handleResizeStart}
 						/>
 					</div>

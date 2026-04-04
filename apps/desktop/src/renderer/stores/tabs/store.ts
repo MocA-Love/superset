@@ -32,6 +32,7 @@ import {
 	applyFileViewerOpenOptionsToPane,
 	buildMultiPaneLayout,
 	type CreatePaneOptions,
+	createActionLogsTabWithPane,
 	createBrowserPane,
 	createBrowserTabWithPane,
 	createChatPane,
@@ -39,7 +40,6 @@ import {
 	createDatabaseExplorerTabWithPane,
 	createDevToolsPane,
 	createFileViewerPane,
-	createActionLogsTabWithPane,
 	createGitGraphTabWithPane,
 	createPane,
 	createTabWithPane,
@@ -1760,7 +1760,11 @@ export const useTabsStore = create<TabsStore>()(
 
 				addActionLogsTab: (
 					workspaceId: string,
-					jobs: Array<{ detailsUrl: string; name: string; status: "success" | "failure" | "pending" | "skipped" | "cancelled" }>,
+					jobs: Array<{
+						detailsUrl: string;
+						name: string;
+						status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+					}>,
 					initialJobIndex?: number,
 				) => {
 					const state = get();
@@ -1772,14 +1776,11 @@ export const useTabsStore = create<TabsStore>()(
 					);
 
 					const currentActiveId = state.activeTabIds[workspaceId];
-					const historyStack =
-						state.tabHistoryStacks[workspaceId] || [];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
 					const newHistoryStack = currentActiveId
 						? [
 								currentActiveId,
-								...historyStack.filter(
-									(id) => id !== currentActiveId,
-								),
+								...historyStack.filter((id) => id !== currentActiveId),
 							]
 						: historyStack;
 

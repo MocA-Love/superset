@@ -106,7 +106,13 @@ const paneSchema = z.object({
 				z.object({
 					detailsUrl: z.string(),
 					name: z.string(),
-					status: z.enum(["success", "failure", "pending", "skipped", "cancelled"]),
+					status: z.enum([
+						"success",
+						"failure",
+						"pending",
+						"skipped",
+						"cancelled",
+					]),
 				}),
 			),
 			initialJobIndex: z.number().optional(),

@@ -26,9 +26,9 @@ import {
 	clearGitHubCachesForWorktree,
 	extractNwoFromUrl,
 	fetchCheckJobSteps,
-	fetchStructuredJobLogs,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchStructuredJobLogs,
 	getRepoContext,
 	type PullRequestCommentsTarget,
 } from "../utils/github";

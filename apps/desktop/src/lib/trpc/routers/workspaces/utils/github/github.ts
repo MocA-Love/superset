@@ -516,11 +516,9 @@ export async function fetchStructuredJobLogs(
 
 	try {
 		const [jobResult, logsResult] = await Promise.all([
-			execWithShellEnv(
-				"gh",
-				["api", `repos/${nwo}/actions/jobs/${jobId}`],
-				{ cwd: worktreePath },
-			),
+			execWithShellEnv("gh", ["api", `repos/${nwo}/actions/jobs/${jobId}`], {
+				cwd: worktreePath,
+			}),
 			execWithShellEnv(
 				"gh",
 				["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
@@ -548,11 +546,15 @@ export async function fetchStructuredJobLogs(
 		const stepRanges = steps.map((step) => ({
 			number: step.number,
 			start: step.started_at ? new Date(step.started_at).getTime() : 0,
-			end: step.completed_at ? new Date(step.completed_at).getTime() : Number.POSITIVE_INFINITY,
+			end: step.completed_at
+				? new Date(step.completed_at).getTime()
+				: Number.POSITIVE_INFINITY,
 		}));
 
 		for (const line of logLines) {
-			const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s/);
+			const tsMatch = line.match(
+				/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s/,
+			);
 			if (!tsMatch) continue;
 			const lineTime = new Date(tsMatch[1]).getTime();
 			const lineContent = line.slice(tsMatch[0].length);
@@ -563,7 +565,7 @@ export async function fetchStructuredJobLogs(
 					if (!stepLogs.has(range.number)) {
 						stepLogs.set(range.number, []);
 					}
-					stepLogs.get(range.number)!.push(lineContent);
+					stepLogs.get(range.number)?.push(lineContent);
 					break;
 				}
 			}

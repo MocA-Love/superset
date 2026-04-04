@@ -1104,9 +1104,9 @@ export function ReviewPanel({
 									className="h-6 px-2 text-[10px]"
 									onClick={() => {
 										const jobs = actionChecks
-											.filter((c) => c.url)
+											.filter((c): c is typeof c & { url: string } => !!c.url)
 											.map((c) => ({
-												detailsUrl: c.url!,
+												detailsUrl: c.url,
 												name: c.name,
 												status: c.status,
 											}));
