@@ -28,7 +28,7 @@ export function KeepAliveWorkspaces() {
 	const visitedSetRef = useRef(new Set<string>());
 
 	// Notify SyncService which workspace is active so only it gets polled
-	const setActiveSyncWorkspace =
+	const { mutate: setActiveSyncWorkspace } =
 		electronTrpc.workspaces.setActiveSyncWorkspace.useMutation();
 	const prevActiveIdRef = useRef<string | null>(null);
 
@@ -41,9 +41,10 @@ export function KeepAliveWorkspaces() {
 		// Tell the backend to only poll for this workspace
 		if (activeWorkspaceId && activeWorkspaceId !== prevActiveIdRef.current) {
 			prevActiveIdRef.current = activeWorkspaceId;
-			setActiveSyncWorkspace.mutate({ workspaceId: activeWorkspaceId });
+			setActiveSyncWorkspace({ workspaceId: activeWorkspaceId });
 		}
-	}, [activeWorkspaceId, setActiveSyncWorkspace.mutate]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- mutate is stable via destructuring
+	}, [activeWorkspaceId, setActiveSyncWorkspace]);
 
 	// Evict deleted workspaces: compare visited IDs against the live list.
 	const { data: workspaceGroups } =

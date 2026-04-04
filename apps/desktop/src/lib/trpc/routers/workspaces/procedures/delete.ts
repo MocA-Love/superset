@@ -373,6 +373,11 @@ export const createDeleteProcedures = () => {
 					if (wt?.path) {
 						githubSyncService.unregisterWorkspace(wt.path);
 					}
+				} else {
+					const proj = getProject(workspace.projectId);
+					if (proj?.mainRepoPath) {
+						githubSyncService.unregisterWorkspace(proj.mainRepoPath);
+					}
 				}
 
 				deleteWorkspace(input.id);

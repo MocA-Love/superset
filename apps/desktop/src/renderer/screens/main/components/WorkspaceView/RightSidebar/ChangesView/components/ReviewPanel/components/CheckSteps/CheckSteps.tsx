@@ -56,6 +56,7 @@ export function CheckSteps({ detailsUrl }: CheckStepsProps) {
 			{
 				enabled: !!workspaceId && !!detailsUrl,
 				staleTime: 5_000,
+				refetchInterval: 5_000,
 			},
 		);
 
