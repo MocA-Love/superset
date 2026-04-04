@@ -373,11 +373,12 @@ export function ActionLogsPane({
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 	const [showTimestamps, setShowTimestamps] = useState(false);
 
-	// Read check statuses from the shared getGitHubStatus cache (same source as Review tab)
+	// Read check statuses from the shared getGitHubStatus cache (same source as Review tab).
+	// refetchInterval ensures we pick up SyncService-warmed cache even when Changes Tab is hidden.
 	const { data: githubStatus } =
 		electronTrpc.workspaces.getGitHubStatus.useQuery(
 			{ workspaceId },
-			{ staleTime: 5_000 },
+			{ staleTime: 5_000, refetchInterval: 5_000 },
 		);
 	const checks = githubStatus?.pr?.checks ?? [];
 
