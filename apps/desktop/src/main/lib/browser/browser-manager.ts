@@ -1,5 +1,12 @@
 import { EventEmitter } from "node:events";
-import { clipboard, Menu, shell, webContents } from "electron";
+import {
+	type BrowserWindow,
+	clipboard,
+	Menu,
+	nativeTheme,
+	shell,
+	webContents,
+} from "electron";
 
 interface ConsoleEntry {
 	level: "log" | "warn" | "error" | "info" | "debug";
@@ -22,17 +29,34 @@ function sanitizeUrl(url: string): string {
 	return `https://www.google.com/search?q=${encodeURIComponent(url)}`;
 }
 
+function getChromeLikeUserAgent(userAgent: string): string {
+	return userAgent.replace(/\sElectron\/[^\s]+/g, "").trim();
+}
+
 class BrowserManager extends EventEmitter {
 	private paneWebContentsIds = new Map<string, number>();
 	private consoleLogs = new Map<string, ConsoleEntry[]>();
 	private consoleListeners = new Map<string, () => void>();
 	private contextMenuListeners = new Map<string, () => void>();
+	private fullscreenListeners = new Map<string, () => void>();
+	private popupListeners = new Map<string, () => void>();
+	/** Track which pane is currently in HTML fullscreen */
+	private fullscreenPaneId: string | null = null;
+
+	getFullscreenPaneId(): string | null {
+		return this.fullscreenPaneId;
+	}
 
 	register(paneId: string, webContentsId: number): void {
 		// Clean up previous listeners if re-registering with a new webContentsId
 		const prevId = this.paneWebContentsIds.get(paneId);
 		if (prevId != null && prevId !== webContentsId) {
-			for (const map of [this.consoleListeners, this.contextMenuListeners]) {
+			for (const map of [
+				this.consoleListeners,
+				this.contextMenuListeners,
+				this.fullscreenListeners,
+				this.popupListeners,
+			]) {
 				const cleanup = map.get(paneId);
 				if (cleanup) {
 					cleanup();
@@ -46,25 +70,57 @@ class BrowserManager extends EventEmitter {
 			// Keep throttling enabled so parked/offscreen persistent webviews don't
 			// run at full speed in the background.
 			wc.setBackgroundThrottling(true);
-			wc.setWindowOpenHandler(({ url }) => {
-				if (url && url !== "about:blank") {
-					this.emit(`new-window:${paneId}`, url);
-					this.emit("new-window", { paneId, url });
+			wc.setWindowOpenHandler(({ url, disposition }) => {
+				if (!url || url === "about:blank") {
+					return { action: "deny" as const };
 				}
+
+				// window.open() calls (OAuth popups, auth flows, etc.) — allow as a
+				// real child BrowserWindow so window.opener / postMessage work.
+				if (disposition === "new-window") {
+					return {
+						action: "allow" as const,
+						overrideBrowserWindowOptions: {
+							width: 500,
+							height: 700,
+							autoHideMenuBar: true,
+							backgroundColor: nativeTheme.shouldUseDarkColors
+								? "#252525"
+								: "#ffffff",
+							webPreferences: {
+								partition: "persist:superset",
+							},
+						},
+					};
+				}
+
+				// Regular target="_blank" links — open as a new browser tab
+				this.emit(`new-window:${paneId}`, url);
+				this.emit("new-window", { paneId, url });
 				return { action: "deny" as const };
 			});
+			this.setupPopupWindowHandler(paneId, wc);
+			this.setupFullscreenHandler(paneId, wc);
 			this.setupConsoleCapture(paneId, wc);
 			this.setupContextMenu(paneId, wc);
 		}
 	}
 
 	unregister(paneId: string): void {
-		for (const map of [this.consoleListeners, this.contextMenuListeners]) {
+		for (const map of [
+			this.consoleListeners,
+			this.contextMenuListeners,
+			this.fullscreenListeners,
+			this.popupListeners,
+		]) {
 			const cleanup = map.get(paneId);
 			if (cleanup) {
 				cleanup();
 				map.delete(paneId);
 			}
+		}
+		if (this.fullscreenPaneId === paneId) {
+			this.fullscreenPaneId = null;
 		}
 		this.paneWebContentsIds.delete(paneId);
 		this.consoleLogs.delete(paneId);
@@ -126,6 +182,82 @@ class BrowserManager extends EventEmitter {
 		const wc = this.getWebContents(paneId);
 		if (!wc) return;
 		wc.openDevTools({ mode: "detach" });
+	}
+
+	/**
+	 * Configure child windows created by window.open() (OAuth popups etc.).
+	 * The child BrowserWindow preserves window.opener so postMessage-based
+	 * auth flows work correctly.
+	 */
+	private setupPopupWindowHandler(
+		paneId: string,
+		wc: Electron.WebContents,
+	): void {
+		const handler = (childWindow: BrowserWindow, { url }: { url: string }) => {
+			const childWc = childWindow.webContents;
+
+			// Strip Electron token from child window's User-Agent
+			const originalUA = childWc.getUserAgent();
+			childWc.setUserAgent(getChromeLikeUserAgent(originalUA));
+
+			// If the popup navigates to about:blank or a javascript: URI, it likely
+			// means the auth flow finished and the opener consumed the result.
+			childWc.on("will-navigate", (_event, navUrl) => {
+				if (navUrl === "about:blank") {
+					childWindow.close();
+				}
+			});
+
+			// Some OAuth flows close the popup themselves via window.close() in JS.
+			// That is handled natively by Electron. We also handle the case where the
+			// user manually closes the popup — nothing special is needed.
+
+			console.log(`[browser-manager] Popup opened for pane ${paneId}: ${url}`);
+		};
+
+		wc.on("did-create-window", handler);
+		this.popupListeners.set(paneId, () => {
+			try {
+				wc.off("did-create-window", handler);
+			} catch {
+				// webContents may be destroyed
+			}
+		});
+	}
+
+	/**
+	 * Track HTML5 fullscreen enter/leave on webview content (e.g. YouTube
+	 * video fullscreen). The BrowserWindow also enters fullscreen natively
+	 * (like Chrome). We emit events so the renderer can adjust its UI
+	 * (hide sidebar/tabs when entering, restore when leaving).
+	 */
+	private setupFullscreenHandler(
+		paneId: string,
+		wc: Electron.WebContents,
+	): void {
+		const handleEnter = () => {
+			this.fullscreenPaneId = paneId;
+			this.emit("fullscreen-change", { paneId, isFullscreen: true });
+		};
+
+		const handleLeave = () => {
+			if (this.fullscreenPaneId === paneId) {
+				this.fullscreenPaneId = null;
+			}
+			this.emit("fullscreen-change", { paneId, isFullscreen: false });
+		};
+
+		wc.on("enter-html-full-screen", handleEnter);
+		wc.on("leave-html-full-screen", handleLeave);
+
+		this.fullscreenListeners.set(paneId, () => {
+			try {
+				wc.off("enter-html-full-screen", handleEnter);
+				wc.off("leave-html-full-screen", handleLeave);
+			} catch {
+				// webContents may be destroyed
+			}
+		});
 	}
 
 	private setupContextMenu(paneId: string, wc: Electron.WebContents): void {

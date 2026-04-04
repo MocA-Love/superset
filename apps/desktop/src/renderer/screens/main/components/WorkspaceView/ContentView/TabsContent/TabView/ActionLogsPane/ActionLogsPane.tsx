@@ -95,6 +95,7 @@ interface JobStepsProps {
 	detailsUrl: string;
 	jobName: string;
 	jobStatus: string;
+	jobConclusion: string | null;
 	showTimestamps: boolean;
 	searchQuery: string;
 }
@@ -104,6 +105,7 @@ function JobSteps({
 	detailsUrl,
 	jobName,
 	jobStatus,
+	jobConclusion,
 	showTimestamps,
 	searchQuery,
 }: JobStepsProps) {
@@ -112,11 +114,22 @@ function JobSteps({
 		electronTrpc.workspaces.rerunPullRequestChecks.useMutation();
 	const trpcUtils = electronTrpc.useUtils();
 
-	const { data: steps, isLoading } =
+	const { data: jobResult, isLoading } =
 		electronTrpc.workspaces.getJobLogs.useQuery(
 			{ workspaceId, detailsUrl },
-			{ staleTime: 30_000 },
+			{
+				staleTime: 3_000,
+				refetchInterval: (query) => {
+					const data = query.state.data;
+					if (!data) return 3_000;
+					return data.jobStatus === "completed" ? false : 3_000;
+				},
+			},
 		);
+
+	const steps = jobResult?.steps ?? [];
+	const liveJobStatus = jobResult?.jobStatus ?? jobStatus;
+	const liveJobConclusion = jobResult?.jobConclusion ?? jobConclusion;
 
 	const toggleStep = (n: number) => {
 		setExpandedSteps((prev) => {
@@ -135,7 +148,8 @@ function JobSteps({
 			toast.success(
 				`Re-running ${mode === "failed" ? "failed" : "all"} jobs (${result.rerunCount})`,
 			);
-			void trpcUtils.workspaces.getReviewStatus.invalidate();
+			void trpcUtils.workspaces.getJobLogs.invalidate();
+			void trpcUtils.workspaces.getGitHubStatus.invalidate();
 		} catch {
 			toast.error("Failed to re-run jobs");
 		}
@@ -162,8 +176,19 @@ function JobSteps({
 		(sum, s) => sum + (s.durationSeconds ?? 0),
 		0,
 	);
+	// jobStatus is already in check format (success/failure/pending/etc) or job API format
+	const resolvedStatus =
+		liveJobStatus === "completed"
+			? liveJobConclusion === "success"
+				? "success"
+				: liveJobConclusion === "cancelled"
+					? "cancelled"
+					: "failure"
+			: liveJobStatus === "in_progress" || liveJobStatus === "pending"
+				? "pending"
+				: (liveJobStatus as keyof typeof statusIcon);
 	const { icon: JobIcon, className: jobIconClass } =
-		statusIcon[jobStatus as keyof typeof statusIcon] ?? statusIcon.pending;
+		statusIcon[resolvedStatus as keyof typeof statusIcon] ?? statusIcon.pending;
 
 	const lowerQuery = searchQuery.toLowerCase();
 
@@ -338,10 +363,32 @@ export function ActionLogsPane({
 	onPopOut,
 }: ActionLogsPaneProps) {
 	const pane = useTabsStore((s) => s.panes[paneId]);
-	const jobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
+	const initialJobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
 	const initialIndex = pane?.actionLogs?.initialJobIndex ?? 0;
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 	const [showTimestamps, setShowTimestamps] = useState(false);
+
+	// Read check statuses from the shared getGitHubStatus cache (same source as Review tab)
+	const { data: githubStatus } =
+		electronTrpc.workspaces.getGitHubStatus.useQuery(
+			{ workspaceId },
+			{ staleTime: 3_000, refetchInterval: 3_000 },
+		);
+	const checks = githubStatus?.pr?.checks ?? [];
+
+	// Build live job list: match by name to track across re-runs (URLs change on re-run)
+	const jobs: ActionLogsJob[] = initialJobs.map((job) => {
+		const liveCheck = checks.find((c) => c.name === job.name);
+		if (liveCheck) {
+			return {
+				detailsUrl: liveCheck.url ?? job.detailsUrl,
+				name: liveCheck.name ?? job.name,
+				status: liveCheck.status,
+			};
+		}
+		return job;
+	});
+
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -351,10 +398,6 @@ export function ActionLogsPane({
 
 	const browserUrl = selectedJob?.detailsUrl?.match(
 		/(https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+\/job\/\d+)/,
-	)?.[1];
-
-	const _runUrl = selectedJob?.detailsUrl?.match(
-		/(https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+)/,
 	)?.[1];
 
 	const handleResizeStart = useCallback(
@@ -519,7 +562,8 @@ export function ActionLogsPane({
 						</div>
 						{jobs.map((job, i) => {
 							const { icon: JobIcon, className: jobIconClass } =
-								statusIcon[job.status];
+								statusIcon[job.status as keyof typeof statusIcon] ??
+								statusIcon.pending;
 							return (
 								<button
 									key={job.detailsUrl}
@@ -554,6 +598,7 @@ export function ActionLogsPane({
 								detailsUrl={selectedJob.detailsUrl}
 								jobName={selectedJob.name}
 								jobStatus={selectedJob.status}
+								jobConclusion={null}
 								showTimestamps={showTimestamps}
 								searchQuery={searchQuery}
 							/>

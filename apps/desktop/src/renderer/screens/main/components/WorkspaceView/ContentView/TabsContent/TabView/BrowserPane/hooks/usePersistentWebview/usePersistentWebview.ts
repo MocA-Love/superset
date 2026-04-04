@@ -318,6 +318,153 @@ export function usePersistentWebview({
 					}, true);
 				}
 			`).catch(() => {});
+
+			// Fullscreen API override: make fullscreen stay within the webview
+			// pane instead of making the Electron BrowserWindow go fullscreen.
+			// We apply CSS to fill the webview viewport and fire resize so
+			// sites like YouTube recalculate their video dimensions.
+			wv.executeJavaScript(`
+				if (!window.__supersetFullscreenInstalled) {
+					window.__supersetFullscreenInstalled = true;
+					var _fsElement = null;
+					var _fsStyleEl = null;
+
+					var _fsMarkedEls = [];
+
+					function enterFs(el) {
+						_fsElement = el;
+						_fsStyleEl = document.createElement('style');
+						_fsStyleEl.textContent = [
+							'.__superset_fs_player {',
+							'  position: fixed !important;',
+							'  inset: 0 !important;',
+							'  width: 100vw !important;',
+							'  height: 100vh !important;',
+							'  z-index: 2147483647 !important;',
+							'  background: #000 !important;',
+							'}',
+							'.__superset_fs_fill {',
+							'  width: 100% !important;',
+							'  height: 100% !important;',
+							'  max-width: none !important;',
+							'  max-height: none !important;',
+							'}',
+							'.__superset_fs_fill video {',
+							'  object-fit: contain !important;',
+							'}',
+						].join('\\n');
+						document.head.appendChild(_fsStyleEl);
+
+						// Find the video player container and promote it to
+						// fixed fullscreen instead of the html/body element.
+						// This avoids showing the rest of the page layout.
+						_fsMarkedEls = [];
+						var video = el.querySelector('video');
+						if (video) {
+							// Find the outermost player container (the one with
+							// overflow:hidden that wraps the video controls).
+							var player = video.closest(
+								'.html5-video-player, [class*="player"], video'
+							) || video.parentElement;
+							player.classList.add('__superset_fs_player');
+							_fsMarkedEls.push({ el: player, cls: '__superset_fs_player' });
+
+							// Force every element from video up to player to fill.
+							var p = video.parentElement;
+							while (p && p !== player) {
+								p.classList.add('__superset_fs_fill');
+								_fsMarkedEls.push({ el: p, cls: '__superset_fs_fill' });
+								p = p.parentElement;
+							}
+							video.classList.add('__superset_fs_fill');
+							_fsMarkedEls.push({ el: video, cls: '__superset_fs_fill' });
+						} else {
+							// No video — fall back to fullscreening the element itself.
+							el.classList.add('__superset_fs_player');
+							_fsMarkedEls.push({ el: el, cls: '__superset_fs_player' });
+						}
+
+						Object.defineProperty(document, 'fullscreenElement', {
+							get: function() { return _fsElement; },
+							configurable: true
+						});
+						Object.defineProperty(document, 'webkitFullscreenElement', {
+							get: function() { return _fsElement; },
+							configurable: true
+						});
+
+						document.dispatchEvent(new Event('fullscreenchange'));
+						document.dispatchEvent(new Event('webkitfullscreenchange'));
+						el.dispatchEvent(new Event('fullscreenchange', { bubbles: true }));
+
+						requestAnimationFrame(function() {
+							window.dispatchEvent(new Event('resize'));
+						});
+					}
+
+					function exitFs() {
+						if (!_fsElement) return;
+						var el = _fsElement;
+						for (var i = 0; i < _fsMarkedEls.length; i++) {
+							_fsMarkedEls[i].el.classList.remove(_fsMarkedEls[i].cls);
+						}
+						_fsMarkedEls = [];
+						if (_fsStyleEl) { _fsStyleEl.remove(); _fsStyleEl = null; }
+						_fsElement = null;
+
+						Object.defineProperty(document, 'fullscreenElement', {
+							get: function() { return null; },
+							configurable: true
+						});
+						Object.defineProperty(document, 'webkitFullscreenElement', {
+							get: function() { return null; },
+							configurable: true
+						});
+
+						document.dispatchEvent(new Event('fullscreenchange'));
+						document.dispatchEvent(new Event('webkitfullscreenchange'));
+						el.dispatchEvent(new Event('fullscreenchange', { bubbles: true }));
+
+						requestAnimationFrame(function() {
+							window.dispatchEvent(new Event('resize'));
+						});
+					}
+
+					Element.prototype.requestFullscreen = function() {
+						enterFs(this);
+						return Promise.resolve();
+					};
+					Element.prototype.webkitRequestFullscreen = function() {
+						enterFs(this);
+					};
+					Element.prototype.webkitRequestFullScreen = function() {
+						enterFs(this);
+					};
+
+					document.exitFullscreen = function() {
+						exitFs();
+						return Promise.resolve();
+					};
+					document.webkitExitFullscreen = function() {
+						exitFs();
+					};
+
+					Object.defineProperty(document, 'fullscreenEnabled', {
+						get: function() { return true; },
+						configurable: true
+					});
+					Object.defineProperty(document, 'webkitFullscreenEnabled', {
+						get: function() { return true; },
+						configurable: true
+					});
+
+					document.addEventListener('keydown', function(e) {
+						if (e.key === 'Escape' && _fsElement) {
+							exitFs();
+						}
+					}, true);
+				}
+			`).catch(() => {});
 		};
 
 		const handleDidStartLoading = () => {

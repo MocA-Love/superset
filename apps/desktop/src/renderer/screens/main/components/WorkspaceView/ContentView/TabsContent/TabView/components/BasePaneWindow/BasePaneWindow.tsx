@@ -44,6 +44,8 @@ interface BasePaneWindowProps {
 	children: React.ReactNode;
 	contentClassName?: string;
 	draggable?: boolean;
+	/** When true, the toolbar row is hidden (e.g. webview HTML fullscreen). */
+	hideToolbar?: boolean;
 }
 
 export function BasePaneWindow({
@@ -58,6 +60,7 @@ export function BasePaneWindow({
 	children,
 	contentClassName = "w-full h-full overflow-hidden",
 	draggable = true,
+	hideToolbar = false,
 }: BasePaneWindowProps) {
 	const isActive = useTabsStore((s) => s.focusedPaneIds[tabId] === paneId);
 	const workspaceRunState = useTabsStore(
@@ -109,9 +112,9 @@ export function BasePaneWindow({
 		<MosaicWindow<string>
 			path={path}
 			title=""
-			draggable={draggable}
+			draggable={draggable && !hideToolbar}
 			renderToolbar={() =>
-				isRoot && draggable ? (
+				hideToolbar ? null : isRoot && draggable ? (
 					<RootDraggable>{renderToolbar(handlers)}</RootDraggable>
 				) : (
 					renderToolbar(handlers)

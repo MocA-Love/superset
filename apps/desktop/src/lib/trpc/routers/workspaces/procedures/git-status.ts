@@ -28,6 +28,7 @@ import {
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchJobStatuses,
 	fetchStructuredJobLogs,
 	getRepoContext,
 	type PullRequestCommentsTarget,
@@ -1582,6 +1583,43 @@ export const createGitStatusProcedures = () => {
 			.query(async ({ input }) => {
 				const workspace = getWorkspace(input.workspaceId);
 				if (!workspace) {
+					return {
+						jobStatus: "queued" as const,
+						jobConclusion: null,
+						steps: [],
+					};
+				}
+
+				const worktree = workspace.worktreeId
+					? getWorktree(workspace.worktreeId)
+					: null;
+
+				let repoPath: string | null = worktree?.path ?? null;
+				if (!repoPath && workspace.type === "branch") {
+					const project = getProject(workspace.projectId);
+					repoPath = project?.mainRepoPath ?? null;
+				}
+				if (!repoPath) {
+					return {
+						jobStatus: "queued" as const,
+						jobConclusion: null,
+						steps: [],
+					};
+				}
+
+				return fetchStructuredJobLogs(repoPath, input.detailsUrl);
+			}),
+
+		getJobStatuses: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					detailsUrls: z.array(z.string()),
+				}),
+			)
+			.query(async ({ input }) => {
+				const workspace = getWorkspace(input.workspaceId);
+				if (!workspace) {
 					return [];
 				}
 
@@ -1598,7 +1636,7 @@ export const createGitStatusProcedures = () => {
 					return [];
 				}
 
-				return fetchStructuredJobLogs(repoPath, input.detailsUrl);
+				return fetchJobStatuses(repoPath, input.detailsUrls);
 			}),
 	});
 };

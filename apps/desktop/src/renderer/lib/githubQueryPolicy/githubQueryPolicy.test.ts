@@ -29,9 +29,9 @@ describe("getGitHubStatusQueryPolicy", () => {
 			}),
 		).toEqual({
 			enabled: true,
-			refetchInterval: 10_000,
+			refetchInterval: 3_000,
 			refetchOnWindowFocus: true,
-			staleTime: 10_000,
+			staleTime: 3_000,
 		});
 	});
 
@@ -46,7 +46,7 @@ describe("getGitHubStatusQueryPolicy", () => {
 			enabled: false,
 			refetchInterval: false,
 			refetchOnWindowFocus: false,
-			staleTime: 10_000,
+			staleTime: 3_000,
 		});
 	});
 

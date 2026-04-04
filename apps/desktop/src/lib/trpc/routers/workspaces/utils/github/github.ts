@@ -501,39 +501,62 @@ export interface StructuredJobStep {
 	logs: string;
 }
 
+export interface StructuredJobResult {
+	jobStatus: "queued" | "in_progress" | "completed" | "waiting";
+	jobConclusion: string | null;
+	steps: StructuredJobStep[];
+}
+
 /**
  * Fetches job step metadata and logs, returning structured per-step data.
  */
 export async function fetchStructuredJobLogs(
 	worktreePath: string,
 	detailsUrl: string,
-): Promise<StructuredJobStep[]> {
+): Promise<StructuredJobResult> {
 	const jobId = parseJobIdFromUrl(detailsUrl);
 	const nwo = parseNwoFromActionsUrl(detailsUrl);
+	const emptyResult: StructuredJobResult = {
+		jobStatus: "queued",
+		jobConclusion: null,
+		steps: [],
+	};
 	if (!jobId || !nwo) {
-		return [];
+		return emptyResult;
 	}
 
 	try {
-		const [jobResult, logsResult] = await Promise.all([
-			execWithShellEnv("gh", ["api", `repos/${nwo}/actions/jobs/${jobId}`], {
-				cwd: worktreePath,
-			}),
-			execWithShellEnv(
-				"gh",
-				["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
-				{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
-			),
-		]);
+		// Always fetch job metadata; logs may 404 for in-progress jobs
+		const jobResult = await execWithShellEnv(
+			"gh",
+			["api", `repos/${nwo}/actions/jobs/${jobId}`],
+			{ cwd: worktreePath },
+		);
 
 		const raw: unknown = JSON.parse(jobResult.stdout.trim());
 		const result = GHJobResponseSchema.safeParse(raw);
 		if (!result.success || !result.data.steps) {
-			return [];
+			return emptyResult;
 		}
 
-		const steps = result.data.steps;
-		const rawLogs = logsResult.stdout;
+		const jobData = result.data;
+		const steps = jobData.steps ?? [];
+		const jobCompleted = jobData.status === "completed";
+
+		// Only fetch logs if job is completed (API returns 404 for in-progress)
+		let rawLogs = "";
+		if (jobCompleted) {
+			try {
+				const logsResult = await execWithShellEnv(
+					"gh",
+					["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
+					{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
+				);
+				rawLogs = logsResult.stdout;
+			} catch {
+				// Logs not yet available
+			}
+		}
 
 		// Parse raw logs into per-step sections.
 		// GitHub log format: each line starts with a timestamp like "2024-01-01T00:00:00.0000000Z "
@@ -571,26 +594,79 @@ export async function fetchStructuredJobLogs(
 			}
 		}
 
-		return steps.map((step) => {
-			let durationSeconds: number | null = null;
-			if (step.started_at && step.completed_at) {
-				durationSeconds = Math.round(
-					(new Date(step.completed_at).getTime() -
-						new Date(step.started_at).getTime()) /
-						1000,
-				);
-			}
-			return {
-				name: step.name,
-				number: step.number,
-				status: step.status,
-				conclusion: step.conclusion ?? null,
-				durationSeconds,
-				logs: stepLogs.get(step.number)?.join("\n") ?? "",
-			};
-		});
+		return {
+			jobStatus: jobData.status,
+			jobConclusion: jobData.conclusion ?? null,
+			steps: steps.map((step) => {
+				let durationSeconds: number | null = null;
+				if (step.started_at && step.completed_at) {
+					durationSeconds = Math.round(
+						(new Date(step.completed_at).getTime() -
+							new Date(step.started_at).getTime()) /
+							1000,
+					);
+				}
+				return {
+					name: step.name,
+					number: step.number,
+					status: step.status,
+					conclusion: step.conclusion ?? null,
+					durationSeconds,
+					logs: stepLogs.get(step.number)?.join("\n") ?? "",
+				};
+			}),
+		};
 	} catch (err) {
 		console.error("[fetchStructuredJobLogs] Failed:", err);
-		return [];
+		return emptyResult;
 	}
+}
+
+export interface JobStatusInfo {
+	detailsUrl: string;
+	status: "queued" | "in_progress" | "completed" | "waiting";
+	conclusion: string | null;
+}
+
+/**
+ * Fetches current status for multiple jobs in parallel.
+ */
+export async function fetchJobStatuses(
+	worktreePath: string,
+	detailsUrls: string[],
+): Promise<JobStatusInfo[]> {
+	const results = await Promise.allSettled(
+		detailsUrls.map(async (detailsUrl) => {
+			const jobId = parseJobIdFromUrl(detailsUrl);
+			const nwo = parseNwoFromActionsUrl(detailsUrl);
+			if (!jobId || !nwo) {
+				return { detailsUrl, status: "queued" as const, conclusion: null };
+			}
+			const { stdout } = await execWithShellEnv(
+				"gh",
+				[
+					"api",
+					`repos/${nwo}/actions/jobs/${jobId}`,
+					"--jq",
+					'.status + "|" + (.conclusion // "")',
+				],
+				{ cwd: worktreePath },
+			);
+			const [status, conclusion] = stdout.trim().split("|");
+			return {
+				detailsUrl,
+				status: (status || "queued") as JobStatusInfo["status"],
+				conclusion: conclusion || null,
+			};
+		}),
+	);
+	return results.map((r, i) =>
+		r.status === "fulfilled"
+			? r.value
+			: {
+					detailsUrl: detailsUrls[i],
+					status: "queued" as const,
+					conclusion: null,
+				},
+	);
 }
