@@ -580,9 +580,7 @@ export function FileViewerContent({
 	}
 
 	if (viewMode === "rendered" && isPdf) {
-		return (
-			<PdfPreviewWebview key={filePath} absolutePath={absoluteFilePath} />
-		);
+		return <PdfPreviewWebview key={filePath} absolutePath={absoluteFilePath} />;
 	}
 
 	if (viewMode === "rendered" && isImage) {

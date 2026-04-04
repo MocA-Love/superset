@@ -58,7 +58,12 @@ export function useFileContent({
 	const isPdf = isPdfFile(filePath);
 
 	const rawReadEnabled =
-		!isRemote && viewMode !== "diff" && !isImage && !isPdf && !!filePath && !!workspaceId;
+		!isRemote &&
+		viewMode !== "diff" &&
+		!isImage &&
+		!isPdf &&
+		!!filePath &&
+		!!workspaceId;
 	const rawQuery = electronTrpc.filesystem.readFile.useQuery(
 		{
 			workspaceId: workspaceId ?? "",
