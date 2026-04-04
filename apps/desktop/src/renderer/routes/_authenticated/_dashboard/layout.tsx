@@ -18,7 +18,6 @@ import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/comp
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
 import { WorkspaceSidebar } from "renderer/screens/main/components/WorkspaceSidebar";
 import { DeleteWorkspaceDialog } from "renderer/screens/main/components/WorkspaceSidebar/WorkspaceListItem/components";
-import { useBrowserFullscreenStore } from "renderer/stores/browser-fullscreen";
 import { useAppHotkey } from "renderer/stores/hotkeys";
 import { useOpenNewWorkspaceModal } from "renderer/stores/new-workspace-modal";
 import {
@@ -51,10 +50,6 @@ function DashboardLayout() {
 	const { data: currentWorkspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: currentWorkspaceId ?? "" },
 		{ enabled: !!currentWorkspaceId },
-	);
-
-	const isBrowserFullscreen = useBrowserFullscreenStore(
-		(s) => s.fullscreenPaneId !== null,
 	);
 
 	const {
@@ -139,9 +134,9 @@ function DashboardLayout() {
 
 	return (
 		<div className="flex flex-col h-full w-full">
-			{!isTearoff && !isBrowserFullscreen && <TopBar />}
+			{!isTearoff && <TopBar />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-				{!isTearoff && !isBrowserFullscreen && isWorkspaceSidebarOpen && (
+				{!isTearoff && isWorkspaceSidebarOpen && (
 					<ResizablePanel
 						width={workspaceSidebarWidth}
 						onWidthChange={setWorkspaceSidebarWidth}
