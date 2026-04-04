@@ -42,6 +42,8 @@ function HtmlPreviewWebview({
 }) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const webviewRef = useRef<Electron.WebviewTag | null>(null);
+	const zoomLevelRef = useRef(zoomLevel);
+	zoomLevelRef.current = zoomLevel;
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -63,7 +65,7 @@ function HtmlPreviewWebview({
 
 		webview.addEventListener("dom-ready", () => {
 			webviewRef.current = webview;
-			webview.setZoomLevel(zoomLevel);
+			webview.setZoomLevel(zoomLevelRef.current);
 		});
 
 		container.appendChild(webview);
@@ -79,7 +81,6 @@ function HtmlPreviewWebview({
 				// already removed
 			}
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: zoomLevel is handled by a separate effect to avoid recreating the webview
 	}, [absolutePath]);
 
 	useEffect(() => {
