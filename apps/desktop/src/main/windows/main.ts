@@ -144,6 +144,7 @@ export async function MainWindow() {
 		alwaysOnTop: false,
 		autoHideMenuBar: true,
 		frame: false,
+		fullscreenable: false,
 		titleBarStyle: "hidden",
 		trafficLightPosition: { x: 16, y: 16 },
 		webPreferences: {
@@ -347,6 +348,22 @@ export async function MainWindow() {
 		console.error("[main-window] Preload script error:");
 		console.error(`  Path: ${preloadPath}`);
 		console.error(`  Error:`, error);
+	});
+
+	// Prevent webview HTML5 fullscreen from making the BrowserWindow go
+	// fullscreen. The renderer handles it visually within the pane.
+	// We listen on every webview's webContents for the fullscreen request
+	// and prevent the default window-level behavior in browser-manager.
+	// As a safety net, if the window still enters fullscreen due to a
+	// webview, revert it immediately.
+	window.on("enter-full-screen", () => {
+		// If any webview just entered HTML fullscreen, this window-level
+		// fullscreen was triggered by it — revert.
+		if (browserManager.getFullscreenPaneId()) {
+			setImmediate(() => {
+				if (!window.isDestroyed()) window.setFullScreen(false);
+			});
+		}
 	});
 
 	// Handle mouse back/forward buttons for webview panes (Windows/Linux).

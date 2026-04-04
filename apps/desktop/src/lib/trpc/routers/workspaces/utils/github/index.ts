@@ -4,6 +4,7 @@ export {
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchJobStatuses,
 	fetchStructuredJobLogs,
 	resolveReviewThread,
 } from "./github";

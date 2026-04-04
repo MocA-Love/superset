@@ -621,3 +621,52 @@ export async function fetchStructuredJobLogs(
 		return emptyResult;
 	}
 }
+
+export interface JobStatusInfo {
+	detailsUrl: string;
+	status: "queued" | "in_progress" | "completed" | "waiting";
+	conclusion: string | null;
+}
+
+/**
+ * Fetches current status for multiple jobs in parallel.
+ */
+export async function fetchJobStatuses(
+	worktreePath: string,
+	detailsUrls: string[],
+): Promise<JobStatusInfo[]> {
+	const results = await Promise.allSettled(
+		detailsUrls.map(async (detailsUrl) => {
+			const jobId = parseJobIdFromUrl(detailsUrl);
+			const nwo = parseNwoFromActionsUrl(detailsUrl);
+			if (!jobId || !nwo) {
+				return { detailsUrl, status: "queued" as const, conclusion: null };
+			}
+			const { stdout } = await execWithShellEnv(
+				"gh",
+				[
+					"api",
+					`repos/${nwo}/actions/jobs/${jobId}`,
+					"--jq",
+					'.status + "|" + (.conclusion // "")',
+				],
+				{ cwd: worktreePath },
+			);
+			const [status, conclusion] = stdout.trim().split("|");
+			return {
+				detailsUrl,
+				status: (status || "queued") as JobStatusInfo["status"],
+				conclusion: conclusion || null,
+			};
+		}),
+	);
+	return results.map((r, i) =>
+		r.status === "fulfilled"
+			? r.value
+			: {
+					detailsUrl: detailsUrls[i],
+					status: "queued" as const,
+					conclusion: null,
+				},
+	);
+}

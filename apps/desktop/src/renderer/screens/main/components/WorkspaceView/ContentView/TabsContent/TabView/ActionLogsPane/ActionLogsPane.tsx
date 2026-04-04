@@ -94,18 +94,20 @@ interface JobStepsProps {
 	workspaceId: string;
 	detailsUrl: string;
 	jobName: string;
+	jobStatus: string;
+	jobConclusion: string | null;
 	showTimestamps: boolean;
 	searchQuery: string;
-	onJobStatusChange?: (status: string, conclusion: string | null) => void;
 }
 
 function JobSteps({
 	workspaceId,
 	detailsUrl,
 	jobName,
+	jobStatus,
+	jobConclusion,
 	showTimestamps,
 	searchQuery,
-	onJobStatusChange,
 }: JobStepsProps) {
 	const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
 	const rerunMutation =
@@ -126,19 +128,8 @@ function JobSteps({
 		);
 
 	const steps = jobResult?.steps ?? [];
-	const liveJobStatus = jobResult?.jobStatus ?? "queued";
-	const liveJobConclusion = jobResult?.jobConclusion ?? null;
-
-	// Notify parent of job status changes for sidebar updates
-	const prevStatusRef = useRef<string | null>(null);
-	if (
-		onJobStatusChange &&
-		liveJobStatus !== prevStatusRef.current &&
-		jobResult
-	) {
-		prevStatusRef.current = liveJobStatus;
-		onJobStatusChange(liveJobStatus, liveJobConclusion);
-	}
+	const liveJobStatus = jobResult?.jobStatus ?? jobStatus;
+	const liveJobConclusion = jobResult?.jobConclusion ?? jobConclusion;
 
 	const toggleStep = (n: number) => {
 		setExpandedSteps((prev) => {
@@ -159,6 +150,7 @@ function JobSteps({
 			);
 			void trpcUtils.workspaces.getReviewStatus.invalidate();
 			void trpcUtils.workspaces.getJobLogs.invalidate();
+			void trpcUtils.workspaces.getJobStatuses.invalidate();
 		} catch {
 			toast.error("Failed to re-run jobs");
 		}
@@ -374,11 +366,23 @@ export function ActionLogsPane({
 	const jobs: ActionLogsJob[] = pane?.actionLogs?.jobs ?? [];
 	const initialIndex = pane?.actionLogs?.initialJobIndex ?? 0;
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex);
-	// Track live job statuses from polling
-	const [liveJobStatuses, setLiveJobStatuses] = useState<
-		Map<number, { status: string; conclusion: string | null }>
-	>(new Map());
 	const [showTimestamps, setShowTimestamps] = useState(false);
+
+	// Poll all job statuses in parallel for sidebar updates
+	const detailsUrls = jobs.map((j) => j.detailsUrl);
+	const { data: jobStatuses } = electronTrpc.workspaces.getJobStatuses.useQuery(
+		{ workspaceId, detailsUrls },
+		{
+			enabled: jobs.length > 0,
+			staleTime: 3_000,
+			refetchInterval: (query) => {
+				const data = query.state.data;
+				if (!data || data.length === 0) return 3_000;
+				const allDone = data.every((s) => s.status === "completed");
+				return allDone ? false : 3_000;
+			},
+		},
+	);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	const searchInputRef = useRef<HTMLInputElement>(null);
@@ -555,7 +559,7 @@ export function ActionLogsPane({
 							All jobs
 						</div>
 						{jobs.map((job, i) => {
-							const live = liveJobStatuses.get(i);
+							const live = jobStatuses?.[i];
 							const displayStatus = live
 								? live.status === "completed"
 									? live.conclusion === "success"
@@ -563,7 +567,9 @@ export function ActionLogsPane({
 										: live.conclusion === "cancelled"
 											? "cancelled"
 											: "failure"
-									: "pending"
+									: live.status === "in_progress"
+										? "pending"
+										: "pending"
 								: job.status;
 							const { icon: JobIcon, className: jobIconClass } =
 								statusIcon[displayStatus as keyof typeof statusIcon] ??
@@ -601,15 +607,10 @@ export function ActionLogsPane({
 								workspaceId={workspaceId}
 								detailsUrl={selectedJob.detailsUrl}
 								jobName={selectedJob.name}
+								jobStatus={jobStatuses?.[selectedIndex]?.status ?? "queued"}
+								jobConclusion={jobStatuses?.[selectedIndex]?.conclusion ?? null}
 								showTimestamps={showTimestamps}
 								searchQuery={searchQuery}
-								onJobStatusChange={(status, conclusion) => {
-									setLiveJobStatuses((prev) => {
-										const next = new Map(prev);
-										next.set(selectedIndex, { status, conclusion });
-										return next;
-									});
-								}}
 							/>
 						)}
 					</div>

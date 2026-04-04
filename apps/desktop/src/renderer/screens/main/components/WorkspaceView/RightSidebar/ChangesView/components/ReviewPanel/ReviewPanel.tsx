@@ -543,6 +543,7 @@ export function ReviewPanel({
 			);
 			await refreshReview("status");
 			void trpcUtils.workspaces.getJobLogs.invalidate();
+			void trpcUtils.workspaces.getJobStatuses.invalidate();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to rerun jobs: ${message}`);
