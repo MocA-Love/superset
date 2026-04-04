@@ -114,9 +114,7 @@ export function BasePaneWindow({
 			title=""
 			draggable={draggable && !hideToolbar}
 			renderToolbar={() =>
-				hideToolbar ? (
-					<></>
-				) : isRoot && draggable ? (
+				hideToolbar ? null : isRoot && draggable ? (
 					<RootDraggable>{renderToolbar(handlers)}</RootDraggable>
 				) : (
 					renderToolbar(handlers)
