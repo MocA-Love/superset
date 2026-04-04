@@ -542,6 +542,7 @@ export function ReviewPanel({
 					: `Re-ran ${result.rerunCount} workflow run${result.rerunCount === 1 ? "" : "s"}`,
 			);
 			await refreshReview("status");
+			void trpcUtils.workspaces.getJobLogs.invalidate();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to rerun jobs: ${message}`);
