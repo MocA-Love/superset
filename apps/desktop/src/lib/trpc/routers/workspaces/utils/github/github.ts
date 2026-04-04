@@ -9,6 +9,7 @@ import { execWithShellEnv } from "../shell-env";
 import { parseUpstreamRef } from "../upstream-ref";
 import {
 	clearGitHubCachesForWorktree,
+	getCachedGitHubStatus,
 	getCachedPullRequestCommentsState,
 	makePullRequestCommentsCacheKey,
 	readCachedGitHubStatus,
@@ -253,8 +254,9 @@ export async function fetchGitHubPRStatus(
 	worktreePath: string,
 ): Promise<GitHubStatus | null> {
 	if (isRateLimited()) {
-		// When rate limited, return stale cache or null — never throw
-		return readCachedGitHubStatus(worktreePath, () => Promise.resolve(null));
+		// When rate limited, return stale cache or null — never throw,
+		// and never overwrite stale cache with null
+		return getCachedGitHubStatus(worktreePath);
 	}
 	return readCachedGitHubStatus(worktreePath, () =>
 		rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
@@ -281,6 +283,9 @@ export async function fetchGitHubPRComments({
 	worktreePath: string;
 	pullRequest?: PullRequestCommentsTarget | null;
 }): Promise<PullRequestComment[]> {
+	if (isRateLimited()) {
+		return [];
+	}
 	try {
 		const pullRequestTarget =
 			pullRequest ?? (await resolvePullRequestCommentsTarget(worktreePath));
