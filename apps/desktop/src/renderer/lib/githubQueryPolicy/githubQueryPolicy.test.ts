@@ -20,7 +20,7 @@ describe("getGitHubStatusQueryPolicy", () => {
 		});
 	});
 
-	test("disables frontend polling for the active changes sidebar review view (SyncService handles polling)", () => {
+	test("polls backend cache for the active changes sidebar review view (reads SyncService-warmed cache)", () => {
 		expect(
 			getGitHubStatusQueryPolicy("changes-sidebar", {
 				hasWorkspaceId: true,
@@ -29,7 +29,7 @@ describe("getGitHubStatusQueryPolicy", () => {
 			}),
 		).toEqual({
 			enabled: true,
-			refetchInterval: false,
+			refetchInterval: 5_000,
 			refetchOnWindowFocus: false,
 			staleTime: 5_000,
 		});
@@ -124,7 +124,7 @@ describe("getGitHubPRCommentsQueryPolicy", () => {
 		});
 	});
 
-	test("disables frontend polling for review comments (SyncService handles polling)", () => {
+	test("polls backend cache for review comments when review tab is active", () => {
 		expect(
 			getGitHubPRCommentsQueryPolicy({
 				hasWorkspaceId: true,
@@ -134,7 +134,7 @@ describe("getGitHubPRCommentsQueryPolicy", () => {
 			}),
 		).toEqual({
 			enabled: true,
-			refetchInterval: false,
+			refetchInterval: 20_000,
 			refetchOnWindowFocus: false,
 			staleTime: 20_000,
 		});

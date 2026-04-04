@@ -1,6 +1,18 @@
+/**
+ * Polling intervals for frontend React Query refetch.
+ *
+ * These intervals trigger tRPC queries that read from the backend cache
+ * (warmed by GitHubSyncService). They do NOT cause additional GitHub API
+ * calls — the backend cached-resource layer returns cached data within TTL.
+ *
+ * The frontend polling ensures React Query picks up the latest data that
+ * the SyncService has fetched, keeping the UI in sync.
+ */
+const ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS = 5_000;
 const ACTIVE_GITHUB_STATUS_STALE_TIME_MS = 5_000;
 const WORKSPACE_LIST_ITEM_GITHUB_STATUS_STALE_TIME_MS = 30_000;
 const PASSIVE_GITHUB_STATUS_STALE_TIME_MS = 5 * 60 * 1000;
+const GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS = 20_000;
 const GITHUB_PR_COMMENTS_STALE_TIME_MS = 20_000;
 
 export type GitHubStatusQuerySurface =
@@ -34,10 +46,11 @@ interface GitHubPRCommentsQueryPolicyOptions {
  * Centralizes GitHub query behavior so passive hover surfaces stay cheap while
  * active workspace surfaces still revalidate when they become relevant again.
  *
- * Note: refetchOnWindowFocus is disabled for all GitHub surfaces because
- * the GitHubSyncService keeps the backend cache warm via periodic polling
- * (PR status every 5s, comments every 20s). This prevents burst API calls
- * on window focus that contributed to secondary rate limit errors.
+ * refetchOnWindowFocus is disabled for all surfaces — the GitHubSyncService
+ * keeps the backend cache warm, preventing burst API calls on window focus.
+ *
+ * refetchInterval on active surfaces reads from the backend cache (no API call).
+ * Passive surfaces rely on staleTime + mount-time fetch only.
  */
 export function getGitHubStatusQueryPolicy(
 	surface: GitHubStatusQuerySurface,
@@ -53,7 +66,10 @@ export function getGitHubStatusQueryPolicy(
 		case "changes-sidebar":
 			return {
 				enabled: isEnabled,
-				refetchInterval: false,
+				refetchInterval:
+					isEnabled && isReviewTabActive
+						? ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS
+						: false,
 				refetchOnWindowFocus: false,
 				staleTime: isReviewTabActive ? ACTIVE_GITHUB_STATUS_STALE_TIME_MS : 0,
 			};
@@ -86,12 +102,16 @@ export function getGitHubPRCommentsQueryPolicy({
 	hasWorkspaceId,
 	hasActivePullRequest,
 	isActive = true,
+	isReviewTabActive = false,
 }: GitHubPRCommentsQueryPolicyOptions): GitHubQueryPolicy {
 	const isEnabled = hasWorkspaceId && isActive && hasActivePullRequest;
 
 	return {
 		enabled: isEnabled,
-		refetchInterval: false,
+		refetchInterval:
+			isEnabled && isReviewTabActive
+				? GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS
+				: false,
 		refetchOnWindowFocus: false,
 		staleTime: GITHUB_PR_COMMENTS_STALE_TIME_MS,
 	};
