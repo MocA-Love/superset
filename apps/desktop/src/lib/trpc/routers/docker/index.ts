@@ -398,7 +398,11 @@ export const createDockerRouter = () => {
 			}),
 
 		startProject: publicProcedure
-			.input(composeActionInput)
+			.input(
+				composeActionInput.extend({
+					rebuild: z.boolean().optional(),
+				}),
+			)
 			.mutation(async ({ input }) => {
 				const composeFile = await resolveComposeFileForWorkspace(
 					input.workspaceId,
@@ -406,10 +410,17 @@ export const createDockerRouter = () => {
 				);
 
 				try {
-					await execDocker(
-						["compose", "-f", composeFile.absolutePath, "up", "-d"],
-						{ cwd: composeFile.directoryPath },
-					);
+					const args = [
+						"compose",
+						"-f",
+						composeFile.absolutePath,
+						"up",
+						"-d",
+					];
+					if (input.rebuild) {
+						args.push("--build", "--force-recreate");
+					}
+					await execDocker(args, { cwd: composeFile.directoryPath });
 					return { success: true };
 				} catch (error) {
 					normalizeExecError(error);
@@ -427,6 +438,27 @@ export const createDockerRouter = () => {
 				try {
 					await execDocker(
 						["compose", "-f", composeFile.absolutePath, "stop"],
+						{
+							cwd: composeFile.directoryPath,
+						},
+					);
+					return { success: true };
+				} catch (error) {
+					normalizeExecError(error);
+				}
+			}),
+
+		removeProject: publicProcedure
+			.input(composeActionInput)
+			.mutation(async ({ input }) => {
+				const composeFile = await resolveComposeFileForWorkspace(
+					input.workspaceId,
+					input.composeFilePath,
+				);
+
+				try {
+					await execDocker(
+						["compose", "-f", composeFile.absolutePath, "down"],
 						{
 							cwd: composeFile.directoryPath,
 						},

@@ -12,15 +12,22 @@ import {
 } from "@superset/ui/dialog";
 import { ScrollArea, ScrollBar } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@superset/ui/tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	LuBox,
 	LuBug,
 	LuChevronRight,
+	LuLoaderCircle,
 	LuPlay,
 	LuRefreshCw,
 	LuSquareTerminal,
 	LuSquareX,
+	LuTrash2,
 } from "react-icons/lu";
 import type { ElectronRouterOutputs } from "renderer/lib/electron-trpc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -116,26 +123,62 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 	}, [utils, workspaceId]);
 
 	const startProjectMutation = electronTrpc.docker.startProject.useMutation({
-		onSuccess: () => {
+		onMutate: (variables) => {
+			const message = variables.rebuild
+				? "コンテナをリビルド中..."
+				: "コンテナを起動中...";
+			return { toastId: toast.loading(message) };
+		},
+		onSuccess: (_data, variables, context) => {
+			const message = variables.rebuild
+				? "リビルドが完了しました"
+				: "起動しました";
+			toast.success(message, { id: context?.toastId });
 			void invalidateDockerQueries();
 		},
-		onError: (error) => {
-			toast.error("Docker compose up に失敗しました", {
+		onError: (error, variables, context) => {
+			const message = variables.rebuild
+				? "リビルドに失敗しました"
+				: "Docker compose up に失敗しました";
+			toast.error(message, {
+				id: context?.toastId,
 				description: error.message,
 			});
 		},
 	});
 
 	const stopProjectMutation = electronTrpc.docker.stopProject.useMutation({
-		onSuccess: () => {
+		onMutate: () => {
+			return { toastId: toast.loading("コンテナを停止中...") };
+		},
+		onSuccess: (_data, _variables, context) => {
+			toast.success("停止しました", { id: context?.toastId });
 			void invalidateDockerQueries();
 		},
-		onError: (error) => {
+		onError: (error, _variables, context) => {
 			toast.error("Docker compose stop に失敗しました", {
+				id: context?.toastId,
 				description: error.message,
 			});
 		},
 	});
+
+	const removeProjectMutation =
+		electronTrpc.docker.removeProject.useMutation({
+			onMutate: () => {
+				return { toastId: toast.loading("コンテナを削除中...") };
+			},
+			onSuccess: (_data, _variables, context) => {
+				toast.success("削除しました", { id: context?.toastId });
+				void invalidateDockerQueries();
+			},
+			onError: (error, _variables, context) => {
+				toast.error("Docker compose down に失敗しました", {
+					id: context?.toastId,
+					description: error.message,
+				});
+			},
+		});
 
 	const startContainerMutation = electronTrpc.docker.startContainer.useMutation(
 		{
@@ -371,37 +414,126 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 														</div>
 													</button>
 												</CollapsibleTrigger>
-												<div className="flex flex-wrap items-center justify-end gap-1">
-													<Button
-														size="sm"
-														variant="outline"
-														className="h-7 px-2 whitespace-normal"
-														onClick={() =>
-															startProjectMutation.mutate({
-																composeFilePath: group.absolutePath,
-																workspaceId,
-															})
-														}
-														disabled={startProjectMutation.isPending}
-													>
-														<LuPlay className="mr-1 size-3.5" />
-														Up
-													</Button>
-													<Button
-														size="sm"
-														variant="outline"
-														className="h-7 px-2 whitespace-normal"
-														onClick={() =>
-															stopProjectMutation.mutate({
-																composeFilePath: group.absolutePath,
-																workspaceId,
-															})
-														}
-														disabled={stopProjectMutation.isPending}
-													>
-														<LuSquareX className="mr-1 size-3.5" />
-														Stop
-													</Button>
+												<div className="flex items-center gap-1">
+													{(() => {
+														const isAllRunning =
+															group.totalContainers > 0 &&
+															group.runningContainers ===
+																group.totalContainers;
+														const isAllStopped =
+															group.runningContainers === 0;
+														const isStartPending =
+															startProjectMutation.isPending;
+														const isStopPending =
+															stopProjectMutation.isPending;
+														const isRemovePending =
+															removeProjectMutation.isPending;
+														const isBusy =
+															isStartPending ||
+															isStopPending ||
+															isRemovePending;
+
+														return (
+															<>
+																<Tooltip>
+																	<TooltipTrigger asChild>
+																		<Button
+																			size="icon"
+																			variant="outline"
+																			className="size-7"
+																			onClick={() =>
+																				startProjectMutation.mutate({
+																					composeFilePath: group.absolutePath,
+																					workspaceId,
+																				})
+																			}
+																			disabled={isAllRunning || isBusy}
+																		>
+																			{isStartPending ? (
+																				<LuLoaderCircle className="size-3.5 animate-spin" />
+																			) : (
+																				<LuPlay className="size-3.5" />
+																			)}
+																		</Button>
+																	</TooltipTrigger>
+																	<TooltipContent>Up</TooltipContent>
+																</Tooltip>
+																<Tooltip>
+																	<TooltipTrigger asChild>
+																		<Button
+																			size="icon"
+																			variant="outline"
+																			className="size-7"
+																			onClick={() =>
+																				startProjectMutation.mutate({
+																					composeFilePath: group.absolutePath,
+																					workspaceId,
+																					rebuild: true,
+																				})
+																			}
+																			disabled={isBusy}
+																		>
+																			{isStartPending ? (
+																				<LuLoaderCircle className="size-3.5 animate-spin" />
+																			) : (
+																				<LuRefreshCw className="size-3.5" />
+																			)}
+																		</Button>
+																	</TooltipTrigger>
+																	<TooltipContent>Rebuild</TooltipContent>
+																</Tooltip>
+																<Tooltip>
+																	<TooltipTrigger asChild>
+																		<Button
+																			size="icon"
+																			variant="outline"
+																			className="size-7"
+																			onClick={() =>
+																				stopProjectMutation.mutate({
+																					composeFilePath: group.absolutePath,
+																					workspaceId,
+																				})
+																			}
+																			disabled={isAllStopped || isBusy}
+																		>
+																			{isStopPending ? (
+																				<LuLoaderCircle className="size-3.5 animate-spin" />
+																			) : (
+																				<LuSquareX className="size-3.5" />
+																			)}
+																		</Button>
+																	</TooltipTrigger>
+																	<TooltipContent>Stop</TooltipContent>
+																</Tooltip>
+																<Tooltip>
+																	<TooltipTrigger asChild>
+																		<Button
+																			size="icon"
+																			variant="outline"
+																			className="size-7 text-destructive"
+																			onClick={() =>
+																				removeProjectMutation.mutate({
+																					composeFilePath: group.absolutePath,
+																					workspaceId,
+																				})
+																			}
+																			disabled={
+																				(isAllStopped && group.totalContainers === 0) ||
+																				isBusy
+																			}
+																		>
+																			{isRemovePending ? (
+																				<LuLoaderCircle className="size-3.5 animate-spin" />
+																			) : (
+																				<LuTrash2 className="size-3.5" />
+																			)}
+																		</Button>
+																	</TooltipTrigger>
+																	<TooltipContent>Delete</TooltipContent>
+																</Tooltip>
+															</>
+														);
+													})()}
 												</div>
 											</div>
 										</div>
