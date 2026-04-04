@@ -38,7 +38,12 @@ import {
 	retargetAbsolutePath,
 	toAbsoluteWorkspacePath,
 } from "shared/absolute-paths";
-import { isHtmlFile, isImageFile, isMarkdownFile } from "shared/file-types";
+import {
+	isHtmlFile,
+	isImageFile,
+	isMarkdownFile,
+	isPdfFile,
+} from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import type { CodeEditorAdapter } from "../../../components";
 import { BasePaneWindow } from "../components";
@@ -621,7 +626,10 @@ export function FileViewerPane({
 		return "";
 	}, [currentDocumentContent, documentKey, rawFileData]);
 	const hasRenderedMode =
-		isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath);
+		isMarkdownFile(filePath) ||
+		isImageFile(filePath) ||
+		isHtmlFile(filePath) ||
+		isPdfFile(filePath);
 	const hasDiff = !!diffCategory;
 	const unsavedDialogCopy = getUnsavedDialogCopy(
 		session?.pendingIntent ?? null,

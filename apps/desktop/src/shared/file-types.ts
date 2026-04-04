@@ -46,6 +46,9 @@ const IMAGE_MIME_TYPE_EXTENSIONS: Record<string, string> = {
 /** HTML extensions */
 const HTML_EXTENSIONS = new Set(["html", "htm"]);
 
+/** PDF extensions */
+const PDF_EXTENSIONS = new Set(["pdf"]);
+
 /** Markdown extensions */
 const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "mdx"]);
 
@@ -126,10 +129,20 @@ export function isSpreadsheetFile(filePath: string): boolean {
 }
 
 /**
- * Checks if a file supports rendered preview (markdown, image, or HTML)
+ * Checks if a file is a PDF based on extension
+ */
+export function isPdfFile(filePath: string): boolean {
+	return PDF_EXTENSIONS.has(getExtension(filePath));
+}
+
+/**
+ * Checks if a file supports rendered preview (markdown, image, HTML, or PDF)
  */
 export function hasRenderedPreview(filePath: string): boolean {
 	return (
-		isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath)
+		isMarkdownFile(filePath) ||
+		isImageFile(filePath) ||
+		isHtmlFile(filePath) ||
+		isPdfFile(filePath)
 	);
 }
