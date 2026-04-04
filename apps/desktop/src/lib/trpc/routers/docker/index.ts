@@ -24,6 +24,23 @@ const COMPOSE_FILE_NAMES = new Set([
 	"compose.yaml",
 ]);
 
+const DOCKERFILE_EXACT_NAMES = new Set(["Dockerfile", "Containerfile"]);
+
+function isDockerfileName(name: string): boolean {
+	if (DOCKERFILE_EXACT_NAMES.has(name)) {
+		return true;
+	}
+	// Dockerfile.dev, Dockerfile.prod, etc.
+	if (name.startsWith("Dockerfile.") || name.startsWith("Containerfile.")) {
+		return true;
+	}
+	// foo.dockerfile
+	if (name.endsWith(".dockerfile")) {
+		return true;
+	}
+	return false;
+}
+
 const IGNORED_DIRECTORIES = new Set([
 	".git",
 	".next",
@@ -57,6 +74,13 @@ interface ComposeFileSummary {
 	absolutePath: string;
 	directoryPath: string;
 	projectName: string;
+	relativePath: string;
+}
+
+interface DockerfileSummary {
+	absolutePath: string;
+	directoryPath: string;
+	name: string;
 	relativePath: string;
 }
 
@@ -246,6 +270,58 @@ async function findComposeFiles(
 	);
 }
 
+async function findDockerfiles(rootPath: string): Promise<DockerfileSummary[]> {
+	const queue: string[] = [rootPath];
+	const dockerfiles: DockerfileSummary[] = [];
+
+	while (queue.length > 0) {
+		const currentDir = queue.shift();
+		if (!currentDir) {
+			continue;
+		}
+
+		let entries: Dirent[];
+		try {
+			entries = await readdir(currentDir, { withFileTypes: true });
+		} catch {
+			continue;
+		}
+
+		for (const entry of entries) {
+			if (entry.isSymbolicLink()) {
+				continue;
+			}
+
+			const absolutePath = path.join(currentDir, entry.name);
+			if (entry.isDirectory()) {
+				if (isIgnoredDirectory(entry.name)) {
+					continue;
+				}
+				queue.push(absolutePath);
+				continue;
+			}
+
+			if (!entry.isFile() || !isDockerfileName(entry.name)) {
+				continue;
+			}
+
+			const directoryPath = path.dirname(absolutePath);
+			const relativePath = path.relative(rootPath, absolutePath) || entry.name;
+
+			dockerfiles.push({
+				absolutePath,
+				directoryPath,
+				name: entry.name,
+				relativePath,
+			});
+		}
+	}
+
+	return dockerfiles.sort((left, right) =>
+		left.relativePath.localeCompare(right.relativePath),
+	);
+}
+
 function getWorkspaceRootPath(workspaceId: string): string {
 	const workspace = localDb
 		.select()
@@ -327,10 +403,14 @@ export const createDockerRouter = () => {
 			.input(z.object({ workspaceId: z.string() }))
 			.query(async ({ input }) => {
 				const workspaceRoot = getWorkspaceRootPath(input.workspaceId);
-				const composeFiles = await findComposeFiles(workspaceRoot);
+				const [composeFiles, dockerfiles] = await Promise.all([
+					findComposeFiles(workspaceRoot),
+					findDockerfiles(workspaceRoot),
+				]);
 				return {
 					workspaceRoot,
 					composeFiles,
+					dockerfiles,
 				};
 			}),
 
@@ -338,11 +418,15 @@ export const createDockerRouter = () => {
 			.input(z.object({ workspaceId: z.string() }))
 			.query(async ({ input }) => {
 				const workspaceRoot = getWorkspaceRootPath(input.workspaceId);
-				const composeFiles = await findComposeFiles(workspaceRoot);
+				const [composeFiles, dockerfiles] = await Promise.all([
+					findComposeFiles(workspaceRoot),
+					findDockerfiles(workspaceRoot),
+				]);
 
-				if (composeFiles.length === 0) {
+				if (composeFiles.length === 0 && dockerfiles.length === 0) {
 					return {
 						composeFiles: [],
+						dockerfiles: [],
 						dockerAvailable: true,
 						dockerError: null,
 						workspaceRoot,
@@ -391,6 +475,7 @@ export const createDockerRouter = () => {
 							totalContainers: matchingContainers.length,
 						};
 					}),
+					dockerfiles,
 					dockerAvailable,
 					dockerError,
 					workspaceRoot,
@@ -527,6 +612,57 @@ export const createDockerRouter = () => {
 						{ cwd: getWorkspaceRootPath(input.workspaceId) },
 					);
 					return JSON.parse(stdout) as unknown;
+				} catch (error) {
+					normalizeExecError(error);
+				}
+			}),
+
+		buildDockerfile: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					dockerfilePath: z.string().min(1),
+					tag: z.string().min(1),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const workspaceRoot = getWorkspaceRootPath(input.workspaceId);
+				const dockerfiles = await findDockerfiles(workspaceRoot);
+				const dockerfile = dockerfiles.find(
+					(entry) => entry.absolutePath === input.dockerfilePath,
+				);
+
+				if (!dockerfile) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Selected Dockerfile does not belong to this workspace",
+					});
+				}
+
+				try {
+					await execDocker(
+						["build", "-f", dockerfile.absolutePath, "-t", input.tag, "."],
+						{ cwd: dockerfile.directoryPath },
+					);
+					return { success: true };
+				} catch (error) {
+					normalizeExecError(error);
+				}
+			}),
+
+		removeDockerImage: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					imageTag: z.string().min(1),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				getWorkspaceRootPath(input.workspaceId);
+
+				try {
+					await execDocker(["rmi", input.imageTag]);
+					return { success: true };
 				} catch (error) {
 					normalizeExecError(error);
 				}
