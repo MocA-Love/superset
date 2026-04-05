@@ -70,6 +70,10 @@ export function getEditorTheme(theme: Theme): EditorTheme {
 			attributeName: terminal?.yellow ?? theme.ui.chart4,
 			invalid: terminal?.brightRed ?? theme.ui.destructive,
 
+			// Operators and punctuation
+			operator: theme.ui.foreground,
+			punctuation: theme.ui.mutedForeground,
+
 			// Markdown-specific
 			markdownHeading: terminal?.red ?? theme.ui.chart1,
 			markdownEmphasis: terminal?.magenta ?? theme.ui.primary,

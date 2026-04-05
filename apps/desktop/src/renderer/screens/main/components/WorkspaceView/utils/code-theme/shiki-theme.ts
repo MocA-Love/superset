@@ -112,6 +112,41 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 
+			// Operators
+			{
+				scope: [
+					"keyword.operator",
+					"keyword.operator.assignment",
+					"keyword.operator.arithmetic",
+					"keyword.operator.logical",
+					"keyword.operator.comparison",
+					"keyword.operator.ternary",
+					"keyword.operator.spread",
+					"keyword.operator.rest",
+					"keyword.operator.type",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.operator),
+				},
+			},
+
+			// Punctuation
+			{
+				scope: [
+					"punctuation",
+					"punctuation.definition.block",
+					"punctuation.definition.parameters",
+					"punctuation.definition.array",
+					"punctuation.separator",
+					"punctuation.terminator",
+					"meta.brace",
+					"meta.bracket",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.punctuation),
+				},
+			},
+
 			// Markdown
 			{
 				scope: [

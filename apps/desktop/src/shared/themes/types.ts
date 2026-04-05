@@ -235,6 +235,10 @@ export interface EditorSyntaxColors {
 	attributeName: string;
 	invalid: string;
 
+	// Operators and punctuation
+	operator: string;
+	punctuation: string;
+
 	// Markdown-specific
 	markdownHeading: string;
 	markdownEmphasis: string;

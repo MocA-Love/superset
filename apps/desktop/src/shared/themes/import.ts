@@ -116,6 +116,8 @@ const editorSyntaxSchema = z
 		tagName: z.string().optional(),
 		attributeName: z.string().optional(),
 		invalid: z.string().optional(),
+		operator: z.string().optional(),
+		punctuation: z.string().optional(),
 		markdownHeading: z.string().optional(),
 		markdownEmphasis: z.string().optional(),
 		markdownStrong: z.string().optional(),
