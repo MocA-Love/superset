@@ -218,7 +218,7 @@ export function FileItem({
 		<div
 			{...fileDragProps}
 			className={cn(
-				"group w-full flex items-stretch gap-1 px-1.5 text-left rounded-sm",
+				"group relative w-full flex items-stretch px-1.5 text-left rounded-sm",
 				"hover:bg-accent/50 cursor-pointer transition-colors",
 				isHighlighted && "bg-accent",
 			)}
@@ -241,10 +241,8 @@ export function FileItem({
 				<span className="flex-1 min-w-0 flex items-center gap-1">
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-								<span className="shrink-0 truncate max-w-[60%] text-xs text-start">
-									{fileName}
-								</span>
+							<span className="min-w-0 shrink flex items-baseline gap-1 overflow-hidden">
+								<span className="shrink-0 text-xs text-start">{fileName}</span>
 								{directoryLabel ? (
 									<span className="truncate text-[10px] text-muted-foreground/80">
 										{directoryLabel}
@@ -255,7 +253,7 @@ export function FileItem({
 						<TooltipContent side="right">{file.path}</TooltipContent>
 					</Tooltip>
 					{showStatsDisplay && (
-						<span className="flex items-center gap-0.5 text-[10px] font-mono shrink-0 whitespace-nowrap opacity-60">
+						<span className="ml-auto flex items-center gap-0.5 text-[10px] font-mono shrink-0 whitespace-nowrap opacity-60">
 							{file.additions > 0 && (
 								<span className="text-green-600 dark:text-green-500">
 									+{file.additions}
@@ -271,7 +269,11 @@ export function FileItem({
 				</span>
 			</button>
 
-			{hasAction && <RowHoverActions actions={hoverActions} />}
+			{hasAction && (
+				<div className="absolute right-1.5 top-0 bottom-0 flex items-center">
+					<RowHoverActions actions={hoverActions} />
+				</div>
+			)}
 		</div>
 	);
 
