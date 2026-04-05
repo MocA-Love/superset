@@ -185,7 +185,14 @@ export const GHPRResponseSchema = z.object({
 export const GHRepoResponseSchema = z.object({
 	url: z.string(),
 	isFork: z.boolean().optional().default(false),
-	parent: z.object({ url: z.string() }).nullable().optional(),
+	parent: z
+		.object({
+			url: z.string().optional(),
+			name: z.string().optional(),
+			owner: z.object({ login: z.string() }).optional(),
+		})
+		.nullable()
+		.optional(),
 });
 
 export interface RepoContext {
