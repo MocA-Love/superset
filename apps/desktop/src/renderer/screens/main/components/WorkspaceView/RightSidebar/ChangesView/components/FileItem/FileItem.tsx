@@ -242,7 +242,7 @@ export function FileItem({
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-								<span className="truncate overflow-hidden text-ellipsis text-xs text-start">
+								<span className="shrink-0 text-xs text-start">
 									{fileName}
 								</span>
 								{directoryLabel ? (
