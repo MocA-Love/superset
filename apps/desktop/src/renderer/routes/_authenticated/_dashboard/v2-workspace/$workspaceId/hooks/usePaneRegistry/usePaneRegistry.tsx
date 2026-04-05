@@ -58,21 +58,14 @@ export function usePaneRegistry(
 							description: "Your changes will be lost if you don't save them.",
 							actions: [
 								{
-									label: "Save",
-									onClick: () => {
-										// TODO: wire up save via editor ref
-										resolve(true);
-									},
-								},
-								{
-									label: "Don't Save",
-									variant: "secondary",
-									onClick: () => resolve(true),
-								},
-								{
 									label: "Cancel",
-									variant: "ghost",
+									variant: "outline",
 									onClick: () => resolve(false),
+								},
+								{
+									label: "Discard Changes",
+									variant: "destructive",
+									onClick: () => resolve(true),
 								},
 							],
 						});

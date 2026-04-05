@@ -17,6 +17,24 @@ export function FilePane({ context, workspaceId }: FilePaneProps) {
 	const data = context.pane.data as FilePaneData;
 	const { filePath } = data;
 
+	// Spreadsheet files bypass useFileDocument entirely (own data loading)
+	if (isSpreadsheetFile(filePath)) {
+		return (
+			<SpreadsheetViewer
+				workspaceId={workspaceId}
+				filePath={filePath}
+				absoluteFilePath={filePath}
+			/>
+		);
+	}
+
+	return <FilePaneContent context={context} workspaceId={workspaceId} />;
+}
+
+function FilePaneContent({ context, workspaceId }: FilePaneProps) {
+	const data = context.pane.data as FilePaneData;
+	const { filePath } = data;
+
 	const document = useFileDocument({
 		workspaceId,
 		absolutePath: filePath,
@@ -73,15 +91,6 @@ export function FilePane({ context, workspaceId }: FilePaneProps) {
 		if (isImageFile(filePath) && document.state.kind === "bytes") {
 			return (
 				<ImageRenderer content={document.state.content} filePath={filePath} />
-			);
-		}
-		if (isSpreadsheetFile(filePath)) {
-			return (
-				<SpreadsheetViewer
-					workspaceId={workspaceId}
-					filePath={filePath}
-					absoluteFilePath={filePath}
-				/>
 			);
 		}
 		return (
