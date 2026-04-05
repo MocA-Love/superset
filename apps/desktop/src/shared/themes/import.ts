@@ -128,7 +128,7 @@ const editorSyntaxSchema = z
 		markdownQuote: z.string().optional(),
 		markdownList: z.string().optional(),
 		markdownSeparator: z.string().optional(),
-		markdownMeta: z.string().optional(),
+		meta: z.string().optional(),
 	})
 	.passthrough();
 

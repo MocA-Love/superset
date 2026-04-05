@@ -223,7 +223,7 @@ export function createShikiTheme(theme: Theme) {
 			{
 				scope: ["fenced_code.block.language"],
 				settings: {
-					foreground: toHex(editorTheme.syntax.markdownMeta),
+					foreground: toHex(editorTheme.syntax.meta),
 				},
 			},
 		],

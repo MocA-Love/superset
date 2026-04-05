@@ -85,7 +85,7 @@ export function getEditorTheme(theme: Theme): EditorTheme {
 			markdownQuote: terminal?.brightBlack ?? theme.ui.mutedForeground,
 			markdownList: terminal?.yellow ?? theme.ui.chart4,
 			markdownSeparator: theme.ui.mutedForeground,
-			markdownMeta: terminal?.blue ?? theme.ui.chart3,
+			meta: terminal?.blue ?? theme.ui.chart3,
 		},
 	};
 

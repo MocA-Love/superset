@@ -153,7 +153,7 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 					tags.annotation,
 					tags.processingInstruction,
 				],
-				color: editorTheme.syntax.markdownMeta,
+				color: editorTheme.syntax.meta,
 			},
 
 			// ── Diff ──────────────────────────────────────────────────

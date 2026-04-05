@@ -250,7 +250,7 @@ export interface EditorSyntaxColors {
 	markdownQuote: string;
 	markdownList: string;
 	markdownSeparator: string;
-	markdownMeta: string;
+	meta: string;
 }
 
 /**
