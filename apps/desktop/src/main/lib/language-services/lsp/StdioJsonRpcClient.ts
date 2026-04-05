@@ -64,9 +64,12 @@ function isJsonRpcRequestMessage(
 	return "id" in message && "method" in message;
 }
 
-function consumeMessage(
-	buffer: Buffer<ArrayBufferLike>,
-): { body: string; rest: Buffer<ArrayBufferLike> } | null {
+type ConsumeResult =
+	| { kind: "message"; body: string; rest: Buffer<ArrayBufferLike> }
+	| { kind: "skip"; rest: Buffer<ArrayBufferLike> }
+	| null;
+
+function consumeMessage(buffer: Buffer<ArrayBufferLike>): ConsumeResult {
 	const separatorIndex = buffer.indexOf("\r\n\r\n");
 	if (separatorIndex === -1) {
 		return null;
@@ -75,7 +78,8 @@ function consumeMessage(
 	const header = buffer.subarray(0, separatorIndex).toString("utf8");
 	const contentLengthMatch = /Content-Length:\s*(\d+)/i.exec(header);
 	if (!contentLengthMatch) {
-		return null;
+		// Invalid header — skip past the separator so the buffer can recover
+		return { kind: "skip", rest: buffer.subarray(separatorIndex + 4) };
 	}
 
 	const contentLength = Number(contentLengthMatch[1]);
@@ -86,6 +90,7 @@ function consumeMessage(
 	}
 
 	return {
+		kind: "message",
 		body: buffer.subarray(bodyStart, bodyEnd).toString("utf8"),
 		rest: buffer.subarray(bodyEnd),
 	};
@@ -143,16 +148,40 @@ export class StdioJsonRpcClient {
 		});
 	}
 
-	async request(method: string, params?: unknown): Promise<unknown> {
+	async request(
+		method: string,
+		params?: unknown,
+		timeoutMs = 30_000,
+	): Promise<unknown> {
 		const id = ++this.nextId;
 		return await new Promise<unknown>((resolve, reject) => {
-			this.pendingRequests.set(id, { resolve, reject });
+			const timer = setTimeout(() => {
+				this.pendingRequests.delete(id);
+				reject(
+					new Error(
+						`${this.options.name} request "${method}" timed out after ${timeoutMs}ms`,
+					),
+				);
+			}, timeoutMs);
+
+			this.pendingRequests.set(id, {
+				resolve: (value) => {
+					clearTimeout(timer);
+					resolve(value);
+				},
+				reject: (error) => {
+					clearTimeout(timer);
+					reject(error);
+				},
+			});
+
 			void this.writeMessage({
 				jsonrpc: "2.0",
 				id,
 				method,
 				params,
 			}).catch((error) => {
+				clearTimeout(timer);
 				this.pendingRequests.delete(id);
 				reject(error);
 			});
@@ -173,6 +202,33 @@ export class StdioJsonRpcClient {
 		}
 
 		const child = this.process;
+
+		// Attempt graceful LSP shutdown → exit before killing
+		try {
+			// Use a short dedicated timeout; writeMessage checks this.process,
+			// so keep it alive until after we send exit.
+			await Promise.race([
+				this.writeMessage({
+					jsonrpc: "2.0",
+					id: ++this.nextId,
+					method: "shutdown",
+					params: null,
+				}),
+				new Promise((_, reject) =>
+					setTimeout(
+						() => reject(new Error("shutdown write timed out")),
+						5_000,
+					),
+				),
+			]);
+			await this.writeMessage({
+				jsonrpc: "2.0",
+				method: "exit",
+			});
+		} catch {
+			// Graceful path failed — fall through to kill
+		}
+
 		this.process = null;
 		child.removeAllListeners();
 		if (!child.killed) {
@@ -188,18 +244,27 @@ export class StdioJsonRpcClient {
 	private handleStdout(chunk: Buffer<ArrayBufferLike>): void {
 		this.buffer = Buffer.concat([this.buffer, chunk]);
 		while (true) {
-			const message = consumeMessage(this.buffer);
-			if (!message) {
+			const result = consumeMessage(this.buffer);
+			if (!result) {
 				return;
 			}
 
-			this.buffer = message.rest;
-			if (!message.body.trim()) {
+			this.buffer = result.rest;
+
+			if (result.kind === "skip") {
+				console.warn(
+					"[language-services/lsp] Skipped invalid header block",
+					{ name: this.options.name },
+				);
+				continue;
+			}
+
+			if (!result.body.trim()) {
 				continue;
 			}
 
 			try {
-				const parsed = JSON.parse(message.body) as JsonRpcMessage;
+				const parsed = JSON.parse(result.body) as JsonRpcMessage;
 				this.handleMessage(parsed);
 			} catch (error) {
 				console.error(
@@ -207,7 +272,7 @@ export class StdioJsonRpcClient {
 					{
 						name: this.options.name,
 						error,
-						body: message.body,
+						body: result.body,
 					},
 				);
 			}

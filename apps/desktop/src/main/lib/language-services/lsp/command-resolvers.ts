@@ -84,6 +84,7 @@ export function resolveAvailableExecutable(
 				},
 				shell: candidate.shell,
 				stdio: "ignore",
+				timeout: 10_000,
 			},
 		);
 		if (probeResult.status !== 0) {
