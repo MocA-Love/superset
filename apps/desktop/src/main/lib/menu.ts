@@ -33,7 +33,7 @@ function triggerBrowserShortcut(action: BrowserShortcutAction) {
 
 export function createApplicationMenu() {
 	const reloadAccelerator = "CmdOrCtrl+R";
-	const browserReloadAccelerator = "CmdOrCtrl+Shift+R";
+	const browserReloadAccelerator = "CmdOrCtrl+Alt+R";
 	const browserHardReloadAccelerator = "CmdOrCtrl+Shift+Alt+R";
 	const closeAccelerator = "CmdOrCtrl+Shift+Q";
 	const showHotkeysAccelerator = "CmdOrCtrl+/";

@@ -417,7 +417,7 @@ export function WorkspacePage({
 	useHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), {
 		enabled: isActive,
 	});
-	usePresetHotkeys(openTabWithPreset);
+	usePresetHotkeys(openTabWithPreset, { enabled: isActive });
 
 	useHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), {
 		enabled: isActive,
@@ -447,28 +447,28 @@ export function WorkspacePage({
 		const index = tabs.findIndex((t) => t.id === activeTabId);
 		const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
 		setActiveTab(workspaceId, tabs[prevIndex].id);
-	});
+	}, { enabled: isActive });
 
 	useHotkey("NEXT_TAB", () => {
 		if (!activeTabId || tabs.length === 0) return;
 		const index = tabs.findIndex((t) => t.id === activeTabId);
 		const nextIndex = index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
 		setActiveTab(workspaceId, tabs[nextIndex].id);
-	});
+	}, { enabled: isActive });
 
 	useHotkey("PREV_TAB_ALT", () => {
 		if (!activeTabId || tabs.length === 0) return;
 		const index = tabs.findIndex((t) => t.id === activeTabId);
 		const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
 		setActiveTab(workspaceId, tabs[prevIndex].id);
-	});
+	}, { enabled: isActive });
 
 	useHotkey("NEXT_TAB_ALT", () => {
 		if (!activeTabId || tabs.length === 0) return;
 		const index = tabs.findIndex((t) => t.id === activeTabId);
 		const nextIndex = index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
 		setActiveTab(workspaceId, tabs[nextIndex].id);
-	});
+	}, { enabled: isActive });
 
 	const switchToTab = useCallback(
 		(index: number) => {
@@ -480,15 +480,15 @@ export function WorkspacePage({
 		[tabs, workspaceId, setActiveTab],
 	);
 
-	useHotkey("JUMP_TO_TAB_1", () => switchToTab(0));
-	useHotkey("JUMP_TO_TAB_2", () => switchToTab(1));
-	useHotkey("JUMP_TO_TAB_3", () => switchToTab(2));
-	useHotkey("JUMP_TO_TAB_4", () => switchToTab(3));
-	useHotkey("JUMP_TO_TAB_5", () => switchToTab(4));
-	useHotkey("JUMP_TO_TAB_6", () => switchToTab(5));
-	useHotkey("JUMP_TO_TAB_7", () => switchToTab(6));
-	useHotkey("JUMP_TO_TAB_8", () => switchToTab(7));
-	useHotkey("JUMP_TO_TAB_9", () => switchToTab(8));
+	useHotkey("JUMP_TO_TAB_1", () => switchToTab(0), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_2", () => switchToTab(1), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_3", () => switchToTab(2), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_4", () => switchToTab(3), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_5", () => switchToTab(4), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_6", () => switchToTab(5), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_7", () => switchToTab(6), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_8", () => switchToTab(7), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_9", () => switchToTab(8), { enabled: isActive });
 
 	useHotkey("PREV_PANE", () => {
 		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
@@ -496,7 +496,7 @@ export function WorkspacePage({
 		if (prevPaneId) {
 			setFocusedPane(activeTabId, prevPaneId);
 		}
-	});
+	}, { enabled: isActive });
 
 	useHotkey("NEXT_PANE", () => {
 		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
@@ -504,7 +504,7 @@ export function WorkspacePage({
 		if (nextPaneId) {
 			setFocusedPane(activeTabId, nextPaneId);
 		}
-	});
+	}, { enabled: isActive });
 
 	// Open in last used app shortcut
 	const projectId = workspace?.projectId;
@@ -642,7 +642,7 @@ export function WorkspacePage({
 	useHotkey("SEARCH_IN_FILES", handleSearchInFiles, { enabled: isActive });
 
 	// Toggle changes sidebar (⌘L)
-	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar());
+	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), { enabled: isActive });
 
 	// Toggle expand/collapse sidebar (⌘⇧L)
 	useHotkey("TOGGLE_EXPAND_SIDEBAR", () => {
@@ -653,7 +653,7 @@ export function WorkspacePage({
 			const isExpanded = currentSidebarMode === SidebarMode.Changes;
 			setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
 		}
-	});
+	}, { enabled: isActive });
 
 	// Pane splitting helper - resolves target pane for split operations
 	const resolveSplitTarget = useCallback(
@@ -779,7 +779,7 @@ export function WorkspacePage({
 		if (prevWorkspaceId) {
 			navigateToWorkspace(prevWorkspaceId, navigate);
 		}
-	});
+	}, { enabled: isActive });
 
 	// Navigate to next workspace (⌘↓)
 	const getNextWorkspace = electronTrpc.workspaces.getNextWorkspace.useQuery(
@@ -791,7 +791,7 @@ export function WorkspacePage({
 		if (nextWorkspaceId) {
 			navigateToWorkspace(nextWorkspaceId, navigate);
 		}
-	});
+	}, { enabled: isActive });
 
 	return (
 		<WorkspaceIdProvider value={workspaceId}>
