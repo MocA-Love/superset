@@ -17,6 +17,7 @@ import { Paywall } from "renderer/components/Paywall";
 import { useUpdateListener } from "renderer/components/UpdateToast";
 import { env } from "renderer/env.renderer";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
+import { migrateHotkeyOverrides } from "renderer/hotkeys/migrate";
 import { authClient, getAuthToken } from "renderer/lib/auth-client";
 import { dispatchBrowserShortcutEvent } from "renderer/lib/browser-shortcut-events";
 import { dragDropManager } from "renderer/lib/dnd";
@@ -26,7 +27,6 @@ import { LanguageServicesProvider } from "renderer/providers/LanguageServicesPro
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
-import { useHotkeysSync } from "renderer/stores/hotkeys";
 import { useSettingsStore } from "renderer/stores/settings-state";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useAgentHookListener } from "renderer/stores/tabs/useAgentHookListener";
@@ -68,7 +68,13 @@ function AuthenticatedLayout() {
 
 	useAgentHookListener();
 	useUpdateListener();
-	useHotkeysSync();
+
+	// One-time migration from old hotkey storage to new localStorage-based store
+	useEffect(() => {
+		void migrateHotkeyOverrides().catch((error) => {
+			console.error("[hotkeys] Migration failed:", error);
+		});
+	}, []);
 
 	// Update workspace-run pane state on terminal exit
 	electronTrpc.notifications.subscribe.useSubscription(undefined, {
