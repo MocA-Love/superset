@@ -104,8 +104,10 @@ export function installUpdate(): void {
 		emitStatus(AUTO_UPDATE_STATUS.IDLE);
 		return;
 	}
-	// quitAndInstall internally calls app.quit() — set mode beforehand
-	prepareQuit("release");
+	// quitAndInstall internally calls app.quit() — use "stop" mode so
+	// before-quit doesn't prevent exit on macOS with active host services.
+	// "release" would keep services alive and block the quit.
+	prepareQuit("stop");
 	autoUpdater.quitAndInstall(false, true);
 }
 

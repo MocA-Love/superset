@@ -1183,12 +1183,17 @@ export async function searchFiles({
 		),
 	);
 
+	// Normalize fuzzy scores to 0..1 range to be compatible with exact match
+	// scores (0.985-1.0). This ensures cross-workspace score sorting works
+	// correctly when mixing exact and fuzzy results.
+	const maxScore = scored.length > 0 ? scored[0].score : 1;
+
 	return scored.slice(0, safeLimit).map((result) => ({
 		absolutePath: result.item.absolutePath,
 		relativePath: result.item.relativePath,
 		name: result.item.name,
 		kind: "file" as const,
-		score: result.score,
+		score: maxScore > 0 ? (result.score / maxScore) * 0.98 : 0,
 	}));
 }
 
