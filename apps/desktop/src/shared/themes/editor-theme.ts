@@ -69,6 +69,19 @@ export function getEditorTheme(theme: Theme): EditorTheme {
 			tagName: terminal?.red ?? theme.ui.chart1,
 			attributeName: terminal?.yellow ?? theme.ui.chart4,
 			invalid: terminal?.brightRed ?? theme.ui.destructive,
+
+			// Markdown-specific
+			markdownHeading: terminal?.red ?? theme.ui.chart1,
+			markdownEmphasis: terminal?.magenta ?? theme.ui.primary,
+			markdownStrong: terminal?.magenta ?? theme.ui.primary,
+			markdownStrikethrough: theme.ui.mutedForeground,
+			markdownLink: terminal?.blue ?? theme.ui.chart3,
+			markdownUrl: terminal?.cyan ?? theme.ui.chart5,
+			markdownCode: terminal?.green ?? theme.ui.chart2,
+			markdownQuote: terminal?.brightBlack ?? theme.ui.mutedForeground,
+			markdownList: terminal?.yellow ?? theme.ui.chart4,
+			markdownSeparator: theme.ui.mutedForeground,
+			markdownMeta: terminal?.blue ?? theme.ui.chart3,
 		},
 	};
 

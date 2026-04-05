@@ -111,6 +111,86 @@ export function createShikiTheme(theme: Theme) {
 					foreground: toHex(editorTheme.syntax.invalid),
 				},
 			},
+
+			// Markdown
+			{
+				scope: [
+					"markup.heading",
+					"punctuation.definition.heading",
+					"entity.name.section",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownHeading),
+					fontStyle: "bold",
+				},
+			},
+			{
+				scope: ["markup.italic"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownEmphasis),
+					fontStyle: "italic",
+				},
+			},
+			{
+				scope: ["markup.bold"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownStrong),
+					fontStyle: "bold",
+				},
+			},
+			{
+				scope: ["markup.strikethrough"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownStrikethrough),
+				},
+			},
+			{
+				scope: ["markup.underline.link", "string.other.link"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownLink),
+				},
+			},
+			{
+				scope: ["markup.underline.link.image"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownUrl),
+				},
+			},
+			{
+				scope: [
+					"markup.inline.raw",
+					"markup.fenced_code.block",
+					"markup.raw.block",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownCode),
+				},
+			},
+			{
+				scope: ["markup.quote"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownQuote),
+					fontStyle: "italic",
+				},
+			},
+			{
+				scope: ["markup.list", "punctuation.definition.list"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownList),
+				},
+			},
+			{
+				scope: ["meta.separator"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownSeparator),
+				},
+			},
+			{
+				scope: ["fenced_code.block.language"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownMeta),
+				},
+			},
 		],
 	};
 }

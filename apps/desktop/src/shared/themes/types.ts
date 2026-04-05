@@ -234,6 +234,19 @@ export interface EditorSyntaxColors {
 	tagName: string;
 	attributeName: string;
 	invalid: string;
+
+	// Markdown-specific
+	markdownHeading: string;
+	markdownEmphasis: string;
+	markdownStrong: string;
+	markdownStrikethrough: string;
+	markdownLink: string;
+	markdownUrl: string;
+	markdownCode: string;
+	markdownQuote: string;
+	markdownList: string;
+	markdownSeparator: string;
+	markdownMeta: string;
 }
 
 /**

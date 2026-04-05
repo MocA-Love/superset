@@ -116,6 +116,17 @@ const editorSyntaxSchema = z
 		tagName: z.string().optional(),
 		attributeName: z.string().optional(),
 		invalid: z.string().optional(),
+		markdownHeading: z.string().optional(),
+		markdownEmphasis: z.string().optional(),
+		markdownStrong: z.string().optional(),
+		markdownStrikethrough: z.string().optional(),
+		markdownLink: z.string().optional(),
+		markdownUrl: z.string().optional(),
+		markdownCode: z.string().optional(),
+		markdownQuote: z.string().optional(),
+		markdownList: z.string().optional(),
+		markdownSeparator: z.string().optional(),
+		markdownMeta: z.string().optional(),
 	})
 	.passthrough();
 

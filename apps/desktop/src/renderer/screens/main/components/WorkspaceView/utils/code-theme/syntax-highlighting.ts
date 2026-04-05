@@ -65,6 +65,80 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 				tag: [tags.invalid],
 				color: editorTheme.syntax.invalid,
 			},
+
+			// Markdown
+			{
+				tag: [tags.heading],
+				color: editorTheme.syntax.markdownHeading,
+				fontWeight: "bold",
+			},
+			{
+				tag: [tags.heading1],
+				color: editorTheme.syntax.markdownHeading,
+				fontWeight: "bold",
+				fontSize: "1.4em",
+			},
+			{
+				tag: [tags.heading2],
+				color: editorTheme.syntax.markdownHeading,
+				fontWeight: "bold",
+				fontSize: "1.2em",
+			},
+			{
+				tag: [tags.heading3],
+				color: editorTheme.syntax.markdownHeading,
+				fontWeight: "bold",
+				fontSize: "1.1em",
+			},
+			{
+				tag: [tags.emphasis],
+				color: editorTheme.syntax.markdownEmphasis,
+				fontStyle: "italic",
+			},
+			{
+				tag: [tags.strong],
+				color: editorTheme.syntax.markdownStrong,
+				fontWeight: "bold",
+			},
+			{
+				tag: [tags.strikethrough],
+				color: editorTheme.syntax.markdownStrikethrough,
+				textDecoration: "line-through",
+			},
+			{
+				tag: [tags.link],
+				color: editorTheme.syntax.markdownLink,
+				textDecoration: "underline",
+			},
+			{
+				tag: [tags.url],
+				color: editorTheme.syntax.markdownUrl,
+			},
+			{
+				tag: [tags.monospace],
+				color: editorTheme.syntax.markdownCode,
+			},
+			{
+				tag: [tags.quote],
+				color: editorTheme.syntax.markdownQuote,
+				fontStyle: "italic",
+			},
+			{
+				tag: [tags.list],
+				color: editorTheme.syntax.markdownList,
+			},
+			{
+				tag: [tags.contentSeparator],
+				color: editorTheme.syntax.markdownSeparator,
+			},
+			{
+				tag: [tags.processingInstruction],
+				color: editorTheme.syntax.markdownMeta,
+			},
+			{
+				tag: [tags.meta],
+				color: editorTheme.syntax.markdownMeta,
+			},
 		]),
 	);
 }
