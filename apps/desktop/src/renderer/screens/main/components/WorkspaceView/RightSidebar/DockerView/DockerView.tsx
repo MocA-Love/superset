@@ -399,108 +399,128 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 					) : null}
 
 					<div className="space-y-3 p-3">
-						{dockerListQuery.data?.dockerfiles.map(
-							(dockerfile: DockerfileEntry) => {
-								const defaultTag = `${dockerfile.name.toLowerCase().replace(/\./g, "-")}:latest`;
+						{[
+							...(dockerListQuery.data?.dockerfiles ?? []).map(
+								(dockerfile: DockerfileEntry) => ({
+									kind: "dockerfile" as const,
+									isRunning: false,
+									key: dockerfile.absolutePath,
+									dockerfile,
+								}),
+							),
+							...(dockerListQuery.data?.composeFiles ?? []).map((group) => ({
+								kind: "compose" as const,
+								isRunning: group.runningContainers > 0,
+								key: group.absolutePath,
+								group,
+							})),
+						]
+							.sort((a, b) => {
+								if (a.isRunning !== b.isRunning) return a.isRunning ? -1 : 1;
+								return 0;
+							})
+							.map((item) => {
+								if (item.kind === "dockerfile") {
+									const { dockerfile } = item;
+									const defaultTag = `${dockerfile.name.toLowerCase().replace(/\./g, "-")}:latest`;
 
-								return (
-									<div
-										key={dockerfile.absolutePath}
-										className="rounded-lg border bg-card/40"
-									>
-										<div className="flex flex-col gap-2 px-3 py-2">
-											<div className="flex items-start justify-between gap-2">
-												<div className="flex min-w-0 flex-1 items-start gap-2">
-													<LuFileCode className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-													<div className="min-w-0">
-														<span className="truncate text-sm font-medium">
-															{dockerfile.name}
-														</span>
-														<div className="mt-1 text-xs text-muted-foreground">
-															{dockerfile.relativePath}
+									return (
+										<div
+											key={dockerfile.absolutePath}
+											className="rounded-lg border bg-card/40"
+										>
+											<div className="flex flex-col gap-2 px-3 py-2">
+												<div className="flex items-start justify-between gap-2">
+													<div className="flex min-w-0 flex-1 items-start gap-2">
+														<LuFileCode className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+														<div className="min-w-0">
+															<span className="truncate text-sm font-medium">
+																{dockerfile.name}
+															</span>
+															<div className="mt-1 text-xs text-muted-foreground">
+																{dockerfile.relativePath}
+															</div>
 														</div>
 													</div>
-												</div>
-												<div className="flex items-center gap-1">
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<Button
-																size="icon"
-																variant="outline"
-																className="size-7"
-																onClick={() =>
-																	buildDockerfileMutation.mutate({
-																		dockerfilePath: dockerfile.absolutePath,
-																		tag: defaultTag,
-																		workspaceId,
-																	})
-																}
-																disabled={buildDockerfileMutation.isPending}
-															>
-																{buildDockerfileMutation.isPending ? (
-																	<LuLoaderCircle className="size-3.5 animate-spin" />
-																) : (
-																	<LuHammer className="size-3.5" />
-																)}
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent>Build</TooltipContent>
-													</Tooltip>
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<Button
-																size="icon"
-																variant="outline"
-																className="size-7"
-																onClick={() =>
-																	void openCommandInTerminal({
-																		command: `docker run --rm -it ${quoteShellLiteral(defaultTag)}`,
-																		cwd: dockerfile.directoryPath,
-																		title: `Run: ${dockerfile.name}`,
-																	})
-																}
-															>
-																<LuPlay className="size-3.5" />
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent>Run</TooltipContent>
-													</Tooltip>
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<Button
-																size="icon"
-																variant="outline"
-																className="size-7 text-destructive"
-																onClick={() =>
-																	removeDockerImageMutation.mutate({
-																		imageTag: defaultTag,
-																		workspaceId,
-																	})
-																}
-																disabled={removeDockerImageMutation.isPending}
-															>
-																{removeDockerImageMutation.isPending ? (
-																	<LuLoaderCircle className="size-3.5 animate-spin" />
-																) : (
-																	<LuTrash2 className="size-3.5" />
-																)}
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent>Remove Image</TooltipContent>
-													</Tooltip>
+													<div className="flex items-center gap-1">
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	size="icon"
+																	variant="outline"
+																	className="size-7"
+																	onClick={() =>
+																		buildDockerfileMutation.mutate({
+																			dockerfilePath: dockerfile.absolutePath,
+																			tag: defaultTag,
+																			workspaceId,
+																		})
+																	}
+																	disabled={buildDockerfileMutation.isPending}
+																>
+																	{buildDockerfileMutation.isPending ? (
+																		<LuLoaderCircle className="size-3.5 animate-spin" />
+																	) : (
+																		<LuHammer className="size-3.5" />
+																	)}
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>Build</TooltipContent>
+														</Tooltip>
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	size="icon"
+																	variant="outline"
+																	className="size-7"
+																	onClick={() =>
+																		void openCommandInTerminal({
+																			command: `docker run --rm -it ${quoteShellLiteral(defaultTag)}`,
+																			cwd: dockerfile.directoryPath,
+																			title: `Run: ${dockerfile.name}`,
+																		})
+																	}
+																>
+																	<LuPlay className="size-3.5" />
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>Run</TooltipContent>
+														</Tooltip>
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	size="icon"
+																	variant="outline"
+																	className="size-7 text-destructive"
+																	onClick={() =>
+																		removeDockerImageMutation.mutate({
+																			imageTag: defaultTag,
+																			workspaceId,
+																		})
+																	}
+																	disabled={removeDockerImageMutation.isPending}
+																>
+																	{removeDockerImageMutation.isPending ? (
+																		<LuLoaderCircle className="size-3.5 animate-spin" />
+																	) : (
+																		<LuTrash2 className="size-3.5" />
+																	)}
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>Remove Image</TooltipContent>
+														</Tooltip>
+													</div>
 												</div>
 											</div>
 										</div>
-									</div>
-								);
-							},
-						)}
+									);
+								}
 
-						{dockerListQuery.data?.composeFiles.map((group) => {
-							const isExpanded =
-								expandedComposeGroups[group.absolutePath] ?? true;
+								const { group } = item;
+								const isExpanded =
+									expandedComposeGroups[group.absolutePath] ?? true;
 
-							return (
+								return (
 								<Collapsible
 									key={group.absolutePath}
 									open={isExpanded}
