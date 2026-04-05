@@ -1,6 +1,6 @@
 import type { RendererContext } from "@superset/panes";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
 	type ConnectionState,
 	terminalRuntimeRegistry,
@@ -30,7 +30,11 @@ export function TerminalPane({ ctx, workspaceId }: TerminalPaneProps) {
 	const data = ctx.pane.data as TerminalPaneData;
 	// Guard against legacy pane data format {sessionKey, cwd, launchMode}
 	// saved in local DB before the terminalId migration.
-	const terminalId = data.terminalId ?? crypto.randomUUID();
+	// useMemo ensures a stable ID across re-renders.
+	const terminalId = useMemo(
+		() => data.terminalId ?? crypto.randomUUID(),
+		[data.terminalId],
+	);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 
 	const appearance = useTerminalAppearance();
