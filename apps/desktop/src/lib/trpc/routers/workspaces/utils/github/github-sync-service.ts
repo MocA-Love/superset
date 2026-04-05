@@ -17,6 +17,13 @@
  * Rate limiting is handled by rateLimitedRefresh() in github.ts — the
  * SyncService does NOT call onRateLimitHit/Success directly to avoid
  * double-counting with the lower-level wrapper.
+ *
+ * --- FORK NOTE ---
+ * This service is a fork-specific replacement for upstream's frontend
+ * hover-debounce approach (useHoverGitHubStatus, commit be22b46dd, #3125).
+ * Upstream fetches GitHub data on-demand from the frontend; this fork
+ * centralizes polling in the backend for better API call efficiency.
+ * See also: githubQueryPolicy.ts for the frontend cache-reading strategy.
  */
 
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";

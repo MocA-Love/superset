@@ -7,6 +7,17 @@
  *
  * The frontend polling ensures React Query picks up the latest data that
  * the SyncService has fetched, keeping the UI in sync.
+ *
+ * --- FORK NOTE ---
+ * Upstream (superset-sh/superset) uses a different approach: frontend-driven
+ * hover-debounce polling via useHoverGitHubStatus hook (commit be22b46dd, #3125).
+ * This fork intentionally diverges by using a backend-centralized SyncService
+ * (see github-sync-service.ts) that reduces GitHub API calls by polling from
+ * the backend and serving cached data to the frontend.
+ *
+ * When merging upstream changes to this file or related GitHub polling code,
+ * prefer keeping the SyncService architecture unless upstream's approach
+ * has evolved to match or exceed the efficiency of backend-centralized polling.
  */
 const ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS = 5_000;
 const ACTIVE_GITHUB_STATUS_STALE_TIME_MS = 5_000;
