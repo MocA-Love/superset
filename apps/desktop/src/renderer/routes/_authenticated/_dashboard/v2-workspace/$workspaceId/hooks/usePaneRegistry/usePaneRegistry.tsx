@@ -68,6 +68,7 @@ export function usePaneRegistry(
 									onClick: () => resolve(true),
 								},
 							],
+							onDismiss: () => resolve(false),
 						});
 					});
 				},

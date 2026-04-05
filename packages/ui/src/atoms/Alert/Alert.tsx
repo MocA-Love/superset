@@ -26,6 +26,9 @@ type AlertOptions = {
 	title: string;
 	description: string;
 	actions: AlertAction[];
+	/** Called when the dialog is dismissed via ESC or overlay click
+	 *  (i.e. without clicking any action button). */
+	onDismiss?: () => void;
 };
 
 let showAlertFn: ((options: AlertOptions) => void) | null = null;
@@ -54,11 +57,13 @@ const Alerter = () => {
 	};
 
 	const handleClose = () => {
+		alertOptions?.onDismiss?.();
 		setIsOpen(false);
 	};
 
 	if (!alertOptions) return null;
 
+	// Reverse so callers write [Cancel, Primary] but UI shows [Primary, Cancel]
 	const actions = [...alertOptions.actions].reverse();
 
 	return (

@@ -336,6 +336,7 @@ function WorkspaceContent({
 												onClick: () => resolve(true),
 											},
 										],
+										onDismiss: () => resolve(false),
 									});
 								});
 							}}

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import { detectLanguage } from "shared/detect-language";
 import { ExternalChangeBar } from "../../components/ExternalChangeBar";
@@ -24,10 +24,11 @@ export function CodeRenderer({
 	const currentContentRef = useRef(content);
 	const [savedContent, setSavedContent] = useState(content);
 
-	// Track the initial/saved content to detect dirty state
-	if (content !== savedContent && !onDirtyChange) {
+	// Sync savedContent when external content changes (e.g. after reload)
+	useEffect(() => {
 		setSavedContent(content);
-	}
+		onDirtyChange(currentContentRef.current !== content);
+	}, [content, onDirtyChange]);
 
 	const handleChange = useCallback(
 		(value: string) => {
