@@ -884,7 +884,7 @@ export function ReviewPanel({
 									</span>
 								</div>
 								{age ? (
-									<span className="shrink-0 text-[10px] text-muted-foreground">
+									<span className="shrink-0 pr-4 text-[10px] text-muted-foreground">
 										{age}
 									</span>
 								) : null}
