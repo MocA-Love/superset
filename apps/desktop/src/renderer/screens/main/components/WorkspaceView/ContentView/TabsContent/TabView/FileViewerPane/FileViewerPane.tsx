@@ -540,13 +540,17 @@ export function FileViewerPane({
 	}, [hasExternalDiskChange, performFileSave]);
 
 	const handleSavePendingIntent = useCallback(async () => {
+		if (hasExternalDiskChange) {
+			setExternalChangeDialogOpen(true);
+			return;
+		}
 		setIsResolvingIntent(true);
 		const result = await performFileSave();
 		if (result?.status === "saved") {
 			resumePendingIntent(paneId);
 		}
 		setIsResolvingIntent(false);
-	}, [paneId, performFileSave]);
+	}, [paneId, performFileSave, hasExternalDiskChange]);
 
 	const handleDiscardPendingIntent = useCallback(() => {
 		if (

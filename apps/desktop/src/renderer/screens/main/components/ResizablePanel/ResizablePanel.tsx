@@ -69,8 +69,7 @@ export function ResizablePanel({
 
 	const computeWidth = useCallback((clientX: number) => {
 		const delta = clientX - startXRef.current;
-		const adjustedDelta =
-			handleSideRef.current === "left" ? -delta : delta;
+		const adjustedDelta = handleSideRef.current === "left" ? -delta : delta;
 		const newWidth = startWidthRef.current + adjustedDelta;
 		return clampWidthRef.current
 			? Math.max(minWidthRef.current, Math.min(maxWidthRef.current, newWidth))
@@ -98,6 +97,7 @@ export function ResizablePanel({
 		return () => {
 			if (isResizingRef.current) {
 				cleanup();
+				onResizingChangeRef.current(false);
 			}
 		};
 	}, [cleanup]);
@@ -133,22 +133,25 @@ export function ResizablePanel({
 				{ signal: ac.signal },
 			);
 
-			document.addEventListener(
-				"pointerup",
-				(ev: PointerEvent) => {
-					if (!isResizingRef.current) return;
+			const handlePointerEnd = (ev: PointerEvent) => {
+				if (!isResizingRef.current) return;
 
-					if (rafIdRef.current !== null) {
-						cancelAnimationFrame(rafIdRef.current);
-						rafIdRef.current = null;
-					}
+				if (rafIdRef.current !== null) {
+					cancelAnimationFrame(rafIdRef.current);
+					rafIdRef.current = null;
+				}
 
-					onWidthChangeRef.current(computeWidth(ev.clientX));
-					cleanup();
-					onResizingChangeRef.current(false);
-				},
-				{ signal: ac.signal },
-			);
+				onWidthChangeRef.current(computeWidth(ev.clientX));
+				cleanup();
+				onResizingChangeRef.current(false);
+			};
+
+			document.addEventListener("pointerup", handlePointerEnd, {
+				signal: ac.signal,
+			});
+			document.addEventListener("pointercancel", handlePointerEnd, {
+				signal: ac.signal,
+			});
 
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = "col-resize";
