@@ -21,15 +21,21 @@ async function refreshRepoContext(
 		}
 
 		const data = result.data;
-		let context: RepoContext;
+		let context: RepoContext | undefined;
 
 		if (data.isFork && data.parent) {
-			context = {
-				repoUrl: data.url,
-				upstreamUrl: data.parent.url,
-				isFork: true,
-			};
-		} else {
+			const upstreamUrl =
+				data.parent.url ??
+				(data.parent.owner?.login && data.parent.name
+					? `https://github.com/${data.parent.owner.login}/${data.parent.name}`
+					: null);
+
+			if (upstreamUrl) {
+				context = { repoUrl: data.url, upstreamUrl, isFork: true };
+			}
+		}
+
+		if (!context) {
 			const originUrl = await getOriginUrl(worktreePath);
 			const ghUrl = normalizeGitHubUrl(data.url);
 
@@ -39,11 +45,19 @@ async function refreshRepoContext(
 					upstreamUrl: ghUrl,
 					isFork: true,
 				};
+			} else if (data.isFork) {
+				// Fork but upstream URL could not be determined — surface as error
+				// rather than silently treating as non-fork (which would misdirect PRs)
+				console.warn(
+					"[GitHub] Fork detected but upstream URL could not be resolved",
+					{ url: data.url },
+				);
+				return null;
 			} else {
 				context = {
 					repoUrl: data.url,
 					upstreamUrl: data.url,
-					isFork: data.isFork,
+					isFork: false,
 				};
 			}
 		}

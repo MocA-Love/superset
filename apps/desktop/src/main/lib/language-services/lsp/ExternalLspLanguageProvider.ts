@@ -142,6 +142,8 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 
 	private readonly sessions = new Map<string, WorkspaceSession>();
 
+	private readonly pendingSessions = new Map<string, Promise<WorkspaceSession>>();
+
 	private readonly workspaceErrors = new Map<string, string | null>();
 
 	constructor(private readonly options: ExternalLspProviderOptions) {
@@ -339,6 +341,24 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 			return existing;
 		}
 
+		const pending = this.pendingSessions.get(workspaceId);
+		if (pending) {
+			return pending;
+		}
+
+		const promise = this.initSession(workspaceId, workspacePath);
+		this.pendingSessions.set(workspaceId, promise);
+		try {
+			return await promise;
+		} finally {
+			this.pendingSessions.delete(workspaceId);
+		}
+	}
+
+	private async initSession(
+		workspaceId: string,
+		workspacePath: string,
+	): Promise<WorkspaceSession> {
 		const resolvedCommand = await this.options.resolveServerCommand({
 			workspaceId,
 			workspacePath,

@@ -60,10 +60,13 @@ type ResolvedDartCommand = {
 	shell: boolean;
 };
 
+const SPAWN_TIMEOUT_MS = 10_000;
+
 function canExecute(command: string, shell: boolean): boolean {
 	const probe = spawnSync(command, ["--version"], {
 		stdio: "ignore",
 		shell,
+		timeout: SPAWN_TIMEOUT_MS,
 	});
 	return probe.status === 0;
 }
@@ -98,6 +101,7 @@ function resolveFlutterSdkCommands(): string[] {
 	const locateResult = spawnSync(locateCommand, [flutterCommand], {
 		encoding: "utf8",
 		shell: process.platform === "win32",
+		timeout: SPAWN_TIMEOUT_MS,
 	});
 	if (locateResult.status !== 0 || !locateResult.stdout) {
 		return [];
@@ -187,6 +191,8 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 	readonly languageIds = ["dart"];
 
 	private readonly sessions = new Map<string, WorkspaceSession>();
+
+	private readonly pendingSessions = new Map<string, Promise<WorkspaceSession>>();
 
 	private readonly workspaceErrors = new Map<string, string | null>();
 
@@ -371,6 +377,24 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 			return existing;
 		}
 
+		const pending = this.pendingSessions.get(workspaceId);
+		if (pending) {
+			return pending;
+		}
+
+		const promise = this.initSession(workspaceId, workspacePath);
+		this.pendingSessions.set(workspaceId, promise);
+		try {
+			return await promise;
+		} finally {
+			this.pendingSessions.delete(workspaceId);
+		}
+	}
+
+	private async initSession(
+		workspaceId: string,
+		workspacePath: string,
+	): Promise<WorkspaceSession> {
 		const resolvedDartCommand = resolveDartCommand();
 		if (!resolvedDartCommand) {
 			const error =
