@@ -10,6 +10,8 @@ import type {
 	TerminalPaneData,
 } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/types";
 import { useWorkspaceWsUrl } from "renderer/routes/_authenticated/_dashboard/v2-workspace/providers/WorkspaceTrpcProvider/WorkspaceTrpcProvider";
+import { useTheme } from "renderer/stores/theme";
+import { resolveTerminalThemeType } from "renderer/stores/theme/utils";
 import { useTerminalAppearance } from "./hooks/useTerminalAppearance";
 
 interface TerminalPaneProps {
@@ -36,13 +38,23 @@ export function TerminalPane({ ctx, workspaceId }: TerminalPaneProps) {
 		[data.terminalId],
 	);
 	const containerRef = useRef<HTMLDivElement | null>(null);
+	const activeTheme = useTheme();
 
 	const appearance = useTerminalAppearance();
 	const appearanceRef = useRef(appearance);
 	appearanceRef.current = appearance;
+	const initialThemeTypeRef = useRef<
+		ReturnType<typeof resolveTerminalThemeType>
+	>(
+		resolveTerminalThemeType({
+			activeThemeType: activeTheme?.type,
+		}),
+	);
+	const initialThemeType = initialThemeTypeRef.current;
 
 	const websocketUrl = useWorkspaceWsUrl(`/terminal/${terminalId}`, {
 		workspaceId,
+		themeType: initialThemeType,
 	});
 
 	const connectionState = useSyncExternalStore(
