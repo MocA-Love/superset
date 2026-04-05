@@ -44,6 +44,7 @@ import type { CodeEditorAdapter } from "../../../components";
 import { BasePaneWindow } from "../components";
 import { FileViewerContent } from "./components/FileViewerContent";
 import { FileViewerToolbar } from "./components/FileViewerToolbar";
+import { ExternalChangeDialog } from "./ExternalChangeDialog";
 import { useDiffSearch } from "./hooks/useDiffSearch";
 import { useFileContent } from "./hooks/useFileContent";
 import { useFileSave } from "./hooks/useFileSave";
@@ -179,6 +180,8 @@ export function FileViewerPane({
 	const isDirty = documentState?.dirty ?? false;
 	const saveConflict = documentState?.conflict ?? null;
 	const hasExternalDiskChange = documentState?.hasExternalDiskChange ?? false;
+	const [externalChangeDialogOpen, setExternalChangeDialogOpen] =
+		useState(false);
 	const unsavedDialogOpen = session?.dialog === "unsaved";
 	const conflictDialogOpen =
 		session?.dialog === "conflict" && saveConflict !== null;
@@ -529,17 +532,25 @@ export function FileViewerPane({
 	};
 
 	const handleEditorSave = useCallback(() => {
+		if (hasExternalDiskChange) {
+			setExternalChangeDialogOpen(true);
+			return;
+		}
 		void performFileSave();
-	}, [performFileSave]);
+	}, [hasExternalDiskChange, performFileSave]);
 
 	const handleSavePendingIntent = useCallback(async () => {
+		if (hasExternalDiskChange) {
+			setExternalChangeDialogOpen(true);
+			return;
+		}
 		setIsResolvingIntent(true);
 		const result = await performFileSave();
 		if (result?.status === "saved") {
 			resumePendingIntent(paneId);
 		}
 		setIsResolvingIntent(false);
-	}, [paneId, performFileSave]);
+	}, [paneId, performFileSave, hasExternalDiskChange]);
 
 	const handleDiscardPendingIntent = useCallback(() => {
 		if (
@@ -775,6 +786,22 @@ export function FileViewerPane({
 				description={unsavedDialogCopy.description}
 				discardLabel={unsavedDialogCopy.discardLabel}
 				saveLabel={unsavedDialogCopy.saveLabel}
+			/>
+			<ExternalChangeDialog
+				open={externalChangeDialogOpen}
+				onOpenChange={setExternalChangeDialogOpen}
+				onOverwrite={() => {
+					setExternalChangeDialogOpen(false);
+					void performFileSave({ force: true });
+				}}
+				onCompare={() => {
+					setExternalChangeDialogOpen(false);
+					setDocumentConflict(
+						documentKey,
+						rawFileData?.ok === true ? rawFileData.content : null,
+						paneId,
+					);
+				}}
 			/>
 			<FileSaveConflictDialog
 				open={conflictDialogOpen}

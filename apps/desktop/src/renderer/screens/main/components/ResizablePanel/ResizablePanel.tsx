@@ -46,93 +46,126 @@ export function ResizablePanel({
 }: ResizablePanelProps) {
 	const startXRef = useRef(0);
 	const startWidthRef = useRef(0);
+	const isResizingRef = useRef(false);
 	const pendingWidthRef = useRef<number | null>(null);
 	const rafIdRef = useRef<number | null>(null);
+	const overlayRef = useRef<HTMLDivElement | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
 
-	const flushPendingWidth = useCallback(() => {
-		const pendingWidth = pendingWidthRef.current;
+	const widthRef = useRef(width);
+	widthRef.current = width;
+	const onWidthChangeRef = useRef(onWidthChange);
+	onWidthChangeRef.current = onWidthChange;
+	const onResizingChangeRef = useRef(onResizingChange);
+	onResizingChangeRef.current = onResizingChange;
+	const handleSideRef = useRef(handleSide);
+	handleSideRef.current = handleSide;
+	const clampWidthRef = useRef(clampWidth);
+	clampWidthRef.current = clampWidth;
+	const minWidthRef = useRef(minWidth);
+	minWidthRef.current = minWidth;
+	const maxWidthRef = useRef(maxWidth);
+	maxWidthRef.current = maxWidth;
+
+	const computeWidth = useCallback((clientX: number) => {
+		const delta = clientX - startXRef.current;
+		const adjustedDelta = handleSideRef.current === "left" ? -delta : delta;
+		const newWidth = startWidthRef.current + adjustedDelta;
+		return clampWidthRef.current
+			? Math.max(minWidthRef.current, Math.min(maxWidthRef.current, newWidth))
+			: newWidth;
+	}, []);
+
+	const cleanup = useCallback(() => {
+		isResizingRef.current = false;
 		pendingWidthRef.current = null;
-		if (pendingWidth === null) return;
-		onWidthChange(pendingWidth);
-	}, [onWidthChange]);
-
-	const handleMouseDown = useCallback(
-		(e: React.MouseEvent) => {
-			e.preventDefault();
-			startXRef.current = e.clientX;
-			startWidthRef.current = width;
-			onResizingChange(true);
-		},
-		[width, onResizingChange],
-	);
-
-	const handleMouseMove = useCallback(
-		(e: MouseEvent) => {
-			if (!isResizing) return;
-
-			const delta = e.clientX - startXRef.current;
-			// For left handle, dragging left increases width (invert delta)
-			// For right handle, dragging right increases width (normal delta)
-			const adjustedDelta = handleSide === "left" ? -delta : delta;
-			const newWidth = startWidthRef.current + adjustedDelta;
-			const finalWidth = clampWidth
-				? Math.max(minWidth, Math.min(maxWidth, newWidth))
-				: newWidth;
-			pendingWidthRef.current = finalWidth;
-
-			if (rafIdRef.current !== null) return;
-			rafIdRef.current = requestAnimationFrame(() => {
-				rafIdRef.current = null;
-				flushPendingWidth();
-			});
-		},
-		[isResizing, minWidth, maxWidth, handleSide, clampWidth, flushPendingWidth],
-	);
-
-	const handleMouseUp = useCallback(() => {
-		if (!isResizing) return;
-
+		abortRef.current?.abort();
+		abortRef.current = null;
+		document.body.style.userSelect = "";
+		document.body.style.cursor = "";
 		if (rafIdRef.current !== null) {
 			cancelAnimationFrame(rafIdRef.current);
 			rafIdRef.current = null;
 		}
-		flushPendingWidth();
-		onResizingChange(false);
-	}, [isResizing, onResizingChange, flushPendingWidth]);
-
-	const overlayRef = useRef<HTMLDivElement | null>(null);
+		if (overlayRef.current) {
+			overlayRef.current.remove();
+			overlayRef.current = null;
+		}
+	}, []);
 
 	useEffect(() => {
-		if (isResizing) {
-			document.addEventListener("mousemove", handleMouseMove);
-			document.addEventListener("mouseup", handleMouseUp);
+		return () => {
+			if (isResizingRef.current) {
+				cleanup();
+				onResizingChangeRef.current(false);
+			}
+		};
+	}, [cleanup]);
+
+	const handlePointerDown = useCallback(
+		(e: React.PointerEvent) => {
+			if (e.button !== 0) return;
+			if (isResizingRef.current) return;
+			e.preventDefault();
+
+			startXRef.current = e.clientX;
+			startWidthRef.current = widthRef.current;
+			isResizingRef.current = true;
+
+			const ac = new AbortController();
+			abortRef.current = ac;
+
+			document.addEventListener(
+				"pointermove",
+				(ev: PointerEvent) => {
+					if (!isResizingRef.current) return;
+
+					pendingWidthRef.current = computeWidth(ev.clientX);
+
+					if (rafIdRef.current !== null) return;
+					rafIdRef.current = requestAnimationFrame(() => {
+						rafIdRef.current = null;
+						const w = pendingWidthRef.current;
+						pendingWidthRef.current = null;
+						if (w !== null) onWidthChangeRef.current(w);
+					});
+				},
+				{ signal: ac.signal },
+			);
+
+			const handlePointerEnd = (ev: PointerEvent) => {
+				if (!isResizingRef.current) return;
+
+				if (rafIdRef.current !== null) {
+					cancelAnimationFrame(rafIdRef.current);
+					rafIdRef.current = null;
+				}
+
+				onWidthChangeRef.current(computeWidth(ev.clientX));
+				cleanup();
+				onResizingChangeRef.current(false);
+			};
+
+			document.addEventListener("pointerup", handlePointerEnd, {
+				signal: ac.signal,
+			});
+			document.addEventListener("pointercancel", handlePointerEnd, {
+				signal: ac.signal,
+			});
+
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = "col-resize";
 
-			// Add a full-screen overlay to prevent webviews from swallowing mouse events
 			const overlay = document.createElement("div");
 			overlay.style.cssText =
 				"position:fixed;inset:0;z-index:9999;cursor:col-resize;";
 			document.body.appendChild(overlay);
 			overlayRef.current = overlay;
-		}
 
-		return () => {
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-			document.body.style.userSelect = "";
-			document.body.style.cursor = "";
-			if (rafIdRef.current !== null) {
-				cancelAnimationFrame(rafIdRef.current);
-				rafIdRef.current = null;
-			}
-			pendingWidthRef.current = null;
-			if (overlayRef.current) {
-				overlayRef.current.remove();
-				overlayRef.current = null;
-			}
-		};
-	}, [isResizing, handleMouseMove, handleMouseUp]);
+			onResizingChangeRef.current(true);
+		},
+		[computeWidth, cleanup],
+	);
 
 	return (
 		<div
@@ -152,7 +185,7 @@ export function ResizablePanel({
 				aria-valuemin={minWidth}
 				aria-valuemax={maxWidth}
 				tabIndex={0}
-				onMouseDown={handleMouseDown}
+				onPointerDown={handlePointerDown}
 				onDoubleClick={onDoubleClickHandle}
 				className={cn(
 					"absolute top-0 w-5 h-full cursor-col-resize z-10",

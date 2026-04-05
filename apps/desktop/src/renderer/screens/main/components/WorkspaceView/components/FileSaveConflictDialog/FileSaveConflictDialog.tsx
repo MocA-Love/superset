@@ -41,7 +41,7 @@ export function FileSaveConflictDialog({
 			onOpenChange={isSaving ? undefined : onOpenChange}
 			modal
 		>
-			<DialogContent className="max-w-[min(1100px,calc(100vw-2rem))] p-0">
+			<DialogContent className="sm:max-w-[min(1100px,calc(100vw-2rem))] p-0">
 				<div className="flex max-h-[85vh] flex-col">
 					<DialogHeader className="border-b px-6 pt-6">
 						<DialogTitle>File Changed On Disk</DialogTitle>

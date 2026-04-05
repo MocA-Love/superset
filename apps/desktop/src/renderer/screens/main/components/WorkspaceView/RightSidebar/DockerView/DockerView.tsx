@@ -399,419 +399,442 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 					) : null}
 
 					<div className="space-y-3 p-3">
-						{dockerListQuery.data?.dockerfiles.map(
-							(dockerfile: DockerfileEntry) => {
-								const defaultTag = `${dockerfile.name.toLowerCase().replace(/\./g, "-")}:latest`;
+						{[
+							...(dockerListQuery.data?.dockerfiles ?? []).map(
+								(dockerfile: DockerfileEntry) => ({
+									kind: "dockerfile" as const,
+									isRunning: false,
+									key: dockerfile.absolutePath,
+									dockerfile,
+								}),
+							),
+							...(dockerListQuery.data?.composeFiles ?? []).map((group) => ({
+								kind: "compose" as const,
+								isRunning: group.runningContainers > 0,
+								key: group.absolutePath,
+								group,
+							})),
+						]
+							.sort((a, b) => {
+								if (a.isRunning !== b.isRunning) return a.isRunning ? -1 : 1;
+								return 0;
+							})
+							.map((item) => {
+								if (item.kind === "dockerfile") {
+									const { dockerfile } = item;
+									const defaultTag = `${dockerfile.name.toLowerCase().replace(/\./g, "-")}:latest`;
 
-								return (
-									<div
-										key={dockerfile.absolutePath}
-										className="rounded-lg border bg-card/40"
-									>
-										<div className="flex flex-col gap-2 px-3 py-2">
-											<div className="flex items-start justify-between gap-2">
-												<div className="flex min-w-0 flex-1 items-start gap-2">
-													<LuFileCode className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-													<div className="min-w-0">
-														<span className="truncate text-sm font-medium">
-															{dockerfile.name}
-														</span>
-														<div className="mt-1 text-xs text-muted-foreground">
-															{dockerfile.relativePath}
+									return (
+										<div
+											key={dockerfile.absolutePath}
+											className="rounded-lg border bg-card/40"
+										>
+											<div className="flex flex-col gap-2 px-3 py-2">
+												<div className="flex items-start justify-between gap-2">
+													<div className="flex min-w-0 flex-1 items-start gap-2">
+														<LuFileCode className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+														<div className="min-w-0">
+															<span className="truncate text-sm font-medium">
+																{dockerfile.name}
+															</span>
+															<div className="mt-1 text-xs text-muted-foreground">
+																{dockerfile.relativePath}
+															</div>
 														</div>
 													</div>
-												</div>
-												<div className="flex items-center gap-1">
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<Button
-																size="icon"
-																variant="outline"
-																className="size-7"
-																onClick={() =>
-																	buildDockerfileMutation.mutate({
-																		dockerfilePath: dockerfile.absolutePath,
-																		tag: defaultTag,
-																		workspaceId,
-																	})
-																}
-																disabled={buildDockerfileMutation.isPending}
-															>
-																{buildDockerfileMutation.isPending ? (
-																	<LuLoaderCircle className="size-3.5 animate-spin" />
-																) : (
-																	<LuHammer className="size-3.5" />
-																)}
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent>Build</TooltipContent>
-													</Tooltip>
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<Button
-																size="icon"
-																variant="outline"
-																className="size-7"
-																onClick={() =>
-																	void openCommandInTerminal({
-																		command: `docker run --rm -it ${quoteShellLiteral(defaultTag)}`,
-																		cwd: dockerfile.directoryPath,
-																		title: `Run: ${dockerfile.name}`,
-																	})
-																}
-															>
-																<LuPlay className="size-3.5" />
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent>Run</TooltipContent>
-													</Tooltip>
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<Button
-																size="icon"
-																variant="outline"
-																className="size-7 text-destructive"
-																onClick={() =>
-																	removeDockerImageMutation.mutate({
-																		imageTag: defaultTag,
-																		workspaceId,
-																	})
-																}
-																disabled={removeDockerImageMutation.isPending}
-															>
-																{removeDockerImageMutation.isPending ? (
-																	<LuLoaderCircle className="size-3.5 animate-spin" />
-																) : (
-																	<LuTrash2 className="size-3.5" />
-																)}
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent>Remove Image</TooltipContent>
-													</Tooltip>
-												</div>
-											</div>
-										</div>
-									</div>
-								);
-							},
-						)}
-
-						{dockerListQuery.data?.composeFiles.map((group) => {
-							const isExpanded =
-								expandedComposeGroups[group.absolutePath] ?? true;
-
-							return (
-								<Collapsible
-									key={group.absolutePath}
-									open={isExpanded}
-									onOpenChange={(open) => {
-										setExpandedComposeGroups((previous) => ({
-											...previous,
-											[group.absolutePath]: open,
-										}));
-									}}
-								>
-									<div className="rounded-lg border bg-card/40">
-										<div className="flex flex-col gap-2 border-b px-3 py-2">
-											<div className="flex items-start justify-between gap-2">
-												<CollapsibleTrigger asChild>
-													<button
-														type="button"
-														className="flex min-w-0 flex-1 items-start gap-2 text-left"
-													>
-														<LuChevronRight
-															className={`mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform ${
-																isExpanded ? "rotate-90" : ""
-															}`}
-														/>
-														<div className="min-w-0">
-															<div className="flex flex-wrap items-center gap-2">
-																<LuBox className="size-4 shrink-0 text-muted-foreground" />
-																<span className="truncate text-sm font-medium">
-																	{group.projectName}
-																</span>
-																<span
-																	className={`rounded-full border px-2 py-0.5 text-[10px] ${getComposeGroupTone(group)}`}
+													<div className="flex items-center gap-1">
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	size="icon"
+																	variant="outline"
+																	className="size-7"
+																	onClick={() =>
+																		buildDockerfileMutation.mutate({
+																			dockerfilePath: dockerfile.absolutePath,
+																			tag: defaultTag,
+																			workspaceId,
+																		})
+																	}
+																	disabled={buildDockerfileMutation.isPending}
 																>
-																	{group.runningContainers}/
-																	{group.totalContainers} running
-																</span>
-															</div>
-															<div className="mt-1 text-xs text-muted-foreground">
-																{group.relativePath}
-															</div>
-														</div>
-													</button>
-												</CollapsibleTrigger>
-												<div className="flex items-center gap-1">
-													{(() => {
-														const isAllRunning =
-															group.totalContainers > 0 &&
-															group.runningContainers === group.totalContainers;
-														const isAllStopped = group.runningContainers === 0;
-														const isStartPending =
-															startProjectMutation.isPending;
-														const isStopPending = stopProjectMutation.isPending;
-														const isRemovePending =
-															removeProjectMutation.isPending;
-														const isBusy =
-															isStartPending ||
-															isStopPending ||
-															isRemovePending;
-
-														return (
-															<>
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<Button
-																			size="icon"
-																			variant="outline"
-																			className="size-7"
-																			onClick={() =>
-																				startProjectMutation.mutate({
-																					composeFilePath: group.absolutePath,
-																					workspaceId,
-																				})
-																			}
-																			disabled={isAllRunning || isBusy}
-																		>
-																			{isStartPending ? (
-																				<LuLoaderCircle className="size-3.5 animate-spin" />
-																			) : (
-																				<LuPlay className="size-3.5" />
-																			)}
-																		</Button>
-																	</TooltipTrigger>
-																	<TooltipContent>Up</TooltipContent>
-																</Tooltip>
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<Button
-																			size="icon"
-																			variant="outline"
-																			className="size-7"
-																			onClick={() =>
-																				startProjectMutation.mutate({
-																					composeFilePath: group.absolutePath,
-																					workspaceId,
-																					rebuild: true,
-																				})
-																			}
-																			disabled={isBusy}
-																		>
-																			{isStartPending ? (
-																				<LuLoaderCircle className="size-3.5 animate-spin" />
-																			) : (
-																				<LuRefreshCw className="size-3.5" />
-																			)}
-																		</Button>
-																	</TooltipTrigger>
-																	<TooltipContent>Rebuild</TooltipContent>
-																</Tooltip>
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<Button
-																			size="icon"
-																			variant="outline"
-																			className="size-7"
-																			onClick={() =>
-																				stopProjectMutation.mutate({
-																					composeFilePath: group.absolutePath,
-																					workspaceId,
-																				})
-																			}
-																			disabled={isAllStopped || isBusy}
-																		>
-																			{isStopPending ? (
-																				<LuLoaderCircle className="size-3.5 animate-spin" />
-																			) : (
-																				<LuSquareX className="size-3.5" />
-																			)}
-																		</Button>
-																	</TooltipTrigger>
-																	<TooltipContent>Stop</TooltipContent>
-																</Tooltip>
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<Button
-																			size="icon"
-																			variant="outline"
-																			className="size-7 text-destructive"
-																			onClick={() =>
-																				removeProjectMutation.mutate({
-																					composeFilePath: group.absolutePath,
-																					workspaceId,
-																				})
-																			}
-																			disabled={
-																				(isAllStopped &&
-																					group.totalContainers === 0) ||
-																				isBusy
-																			}
-																		>
-																			{isRemovePending ? (
-																				<LuLoaderCircle className="size-3.5 animate-spin" />
-																			) : (
-																				<LuTrash2 className="size-3.5" />
-																			)}
-																		</Button>
-																	</TooltipTrigger>
-																	<TooltipContent>Delete</TooltipContent>
-																</Tooltip>
-															</>
-														);
-													})()}
+																	{buildDockerfileMutation.isPending ? (
+																		<LuLoaderCircle className="size-3.5 animate-spin" />
+																	) : (
+																		<LuHammer className="size-3.5" />
+																	)}
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>Build</TooltipContent>
+														</Tooltip>
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	size="icon"
+																	variant="outline"
+																	className="size-7"
+																	onClick={() =>
+																		void openCommandInTerminal({
+																			command: `docker run --rm -it ${quoteShellLiteral(defaultTag)}`,
+																			cwd: dockerfile.directoryPath,
+																			title: `Run: ${dockerfile.name}`,
+																		})
+																	}
+																>
+																	<LuPlay className="size-3.5" />
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>Run</TooltipContent>
+														</Tooltip>
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	size="icon"
+																	variant="outline"
+																	className="size-7 text-destructive"
+																	onClick={() =>
+																		removeDockerImageMutation.mutate({
+																			imageTag: defaultTag,
+																			workspaceId,
+																		})
+																	}
+																	disabled={removeDockerImageMutation.isPending}
+																>
+																	{removeDockerImageMutation.isPending ? (
+																		<LuLoaderCircle className="size-3.5 animate-spin" />
+																	) : (
+																		<LuTrash2 className="size-3.5" />
+																	)}
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>Remove Image</TooltipContent>
+														</Tooltip>
+													</div>
 												</div>
 											</div>
 										</div>
+									);
+								}
 
-										<CollapsibleContent className="overflow-hidden">
-											{group.totalContainers === 0 ? (
-												<div className="px-3 py-3 text-xs text-muted-foreground">
-													まだコンテナは作成されていません。
-												</div>
-											) : (
-												<div className="divide-y">
-													{group.containers.map((container) => {
-														const isRunning = container.state === "running";
+								const { group } = item;
+								const isExpanded =
+									expandedComposeGroups[group.absolutePath] ?? true;
 
-														return (
-															<div
-																key={container.id}
-																className="space-y-2 px-3 py-2"
-															>
-																<div className="flex flex-col gap-2">
-																	<div className="min-w-0">
-																		<div className="flex flex-wrap items-center gap-2">
-																			<span className="truncate text-sm font-medium">
-																				{container.name}
-																			</span>
-																			<span
-																				className={`rounded-full border px-2 py-0.5 text-[10px] ${getContainerStateTone(
-																					container,
-																				)}`}
-																			>
-																				{container.state}
-																			</span>
-																		</div>
-																		<div className="mt-1 break-all text-xs text-muted-foreground">
-																			{container.service
-																				? `${container.service} · `
-																				: ""}
-																			{container.image}
-																		</div>
-																		<div className="mt-1 text-xs text-muted-foreground">
-																			{container.status}
-																		</div>
-																		{container.ports ? (
-																			<div className="mt-1 text-[11px] text-muted-foreground">
-																				Ports: {container.ports}
-																			</div>
-																		) : null}
-																	</div>
-																	<div className="flex flex-wrap items-center gap-1">
-																		{isRunning ? (
-																			<Button
-																				size="sm"
-																				variant="outline"
-																				className="h-7 px-2 whitespace-normal"
-																				onClick={() =>
-																					stopContainerMutation.mutate({
-																						containerId: container.id,
-																						workspaceId,
-																					})
-																				}
-																				disabled={
-																					stopContainerMutation.isPending
-																				}
-																			>
-																				Stop
-																			</Button>
-																		) : (
-																			<Button
-																				size="sm"
-																				variant="outline"
-																				className="h-7 px-2 whitespace-normal"
-																				onClick={() =>
-																					startContainerMutation.mutate({
-																						containerId: container.id,
-																						workspaceId,
-																					})
-																				}
-																				disabled={
-																					startContainerMutation.isPending
-																				}
-																			>
-																				Start
-																			</Button>
-																		)}
-																		<Button
-																			size="sm"
-																			variant="outline"
-																			className="h-7 px-2 whitespace-normal"
-																			onClick={() =>
-																				restartContainerMutation.mutate({
-																					containerId: container.id,
-																					workspaceId,
-																				})
-																			}
-																			disabled={
-																				restartContainerMutation.isPending
-																			}
-																		>
-																			Restart
-																		</Button>
-																		<Button
-																			size="sm"
-																			variant="outline"
-																			className="h-7 px-2 whitespace-normal"
-																			onClick={() =>
-																				void handleOpenLogs(
-																					container,
-																					group.directoryPath,
-																				)
-																			}
-																		>
-																			<LuSquareTerminal className="mr-1 size-3.5" />
-																			Logs
-																		</Button>
-																		<Button
-																			size="sm"
-																			variant="outline"
-																			className="h-7 px-2 whitespace-normal"
-																			onClick={() =>
-																				void handleAttachShell(
-																					container,
-																					group.directoryPath,
-																				)
-																			}
-																			disabled={!isRunning}
-																		>
-																			Shell
-																		</Button>
-																		<Button
-																			size="sm"
-																			variant="outline"
-																			className="h-7 px-2 whitespace-normal"
-																			onClick={() =>
-																				setInspectContainerId(container.id)
-																			}
-																		>
-																			<LuBug className="mr-1 size-3.5" />
-																			Inspect
-																		</Button>
-																	</div>
+								return (
+									<Collapsible
+										key={group.absolutePath}
+										open={isExpanded}
+										onOpenChange={(open) => {
+											setExpandedComposeGroups((previous) => ({
+												...previous,
+												[group.absolutePath]: open,
+											}));
+										}}
+									>
+										<div className="rounded-lg border bg-card/40">
+											<div className="flex flex-col gap-2 border-b px-3 py-2">
+												<div className="flex items-start justify-between gap-2">
+													<CollapsibleTrigger asChild>
+														<button
+															type="button"
+															className="flex min-w-0 flex-1 items-start gap-2 text-left"
+														>
+															<LuChevronRight
+																className={`mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform ${
+																	isExpanded ? "rotate-90" : ""
+																}`}
+															/>
+															<div className="min-w-0">
+																<div className="flex flex-wrap items-center gap-2">
+																	<LuBox className="size-4 shrink-0 text-muted-foreground" />
+																	<span className="truncate text-sm font-medium">
+																		{group.projectName}
+																	</span>
+																	<span
+																		className={`rounded-full border px-2 py-0.5 text-[10px] ${getComposeGroupTone(group)}`}
+																	>
+																		{group.runningContainers}/
+																		{group.totalContainers} running
+																	</span>
+																</div>
+																<div className="mt-1 text-xs text-muted-foreground">
+																	{group.relativePath}
 																</div>
 															</div>
-														);
-													})}
+														</button>
+													</CollapsibleTrigger>
+													<div className="flex items-center gap-1">
+														{(() => {
+															const isAllRunning =
+																group.totalContainers > 0 &&
+																group.runningContainers ===
+																	group.totalContainers;
+															const isAllStopped =
+																group.runningContainers === 0;
+															const isStartPending =
+																startProjectMutation.isPending;
+															const isStopPending =
+																stopProjectMutation.isPending;
+															const isRemovePending =
+																removeProjectMutation.isPending;
+															const isBusy =
+																isStartPending ||
+																isStopPending ||
+																isRemovePending;
+
+															return (
+																<>
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<Button
+																				size="icon"
+																				variant="outline"
+																				className="size-7"
+																				onClick={() =>
+																					startProjectMutation.mutate({
+																						composeFilePath: group.absolutePath,
+																						workspaceId,
+																					})
+																				}
+																				disabled={isAllRunning || isBusy}
+																			>
+																				{isStartPending ? (
+																					<LuLoaderCircle className="size-3.5 animate-spin" />
+																				) : (
+																					<LuPlay className="size-3.5" />
+																				)}
+																			</Button>
+																		</TooltipTrigger>
+																		<TooltipContent>Up</TooltipContent>
+																	</Tooltip>
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<Button
+																				size="icon"
+																				variant="outline"
+																				className="size-7"
+																				onClick={() =>
+																					startProjectMutation.mutate({
+																						composeFilePath: group.absolutePath,
+																						workspaceId,
+																						rebuild: true,
+																					})
+																				}
+																				disabled={isBusy}
+																			>
+																				{isStartPending ? (
+																					<LuLoaderCircle className="size-3.5 animate-spin" />
+																				) : (
+																					<LuRefreshCw className="size-3.5" />
+																				)}
+																			</Button>
+																		</TooltipTrigger>
+																		<TooltipContent>Rebuild</TooltipContent>
+																	</Tooltip>
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<Button
+																				size="icon"
+																				variant="outline"
+																				className="size-7"
+																				onClick={() =>
+																					stopProjectMutation.mutate({
+																						composeFilePath: group.absolutePath,
+																						workspaceId,
+																					})
+																				}
+																				disabled={isAllStopped || isBusy}
+																			>
+																				{isStopPending ? (
+																					<LuLoaderCircle className="size-3.5 animate-spin" />
+																				) : (
+																					<LuSquareX className="size-3.5" />
+																				)}
+																			</Button>
+																		</TooltipTrigger>
+																		<TooltipContent>Stop</TooltipContent>
+																	</Tooltip>
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<Button
+																				size="icon"
+																				variant="outline"
+																				className="size-7 text-destructive"
+																				onClick={() =>
+																					removeProjectMutation.mutate({
+																						composeFilePath: group.absolutePath,
+																						workspaceId,
+																					})
+																				}
+																				disabled={
+																					(isAllStopped &&
+																						group.totalContainers === 0) ||
+																					isBusy
+																				}
+																			>
+																				{isRemovePending ? (
+																					<LuLoaderCircle className="size-3.5 animate-spin" />
+																				) : (
+																					<LuTrash2 className="size-3.5" />
+																				)}
+																			</Button>
+																		</TooltipTrigger>
+																		<TooltipContent>Delete</TooltipContent>
+																	</Tooltip>
+																</>
+															);
+														})()}
+													</div>
 												</div>
-											)}
-										</CollapsibleContent>
-									</div>
-								</Collapsible>
-							);
-						})}
+											</div>
+
+											<CollapsibleContent className="overflow-hidden">
+												{group.totalContainers === 0 ? (
+													<div className="px-3 py-3 text-xs text-muted-foreground">
+														まだコンテナは作成されていません。
+													</div>
+												) : (
+													<div className="divide-y">
+														{group.containers.map((container) => {
+															const isRunning = container.state === "running";
+
+															return (
+																<div
+																	key={container.id}
+																	className="space-y-2 px-3 py-2"
+																>
+																	<div className="flex flex-col gap-2">
+																		<div className="min-w-0">
+																			<div className="flex flex-wrap items-center gap-2">
+																				<span className="truncate text-sm font-medium">
+																					{container.name}
+																				</span>
+																				<span
+																					className={`rounded-full border px-2 py-0.5 text-[10px] ${getContainerStateTone(
+																						container,
+																					)}`}
+																				>
+																					{container.state}
+																				</span>
+																			</div>
+																			<div className="mt-1 break-all text-xs text-muted-foreground">
+																				{container.service
+																					? `${container.service} · `
+																					: ""}
+																				{container.image}
+																			</div>
+																			<div className="mt-1 text-xs text-muted-foreground">
+																				{container.status}
+																			</div>
+																			{container.ports ? (
+																				<div className="mt-1 text-[11px] text-muted-foreground">
+																					Ports: {container.ports}
+																				</div>
+																			) : null}
+																		</div>
+																		<div className="flex flex-wrap items-center gap-1">
+																			{isRunning ? (
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					className="h-7 px-2 whitespace-normal"
+																					onClick={() =>
+																						stopContainerMutation.mutate({
+																							containerId: container.id,
+																							workspaceId,
+																						})
+																					}
+																					disabled={
+																						stopContainerMutation.isPending
+																					}
+																				>
+																					Stop
+																				</Button>
+																			) : (
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					className="h-7 px-2 whitespace-normal"
+																					onClick={() =>
+																						startContainerMutation.mutate({
+																							containerId: container.id,
+																							workspaceId,
+																						})
+																					}
+																					disabled={
+																						startContainerMutation.isPending
+																					}
+																				>
+																					Start
+																				</Button>
+																			)}
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				className="h-7 px-2 whitespace-normal"
+																				onClick={() =>
+																					restartContainerMutation.mutate({
+																						containerId: container.id,
+																						workspaceId,
+																					})
+																				}
+																				disabled={
+																					restartContainerMutation.isPending
+																				}
+																			>
+																				Restart
+																			</Button>
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				className="h-7 px-2 whitespace-normal"
+																				onClick={() =>
+																					void handleOpenLogs(
+																						container,
+																						group.directoryPath,
+																					)
+																				}
+																			>
+																				<LuSquareTerminal className="mr-1 size-3.5" />
+																				Logs
+																			</Button>
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				className="h-7 px-2 whitespace-normal"
+																				onClick={() =>
+																					void handleAttachShell(
+																						container,
+																						group.directoryPath,
+																					)
+																				}
+																				disabled={!isRunning}
+																			>
+																				Shell
+																			</Button>
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				className="h-7 px-2 whitespace-normal"
+																				onClick={() =>
+																					setInspectContainerId(container.id)
+																				}
+																			>
+																				<LuBug className="mr-1 size-3.5" />
+																				Inspect
+																			</Button>
+																		</div>
+																	</div>
+																</div>
+															);
+														})}
+													</div>
+												)}
+											</CollapsibleContent>
+										</div>
+									</Collapsible>
+								);
+							})}
 					</div>
 					<ScrollBar orientation="vertical" />
 				</ScrollArea>

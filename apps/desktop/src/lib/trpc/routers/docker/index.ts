@@ -461,6 +461,10 @@ export const createDockerRouter = () => {
 								container.composeFilePaths.includes(composeFile.absolutePath),
 							)
 							.sort((left, right) => {
+								const leftRunning = left.state === "running" ? 0 : 1;
+								const rightRunning = right.state === "running" ? 0 : 1;
+								if (leftRunning !== rightRunning)
+									return leftRunning - rightRunning;
 								const leftKey = `${left.service ?? ""}:${left.name}`;
 								const rightKey = `${right.service ?? ""}:${right.name}`;
 								return leftKey.localeCompare(rightKey);

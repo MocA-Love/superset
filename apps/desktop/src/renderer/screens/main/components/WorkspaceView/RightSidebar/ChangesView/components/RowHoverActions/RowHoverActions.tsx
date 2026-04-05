@@ -22,9 +22,9 @@ export function RowHoverActions({ actions }: RowHoverActionsProps) {
 	}
 
 	return (
-		<div className="flex items-center gap-0.5 shrink-0 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
+		<div className="flex items-center gap-0.5 shrink-0 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-hover:bg-accent group-focus-within:bg-accent rounded-sm">
 			{actions.map((action) => (
-				<Tooltip key={action.key}>
+				<Tooltip key={action.key} delayDuration={500}>
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
