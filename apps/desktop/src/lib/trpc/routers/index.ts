@@ -18,7 +18,6 @@ import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
 import { createHostServiceManagerRouter } from "./host-service-manager";
-import { createHotkeysRouter } from "./hotkeys";
 import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
 import { createModelProvidersRouter } from "./model-providers";
@@ -60,7 +59,6 @@ export const createAppRouter = (
 		ports: createPortsRouter(),
 		resourceMetrics: createResourceMetricsRouter(),
 		menu: createMenuRouter(),
-		hotkeys: createHotkeysRouter(getWindow),
 		languageServices: createLanguageServicesRouter(),
 		external: createExternalRouter(),
 		settings: createSettingsRouter(),

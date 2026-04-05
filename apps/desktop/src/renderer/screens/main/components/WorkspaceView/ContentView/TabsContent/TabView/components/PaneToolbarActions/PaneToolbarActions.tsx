@@ -2,8 +2,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { HiMiniXMark } from "react-icons/hi2";
 import { LuArrowUpRight } from "react-icons/lu";
 import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
-import { HotkeyTooltipContent } from "renderer/components/HotkeyTooltipContent";
-import type { HotkeyId } from "shared/hotkeys";
+import type { HotkeyId } from "renderer/hotkeys";
+import { HotkeyLabel } from "renderer/hotkeys";
 import type { SplitOrientation } from "../../hooks";
 
 interface PaneToolbarActionsProps {
@@ -62,7 +62,7 @@ export function PaneToolbarActions({
 					</button>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" showArrow={false}>
-					<HotkeyTooltipContent label="Split pane" hotkeyId="SPLIT_AUTO" />
+					<HotkeyLabel label="Split pane" id="SPLIT_AUTO" />
 				</TooltipContent>
 			</Tooltip>
 			<Tooltip>
@@ -76,7 +76,7 @@ export function PaneToolbarActions({
 					</button>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" showArrow={false}>
-					<HotkeyTooltipContent label="Close pane" hotkeyId={closeHotkeyId} />
+					<HotkeyLabel label="Close pane" id={closeHotkeyId} />
 				</TooltipContent>
 			</Tooltip>
 		</div>

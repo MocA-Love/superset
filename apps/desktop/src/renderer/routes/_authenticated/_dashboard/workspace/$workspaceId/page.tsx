@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
 import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
+import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
@@ -39,7 +40,6 @@ import {
 	saveAndClosePendingTab,
 } from "renderer/stores/editor-state/editorCoordinator";
 import { useEditorSessionsStore } from "renderer/stores/editor-state/useEditorSessionsStore";
-import { useAppHotkey } from "renderer/stores/hotkeys";
 import {
 	RightSidebarTab,
 	SidebarMode,
@@ -403,108 +403,72 @@ export function WorkspacePage({
 		[presets, workspaceId, addTab, openPreset],
 	);
 
-	const hotkeyOptions = { enabled: isActive };
-	useAppHotkey("NEW_GROUP", () => addTab(workspaceId), hotkeyOptions, [
-		workspaceId,
-		addTab,
-	]);
-	useAppHotkey("NEW_CHAT", () => addChatTab(workspaceId), hotkeyOptions, [
-		workspaceId,
-		addChatTab,
-	]);
-	useAppHotkey(
+	useHotkey("NEW_GROUP", () => addTab(workspaceId), { enabled: isActive });
+	useHotkey("NEW_CHAT", () => addChatTab(workspaceId), { enabled: isActive });
+	useHotkey(
 		"REOPEN_TAB",
 		() => {
 			if (!reopenClosedTab(workspaceId)) {
 				addChatTab(workspaceId);
 			}
 		},
-		hotkeyOptions,
-		[workspaceId, reopenClosedTab, addChatTab],
+		{ enabled: isActive },
 	);
-	useAppHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), hotkeyOptions, [
-		workspaceId,
-		addBrowserTab,
-	]);
-	usePresetHotkeys(openTabWithPreset, hotkeyOptions);
+	useHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), {
+		enabled: isActive,
+	});
+	usePresetHotkeys(openTabWithPreset, { enabled: isActive });
 
-	useAppHotkey(
-		"RUN_WORKSPACE_COMMAND",
-		() => toggleWorkspaceRun(),
-		hotkeyOptions,
-		[toggleWorkspaceRun],
-	);
+	useHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), {
+		enabled: isActive,
+	});
 
-	useAppHotkey(
+	useHotkey(
 		"CLOSE_TERMINAL",
 		() => {
 			if (focusedPaneId) {
 				requestPaneClose(focusedPaneId);
 			}
 		},
-		hotkeyOptions,
-		[focusedPaneId],
+		{ enabled: isActive },
 	);
-	useAppHotkey(
+	useHotkey(
 		"CLOSE_TAB",
 		() => {
 			if (activeTabId) {
 				requestTabClose(activeTabId);
 			}
 		},
-		hotkeyOptions,
-		[activeTabId],
+		{ enabled: isActive },
 	);
 
-	useAppHotkey(
-		"PREV_TAB",
-		() => {
-			if (!activeTabId || tabs.length === 0) return;
-			const index = tabs.findIndex((t) => t.id === activeTabId);
-			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
-			setActiveTab(workspaceId, tabs[prevIndex].id);
-		},
-		hotkeyOptions,
-		[workspaceId, activeTabId, tabs, setActiveTab],
-	);
+	useHotkey("PREV_TAB", () => {
+		if (!activeTabId || tabs.length === 0) return;
+		const index = tabs.findIndex((t) => t.id === activeTabId);
+		const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
+		setActiveTab(workspaceId, tabs[prevIndex].id);
+	}, { enabled: isActive });
 
-	useAppHotkey(
-		"NEXT_TAB",
-		() => {
-			if (!activeTabId || tabs.length === 0) return;
-			const index = tabs.findIndex((t) => t.id === activeTabId);
-			const nextIndex =
-				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
-			setActiveTab(workspaceId, tabs[nextIndex].id);
-		},
-		hotkeyOptions,
-		[workspaceId, activeTabId, tabs, setActiveTab],
-	);
+	useHotkey("NEXT_TAB", () => {
+		if (!activeTabId || tabs.length === 0) return;
+		const index = tabs.findIndex((t) => t.id === activeTabId);
+		const nextIndex = index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
+		setActiveTab(workspaceId, tabs[nextIndex].id);
+	}, { enabled: isActive });
 
-	useAppHotkey(
-		"PREV_TAB_ALT",
-		() => {
-			if (!activeTabId || tabs.length === 0) return;
-			const index = tabs.findIndex((t) => t.id === activeTabId);
-			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
-			setActiveTab(workspaceId, tabs[prevIndex].id);
-		},
-		hotkeyOptions,
-		[workspaceId, activeTabId, tabs, setActiveTab],
-	);
+	useHotkey("PREV_TAB_ALT", () => {
+		if (!activeTabId || tabs.length === 0) return;
+		const index = tabs.findIndex((t) => t.id === activeTabId);
+		const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
+		setActiveTab(workspaceId, tabs[prevIndex].id);
+	}, { enabled: isActive });
 
-	useAppHotkey(
-		"NEXT_TAB_ALT",
-		() => {
-			if (!activeTabId || tabs.length === 0) return;
-			const index = tabs.findIndex((t) => t.id === activeTabId);
-			const nextIndex =
-				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
-			setActiveTab(workspaceId, tabs[nextIndex].id);
-		},
-		hotkeyOptions,
-		[workspaceId, activeTabId, tabs, setActiveTab],
-	);
+	useHotkey("NEXT_TAB_ALT", () => {
+		if (!activeTabId || tabs.length === 0) return;
+		const index = tabs.findIndex((t) => t.id === activeTabId);
+		const nextIndex = index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
+		setActiveTab(workspaceId, tabs[nextIndex].id);
+	}, { enabled: isActive });
 
 	const switchToTab = useCallback(
 		(index: number) => {
@@ -516,59 +480,31 @@ export function WorkspacePage({
 		[tabs, workspaceId, setActiveTab],
 	);
 
-	useAppHotkey("JUMP_TO_TAB_1", () => switchToTab(0), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_2", () => switchToTab(1), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_3", () => switchToTab(2), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_4", () => switchToTab(3), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_5", () => switchToTab(4), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_6", () => switchToTab(5), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_7", () => switchToTab(6), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_8", () => switchToTab(7), hotkeyOptions, [
-		switchToTab,
-	]);
-	useAppHotkey("JUMP_TO_TAB_9", () => switchToTab(8), hotkeyOptions, [
-		switchToTab,
-	]);
+	useHotkey("JUMP_TO_TAB_1", () => switchToTab(0), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_2", () => switchToTab(1), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_3", () => switchToTab(2), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_4", () => switchToTab(3), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_5", () => switchToTab(4), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_6", () => switchToTab(5), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_7", () => switchToTab(6), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_8", () => switchToTab(7), { enabled: isActive });
+	useHotkey("JUMP_TO_TAB_9", () => switchToTab(8), { enabled: isActive });
 
-	useAppHotkey(
-		"PREV_PANE",
-		() => {
-			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-			const prevPaneId = getPreviousPaneId(activeTab.layout, focusedPaneId);
-			if (prevPaneId) {
-				setFocusedPane(activeTabId, prevPaneId);
-			}
-		},
-		hotkeyOptions,
-		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
-	);
+	useHotkey("PREV_PANE", () => {
+		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
+		const prevPaneId = getPreviousPaneId(activeTab.layout, focusedPaneId);
+		if (prevPaneId) {
+			setFocusedPane(activeTabId, prevPaneId);
+		}
+	}, { enabled: isActive });
 
-	useAppHotkey(
-		"NEXT_PANE",
-		() => {
-			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-			const nextPaneId = getNextPaneId(activeTab.layout, focusedPaneId);
-			if (nextPaneId) {
-				setFocusedPane(activeTabId, nextPaneId);
-			}
-		},
-		hotkeyOptions,
-		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
-	);
+	useHotkey("NEXT_PANE", () => {
+		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
+		const nextPaneId = getNextPaneId(activeTab.layout, focusedPaneId);
+		if (nextPaneId) {
+			setFocusedPane(activeTabId, nextPaneId);
+		}
+	}, { enabled: isActive });
 
 	// Open in last used app shortcut
 	const projectId = workspace?.projectId;
@@ -595,21 +531,18 @@ export function WorkspacePage({
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useAppHotkey("OPEN_IN_APP", handleOpenInApp, hotkeyOptions, [
-		handleOpenInApp,
-	]);
+	useHotkey("OPEN_IN_APP", handleOpenInApp, { enabled: isActive });
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
-	useAppHotkey(
+	useHotkey(
 		"COPY_PATH",
 		() => {
 			if (workspace?.worktreePath) {
 				copyToClipboard(workspace.worktreePath);
 			}
 		},
-		hotkeyOptions,
-		[workspace?.worktreePath],
+		{ enabled: isActive },
 	);
 
 	// Open PR shortcut (⌘⇧P)
@@ -617,7 +550,7 @@ export function WorkspacePage({
 	const { createOrOpenPR } = useCreateOrOpenPR({
 		worktreePath: workspace?.worktreePath,
 	});
-	useAppHotkey(
+	useHotkey(
 		"OPEN_PR",
 		() => {
 			if (pr?.url) {
@@ -626,8 +559,7 @@ export function WorkspacePage({
 				createOrOpenPR();
 			}
 		},
-		hotkeyOptions,
-		[pr?.url, createOrOpenPR],
+		{ enabled: isActive },
 	);
 
 	const commandPalette = useCommandPalette({
@@ -638,7 +570,7 @@ export function WorkspacePage({
 	const handleQuickOpen = useCallback(() => {
 		commandPalette.toggle();
 	}, [commandPalette.toggle]);
-	useAppHotkey("QUICK_OPEN", handleQuickOpen, hotkeyOptions, [handleQuickOpen]);
+	useHotkey("QUICK_OPEN", handleQuickOpen, { enabled: isActive });
 
 	const handleBrowserShortcut = useCallback(
 		(action: "reload" | "hard-reload") => {
@@ -707,30 +639,21 @@ export function WorkspacePage({
 		setSidebarMode(SidebarMode.Tabs);
 		setRightSidebarTab(RightSidebarTab.Search);
 	}, [isSidebarOpen, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
-	useAppHotkey("SEARCH_IN_FILES", handleSearchInFiles, undefined, [
-		handleSearchInFiles,
-	]);
+	useHotkey("SEARCH_IN_FILES", handleSearchInFiles, { enabled: isActive });
 
 	// Toggle changes sidebar (⌘L)
-	useAppHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), hotkeyOptions, [
-		toggleSidebar,
-	]);
+	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), { enabled: isActive });
 
 	// Toggle expand/collapse sidebar (⌘⇧L)
-	useAppHotkey(
-		"TOGGLE_EXPAND_SIDEBAR",
-		() => {
-			if (!isSidebarOpen) {
-				setSidebarOpen(true);
-				setSidebarMode(SidebarMode.Changes);
-			} else {
-				const isExpanded = currentSidebarMode === SidebarMode.Changes;
-				setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
-			}
-		},
-		hotkeyOptions,
-		[isSidebarOpen, setSidebarOpen, setSidebarMode, currentSidebarMode],
-	);
+	useHotkey("TOGGLE_EXPAND_SIDEBAR", () => {
+		if (!isSidebarOpen) {
+			setSidebarOpen(true);
+			setSidebarMode(SidebarMode.Changes);
+		} else {
+			const isExpanded = currentSidebarMode === SidebarMode.Changes;
+			setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
+		}
+	}, { enabled: isActive });
 
 	// Pane splitting helper - resolves target pane for split operations
 	const resolveSplitTarget = useCallback(
@@ -747,7 +670,7 @@ export function WorkspacePage({
 	);
 
 	// Pane splitting shortcuts
-	useAppHotkey(
+	useHotkey(
 		"SPLIT_AUTO",
 		() => {
 			if (activeTabId && focusedPaneId && activeTab) {
@@ -763,11 +686,10 @@ export function WorkspacePage({
 				}
 			}
 		},
-		hotkeyOptions,
-		[activeTabId, focusedPaneId, activeTab, splitPaneAuto, resolveSplitTarget],
+		{ enabled: isActive },
 	);
 
-	useAppHotkey(
+	useHotkey(
 		"SPLIT_RIGHT",
 		() => {
 			if (activeTabId && focusedPaneId && activeTab) {
@@ -780,17 +702,10 @@ export function WorkspacePage({
 				splitPaneVertical(activeTabId, target.paneId, target.path);
 			}
 		},
-		hotkeyOptions,
-		[
-			activeTabId,
-			focusedPaneId,
-			activeTab,
-			splitPaneVertical,
-			resolveSplitTarget,
-		],
+		{ enabled: isActive },
 	);
 
-	useAppHotkey(
+	useHotkey(
 		"SPLIT_DOWN",
 		() => {
 			if (activeTabId && focusedPaneId && activeTab) {
@@ -803,17 +718,10 @@ export function WorkspacePage({
 				splitPaneHorizontal(activeTabId, target.paneId, target.path);
 			}
 		},
-		hotkeyOptions,
-		[
-			activeTabId,
-			focusedPaneId,
-			activeTab,
-			splitPaneHorizontal,
-			resolveSplitTarget,
-		],
+		{ enabled: isActive },
 	);
 
-	useAppHotkey(
+	useHotkey(
 		"SPLIT_WITH_CHAT",
 		() => {
 			if (activeTabId && focusedPaneId && activeTab) {
@@ -828,17 +736,10 @@ export function WorkspacePage({
 				});
 			}
 		},
-		hotkeyOptions,
-		[
-			activeTabId,
-			focusedPaneId,
-			activeTab,
-			splitPaneVertical,
-			resolveSplitTarget,
-		],
+		{ enabled: isActive },
 	);
 
-	useAppHotkey(
+	useHotkey(
 		"SPLIT_WITH_BROWSER",
 		() => {
 			if (activeTabId && focusedPaneId && activeTab) {
@@ -853,26 +754,18 @@ export function WorkspacePage({
 				});
 			}
 		},
-		hotkeyOptions,
-		[
-			activeTabId,
-			focusedPaneId,
-			activeTab,
-			splitPaneVertical,
-			resolveSplitTarget,
-		],
+		{ enabled: isActive },
 	);
 
 	const equalizePaneSplits = useTabsStore((s) => s.equalizePaneSplits);
-	useAppHotkey(
+	useHotkey(
 		"EQUALIZE_PANE_SPLITS",
 		() => {
 			if (activeTabId) {
 				equalizePaneSplits(activeTabId);
 			}
 		},
-		hotkeyOptions,
-		[activeTabId, equalizePaneSplits],
+		{ enabled: isActive },
 	);
 
 	// Navigate to previous workspace (⌘↑)
@@ -881,34 +774,24 @@ export function WorkspacePage({
 			{ id: workspaceId },
 			{ enabled: !!workspaceId },
 		);
-	useAppHotkey(
-		"PREV_WORKSPACE",
-		() => {
-			const prevWorkspaceId = getPreviousWorkspace.data;
-			if (prevWorkspaceId) {
-				navigateToWorkspace(prevWorkspaceId, navigate);
-			}
-		},
-		hotkeyOptions,
-		[getPreviousWorkspace.data, navigate],
-	);
+	useHotkey("PREV_WORKSPACE", () => {
+		const prevWorkspaceId = getPreviousWorkspace.data;
+		if (prevWorkspaceId) {
+			navigateToWorkspace(prevWorkspaceId, navigate);
+		}
+	}, { enabled: isActive });
 
 	// Navigate to next workspace (⌘↓)
 	const getNextWorkspace = electronTrpc.workspaces.getNextWorkspace.useQuery(
 		{ id: workspaceId },
 		{ enabled: !!workspaceId },
 	);
-	useAppHotkey(
-		"NEXT_WORKSPACE",
-		() => {
-			const nextWorkspaceId = getNextWorkspace.data;
-			if (nextWorkspaceId) {
-				navigateToWorkspace(nextWorkspaceId, navigate);
-			}
-		},
-		hotkeyOptions,
-		[getNextWorkspace.data, navigate],
-	);
+	useHotkey("NEXT_WORKSPACE", () => {
+		const nextWorkspaceId = getNextWorkspace.data;
+		if (nextWorkspaceId) {
+			navigateToWorkspace(nextWorkspaceId, navigate);
+		}
+	}, { enabled: isActive });
 
 	return (
 		<WorkspaceIdProvider value={workspaceId}>
