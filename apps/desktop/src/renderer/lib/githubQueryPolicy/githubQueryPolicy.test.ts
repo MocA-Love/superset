@@ -20,7 +20,7 @@ describe("getGitHubStatusQueryPolicy", () => {
 		});
 	});
 
-	test("enables polling for the active changes sidebar review view", () => {
+	test("polls backend cache for the active changes sidebar review view (reads SyncService-warmed cache)", () => {
 		expect(
 			getGitHubStatusQueryPolicy("changes-sidebar", {
 				hasWorkspaceId: true,
@@ -124,7 +124,7 @@ describe("getGitHubPRCommentsQueryPolicy", () => {
 		});
 	});
 
-	test("polls review comments while the review tab is active", () => {
+	test("polls backend cache for review comments when review tab is active", () => {
 		expect(
 			getGitHubPRCommentsQueryPolicy({
 				hasWorkspaceId: true,

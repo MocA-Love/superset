@@ -1811,5 +1811,36 @@ export const createGitStatusProcedures = () => {
 
 				return fetchJobStatuses(repoPath, input.detailsUrls);
 			}),
+
+		/**
+		 * Notify the SyncService which workspace is currently active.
+		 * Deactivates all other workspaces to stop their polling timers.
+		 * Pass empty workspaceId to deactivate all (e.g., dashboard view).
+		 */
+		setActiveSyncWorkspace: publicProcedure
+			.input(z.object({ workspaceId: z.string() }))
+			.mutation(({ input }) => {
+				if (!input.workspaceId) {
+					githubSyncService.deactivateAll();
+					return { success: true };
+				}
+
+				const workspace = getWorkspace(input.workspaceId);
+				if (!workspace) return { success: false };
+
+				const worktree = workspace.worktreeId
+					? getWorktree(workspace.worktreeId)
+					: null;
+
+				let repoPath: string | null = worktree?.path ?? null;
+				if (!repoPath && workspace.type === "branch") {
+					const project = getProject(workspace.projectId);
+					repoPath = project?.mainRepoPath ?? null;
+				}
+				if (!repoPath) return { success: false };
+
+				githubSyncService.setActiveWorkspace(repoPath);
+				return { success: true };
+			}),
 	});
 };
