@@ -105,6 +105,8 @@ export class StdioJsonRpcClient {
 
 	private readonly pendingRequests = new Map<number, PendingRequest>();
 
+	private stopping = false;
+
 	constructor(private readonly options: StdioJsonRpcClientOptions) {}
 
 	async start(): Promise<void> {
@@ -197,39 +199,23 @@ export class StdioJsonRpcClient {
 	}
 
 	async stop(): Promise<void> {
-		if (!this.process) {
+		if (!this.process || this.stopping) {
 			return;
 		}
 
+		this.stopping = true;
 		const child = this.process;
 
 		// Attempt graceful LSP shutdown → exit before killing
 		try {
-			// Use a short dedicated timeout; writeMessage checks this.process,
-			// so keep it alive until after we send exit.
-			await Promise.race([
-				this.writeMessage({
-					jsonrpc: "2.0",
-					id: ++this.nextId,
-					method: "shutdown",
-					params: null,
-				}),
-				new Promise((_, reject) =>
-					setTimeout(
-						() => reject(new Error("shutdown write timed out")),
-						5_000,
-					),
-				),
-			]);
-			await this.writeMessage({
-				jsonrpc: "2.0",
-				method: "exit",
-			});
+			await this.request("shutdown", null, 5_000);
+			await this.notify("exit");
 		} catch {
 			// Graceful path failed — fall through to kill
 		}
 
 		this.process = null;
+		this.stopping = false;
 		child.removeAllListeners();
 		if (!child.killed) {
 			child.kill();

@@ -45,11 +45,19 @@ async function refreshRepoContext(
 					upstreamUrl: ghUrl,
 					isFork: true,
 				};
+			} else if (data.isFork) {
+				// Fork but upstream URL could not be determined — surface as error
+				// rather than silently treating as non-fork (which would misdirect PRs)
+				console.warn(
+					"[GitHub] Fork detected but upstream URL could not be resolved",
+					{ url: data.url },
+				);
+				return null;
 			} else {
 				context = {
 					repoUrl: data.url,
 					upstreamUrl: data.url,
-					isFork: data.isFork,
+					isFork: false,
 				};
 			}
 		}
