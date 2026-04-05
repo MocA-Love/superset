@@ -27,7 +27,10 @@ function getConnectionState(terminalId: string): ConnectionState {
 }
 
 export function TerminalPane({ ctx, workspaceId }: TerminalPaneProps) {
-	const { terminalId } = ctx.pane.data as TerminalPaneData;
+	const data = ctx.pane.data as TerminalPaneData;
+	// Guard against legacy pane data format {sessionKey, cwd, launchMode}
+	// saved in local DB before the terminalId migration.
+	const terminalId = data.terminalId ?? crypto.randomUUID();
 	const containerRef = useRef<HTMLDivElement | null>(null);
 
 	const appearance = useTerminalAppearance();

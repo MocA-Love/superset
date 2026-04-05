@@ -1128,22 +1128,6 @@ export async function searchFiles({
 	});
 	const safeLimit = safeSearchLimit(limit);
 
-	const exactMatches = collectExactFileSearchMatches({
-		index,
-		query: trimmedQuery,
-		pathMatcher,
-		limit: safeLimit,
-	});
-	if (exactMatches.length > 0) {
-		return exactMatches.map((result) => ({
-			absolutePath: result.item.absolutePath,
-			relativePath: result.item.relativePath,
-			name: result.item.name,
-			kind: "file" as const,
-			score: result.score,
-		}));
-	}
-
 	const searchableItems = pathMatcher.hasFilters
 		? index.items.filter((item) =>
 				matchesPathFilters(item.relativePath, pathMatcher),
@@ -1154,7 +1138,10 @@ export async function searchFiles({
 		return [];
 	}
 
-	// Use VS Code fuzzy scorer instead of Fuse.js for better path-aware matching
+	// Use VS Code fuzzy scorer for all file search (exact + fuzzy unified).
+	// The scorer naturally ranks exact matches highest, so no separate
+	// exact-match fast path is needed. This ensures consistent scoring
+	// across workspaces for cross-workspace ranking.
 	const prepared = prepareQuery(trimmedQuery);
 	const cache: FuzzyScorerCache = {};
 
@@ -1183,17 +1170,12 @@ export async function searchFiles({
 		),
 	);
 
-	// Normalize fuzzy scores to 0..1 range to be compatible with exact match
-	// scores (0.985-1.0). This ensures cross-workspace score sorting works
-	// correctly when mixing exact and fuzzy results.
-	const maxScore = scored[0]?.score ?? 1;
-
 	return scored.slice(0, safeLimit).map((result) => ({
 		absolutePath: result.item.absolutePath,
 		relativePath: result.item.relativePath,
 		name: result.item.name,
 		kind: "file" as const,
-		score: maxScore > 0 ? (result.score / maxScore) * 0.98 : 0,
+		score: result.score,
 	}));
 }
 

@@ -43,7 +43,7 @@ import {
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
-import { MainWindow } from "./windows/main";
+import { MainWindow, cleanupMainWindowResources } from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -378,6 +378,7 @@ app.on("before-quit", async (event) => {
 		manager.hasActiveInstances()
 	) {
 		event.preventDefault();
+		cleanupMainWindowResources();
 		for (const win of BrowserWindow.getAllWindows()) {
 			win.destroy();
 		}

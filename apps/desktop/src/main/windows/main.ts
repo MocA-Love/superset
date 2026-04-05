@@ -64,6 +64,15 @@ function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
 }
 
 let currentWindow: BrowserWindow | null = null;
+let mainWindowCleanup: (() => void) | null = null;
+
+/** Tear down main window resources (notification server, IPC, etc.)
+ *  without destroying the BrowserWindow itself. Called from before-quit
+ *  tray-stay-alive path where win.destroy() skips close events. */
+export function cleanupMainWindowResources(): void {
+	mainWindowCleanup?.();
+	mainWindowCleanup = null;
+}
 
 function addWindowLifecycleBreadcrumb(
 	message: string,
@@ -384,6 +393,10 @@ export async function MainWindow() {
 			return;
 		}
 
+		doCleanup();
+	});
+
+	function doCleanup() {
 		browserManager.unregisterAll();
 		server.close();
 		notificationManager.dispose();
@@ -392,7 +405,10 @@ export async function MainWindow() {
 		ipcHandler?.detachWindow(window);
 		windowManager.unregister("main");
 		currentWindow = null;
-	});
+		mainWindowCleanup = null;
+	}
+
+	mainWindowCleanup = doCleanup;
 
 	return window;
 }
