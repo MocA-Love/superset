@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import fg from "fast-glob";
 import Fuse from "fuse.js";
+import { readFile as readFsFile, writeFile as writeFsFile } from "./fs";
 import {
 	compareItemsByFuzzyScore,
 	type FuzzyScorerCache,
@@ -11,7 +12,6 @@ import {
 	prepareQuery,
 	scoreItemFuzzy,
 } from "./fuzzy-scorer";
-import { readFile as readFsFile, writeFile as writeFsFile } from "./fs";
 import {
 	isPathWithinRoot,
 	normalizeAbsolutePath,
@@ -586,7 +586,7 @@ function compareFileSearchMatches(
 	return left.item.relativePath.localeCompare(right.item.relativePath);
 }
 
-function collectExactFileSearchMatches({
+function _collectExactFileSearchMatches({
 	index,
 	query,
 	pathMatcher,

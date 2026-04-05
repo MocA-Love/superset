@@ -192,7 +192,10 @@ export class DartLanguageProvider implements LanguageServiceProvider {
 
 	private readonly sessions = new Map<string, WorkspaceSession>();
 
-	private readonly pendingSessions = new Map<string, Promise<WorkspaceSession>>();
+	private readonly pendingSessions = new Map<
+		string,
+		Promise<WorkspaceSession>
+	>();
 
 	private readonly workspaceErrors = new Map<string, string | null>();
 

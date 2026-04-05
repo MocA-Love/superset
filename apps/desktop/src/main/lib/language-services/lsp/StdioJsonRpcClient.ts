@@ -238,10 +238,9 @@ export class StdioJsonRpcClient {
 			this.buffer = result.rest;
 
 			if (result.kind === "skip") {
-				console.warn(
-					"[language-services/lsp] Skipped invalid header block",
-					{ name: this.options.name },
-				);
+				console.warn("[language-services/lsp] Skipped invalid header block", {
+					name: this.options.name,
+				});
 				continue;
 			}
 

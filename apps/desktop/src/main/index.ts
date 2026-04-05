@@ -43,7 +43,7 @@ import {
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
-import { MainWindow, cleanupMainWindowResources } from "./windows/main";
+import { cleanupMainWindowResources, MainWindow } from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
 const IS_DEV = process.env.NODE_ENV === "development";

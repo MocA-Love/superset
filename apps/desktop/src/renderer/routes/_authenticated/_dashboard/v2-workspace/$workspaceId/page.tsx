@@ -11,8 +11,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
 import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
-import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
 import { HotkeyLabel, useHotkey } from "renderer/hotkeys";
+import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
