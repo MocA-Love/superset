@@ -567,8 +567,8 @@ export const HOTKEYS_REGISTRY = {
 	SEARCH_IN_FILES: {
 		key: {
 			mac: "meta+shift+f",
-			windows: "ctrl+shift+f",
-			linux: "ctrl+shift+f",
+			windows: "ctrl+shift+h",
+			linux: "ctrl+shift+h",
 		},
 		label: "Search in Files",
 		category: "Navigation",
@@ -578,7 +578,7 @@ export const HOTKEYS_REGISTRY = {
 	// Browser (fork-specific)
 	BROWSER_RELOAD: {
 		key: {
-			mac: "meta+shift+r",
+			mac: "meta+alt+r",
 			windows: "ctrl+shift+r",
 			linux: "ctrl+shift+r",
 		},
@@ -589,8 +589,8 @@ export const HOTKEYS_REGISTRY = {
 	BROWSER_HARD_RELOAD: {
 		key: {
 			mac: "meta+shift+alt+r",
-			windows: "ctrl+shift+alt+r",
-			linux: "ctrl+shift+alt+r",
+			windows: "ctrl+alt+shift+e",
+			linux: "ctrl+alt+shift+e",
 		},
 		label: "Browser Hard Reload",
 		category: "Browser",

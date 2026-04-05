@@ -403,28 +403,44 @@ export function WorkspacePage({
 		[presets, workspaceId, addTab, openPreset],
 	);
 
-	useHotkey("NEW_GROUP", () => addTab(workspaceId));
-	useHotkey("NEW_CHAT", () => addChatTab(workspaceId));
-	useHotkey("REOPEN_TAB", () => {
-		if (!reopenClosedTab(workspaceId)) {
-			addChatTab(workspaceId);
-		}
+	useHotkey("NEW_GROUP", () => addTab(workspaceId), { enabled: isActive });
+	useHotkey("NEW_CHAT", () => addChatTab(workspaceId), { enabled: isActive });
+	useHotkey(
+		"REOPEN_TAB",
+		() => {
+			if (!reopenClosedTab(workspaceId)) {
+				addChatTab(workspaceId);
+			}
+		},
+		{ enabled: isActive },
+	);
+	useHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), {
+		enabled: isActive,
 	});
-	useHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId));
 	usePresetHotkeys(openTabWithPreset);
 
-	useHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun());
+	useHotkey("RUN_WORKSPACE_COMMAND", () => toggleWorkspaceRun(), {
+		enabled: isActive,
+	});
 
-	useHotkey("CLOSE_TERMINAL", () => {
-		if (focusedPaneId) {
-			requestPaneClose(focusedPaneId);
-		}
-	});
-	useHotkey("CLOSE_TAB", () => {
-		if (activeTabId) {
-			requestTabClose(activeTabId);
-		}
-	});
+	useHotkey(
+		"CLOSE_TERMINAL",
+		() => {
+			if (focusedPaneId) {
+				requestPaneClose(focusedPaneId);
+			}
+		},
+		{ enabled: isActive },
+	);
+	useHotkey(
+		"CLOSE_TAB",
+		() => {
+			if (activeTabId) {
+				requestTabClose(activeTabId);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	useHotkey("PREV_TAB", () => {
 		if (!activeTabId || tabs.length === 0) return;
@@ -515,28 +531,36 @@ export function WorkspacePage({
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useHotkey("OPEN_IN_APP", handleOpenInApp);
+	useHotkey("OPEN_IN_APP", handleOpenInApp, { enabled: isActive });
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
-	useHotkey("COPY_PATH", () => {
-		if (workspace?.worktreePath) {
-			copyToClipboard(workspace.worktreePath);
-		}
-	});
+	useHotkey(
+		"COPY_PATH",
+		() => {
+			if (workspace?.worktreePath) {
+				copyToClipboard(workspace.worktreePath);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Open PR shortcut (⌘⇧P)
 	const { pr } = usePRStatus({ workspaceId, surface: "workspace-page" });
 	const { createOrOpenPR } = useCreateOrOpenPR({
 		worktreePath: workspace?.worktreePath,
 	});
-	useHotkey("OPEN_PR", () => {
-		if (pr?.url) {
-			window.open(pr.url, "_blank");
-		} else {
-			createOrOpenPR();
-		}
-	});
+	useHotkey(
+		"OPEN_PR",
+		() => {
+			if (pr?.url) {
+				window.open(pr.url, "_blank");
+			} else {
+				createOrOpenPR();
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	const commandPalette = useCommandPalette({
 		workspaceId,
@@ -546,7 +570,7 @@ export function WorkspacePage({
 	const handleQuickOpen = useCallback(() => {
 		commandPalette.toggle();
 	}, [commandPalette.toggle]);
-	useHotkey("QUICK_OPEN", handleQuickOpen);
+	useHotkey("QUICK_OPEN", handleQuickOpen, { enabled: isActive });
 
 	const handleBrowserShortcut = useCallback(
 		(action: "reload" | "hard-reload") => {
@@ -615,7 +639,7 @@ export function WorkspacePage({
 		setSidebarMode(SidebarMode.Tabs);
 		setRightSidebarTab(RightSidebarTab.Search);
 	}, [isSidebarOpen, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
-	useHotkey("SEARCH_IN_FILES", handleSearchInFiles);
+	useHotkey("SEARCH_IN_FILES", handleSearchInFiles, { enabled: isActive });
 
 	// Toggle changes sidebar (⌘L)
 	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar());
@@ -646,59 +670,103 @@ export function WorkspacePage({
 	);
 
 	// Pane splitting shortcuts
-	useHotkey("SPLIT_AUTO", () => {
-		if (activeTabId && focusedPaneId && activeTab) {
-			const target = resolveSplitTarget(focusedPaneId, activeTabId, activeTab);
-			if (!target) return;
-			const dimensions = getPaneDimensions(target.paneId);
-			if (dimensions) {
-				splitPaneAuto(activeTabId, target.paneId, dimensions, target.path);
+	useHotkey(
+		"SPLIT_AUTO",
+		() => {
+			if (activeTabId && focusedPaneId && activeTab) {
+				const target = resolveSplitTarget(
+					focusedPaneId,
+					activeTabId,
+					activeTab,
+				);
+				if (!target) return;
+				const dimensions = getPaneDimensions(target.paneId);
+				if (dimensions) {
+					splitPaneAuto(activeTabId, target.paneId, dimensions, target.path);
+				}
 			}
-		}
-	});
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("SPLIT_RIGHT", () => {
-		if (activeTabId && focusedPaneId && activeTab) {
-			const target = resolveSplitTarget(focusedPaneId, activeTabId, activeTab);
-			if (!target) return;
-			splitPaneVertical(activeTabId, target.paneId, target.path);
-		}
-	});
+	useHotkey(
+		"SPLIT_RIGHT",
+		() => {
+			if (activeTabId && focusedPaneId && activeTab) {
+				const target = resolveSplitTarget(
+					focusedPaneId,
+					activeTabId,
+					activeTab,
+				);
+				if (!target) return;
+				splitPaneVertical(activeTabId, target.paneId, target.path);
+			}
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("SPLIT_DOWN", () => {
-		if (activeTabId && focusedPaneId && activeTab) {
-			const target = resolveSplitTarget(focusedPaneId, activeTabId, activeTab);
-			if (!target) return;
-			splitPaneHorizontal(activeTabId, target.paneId, target.path);
-		}
-	});
+	useHotkey(
+		"SPLIT_DOWN",
+		() => {
+			if (activeTabId && focusedPaneId && activeTab) {
+				const target = resolveSplitTarget(
+					focusedPaneId,
+					activeTabId,
+					activeTab,
+				);
+				if (!target) return;
+				splitPaneHorizontal(activeTabId, target.paneId, target.path);
+			}
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("SPLIT_WITH_CHAT", () => {
-		if (activeTabId && focusedPaneId && activeTab) {
-			const target = resolveSplitTarget(focusedPaneId, activeTabId, activeTab);
-			if (!target) return;
-			splitPaneVertical(activeTabId, target.paneId, target.path, {
-				paneType: "chat",
-			});
-		}
-	});
+	useHotkey(
+		"SPLIT_WITH_CHAT",
+		() => {
+			if (activeTabId && focusedPaneId && activeTab) {
+				const target = resolveSplitTarget(
+					focusedPaneId,
+					activeTabId,
+					activeTab,
+				);
+				if (!target) return;
+				splitPaneVertical(activeTabId, target.paneId, target.path, {
+					paneType: "chat",
+				});
+			}
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("SPLIT_WITH_BROWSER", () => {
-		if (activeTabId && focusedPaneId && activeTab) {
-			const target = resolveSplitTarget(focusedPaneId, activeTabId, activeTab);
-			if (!target) return;
-			splitPaneVertical(activeTabId, target.paneId, target.path, {
-				paneType: "webview",
-			});
-		}
-	});
+	useHotkey(
+		"SPLIT_WITH_BROWSER",
+		() => {
+			if (activeTabId && focusedPaneId && activeTab) {
+				const target = resolveSplitTarget(
+					focusedPaneId,
+					activeTabId,
+					activeTab,
+				);
+				if (!target) return;
+				splitPaneVertical(activeTabId, target.paneId, target.path, {
+					paneType: "webview",
+				});
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	const equalizePaneSplits = useTabsStore((s) => s.equalizePaneSplits);
-	useHotkey("EQUALIZE_PANE_SPLITS", () => {
-		if (activeTabId) {
-			equalizePaneSplits(activeTabId);
-		}
-	});
+	useHotkey(
+		"EQUALIZE_PANE_SPLITS",
+		() => {
+			if (activeTabId) {
+				equalizePaneSplits(activeTabId);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Navigate to previous workspace (⌘↑)
 	const getPreviousWorkspace =
