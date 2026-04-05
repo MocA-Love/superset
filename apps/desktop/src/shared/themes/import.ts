@@ -178,6 +178,304 @@ function isThemePack(value: unknown): value is {
 	);
 }
 
+// ── VS Code theme format detection & conversion ──────────────
+
+interface VsCodeTokenColor {
+	scope?: string | string[];
+	settings?: { foreground?: string; fontStyle?: string };
+}
+
+function isVsCodeTheme(value: unknown): value is {
+	name?: string;
+	type?: string;
+	tokenColors?: VsCodeTokenColor[];
+	colors?: Record<string, string>;
+	semanticHighlighting?: boolean;
+	semanticTokenColors?: Record<string, unknown>;
+} {
+	if (typeof value !== "object" || value === null) return false;
+	const obj = value as Record<string, unknown>;
+	return Array.isArray(obj.tokenColors);
+}
+
+/**
+ * Scope-to-EditorSyntaxColors mapping.
+ * Order matters: more specific scopes should come first.
+ * The first matching scope wins for each syntax key.
+ */
+const SCOPE_TO_SYNTAX: Array<{
+	key: string;
+	scopes: string[];
+}> = [
+	// Markdown (specific scopes first)
+	{
+		key: "markdownHeading",
+		scopes: [
+			"markup.heading",
+			"entity.name.section",
+			"punctuation.definition.heading",
+		],
+	},
+	{
+		key: "markdownStrong",
+		scopes: ["markup.bold", "punctuation.definition.bold"],
+	},
+	{
+		key: "markdownEmphasis",
+		scopes: ["markup.italic", "punctuation.definition.italic"],
+	},
+	{ key: "markdownStrikethrough", scopes: ["markup.strikethrough"] },
+	{
+		key: "markdownLink",
+		scopes: [
+			"markup.underline.link",
+			"string.other.link.title",
+			"string.other.link.description",
+		],
+	},
+	{
+		key: "markdownUrl",
+		scopes: ["markup.underline.link.image"],
+	},
+	{
+		key: "markdownCode",
+		scopes: ["markup.inline.raw", "markup.fenced_code", "markup.raw"],
+	},
+	{ key: "markdownQuote", scopes: ["markup.quote"] },
+	{
+		key: "markdownList",
+		scopes: [
+			"punctuation.definition.list",
+			"beginning.punctuation.definition.list",
+		],
+	},
+	// Code tokens
+	{
+		key: "comment",
+		scopes: ["comment", "punctuation.definition.comment"],
+	},
+	{
+		key: "keyword",
+		scopes: ["keyword", "keyword.control", "storage", "storage.type"],
+	},
+	{ key: "string", scopes: ["string"] },
+	{
+		key: "number",
+		scopes: ["constant.numeric", "constant.language"],
+	},
+	{
+		key: "functionCall",
+		scopes: [
+			"entity.name.function",
+			"support.function",
+			"meta.function-call",
+			"variable.function",
+		],
+	},
+	{ key: "variableName", scopes: ["variable"] },
+	{
+		key: "typeName",
+		scopes: ["entity.name.type", "support.type", "support.class"],
+	},
+	{
+		key: "className",
+		scopes: ["entity.name.class", "entity.other.inherited-class"],
+	},
+	{ key: "constant", scopes: ["constant", "support.constant"] },
+	{ key: "regexp", scopes: ["string.regexp"] },
+	{
+		key: "tagName",
+		scopes: ["entity.name.tag", "punctuation.definition.tag"],
+	},
+	{
+		key: "attributeName",
+		scopes: ["entity.other.attribute-name"],
+	},
+	{ key: "invalid", scopes: ["invalid"] },
+	{
+		key: "operator",
+		scopes: ["keyword.operator"],
+	},
+	{
+		key: "punctuation",
+		scopes: ["punctuation", "meta.brace", "meta.bracket"],
+	},
+	{ key: "meta", scopes: ["meta.tag", "meta.selector"] },
+];
+
+/**
+ * VS Code `colors` key → Superset UIColors key.
+ */
+const VSCODE_COLORS_TO_UI: Record<string, string> = {
+	"editor.background": "background",
+	"editor.foreground": "foreground",
+	"editorWidget.background": "card",
+	"editorWidget.foreground": "cardForeground",
+	"editorHoverWidget.background": "popover",
+	"editorHoverWidget.foreground": "popoverForeground",
+	"button.background": "primary",
+	"button.foreground": "primaryForeground",
+	"button.secondaryBackground": "secondary",
+	"button.secondaryForeground": "secondaryForeground",
+	"tab.inactiveBackground": "muted",
+	"editorLineNumber.foreground": "mutedForeground",
+	"list.hoverBackground": "accent",
+	"list.activeSelectionForeground": "accentForeground",
+	"editorGroup.border": "border",
+	"input.background": "input",
+	focusBorder: "ring",
+	"sideBar.background": "sidebar",
+	"sideBar.foreground": "sidebarForeground",
+	"sideBarTitle.foreground": "sidebarForeground",
+	"activityBar.foreground": "sidebarPrimary",
+	"activityBarBadge.foreground": "sidebarPrimaryForeground",
+	"sideBarSectionHeader.background": "sidebarAccent",
+	"sideBarSectionHeader.foreground": "sidebarAccentForeground",
+	"sideBar.border": "sidebarBorder",
+	"editorError.foreground": "destructive",
+};
+
+/**
+ * VS Code `colors` key → Superset TerminalColors key.
+ */
+const VSCODE_COLORS_TO_TERMINAL: Record<string, string> = {
+	"terminal.background": "background",
+	"terminal.foreground": "foreground",
+	"terminalCursor.foreground": "cursor",
+	"terminalCursor.background": "cursorAccent",
+	"terminal.selectionBackground": "selectionBackground",
+	"terminal.ansiBlack": "black",
+	"terminal.ansiRed": "red",
+	"terminal.ansiGreen": "green",
+	"terminal.ansiYellow": "yellow",
+	"terminal.ansiBlue": "blue",
+	"terminal.ansiMagenta": "magenta",
+	"terminal.ansiCyan": "cyan",
+	"terminal.ansiWhite": "white",
+	"terminal.ansiBrightBlack": "brightBlack",
+	"terminal.ansiBrightRed": "brightRed",
+	"terminal.ansiBrightGreen": "brightGreen",
+	"terminal.ansiBrightYellow": "brightYellow",
+	"terminal.ansiBrightBlue": "brightBlue",
+	"terminal.ansiBrightMagenta": "brightMagenta",
+	"terminal.ansiBrightCyan": "brightCyan",
+	"terminal.ansiBrightWhite": "brightWhite",
+};
+
+/**
+ * VS Code `colors` key → Superset EditorColors key.
+ */
+const VSCODE_COLORS_TO_EDITOR: Record<string, string> = {
+	"editor.background": "background",
+	"editor.foreground": "foreground",
+	"editorGroup.border": "border",
+	"editorCursor.foreground": "cursor",
+	"editorGutter.background": "gutterBackground",
+	"editorLineNumber.foreground": "gutterForeground",
+	"editor.lineHighlightBackground": "activeLine",
+	"editor.selectionBackground": "selection",
+	"editor.findMatchHighlightBackground": "search",
+	"editor.findMatchBackground": "searchActive",
+	"diffEditor.insertedTextBackground": "addition",
+	"diffEditor.removedTextBackground": "deletion",
+};
+
+/**
+ * Extract the foreground color for a given scope from VS Code tokenColors.
+ * Uses prefix matching: scope "keyword.control" matches pattern "keyword".
+ */
+function findColorForScope(
+	tokenColors: VsCodeTokenColor[],
+	pattern: string,
+): string | undefined {
+	// Search in reverse so later (more specific) entries win
+	for (let i = tokenColors.length - 1; i >= 0; i--) {
+		const entry = tokenColors[i];
+		if (!entry.settings?.foreground) continue;
+
+		const scopes = Array.isArray(entry.scope)
+			? entry.scope
+			: typeof entry.scope === "string"
+				? entry.scope.split(",").map((s) => s.trim())
+				: [];
+
+		for (const scope of scopes) {
+			if (scope === pattern || scope.startsWith(`${pattern}.`)) {
+				return entry.settings.foreground;
+			}
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Convert a VS Code theme (with tokenColors/colors) to Superset format.
+ */
+function convertVsCodeTheme(vscode: {
+	name?: string;
+	type?: string;
+	tokenColors?: VsCodeTokenColor[];
+	colors?: Record<string, string>;
+}): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+
+	if (vscode.name) result.name = vscode.name;
+	result.type = vscode.type === "light" ? "light" : "dark";
+
+	const tokenColors = vscode.tokenColors ?? [];
+	const vsColors = vscode.colors ?? {};
+
+	// ── Extract UI colors from VS Code colors ──
+	const ui: Record<string, string> = {};
+	for (const [vsKey, supersetKey] of Object.entries(VSCODE_COLORS_TO_UI)) {
+		const value = vsColors[vsKey];
+		if (value) ui[supersetKey] = value;
+	}
+	if (Object.keys(ui).length > 0) result.ui = ui;
+
+	// ── Extract terminal colors ──
+	const terminal: Record<string, string> = {};
+	for (const [vsKey, supersetKey] of Object.entries(
+		VSCODE_COLORS_TO_TERMINAL,
+	)) {
+		const value = vsColors[vsKey];
+		if (value) terminal[supersetKey] = value;
+	}
+	if (Object.keys(terminal).length > 0) result.terminal = terminal;
+
+	// ── Extract editor colors ──
+	const editorColors: Record<string, string> = {};
+	for (const [vsKey, supersetKey] of Object.entries(VSCODE_COLORS_TO_EDITOR)) {
+		const value = vsColors[vsKey];
+		if (value) editorColors[supersetKey] = value;
+	}
+
+	// ── Extract syntax colors from tokenColors ──
+	const syntax: Record<string, string> = {};
+	for (const { key, scopes } of SCOPE_TO_SYNTAX) {
+		if (syntax[key]) continue; // already found by a more specific rule
+		for (const scope of scopes) {
+			const color = findColorForScope(tokenColors, scope);
+			if (color) {
+				syntax[key] = color;
+				break;
+			}
+		}
+	}
+
+	// ── Build editor override ──
+	const hasEditorColors = Object.keys(editorColors).length > 0;
+	const hasSyntax = Object.keys(syntax).length > 0;
+	if (hasEditorColors || hasSyntax) {
+		result.editor = {
+			...(hasEditorColors ? { colors: editorColors } : {}),
+			...(hasSyntax ? { syntax } : {}),
+		};
+	}
+
+	return result;
+}
+
 function parseThemeEntry(
 	entry: unknown,
 	index: number,
@@ -280,6 +578,11 @@ export function parseThemeConfigFile(content: string): ThemeConfigParseResult {
 		parsedJson = JSON.parse(content);
 	} catch {
 		return { ok: false, error: "Invalid JSON file" };
+	}
+
+	// VS Code theme format: convert tokenColors/colors to Superset format
+	if (isVsCodeTheme(parsedJson)) {
+		parsedJson = convertVsCodeTheme(parsedJson);
 	}
 
 	const entries = Array.isArray(parsedJson)
