@@ -8,15 +8,20 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 
 	return syntaxHighlighting(
 		HighlightStyle.define([
-			// ── Keywords ──────────────────────────────────────────────
+			// ── Keywords (split by sub-category) ──────────────────────
+			{
+				tag: [tags.controlKeyword],
+				color: editorTheme.syntax.controlKeyword,
+			},
+			{
+				tag: [tags.definitionKeyword, tags.moduleKeyword],
+				color: editorTheme.syntax.storageKeyword,
+			},
 			{
 				tag: [
 					tags.keyword,
 					tags.operatorKeyword,
 					tags.modifier,
-					tags.controlKeyword,
-					tags.definitionKeyword,
-					tags.moduleKeyword,
 					tags.self,
 					tags.unit,
 				],
@@ -25,17 +30,21 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 
 			// ── Comments ──────────────────────────────────────────────
 			{
-				tag: [tags.comment, tags.lineComment, tags.blockComment],
-				color: editorTheme.syntax.comment,
+				tag: [tags.docComment, tags.docString],
+				color: editorTheme.syntax.docComment,
 				fontStyle: "italic",
 			},
 			{
-				tag: [tags.docComment, tags.docString],
+				tag: [tags.comment, tags.lineComment, tags.blockComment],
 				color: editorTheme.syntax.comment,
 				fontStyle: "italic",
 			},
 
 			// ── Strings & character literals ──────────────────────────
+			{
+				tag: [tags.escape],
+				color: editorTheme.syntax.escape,
+			},
 			{
 				tag: [
 					tags.string,
@@ -79,7 +88,11 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 
 			// ── Variables & properties ────────────────────────────────
 			{
-				tag: [tags.variableName, tags.name, tags.propertyName],
+				tag: [tags.propertyName],
+				color: editorTheme.syntax.variableProperty,
+			},
+			{
+				tag: [tags.variableName, tags.name],
 				color: editorTheme.syntax.variableName,
 			},
 
@@ -99,9 +112,9 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 				color: editorTheme.syntax.constant,
 			},
 
-			// ── Regex & escape ────────────────────────────────────────
+			// ── Regex ─────────────────────────────────────────────────
 			{
-				tag: [tags.regexp, tags.escape, tags.special(tags.regexp)],
+				tag: [tags.regexp, tags.special(tags.regexp)],
 				color: editorTheme.syntax.regexp,
 			},
 
@@ -145,14 +158,15 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 				color: editorTheme.syntax.punctuation,
 			},
 
-			// ── Meta & annotations ────────────────────────────────────
+			// ── Annotations & decorators ──────────────────────────────
 			{
-				tag: [
-					tags.meta,
-					tags.documentMeta,
-					tags.annotation,
-					tags.processingInstruction,
-				],
+				tag: [tags.annotation],
+				color: editorTheme.syntax.annotation,
+			},
+
+			// ── Meta ──────────────────────────────────────────────────
+			{
+				tag: [tags.meta, tags.documentMeta, tags.processingInstruction],
 				color: editorTheme.syntax.meta,
 			},
 
@@ -199,6 +213,17 @@ export function getCodeSyntaxHighlighting(theme: Theme): Extension {
 				color: editorTheme.syntax.markdownHeading,
 				fontWeight: "bold",
 				fontSize: "1.1em",
+			},
+			{
+				tag: [tags.heading4],
+				color: editorTheme.syntax.markdownHeading,
+				fontWeight: "bold",
+				fontSize: "1.05em",
+			},
+			{
+				tag: [tags.heading5, tags.heading6],
+				color: editorTheme.syntax.markdownHeading,
+				fontWeight: "bold",
 			},
 			{
 				tag: [tags.emphasis],

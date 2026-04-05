@@ -25,6 +25,13 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 			{
+				scope: ["comment.block.documentation", "comment.line.documentation"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.docComment),
+					fontStyle: "italic",
+				},
+			},
+			{
 				scope: ["comment", "punctuation.definition.comment"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.comment),
@@ -32,13 +39,31 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 			{
-				scope: ["keyword", "storage", "storage.type"],
+				scope: ["keyword.control"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.controlKeyword),
+				},
+			},
+			{
+				scope: ["storage", "storage.type", "storage.modifier"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.storageKeyword),
+				},
+			},
+			{
+				scope: ["keyword"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.keyword),
 				},
 			},
 			{
-				scope: ["string", "string.template", "string.regexp"],
+				scope: ["constant.character.escape"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.escape),
+				},
+			},
+			{
+				scope: ["string", "string.template"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.string),
 				},
@@ -57,6 +82,16 @@ export function createShikiTheme(theme: Theme) {
 				],
 				settings: {
 					foreground: toHex(editorTheme.syntax.functionCall),
+				},
+			},
+			{
+				scope: [
+					"variable.other.property",
+					"support.variable.property",
+					"meta.property.object",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.variableProperty),
 				},
 			},
 			{
@@ -109,6 +144,17 @@ export function createShikiTheme(theme: Theme) {
 				scope: ["invalid", "invalid.illegal"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.invalid),
+				},
+			},
+			{
+				scope: [
+					"meta.decorator",
+					"meta.function.decorator",
+					"punctuation.definition.annotation",
+					"storage.type.annotation",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.annotation),
 				},
 			},
 

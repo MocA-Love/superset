@@ -104,11 +104,16 @@ const editorSyntaxSchema = z
 	.object({
 		plainText: z.string().optional(),
 		comment: z.string().optional(),
+		docComment: z.string().optional(),
 		keyword: z.string().optional(),
+		controlKeyword: z.string().optional(),
+		storageKeyword: z.string().optional(),
 		string: z.string().optional(),
+		escape: z.string().optional(),
 		number: z.string().optional(),
 		functionCall: z.string().optional(),
 		variableName: z.string().optional(),
+		variableProperty: z.string().optional(),
 		typeName: z.string().optional(),
 		className: z.string().optional(),
 		constant: z.string().optional(),
@@ -116,6 +121,7 @@ const editorSyntaxSchema = z
 		tagName: z.string().optional(),
 		attributeName: z.string().optional(),
 		invalid: z.string().optional(),
+		annotation: z.string().optional(),
 		operator: z.string().optional(),
 		punctuation: z.string().optional(),
 		markdownHeading: z.string().optional(),
@@ -249,15 +255,28 @@ const SCOPE_TO_SYNTAX: Array<{
 			"beginning.punctuation.definition.list",
 		],
 	},
-	// Code tokens
+	// Code tokens (specific scopes first, then generic fallbacks)
+	{
+		key: "docComment",
+		scopes: ["comment.block.documentation", "comment.line.documentation"],
+	},
 	{
 		key: "comment",
 		scopes: ["comment", "punctuation.definition.comment"],
 	},
 	{
-		key: "keyword",
-		scopes: ["keyword", "keyword.control", "storage", "storage.type"],
+		key: "controlKeyword",
+		scopes: ["keyword.control"],
 	},
+	{
+		key: "storageKeyword",
+		scopes: ["storage", "storage.type", "storage.modifier"],
+	},
+	{
+		key: "keyword",
+		scopes: ["keyword"],
+	},
+	{ key: "escape", scopes: ["constant.character.escape"] },
 	{ key: "string", scopes: ["string"] },
 	{
 		key: "number",
@@ -270,6 +289,14 @@ const SCOPE_TO_SYNTAX: Array<{
 			"support.function",
 			"meta.function-call",
 			"variable.function",
+		],
+	},
+	{
+		key: "variableProperty",
+		scopes: [
+			"variable.other.property",
+			"support.variable.property",
+			"meta.property.object",
 		],
 	},
 	{ key: "variableName", scopes: ["variable"] },
@@ -292,6 +319,15 @@ const SCOPE_TO_SYNTAX: Array<{
 		scopes: ["entity.other.attribute-name"],
 	},
 	{ key: "invalid", scopes: ["invalid"] },
+	{
+		key: "annotation",
+		scopes: [
+			"meta.decorator",
+			"meta.function.decorator",
+			"punctuation.definition.annotation",
+			"storage.type.annotation",
+		],
+	},
 	{
 		key: "operator",
 		scopes: ["keyword.operator"],

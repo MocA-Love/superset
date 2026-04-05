@@ -57,11 +57,16 @@ export function getEditorTheme(theme: Theme): EditorTheme {
 		syntax: {
 			plainText: theme.ui.foreground,
 			comment: terminal?.brightBlack ?? theme.ui.mutedForeground,
+			docComment: terminal?.brightBlack ?? theme.ui.mutedForeground,
 			keyword: terminal?.magenta ?? theme.ui.primary,
+			controlKeyword: terminal?.magenta ?? theme.ui.primary,
+			storageKeyword: terminal?.magenta ?? theme.ui.primary,
 			string: terminal?.green ?? theme.ui.chart2,
+			escape: terminal?.red ?? theme.ui.destructive,
 			number: terminal?.yellow ?? theme.ui.chart4,
 			functionCall: terminal?.blue ?? theme.ui.chart3,
 			variableName: theme.ui.foreground,
+			variableProperty: theme.ui.foreground,
 			typeName: terminal?.cyan ?? theme.ui.chart3,
 			className: terminal?.yellow ?? theme.ui.chart4,
 			constant: terminal?.cyan ?? theme.ui.chart5,
@@ -69,6 +74,7 @@ export function getEditorTheme(theme: Theme): EditorTheme {
 			tagName: terminal?.red ?? theme.ui.chart1,
 			attributeName: terminal?.yellow ?? theme.ui.chart4,
 			invalid: terminal?.brightRed ?? theme.ui.destructive,
+			annotation: terminal?.yellow ?? theme.ui.chart4,
 
 			// Operators and punctuation
 			operator: theme.ui.foreground,
