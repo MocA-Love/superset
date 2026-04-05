@@ -64,6 +64,15 @@ function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
 }
 
 let currentWindow: BrowserWindow | null = null;
+let mainWindowCleanup: (() => void) | null = null;
+
+/** Tear down main window resources (notification server, IPC, etc.)
+ *  without destroying the BrowserWindow itself. Called from before-quit
+ *  tray-stay-alive path where win.destroy() skips close events. */
+export function cleanupMainWindowResources(): void {
+	mainWindowCleanup?.();
+	mainWindowCleanup = null;
+}
 
 function addWindowLifecycleBreadcrumb(
 	message: string,
@@ -365,7 +374,7 @@ export async function MainWindow() {
 		}
 	});
 
-	window.on("close", () => {
+	window.on("close", (event) => {
 		addWindowLifecycleBreadcrumb("main window closing", {
 			isDestroyed: window.isDestroyed(),
 			isVisible: window.isVisible(),
@@ -375,17 +384,31 @@ export async function MainWindow() {
 		saveWindowState(state);
 		persistedZoomLevel = state.zoomLevel;
 
+		// macOS: hide instead of destroy so "Open Superset" can reshow instantly.
+		// The quit flow uses app.exit(0) which bypasses close events entirely,
+		// so this hide path only runs for Cmd+W / red-X.
+		if (PLATFORM.IS_MAC) {
+			event.preventDefault();
+			window.hide();
+			return;
+		}
+
+		doCleanup();
+	});
+
+	function doCleanup() {
 		browserManager.unregisterAll();
 		server.close();
 		notificationManager.dispose();
 		notificationsEmitter.removeAllListeners();
-		// Remove terminal listeners to prevent duplicates when window reopens on macOS
 		getWorkspaceRuntimeRegistry().getDefault().terminal.detachAllListeners();
-		// Detach window from IPC handler (handler stays alive for window reopen)
 		ipcHandler?.detachWindow(window);
 		windowManager.unregister("main");
 		currentWindow = null;
-	});
+		mainWindowCleanup = null;
+	}
+
+	mainWindowCleanup = doCleanup;
 
 	return window;
 }
