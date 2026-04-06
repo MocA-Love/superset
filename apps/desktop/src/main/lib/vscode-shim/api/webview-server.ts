@@ -268,12 +268,13 @@ export async function startWebviewServer(): Promise<number> {
 					"Content-Type": "text/html; charset=utf-8",
 					"Content-Security-Policy": [
 						"default-src 'none'",
-						`script-src 'unsafe-inline' http://127.0.0.1:${serverPort}`,
-						`style-src 'unsafe-inline' http://127.0.0.1:${serverPort}`,
-						`img-src http://127.0.0.1:${serverPort} https: data:`,
+						`script-src 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:${serverPort} https:`,
+						`style-src 'unsafe-inline' http://127.0.0.1:${serverPort} https:`,
+						`img-src http://127.0.0.1:${serverPort} https: data: blob:`,
 						`font-src http://127.0.0.1:${serverPort} https: data:`,
-						"connect-src https: wss: ws: http://127.0.0.1:*",
-						`frame-src http://127.0.0.1:${serverPort}`,
+						"connect-src https: wss: ws: http://127.0.0.1:* http://localhost:*",
+						`frame-src http://127.0.0.1:${serverPort} https:`,
+						"worker-src blob:",
 					].join("; "),
 					"Access-Control-Allow-Origin": "*",
 				});
