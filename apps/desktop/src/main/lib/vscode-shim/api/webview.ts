@@ -1,0 +1,243 @@
+/**
+ * VS Code Webview API shim.
+ */
+
+import { Disposable, EventEmitter, type Event } from "./event-emitter.js";
+import { Uri } from "./uri.js";
+
+export interface WebviewOptions {
+	enableScripts?: boolean;
+	enableCommandUris?: boolean;
+	localResourceRoots?: Uri[];
+	portMapping?: Array<{ webviewPort: number; extensionHostPort: number }>;
+}
+
+export interface Webview {
+	options: WebviewOptions;
+	html: string;
+	readonly onDidReceiveMessage: Event<unknown>;
+	postMessage(message: unknown): Promise<boolean>;
+	asWebviewUri(localResource: Uri): Uri;
+	readonly cspSource: string;
+}
+
+export interface WebviewView {
+	readonly viewType: string;
+	readonly webview: Webview;
+	title?: string;
+	description?: string;
+	badge?: { tooltip: string; value: number };
+	readonly visible: boolean;
+	readonly onDidDispose: Event<void>;
+	readonly onDidChangeVisibility: Event<void>;
+	show(preserveFocus?: boolean): void;
+	dispose(): void;
+}
+
+export interface WebviewPanel {
+	readonly viewType: string;
+	title: string;
+	readonly webview: Webview;
+	readonly active: boolean;
+	readonly visible: boolean;
+	readonly viewColumn: number | undefined;
+	readonly onDidDispose: Event<void>;
+	readonly onDidChangeViewState: Event<{ webviewPanel: WebviewPanel }>;
+	iconPath?: Uri | { light: Uri; dark: Uri };
+	reveal(viewColumn?: number, preserveFocus?: boolean): void;
+	dispose(): void;
+}
+
+export interface WebviewViewProvider {
+	resolveWebviewView(
+		webviewView: WebviewView,
+		context: { state?: unknown },
+		token: { isCancellationRequested: boolean; onCancellationRequested: Event<void> },
+	): void | Promise<void>;
+}
+
+export interface WebviewPanelSerializer {
+	deserializeWebviewPanel(webviewPanel: WebviewPanel, state: unknown): Promise<void>;
+}
+
+// Emits when webview html/messages change — consumed by tRPC router
+export interface WebviewEvent {
+	viewId: string;
+	type: "html" | "message" | "title" | "dispose";
+	data: unknown;
+}
+
+const _onWebviewEvent = new EventEmitter<WebviewEvent>();
+export const onWebviewEvent = _onWebviewEvent.event;
+
+const viewProviders = new Map<string, WebviewViewProvider>();
+const panelSerializers = new Map<string, WebviewPanelSerializer>();
+const activeViews = new Map<string, WebviewView>();
+const activePanels = new Map<string, WebviewPanel>();
+
+export function getViewProvider(viewType: string): WebviewViewProvider | undefined {
+	return viewProviders.get(viewType);
+}
+
+export function getActiveView(viewId: string): WebviewView | undefined {
+	return activeViews.get(viewId);
+}
+
+export function getActivePanel(panelId: string): WebviewPanel | undefined {
+	return activePanels.get(panelId);
+}
+
+export function registerWebviewViewProvider(
+	viewType: string,
+	provider: WebviewViewProvider,
+	_options?: { webviewOptions?: { retainContextWhenHidden?: boolean } },
+): Disposable {
+	viewProviders.set(viewType, provider);
+	return new Disposable(() => {
+		viewProviders.delete(viewType);
+	});
+}
+
+export function registerWebviewPanelSerializer(
+	viewType: string,
+	serializer: WebviewPanelSerializer,
+): Disposable {
+	panelSerializers.set(viewType, serializer);
+	return new Disposable(() => {
+		panelSerializers.delete(viewType);
+	});
+}
+
+function createWebview(extensionPath: string, options?: WebviewOptions): Webview {
+	const _onDidReceiveMessage = new EventEmitter<unknown>();
+	let _html = "";
+
+	return {
+		options: options ?? {},
+		get html() {
+			return _html;
+		},
+		set html(value: string) {
+			_html = value;
+			// Notification happens via the WebviewView/Panel wrapper
+		},
+		onDidReceiveMessage: _onDidReceiveMessage.event,
+		async postMessage(message: unknown): Promise<boolean> {
+			// Will be bridged to renderer via tRPC
+			return true;
+		},
+		asWebviewUri(localResource: Uri): Uri {
+			return Uri.from({
+				scheme: "vscode-webview-resource",
+				path: localResource.path,
+			});
+		},
+		cspSource: "vscode-webview-resource:",
+	};
+}
+
+/** Called from renderer when a sidebar view becomes visible */
+export function resolveWebviewView(
+	viewType: string,
+	extensionPath: string,
+): WebviewView | undefined {
+	const provider = viewProviders.get(viewType);
+	if (!provider) return undefined;
+
+	const _onDidDispose = new EventEmitter<void>();
+	const _onDidChangeVisibility = new EventEmitter<void>();
+	const webview = createWebview(extensionPath, { enableScripts: true });
+	const viewId = `view:${viewType}:${Date.now()}`;
+
+	// Intercept html setter to emit events
+	const rawWebview = webview;
+	const proxiedWebview = new Proxy(rawWebview, {
+		set(target, prop, value) {
+			if (prop === "html") {
+				(target as { html: string }).html = value;
+				_onWebviewEvent.fire({ viewId, type: "html", data: value });
+				return true;
+			}
+			(target as Record<string | symbol, unknown>)[prop] = value;
+			return true;
+		},
+	});
+
+	const view: WebviewView = {
+		viewType,
+		webview: proxiedWebview,
+		title: undefined,
+		description: undefined,
+		badge: undefined,
+		visible: true,
+		onDidDispose: _onDidDispose.event,
+		onDidChangeVisibility: _onDidChangeVisibility.event,
+		show(_preserveFocus?: boolean) {
+			// noop for now
+		},
+		dispose() {
+			_onDidDispose.fire();
+			_onWebviewEvent.fire({ viewId, type: "dispose", data: null });
+			activeViews.delete(viewId);
+		},
+	};
+
+	activeViews.set(viewId, view);
+
+	const cancellationToken = {
+		isCancellationRequested: false,
+		onCancellationRequested: new EventEmitter<void>().event,
+	};
+
+	provider.resolveWebviewView(view, { state: undefined }, cancellationToken);
+
+	return view;
+}
+
+export function createWebviewPanel(
+	viewType: string,
+	title: string,
+	showOptions: number | { viewColumn: number; preserveFocus?: boolean },
+	extensionPath: string,
+	options?: WebviewOptions,
+): WebviewPanel {
+	const _onDidDispose = new EventEmitter<void>();
+	const _onDidChangeViewState = new EventEmitter<{ webviewPanel: WebviewPanel }>();
+	const webview = createWebview(extensionPath, options);
+	const panelId = `panel:${viewType}:${Date.now()}`;
+	const viewColumn = typeof showOptions === "number" ? showOptions : showOptions.viewColumn;
+
+	const proxiedWebview = new Proxy(webview, {
+		set(target, prop, value) {
+			if (prop === "html") {
+				(target as { html: string }).html = value;
+				_onWebviewEvent.fire({ panelId, type: "html", data: value } as unknown as WebviewEvent);
+				return true;
+			}
+			(target as Record<string | symbol, unknown>)[prop] = value;
+			return true;
+		},
+	});
+
+	const panel: WebviewPanel = {
+		viewType,
+		title,
+		webview: proxiedWebview,
+		active: true,
+		visible: true,
+		viewColumn,
+		onDidDispose: _onDidDispose.event,
+		onDidChangeViewState: _onDidChangeViewState.event,
+		iconPath: undefined,
+		reveal(_viewColumn?: number, _preserveFocus?: boolean) {
+			// noop
+		},
+		dispose() {
+			_onDidDispose.fire();
+			activePanels.delete(panelId);
+		},
+	};
+
+	activePanels.set(panelId, panel);
+	return panel;
+}
