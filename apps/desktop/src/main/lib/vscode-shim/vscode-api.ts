@@ -482,7 +482,7 @@ const extensions = {
 // Env namespace
 const env = {
 	appName: "Visual Studio Code",
-	appRoot: "",
+	appRoot: process.cwd(),
 	appHost: "superset-desktop",
 	language: "en",
 	clipboard: {

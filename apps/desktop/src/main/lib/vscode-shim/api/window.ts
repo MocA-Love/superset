@@ -112,6 +112,13 @@ export function setActiveTextEditor(
 	if (previous !== _activeTextEditor) {
 		_onDidChangeActiveTextEditor.fire(_activeTextEditor);
 		_onDidChangeVisibleTextEditors.fire([..._visibleTextEditors]);
+		if (_activeTextEditor) {
+			_onDidChangeTextEditorSelection.fire({
+				textEditor: _activeTextEditor,
+				selections: [_activeTextEditor.selection],
+				kind: 1,
+			});
+		}
 	}
 }
 

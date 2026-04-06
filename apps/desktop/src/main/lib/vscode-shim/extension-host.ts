@@ -55,6 +55,17 @@ export async function initExtensionHost(
 	// Start HTTP server for webview content
 	await startWebviewServer();
 
+	// Set platform context keys (Codex checks these)
+	const { commands } =
+		require("./api/commands") as typeof import("./api/commands");
+	const platform =
+		process.platform === "darwin"
+			? "darwin"
+			: process.platform === "win32"
+				? "windows"
+				: "linux";
+	commands.executeCommand("setContext", "os", platform);
+
 	shimLog(`[vscode-shim] Discovering extensions in ${extensionsDir}`);
 	const discovered = discoverExtensions(extensionsDir);
 	shimLog(`[vscode-shim] Found ${discovered.length} extensions total`);
