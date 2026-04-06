@@ -1,4 +1,6 @@
 import { Button } from "@superset/ui/button";
+import { Switch } from "@superset/ui/switch";
+import { useState } from "react";
 import { LuBot, LuDownload, LuRefreshCw, LuSparkles } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -26,6 +28,7 @@ export function VscodeExtensionsSettings({
 		SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE,
 		visibleItems,
 	);
+	const [pendingRestart, setPendingRestart] = useState(false);
 
 	const { data: extensions, isLoading } =
 		electronTrpc.vscodeExtensions.getKnownExtensions.useQuery();
@@ -43,6 +46,13 @@ export function VscodeExtensionsSettings({
 				utils.vscodeExtensions.getKnownExtensions.invalidate();
 			},
 		});
+	const enabledMutation =
+		electronTrpc.vscodeExtensions.setExtensionEnabled.useMutation({
+			onSuccess: () => {
+				utils.vscodeExtensions.getKnownExtensions.invalidate();
+				setPendingRestart(true);
+			},
+		});
 
 	if (!showManage) return null;
 
@@ -54,6 +64,30 @@ export function VscodeExtensionsSettings({
 					Manage VS Code extensions running inside Superset Desktop.
 				</p>
 			</div>
+
+			{pendingRestart && (
+				<div className="mb-4 p-3 border rounded-lg bg-yellow-500/5 border-yellow-500/20 flex items-center justify-between">
+					<p className="text-sm text-yellow-600 dark:text-yellow-400">
+						Changes require app restart to take full effect.
+					</p>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => {
+							try {
+								const { BrowserWindow } = window.require("electron");
+								BrowserWindow.getFocusedWindow()?.reload();
+							} catch {
+								window.location.reload();
+							}
+						}}
+						className="gap-1.5"
+					>
+						<LuRefreshCw className="size-3.5" />
+						Restart Now
+					</Button>
+				</div>
+			)}
 
 			{isLoading ? (
 				<p className="text-sm text-muted-foreground">Loading...</p>
@@ -69,8 +103,15 @@ export function VscodeExtensionsSettings({
 								publisher={ext.publisher}
 								description={ext.description}
 								installed={ext.installed}
+								enabled={ext.enabled}
 								active={ext.active}
 								icon={Icon}
+								onToggleEnabled={(enabled) =>
+									enabledMutation.mutate({
+										extensionId: ext.id,
+										enabled,
+									})
+								}
 								onRestart={() =>
 									restartMutation.mutate({ extensionId: ext.id })
 								}
@@ -94,8 +135,10 @@ function ExtensionCard({
 	publisher,
 	description,
 	installed,
+	enabled,
 	active,
 	icon: Icon,
+	onToggleEnabled,
 	onRestart,
 	isRestarting,
 	onInstall,
@@ -106,8 +149,10 @@ function ExtensionCard({
 	publisher: string;
 	description: string;
 	installed: boolean;
+	enabled: boolean;
 	active: boolean;
 	icon: React.ComponentType<{ className?: string }>;
+	onToggleEnabled: (enabled: boolean) => void;
 	onRestart: () => void;
 	isRestarting: boolean;
 	onInstall: () => void;
@@ -124,14 +169,19 @@ function ExtensionCard({
 				<div className="flex items-center gap-2">
 					<h3 className="font-medium text-sm">{name}</h3>
 					<span className="text-xs text-muted-foreground">{publisher}</span>
-					{active && (
+					{active && enabled && (
 						<span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded">
 							Active
 						</span>
 					)}
-					{installed && !active && (
+					{installed && !active && enabled && (
 						<span className="text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 px-1.5 py-0.5 rounded">
 							Installed
+						</span>
+					)}
+					{installed && !enabled && (
+						<span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+							Disabled
 						</span>
 					)}
 					{!installed && (
@@ -143,8 +193,17 @@ function ExtensionCard({
 				<p className="text-xs text-muted-foreground mt-1">{description}</p>
 				<p className="text-xs text-muted-foreground mt-0.5 font-mono">{id}</p>
 			</div>
-			<div className="flex items-center gap-2 flex-shrink-0">
+			<div className="flex items-center gap-3 flex-shrink-0">
 				{installed && (
+					<div className="flex items-center gap-2">
+						<Switch
+							checked={enabled}
+							onCheckedChange={onToggleEnabled}
+							aria-label={`${enabled ? "Disable" : "Enable"} ${name}`}
+						/>
+					</div>
+				)}
+				{installed && enabled && (
 					<Button
 						variant="outline"
 						size="sm"

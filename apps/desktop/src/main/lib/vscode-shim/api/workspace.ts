@@ -164,9 +164,7 @@ export const workspace = {
 		if (!workspaceFolderPath) return [];
 		try {
 			const results: string[] = [];
-			const ignorePatterns = exclude
-				? [exclude]
-				: ["node_modules", ".git"];
+			const ignorePatterns = exclude ? [exclude] : ["node_modules", ".git"];
 
 			function walkDir(dir: string, depth: number): void {
 				if (depth > 15 || (maxResults && results.length >= maxResults)) return;
@@ -195,9 +193,7 @@ export const workspace = {
 			walkDir(workspaceFolderPath, 0);
 			return results.map((r) => Uri.file(r));
 		} catch {
-			shimWarn(
-				"[vscode-shim] workspace.findFiles failed, returning empty",
-			);
+			shimWarn("[vscode-shim] workspace.findFiles failed, returning empty");
 			return [];
 		}
 	},

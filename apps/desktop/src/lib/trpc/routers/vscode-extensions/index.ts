@@ -45,6 +45,42 @@ function getExtensionsDir(): string {
 	return path.join(os.homedir(), ".vscode", "extensions");
 }
 
+/** Persistent enabled/disabled state for extensions */
+function getEnabledConfigPath(): string {
+	const userDataPath = (() => {
+		try {
+			return require("electron").app.getPath("userData");
+		} catch {
+			return path.join(os.homedir(), ".superset-desktop");
+		}
+	})();
+	return path.join(userDataPath, "vscode-extensions-enabled.json");
+}
+
+function readEnabledConfig(): Record<string, boolean> {
+	try {
+		const p = getEnabledConfigPath();
+		if (fs.existsSync(p)) {
+			return JSON.parse(fs.readFileSync(p, "utf-8"));
+		}
+	} catch {}
+	// All enabled by default
+	return {};
+}
+
+function writeEnabledConfig(config: Record<string, boolean>): void {
+	try {
+		const p = getEnabledConfigPath();
+		fs.mkdirSync(path.dirname(p), { recursive: true });
+		fs.writeFileSync(p, JSON.stringify(config, null, 2));
+	} catch {}
+}
+
+function isExtensionEnabled(extensionId: string): boolean {
+	const config = readEnabledConfig();
+	return config[extensionId] !== false; // enabled by default
+}
+
 function isExtensionInstalled(extensionId: string): boolean {
 	const dir = getExtensionsDir();
 	if (!fs.existsSync(dir)) return false;
@@ -259,6 +295,7 @@ export const createVscodeExtensionsRouter = () => {
 				return {
 					...ext,
 					installed: isExtensionInstalled(ext.id),
+					enabled: isExtensionEnabled(ext.id),
 					active: active?.isActive ?? false,
 				};
 			});
@@ -318,6 +355,32 @@ export const createVscodeExtensionsRouter = () => {
 			.mutation(({ input }) => {
 				webviewBridge.postMessageToExtension(input.viewId, input.message);
 				return { success: true };
+			}),
+
+		/** Enable or disable an extension (persisted, requires restart for full effect) */
+		setExtensionEnabled: publicProcedure
+			.input(
+				z.object({
+					extensionId: z.string(),
+					enabled: z.boolean(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const config = readEnabledConfig();
+				config[input.extensionId] = input.enabled;
+				writeEnabledConfig(config);
+
+				// If disabling, deactivate immediately
+				if (!input.enabled) {
+					try {
+						const { deactivateExtension } = await import(
+							"main/lib/vscode-shim/loader"
+						);
+						await deactivateExtension(input.extensionId);
+					} catch {}
+				}
+
+				return { success: true, needsRestart: true };
 			}),
 
 		/** Set the workspace folder path for extensions */

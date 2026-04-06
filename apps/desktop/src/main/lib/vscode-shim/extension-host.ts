@@ -2,6 +2,7 @@
  * Extension Host: high-level API to manage VS Code extensions in Superset Desktop.
  */
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { commands } from "./api/commands";
@@ -75,12 +76,18 @@ export async function initExtensionHost(
 		`[vscode-shim] Loading ${toLoad.length} extensions: ${toLoad.map((e) => e.id).join(", ")}`,
 	);
 
+	// Read enabled config to skip disabled extensions
+	const enabledConfig = readExtensionEnabledConfig();
+
 	for (const ext of toLoad) {
+		if (enabledConfig[ext.id] === false) {
+			shimLog(`[vscode-shim] Skipping disabled extension: ${ext.id}`);
+			continue;
+		}
 		try {
 			await loadExtension(ext);
 		} catch (err) {
 			console.error(`[vscode-shim] Failed to load ${ext.id}:`, err);
-			// Continue loading other extensions
 		}
 	}
 
@@ -166,3 +173,23 @@ export async function restartExtension(extensionId: string): Promise<boolean> {
 }
 
 export { isInitialized as isExtensionHostInitialized };
+
+/** Read extension enabled/disabled config (shared with tRPC router) */
+function readExtensionEnabledConfig(): Record<string, boolean> {
+	try {
+		let userDataPath: string;
+		try {
+			userDataPath = require("electron").app.getPath("userData");
+		} catch {
+			userDataPath = path.join(os.homedir(), ".superset-desktop");
+		}
+		const configPath = path.join(
+			userDataPath,
+			"vscode-extensions-enabled.json",
+		);
+		if (fs.existsSync(configPath)) {
+			return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+		}
+	} catch {}
+	return {};
+}
