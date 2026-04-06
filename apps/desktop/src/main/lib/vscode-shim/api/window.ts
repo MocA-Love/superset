@@ -67,6 +67,20 @@ interface Terminal {
 const _onDidChangeActiveTextEditor = new EventEmitter<TextEditor | undefined>();
 const _onDidChangeVisibleTextEditors = new EventEmitter<TextEditor[]>();
 const _onDidChangeTextEditorSelection = new EventEmitter<unknown>();
+// URI handlers for deep-link activation (e.g., ChatGPT OAuth)
+const uriHandlers: Array<{ handleUri(uri: Uri): void }> = [];
+
+/** Called from Electron's open-url handler to dispatch URIs to extensions */
+export function handleUri(uri: Uri): void {
+	for (const handler of uriHandlers) {
+		try {
+			handler.handleUri(uri);
+		} catch (err) {
+			console.error("[vscode-shim] URI handler error:", err);
+		}
+	}
+}
+
 // Terminal events are delegated to terminal-shim.ts
 
 export const window = {
@@ -230,7 +244,11 @@ export const window = {
 	},
 
 	registerUriHandler(handler: { handleUri(uri: Uri): void }): Disposable {
-		return new Disposable(() => {});
+		uriHandlers.push(handler);
+		return new Disposable(() => {
+			const idx = uriHandlers.indexOf(handler);
+			if (idx >= 0) uriHandlers.splice(idx, 1);
+		});
 	},
 
 	registerCustomEditorProvider(

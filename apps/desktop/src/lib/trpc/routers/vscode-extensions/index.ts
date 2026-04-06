@@ -55,6 +55,16 @@ export const createVscodeExtensionsRouter = () => {
 				return { success: true };
 			}),
 
+		/** Restart a specific extension */
+		restartExtension: publicProcedure
+			.input(z.object({ extensionId: z.string() }))
+			.mutation(async ({ input }) => {
+				const { restartExtension } =
+					require("main/lib/vscode-shim/extension-host") as typeof import("main/lib/vscode-shim/extension-host");
+				const success = await restartExtension(input.extensionId);
+				return { success };
+			}),
+
 		/** Subscribe to webview events (HTML changes, messages from extension) */
 		subscribeWebview: publicProcedure.subscription(() => {
 			return observable<WebviewBridgeEvent>((emit) => {

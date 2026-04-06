@@ -11,6 +11,7 @@ import {
 	getLoadedExtensions,
 } from "./loader.js";
 import { setWorkspacePath } from "./api/workspace.js";
+import { registerWebviewProtocol } from "./api/protocol-handler.js";
 import type { ExtensionInfo } from "./types.js";
 
 // Known extension IDs we support
@@ -43,6 +44,9 @@ export async function initExtensionHost(options: ExtensionHostOptions = {}): Pro
 	if (options.workspacePath) {
 		setWorkspacePath(options.workspacePath);
 	}
+
+	// Register protocol handler for webview resources
+	registerWebviewProtocol();
 
 	console.log(`[vscode-shim] Discovering extensions in ${extensionsDir}`);
 	const discovered = discoverExtensions(extensionsDir);
@@ -103,6 +107,25 @@ export function getActiveExtensions(): Array<{ id: string; isActive: boolean }> 
 		id: ext.info.id,
 		isActive: ext.info.isActive,
 	}));
+}
+
+/** Restart a specific extension (deactivate + re-activate) */
+export async function restartExtension(extensionId: string): Promise<boolean> {
+	const { deactivateExtension, getLoadedExtension } = await import("./loader.js");
+	const loaded = getLoadedExtension(extensionId);
+	if (!loaded) return false;
+
+	const info = { ...loaded.info, isActive: false };
+	await deactivateExtension(extensionId);
+
+	try {
+		await loadExtension(info);
+		console.log(`[vscode-shim] Restarted extension: ${extensionId}`);
+		return true;
+	} catch (err) {
+		console.error(`[vscode-shim] Failed to restart ${extensionId}:`, err);
+		return false;
+	}
 }
 
 export { isInitialized as isExtensionHostInitialized };

@@ -29,5 +29,6 @@ export {
 } from "./api/webview.js";
 
 export { webviewBridge } from "./webview-bridge.js";
+export { handleUri } from "./api/window.js";
 
 export type { ExtensionManifest, ExtensionInfo, WebviewMessage } from "./types.js";
