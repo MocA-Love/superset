@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { observable } from "@trpc/server/observable";
-import { setWebviewHtml } from "main/lib/vscode-shim/api/protocol-handler";
 import { setActiveTextEditor } from "main/lib/vscode-shim/api/window";
 import {
 	getActiveExtensions,
@@ -225,7 +224,7 @@ export const createVscodeExtensionsRouter = () => {
 			});
 		}),
 
-		/** Resolve a webview view for a given viewType, returns viewId + protocol URL */
+		/** Resolve a webview view for a given viewType, returns viewId + HTML */
 		resolveWebview: publicProcedure
 			.input(
 				z.object({
@@ -239,19 +238,13 @@ export const createVscodeExtensionsRouter = () => {
 					input.extensionPath,
 				);
 				if (!viewId) {
-					return { viewId: null, url: null };
+					return { viewId: null, html: null };
 				}
-				// Store HTML in protocol handler and return URL
-				const html = webviewBridge.getHtml(viewId);
+				const html = webviewBridge.getHtml(viewId) ?? null;
 				console.log(
 					`[vscode-shim] resolveWebview: viewId=${viewId}, hasHtml=${!!html}, htmlLen=${html?.length ?? 0}`,
 				);
-				if (html) {
-					setWebviewHtml(viewId, html);
-				}
-				// Use proper URL with hostname to avoid colon parsing issues
-				const url = `vscode-webview://webview/${encodeURIComponent(viewId)}`;
-				return { viewId, url };
+				return { viewId, html };
 			}),
 
 		/** Get current webview HTML */
