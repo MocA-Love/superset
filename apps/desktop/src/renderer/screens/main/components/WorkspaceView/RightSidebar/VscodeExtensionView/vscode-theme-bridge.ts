@@ -101,6 +101,34 @@ const VSCODE_TO_SUPERSET: Record<string, string> = {
 	"--vscode-tab-inactiveForeground": "--muted-foreground",
 	"--vscode-tab-border": "--border",
 
+	// Menu (Claude Code dropdown menus)
+	"--vscode-menu-background": "--popover",
+	"--vscode-menu-foreground": "--popover-foreground",
+	"--vscode-menu-selectionBackground": "--accent",
+	"--vscode-menu-selectionForeground": "--accent-foreground",
+	"--vscode-menu-separatorBackground": "--border",
+	"--vscode-menu-border": "--border",
+
+	// Quick Input (command palette style)
+	"--vscode-quickInput-background": "--popover",
+	"--vscode-quickInput-foreground": "--popover-foreground",
+	"--vscode-quickInputList-focusBackground": "--accent",
+	"--vscode-quickInputList-focusForeground": "--accent-foreground",
+	"--vscode-quickInputTitle-background": "--popover",
+
+	// Command Center
+	"--vscode-commandCenter-background": "--secondary",
+	"--vscode-commandCenter-foreground": "--foreground",
+	"--vscode-commandCenter-border": "--border",
+
+	// Icon
+	"--vscode-icon-foreground": "--foreground",
+
+	// Keybinding
+	"--vscode-keybindingLabel-foreground": "--foreground",
+	"--vscode-keybindingLabel-background": "--secondary",
+	"--vscode-keybindingLabel-border": "--border",
+
 	// Notification
 	"--vscode-notifications-background": "--card",
 	"--vscode-notifications-foreground": "--card-foreground",
@@ -123,7 +151,11 @@ export function generateVscodeThemeCss(): string {
 	for (const [vscodeVar, supersetVar] of Object.entries(VSCODE_TO_SUPERSET)) {
 		const value = computedStyle.getPropertyValue(supersetVar).trim();
 		if (value) {
-			lines.push(`  ${vscodeVar}: ${value};`);
+			// If the value looks like raw oklch channel values (e.g. "0.145 0 0"),
+			// wrap it in oklch() so it's a valid CSS color
+			const needsWrap = /^\d/.test(value) && !value.includes("(");
+			const cssValue = needsWrap ? `oklch(${value})` : value;
+			lines.push(`  ${vscodeVar}: ${cssValue};`);
 		}
 	}
 
