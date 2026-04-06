@@ -4,8 +4,9 @@ import { useTabsStore } from "renderer/stores/tabs/store";
 import { useWorkspaceId } from "../WorkspaceIdContext";
 
 /**
- * Syncs the currently focused file-viewer pane to the VS Code extension host's
- * activeTextEditor, so extensions know which file the user is looking at.
+ * Syncs the active workspace path and focused file to the VS Code extension host.
+ * - workspace path → vscode.workspace.workspaceFolders (needed for extensions to operate)
+ * - focused file → vscode.window.activeTextEditor
  */
 export function useActiveEditorSync() {
 	const workspaceId = useWorkspaceId();
@@ -13,10 +14,29 @@ export function useActiveEditorSync() {
 	const focusedPaneIds = useTabsStore((s) => s.focusedPaneIds);
 	const panes = useTabsStore((s) => s.panes);
 	const lastFilePath = useRef<string | null>(null);
+	const lastWorkspacePath = useRef<string | null>(null);
+
+	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+		{ id: workspaceId ?? "" },
+		{ enabled: !!workspaceId },
+	);
 
 	const setActiveEditorMutation =
 		electronTrpc.vscodeExtensions.setActiveEditor.useMutation();
+	const setWorkspacePathMutation =
+		electronTrpc.vscodeExtensions.setWorkspacePath.useMutation();
 
+	// Sync workspace path when workspace changes
+	useEffect(() => {
+		const worktreePath = workspace?.worktreePath;
+		if (!worktreePath) return;
+		if (worktreePath === lastWorkspacePath.current) return;
+
+		lastWorkspacePath.current = worktreePath;
+		setWorkspacePathMutation.mutate({ workspacePath: worktreePath });
+	}, [workspace?.worktreePath, setWorkspacePathMutation.mutate]);
+
+	// Sync active file
 	useEffect(() => {
 		if (!workspaceId) return;
 
@@ -34,7 +54,6 @@ export function useActiveEditorSync() {
 
 		if (pane.type === "file-viewer" && pane.fileViewer?.filePath) {
 			filePath = pane.fileViewer.filePath;
-			// Derive languageId from file extension
 			const ext = filePath.split(".").pop()?.toLowerCase();
 			const EXT_TO_LANG: Record<string, string> = {
 				ts: "typescript",
@@ -57,7 +76,6 @@ export function useActiveEditorSync() {
 			languageId = ext ? (EXT_TO_LANG[ext] ?? ext) : "plaintext";
 		}
 
-		// Only notify if the file actually changed
 		if (filePath !== lastFilePath.current) {
 			lastFilePath.current = filePath;
 			setActiveEditorMutation.mutate({ filePath, languageId });

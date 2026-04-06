@@ -12,6 +12,7 @@ import { setActiveTextEditor } from "main/lib/vscode-shim/api/window";
 import {
 	getActiveExtensions,
 	restartExtension,
+	updateWorkspacePath,
 } from "main/lib/vscode-shim/extension-host";
 import type { WebviewBridgeEvent } from "main/lib/vscode-shim/webview-bridge";
 import { webviewBridge } from "main/lib/vscode-shim/webview-bridge";
@@ -316,6 +317,14 @@ export const createVscodeExtensionsRouter = () => {
 			)
 			.mutation(({ input }) => {
 				webviewBridge.postMessageToExtension(input.viewId, input.message);
+				return { success: true };
+			}),
+
+		/** Set the workspace folder path for extensions */
+		setWorkspacePath: publicProcedure
+			.input(z.object({ workspacePath: z.string() }))
+			.mutation(({ input }) => {
+				updateWorkspacePath(input.workspacePath);
 				return { success: true };
 			}),
 
