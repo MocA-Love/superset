@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	generateVscodeThemeCss,
+	getVscodeBodyClass,
+} from "./vscode-theme-bridge";
 
 interface VscodeExtensionViewProps {
 	viewType: string;
@@ -10,6 +14,7 @@ interface VscodeExtensionViewProps {
 /**
  * Renders a VS Code extension's webview inside an iframe.
  * Bridges postMessage between the iframe and the extension host via tRPC.
+ * Injects Superset theme as VS Code CSS variables.
  */
 export function VscodeExtensionView({
 	viewType,
@@ -20,11 +25,41 @@ export function VscodeExtensionView({
 	const [viewId, setViewId] = useState<string | null>(null);
 	const [html, setHtml] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [themeCss, setThemeCss] = useState("");
+	const [bodyClass, setBodyClass] = useState("vscode-dark");
 
 	const resolveMutation =
 		electronTrpc.vscodeExtensions.resolveWebview.useMutation();
 	const postMessageMutation =
 		electronTrpc.vscodeExtensions.postMessageToExtension.useMutation();
+
+	// Generate theme CSS on mount and when theme changes
+	useEffect(() => {
+		const updateTheme = () => {
+			setThemeCss(generateVscodeThemeCss());
+			setBodyClass(getVscodeBodyClass());
+		};
+		updateTheme();
+
+		// Watch for theme changes via class mutations on <html>
+		const observer = new MutationObserver((mutations) => {
+			for (const m of mutations) {
+				if (
+					m.type === "attributes" &&
+					(m.attributeName === "class" || m.attributeName === "style")
+				) {
+					updateTheme();
+					break;
+				}
+			}
+		});
+		observer.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["class", "style"],
+		});
+
+		return () => observer.disconnect();
+	}, []);
 
 	// Subscribe to webview events
 	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(undefined, {
@@ -36,7 +71,6 @@ export function VscodeExtensionView({
 			if (event.type === "html") {
 				setHtml(event.data as string);
 			} else if (event.type === "message") {
-				// Forward message from extension to iframe
 				iframeRef.current?.contentWindow?.postMessage(
 					{ type: "vscode-message", data: event.data },
 					"*",
@@ -52,7 +86,7 @@ export function VscodeExtensionView({
 		resolveMutation.mutate(
 			{
 				viewType,
-				extensionPath: "", // Extension path is looked up by the host
+				extensionPath: "",
 			},
 			{
 				onSuccess: (result) => {
@@ -103,8 +137,7 @@ export function VscodeExtensionView({
 		);
 	}
 
-	// Inject acquireVsCodeApi bridge into the HTML
-	const bridgedHtml = injectVscodeApiBridge(html);
+	const bridgedHtml = injectVscodeApiBridge(html, themeCss, bodyClass);
 
 	return (
 		<iframe
@@ -118,11 +151,15 @@ export function VscodeExtensionView({
 }
 
 /**
- * Injects the acquireVsCodeApi() bridge script into extension webview HTML.
- * This allows the extension's webview JS to communicate with the extension host.
+ * Injects acquireVsCodeApi() bridge + theme CSS into extension webview HTML.
  */
-function injectVscodeApiBridge(html: string): string {
+function injectVscodeApiBridge(
+	html: string,
+	themeCss: string,
+	bodyClass: string,
+): string {
 	const bridgeScript = `
+<style>${themeCss}</style>
 <script>
 (function() {
 	const vscodeApi = {
@@ -142,22 +179,28 @@ function injectVscodeApiBridge(html: string): string {
 
 	window.acquireVsCodeApi = function() { return vscodeApi; };
 
-	// Listen for messages from the extension host (via parent)
 	window.addEventListener('message', function(event) {
 		if (event.data && event.data.type === 'vscode-message') {
-			// Re-dispatch as a regular message event for the webview
 			window.dispatchEvent(new MessageEvent('message', { data: event.data.data }));
 		}
 	});
 })();
 </script>`;
 
-	// Insert before </head> or at the start of <body>
-	if (html.includes("</head>")) {
-		return html.replace("</head>", `${bridgeScript}</head>`);
+	// Replace body class for theme detection
+	const themedHtml = html.replace(
+		/<body([^>]*)>/,
+		`<body$1 class="${bodyClass}">`,
+	);
+
+	if (themedHtml.includes("</head>")) {
+		return themedHtml.replace("</head>", `${bridgeScript}</head>`);
 	}
-	if (html.includes("<body")) {
-		return html.replace(/<body([^>]*)>/, `<body$1>${bridgeScript}`);
+	if (themedHtml.includes("<body")) {
+		return themedHtml.replace(
+			/<body([^>]*)>/,
+			`<body$1 class="${bodyClass}">${bridgeScript}`,
+		);
 	}
-	return `${bridgeScript}${html}`;
+	return `${bridgeScript}${themedHtml}`;
 }

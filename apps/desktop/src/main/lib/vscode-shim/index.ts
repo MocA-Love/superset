@@ -12,7 +12,7 @@ export {
 	onWebviewEvent,
 	resolveWebviewView,
 } from "./api/webview.js";
-export { handleUri } from "./api/window.js";
+export { handleUri, setActiveTextEditor } from "./api/window.js";
 export {
 	getActiveExtensions,
 	initExtensionHost,

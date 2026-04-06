@@ -20,7 +20,7 @@ import {
 	getTerminals,
 	terminalEvents,
 } from "./terminal-shim.js";
-import type { Uri } from "./uri.js";
+import { Uri } from "./uri.js";
 import {
 	createWebviewPanel,
 	registerWebviewPanelSerializer,
@@ -66,6 +66,54 @@ interface Terminal {
 const _onDidChangeActiveTextEditor = new EventEmitter<TextEditor | undefined>();
 const _onDidChangeVisibleTextEditors = new EventEmitter<TextEditor[]>();
 const _onDidChangeTextEditorSelection = new EventEmitter<unknown>();
+// Active text editor state — updated from renderer via tRPC
+let _activeTextEditor: TextEditor | undefined;
+const _visibleTextEditors: TextEditor[] = [];
+
+/** Called from tRPC when the focused file-viewer pane changes */
+export function setActiveTextEditor(
+	filePath: string | null,
+	languageId?: string,
+): void {
+	const previous = _activeTextEditor;
+
+	if (!filePath) {
+		_activeTextEditor = undefined;
+	} else {
+		const uri = Uri.file(filePath);
+		_activeTextEditor = {
+			document: {
+				uri,
+				fileName: filePath,
+				getText() {
+					try {
+						return require("node:fs").readFileSync(filePath, "utf-8");
+					} catch {
+						return "";
+					}
+				},
+				languageId: languageId ?? "plaintext",
+			},
+			selection: {
+				start: { line: 0, character: 0 },
+				end: { line: 0, character: 0 },
+				isEmpty: true,
+				active: { line: 0, character: 0 },
+			},
+			selections: [],
+			viewColumn: 1,
+		};
+		// Update visible editors
+		_visibleTextEditors.length = 0;
+		_visibleTextEditors.push(_activeTextEditor);
+	}
+
+	if (previous !== _activeTextEditor) {
+		_onDidChangeActiveTextEditor.fire(_activeTextEditor);
+		_onDidChangeVisibleTextEditors.fire([..._visibleTextEditors]);
+	}
+}
+
 // URI handlers for deep-link activation (e.g., ChatGPT OAuth)
 const uriHandlers: Array<{ handleUri(uri: Uri): void }> = [];
 
@@ -85,11 +133,11 @@ export function handleUri(uri: Uri): void {
 export const window = {
 	// Text editor
 	get activeTextEditor(): TextEditor | undefined {
-		return undefined; // Will be connected to file-viewer state in Phase 4
+		return _activeTextEditor;
 	},
 
 	get visibleTextEditors(): TextEditor[] {
-		return [];
+		return [..._visibleTextEditors];
 	},
 
 	get activeTerminal(): Terminal | undefined {

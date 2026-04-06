@@ -10,6 +10,7 @@ import {
 import { ResizablePanel } from "../../ResizablePanel";
 import { ChangesContent, ScrollProvider } from "../ChangesContent";
 import { ContentView } from "../ContentView";
+import { useActiveEditorSync } from "../hooks/useActiveEditorSync";
 import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
 import { RightSidebar } from "../RightSidebar";
 
@@ -29,6 +30,7 @@ export function WorkspaceLayout({
 	onOpenQuickOpen,
 }: WorkspaceLayoutProps) {
 	useBrowserLifecycle();
+	useActiveEditorSync();
 	const isSidebarOpen = useSidebarStore((s) => s.isSidebarOpen);
 	const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
 	const setSidebarWidth = useSidebarStore((s) => s.setSidebarWidth);

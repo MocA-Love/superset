@@ -55,6 +55,21 @@ export const createVscodeExtensionsRouter = () => {
 				return { success: true };
 			}),
 
+		/** Notify main process of active file change (for activeTextEditor) */
+		setActiveEditor: publicProcedure
+			.input(
+				z.object({
+					filePath: z.string().nullable(),
+					languageId: z.string().optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const { setActiveTextEditor } =
+					require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
+				setActiveTextEditor(input.filePath, input.languageId);
+				return { success: true };
+			}),
+
 		/** Restart a specific extension */
 		restartExtension: publicProcedure
 			.input(z.object({ extensionId: z.string() }))
