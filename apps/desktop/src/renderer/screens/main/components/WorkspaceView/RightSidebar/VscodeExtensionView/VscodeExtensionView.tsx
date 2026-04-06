@@ -31,18 +31,28 @@ export function VscodeExtensionView({
 	useEffect(() => {
 		if (!isActive || viewId) return;
 
+		console.log(`[VscodeExtensionView] Resolving webview: ${viewType}`);
 		resolveMutation.mutate(
 			{ viewType, extensionPath: "" },
 			{
 				onSuccess: (result) => {
+					console.log(
+						`[VscodeExtensionView] Resolve result:`,
+						JSON.stringify(result),
+					);
 					if (result.viewId && result.url) {
 						setViewId(result.viewId);
 						setIframeUrl(result.url);
+						console.log(
+							`[VscodeExtensionView] iframe URL set to: ${result.url}`,
+						);
 					} else {
+						console.warn(`[VscodeExtensionView] No viewId/url in result`);
 						setError(`Extension view "${viewType}" not found`);
 					}
 				},
 				onError: (err) => {
+					console.error(`[VscodeExtensionView] Resolve error:`, err);
 					setError(err.message);
 				},
 			},
@@ -71,6 +81,9 @@ export function VscodeExtensionView({
 	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(undefined, {
 		enabled: isActive && !!viewId,
 		onData: (event) => {
+			console.log(
+				`[VscodeExtensionView] Subscription event: type=${event.type}, eventViewId=${event.viewId}, myViewId=${viewId}`,
+			);
 			if (!viewId || event.viewId !== viewId) return;
 			if (event.type === "message") {
 				iframeRef.current?.contentWindow?.postMessage(
@@ -79,7 +92,9 @@ export function VscodeExtensionView({
 				);
 			}
 			if (event.type === "html" && iframeUrl) {
-				// Reload iframe to pick up updated HTML from server
+				console.log(
+					`[VscodeExtensionView] HTML updated, reloading iframe: ${iframeUrl}`,
+				);
 				const iframe = iframeRef.current;
 				if (iframe) {
 					iframe.src = iframeUrl;
@@ -110,6 +125,10 @@ export function VscodeExtensionView({
 			src={iframeUrl}
 			className="w-full h-full border-0"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+			onLoad={() =>
+				console.log(`[VscodeExtensionView] iframe loaded: ${iframeUrl}`)
+			}
+			onError={(e) => console.error(`[VscodeExtensionView] iframe error:`, e)}
 			title={`${extensionId} webview`}
 		/>
 	);

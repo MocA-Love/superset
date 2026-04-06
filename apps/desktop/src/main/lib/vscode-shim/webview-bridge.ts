@@ -29,10 +29,15 @@ class WebviewBridge extends EventEmitter {
 		super();
 		// Listen for events from the webview shim
 		onWebviewEvent((event: WebviewEvent) => {
+			console.log(
+				`[webview-bridge] Event: type=${event.type}, viewId=${event.viewId}, dataLen=${typeof event.data === "string" ? event.data.length : "N/A"}`,
+			);
 			if (event.type === "html") {
 				this._viewHtml.set(event.viewId, event.data as string);
-				// Also update protocol handler store so iframe can reload
 				setWebviewHtml(event.viewId, event.data as string);
+				console.log(
+					`[webview-bridge] Stored HTML for ${event.viewId}, htmlStore now has ${this._viewHtml.size} entries`,
+				);
 			}
 			this.emit("webview-event", event);
 		});

@@ -179,10 +179,15 @@ export function resolveWebviewView(
 	const proxiedWebview = new Proxy(rawWebview, {
 		set(target, prop, value) {
 			if (prop === "html") {
+				const htmlStr = typeof value === "string" ? value : String(value);
+				console.log(
+					`[webview:${viewId}] HTML set, length=${htmlStr.length}, preview="${htmlStr.substring(0, 100)}..."`,
+				);
 				(target as { html: string }).html = value;
 				_onWebviewEvent.fire({ viewId, type: "html", data: value });
 				return true;
 			}
+			console.log(`[webview:${viewId}] Property set: ${String(prop)}`);
 			(target as unknown as Record<string | symbol, unknown>)[prop] = value;
 			return true;
 		},
@@ -214,7 +219,31 @@ export function resolveWebviewView(
 		onCancellationRequested: new EventEmitter<void>().event,
 	};
 
-	provider.resolveWebviewView(view, { state: undefined }, cancellationToken);
+	console.log(`[webview:${viewId}] Calling provider.resolveWebviewView...`);
+	try {
+		const result = provider.resolveWebviewView(
+			view,
+			{ state: undefined },
+			cancellationToken,
+		);
+		if (result && typeof (result as Promise<void>).then === "function") {
+			(result as Promise<void>)
+				.then(() => {
+					console.log(
+						`[webview:${viewId}] Provider resolved (async). HTML set: ${!!rawWebview.html}, len=${rawWebview.html?.length ?? 0}`,
+					);
+				})
+				.catch((err: unknown) => {
+					console.error(`[webview:${viewId}] Provider rejected:`, err);
+				});
+		} else {
+			console.log(
+				`[webview:${viewId}] Provider resolved (sync). HTML set: ${!!rawWebview.html}, len=${rawWebview.html?.length ?? 0}`,
+			);
+		}
+	} catch (err) {
+		console.error(`[webview:${viewId}] Provider threw:`, err);
+	}
 
 	return { view, viewId };
 }
