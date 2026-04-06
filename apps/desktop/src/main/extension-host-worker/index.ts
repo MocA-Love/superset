@@ -40,7 +40,7 @@ async function main() {
 	const { discoverExtensions, loadExtension, deactivateAll } = await import(
 		"../lib/vscode-shim/loader"
 	);
-	const { onWebviewEvent, resolveWebviewView } = await import(
+	const { getActiveView, onWebviewEvent, resolveWebviewView } = await import(
 		"../lib/vscode-shim/api/webview"
 	);
 	const { registerExtensionDefaults } = await import(
@@ -185,10 +185,6 @@ async function main() {
 			}
 
 			case "post-message": {
-				// Find the active view and post message to it
-				const { getActiveView } = await import(
-					"../lib/vscode-shim/api/webview"
-				);
 				const view = getActiveView(msg.viewId);
 				if (view) {
 					const webview = view.webview as {

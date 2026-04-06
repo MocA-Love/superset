@@ -250,6 +250,7 @@ export const createVscodeExtensionsRouter = () => {
 			.input(
 				z.object({
 					workspaceId: z.string(),
+					workspacePath: z.string(),
 					viewType: z.string(),
 					extensionPath: z.string(),
 				}),
@@ -259,7 +260,7 @@ export const createVscodeExtensionsRouter = () => {
 
 				// Start worker for this workspace if not already running
 				if (!manager.isRunning(input.workspaceId)) {
-					await manager.start(input.workspaceId, input.extensionPath);
+					await manager.start(input.workspaceId, input.workspacePath);
 				}
 
 				const result = await manager.resolveWebview(
@@ -390,12 +391,13 @@ export const createVscodeExtensionsRouter = () => {
 					return { success: false };
 				}
 				const manager = getExtensionHostManager();
-				const instance = manager.isRunning(input.workspaceId);
-				if (!instance) {
+				if (!manager.isRunning(input.workspaceId)) {
 					return { success: false };
 				}
+				// Stop then explicitly restart (stop sets "stopped" status which prevents auto-restart)
+				const workspacePath = manager.getWorkspacePath(input.workspaceId) ?? "";
 				manager.stop(input.workspaceId);
-				// Worker auto-restarts via scheduleRestart; caller can re-resolve webview
+				await manager.start(input.workspaceId, workspacePath);
 				return { success: true };
 			}),
 

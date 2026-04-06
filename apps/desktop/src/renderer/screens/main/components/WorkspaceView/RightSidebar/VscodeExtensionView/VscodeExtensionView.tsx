@@ -19,6 +19,10 @@ export function VscodeExtensionView({
 	isActive,
 }: VscodeExtensionViewProps) {
 	const workspaceId = useWorkspaceId();
+	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+		{ id: workspaceId ?? "" },
+		{ enabled: !!workspaceId },
+	);
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [viewId, setViewId] = useState<string | null>(null);
 	const [iframeUrl, setIframeUrl] = useState<string | null>(null);
@@ -31,10 +35,15 @@ export function VscodeExtensionView({
 
 	// Resolve the webview when first becoming active
 	useEffect(() => {
-		if (!isActive || viewId || !workspaceId) return;
+		if (!isActive || viewId || !workspaceId || !workspace?.worktreePath) return;
 
 		resolveMutation.mutate(
-			{ workspaceId, viewType, extensionPath: "" },
+			{
+				workspaceId,
+				workspacePath: workspace.worktreePath,
+				viewType,
+				extensionPath: "",
+			},
 			{
 				onSuccess: (result) => {
 					if (result.viewId && result.url) {
@@ -49,7 +58,14 @@ export function VscodeExtensionView({
 				},
 			},
 		);
-	}, [isActive, viewId, viewType, workspaceId, resolveMutation.mutate]);
+	}, [
+		isActive,
+		viewId,
+		viewType,
+		workspaceId,
+		workspace?.worktreePath,
+		resolveMutation.mutate,
+	]);
 
 	// Listen for messages from iframe -> forward to extension
 	useEffect(() => {

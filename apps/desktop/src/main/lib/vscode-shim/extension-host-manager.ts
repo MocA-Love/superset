@@ -16,6 +16,7 @@ import type { MainToWorkerMessage, WorkerToMainMessage } from "./ipc-types";
 
 const BASE_RESTART_DELAY = 1000;
 const MAX_RESTART_DELAY = 30000;
+const MAX_RESTART_ATTEMPTS = 5;
 const READY_TIMEOUT = 15000;
 
 interface ExtensionHostProcess {
@@ -347,6 +348,10 @@ export class ExtensionHostManager extends EventEmitter {
 		return instance?.status === "running";
 	}
 
+	getWorkspacePath(workspaceId: string): string | undefined {
+		return this.instances.get(workspaceId)?.workspacePath;
+	}
+
 	getWorkspaceForViewId(viewId: string): string | undefined {
 		return this.viewIdToWorkspace.get(viewId);
 	}
@@ -361,6 +366,14 @@ export class ExtensionHostManager extends EventEmitter {
 	private scheduleRestart(workspaceId: string): void {
 		const instance = this.instances.get(workspaceId);
 		if (!instance || instance.status === "stopped") return;
+
+		if (instance.restartCount >= MAX_RESTART_ATTEMPTS) {
+			console.error(
+				`[ext-host-manager] Max restart attempts (${MAX_RESTART_ATTEMPTS}) reached for ${workspaceId}, giving up`,
+			);
+			instance.status = "stopped";
+			return;
+		}
 
 		const delay = Math.min(
 			BASE_RESTART_DELAY * 2 ** instance.restartCount,
