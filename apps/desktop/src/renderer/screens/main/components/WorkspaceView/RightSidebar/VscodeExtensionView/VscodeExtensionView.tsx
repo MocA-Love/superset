@@ -126,8 +126,8 @@ export function VscodeExtensionView({
 			ref={iframeRef}
 			src={iframeUrl}
 			className="w-full h-full border-0"
-			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-			allow="clipboard-read; clipboard-write"
+			sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+			allow="clipboard-read; clipboard-write; microphone; camera"
 			title={`${extensionId} webview`}
 		/>
 	);
