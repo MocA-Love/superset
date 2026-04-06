@@ -4,6 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { observable } from "@trpc/server/observable";
+import { setWebviewHtml } from "main/lib/vscode-shim/api/protocol-handler";
+import { setActiveTextEditor } from "main/lib/vscode-shim/api/window";
+import {
+	getActiveExtensions,
+	restartExtension,
+} from "main/lib/vscode-shim/extension-host";
 import type { WebviewBridgeEvent } from "main/lib/vscode-shim/webview-bridge";
 import { webviewBridge } from "main/lib/vscode-shim/webview-bridge";
 import { z } from "zod";
@@ -199,8 +205,6 @@ export const createVscodeExtensionsRouter = () => {
 	return router({
 		/** Get list of loaded (active) extensions */
 		getExtensions: publicProcedure.query(() => {
-			const { getActiveExtensions } =
-				require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
 			return getActiveExtensions();
 		}),
 
@@ -208,8 +212,6 @@ export const createVscodeExtensionsRouter = () => {
 		getKnownExtensions: publicProcedure.query(() => {
 			let activeExtensions: Array<{ id: string; isActive: boolean }> = [];
 			try {
-				const { getActiveExtensions } =
-					require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
 				activeExtensions = getActiveExtensions();
 			} catch {}
 
@@ -242,8 +244,6 @@ export const createVscodeExtensionsRouter = () => {
 				// Store HTML in protocol handler and return URL
 				const html = webviewBridge.getHtml(viewId);
 				if (html) {
-					const { setWebviewHtml } =
-						require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
 					setWebviewHtml(viewId, html);
 				}
 				const url = `vscode-webview://${viewId}`;
@@ -281,8 +281,6 @@ export const createVscodeExtensionsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				const { setActiveTextEditor } =
-					require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
 				setActiveTextEditor(input.filePath, input.languageId);
 				return { success: true };
 			}),
@@ -299,8 +297,6 @@ export const createVscodeExtensionsRouter = () => {
 		restartExtension: publicProcedure
 			.input(z.object({ extensionId: z.string() }))
 			.mutation(async ({ input }) => {
-				const { restartExtension } =
-					require("main/lib/vscode-shim/extension-host") as typeof import("main/lib/vscode-shim/extension-host");
 				const success = await restartExtension(input.extensionId);
 				return { success };
 			}),
