@@ -108,8 +108,14 @@ export function registerWebviewPanelSerializer(
 	});
 }
 
-function createWebview(extensionPath: string, options?: WebviewOptions): Webview {
+export interface WebviewInternal extends Webview {
+	_onDidReceiveMessage: EventEmitter<unknown>;
+	_onDidPostMessage: EventEmitter<unknown>;
+}
+
+function createWebview(extensionPath: string, options?: WebviewOptions): WebviewInternal {
 	const _onDidReceiveMessage = new EventEmitter<unknown>();
+	const _onDidPostMessage = new EventEmitter<unknown>();
 	let _html = "";
 
 	return {
@@ -119,11 +125,12 @@ function createWebview(extensionPath: string, options?: WebviewOptions): Webview
 		},
 		set html(value: string) {
 			_html = value;
-			// Notification happens via the WebviewView/Panel wrapper
 		},
 		onDidReceiveMessage: _onDidReceiveMessage.event,
+		_onDidReceiveMessage,
+		_onDidPostMessage,
 		async postMessage(message: unknown): Promise<boolean> {
-			// Will be bridged to renderer via tRPC
+			_onDidPostMessage.fire(message);
 			return true;
 		},
 		asWebviewUri(localResource: Uri): Uri {

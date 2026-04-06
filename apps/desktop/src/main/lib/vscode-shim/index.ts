@@ -28,4 +28,6 @@ export {
 	getActivePanel,
 } from "./api/webview.js";
 
+export { webviewBridge } from "./webview-bridge.js";
+
 export type { ExtensionManifest, ExtensionInfo, WebviewMessage } from "./types.js";

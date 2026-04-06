@@ -41,6 +41,8 @@ import {
 	LuSearch,
 	LuShrink,
 	LuX,
+	LuBot,
+	LuSparkles,
 } from "react-icons/lu";
 import { HotkeyLabel } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -61,6 +63,7 @@ import { FilesView } from "./FilesView";
 import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
 import { ProblemsView } from "./ProblemsView";
 import { SearchView } from "./SearchView";
+import { VscodeExtensionView } from "./VscodeExtensionView";
 
 interface SidebarTabDefinition {
 	id: RightSidebarTab;
@@ -96,6 +99,14 @@ const RIGHT_SIDEBAR_TAB_METADATA: Record<
 	[RightSidebarTab.Databases]: {
 		label: "Databases",
 		icon: LuDatabase,
+	},
+	[RightSidebarTab.ClaudeCode]: {
+		label: "Claude",
+		icon: LuBot,
+	},
+	[RightSidebarTab.Codex]: {
+		label: "Codex",
+		icon: LuSparkles,
 	},
 };
 
@@ -749,6 +760,32 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				}
 			>
 				<DatabasesView onOpenExplorer={handleOpenDatabaseExplorer} />
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.ClaudeCode
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<VscodeExtensionView
+					viewType="claudeVSCodeSidebar"
+					extensionId="anthropic.claude-code"
+					isActive={rightSidebarTab === RightSidebarTab.ClaudeCode}
+				/>
+			</div>
+			<div
+				className={
+					rightSidebarTab === RightSidebarTab.Codex
+						? "flex-1 min-h-0 flex flex-col overflow-hidden"
+						: "hidden"
+				}
+			>
+				<VscodeExtensionView
+					viewType="chatgpt.sidebarView"
+					extensionId="openai.chatgpt"
+					isActive={rightSidebarTab === RightSidebarTab.Codex}
+				/>
 			</div>
 		</aside>
 	);
