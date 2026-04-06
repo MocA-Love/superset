@@ -12,6 +12,7 @@ import { ChangesContent, ScrollProvider } from "../ChangesContent";
 import { ContentView } from "../ContentView";
 import { useActiveEditorSync } from "../hooks/useActiveEditorSync";
 import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
+import { useVscodeExtensionPanelSync } from "../hooks/useVscodeExtensionPanelSync";
 import { RightSidebar } from "../RightSidebar";
 
 interface WorkspaceLayoutProps {
@@ -31,6 +32,7 @@ export function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
 	useBrowserLifecycle();
 	useActiveEditorSync();
+	useVscodeExtensionPanelSync();
 	const isSidebarOpen = useSidebarStore((s) => s.isSidebarOpen);
 	const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
 	const setSidebarWidth = useSidebarStore((s) => s.setSidebarWidth);

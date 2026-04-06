@@ -17,7 +17,7 @@ import {
 import { setWebviewHtml } from "./api/webview-server";
 
 export interface WebviewBridgeEvent {
-	type: "html" | "message" | "title" | "dispose";
+	type: "html" | "message" | "title" | "dispose" | "panel-created";
 	viewId: string;
 	data: unknown;
 }

@@ -70,7 +70,7 @@ export interface WebviewPanelSerializer {
 // Emits when webview html/messages change — consumed by tRPC router
 export interface WebviewEvent {
 	viewId: string;
-	type: "html" | "message" | "title" | "dispose";
+	type: "html" | "message" | "title" | "dispose" | "panel-created";
 	data: unknown;
 }
 
@@ -273,15 +273,20 @@ export function createWebviewPanel(
 	const viewColumn =
 		typeof showOptions === "number" ? showOptions : showOptions.viewColumn;
 
+	// Relay extension→panel postMessage as events
+	webview._onDidPostMessage.event((message) => {
+		_onWebviewEvent.fire({ viewId: panelId, type: "message", data: message });
+	});
+
 	const proxiedWebview = new Proxy(webview, {
 		set(target, prop, value) {
 			if (prop === "html") {
+				const htmlStr = typeof value === "string" ? value : String(value);
+				shimLog(
+					`[webview:${panelId}] Panel HTML set, length=${htmlStr.length}`,
+				);
 				(target as { html: string }).html = value;
-				_onWebviewEvent.fire({
-					panelId,
-					type: "html",
-					data: value,
-				} as unknown as WebviewEvent);
+				_onWebviewEvent.fire({ viewId: panelId, type: "html", data: value });
 				return true;
 			}
 			(target as unknown as Record<string | symbol, unknown>)[prop] = value;
@@ -300,14 +305,23 @@ export function createWebviewPanel(
 		onDidChangeViewState: _onDidChangeViewState.event,
 		iconPath: undefined,
 		reveal(_viewColumn?: number, _preserveFocus?: boolean) {
-			// noop
+			// noop for now
 		},
 		dispose() {
 			_onDidDispose.fire();
+			_onWebviewEvent.fire({ viewId: panelId, type: "dispose", data: null });
 			activePanels.delete(panelId);
 		},
 	};
 
 	activePanels.set(panelId, panel);
+
+	// Notify renderer to create a UI tab for this panel
+	_onWebviewEvent.fire({
+		viewId: panelId,
+		type: "panel-created" as WebviewEvent["type"],
+		data: { viewType, title, panelId },
+	});
+
 	return panel;
 }

@@ -574,14 +574,49 @@ export function createVscodeApi(): Record<string, unknown> {
 		authentication,
 		l10n,
 
-		// Proposed API stubs
+		// Proposed API: chat sessions
 		chat: {
-			registerChatSessionItemProvider(_id: string, _provider: unknown) {
-				return new Disposable(() => {});
+			_providers: new Map<string, unknown>(),
+			registerChatSessionItemProvider(id: string, provider: unknown) {
+				(this as { _providers: Map<string, unknown> })._providers.set(
+					id,
+					provider,
+				);
+				return new Disposable(() => {
+					(this as { _providers: Map<string, unknown> })._providers.delete(id);
+				});
+			},
+			getSessionProvider(id: string): unknown {
+				return (this as { _providers: Map<string, unknown> })._providers.get(
+					id,
+				);
 			},
 		},
+
+		// Proposed API: language model
 		lm: {
-			getModelProxy: undefined,
+			_models: [] as Array<{
+				id: string;
+				vendor: string;
+				family: string;
+				version: string;
+			}>,
+			onDidChangeChatModels: new EventEmitter<void>().event,
+			async selectChatModels(_selector?: {
+				vendor?: string;
+				family?: string;
+				id?: string;
+			}): Promise<unknown[]> {
+				return [];
+			},
+			async sendChatRequest(
+				_model: unknown,
+				_messages: unknown[],
+				_options?: unknown,
+			): Promise<unknown> {
+				throw new Error("Language model API not available in Superset Desktop");
+			},
+			getModelProxy: undefined as unknown,
 			isModelProxyAvailable: false,
 		},
 
