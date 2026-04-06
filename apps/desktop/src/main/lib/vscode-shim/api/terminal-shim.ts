@@ -125,16 +125,39 @@ export function createTerminal(
 					return {
 						execution: { commandLine: command },
 						async *read() {
-							// Collect output from the terminal
+							// Collect output using idle-timeout: yield when output
+							// stops for 200ms, or after max 30s total
 							const chunks: string[] = [];
-							const handler = (data: string) => {
-								chunks.push(data);
-							};
-							manager.on(`data:${paneId}`, handler);
-							// Wait briefly for output
-							await new Promise((r) => setTimeout(r, 500));
-							manager.off(`data:${paneId}`, handler);
-							yield chunks.join("");
+							const output: string = await new Promise((resolve) => {
+								let idleTimer: ReturnType<typeof setTimeout>;
+								const maxTimer = setTimeout(() => {
+									cleanup();
+									resolve(chunks.join(""));
+								}, 30000);
+
+								const handler = (data: string) => {
+									chunks.push(data);
+									clearTimeout(idleTimer);
+									idleTimer = setTimeout(() => {
+										cleanup();
+										resolve(chunks.join(""));
+									}, 200);
+								};
+
+								const cleanup = () => {
+									clearTimeout(idleTimer);
+									clearTimeout(maxTimer);
+									manager.off(`data:${paneId}`, handler);
+								};
+
+								manager.on(`data:${paneId}`, handler);
+								// Initial timeout if no output at all
+								idleTimer = setTimeout(() => {
+									cleanup();
+									resolve(chunks.join(""));
+								}, 2000);
+							});
+							yield output;
 						},
 					};
 				},

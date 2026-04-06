@@ -97,14 +97,12 @@ function waitForHtml(
 	timeoutMs: number,
 ): Promise<string | null> {
 	return new Promise((resolve) => {
-		const check = () => {
-			const html = webviewBridge.getHtml(viewId);
-			if (html) return resolve(html);
-			return null;
-		};
-		// Check immediately
-		const immediate = check();
-		if (immediate) return;
+		// Check immediately before starting poll
+		const html = webviewBridge.getHtml(viewId);
+		if (html) {
+			resolve(html);
+			return;
+		}
 
 		// Poll every 200ms
 		const interval = setInterval(() => {
