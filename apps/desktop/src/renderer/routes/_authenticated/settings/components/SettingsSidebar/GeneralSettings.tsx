@@ -37,6 +37,7 @@ type SettingsRoute =
 	| "/settings/models"
 	| "/settings/integrations"
 	| "/settings/extensions"
+	| "/settings/vscode-extensions"
 	| "/settings/billing"
 	| "/settings/api-keys"
 	| "/settings/permissions";
@@ -128,6 +129,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "extensions",
 				label: "Extensions",
 				icon: <HiOutlineSquare3Stack3D className="h-4 w-4" />,
+			},
+			{
+				id: "/settings/vscode-extensions",
+				section: "vscodeExtensions",
+				label: "VS Code Extensions",
+				icon: <HiOutlinePuzzlePiece className="h-4 w-4" />,
 			},
 		],
 	},

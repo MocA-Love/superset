@@ -13,6 +13,7 @@ import {
 	LuSparkles,
 	LuSquareArrowOutUpRight,
 } from "react-icons/lu";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import {
 	RightSidebarTab,
@@ -119,22 +120,33 @@ function ExtensionButton({
 }
 
 export function VscodeExtensionButtons() {
+	const { data: extensions } =
+		electronTrpc.vscodeExtensions.getKnownExtensions.useQuery();
+
+	// Only show buttons for installed extensions
+	const installed = extensions?.filter((e) => e.installed) ?? [];
+	if (installed.length === 0) return null;
+
 	return (
 		<div className="flex items-center gap-1">
-			<ExtensionButton
-				tab={RightSidebarTab.ClaudeCode}
-				icon={LuBot}
-				label="Claude"
-				viewType="claudeVSCodeSidebar"
-				extensionId="anthropic.claude-code"
-			/>
-			<ExtensionButton
-				tab={RightSidebarTab.Codex}
-				icon={LuSparkles}
-				label="Codex"
-				viewType="chatgpt.sidebarView"
-				extensionId="openai.chatgpt"
-			/>
+			{installed.some((e) => e.id === "anthropic.claude-code") && (
+				<ExtensionButton
+					tab={RightSidebarTab.ClaudeCode}
+					icon={LuBot}
+					label="Claude"
+					viewType="claudeVSCodeSidebar"
+					extensionId="anthropic.claude-code"
+				/>
+			)}
+			{installed.some((e) => e.id === "openai.chatgpt") && (
+				<ExtensionButton
+					tab={RightSidebarTab.Codex}
+					icon={LuSparkles}
+					label="Codex"
+					viewType="chatgpt.sidebarView"
+					extensionId="openai.chatgpt"
+				/>
+			)}
 		</div>
 	);
 }
