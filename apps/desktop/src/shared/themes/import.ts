@@ -232,16 +232,16 @@ const SCOPE_TO_SYNTAX: Array<{
 	},
 	{ key: "markdownStrikethrough", scopes: ["markup.strikethrough"] },
 	{
+		key: "markdownUrl",
+		scopes: ["markup.underline.link.image"],
+	},
+	{
 		key: "markdownLink",
 		scopes: [
 			"markup.underline.link",
 			"string.other.link.title",
 			"string.other.link.description",
 		],
-	},
-	{
-		key: "markdownUrl",
-		scopes: ["markup.underline.link.image"],
 	},
 	{
 		key: "markdownCode",
@@ -424,7 +424,10 @@ function findColorForScope(
 	tokenColors: VsCodeTokenColor[],
 	pattern: string,
 ): string | undefined {
-	// Search in reverse so later (more specific) entries win
+	// Two-pass search: exact match first, then prefix match.
+	// Within each pass, later entries win (VS Code convention).
+	let prefixMatch: string | undefined;
+
 	for (let i = tokenColors.length - 1; i >= 0; i--) {
 		const entry = tokenColors[i];
 		if (!entry.settings?.foreground) continue;
@@ -436,12 +439,15 @@ function findColorForScope(
 				: [];
 
 		for (const scope of scopes) {
-			if (scope === pattern || scope.startsWith(`${pattern}.`)) {
+			if (scope === pattern) {
 				return entry.settings.foreground;
+			}
+			if (!prefixMatch && scope.startsWith(`${pattern}.`)) {
+				prefixMatch = entry.settings.foreground;
 			}
 		}
 	}
-	return undefined;
+	return prefixMatch;
 }
 
 /**

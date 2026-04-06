@@ -101,7 +101,7 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 			{
-				scope: ["entity.name.type", "support.type", "storage.type"],
+				scope: ["entity.name.type", "support.type"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.typeName),
 				},

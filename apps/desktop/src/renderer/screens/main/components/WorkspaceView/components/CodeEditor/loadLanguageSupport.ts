@@ -174,6 +174,14 @@ const MARKDOWN_NESTED_LANGUAGES: Array<{ name: string; alias?: string[] }> = [
 	{ name: "toml" },
 	{ name: "ruby", alias: ["rb"] },
 	{ name: "swift" },
+	{ name: "graphql", alias: ["gql"] },
+	{ name: "dart" },
+	{ name: "csharp", alias: ["cs", "c#"] },
+	{ name: "kotlin", alias: ["kt"] },
+	{ name: "makefile", alias: ["make"] },
+	{ name: "dotenv", alias: ["env"] },
+	{ name: "csv" },
+	{ name: "tsv" },
 ];
 
 const markdownCodeLanguages: LanguageDescription[] =
