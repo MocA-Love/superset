@@ -100,6 +100,7 @@ export function registerWebviewViewProvider(
 	provider: WebviewViewProvider,
 	_options?: { webviewOptions?: { retainContextWhenHidden?: boolean } },
 ): Disposable {
+	console.log(`[vscode-shim] registerWebviewViewProvider: ${viewType}`);
 	viewProviders.set(viewType, provider);
 	return new Disposable(() => {
 		viewProviders.delete(viewType);
@@ -159,8 +160,12 @@ export function resolveWebviewView(
 	viewType: string,
 	extensionPath: string,
 ): { view: WebviewView; viewId: string } | undefined {
+	console.log(`[vscode-shim] resolveWebviewView: ${viewType}, registered providers: [${[...viewProviders.keys()].join(", ")}]`);
 	const provider = viewProviders.get(viewType);
-	if (!provider) return undefined;
+	if (!provider) {
+		console.warn(`[vscode-shim] No provider found for viewType: ${viewType}`);
+		return undefined;
+	}
 
 	const _onDidDispose = new EventEmitter<void>();
 	const _onDidChangeVisibility = new EventEmitter<void>();

@@ -37,8 +37,12 @@ class WebviewBridge extends EventEmitter {
 
 	/** Resolve a webview view (called when renderer requests a sidebar view) */
 	resolveView(viewType: string, extensionPath: string): string | undefined {
+		console.log(`[vscode-shim] WebviewBridge.resolveView called: ${viewType}`);
 		const result = resolveWebviewView(viewType, extensionPath);
-		if (!result) return undefined;
+		if (!result) {
+			console.warn(`[vscode-shim] WebviewBridge.resolveView: no result for ${viewType}`);
+			return undefined;
+		}
 
 		const { viewId } = result;
 		this._viewIds.set(viewType, viewId);
