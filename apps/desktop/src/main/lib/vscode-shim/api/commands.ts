@@ -2,7 +2,7 @@
  * VS Code commands API shim.
  */
 
-import { Disposable } from "./event-emitter.js";
+import { Disposable } from "./event-emitter";
 
 type CommandHandler = (...args: unknown[]) => unknown;
 

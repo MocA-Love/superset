@@ -12,7 +12,7 @@ import {
 	resolveWebviewView,
 	type WebviewEvent,
 	type WebviewInternal,
-} from "./api/webview.js";
+} from "./api/webview";
 
 export interface WebviewBridgeEvent {
 	type: "html" | "message" | "title" | "dispose";

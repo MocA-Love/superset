@@ -2,7 +2,7 @@
  * VS Code OutputChannel shim.
  */
 
-import { Disposable } from "./event-emitter.js";
+import { Disposable } from "./event-emitter";
 
 export class OutputChannel {
 	readonly name: string;

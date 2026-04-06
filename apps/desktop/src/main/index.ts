@@ -43,7 +43,11 @@ import {
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
-import { initExtensionHost, shutdownExtensionHost } from "./lib/vscode-shim";
+// Lazy import to avoid module resolution issues during Vite build
+const loadVscodeShim = () =>
+	import("./lib/vscode-shim") as Promise<
+		typeof import("./lib/vscode-shim")
+	>;
 import { cleanupMainWindowResources, MainWindow } from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
@@ -409,7 +413,9 @@ app.on("before-quit", async (event) => {
 	}
 
 	isQuitting = true;
-	shutdownExtensionHost().catch(() => {});
+	loadVscodeShim()
+		.then((mod) => mod.shutdownExtensionHost())
+		.catch(() => {});
 	closeLocalDb();
 	if (quitMode === "stop") {
 		manager.stopAll();
@@ -591,9 +597,11 @@ if (!gotTheLock) {
 		initTray();
 
 		// Initialize VS Code extension host (loads Claude Code, ChatGPT etc.)
-		initExtensionHost().catch((err) => {
-			console.error("[main] Failed to initialize VS Code extension host:", err);
-		});
+		loadVscodeShim()
+			.then((mod) => mod.initExtensionHost())
+			.catch((err) => {
+				console.error("[main] Failed to initialize VS Code extension host:", err);
+			});
 
 		const coldStartUrl = findDeepLinkInArgv(process.argv);
 		if (coldStartUrl) {

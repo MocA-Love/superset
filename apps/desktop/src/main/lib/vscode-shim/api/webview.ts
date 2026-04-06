@@ -2,8 +2,8 @@
  * VS Code Webview API shim.
  */
 
-import { Disposable, type Event, EventEmitter } from "./event-emitter.js";
-import { Uri } from "./uri.js";
+import { Disposable, type Event, EventEmitter } from "./event-emitter";
+import { Uri } from "./uri";
 
 export interface WebviewOptions {
 	enableScripts?: boolean;

@@ -11,24 +11,24 @@ export {
 	getViewProvider,
 	onWebviewEvent,
 	resolveWebviewView,
-} from "./api/webview.js";
-export { handleUri, setActiveTextEditor } from "./api/window.js";
+} from "./api/webview";
+export { handleUri, setActiveTextEditor } from "./api/window";
 export {
 	getActiveExtensions,
 	initExtensionHost,
 	shutdownExtensionHost,
 	updateWorkspacePath,
-} from "./extension-host.js";
+} from "./extension-host";
 export {
 	deactivateExtension,
 	discoverExtensions,
 	getLoadedExtension,
 	getLoadedExtensions,
 	loadExtension,
-} from "./loader.js";
+} from "./loader";
 export type {
 	ExtensionInfo,
 	ExtensionManifest,
 	WebviewMessage,
-} from "./types.js";
-export { webviewBridge } from "./webview-bridge.js";
+} from "./types";
+export { webviewBridge } from "./webview-bridge";

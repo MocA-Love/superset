@@ -16,9 +16,9 @@ function getUserDataPath(): string {
 	}
 }
 
-import type { ExtensionManifest } from "../types.js";
-import { type Disposable, type Event, EventEmitter } from "./event-emitter.js";
-import { Uri } from "./uri.js";
+import type { ExtensionManifest } from "../types";
+import { type Disposable, type Event, EventEmitter } from "./event-emitter";
+import { Uri } from "./uri";
 
 class Memento {
 	private _data: Record<string, unknown>;

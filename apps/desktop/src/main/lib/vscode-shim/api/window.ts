@@ -12,22 +12,22 @@ function getDialog(): typeof import("electron").dialog {
 	}
 }
 
-import { Disposable, type Event, EventEmitter } from "./event-emitter.js";
-import { createOutputChannel, type OutputChannel } from "./output-channel.js";
+import { Disposable, type Event, EventEmitter } from "./event-emitter";
+import { createOutputChannel, type OutputChannel } from "./output-channel";
 import {
 	createTerminal as createTerminalImpl,
 	getActiveTerminal,
 	getTerminals,
 	terminalEvents,
-} from "./terminal-shim.js";
-import { Uri } from "./uri.js";
+} from "./terminal-shim";
+import { Uri } from "./uri";
 import {
 	createWebviewPanel,
 	registerWebviewPanelSerializer,
 	registerWebviewViewProvider,
 	type WebviewOptions,
 	type WebviewPanel,
-} from "./webview.js";
+} from "./webview";
 
 interface TextEditor {
 	readonly document: {

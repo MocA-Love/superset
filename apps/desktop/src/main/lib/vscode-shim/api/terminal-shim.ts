@@ -3,7 +3,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { EventEmitter } from "./event-emitter.js";
+import { EventEmitter } from "./event-emitter";
 
 interface TerminalOptions {
 	name?: string;

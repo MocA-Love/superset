@@ -4,9 +4,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { getConfiguration, onDidChangeConfiguration } from "./configuration.js";
-import { Disposable, type Event, EventEmitter } from "./event-emitter.js";
-import { Uri } from "./uri.js";
+import { getConfiguration, onDidChangeConfiguration } from "./configuration";
+import { Disposable, type Event, EventEmitter } from "./event-emitter";
+import { Uri } from "./uri";
 
 interface WorkspaceFolder {
 	readonly uri: Uri;

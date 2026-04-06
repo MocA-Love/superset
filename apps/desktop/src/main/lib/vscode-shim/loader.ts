@@ -8,13 +8,13 @@
 import fs from "node:fs";
 import Module from "node:module";
 import path from "node:path";
-import { registerExtensionDefaults } from "./api/configuration.js";
+import { registerExtensionDefaults } from "./api/configuration";
 import {
 	createExtensionContext,
 	type VscodeExtensionContext,
-} from "./api/extension-context.js";
-import type { ExtensionInfo, ExtensionManifest } from "./types.js";
-import { createVscodeApi } from "./vscode-api.js";
+} from "./api/extension-context";
+import type { ExtensionInfo, ExtensionManifest } from "./types";
+import { createVscodeApi } from "./vscode-api";
 
 const vscodeApi = createVscodeApi();
 let interceptInstalled = false;
@@ -26,7 +26,7 @@ function installRequireIntercept(): void {
 	// Inject vscode shim into require cache so require('vscode') returns our API.
 	// We use _resolveFilename to redirect 'vscode' to a known cache key,
 	// and pre-populate the cache with our shim module.
-	const VSCODE_CACHE_KEY = path.join(__dirname, "__vscode_shim_module__.js");
+	const VSCODE_CACHE_KEY = path.join(__dirname, "__vscode_shim_module__");
 
 	// Pre-populate the require cache
 	require.cache[VSCODE_CACHE_KEY] = {

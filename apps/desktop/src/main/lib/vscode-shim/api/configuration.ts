@@ -4,8 +4,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { ExtensionManifest } from "../types.js";
-import { EventEmitter } from "./event-emitter.js";
+import type { ExtensionManifest } from "../types";
+import { EventEmitter } from "./event-emitter";
 
 interface ConfigurationChangeEvent {
 	affectsConfiguration(section: string, _scope?: unknown): boolean;

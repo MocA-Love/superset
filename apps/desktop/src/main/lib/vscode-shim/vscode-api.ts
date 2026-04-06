@@ -6,15 +6,15 @@
  * discover which APIs extensions actually use at runtime.
  */
 
-import { commands } from "./api/commands.js";
+import { commands } from "./api/commands";
 import {
 	CancellationTokenSource,
 	Disposable,
 	EventEmitter,
-} from "./api/event-emitter.js";
-import { Uri } from "./api/uri.js";
-import { window } from "./api/window.js";
-import { workspace } from "./api/workspace.js";
+} from "./api/event-emitter";
+import { Uri } from "./api/uri";
+import { window } from "./api/window";
+import { workspace } from "./api/workspace";
 
 // VS Code enums
 const StatusBarAlignment = { Left: 1, Right: 2 } as const;

@@ -4,15 +4,15 @@
 
 import os from "node:os";
 import path from "node:path";
-import { registerWebviewProtocol } from "./api/protocol-handler.js";
-import { setWorkspacePath } from "./api/workspace.js";
+import { registerWebviewProtocol } from "./api/protocol-handler";
+import { setWorkspacePath } from "./api/workspace";
 import {
 	deactivateAll,
 	discoverExtensions,
 	getLoadedExtensions,
 	loadExtension,
-} from "./loader.js";
-import type { ExtensionInfo } from "./types.js";
+} from "./loader";
+import type { ExtensionInfo } from "./types";
 
 // Known extension IDs we support
 const SUPPORTED_EXTENSIONS = new Set([
@@ -133,7 +133,7 @@ export function getActiveExtensions(): Array<{
 /** Restart a specific extension (deactivate + re-activate) */
 export async function restartExtension(extensionId: string): Promise<boolean> {
 	const { deactivateExtension, getLoadedExtension } = await import(
-		"./loader.js"
+		"./loader"
 	);
 	const loaded = getLoadedExtension(extensionId);
 	if (!loaded) return false;
