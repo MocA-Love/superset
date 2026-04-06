@@ -235,12 +235,16 @@ export const createVscodeExtensionsRouter = () => {
 	return router({
 		/** Get all known extensions with their install/active status */
 		getKnownExtensions: publicProcedure.query(() => {
+			const manager = getExtensionHostManager();
+			const hasRunningExtensionHost = manager.getRunningWorkspaceIds().length > 0;
 			return KNOWN_EXTENSIONS.map((ext) => {
+				const installed = isExtensionInstalled(ext.id);
+				const enabled = isExtensionEnabled(ext.id);
 				return {
 					...ext,
-					installed: isExtensionInstalled(ext.id),
-					enabled: isExtensionEnabled(ext.id),
-					active: false,
+					installed,
+					enabled,
+					active: installed && enabled && hasRunningExtensionHost,
 				};
 			});
 		}),
@@ -388,7 +392,20 @@ export const createVscodeExtensionsRouter = () => {
 			)
 			.mutation(async ({ input }) => {
 				if (!input.workspaceId) {
-					return { success: false };
+					const manager = getExtensionHostManager();
+					const runningWorkspaceIds = manager.getRunningWorkspaceIds();
+					if (runningWorkspaceIds.length === 0) {
+						return { success: false };
+					}
+
+					await Promise.all(
+						runningWorkspaceIds.map(async (workspaceId) => {
+							const workspacePath = manager.getWorkspacePath(workspaceId) ?? "";
+							manager.stop(workspaceId);
+							await manager.start(workspaceId, workspacePath);
+						}),
+					);
+					return { success: true };
 				}
 				const manager = getExtensionHostManager();
 				if (!manager.isRunning(input.workspaceId)) {

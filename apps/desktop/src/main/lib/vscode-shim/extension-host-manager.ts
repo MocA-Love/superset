@@ -35,6 +35,7 @@ interface PendingResolve {
 
 export class ExtensionHostManager extends EventEmitter {
 	private instances = new Map<string, ExtensionHostProcess>();
+	private startPromises = new Map<string, Promise<void>>();
 	private pendingResolves = new Map<string, PendingResolve>();
 	private scheduledRestarts = new Map<string, ReturnType<typeof setTimeout>>();
 	private viewIdToWorkspace = new Map<string, string>();
@@ -64,18 +65,37 @@ export class ExtensionHostManager extends EventEmitter {
 	}
 
 	async start(workspaceId: string, workspacePath: string): Promise<void> {
-		// If already running, just update workspace path
 		const existing = this.instances.get(workspaceId);
-		if (existing?.status === "running" && existing.process) {
+		if (
+			existing &&
+			(existing.status === "running" || existing.status === "starting")
+		) {
+			existing.workspacePath = workspacePath;
 			this.sendToWorker(workspaceId, {
 				type: "set-workspace-path",
 				workspacePath,
 			});
-			existing.workspacePath = workspacePath;
-			return;
+			const inFlightStart = this.startPromises.get(workspaceId);
+			if (inFlightStart) {
+				return inFlightStart;
+			}
+			if (existing.status === "running" && existing.process) {
+				return;
+			}
 		}
 
-		await this.spawn(workspaceId, workspacePath);
+		const inFlightStart = this.startPromises.get(workspaceId);
+		if (inFlightStart) {
+			return inFlightStart;
+		}
+
+		const startPromise = this.spawn(workspaceId, workspacePath).finally(() => {
+			if (this.startPromises.get(workspaceId) === startPromise) {
+				this.startPromises.delete(workspaceId);
+			}
+		});
+		this.startPromises.set(workspaceId, startPromise);
+		await startPromise;
 	}
 
 	private async spawn(
@@ -316,6 +336,7 @@ export class ExtensionHostManager extends EventEmitter {
 		if (!instance) return;
 
 		instance.status = "stopped";
+		this.startPromises.delete(workspaceId);
 
 		// Cancel scheduled restart
 		const restartTimer = this.scheduledRestarts.get(workspaceId);
@@ -354,6 +375,12 @@ export class ExtensionHostManager extends EventEmitter {
 
 	getWorkspaceForViewId(viewId: string): string | undefined {
 		return this.viewIdToWorkspace.get(viewId);
+	}
+
+	getRunningWorkspaceIds(): string[] {
+		return [...this.instances.entries()]
+			.filter(([, instance]) => instance.status === "running")
+			.map(([workspaceId]) => workspaceId);
 	}
 
 	private sendToWorker(workspaceId: string, msg: MainToWorkerMessage): void {
