@@ -132,8 +132,19 @@ body.vscode-dark { color-scheme: dark; }
 body.vscode-light { color-scheme: light; }
 </style>`;
 
+/** Custom theme CSS set from renderer (Superset theme → VS Code vars) */
+let customThemeCss: string | null = null;
+
+export function setCustomThemeCss(css: string | null): void {
+	customThemeCss = css;
+}
+
+function getThemeCss(): string {
+	return customThemeCss ?? VSCODE_THEME_CSS;
+}
+
 /** Bridge script injected into every webview page */
-const BRIDGE_SCRIPT = `${VSCODE_THEME_CSS}<script>
+const BRIDGE_SCRIPT_BODY = `<script>
 (function() {
 	let _state = null;
 	const vscodeApi = {
@@ -146,8 +157,6 @@ const BRIDGE_SCRIPT = `${VSCODE_THEME_CSS}<script>
 	window.acquireVsCodeApi = function() { return vscodeApi; };
 	window.addEventListener('message', function(event) {
 		if (event.data && event.data.type === 'vscode-message') {
-			// Re-dispatch with origin matching window.location.origin
-			// (required by Codex message-bus origin validation)
 			window.dispatchEvent(new MessageEvent('message', {
 				data: event.data.data,
 				origin: window.location.origin,
@@ -157,6 +166,10 @@ const BRIDGE_SCRIPT = `${VSCODE_THEME_CSS}<script>
 	});
 })();
 </script>`;
+
+function getBridgeScript(): string {
+	return `${getThemeCss()}${BRIDGE_SCRIPT_BODY}`;
+}
 
 let server: http.Server | null = null;
 let serverPort = 0;
@@ -210,9 +223,9 @@ function injectBridge(html: string): string {
 	// Inject bridge script + theme CSS into head
 	let result = html;
 	if (result.includes("</head>")) {
-		result = result.replace("</head>", `${BRIDGE_SCRIPT}</head>`);
+		result = result.replace("</head>", `${getBridgeScript()}</head>`);
 	} else {
-		result = `${BRIDGE_SCRIPT}${result}`;
+		result = `${getBridgeScript()}${result}`;
 	}
 	// Add vscode-dark class to body for theme detection
 	if (result.includes("<body")) {
