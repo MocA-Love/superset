@@ -15,10 +15,8 @@ export {
 export { clearWebviewHtml, setWebviewHtml } from "./api/webview-server";
 export { handleUri, setActiveTextEditor } from "./api/window";
 export {
-	getActiveExtensions,
 	initExtensionHost,
 	shutdownExtensionHost,
-	updateWorkspacePath,
 } from "./extension-host";
 export {
 	deactivateExtension,
