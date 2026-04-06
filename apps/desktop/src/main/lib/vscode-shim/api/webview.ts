@@ -2,6 +2,7 @@
  * VS Code Webview API shim.
  */
 
+import { shimLog, shimWarn } from "./debug-log";
 import { Disposable, type Event, EventEmitter } from "./event-emitter";
 import { Uri } from "./uri";
 
@@ -100,7 +101,7 @@ export function registerWebviewViewProvider(
 	provider: WebviewViewProvider,
 	_options?: { webviewOptions?: { retainContextWhenHidden?: boolean } },
 ): Disposable {
-	console.log(`[vscode-shim] registerWebviewViewProvider: ${viewType}`);
+	shimLog(`[vscode-shim] registerWebviewViewProvider: ${viewType}`);
 	viewProviders.set(viewType, provider);
 	return new Disposable(() => {
 		viewProviders.delete(viewType);
@@ -160,12 +161,12 @@ export function resolveWebviewView(
 	viewType: string,
 	extensionPath: string,
 ): { view: WebviewView; viewId: string } | undefined {
-	console.log(
+	shimLog(
 		`[vscode-shim] resolveWebviewView: ${viewType}, registered providers: [${[...viewProviders.keys()].join(", ")}]`,
 	);
 	const provider = viewProviders.get(viewType);
 	if (!provider) {
-		console.warn(`[vscode-shim] No provider found for viewType: ${viewType}`);
+		shimWarn(`[vscode-shim] No provider found for viewType: ${viewType}`);
 		return undefined;
 	}
 
@@ -176,7 +177,7 @@ export function resolveWebviewView(
 
 	// Relay extension→webview postMessage as events (so tRPC subscription can forward to iframe)
 	webview._onDidPostMessage.event((message) => {
-		console.log(
+		shimLog(
 			`[webview:${viewId}] postMessage from extension to webview, type=${typeof message === "object" && message !== null && "type" in message ? (message as { type: string }).type : "unknown"}`,
 		);
 		_onWebviewEvent.fire({ viewId, type: "message", data: message });
@@ -188,14 +189,14 @@ export function resolveWebviewView(
 		set(target, prop, value) {
 			if (prop === "html") {
 				const htmlStr = typeof value === "string" ? value : String(value);
-				console.log(
+				shimLog(
 					`[webview:${viewId}] HTML set, length=${htmlStr.length}, preview="${htmlStr.substring(0, 100)}..."`,
 				);
 				(target as { html: string }).html = value;
 				_onWebviewEvent.fire({ viewId, type: "html", data: value });
 				return true;
 			}
-			console.log(`[webview:${viewId}] Property set: ${String(prop)}`);
+			shimLog(`[webview:${viewId}] Property set: ${String(prop)}`);
 			(target as unknown as Record<string | symbol, unknown>)[prop] = value;
 			return true;
 		},
@@ -227,7 +228,7 @@ export function resolveWebviewView(
 		onCancellationRequested: new EventEmitter<void>().event,
 	};
 
-	console.log(`[webview:${viewId}] Calling provider.resolveWebviewView...`);
+	shimLog(`[webview:${viewId}] Calling provider.resolveWebviewView...`);
 	try {
 		const result = provider.resolveWebviewView(
 			view,
@@ -237,7 +238,7 @@ export function resolveWebviewView(
 		if (result && typeof (result as Promise<void>).then === "function") {
 			(result as Promise<void>)
 				.then(() => {
-					console.log(
+					shimLog(
 						`[webview:${viewId}] Provider resolved (async). HTML set: ${!!rawWebview.html}, len=${rawWebview.html?.length ?? 0}`,
 					);
 				})
@@ -245,7 +246,7 @@ export function resolveWebviewView(
 					console.error(`[webview:${viewId}] Provider rejected:`, err);
 				});
 		} else {
-			console.log(
+			shimLog(
 				`[webview:${viewId}] Provider resolved (sync). HTML set: ${!!rawWebview.html}, len=${rawWebview.html?.length ?? 0}`,
 			);
 		}

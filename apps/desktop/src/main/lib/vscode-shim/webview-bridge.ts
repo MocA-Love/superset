@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from "node:events";
+import { shimLog, shimWarn } from "./api/debug-log";
 import {
 	getActiveView,
 	onWebviewEvent,
@@ -29,13 +30,13 @@ class WebviewBridge extends EventEmitter {
 		super();
 		// Listen for events from the webview shim
 		onWebviewEvent((event: WebviewEvent) => {
-			console.log(
+			shimLog(
 				`[webview-bridge] Event: type=${event.type}, viewId=${event.viewId}, dataLen=${typeof event.data === "string" ? event.data.length : "N/A"}`,
 			);
 			if (event.type === "html") {
 				this._viewHtml.set(event.viewId, event.data as string);
 				setWebviewHtml(event.viewId, event.data as string);
-				console.log(
+				shimLog(
 					`[webview-bridge] Stored HTML for ${event.viewId}, htmlStore now has ${this._viewHtml.size} entries`,
 				);
 			}
@@ -45,10 +46,10 @@ class WebviewBridge extends EventEmitter {
 
 	/** Resolve a webview view (called when renderer requests a sidebar view) */
 	resolveView(viewType: string, extensionPath: string): string | undefined {
-		console.log(`[vscode-shim] WebviewBridge.resolveView called: ${viewType}`);
+		shimLog(`[vscode-shim] WebviewBridge.resolveView called: ${viewType}`);
 		const result = resolveWebviewView(viewType, extensionPath);
 		if (!result) {
-			console.warn(
+			shimWarn(
 				`[vscode-shim] WebviewBridge.resolveView: no result for ${viewType}`,
 			);
 			return undefined;

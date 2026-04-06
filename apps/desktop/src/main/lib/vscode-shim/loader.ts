@@ -9,6 +9,7 @@ import fs from "node:fs";
 import Module from "node:module";
 import path from "node:path";
 import { registerExtensionDefaults } from "./api/configuration";
+import { shimLog, shimWarn } from "./api/debug-log";
 import {
 	createExtensionContext,
 	type VscodeExtensionContext,
@@ -92,7 +93,7 @@ export function discoverExtensions(extensionsDir: string): ExtensionInfo[] {
 				isActive: false,
 			});
 		} catch (err) {
-			console.warn(`[vscode-shim] Failed to parse ${manifestPath}:`, err);
+			shimWarn(`[vscode-shim] Failed to parse ${manifestPath}:`, err);
 		}
 	}
 
@@ -128,7 +129,7 @@ export async function loadExtension(
 
 	// Load the extension's main module
 	const mainPath = path.resolve(info.extensionPath, info.manifest.main!);
-	console.log(`[vscode-shim] Loading extension: ${info.id} from ${mainPath}`);
+	shimLog(`[vscode-shim] Loading extension: ${info.id} from ${mainPath}`);
 
 	let extensionModule: Record<string, unknown>;
 	try {
@@ -140,11 +141,11 @@ export async function loadExtension(
 
 	// Activate the extension
 	if (typeof extensionModule.activate === "function") {
-		console.log(`[vscode-shim] Activating extension: ${info.id}`);
+		shimLog(`[vscode-shim] Activating extension: ${info.id}`);
 		try {
 			await extensionModule.activate(context);
 			info.isActive = true;
-			console.log(`[vscode-shim] Extension activated: ${info.id}`);
+			shimLog(`[vscode-shim] Extension activated: ${info.id}`);
 		} catch (err) {
 			console.error(`[vscode-shim] Failed to activate ${info.id}:`, err);
 			throw err;

@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getConfiguration, onDidChangeConfiguration } from "./configuration";
+import { shimLog, shimWarn } from "./debug-log";
 import { Disposable, type Event, EventEmitter } from "./event-emitter";
 import { Uri } from "./uri";
 
@@ -163,14 +164,12 @@ export const workspace = {
 		// Simple glob-based file search using workspace root
 		if (!workspaceFolderPath) return [];
 		// For MVP, return empty array. In Phase 2+, wire to FsHostService.searchFiles
-		console.warn(
-			"[vscode-shim] workspace.findFiles is a stub, returning empty",
-		);
+		shimWarn("[vscode-shim] workspace.findFiles is a stub, returning empty");
 		return [];
 	},
 
 	async applyEdit(_edit: WorkspaceEdit): Promise<boolean> {
-		console.warn("[vscode-shim] workspace.applyEdit is a stub");
+		shimWarn("[vscode-shim] workspace.applyEdit is a stub");
 		return true;
 	},
 
@@ -201,7 +200,7 @@ export const workspace = {
 		_options?: { isCaseSensitive?: boolean; isReadonly?: boolean },
 	): Disposable {
 		fileSystemProviders.set(scheme, provider);
-		console.log(
+		shimLog(
 			`[vscode-shim] Registered FileSystemProvider for scheme: ${scheme}`,
 		);
 		return new Disposable(() => {

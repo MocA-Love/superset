@@ -7,6 +7,7 @@
  */
 
 import { commands } from "./api/commands";
+import { shimWarn } from "./api/debug-log";
 import {
 	CancellationTokenSource,
 	Disposable,
@@ -630,9 +631,7 @@ export function createVscodeApi(): Record<string, unknown> {
 	return new Proxy(api, {
 		get(target, prop, receiver) {
 			if (typeof prop === "string" && !(prop in target)) {
-				console.warn(
-					`[vscode-shim] Unimplemented API accessed: vscode.${prop}`,
-				);
+				shimWarn(`[vscode-shim] Unimplemented API accessed: vscode.${prop}`);
 				return undefined;
 			}
 			return Reflect.get(target, prop, receiver);

@@ -2,6 +2,7 @@
  * VS Code OutputChannel shim.
  */
 
+import { shimLog } from "./debug-log";
 import { Disposable } from "./event-emitter";
 
 export class OutputChannel {
@@ -25,7 +26,7 @@ export class OutputChannel {
 
 	appendLine(value: string): void {
 		if (this._disposed) return;
-		console.log(`[${this.name}] ${value}`);
+		shimLog(`[${this.name}] ${value}`);
 		this._lines.push(value);
 	}
 

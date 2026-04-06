@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { shimLog, shimWarn } from "./debug-log";
 
 /** Allowed base directories for serving extension resources */
 const ALLOWED_ROOTS: string[] = [
@@ -75,14 +76,14 @@ export function registerWebviewProtocol(): void {
 			});
 		});
 
-		console.log("[vscode-shim] Registered vscode-webview-resource:// protocol");
+		shimLog("[vscode-shim] Registered vscode-webview-resource:// protocol");
 
 		// Serve webview HTML pages with their own CSP (bypasses parent CSP)
 		protocol.handle("vscode-webview", (request: Request) => {
 			// URL format: vscode-webview://webview/{encodedViewId}
 			const url = new URL(request.url);
 			const viewId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-			console.log(
+			shimLog(
 				`[vscode-webview] Request for viewId: "${viewId}", stored keys: [${[...webviewHtmlStore.keys()].join(", ")}]`,
 			);
 			let html =
@@ -107,9 +108,9 @@ export function registerWebviewProtocol(): void {
 			});
 		});
 
-		console.log("[vscode-shim] Registered vscode-webview:// protocol");
+		shimLog("[vscode-shim] Registered vscode-webview:// protocol");
 	} catch (err) {
-		console.warn("[vscode-shim] Failed to register protocol handler:", err);
+		shimWarn("[vscode-shim] Failed to register protocol handler:", err);
 	}
 }
 

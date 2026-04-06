@@ -12,6 +12,7 @@ function getDialog(): typeof import("electron").dialog {
 	}
 }
 
+import { shimLog, shimWarn } from "./debug-log";
 import { Disposable, type Event, EventEmitter } from "./event-emitter";
 import { createOutputChannel, type OutputChannel } from "./output-channel";
 import {
@@ -183,7 +184,7 @@ export const window = {
 		...items: string[]
 	): Promise<string | undefined> {
 		if (items.length === 0) {
-			console.log(`[vscode-shim] INFO: ${message}`);
+			shimLog(`[vscode-shim] INFO: ${message}`);
 			return undefined;
 		}
 		const result = await getDialog().showMessageBox({
@@ -199,7 +200,7 @@ export const window = {
 		...items: string[]
 	): Promise<string | undefined> {
 		if (items.length === 0) {
-			console.warn(`[vscode-shim] WARN: ${message}`);
+			shimWarn(`[vscode-shim] WARN: ${message}`);
 			return undefined;
 		}
 		const result = await getDialog().showMessageBox({
@@ -232,7 +233,7 @@ export const window = {
 	): Promise<string | undefined> {
 		const resolved = await items;
 		// For MVP, return first item. In Phase 3, render a proper picker in renderer
-		console.warn("[vscode-shim] showQuickPick stub, returning first item");
+		shimWarn("[vscode-shim] showQuickPick stub, returning first item");
 		return resolved[0];
 	},
 
@@ -241,12 +242,12 @@ export const window = {
 		value?: string;
 		placeHolder?: string;
 	}): Promise<string | undefined> {
-		console.warn("[vscode-shim] showInputBox stub");
+		shimWarn("[vscode-shim] showInputBox stub");
 		return undefined;
 	},
 
 	async showOpenDialog(_options?: unknown): Promise<Uri[] | undefined> {
-		console.warn("[vscode-shim] showOpenDialog stub");
+		shimWarn("[vscode-shim] showOpenDialog stub");
 		return undefined;
 	},
 
@@ -258,7 +259,7 @@ export const window = {
 			"uri" in (document as object)
 				? (document as { uri: Uri }).uri
 				: (document as Uri);
-		console.log(`[vscode-shim] showTextDocument: ${uri.toString()}`);
+		shimLog(`[vscode-shim] showTextDocument: ${uri.toString()}`);
 		// Return a minimal editor stub
 		return {
 			document: {
@@ -341,7 +342,7 @@ export const window = {
 			supportsMultipleEditorsPerDocument?: boolean;
 		},
 	): Disposable {
-		console.log(`[vscode-shim] registerCustomEditorProvider: ${viewType}`);
+		shimLog(`[vscode-shim] registerCustomEditorProvider: ${viewType}`);
 		return new Disposable(() => {});
 	},
 

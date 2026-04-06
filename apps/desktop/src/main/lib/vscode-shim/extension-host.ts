@@ -4,6 +4,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { shimLog, shimWarn } from "./api/debug-log";
 import { registerWebviewProtocol } from "./api/protocol-handler";
 import { startWebviewServer, stopWebviewServer } from "./api/webview-server";
 import { setWorkspacePath } from "./api/workspace";
@@ -36,7 +37,7 @@ export async function initExtensionHost(
 	options: ExtensionHostOptions = {},
 ): Promise<void> {
 	if (isInitialized) {
-		console.warn("[vscode-shim] Extension host already initialized");
+		shimWarn("[vscode-shim] Extension host already initialized");
 		return;
 	}
 
@@ -54,13 +55,13 @@ export async function initExtensionHost(
 	// Start HTTP server for webview content
 	await startWebviewServer();
 
-	console.log(`[vscode-shim] Discovering extensions in ${extensionsDir}`);
+	shimLog(`[vscode-shim] Discovering extensions in ${extensionsDir}`);
 	const discovered = discoverExtensions(extensionsDir);
-	console.log(`[vscode-shim] Found ${discovered.length} extensions total`);
+	shimLog(`[vscode-shim] Found ${discovered.length} extensions total`);
 
 	// Filter to supported extensions, pick latest version for each
 	const toLoad = selectExtensions(discovered, targetIds);
-	console.log(
+	shimLog(
 		`[vscode-shim] Loading ${toLoad.length} extensions: ${toLoad.map((e) => e.id).join(", ")}`,
 	);
 
@@ -115,7 +116,7 @@ function selectExtensions(
 }
 
 export async function shutdownExtensionHost(): Promise<void> {
-	console.log("[vscode-shim] Shutting down extension host");
+	shimLog("[vscode-shim] Shutting down extension host");
 	await deactivateAll();
 	stopWebviewServer();
 	isInitialized = false;
@@ -146,7 +147,7 @@ export async function restartExtension(extensionId: string): Promise<boolean> {
 
 	try {
 		await loadExtension(info);
-		console.log(`[vscode-shim] Restarted extension: ${extensionId}`);
+		shimLog(`[vscode-shim] Restarted extension: ${extensionId}`);
 		return true;
 	} catch (err) {
 		console.error(`[vscode-shim] Failed to restart ${extensionId}:`, err);

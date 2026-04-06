@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { shimLog } from "./debug-log";
 import { EventEmitter } from "./event-emitter";
 
 interface TerminalOptions {
@@ -135,7 +136,7 @@ export function createTerminal(
 		},
 		sendText(text: string, addNewLine = true) {
 			if (!manager) {
-				console.log(`[vscode-shim] Terminal "${name}" sendText: ${text}`);
+				shimLog(`[vscode-shim] Terminal "${name}" sendText: ${text}`);
 				return;
 			}
 			manager.write({

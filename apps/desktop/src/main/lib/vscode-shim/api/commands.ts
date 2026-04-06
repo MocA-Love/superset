@@ -2,6 +2,7 @@
  * VS Code commands API shim.
  */
 
+import { shimWarn } from "./debug-log";
 import { Disposable } from "./event-emitter";
 
 type CommandHandler = (...args: unknown[]) => unknown;
@@ -37,7 +38,7 @@ export const commands = {
 
 		const handler = registry.get(command);
 		if (!handler) {
-			console.warn(`[vscode-shim] Command not found: ${command}`);
+			shimWarn(`[vscode-shim] Command not found: ${command}`);
 			return undefined as T;
 		}
 		return (await handler(...args)) as T;
