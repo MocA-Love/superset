@@ -153,7 +153,7 @@ export function generateVscodeThemeCss(): string {
 		if (value) {
 			// If the value looks like raw oklch channel values (e.g. "0.145 0 0"),
 			// wrap it in oklch() so it's a valid CSS color
-			const needsWrap = /^\d/.test(value) && !value.includes("(");
+			const needsWrap = /^\d[\d.]*\s+[\d.]+\s+[\d.]+/.test(value);
 			const cssValue = needsWrap ? `oklch(${value})` : value;
 			lines.push(`  ${vscodeVar}: ${cssValue};`);
 		}
