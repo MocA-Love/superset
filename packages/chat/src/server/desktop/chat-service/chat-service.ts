@@ -33,7 +33,9 @@ import {
 	setApiKeyForProvider,
 } from "./auth-storage-utils";
 import {
+	buildFimRequest,
 	buildNextEditRequest,
+	extractInsertTextFromFimResponse,
 	extractInsertTextFromNextEditResponse,
 } from "./next-edit";
 import {
@@ -41,6 +43,12 @@ import {
 	type NextEditConfig,
 	setNextEditConfig,
 } from "./next-edit-config";
+import {
+	extractUsageEventFromResponse,
+	getNextEditUsageSummary,
+	recordNextEditUsageEvent,
+	type NextEditUsageSummary,
+} from "./next-edit-usage";
 import {
 	OAuthFlowController,
 	type OAuthFlowOptions,
@@ -67,6 +75,7 @@ function stripAnthropicCredentialEnvVariables(
 interface ChatServiceOptions {
 	anthropicEnvConfigPath?: string;
 	nextEditConfigPath?: string;
+	nextEditUsagePath?: string;
 }
 
 export class ChatService {
@@ -76,6 +85,7 @@ export class ChatService {
 	);
 	private readonly anthropicEnvConfigPath: string | undefined;
 	private readonly nextEditConfigPath: string | undefined;
+	private readonly nextEditUsagePath: string | undefined;
 	private currentAnthropicRuntimeEnv: AnthropicRuntimeEnv = {};
 	private static readonly ANTHROPIC_AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 	private static readonly OPENAI_AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
@@ -84,6 +94,7 @@ export class ChatService {
 	constructor(options?: ChatServiceOptions) {
 		this.anthropicEnvConfigPath = options?.anthropicEnvConfigPath;
 		this.nextEditConfigPath = options?.nextEditConfigPath;
+		this.nextEditUsagePath = options?.nextEditUsagePath;
 		const persistedConfig = getAnthropicEnvConfigFromDisk({
 			configPath: this.anthropicEnvConfigPath,
 		});
@@ -403,6 +414,12 @@ export class ChatService {
 		});
 	}
 
+	getNextEditUsageSummary(): NextEditUsageSummary {
+		return getNextEditUsageSummary({
+			usagePath: this.nextEditUsagePath,
+		});
+	}
+
 	async completeNextEdit(input: {
 		filePath: string;
 		currentFileContent: string;
@@ -415,15 +432,91 @@ export class ChatService {
 	}): Promise<{ insertText: string | null }> {
 		const config = this.getNextEditConfig();
 		if (!config.enabled) {
+			console.log("[NextEditServer] request skipped: config disabled", {
+				filePath: input.filePath,
+			});
 			return { insertText: null };
 		}
 
 		const credentials = getInceptionCredentialsFromAnySource();
 		if (!credentials) {
+			console.log("[NextEditServer] request skipped: missing credentials", {
+				filePath: input.filePath,
+			});
 			return { insertText: null };
 		}
 
+		const fimRequest = buildFimRequest(input, config);
+		console.log("[NextEditServer] fim fetch start", {
+			filePath: input.filePath,
+			endpoint: "https://api.inceptionlabs.ai/v1/fim/completions",
+			model: config.model,
+			recentSnippetCount: input.recentSnippets?.length ?? 0,
+			editHistoryCount: input.editHistory?.length ?? 0,
+		});
+		const fimResponse = await fetch(
+			"https://api.inceptionlabs.ai/v1/fim/completions",
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${credentials.apiKey}`,
+				},
+				body: JSON.stringify(fimRequest.payload),
+			},
+		);
+
+		if (fimResponse.ok) {
+			const json = (await fimResponse.json()) as Record<string, unknown>;
+			const fimUsageEvent = extractUsageEventFromResponse({
+				endpoint: "fim",
+				model: config.model,
+				response: json,
+			});
+			if (fimUsageEvent) {
+				recordNextEditUsageEvent(fimUsageEvent, {
+					usagePath: this.nextEditUsagePath,
+				});
+			}
+			console.log("[NextEditServer] fim fetch success", {
+				filePath: input.filePath,
+				responseKeys: Object.keys(json),
+				choiceCount: Array.isArray(json.choices) ? json.choices.length : 0,
+				responsePreview: JSON.stringify(json).slice(0, 500),
+			});
+			const fimInsertText = extractInsertTextFromFimResponse({
+				response: json,
+				suffix: fimRequest.suffix,
+			});
+			console.log("[NextEditServer] fim completion resolved", {
+				filePath: input.filePath,
+				hasInsertText: Boolean(fimInsertText),
+				insertTextLength: fimInsertText?.length ?? 0,
+				insertTextPreview: fimInsertText?.slice(0, 160) ?? null,
+			});
+			if (fimInsertText) {
+				return {
+					insertText: fimInsertText,
+				};
+			}
+		} else {
+			const errorText = await fimResponse.text();
+			console.log("[NextEditServer] fim fetch failed", {
+				filePath: input.filePath,
+				status: fimResponse.status,
+				statusText: fimResponse.statusText,
+				errorText,
+			});
+		}
+
 		const request = buildNextEditRequest(input, config);
+		console.log("[NextEditServer] next-edit fetch start", {
+			filePath: input.filePath,
+			endpoint: "https://api.inceptionlabs.ai/v1/edit/completions",
+			model: config.model,
+			recentSnippetCount: input.recentSnippets?.length ?? 0,
+			editHistoryCount: input.editHistory?.length ?? 0,
+		});
 		const response = await fetch(
 			"https://api.inceptionlabs.ai/v1/edit/completions",
 			{
@@ -438,18 +531,47 @@ export class ChatService {
 
 		if (!response.ok) {
 			const errorText = await response.text();
+			console.log("[NextEditServer] next-edit fetch failed", {
+				filePath: input.filePath,
+				status: response.status,
+				statusText: response.statusText,
+				errorText,
+			});
 			throw new Error(
 				`Next Edit request failed (${response.status}): ${errorText || response.statusText}`,
 			);
 		}
 
 		const json = (await response.json()) as Record<string, unknown>;
+		const nextEditUsageEvent = extractUsageEventFromResponse({
+			endpoint: "next_edit",
+			model: config.model,
+			response: json,
+		});
+		if (nextEditUsageEvent) {
+			recordNextEditUsageEvent(nextEditUsageEvent, {
+				usagePath: this.nextEditUsagePath,
+			});
+		}
+		console.log("[NextEditServer] next-edit fetch success", {
+			filePath: input.filePath,
+			responseKeys: Object.keys(json),
+			choiceCount: Array.isArray(json.choices) ? json.choices.length : 0,
+			responsePreview: JSON.stringify(json).slice(0, 500),
+		});
+		const insertText = extractInsertTextFromNextEditResponse({
+			response: json,
+			editableRegionPrefix: request.editableRegionPrefix,
+			editableRegionSuffix: request.editableRegionSuffix,
+		});
+		console.log("[NextEditServer] next-edit completion resolved", {
+			filePath: input.filePath,
+			hasInsertText: Boolean(insertText),
+			insertTextLength: insertText?.length ?? 0,
+			insertTextPreview: insertText?.slice(0, 160) ?? null,
+		});
 		return {
-			insertText: extractInsertTextFromNextEditResponse({
-				response: json,
-				editableRegionPrefix: request.editableRegionPrefix,
-				editableRegionSuffix: request.editableRegionSuffix,
-			}),
+			insertText,
 		};
 	}
 

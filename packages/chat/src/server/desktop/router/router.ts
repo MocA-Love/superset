@@ -192,6 +192,9 @@ export function createChatServiceRouter(service: ChatService) {
 			getConfig: t.procedure.query(() => {
 				return service.getNextEditConfig();
 			}),
+			getUsageSummary: t.procedure.query(() => {
+				return service.getNextEditUsageSummary();
+			}),
 			setConfig: t.procedure
 				.input(nextEditConfigSchema)
 				.mutation(({ input }) => {
@@ -200,6 +203,13 @@ export function createChatServiceRouter(service: ChatService) {
 			complete: t.procedure
 				.input(nextEditCompletionInput)
 				.mutation(({ input }) => {
+					console.log("[NextEditRouter] complete called", {
+						filePath: input.filePath,
+						cursorOffset: input.cursorOffset,
+						contentLength: input.currentFileContent.length,
+						recentSnippetCount: input.recentSnippets?.length ?? 0,
+						editHistoryCount: input.editHistory?.length ?? 0,
+					});
 					return service.completeNextEdit(input);
 				}),
 		}),

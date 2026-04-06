@@ -714,7 +714,7 @@ export function CodeEditor({
 					: [],
 			),
 		});
-	}, [inlineCompletionCompartment, inlineCompletionRequest]);
+	}, [inlineCompletionCompartment, Boolean(inlineCompletionRequest)]);
 
 	useEffect(() => {
 		let cancelled = false;

@@ -17,9 +17,38 @@ export interface NextEditResolvedRequest {
 	editableRegionSuffix: string;
 }
 
+export interface FimResolvedRequest {
+	payload: Record<string, unknown>;
+	suffix: string;
+}
+
 const RECENT_SNIPPET_LIMIT = 5;
 const EDITABLE_REGION_PREVIOUS_LINES = 5;
 const EDITABLE_REGION_NEXT_LINES = 10;
+const FIM_PREFIX_MAX_CHARS = 6000;
+const FIM_SUFFIX_MAX_CHARS = 3000;
+const FIM_MAX_TOKENS = 512;
+const FIM_TEMPERATURE = 0.0;
+const FIM_TOP_P = 1.0;
+const FIM_PRESENCE_PENALTY = 1.5;
+const INLINE_COMPLETION_INSTRUCTION = [
+	"You are generating an inline tab completion for a code editor.",
+	"Prefer preserving all existing code exactly.",
+	"When possible, continue by appending code at the cursor instead of rewriting earlier text.",
+	"Return the updated <|code_to_edit|> region in triple backticks.",
+].join(" ");
+
+function logNextEditServer(
+	message: string,
+	details?: Record<string, unknown>,
+): void {
+	if (details) {
+		console.log(`[NextEditServer] ${message}`, details);
+		return;
+	}
+
+	console.log(`[NextEditServer] ${message}`);
+}
 
 function getLineStartOffsets(content: string): number[] {
 	const offsets = [0];
@@ -142,6 +171,92 @@ function extractTextResponse(response: Record<string, unknown>): string {
 	return "";
 }
 
+function normalizeGeneratedText(text: string): string {
+	const fencedMatch = text.match(/```(?:[\w-]+)?\n([\s\S]*?)\n?```/);
+	return (fencedMatch?.[1] ?? text)
+		.replaceAll("<|cursor|>", "")
+		.replace(/\r\n/g, "\n");
+}
+
+function stripSuffixOverlap(insertText: string, suffix: string): string {
+	const maxOverlap = Math.min(insertText.length, suffix.length);
+	for (let size = maxOverlap; size > 0; size -= 1) {
+		if (insertText.endsWith(suffix.slice(0, size))) {
+			return insertText.slice(0, insertText.length - size);
+		}
+	}
+
+	return insertText;
+}
+
+export function buildFimRequest(
+	input: NextEditRequestInput,
+	config: NextEditConfig,
+): FimResolvedRequest {
+	const cursorOffset = clampCursorOffset(
+		input.currentFileContent,
+		input.cursorOffset,
+	);
+	const prompt = input.currentFileContent.slice(
+		Math.max(0, cursorOffset - FIM_PREFIX_MAX_CHARS),
+		cursorOffset,
+	);
+	const suffix = input.currentFileContent.slice(
+		cursorOffset,
+		Math.min(input.currentFileContent.length, cursorOffset + FIM_SUFFIX_MAX_CHARS),
+	);
+
+	const payload: Record<string, unknown> = {
+		model: config.model,
+		prompt,
+		suffix,
+		max_tokens: Math.min(config.maxTokens, FIM_MAX_TOKENS),
+		temperature: FIM_TEMPERATURE,
+		top_p: FIM_TOP_P,
+		presence_penalty: FIM_PRESENCE_PENALTY,
+	};
+
+	if (config.stop.length > 0) {
+		payload.stop = config.stop;
+	}
+
+	logNextEditServer("fim request built", {
+		filePath: input.filePath,
+		cursorOffset,
+		promptLength: prompt.length,
+		suffixLength: suffix.length,
+		model: config.model,
+		maxTokens: Math.min(config.maxTokens, FIM_MAX_TOKENS),
+	});
+
+	return {
+		payload,
+		suffix,
+	};
+}
+
+export function extractInsertTextFromFimResponse(args: {
+	response: Record<string, unknown>;
+	suffix: string;
+}): string | null {
+	const rawContent = extractTextResponse(args.response);
+	if (!rawContent.trim()) {
+		logNextEditServer("fim parser returned null: empty raw content", {
+			responseKeys: Object.keys(args.response),
+		});
+		return null;
+	}
+
+	const candidate = normalizeGeneratedText(rawContent);
+	const insertText = stripSuffixOverlap(candidate, args.suffix);
+	logNextEditServer("fim parser completed", {
+		candidateLength: candidate.length,
+		insertTextLength: insertText.length,
+		insertTextPreview: insertText.slice(0, 160),
+	});
+	return insertText.length > 0 ? insertText : null;
+}
+
 export function buildNextEditRequest(
 	input: NextEditRequestInput,
 	config: NextEditConfig,
@@ -177,6 +292,8 @@ export function buildNextEditRequest(
 	const fileSuffix = input.currentFileContent.slice(editableRegionEnd);
 
 	const content = [
+		INLINE_COMPLETION_INSTRUCTION,
+		"",
 		buildRecentlyViewedSnippets(input.recentSnippets),
 		"",
 		"<|current_file_content|>",
@@ -203,6 +320,22 @@ export function buildNextEditRequest(
 		payload.stop = config.stop;
 	}
 
+	logNextEditServer("request built", {
+		filePath: input.filePath,
+		cursorOffset,
+		recentSnippetCount: input.recentSnippets?.length ?? 0,
+		editHistoryCount: input.editHistory?.length ?? 0,
+		editableRegionPrefixLength: editableRegionPrefix.length,
+		editableRegionSuffixLength: editableRegionSuffix.length,
+		model: config.model,
+		maxTokens: config.maxTokens,
+		temperature: config.temperature,
+		topP: config.topP,
+		presencePenalty: config.presencePenalty,
+		stopCount: config.stop.length,
+		payloadPreview: String(content).slice(0, 400),
+	});
+
 	return {
 		payload,
 		editableRegionPrefix,
@@ -217,13 +350,13 @@ export function extractInsertTextFromNextEditResponse(args: {
 }): string | null {
 	const rawContent = extractTextResponse(args.response);
 	if (!rawContent.trim()) {
+		logNextEditServer("parser returned null: empty raw content", {
+			responseKeys: Object.keys(args.response),
+		});
 		return null;
 	}
 
-	const fencedMatch = rawContent.match(/```(?:[\w-]+)?\n([\s\S]*?)\n?```/);
-	const candidate = (fencedMatch?.[1] ?? rawContent)
-		.replaceAll("<|cursor|>", "")
-		.replace(/\r\n/g, "\n");
+	const candidate = normalizeGeneratedText(rawContent);
 
 	if (
 		candidate.startsWith(args.editableRegionPrefix) &&
@@ -233,6 +366,11 @@ export function extractInsertTextFromNextEditResponse(args: {
 			args.editableRegionPrefix.length,
 			candidate.length - args.editableRegionSuffix.length,
 		);
+		logNextEditServer("parser matched editable region", {
+			candidateLength: candidate.length,
+			insertTextLength: insertText.length,
+			insertTextPreview: insertText.slice(0, 160),
+		});
 		return insertText.length > 0 ? insertText : null;
 	}
 
@@ -244,8 +382,22 @@ export function extractInsertTextFromNextEditResponse(args: {
 			0,
 			candidate.length - args.editableRegionSuffix.length,
 		);
+		logNextEditServer("parser matched suffix-only region", {
+			candidateLength: candidate.length,
+			insertTextLength: insertText.length,
+			insertTextPreview: insertText.slice(0, 160),
+		});
 		return insertText.length > 0 ? insertText : null;
 	}
+
+	logNextEditServer("parser returned null: region mismatch", {
+		candidatePreview: candidate.slice(0, 200),
+		candidateLength: candidate.length,
+		editableRegionPrefixPreview: args.editableRegionPrefix.slice(-120),
+		editableRegionPrefixLength: args.editableRegionPrefix.length,
+		editableRegionSuffixPreview: args.editableRegionSuffix.slice(0, 120),
+		editableRegionSuffixLength: args.editableRegionSuffix.length,
+	});
 
 	return null;
 }

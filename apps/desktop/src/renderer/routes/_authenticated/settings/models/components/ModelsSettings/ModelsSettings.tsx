@@ -86,6 +86,8 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 		chatServiceTrpc.auth.getAnthropicEnvConfig.useQuery();
 	const { data: nextEditConfig, refetch: refetchNextEditConfig } =
 		chatServiceTrpc.nextEdit.getConfig.useQuery();
+	const { data: nextEditUsageSummary } =
+		chatServiceTrpc.nextEdit.getUsageSummary.useQuery();
 	const setAnthropicApiKeyMutation =
 		chatServiceTrpc.auth.setAnthropicApiKey.useMutation();
 	const clearAnthropicApiKeyMutation =
@@ -199,6 +201,19 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 
 	const clearProviderIssue = (providerId: "anthropic" | "openai") =>
 		clearProviderIssueMutation.mutateAsync({ providerId });
+
+	const formatTokenCount = (value: number) => {
+		return new Intl.NumberFormat("en-US").format(value);
+	};
+
+	const formatUsd = (value: number) => {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency: "USD",
+			minimumFractionDigits: value >= 1 ? 2 : 4,
+			maximumFractionDigits: 4,
+		}).format(value);
+	};
 
 	const saveAnthropicForm = async (nextForm = anthropicForm) => {
 		const envText = buildAnthropicEnvText(nextForm);
@@ -774,6 +789,103 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 								}}
 								disableSave={isSavingNextEditConfig}
 							/>
+							<div className="rounded-lg border bg-muted/20 p-4">
+								<div className="flex items-start justify-between gap-4">
+									<div>
+										<h3 className="text-sm font-semibold">
+											Estimated usage
+										</h3>
+										<p className="mt-1 text-xs text-muted-foreground">
+											Based on successful Inception requests sent from this
+											desktop app. This is a local estimate, not your exact
+											Inception billing total.
+										</p>
+									</div>
+									<div className="text-right text-xs text-muted-foreground">
+										<div>
+											Input:{" "}
+											{formatUsd(
+												nextEditUsageSummary?.pricing
+													.inputCostPerMillionTokensUsd ?? 0,
+											)}
+											{" / 1M"}
+										</div>
+										<div>
+											Output:{" "}
+											{formatUsd(
+												nextEditUsageSummary?.pricing
+													.outputCostPerMillionTokensUsd ?? 0,
+											)}
+											{" / 1M"}
+										</div>
+									</div>
+								</div>
+								<div className="mt-4 grid gap-3 md:grid-cols-3">
+									{[
+										["Today", nextEditUsageSummary?.today],
+										["This month", nextEditUsageSummary?.month],
+										["All time", nextEditUsageSummary?.allTime],
+									].map(([label, bucket]) => (
+										<div
+											key={label}
+											className="rounded-md border bg-background p-3"
+										>
+											<div className="text-xs font-medium text-muted-foreground">
+												{label}
+											</div>
+											<div className="mt-2 text-lg font-semibold">
+												{formatUsd(bucket?.estimatedCostUsd ?? 0)}
+											</div>
+											<div className="mt-2 space-y-1 text-xs text-muted-foreground">
+												<div>
+													Requests: {formatTokenCount(bucket?.requestCount ?? 0)}
+												</div>
+												<div>
+													Input: {formatTokenCount(bucket?.promptTokens ?? 0)}
+												</div>
+												<div>
+													Output:{" "}
+													{formatTokenCount(bucket?.completionTokens ?? 0)}
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+								<div className="mt-4 grid gap-3 md:grid-cols-2">
+									{[
+										["FIM", nextEditUsageSummary?.byEndpoint.fim],
+										["Next Edit", nextEditUsageSummary?.byEndpoint.next_edit],
+									].map(([label, bucket]) => (
+										<div
+											key={label}
+											className="rounded-md border bg-background p-3"
+										>
+											<div className="text-xs font-medium text-muted-foreground">
+												{label}
+											</div>
+											<div className="mt-2 text-lg font-semibold">
+												{formatUsd(bucket?.estimatedCostUsd ?? 0)}
+											</div>
+											<div className="mt-2 space-y-1 text-xs text-muted-foreground">
+												<div>
+													Requests: {formatTokenCount(bucket?.requestCount ?? 0)}
+												</div>
+												<div>
+													Total tokens: {formatTokenCount(bucket?.totalTokens ?? 0)}
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+								<div className="mt-3 text-xs text-muted-foreground">
+									Last used:{" "}
+									{nextEditUsageSummary?.lastUsedAt
+										? new Date(nextEditUsageSummary.lastUsedAt).toLocaleString(
+												"ja-JP",
+											)
+										: "No usage yet"}
+								</div>
+							</div>
 							<Collapsible
 								open={nextEditAdvancedOpen}
 								onOpenChange={setNextEditAdvancedOpen}

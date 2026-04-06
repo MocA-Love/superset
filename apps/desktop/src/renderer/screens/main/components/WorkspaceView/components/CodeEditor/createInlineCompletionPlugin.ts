@@ -22,6 +22,18 @@ export type InlineCompletionRequest = (
 	args: InlineCompletionRequestArgs,
 ) => Promise<string | null>;
 
+function logInlineCompletionDebug(
+	message: string,
+	details?: Record<string, unknown>,
+): void {
+	if (details) {
+		console.log(`[InlineCompletion] ${message}`, details);
+		return;
+	}
+
+	console.log(`[InlineCompletion] ${message}`);
+}
+
 class InlineCompletionWidget extends WidgetType {
 	constructor(private readonly text: string) {
 		super();
@@ -115,6 +127,9 @@ export function createInlineCompletionPlugin(
 			private timeoutId: number | null = null;
 			private requestId = 0;
 			private destroyed = false;
+			private lastSnapshotKey: string | null = null;
+			private lastSnapshotSuggestion: string | null = null;
+			private inFlightSnapshotKey: string | null = null;
 
 			constructor(private readonly view: EditorView) {
 				this.schedule();
@@ -134,6 +149,23 @@ export function createInlineCompletionPlugin(
 				}
 			}
 
+			private applySuggestionAfterUpdate(suggestion: string | null) {
+				window.setTimeout(() => {
+					if (this.destroyed) {
+						return;
+					}
+
+					if (!suggestion) {
+						clearInlineCompletion(this.view);
+						return;
+					}
+
+					this.view.dispatch({
+						effects: setInlineCompletionEffect.of(suggestion),
+					});
+				}, 0);
+			}
+
 			private schedule() {
 				if (this.timeoutId !== null) {
 					window.clearTimeout(this.timeoutId);
@@ -146,6 +178,11 @@ export function createInlineCompletionPlugin(
 					!this.view.hasFocus ||
 					!selection.empty
 				) {
+					logInlineCompletionDebug("schedule skipped", {
+						readOnly: this.view.state.readOnly,
+						hasFocus: this.view.hasFocus,
+						selectionEmpty: selection.empty,
+					});
 					clearInlineCompletion(this.view);
 					return;
 				}
@@ -153,13 +190,44 @@ export function createInlineCompletionPlugin(
 				const currentRequestId = ++this.requestId;
 				const snapshotText = this.view.state.doc.toString();
 				const snapshotCursor = selection.from;
+				const snapshotKey = `${snapshotCursor}:${snapshotText}`;
+
+				if (this.inFlightSnapshotKey === snapshotKey) {
+					logInlineCompletionDebug("schedule skipped: request already in flight", {
+						requestId: currentRequestId,
+						cursorOffset: snapshotCursor,
+						docLength: snapshotText.length,
+					});
+					return;
+				}
+
+				if (this.lastSnapshotKey === snapshotKey) {
+					logInlineCompletionDebug("schedule reused cached result", {
+						requestId: currentRequestId,
+						cursorOffset: snapshotCursor,
+						docLength: snapshotText.length,
+						hasSuggestion: Boolean(this.lastSnapshotSuggestion),
+					});
+					this.applySuggestionAfterUpdate(this.lastSnapshotSuggestion);
+					return;
+				}
+
+				logInlineCompletionDebug("schedule request", {
+					requestId: currentRequestId,
+					cursorOffset: snapshotCursor,
+					docLength: snapshotText.length,
+				});
 				this.timeoutId = window.setTimeout(() => {
 					this.timeoutId = null;
+					this.inFlightSnapshotKey = snapshotKey;
 					void request({
 						currentFileContent: snapshotText,
 						cursorOffset: snapshotCursor,
 					})
 						.then((suggestion) => {
+							if (this.inFlightSnapshotKey === snapshotKey) {
+								this.inFlightSnapshotKey = null;
+							}
 							if (this.destroyed || currentRequestId !== this.requestId) {
 								return;
 							}
@@ -170,26 +238,49 @@ export function createInlineCompletionPlugin(
 								latestSelection.from !== snapshotCursor ||
 								this.view.state.doc.toString() !== snapshotText
 							) {
+								logInlineCompletionDebug("response ignored: editor changed", {
+									requestId: currentRequestId,
+									selectionEmpty: latestSelection.empty,
+									currentCursorOffset: latestSelection.from,
+									expectedCursorOffset: snapshotCursor,
+									docChanged:
+										this.view.state.doc.toString() !== snapshotText,
+								});
 								return;
 							}
 
 							if (!suggestion) {
+								this.lastSnapshotKey = snapshotKey;
+								this.lastSnapshotSuggestion = null;
+								logInlineCompletionDebug("request returned empty", {
+									requestId: currentRequestId,
+								});
 								clearInlineCompletion(this.view);
 								return;
 							}
 
+							this.lastSnapshotKey = snapshotKey;
+							this.lastSnapshotSuggestion = suggestion;
+							logInlineCompletionDebug("request returned suggestion", {
+								requestId: currentRequestId,
+								suggestionLength: suggestion.length,
+								suggestionPreview: suggestion.slice(0, 120),
+							});
 							this.view.dispatch({
 								effects: setInlineCompletionEffect.of(suggestion),
 							});
 						})
 						.catch((error) => {
+							if (this.inFlightSnapshotKey === snapshotKey) {
+								this.inFlightSnapshotKey = null;
+							}
 							if (this.destroyed || currentRequestId !== this.requestId) {
 								return;
 							}
-							console.warn(
-								"[CodeEditor] Inline completion request failed:",
+							console.log("[InlineCompletion] request failed", {
+								requestId: currentRequestId,
 								error,
-							);
+							});
 							clearInlineCompletion(this.view);
 						});
 				}, delayMs);
@@ -221,13 +312,21 @@ export function createInlineCompletionPlugin(
 							selection: EditorSelection.cursor(cursor + suggestion.length),
 							effects: clearInlineCompletionEffect.of(undefined),
 						});
+						logInlineCompletionDebug("suggestion accepted", {
+							cursorOffset: cursor,
+							suggestionLength: suggestion.length,
+						});
 						return true;
 					},
 				},
 				{
 					key: "Escape",
 					run(view) {
-						return clearInlineCompletion(view);
+						const cleared = clearInlineCompletion(view);
+						if (cleared) {
+							logInlineCompletionDebug("suggestion dismissed");
+						}
+						return cleared;
 					},
 				},
 			]),
