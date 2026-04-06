@@ -7,35 +7,10 @@ interface VscodeExtensionViewProps {
 	isActive: boolean;
 }
 
-const BRIDGE_SCRIPT = `<script>
-(function() {
-	let _state = null;
-	const vscodeApi = {
-		postMessage(message) {
-			window.parent.postMessage({ type: 'vscode-api', data: message }, '*');
-		},
-		getState() { return _state; },
-		setState(state) { _state = state; return state; }
-	};
-	window.acquireVsCodeApi = function() { return vscodeApi; };
-	window.addEventListener('message', function(event) {
-		if (event.data && event.data.type === 'vscode-message') {
-			window.dispatchEvent(new MessageEvent('message', { data: event.data.data }));
-		}
-	});
-})();
-</script>`;
-
-function injectBridge(html: string): string {
-	if (html.includes("</head>")) {
-		return html.replace("</head>", `${BRIDGE_SCRIPT}</head>`);
-	}
-	return `${BRIDGE_SCRIPT}${html}`;
-}
-
 /**
- * Renders a VS Code extension's webview inside an iframe using Blob URLs.
- * Blob URLs bypass the parent page's CSP entirely.
+ * Renders a VS Code extension's webview inside an iframe.
+ * Uses a local HTTP server to serve the HTML (bypasses all CSP/protocol issues).
+ * The server also rewrites vscode-webview-resource:// URLs to HTTP.
  */
 export function VscodeExtensionView({
 	viewType,
@@ -44,7 +19,7 @@ export function VscodeExtensionView({
 }: VscodeExtensionViewProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [viewId, setViewId] = useState<string | null>(null);
-	const [blobUrl, setBlobUrl] = useState<string | null>(null);
+	const [iframeUrl, setIframeUrl] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const resolveMutation =
@@ -60,12 +35,9 @@ export function VscodeExtensionView({
 			{ viewType, extensionPath: "" },
 			{
 				onSuccess: (result) => {
-					if (result.viewId && result.html) {
+					if (result.viewId && result.url) {
 						setViewId(result.viewId);
-						// Create blob URL from HTML with bridge injected
-						const bridgedHtml = injectBridge(result.html);
-						const blob = new Blob([bridgedHtml], { type: "text/html" });
-						setBlobUrl(URL.createObjectURL(blob));
+						setIframeUrl(result.url);
 					} else {
 						setError(`Extension view "${viewType}" not found`);
 					}
@@ -76,13 +48,6 @@ export function VscodeExtensionView({
 			},
 		);
 	}, [isActive, viewId, viewType, resolveMutation.mutate]);
-
-	// Cleanup blob URL on unmount
-	useEffect(() => {
-		return () => {
-			if (blobUrl) URL.revokeObjectURL(blobUrl);
-		};
-	}, [blobUrl]);
 
 	// Listen for messages from iframe -> forward to extension
 	useEffect(() => {
@@ -102,7 +67,7 @@ export function VscodeExtensionView({
 		return () => window.removeEventListener("message", handler);
 	}, [viewId, postMessageMutation.mutate]);
 
-	// Subscribe to webview events (extension -> webview messages, HTML updates)
+	// Subscribe to webview events (extension -> webview messages)
 	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(undefined, {
 		enabled: isActive && !!viewId,
 		onData: (event) => {
@@ -113,12 +78,12 @@ export function VscodeExtensionView({
 					"*",
 				);
 			}
-			if (event.type === "html" && typeof event.data === "string") {
-				// Update blob URL with new HTML
-				if (blobUrl) URL.revokeObjectURL(blobUrl);
-				const bridgedHtml = injectBridge(event.data);
-				const blob = new Blob([bridgedHtml], { type: "text/html" });
-				setBlobUrl(URL.createObjectURL(blob));
+			if (event.type === "html" && iframeUrl) {
+				// Reload iframe to pick up updated HTML from server
+				const iframe = iframeRef.current;
+				if (iframe) {
+					iframe.src = iframeUrl;
+				}
 			}
 		},
 	});
@@ -131,7 +96,7 @@ export function VscodeExtensionView({
 		);
 	}
 
-	if (!blobUrl) {
+	if (!iframeUrl) {
 		return (
 			<div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
 				<p>Loading {extensionId}...</p>
@@ -142,7 +107,7 @@ export function VscodeExtensionView({
 	return (
 		<iframe
 			ref={iframeRef}
-			src={blobUrl}
+			src={iframeUrl}
 			className="w-full h-full border-0"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
 			title={`${extensionId} webview`}

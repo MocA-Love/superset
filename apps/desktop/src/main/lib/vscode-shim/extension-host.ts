@@ -5,6 +5,7 @@
 import os from "node:os";
 import path from "node:path";
 import { registerWebviewProtocol } from "./api/protocol-handler";
+import { startWebviewServer, stopWebviewServer } from "./api/webview-server";
 import { setWorkspacePath } from "./api/workspace";
 import {
 	deactivateAll,
@@ -49,6 +50,9 @@ export async function initExtensionHost(
 
 	// Register protocol handler for webview resources
 	registerWebviewProtocol();
+
+	// Start HTTP server for webview content
+	await startWebviewServer();
 
 	console.log(`[vscode-shim] Discovering extensions in ${extensionsDir}`);
 	const discovered = discoverExtensions(extensionsDir);
@@ -113,6 +117,7 @@ function selectExtensions(
 export async function shutdownExtensionHost(): Promise<void> {
 	console.log("[vscode-shim] Shutting down extension host");
 	await deactivateAll();
+	stopWebviewServer();
 	isInitialized = false;
 }
 

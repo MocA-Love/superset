@@ -6,7 +6,6 @@
  */
 
 import { EventEmitter } from "node:events";
-import { setWebviewHtml } from "./api/protocol-handler";
 import {
 	getActiveView,
 	onWebviewEvent,
@@ -14,6 +13,7 @@ import {
 	type WebviewEvent,
 	type WebviewInternal,
 } from "./api/webview";
+import { setWebviewHtml } from "./api/webview-server";
 
 export interface WebviewBridgeEvent {
 	type: "html" | "message" | "title" | "dispose";

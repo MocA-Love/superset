@@ -5,7 +5,6 @@
  * (Claude Code, ChatGPT/Codex) inside the Electron app.
  */
 
-export { clearWebviewHtml, setWebviewHtml } from "./api/protocol-handler";
 export {
 	getActivePanel,
 	getActiveView,
@@ -13,6 +12,7 @@ export {
 	onWebviewEvent,
 	resolveWebviewView,
 } from "./api/webview";
+export { clearWebviewHtml, setWebviewHtml } from "./api/webview-server";
 export { handleUri, setActiveTextEditor } from "./api/window";
 export {
 	getActiveExtensions,

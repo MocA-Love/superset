@@ -4,6 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { observable } from "@trpc/server/observable";
+import {
+	getWebviewUrl,
+	setWebviewHtml,
+} from "main/lib/vscode-shim/api/webview-server";
 import { setActiveTextEditor } from "main/lib/vscode-shim/api/window";
 import {
 	getActiveExtensions,
@@ -238,13 +242,18 @@ export const createVscodeExtensionsRouter = () => {
 					input.extensionPath,
 				);
 				if (!viewId) {
-					return { viewId: null, html: null };
+					return { viewId: null, url: null };
 				}
-				const html = webviewBridge.getHtml(viewId) ?? null;
+				// Store HTML in webview server and return HTTP URL
+				const html = webviewBridge.getHtml(viewId);
+				if (html) {
+					setWebviewHtml(viewId, html);
+				}
+				const url = getWebviewUrl(viewId);
 				console.log(
-					`[vscode-shim] resolveWebview: viewId=${viewId}, hasHtml=${!!html}, htmlLen=${html?.length ?? 0}`,
+					`[vscode-shim] resolveWebview: viewId=${viewId}, hasHtml=${!!html}, url=${url}`,
 				);
-				return { viewId, html };
+				return { viewId, url };
 			}),
 
 		/** Get current webview HTML */
