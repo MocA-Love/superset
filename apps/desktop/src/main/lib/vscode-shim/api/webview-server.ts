@@ -125,24 +125,37 @@ export async function startWebviewServer(): Promise<number> {
 	return new Promise((resolve, reject) => {
 		server = http.createServer((req, res) => {
 			const url = new URL(req.url ?? "/", `http://127.0.0.1`);
+			console.log(`[webview-server] ${req.method} ${url.pathname}`);
 
 			// Serve webview HTML pages: /webview/{viewId}
 			if (url.pathname.startsWith("/webview/")) {
 				const viewId = decodeURIComponent(
 					url.pathname.slice("/webview/".length),
 				);
+				console.log(`[webview-server] Serving webview: viewId="${viewId}", htmlStore has ${htmlStore.size} entries: [${[...htmlStore.keys()].join(", ")}]`);
 				let html = htmlStore.get(viewId);
 
 				if (!html) {
-					res.writeHead(404, { "Content-Type": "text/plain" });
-					res.end(`View not found: ${viewId}`);
+					console.warn(`[webview-server] HTML not found for viewId: ${viewId}`);
+					res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+					res.end(`<html><body style="color:#ccc;background:#1e1e1e;font-family:sans-serif;padding:20px"><h3>Webview loading...</h3><p>viewId: ${viewId}</p><p>Available: ${[...htmlStore.keys()].join(", ") || "none"}</p><script>setTimeout(()=>location.reload(),2000)</script></body></html>`);
 					return;
 				}
 
+				console.log(`[webview-server] Raw HTML length: ${html.length}`);
+				console.log(`[webview-server] HTML preview (first 300): ${html.substring(0, 300)}`);
+
 				// Strip extension's CSP (we provide our own via headers), rewrite URLs, inject bridge
+				const beforeCsp = html.length;
 				html = stripExtensionCsp(html);
+				console.log(`[webview-server] After CSP strip: ${beforeCsp} -> ${html.length} (removed ${beforeCsp - html.length} chars)`);
+
 				html = rewriteResourceUrls(html);
+				console.log(`[webview-server] After URL rewrite: ${html.length} chars`);
+
 				html = injectBridge(html);
+				console.log(`[webview-server] After bridge inject: ${html.length} chars`);
+				console.log(`[webview-server] Final HTML preview (first 500): ${html.substring(0, 500)}`);
 
 				res.writeHead(200, {
 					"Content-Type": "text/html; charset=utf-8",
@@ -171,6 +184,8 @@ export async function startWebviewServer(): Promise<number> {
 				if (process.platform === "darwin" && filePath.startsWith("//")) {
 					filePath = filePath.slice(1);
 				}
+
+				console.log(`[webview-server] Resource request: ${filePath}, allowed: ${isPathAllowed(filePath)}, exists: ${fs.existsSync(filePath)}`);
 
 				if (!isPathAllowed(filePath)) {
 					res.writeHead(403, { "Content-Type": "text/plain" });
