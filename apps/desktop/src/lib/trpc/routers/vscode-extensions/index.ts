@@ -1,6 +1,8 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { observable } from "@trpc/server/observable";
 import type { WebviewBridgeEvent } from "main/lib/vscode-shim/webview-bridge";
 import { webviewBridge } from "main/lib/vscode-shim/webview-bridge";
@@ -40,6 +42,136 @@ function isExtensionInstalled(extensionId: string): boolean {
 	return entries.some((entry) =>
 		entry.toLowerCase().startsWith(extensionId.toLowerCase()),
 	);
+}
+
+/**
+ * Download a VS Code extension from the marketplace and extract to extensions dir.
+ * Uses the VS Code Marketplace Gallery API to fetch the .vsix package.
+ */
+async function downloadAndInstallExtension(extensionId: string): Promise<void> {
+	const [publisher, name] = extensionId.split(".");
+	if (!publisher || !name) {
+		throw new Error(`Invalid extension ID: ${extensionId}`);
+	}
+
+	const extensionsDir = getExtensionsDir();
+	fs.mkdirSync(extensionsDir, { recursive: true });
+
+	// Step 1: Query marketplace for latest version + download URL
+	const queryBody = JSON.stringify({
+		filters: [
+			{
+				criteria: [{ filterType: 7, value: `${publisher}.${name}` }],
+			},
+		],
+		flags: 0x200 | 0x1, // IncludeFiles | IncludeVersions
+	});
+
+	const queryResponse = await fetch(
+		"https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery",
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json;api-version=6.0-preview.1",
+			},
+			body: queryBody,
+		},
+	);
+
+	if (!queryResponse.ok) {
+		throw new Error(`Marketplace query failed: ${queryResponse.status}`);
+	}
+
+	const queryData = (await queryResponse.json()) as {
+		results: Array<{
+			extensions: Array<{
+				versions: Array<{
+					version: string;
+					targetPlatform?: string;
+					files: Array<{ assetType: string; source: string }>;
+				}>;
+			}>;
+		}>;
+	};
+
+	const ext = queryData.results?.[0]?.extensions?.[0];
+	if (!ext) {
+		throw new Error(`Extension not found: ${extensionId}`);
+	}
+
+	// Find the best matching version (prefer platform-specific)
+	const platform = `${process.platform}-${process.arch}`;
+	const platformVersion = ext.versions.find(
+		(v) => v.targetPlatform === platform,
+	);
+	const universalVersion = ext.versions.find(
+		(v) => !v.targetPlatform || v.targetPlatform === "universal",
+	);
+	const version = platformVersion ?? universalVersion ?? ext.versions[0];
+	if (!version) {
+		throw new Error(`No version found for ${extensionId}`);
+	}
+
+	// Find VSIX download URL
+	const vsixAsset = version.files.find(
+		(f) => f.assetType === "Microsoft.VisualStudio.Services.VSIXPackage",
+	);
+	if (!vsixAsset) {
+		throw new Error(`No VSIX package found for ${extensionId}`);
+	}
+
+	console.log(
+		`[vscode-shim] Downloading ${extensionId}@${version.version} (${version.targetPlatform ?? "universal"})`,
+	);
+
+	// Step 2: Download .vsix
+	const vsixResponse = await fetch(vsixAsset.source);
+	if (!vsixResponse.ok || !vsixResponse.body) {
+		throw new Error(`VSIX download failed: ${vsixResponse.status}`);
+	}
+
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vscode-ext-"));
+	const vsixPath = path.join(tmpDir, `${extensionId}.vsix`);
+
+	const fileStream = fs.createWriteStream(vsixPath);
+	// @ts-expect-error - Node fetch body is a ReadableStream
+	await pipeline(vsixResponse.body, fileStream);
+
+	// Step 3: Extract .vsix (it's a zip file)
+	const targetSuffix = version.targetPlatform
+		? `-${version.targetPlatform}`
+		: "";
+	const extDir = path.join(
+		extensionsDir,
+		`${publisher}.${name}-${version.version}${targetSuffix}`,
+	);
+
+	if (fs.existsSync(extDir)) {
+		fs.rmSync(extDir, { recursive: true });
+	}
+	fs.mkdirSync(extDir, { recursive: true });
+
+	// Use unzip command (available on macOS/Linux)
+	execSync(`unzip -q -o "${vsixPath}" -d "${tmpDir}/extracted"`);
+
+	// The extension content is in the "extension/" subdirectory of the vsix
+	const extractedExtDir = path.join(tmpDir, "extracted", "extension");
+	if (fs.existsSync(extractedExtDir)) {
+		// Move contents to target directory
+		execSync(`cp -R "${extractedExtDir}/"* "${extDir}/"`);
+	}
+
+	// Copy [Content_Types].xml and extension.vsixmanifest if needed
+	const vsixManifest = path.join(tmpDir, "extracted", "extension.vsixmanifest");
+	if (fs.existsSync(vsixManifest)) {
+		fs.copyFileSync(vsixManifest, path.join(extDir, ".vsixmanifest"));
+	}
+
+	// Cleanup
+	fs.rmSync(tmpDir, { recursive: true });
+
+	console.log(`[vscode-shim] Installed ${extensionId} to ${extDir}`);
 }
 
 export const createVscodeExtensionsRouter = () => {
@@ -124,6 +256,14 @@ export const createVscodeExtensionsRouter = () => {
 				const { setActiveTextEditor } =
 					require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
 				setActiveTextEditor(input.filePath, input.languageId);
+				return { success: true };
+			}),
+
+		/** Download and install an extension from the VS Code Marketplace */
+		installExtension: publicProcedure
+			.input(z.object({ extensionId: z.string() }))
+			.mutation(async ({ input }) => {
+				await downloadAndInstallExtension(input.extensionId);
 				return { success: true };
 			}),
 

@@ -1,5 +1,5 @@
 import { Button } from "@superset/ui/button";
-import { LuBot, LuExternalLink, LuRefreshCw, LuSparkles } from "react-icons/lu";
+import { LuBot, LuDownload, LuRefreshCw, LuSparkles } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	isItemVisible,
@@ -37,6 +37,12 @@ export function VscodeExtensionsSettings({
 				utils.vscodeExtensions.getExtensions.invalidate();
 			},
 		});
+	const installMutation =
+		electronTrpc.vscodeExtensions.installExtension.useMutation({
+			onSuccess: () => {
+				utils.vscodeExtensions.getKnownExtensions.invalidate();
+			},
+		});
 
 	if (!showManage) return null;
 
@@ -45,8 +51,7 @@ export function VscodeExtensionsSettings({
 			<div className="mb-8">
 				<h2 className="text-xl font-semibold">VS Code Extensions</h2>
 				<p className="text-sm text-muted-foreground mt-1">
-					Manage VS Code extensions running inside Superset Desktop. Extensions
-					must be installed in VS Code first.
+					Manage VS Code extensions running inside Superset Desktop.
 				</p>
 			</div>
 
@@ -63,7 +68,6 @@ export function VscodeExtensionsSettings({
 								name={ext.name}
 								publisher={ext.publisher}
 								description={ext.description}
-								marketplaceUrl={ext.marketplaceUrl}
 								installed={ext.installed}
 								active={ext.active}
 								icon={Icon}
@@ -71,6 +75,10 @@ export function VscodeExtensionsSettings({
 									restartMutation.mutate({ extensionId: ext.id })
 								}
 								isRestarting={restartMutation.isPending}
+								onInstall={() =>
+									installMutation.mutate({ extensionId: ext.id })
+								}
+								isInstalling={installMutation.isPending}
 							/>
 						);
 					})}
@@ -85,23 +93,25 @@ function ExtensionCard({
 	name,
 	publisher,
 	description,
-	marketplaceUrl,
 	installed,
 	active,
 	icon: Icon,
 	onRestart,
 	isRestarting,
+	onInstall,
+	isInstalling,
 }: {
 	id: string;
 	name: string;
 	publisher: string;
 	description: string;
-	marketplaceUrl: string;
 	installed: boolean;
 	active: boolean;
 	icon: React.ComponentType<{ className?: string }>;
 	onRestart: () => void;
 	isRestarting: boolean;
+	onInstall: () => void;
+	isInstalling: boolean;
 }) {
 	return (
 		<div className="flex items-start gap-4 p-4 border rounded-lg">
@@ -150,13 +160,23 @@ function ExtensionCard({
 				)}
 				{!installed && (
 					<Button
-						variant="outline"
+						variant="default"
 						size="sm"
-						onClick={() => window.open(marketplaceUrl, "_blank")}
+						onClick={onInstall}
+						disabled={isInstalling}
 						className="gap-1.5"
 					>
-						<LuExternalLink className="size-3.5" />
-						Install in VS Code
+						{isInstalling ? (
+							<>
+								<LuRefreshCw className="size-3.5 animate-spin" />
+								Installing...
+							</>
+						) : (
+							<>
+								<LuDownload className="size-3.5" />
+								Install
+							</>
+						)}
 					</Button>
 				)}
 			</div>
