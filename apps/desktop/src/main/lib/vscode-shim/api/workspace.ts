@@ -163,20 +163,40 @@ export const workspace = {
 	): Promise<Uri[]> {
 		if (!workspaceFolderPath) return [];
 		try {
-			const { globSync } = require("glob") as typeof import("glob");
-			const results = globSync(include, {
-				cwd: workspaceFolderPath,
-				ignore: exclude ? [exclude] : ["**/node_modules/**"],
-				maxDepth: 20,
-				nodir: true,
-			});
-			const limited = maxResults ? results.slice(0, maxResults) : results;
-			return limited.map((r: string) =>
-				Uri.file(path.join(workspaceFolderPath!, r)),
-			);
+			const results: string[] = [];
+			const ignorePatterns = exclude
+				? [exclude]
+				: ["node_modules", ".git"];
+
+			function walkDir(dir: string, depth: number): void {
+				if (depth > 15 || (maxResults && results.length >= maxResults)) return;
+				let entries: fs.Dirent[];
+				try {
+					entries = fs.readdirSync(dir, { withFileTypes: true });
+				} catch {
+					return;
+				}
+				for (const entry of entries) {
+					if (ignorePatterns.some((p) => entry.name.includes(p))) continue;
+					const fullPath = path.join(dir, entry.name);
+					if (entry.isDirectory()) {
+						walkDir(fullPath, depth + 1);
+					} else if (entry.isFile()) {
+						// Simple extension matching from include pattern (e.g., "**/*.ts")
+						const ext = include.match(/\*(\.\w+)$/)?.[1];
+						if (!ext || entry.name.endsWith(ext)) {
+							results.push(fullPath);
+						}
+					}
+					if (maxResults && results.length >= maxResults) return;
+				}
+			}
+
+			walkDir(workspaceFolderPath, 0);
+			return results.map((r) => Uri.file(r));
 		} catch {
 			shimWarn(
-				"[vscode-shim] workspace.findFiles: glob failed, returning empty",
+				"[vscode-shim] workspace.findFiles failed, returning empty",
 			);
 			return [];
 		}

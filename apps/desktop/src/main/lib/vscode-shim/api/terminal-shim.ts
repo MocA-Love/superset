@@ -51,8 +51,12 @@ const activeTerminals: ShimTerminal[] = [];
 
 function getTerminalManager() {
 	try {
-		const { getDaemonTerminalManager } = require("main/lib/terminal");
-		return getDaemonTerminalManager();
+		// Use dynamic import path that the bundler can resolve
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		const mod = require("../../terminal") as {
+			getDaemonTerminalManager: () => unknown;
+		};
+		return mod.getDaemonTerminalManager();
 	} catch {
 		return null;
 	}
