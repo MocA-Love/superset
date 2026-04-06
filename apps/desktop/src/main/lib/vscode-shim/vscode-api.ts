@@ -173,9 +173,9 @@ class TabInputTextDiff {
 
 // Languages namespace (stub)
 const languages = {
-	getDiagnostics(resource?: Uri): unknown[] {
-		// When called without args, ChatGPT expects iterable of [Uri, Diagnostic[]]
-		if (!resource) return [];
+	getDiagnostics(resource?: unknown): unknown[] {
+		// Without args: return iterable of [Uri, Diagnostic[]] pairs
+		// With uri arg: return Diagnostic[]
 		return [];
 	},
 	onDidChangeDiagnostics: new EventEmitter<unknown>().event,
@@ -190,6 +190,21 @@ const languages = {
 		};
 	},
 	registerCodeLensProvider(_selector: unknown, _provider: unknown): Disposable {
+		return new Disposable(() => {});
+	},
+	registerHoverProvider(_selector: unknown, _provider: unknown): Disposable {
+		return new Disposable(() => {});
+	},
+	registerDefinitionProvider(_selector: unknown, _provider: unknown): Disposable {
+		return new Disposable(() => {});
+	},
+	registerReferenceProvider(_selector: unknown, _provider: unknown): Disposable {
+		return new Disposable(() => {});
+	},
+	registerDocumentSymbolProvider(_selector: unknown, _provider: unknown): Disposable {
+		return new Disposable(() => {});
+	},
+	registerCompletionItemProvider(_selector: unknown, _provider: unknown, ..._triggerCharacters: string[]): Disposable {
 		return new Disposable(() => {});
 	},
 };

@@ -15,6 +15,12 @@ import { Disposable, EventEmitter, type Event } from "./event-emitter.js";
 import { Uri } from "./uri.js";
 import { createOutputChannel, type OutputChannel } from "./output-channel.js";
 import {
+	createTerminal as createTerminalImpl,
+	getTerminals,
+	getActiveTerminal,
+	terminalEvents,
+} from "./terminal-shim.js";
+import {
 	registerWebviewViewProvider,
 	registerWebviewPanelSerializer,
 	createWebviewPanel,
@@ -61,13 +67,7 @@ interface Terminal {
 const _onDidChangeActiveTextEditor = new EventEmitter<TextEditor | undefined>();
 const _onDidChangeVisibleTextEditors = new EventEmitter<TextEditor[]>();
 const _onDidChangeTextEditorSelection = new EventEmitter<unknown>();
-const _onDidOpenTerminal = new EventEmitter<Terminal>();
-const _onDidCloseTerminal = new EventEmitter<Terminal>();
-const _onDidChangeActiveTerminal = new EventEmitter<Terminal | undefined>();
-const _onDidEndTerminalShellExecution = new EventEmitter<unknown>();
-const _onDidChangeTerminalShellIntegration = new EventEmitter<unknown>();
-
-const terminals: Terminal[] = [];
+// Terminal events are delegated to terminal-shim.ts
 
 export const window = {
 	// Text editor
@@ -80,22 +80,23 @@ export const window = {
 	},
 
 	get activeTerminal(): Terminal | undefined {
-		return terminals[terminals.length - 1];
+		return getActiveTerminal() as Terminal | undefined;
 	},
 
 	get terminals(): Terminal[] {
-		return [...terminals];
+		return getTerminals() as Terminal[];
 	},
 
 	onDidChangeActiveTextEditor: _onDidChangeActiveTextEditor.event,
 	onDidChangeVisibleTextEditors: _onDidChangeVisibleTextEditors.event,
 	onDidChangeTextEditorSelection: _onDidChangeTextEditorSelection.event,
-	onDidOpenTerminal: _onDidOpenTerminal.event,
-	onDidCloseTerminal: _onDidCloseTerminal.event,
-	onDidChangeActiveTerminal: _onDidChangeActiveTerminal.event,
-	onDidEndTerminalShellExecution: _onDidEndTerminalShellExecution.event,
-	onDidChangeTerminalShellIntegration: _onDidChangeTerminalShellIntegration.event,
+	onDidOpenTerminal: terminalEvents.onDidOpenTerminal,
+	onDidCloseTerminal: terminalEvents.onDidCloseTerminal,
+	onDidChangeActiveTerminal: terminalEvents.onDidChangeActiveTerminal,
+	onDidEndTerminalShellExecution: terminalEvents.onDidEndTerminalShellExecution,
+	onDidChangeTerminalShellIntegration: terminalEvents.onDidChangeTerminalShellIntegration,
 	onDidChangeWindowState: new EventEmitter<{ focused: boolean }>().event,
+	state: { focused: true, active: true },
 
 	// Tab groups
 	tabGroups: {
@@ -178,8 +179,25 @@ export const window = {
 		document: { uri: Uri } | Uri,
 		_options?: unknown,
 	): Promise<TextEditor | undefined> {
-		console.warn("[vscode-shim] showTextDocument stub");
-		return undefined;
+		const uri = "uri" in (document as object) ? (document as { uri: Uri }).uri : (document as Uri);
+		console.log(`[vscode-shim] showTextDocument: ${uri.toString()}`);
+		// Return a minimal editor stub
+		return {
+			document: {
+				uri,
+				fileName: uri.fsPath,
+				getText() { return ""; },
+				languageId: "plaintext",
+			},
+			selection: {
+				start: { line: 0, character: 0 },
+				end: { line: 0, character: 0 },
+				isEmpty: true,
+				active: { line: 0, character: 0 },
+			},
+			selections: [],
+			viewColumn: 1,
+		};
 	},
 
 	withProgress<T>(
@@ -208,30 +226,7 @@ export const window = {
 	createTerminal(
 		nameOrOptions?: string | { name?: string; cwd?: string; env?: Record<string, string | null>; shellPath?: string; shellArgs?: string[] },
 	): Terminal {
-		const name = typeof nameOrOptions === "string"
-			? nameOrOptions
-			: nameOrOptions?.name ?? "Terminal";
-
-		// For MVP, create a stub terminal. Phase 3 will wire to DaemonTerminalManager
-		const terminal: Terminal = {
-			name,
-			processId: Promise.resolve(undefined),
-			sendText(text: string, _addNewLine?: boolean) {
-				console.log(`[vscode-shim] Terminal "${name}" sendText: ${text}`);
-			},
-			show(_preserveFocus?: boolean) {},
-			hide() {},
-			dispose() {
-				const idx = terminals.indexOf(terminal);
-				if (idx >= 0) terminals.splice(idx, 1);
-				_onDidCloseTerminal.fire(terminal);
-			},
-			exitStatus: undefined,
-		};
-
-		terminals.push(terminal);
-		_onDidOpenTerminal.fire(terminal);
-		return terminal;
+		return createTerminalImpl(nameOrOptions) as Terminal;
 	},
 
 	registerUriHandler(handler: { handleUri(uri: Uri): void }): Disposable {
@@ -245,6 +240,27 @@ export const window = {
 	): Disposable {
 		console.log(`[vscode-shim] registerCustomEditorProvider: ${viewType}`);
 		return new Disposable(() => {});
+	},
+
+	createStatusBarItem(
+		_alignmentOrId?: unknown,
+		_priority?: number,
+	): {
+		text: string;
+		tooltip: string;
+		command: string | undefined;
+		show(): void;
+		hide(): void;
+		dispose(): void;
+	} {
+		return {
+			text: "",
+			tooltip: "",
+			command: undefined,
+			show() {},
+			hide() {},
+			dispose() {},
+		};
 	},
 
 	// Webview delegation

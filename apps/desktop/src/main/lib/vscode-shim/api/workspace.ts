@@ -174,9 +174,15 @@ export const workspace = {
 		_options?: { isCaseSensitive?: boolean; isReadonly?: boolean },
 	): Disposable {
 		fileSystemProviders.set(scheme, provider);
+		console.log(`[vscode-shim] Registered FileSystemProvider for scheme: ${scheme}`);
 		return new Disposable(() => {
 			fileSystemProviders.delete(scheme);
 		});
+	},
+
+	/** Get a registered file system provider (used by workspace.fs for custom schemes) */
+	_getFileSystemProvider(scheme: string): unknown {
+		return fileSystemProviders.get(scheme);
 	},
 
 	registerTextDocumentContentProvider(scheme: string, provider: unknown): Disposable {
@@ -188,6 +194,16 @@ export const workspace = {
 
 	fs: {
 		async readFile(uri: Uri): Promise<Uint8Array> {
+			// Check custom FS providers for non-file schemes
+			if (uri.scheme !== "file") {
+				const provider = fileSystemProviders.get(uri.scheme) as
+					| { readFile?(uri: Uri): Promise<Uint8Array> }
+					| undefined;
+				if (provider?.readFile) {
+					return provider.readFile(uri);
+				}
+				throw new Error(`No file system provider for scheme: ${uri.scheme}`);
+			}
 			return fs.promises.readFile(uri.fsPath);
 		},
 		async writeFile(uri: Uri, content: Uint8Array): Promise<void> {
@@ -199,9 +215,18 @@ export const workspace = {
 			mtime: number;
 			size: number;
 		}> {
+			if (uri.scheme !== "file") {
+				const provider = fileSystemProviders.get(uri.scheme) as
+					| { stat?(uri: Uri): Promise<{ type: number; ctime: number; mtime: number; size: number }> }
+					| undefined;
+				if (provider?.stat) {
+					return provider.stat(uri);
+				}
+				return { type: 1, ctime: 0, mtime: 0, size: 0 };
+			}
 			const s = await fs.promises.stat(uri.fsPath);
 			return {
-				type: s.isDirectory() ? 2 : 1, // FileType.File=1, Directory=2
+				type: s.isDirectory() ? 2 : 1,
 				ctime: s.ctimeMs,
 				mtime: s.mtimeMs,
 				size: s.size,
