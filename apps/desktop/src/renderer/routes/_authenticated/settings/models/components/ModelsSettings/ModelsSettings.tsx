@@ -7,6 +7,7 @@ import {
 } from "@superset/ui/collapsible";
 import { Input } from "@superset/ui/input";
 import { toast } from "@superset/ui/sonner";
+import { Switch } from "@superset/ui/switch";
 import { Textarea } from "@superset/ui/textarea";
 import { useEffect, useMemo, useState } from "react";
 import { HiChevronDown } from "react-icons/hi2";
@@ -47,11 +48,25 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 		visibleItems,
 	);
 	const showOpenAI = isItemVisible(SETTING_ITEM_ID.MODELS_OPENAI, visibleItems);
+	const showNextEdit = isItemVisible(
+		SETTING_ITEM_ID.MODELS_NEXT_EDIT,
+		visibleItems,
+	);
 	const [apiKeysOpen, setApiKeysOpen] = useState(true);
 	const [overrideOpen, setOverrideOpen] = useState(true);
+	const [nextEditAdvancedOpen, setNextEditAdvancedOpen] = useState(true);
 	const [openAIApiKeyInput, setOpenAIApiKeyInput] = useState("");
 	const [anthropicApiKeyInput, setAnthropicApiKeyInput] = useState("");
+	const [inceptionApiKeyInput, setInceptionApiKeyInput] = useState("");
 	const [anthropicForm, setAnthropicForm] = useState(EMPTY_ANTHROPIC_FORM);
+	const [nextEditForm, setNextEditForm] = useState({
+		enabled: false,
+		maxTokens: "8192",
+		temperature: "0.3",
+		topP: "0.8",
+		presencePenalty: "1",
+		stopText: "",
+	});
 
 	const { data: providerStatuses, refetch: refetchProviderStatuses } =
 		electronTrpc.modelProviders.getStatuses.useQuery();
@@ -65,8 +80,12 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 		chatServiceTrpc.auth.getAnthropicStatus.useQuery();
 	const { data: openAIAuthStatus, refetch: refetchOpenAIAuthStatus } =
 		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
+	const { data: inceptionAuthStatus, refetch: refetchInceptionAuthStatus } =
+		chatServiceTrpc.auth.getInceptionStatus.useQuery();
 	const { data: anthropicEnvConfig, refetch: refetchAnthropicEnvConfig } =
 		chatServiceTrpc.auth.getAnthropicEnvConfig.useQuery();
+	const { data: nextEditConfig, refetch: refetchNextEditConfig } =
+		chatServiceTrpc.nextEdit.getConfig.useQuery();
 	const setAnthropicApiKeyMutation =
 		chatServiceTrpc.auth.setAnthropicApiKey.useMutation();
 	const clearAnthropicApiKeyMutation =
@@ -79,6 +98,12 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 		chatServiceTrpc.auth.setOpenAIApiKey.useMutation();
 	const clearOpenAIApiKeyMutation =
 		chatServiceTrpc.auth.clearOpenAIApiKey.useMutation();
+	const setInceptionApiKeyMutation =
+		chatServiceTrpc.auth.setInceptionApiKey.useMutation();
+	const clearInceptionApiKeyMutation =
+		chatServiceTrpc.auth.clearInceptionApiKey.useMutation();
+	const setNextEditConfigMutation =
+		chatServiceTrpc.nextEdit.setConfig.useMutation();
 	const clearProviderIssueMutation =
 		electronTrpc.modelProviders.clearIssue.useMutation();
 
@@ -110,11 +135,30 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 		clearAnthropicEnvConfigMutation.isPending;
 	const isSavingOpenAIConfig =
 		setOpenAIApiKeyMutation.isPending || clearOpenAIApiKeyMutation.isPending;
+	const isSavingInceptionApiKey =
+		setInceptionApiKeyMutation.isPending ||
+		clearInceptionApiKeyMutation.isPending;
+	const isSavingNextEditConfig = setNextEditConfigMutation.isPending;
 
 	useEffect(() => {
 		setAnthropicForm(parseAnthropicForm(anthropicEnvConfig?.envText ?? ""));
 		setAnthropicApiKeyInput("");
 	}, [anthropicEnvConfig?.envText]);
+
+	useEffect(() => {
+		if (!nextEditConfig) {
+			return;
+		}
+
+		setNextEditForm({
+			enabled: nextEditConfig.enabled,
+			maxTokens: String(nextEditConfig.maxTokens),
+			temperature: String(nextEditConfig.temperature),
+			topP: String(nextEditConfig.topP),
+			presencePenalty: String(nextEditConfig.presencePenalty),
+			stopText: nextEditConfig.stop.join("\n"),
+		});
+	}, [nextEditConfig]);
 
 	const anthropicStatus = useMemo(
 		() =>
@@ -209,6 +253,78 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 			toast.success("OpenAI API key updated");
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : "Failed to save");
+		}
+	};
+
+	const saveInceptionApiKey = async () => {
+		const apiKey = inceptionApiKeyInput.trim();
+		if (!apiKey) return;
+		try {
+			await setInceptionApiKeyMutation.mutateAsync({ apiKey });
+			setInceptionApiKeyInput("");
+			await refetchInceptionAuthStatus();
+			toast.success("Inception API key updated");
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Failed to save");
+		}
+	};
+
+	const saveNextEditConfig = async (
+		nextForm = nextEditForm,
+	): Promise<boolean> => {
+		const maxTokens = Number.parseInt(nextForm.maxTokens, 10);
+		const temperature = Number.parseFloat(nextForm.temperature);
+		const topP = Number.parseFloat(nextForm.topP);
+		const presencePenalty = Number.parseFloat(nextForm.presencePenalty);
+		const stop = nextForm.stopText
+			.split("\n")
+			.map((entry) => entry.trim())
+			.filter(
+				(entry, index, array) =>
+					entry.length > 0 && array.indexOf(entry) === index,
+			);
+
+		if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 8192) {
+			toast.error("max_tokens must be an integer between 1 and 8192.");
+			return false;
+		}
+		if (!Number.isFinite(temperature) || temperature < 0 || temperature > 1) {
+			toast.error("temperature must be between 0.0 and 1.0.");
+			return false;
+		}
+		if (!Number.isFinite(topP) || topP < 0 || topP > 1) {
+			toast.error("top_p must be between 0.0 and 1.0.");
+			return false;
+		}
+		if (
+			!Number.isFinite(presencePenalty) ||
+			presencePenalty < -2 ||
+			presencePenalty > 2
+		) {
+			toast.error("presence_penalty must be between -2.0 and 2.0.");
+			return false;
+		}
+		if (stop.length > 4) {
+			toast.error("Stop sequences support up to 4 entries.");
+			return false;
+		}
+
+		try {
+			await setNextEditConfigMutation.mutateAsync({
+				enabled: nextForm.enabled,
+				model: "mercury-edit-2",
+				maxTokens,
+				temperature,
+				topP,
+				presencePenalty,
+				stop,
+			});
+			await refetchNextEditConfig();
+			toast.success("Next Edit settings updated");
+			return true;
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Failed to save");
+			return false;
 		}
 	};
 
@@ -572,6 +688,245 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 								</CollapsibleContent>
 							</div>
 						</Collapsible>
+					) : null}
+
+					{showNextEdit ? (
+						<SettingsSection
+							title="Inception Next Edit"
+							description="Inline code completion in the code editor. Suggestions appear as ghost text and Tab accepts them."
+							action={
+								<span className="rounded-full border px-2 py-1 text-xs text-muted-foreground">
+									{nextEditForm.enabled ? "Enabled" : "Disabled"}
+								</span>
+							}
+						>
+							<ConfigRow
+								title="Next Edit API Key"
+								description="Stored like other managed model credentials. Required before completions can run."
+								field={
+									<Input
+										type="password"
+										value={inceptionApiKeyInput}
+										onChange={(event) => {
+											setInceptionApiKeyInput(event.target.value);
+										}}
+										placeholder={
+											inceptionAuthStatus?.method === "api_key"
+												? "Saved Inception API key"
+												: "inception_..."
+										}
+										className="font-mono"
+										disabled={isSavingInceptionApiKey}
+									/>
+								}
+								onSave={() => {
+									void saveInceptionApiKey();
+								}}
+								onClear={() => {
+									void (async () => {
+										try {
+											await clearInceptionApiKeyMutation.mutateAsync();
+											setInceptionApiKeyInput("");
+											await refetchInceptionAuthStatus();
+											toast.success("Inception API key cleared");
+										} catch (error) {
+											toast.error(
+												error instanceof Error
+													? error.message
+													: "Failed to clear",
+											);
+										}
+									})();
+								}}
+								disableSave={
+									isSavingInceptionApiKey ||
+									inceptionApiKeyInput.trim().length === 0
+								}
+								disableClear={
+									isSavingInceptionApiKey ||
+									inceptionAuthStatus?.method !== "api_key"
+								}
+							/>
+							<ConfigRow
+								title="Enable Next Edit"
+								description="Backend-enforced switch. When disabled, the editor never calls the completion endpoint."
+								field={
+									<div className="flex items-center gap-3">
+										<Switch
+											checked={nextEditForm.enabled}
+											onCheckedChange={(checked) => {
+												setNextEditForm((current) => ({
+													...current,
+													enabled: checked === true,
+												}));
+											}}
+											disabled={isSavingNextEditConfig}
+										/>
+										<span className="text-sm text-muted-foreground">
+											{nextEditForm.enabled
+												? "Inline completions are active."
+												: "Inline completions are off."}
+										</span>
+									</div>
+								}
+								onSave={() => {
+									void saveNextEditConfig();
+								}}
+								disableSave={isSavingNextEditConfig}
+							/>
+							<Collapsible
+								open={nextEditAdvancedOpen}
+								onOpenChange={setNextEditAdvancedOpen}
+							>
+								<div className="space-y-3">
+									<CollapsibleTrigger asChild>
+										<button
+											type="button"
+											className="flex items-center gap-2 text-left text-sm font-semibold"
+										>
+											<HiChevronDown
+												className={`size-4 transition-transform ${nextEditAdvancedOpen ? "" : "-rotate-90"}`}
+											/>
+											Advanced
+										</button>
+									</CollapsibleTrigger>
+									<CollapsibleContent className="space-y-3">
+										<ConfigRow
+											title="max_tokens"
+											description="Official Inception default: 8192"
+											field={
+												<Input
+													type="number"
+													min={1}
+													max={8192}
+													step={1}
+													value={nextEditForm.maxTokens}
+													onChange={(event) => {
+														setNextEditForm((current) => ({
+															...current,
+															maxTokens: event.target.value,
+														}));
+													}}
+													className="font-mono"
+													disabled={isSavingNextEditConfig}
+												/>
+											}
+											onSave={() => {
+												void saveNextEditConfig();
+											}}
+											disableSave={isSavingNextEditConfig}
+										/>
+										<ConfigRow
+											title="temperature"
+											description="Official range for Mercury Edit 2: 0.0 to 1.0"
+											field={
+												<Input
+													type="number"
+													min={0.5}
+													max={1}
+													step={0.05}
+													value={nextEditForm.temperature}
+													onChange={(event) => {
+														setNextEditForm((current) => ({
+															...current,
+															temperature: event.target.value,
+														}));
+													}}
+													className="font-mono"
+													disabled={isSavingNextEditConfig}
+												/>
+											}
+											onSave={() => {
+												void saveNextEditConfig();
+											}}
+											disableSave={isSavingNextEditConfig}
+										/>
+										<ConfigRow
+											title="top_p"
+											field={
+												<Input
+													type="number"
+													min={0}
+													max={1}
+													step={0.05}
+													value={nextEditForm.topP}
+													onChange={(event) => {
+														setNextEditForm((current) => ({
+															...current,
+															topP: event.target.value,
+														}));
+													}}
+													className="font-mono"
+													disabled={isSavingNextEditConfig}
+												/>
+											}
+											onSave={() => {
+												void saveNextEditConfig();
+											}}
+											disableSave={isSavingNextEditConfig}
+										/>
+										<ConfigRow
+											title="presence_penalty"
+											field={
+												<Input
+													type="number"
+													min={-2}
+													max={2}
+													step={0.1}
+													value={nextEditForm.presencePenalty}
+													onChange={(event) => {
+														setNextEditForm((current) => ({
+															...current,
+															presencePenalty: event.target.value,
+														}));
+													}}
+													className="font-mono"
+													disabled={isSavingNextEditConfig}
+												/>
+											}
+											onSave={() => {
+												void saveNextEditConfig();
+											}}
+											disableSave={isSavingNextEditConfig}
+										/>
+										<ConfigRow
+											title="stop"
+											description="One sequence per line. Up to 4 sequences."
+											field={
+												<Textarea
+													value={nextEditForm.stopText}
+													onChange={(event) => {
+														setNextEditForm((current) => ({
+															...current,
+															stopText: event.target.value,
+														}));
+													}}
+													placeholder={"```\n<|/code_to_edit|>"}
+													className="min-h-24 font-mono text-xs"
+													disabled={isSavingNextEditConfig}
+												/>
+											}
+											onSave={() => {
+												void saveNextEditConfig();
+											}}
+											onClear={() => {
+												const nextForm = {
+													...nextEditForm,
+													stopText: "",
+												};
+												setNextEditForm(nextForm);
+												void saveNextEditConfig(nextForm);
+											}}
+											disableSave={isSavingNextEditConfig}
+											disableClear={
+												isSavingNextEditConfig ||
+												nextEditForm.stopText.trim().length === 0
+											}
+										/>
+									</CollapsibleContent>
+								</div>
+							</Collapsible>
+						</SettingsSection>
 					) : null}
 				</div>
 			</div>

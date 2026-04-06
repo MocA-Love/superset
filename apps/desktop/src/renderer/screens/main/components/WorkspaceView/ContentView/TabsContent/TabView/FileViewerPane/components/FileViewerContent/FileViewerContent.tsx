@@ -1,6 +1,7 @@
 import {
 	type MutableRefObject,
 	type RefObject,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -19,6 +20,7 @@ import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
 import { isHtmlFile, isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
+import { useNextEditCompletion } from "../../hooks/useNextEditCompletion";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
 import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
 import { ConflictViewer } from "../ConflictViewer";
@@ -245,6 +247,14 @@ export function FileViewerContent({
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 	const isHtml = isHtmlFile(filePath);
+	const {
+		isAvailable: isNextEditAvailable,
+		requestInlineCompletion,
+		syncDocumentSnapshot,
+		trackDocumentChange,
+	} = useNextEditCompletion({
+		filePath,
+	});
 
 	useScrollToFirstDiffChange({
 		containerRef: diffContainerRef,
@@ -340,6 +350,16 @@ export function FileViewerContent({
 		hasAppliedInitialLocationRef.current = false;
 	}, [initialLine, initialColumn]);
 
+	const rawFileContent = rawFileData?.ok ? rawFileData.content : null;
+
+	useEffect(() => {
+		if (viewMode !== "raw" || rawFileContent === null) {
+			return;
+		}
+
+		syncDocumentSnapshot(rawFileContent);
+	}, [rawFileContent, syncDocumentSnapshot, viewMode]);
+
 	useEffect(() => {
 		if (viewMode !== "raw") {
 			hasAppliedInitialLocationRef.current = false;
@@ -396,6 +416,16 @@ export function FileViewerContent({
 
 		onSwitchToRawAtLocation(position.lineNumber, position.column);
 	};
+
+	const handleRawEditorChange = useCallback(
+		(value: string | undefined) => {
+			if (typeof value === "string") {
+				trackDocumentChange(value);
+			}
+			onContentChange(value);
+		},
+		[onContentChange, trackDocumentChange],
+	);
 
 	useEffect(() => {
 		if (
@@ -693,12 +723,15 @@ export function FileViewerContent({
 					language={detectLanguage(filePath)}
 					worktreePath={worktreePath}
 					value={renderedContent}
-					onChange={onContentChange}
+					onChange={handleRawEditorChange}
 					onSave={onSaveFile}
 					editorRef={editorRef}
 					fillHeight
 					blameEntries={blameData?.entries}
 					diagnostics={fileDiagnostics}
+					inlineCompletionRequest={
+						isNextEditAvailable ? requestInlineCompletion : null
+					}
 				/>
 			</div>
 		</FileEditorContextMenu>

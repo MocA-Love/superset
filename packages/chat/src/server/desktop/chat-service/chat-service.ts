@@ -4,12 +4,14 @@ import {
 	getCredentialsFromKeychain as getAnthropicCredentialsFromKeychain,
 	isClaudeCredentialExpired,
 } from "../auth/anthropic";
+import { getInceptionCredentialsFromAnySource } from "../auth/inception";
 import {
 	getOpenAICredentialsFromAuthStorage,
 	isOpenAICredentialExpired,
 } from "../auth/openai";
 import {
 	ANTHROPIC_AUTH_PROVIDER_ID,
+	INCEPTION_AUTH_PROVIDER_ID,
 	OPENAI_AUTH_PROVIDER_ID,
 	OPENAI_AUTH_PROVIDER_IDS,
 } from "../auth/provider-ids";
@@ -30,6 +32,15 @@ import {
 	resolveAuthMethodForProvider,
 	setApiKeyForProvider,
 } from "./auth-storage-utils";
+import {
+	buildNextEditRequest,
+	extractInsertTextFromNextEditResponse,
+} from "./next-edit";
+import {
+	getNextEditConfig,
+	type NextEditConfig,
+	setNextEditConfig,
+} from "./next-edit-config";
 import {
 	OAuthFlowController,
 	type OAuthFlowOptions,
@@ -55,6 +66,7 @@ function stripAnthropicCredentialEnvVariables(
 
 interface ChatServiceOptions {
 	anthropicEnvConfigPath?: string;
+	nextEditConfigPath?: string;
 }
 
 export class ChatService {
@@ -63,6 +75,7 @@ export class ChatService {
 		this.getAuthStorage(),
 	);
 	private readonly anthropicEnvConfigPath: string | undefined;
+	private readonly nextEditConfigPath: string | undefined;
 	private currentAnthropicRuntimeEnv: AnthropicRuntimeEnv = {};
 	private static readonly ANTHROPIC_AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 	private static readonly OPENAI_AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
@@ -70,6 +83,7 @@ export class ChatService {
 
 	constructor(options?: ChatServiceOptions) {
 		this.anthropicEnvConfigPath = options?.anthropicEnvConfigPath;
+		this.nextEditConfigPath = options?.nextEditConfigPath;
 		const persistedConfig = getAnthropicEnvConfigFromDisk({
 			configPath: this.anthropicEnvConfigPath,
 		});
@@ -329,6 +343,19 @@ export class ChatService {
 		return status;
 	}
 
+	getInceptionAuthStatus(): AuthStatus {
+		const method = resolveAuthMethodForProvider(
+			this.getAuthStorage(),
+			INCEPTION_AUTH_PROVIDER_ID,
+		);
+		return {
+			authenticated: method !== null,
+			method,
+			source: method !== null ? "managed" : null,
+			issue: null,
+		};
+	}
+
 	async setOpenAIApiKey(input: { apiKey: string }): Promise<{ success: true }> {
 		setApiKeyForProvider(
 			this.getAuthStorage(),
@@ -345,6 +372,85 @@ export class ChatService {
 			clearApiKeyForProvider(authStorage, providerId);
 		}
 		return { success: true };
+	}
+
+	async setInceptionApiKey(input: {
+		apiKey: string;
+	}): Promise<{ success: true }> {
+		setApiKeyForProvider(
+			this.getAuthStorage(),
+			INCEPTION_AUTH_PROVIDER_ID,
+			input.apiKey,
+			"Inception API key is required",
+		);
+		return { success: true };
+	}
+
+	async clearInceptionApiKey(): Promise<{ success: true }> {
+		clearApiKeyForProvider(this.getAuthStorage(), INCEPTION_AUTH_PROVIDER_ID);
+		return { success: true };
+	}
+
+	getNextEditConfig(): NextEditConfig {
+		return getNextEditConfig({
+			configPath: this.nextEditConfigPath,
+		});
+	}
+
+	async setNextEditConfig(input: NextEditConfig): Promise<NextEditConfig> {
+		return setNextEditConfig(input, {
+			configPath: this.nextEditConfigPath,
+		});
+	}
+
+	async completeNextEdit(input: {
+		filePath: string;
+		currentFileContent: string;
+		cursorOffset: number;
+		recentSnippets?: Array<{
+			filePath: string;
+			content: string;
+		}>;
+		editHistory?: string[];
+	}): Promise<{ insertText: string | null }> {
+		const config = this.getNextEditConfig();
+		if (!config.enabled) {
+			return { insertText: null };
+		}
+
+		const credentials = getInceptionCredentialsFromAnySource();
+		if (!credentials) {
+			return { insertText: null };
+		}
+
+		const request = buildNextEditRequest(input, config);
+		const response = await fetch(
+			"https://api.inceptionlabs.ai/v1/edit/completions",
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${credentials.apiKey}`,
+				},
+				body: JSON.stringify(request.payload),
+			},
+		);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`Next Edit request failed (${response.status}): ${errorText || response.statusText}`,
+			);
+		}
+
+		const json = (await response.json()) as Record<string, unknown>;
+		return {
+			insertText: extractInsertTextFromNextEditResponse({
+				response: json,
+				editableRegionPrefix: request.editableRegionPrefix,
+				editableRegionSuffix: request.editableRegionSuffix,
+			}),
+		};
 	}
 
 	async startOpenAIOAuth(): Promise<{ url: string; instructions: string }> {

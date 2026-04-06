@@ -33,6 +33,10 @@ import { getEditorTheme } from "shared/themes";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
 import { createIndentRainbowPlugin } from "./createIndentRainbowPlugin";
+import {
+	createInlineCompletionPlugin,
+	type InlineCompletionRequest,
+} from "./createInlineCompletionPlugin";
 import { createTrailingSpacesPlugin } from "./createTrailingSpacesPlugin";
 import { loadLanguageSupport } from "./loadLanguageSupport";
 
@@ -54,6 +58,7 @@ interface CodeEditorProps {
 		endColumn: number | null;
 		severity: "error" | "warning" | "info" | "hint";
 	}>;
+	inlineCompletionRequest?: InlineCompletionRequest | null;
 }
 
 const HIGHLIGHT_CLEAR_DELAY_MS = 1800;
@@ -428,6 +433,7 @@ export function CodeEditor({
 	onSave,
 	blameEntries,
 	diagnostics = [],
+	inlineCompletionRequest = null,
 }: CodeEditorProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
@@ -440,6 +446,9 @@ export function CodeEditor({
 	const diagnosticsCompartment = useRef(new Compartment()).current;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
+	const inlineCompletionRequestRef = useRef<InlineCompletionRequest | null>(
+		inlineCompletionRequest,
+	);
 	// Guards against re-entrant onChange calls triggered by the value-sync effect's own dispatch.
 	const isExternalUpdateRef = useRef(false);
 	const { data: fontSettings } = electronTrpc.settings.getFontSettings.useQuery(
@@ -460,9 +469,11 @@ export function CodeEditor({
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const activeTheme = useResolvedTheme();
 	const editorTheme = getEditorTheme(activeTheme);
+	const inlineCompletionCompartment = useRef(new Compartment()).current;
 
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
+	inlineCompletionRequestRef.current = inlineCompletionRequest;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: Editor instance is created once and reconfigured via dedicated effects below
 	useEffect(() => {
@@ -514,6 +525,15 @@ export function CodeEditor({
 					...searchKeymap,
 				]),
 				saveKeymap,
+				inlineCompletionCompartment.of(
+					inlineCompletionRequestRef.current
+						? createInlineCompletionPlugin(
+								(args) =>
+									inlineCompletionRequestRef.current?.(args) ??
+									Promise.resolve(null),
+							)
+						: [],
+				),
 				themeCompartment.of([
 					getCodeSyntaxHighlighting(activeTheme),
 					createCodeMirrorTheme(
@@ -678,6 +698,23 @@ export function CodeEditor({
 			),
 		});
 	}, [blameEntries, blameCompartment, worktreePath]);
+
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view) return;
+
+		view.dispatch({
+			effects: inlineCompletionCompartment.reconfigure(
+				inlineCompletionRequest
+					? createInlineCompletionPlugin(
+							(args) =>
+								inlineCompletionRequestRef.current?.(args) ??
+								Promise.resolve(null),
+						)
+					: [],
+			),
+		});
+	}, [inlineCompletionCompartment, inlineCompletionRequest]);
 
 	useEffect(() => {
 		let cancelled = false;

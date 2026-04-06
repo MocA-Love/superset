@@ -46,6 +46,7 @@ export const SETTING_ITEM_ID = {
 
 	MODELS_ANTHROPIC: "models-anthropic",
 	MODELS_OPENAI: "models-openai",
+	MODELS_NEXT_EDIT: "models-next-edit",
 
 	INTEGRATIONS_LINEAR: "integrations-linear",
 	INTEGRATIONS_GITHUB: "integrations-github",
@@ -723,6 +724,23 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"auth",
 			"workspace naming",
 			"auto name",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.MODELS_NEXT_EDIT,
+		section: "models",
+		title: "Next Edit",
+		description: "Configure Inception inline code completion for the editor",
+		keywords: [
+			"models",
+			"next edit",
+			"inception",
+			"inline completion",
+			"tab completion",
+			"ghost text",
+			"autocomplete",
+			"api key",
+			"mercury coder",
 		],
 	},
 	{
