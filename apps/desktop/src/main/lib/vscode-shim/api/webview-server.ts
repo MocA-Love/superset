@@ -96,6 +96,22 @@ function rewriteResourceUrls(html: string): string {
 	);
 }
 
+/**
+ * Strip the extension's own CSP meta tag and nonce attributes.
+ * Our HTTP server provides its own CSP via response headers.
+ * Extensions set restrictive CSPs with nonces that block our bridge script.
+ */
+function stripExtensionCsp(html: string): string {
+	// Remove CSP meta tags
+	let result = html.replace(
+		/<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>/gi,
+		"",
+	);
+	// Remove nonce attributes from script/style tags
+	result = result.replace(/\s+nonce=["'][^"']*["']/g, "");
+	return result;
+}
+
 function injectBridge(html: string): string {
 	if (html.includes("</head>")) {
 		return html.replace("</head>", `${BRIDGE_SCRIPT}</head>`);
@@ -123,7 +139,8 @@ export async function startWebviewServer(): Promise<number> {
 					return;
 				}
 
-				// Rewrite resource URLs and inject bridge
+				// Strip extension's CSP (we provide our own via headers), rewrite URLs, inject bridge
+				html = stripExtensionCsp(html);
 				html = rewriteResourceUrls(html);
 				html = injectBridge(html);
 
