@@ -145,7 +145,13 @@ const BRIDGE_SCRIPT = `${VSCODE_THEME_CSS}<script>
 	window.acquireVsCodeApi = function() { return vscodeApi; };
 	window.addEventListener('message', function(event) {
 		if (event.data && event.data.type === 'vscode-message') {
-			window.dispatchEvent(new MessageEvent('message', { data: event.data.data }));
+			// Re-dispatch with origin matching window.location.origin
+			// (required by Codex message-bus origin validation)
+			window.dispatchEvent(new MessageEvent('message', {
+				data: event.data.data,
+				origin: window.location.origin,
+				source: window
+			}));
 		}
 	});
 })();
