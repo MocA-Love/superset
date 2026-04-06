@@ -288,6 +288,13 @@
       "when": 1775214744592,
       "tag": "0040_illegal_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1775489797005,
+      "tag": "0041_add_editor_features_and_site_permissions",
+      "breakpoints": true
     }
   ]
 }
