@@ -7,6 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import {
 	getWebviewUrl,
+	setCustomThemeCss,
 	setWebviewHtml,
 } from "main/lib/vscode-shim/api/webview-server";
 import {
@@ -389,6 +390,14 @@ export const createVscodeExtensionsRouter = () => {
 				}
 
 				return { success: true, needsRestart: true };
+			}),
+
+		/** Set custom theme CSS for webview rendering (null = use default dark theme) */
+		setThemeCss: publicProcedure
+			.input(z.object({ css: z.string().nullable() }))
+			.mutation(({ input }) => {
+				setCustomThemeCss(input.css);
+				return { success: true };
 			}),
 
 		/** Set the workspace folder path for extensions */
