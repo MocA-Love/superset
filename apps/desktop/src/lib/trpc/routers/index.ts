@@ -31,6 +31,7 @@ import { createSettingsRouter } from "./settings";
 import { createTabTearoffRouter } from "./tab-tearoff";
 import { createTerminalRouter } from "./terminal";
 import { createUiStateRouter } from "./ui-state";
+import { createVscodeExtensionsRouter } from "./vscode-extensions";
 import { createWindowRouter } from "./window";
 import { createWorkspacesRouter } from "./workspaces";
 
@@ -71,6 +72,7 @@ export const createAppRouter = (
 		hostServiceManager: createHostServiceManagerRouter(),
 		tabTearoff: createTabTearoffRouter(wm),
 		extensions: createExtensionsRouter(getWindow),
+		vscodeExtensions: createVscodeExtensionsRouter(),
 	});
 };
 

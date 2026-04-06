@@ -43,6 +43,7 @@ import {
 	createGitGraphTabWithPane,
 	createPane,
 	createTabWithPane,
+	createVscodeExtensionTabWithPane,
 	equalizeSplitPercentages,
 	extractPaneIdsFromLayout,
 	findReusableFileViewerPane,
@@ -1717,6 +1718,56 @@ export const useTabsStore = create<TabsStore>()(
 
 					posthog.capture("panel_opened", {
 						panel_type: "database-explorer",
+						workspace_id: workspaceId,
+						pane_id: pane.id,
+					});
+
+					return { tabId: tab.id, paneId: pane.id };
+				},
+
+				addVscodeExtensionTab: (
+					workspaceId: string,
+					extensionId: string,
+					viewType: string,
+					name: string,
+				) => {
+					const state = get();
+
+					const { tab, pane } = createVscodeExtensionTabWithPane(
+						workspaceId,
+						extensionId,
+						viewType,
+						name,
+					);
+
+					const currentActiveId = state.activeTabIds[workspaceId];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
+					const newHistoryStack = currentActiveId
+						? [
+								currentActiveId,
+								...historyStack.filter((id) => id !== currentActiveId),
+							]
+						: historyStack;
+
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, [pane.id]: pane },
+						activeTabIds: {
+							...state.activeTabIds,
+							[workspaceId]: tab.id,
+						},
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: pane.id,
+						},
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: newHistoryStack,
+						},
+					});
+
+					posthog.capture("panel_opened", {
+						panel_type: "vscode-extension",
 						workspace_id: workspaceId,
 						pane_id: pane.id,
 					});

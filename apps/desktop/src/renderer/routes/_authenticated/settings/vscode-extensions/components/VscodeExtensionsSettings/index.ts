@@ -1,0 +1,1 @@
+export { VscodeExtensionsSettings } from "./VscodeExtensionsSettings";

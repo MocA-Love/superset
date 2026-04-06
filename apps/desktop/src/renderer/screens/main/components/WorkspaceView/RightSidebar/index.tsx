@@ -31,6 +31,7 @@ import {
 } from "react";
 import type { IconType } from "react-icons";
 import {
+	LuBot,
 	LuBox,
 	LuCircleAlert,
 	LuDatabase,
@@ -40,6 +41,7 @@ import {
 	LuGitCompareArrows,
 	LuSearch,
 	LuShrink,
+	LuSparkles,
 	LuX,
 } from "react-icons/lu";
 import { HotkeyLabel } from "renderer/hotkeys";
@@ -61,6 +63,7 @@ import { FilesView } from "./FilesView";
 import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
 import { ProblemsView } from "./ProblemsView";
 import { SearchView } from "./SearchView";
+import { VscodeExtensionView } from "./VscodeExtensionView";
 
 interface SidebarTabDefinition {
 	id: RightSidebarTab;
@@ -96,6 +99,14 @@ const RIGHT_SIDEBAR_TAB_METADATA: Record<
 	[RightSidebarTab.Databases]: {
 		label: "Databases",
 		icon: LuDatabase,
+	},
+	[RightSidebarTab.ClaudeCode]: {
+		label: "Claude",
+		icon: LuBot,
+	},
+	[RightSidebarTab.Codex]: {
+		label: "Codex",
+		icon: LuSparkles,
 	},
 };
 
@@ -264,6 +275,18 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 			staleTime: 10000,
 		},
 	);
+	const knownExtensionsQuery =
+		electronTrpc.vscodeExtensions.getKnownExtensions.useQuery(undefined, {
+			enabled: isActive,
+			staleTime: 30000,
+		});
+	const installedExtensionIds = new Set(
+		(knownExtensionsQuery.data ?? [])
+			.filter((ext) => ext.installed)
+			.map((ext) => ext.id),
+	);
+	const showClaudeCodeTab = installedExtensionIds.has("anthropic.claude-code");
+	const showCodexTab = installedExtensionIds.has("openai.chatgpt");
 	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
 	const dockerComposeFiles = dockerComposeFilesQuery.data;
 	const isResolvingDockerVisibility =
@@ -292,6 +315,12 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				if (tabId === RightSidebarTab.Docker) {
 					return showDockerTab;
 				}
+				if (tabId === RightSidebarTab.ClaudeCode) {
+					return showClaudeCodeTab;
+				}
+				if (tabId === RightSidebarTab.Codex) {
+					return showCodexTab;
+				}
 				return true;
 			})
 			.map((tabId) => ({
@@ -300,7 +329,14 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				hasAlert:
 					tabId === RightSidebarTab.Problems ? hasProblemErrors : undefined,
 			}));
-	}, [hasProblemErrors, rightSidebarTabOrder, showChangesTab, showDockerTab]);
+	}, [
+		hasProblemErrors,
+		rightSidebarTabOrder,
+		showChangesTab,
+		showDockerTab,
+		showClaudeCodeTab,
+		showCodexTab,
+	]);
 
 	useEffect(() => {
 		if (!isActive) {
@@ -750,6 +786,36 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 			>
 				<DatabasesView onOpenExplorer={handleOpenDatabaseExplorer} />
 			</div>
+			{showClaudeCodeTab && (
+				<div
+					className={
+						rightSidebarTab === RightSidebarTab.ClaudeCode
+							? "flex-1 min-h-0 flex flex-col overflow-hidden"
+							: "hidden"
+					}
+				>
+					<VscodeExtensionView
+						viewType="claudeVSCodeSidebar"
+						extensionId="anthropic.claude-code"
+						isActive={rightSidebarTab === RightSidebarTab.ClaudeCode}
+					/>
+				</div>
+			)}
+			{showCodexTab && (
+				<div
+					className={
+						rightSidebarTab === RightSidebarTab.Codex
+							? "flex-1 min-h-0 flex flex-col overflow-hidden"
+							: "hidden"
+					}
+				>
+					<VscodeExtensionView
+						viewType="chatgpt.sidebarView"
+						extensionId="openai.chatgpt"
+						isActive={rightSidebarTab === RightSidebarTab.Codex}
+					/>
+				</div>
+			)}
 		</aside>
 	);
 }

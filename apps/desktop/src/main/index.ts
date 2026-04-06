@@ -1,6 +1,6 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { projects, settings, workspaces } from "@superset/local-db";
+import { projects, settings, workspaces, worktrees } from "@superset/local-db";
 import { desc, eq, isNull } from "drizzle-orm";
 import {
 	app,
@@ -43,6 +43,11 @@ import {
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
+
+// Lazy import to avoid module resolution issues during Vite build
+const loadVscodeShim = () =>
+	import("./lib/vscode-shim") as Promise<typeof import("./lib/vscode-shim")>;
+
 import { cleanupMainWindowResources, MainWindow } from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
@@ -69,6 +74,22 @@ if (process.defaultApp) {
 	}
 } else {
 	app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
+}
+
+function getLastOpenedWorkspacePath(): string | null {
+	try {
+		const row = localDb
+			.select({ worktreePath: worktrees.path })
+			.from(workspaces)
+			.innerJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
+			.where(isNull(workspaces.deletingAt))
+			.orderBy(desc(workspaces.lastOpenedAt))
+			.limit(1)
+			.get();
+		return row?.worktreePath ?? null;
+	} catch {
+		return null;
+	}
 }
 
 function normalizeRepoValue(
@@ -408,6 +429,10 @@ app.on("before-quit", async (event) => {
 	}
 
 	isQuitting = true;
+	try {
+		const mod = await loadVscodeShim();
+		await mod.shutdownExtensionHost();
+	} catch {}
 	closeLocalDb();
 	if (quitMode === "stop") {
 		manager.stopAll();
@@ -480,6 +505,24 @@ protocol.registerSchemesAsPrivileged([
 	},
 	{
 		scheme: "superset-ext-icon",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
+		scheme: "vscode-webview-resource",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
+		scheme: "vscode-webview",
 		privileges: {
 			standard: true,
 			secure: true,
@@ -587,6 +630,22 @@ if (!gotTheLock) {
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
 		initTray();
+
+		// Initialize VS Code extension host (loads Claude Code, ChatGPT etc.)
+		// Get the last opened workspace path so extensions start with correct cwd
+		loadVscodeShim()
+			.then((mod) => {
+				const lastWorkspacePath = getLastOpenedWorkspacePath();
+				return mod.initExtensionHost({
+					workspacePath: lastWorkspacePath ?? undefined,
+				});
+			})
+			.catch((err) => {
+				console.error(
+					"[main] Failed to initialize VS Code extension host:",
+					err,
+				);
+			});
 
 		const coldStartUrl = findDeepLinkInArgv(process.argv);
 		if (coldStartUrl) {

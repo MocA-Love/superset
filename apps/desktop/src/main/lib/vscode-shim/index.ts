@@ -1,0 +1,35 @@
+/**
+ * VS Code Extension Host Shim for Superset Desktop.
+ *
+ * Provides a minimal VS Code API surface to run official VS Code extensions
+ * (Claude Code, ChatGPT/Codex) inside the Electron app.
+ */
+
+export {
+	getActivePanel,
+	getActiveView,
+	getViewProvider,
+	onWebviewEvent,
+	resolveWebviewView,
+} from "./api/webview";
+export { clearWebviewHtml, setWebviewHtml } from "./api/webview-server";
+export { handleUri, setActiveTextEditor } from "./api/window";
+export {
+	getActiveExtensions,
+	initExtensionHost,
+	shutdownExtensionHost,
+	updateWorkspacePath,
+} from "./extension-host";
+export {
+	deactivateExtension,
+	discoverExtensions,
+	getLoadedExtension,
+	getLoadedExtensions,
+	loadExtension,
+} from "./loader";
+export type {
+	ExtensionInfo,
+	ExtensionManifest,
+	WebviewMessage,
+} from "./types";
+export { webviewBridge } from "./webview-bridge";

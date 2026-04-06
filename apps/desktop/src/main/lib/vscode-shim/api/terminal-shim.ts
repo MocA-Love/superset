@@ -1,0 +1,209 @@
+/**
+ * VS Code Terminal API shim backed by DaemonTerminalManager.
+ */
+
+import { randomUUID } from "node:crypto";
+import { shimLog } from "./debug-log";
+import { EventEmitter } from "./event-emitter";
+import { workspace } from "./workspace";
+
+interface TerminalOptions {
+	name?: string;
+	cwd?: string;
+	env?: Record<string, string | null>;
+	shellPath?: string;
+	shellArgs?: string[];
+}
+
+interface ShimTerminal {
+	readonly name: string;
+	readonly processId: Promise<number | undefined>;
+	readonly exitStatus: { code: number | undefined } | undefined;
+	readonly shellIntegration?: ShellIntegration;
+	sendText(text: string, addNewLine?: boolean): void;
+	show(preserveFocus?: boolean): void;
+	hide(): void;
+	dispose(): void;
+}
+
+interface ShellIntegration {
+	executeCommand(command: string): {
+		execution: { commandLine: string };
+		read(): AsyncIterable<string>;
+	};
+}
+
+const _onDidOpenTerminal = new EventEmitter<ShimTerminal>();
+const _onDidCloseTerminal = new EventEmitter<ShimTerminal>();
+const _onDidChangeActiveTerminal = new EventEmitter<ShimTerminal | undefined>();
+const _onDidEndTerminalShellExecution = new EventEmitter<unknown>();
+const _onDidChangeTerminalShellIntegration = new EventEmitter<unknown>();
+
+export const terminalEvents = {
+	onDidOpenTerminal: _onDidOpenTerminal.event,
+	onDidCloseTerminal: _onDidCloseTerminal.event,
+	onDidChangeActiveTerminal: _onDidChangeActiveTerminal.event,
+	onDidEndTerminalShellExecution: _onDidEndTerminalShellExecution.event,
+	onDidChangeTerminalShellIntegration:
+		_onDidChangeTerminalShellIntegration.event,
+};
+
+const activeTerminals: ShimTerminal[] = [];
+
+function getTerminalManager() {
+	try {
+		// Use dynamic import path that the bundler can resolve
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		// biome-ignore lint: dynamic require for bundler compat
+		const mod = require("../../terminal") as {
+			getDaemonTerminalManager: () => any;
+		};
+		return mod.getDaemonTerminalManager() as any;
+	} catch {
+		return null;
+	}
+}
+
+export function createTerminal(
+	nameOrOptions?: string | TerminalOptions,
+): ShimTerminal {
+	const opts: TerminalOptions =
+		typeof nameOrOptions === "string"
+			? { name: nameOrOptions }
+			: (nameOrOptions ?? {});
+
+	const name = opts.name ?? "Extension Terminal";
+	const paneId = `vscode-ext-terminal-${randomUUID()}`;
+	let exitStatus: { code: number | undefined } | undefined;
+	let pid: number | undefined;
+
+	const manager = getTerminalManager();
+
+	// Create session asynchronously
+	const processIdPromise = (async () => {
+		if (!manager) return undefined;
+		try {
+			const result = await manager.createOrAttach({
+				paneId,
+				tabId: `vscode-ext-tab-${paneId}`,
+				workspaceId: "vscode-extension-host",
+				cwd: opts.cwd ?? workspace.rootPath,
+				cols: 120,
+				rows: 30,
+			});
+			pid = result?.snapshot?.pid;
+			// Listen for exit (store handler ref for cleanup in dispose)
+			const exitHandler = (exitCode: number) => {
+				exitStatus = { code: exitCode };
+				_onDidCloseTerminal.fire(terminal);
+				const idx = activeTerminals.indexOf(terminal);
+				if (idx >= 0) activeTerminals.splice(idx, 1);
+				_onDidEndTerminalShellExecution.fire({
+					terminal,
+					exitCode,
+					execution: { commandLine: { value: "" } },
+				});
+				// Self-cleanup
+				manager.off(`exit:${paneId}`, exitHandler);
+			};
+			manager.on(`exit:${paneId}`, exitHandler);
+			return pid;
+		} catch (err) {
+			console.error(`[vscode-shim] Failed to create terminal "${name}":`, err);
+			return undefined;
+		}
+	})();
+
+	const terminal: ShimTerminal = {
+		name,
+		processId: processIdPromise,
+		get exitStatus() {
+			return exitStatus;
+		},
+		get shellIntegration(): ShellIntegration | undefined {
+			if (!manager) return undefined;
+			return {
+				executeCommand(command: string) {
+					manager.write({ paneId, data: `${command}\n` });
+					return {
+						execution: { commandLine: command },
+						async *read() {
+							// Collect output using idle-timeout: yield when output
+							// stops for 200ms, or after max 30s total
+							const chunks: string[] = [];
+							const output: string = await new Promise((resolve) => {
+								let idleTimer: ReturnType<typeof setTimeout>;
+								const maxTimer = setTimeout(() => {
+									cleanup();
+									resolve(chunks.join(""));
+								}, 30000);
+
+								const handler = (data: string) => {
+									chunks.push(data);
+									clearTimeout(idleTimer);
+									idleTimer = setTimeout(() => {
+										cleanup();
+										resolve(chunks.join(""));
+									}, 200);
+								};
+
+								const cleanup = () => {
+									clearTimeout(idleTimer);
+									clearTimeout(maxTimer);
+									manager.off(`data:${paneId}`, handler);
+								};
+
+								manager.on(`data:${paneId}`, handler);
+								// Initial timeout if no output at all
+								idleTimer = setTimeout(() => {
+									cleanup();
+									resolve(chunks.join(""));
+								}, 2000);
+							});
+							yield output;
+						},
+					};
+				},
+			};
+		},
+		sendText(text: string, addNewLine = true) {
+			if (!manager) {
+				shimLog(`[vscode-shim] Terminal "${name}" sendText: ${text}`);
+				return;
+			}
+			manager.write({
+				paneId,
+				data: addNewLine ? `${text}\n` : text,
+			});
+		},
+		show(_preserveFocus?: boolean) {
+			// Could focus the terminal in the UI
+		},
+		hide() {
+			// noop
+		},
+		dispose() {
+			if (manager) {
+				manager.off(`exit:${paneId}`, () => {});
+				manager.kill(paneId).catch(() => {});
+			}
+			const idx = activeTerminals.indexOf(terminal);
+			if (idx >= 0) activeTerminals.splice(idx, 1);
+			_onDidCloseTerminal.fire(terminal);
+		},
+	};
+
+	activeTerminals.push(terminal);
+	_onDidOpenTerminal.fire(terminal);
+	_onDidChangeActiveTerminal.fire(terminal);
+
+	return terminal;
+}
+
+export function getTerminals(): ShimTerminal[] {
+	return [...activeTerminals];
+}
+
+export function getActiveTerminal(): ShimTerminal | undefined {
+	return activeTerminals[activeTerminals.length - 1];
+}

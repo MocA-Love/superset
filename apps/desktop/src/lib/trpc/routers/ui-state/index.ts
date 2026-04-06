@@ -45,6 +45,7 @@ const paneSchema = z.object({
 		"git-graph",
 		"database-explorer",
 		"action-logs",
+		"vscode-extension",
 	]),
 	name: z.string(),
 	isNew: z.boolean().optional(),
@@ -109,6 +110,12 @@ const paneSchema = z.object({
 				}),
 			),
 			initialJobIndex: z.number().optional(),
+		})
+		.optional(),
+	vscodeExtension: z
+		.object({
+			viewType: z.string(),
+			extensionId: z.string(),
 		})
 		.optional(),
 	workspaceRun: z

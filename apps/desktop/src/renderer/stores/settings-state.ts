@@ -18,7 +18,8 @@ export type SettingsSection =
 	| "billing"
 	| "apikeys"
 	| "permissions"
-	| "project";
+	| "project"
+	| "vscodeExtensions";
 
 interface SettingsState {
 	activeSection: SettingsSection;

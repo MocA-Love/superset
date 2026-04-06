@@ -211,6 +211,12 @@ export interface TabsStore extends TabsState {
 		workspaceId: string,
 		connectionId?: string | null,
 	) => { tabId: string; paneId: string };
+	addVscodeExtensionTab: (
+		workspaceId: string,
+		extensionId: string,
+		viewType: string,
+		name: string,
+	) => { tabId: string; paneId: string };
 	addGitGraphTab: (
 		workspaceId: string,
 		worktreePath: string,

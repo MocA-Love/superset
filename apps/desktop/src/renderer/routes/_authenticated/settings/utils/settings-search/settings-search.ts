@@ -68,6 +68,8 @@ export const SETTING_ITEM_ID = {
 
 	EXTENSIONS_BROWSER: "extensions-browser",
 
+	VSCODE_EXTENSIONS_MANAGE: "vscode-extensions-manage",
+
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
@@ -983,6 +985,24 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"plugin",
 			"install",
 			"crx",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE,
+		section: "vscodeExtensions",
+		title: "VS Code Extensions",
+		description:
+			"Manage VS Code extensions like Claude Code and ChatGPT running inside Superset",
+		keywords: [
+			"vscode",
+			"vs code",
+			"extension",
+			"claude",
+			"chatgpt",
+			"codex",
+			"ai",
+			"install",
+			"manage",
 		],
 	},
 	{
