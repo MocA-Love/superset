@@ -4,6 +4,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { commands } from "./api/commands";
 import { shimLog, shimWarn } from "./api/debug-log";
 import { registerWebviewProtocol } from "./api/protocol-handler";
 import { startWebviewServer, stopWebviewServer } from "./api/webview-server";
@@ -56,8 +57,6 @@ export async function initExtensionHost(
 	await startWebviewServer();
 
 	// Set platform context keys (Codex checks these)
-	const { commands } =
-		require("./api/commands") as typeof import("./api/commands");
 	const platform =
 		process.platform === "darwin"
 			? "darwin"
