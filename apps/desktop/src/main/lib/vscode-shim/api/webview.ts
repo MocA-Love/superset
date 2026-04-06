@@ -174,6 +174,14 @@ export function resolveWebviewView(
 	const webview = createWebview(extensionPath, { enableScripts: true });
 	const viewId = `view:${viewType}:${Date.now()}`;
 
+	// Relay extension→webview postMessage as events (so tRPC subscription can forward to iframe)
+	webview._onDidPostMessage.event((message) => {
+		console.log(
+			`[webview:${viewId}] postMessage from extension to webview, type=${typeof message === "object" && message !== null && "type" in message ? (message as { type: string }).type : "unknown"}`,
+		);
+		_onWebviewEvent.fire({ viewId, type: "message", data: message });
+	});
+
 	// Intercept html setter to emit events
 	const rawWebview = webview;
 	const proxiedWebview = new Proxy(rawWebview, {
