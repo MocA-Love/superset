@@ -9,6 +9,26 @@ import {
 
 const DEFAULT_COLOR = "rgba(255, 0, 0, 0.3)";
 
+/** Check if a character is any kind of whitespace (including full-width, NBSP, etc.) */
+function isWhitespace(ch: string): boolean {
+	const code = ch.charCodeAt(0);
+	// Common ASCII whitespace
+	if (code === 0x20 || code === 0x09) return true; // space, tab
+	// Unicode whitespace
+	if (code === 0x3000) return true; // full-width space (　)
+	if (code === 0x00a0) return true; // non-breaking space
+	if (code === 0x2000 || code === 0x2001 || code === 0x2002 || code === 0x2003)
+		return true; // en/em spaces
+	if (code === 0x2004 || code === 0x2005 || code === 0x2006 || code === 0x2007)
+		return true; // various spaces
+	if (code === 0x2008 || code === 0x2009 || code === 0x200a) return true; // punctuation/thin/hair space
+	if (code === 0x200b) return true; // zero-width space
+	if (code === 0x202f) return true; // narrow no-break space
+	if (code === 0x205f) return true; // medium mathematical space
+	if (code === 0xfeff) return true; // BOM / zero-width no-break space
+	return false;
+}
+
 function buildTrailingSpacesTheme(color: string): Extension {
 	return EditorView.theme({
 		".cm-trailing-space": {
@@ -35,12 +55,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 			const text = line.text;
 			if (text.length === 0) continue;
 
-			// Find trailing whitespace
+			// Find trailing whitespace (including full-width spaces, NBSP, etc.)
 			let trailStart = text.length;
-			while (
-				trailStart > 0 &&
-				(text[trailStart - 1] === " " || text[trailStart - 1] === "\t")
-			) {
+			while (trailStart > 0 && isWhitespace(text[trailStart - 1])) {
 				trailStart--;
 			}
 
