@@ -69,8 +69,6 @@ export const SETTING_ITEM_ID = {
 	EXTENSIONS_BROWSER: "extensions-browser",
 
 	VSCODE_EXTENSIONS_MANAGE: "vscode-extensions-manage",
-	VSCODE_EXTENSIONS_INDENT_RAINBOW: "vscode-extensions-indent-rainbow",
-	VSCODE_EXTENSIONS_TRAILING_SPACES: "vscode-extensions-trailing-spaces",
 
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
@@ -1005,36 +1003,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"ai",
 			"install",
 			"manage",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_INDENT_RAINBOW,
-		section: "vscodeExtensions",
-		title: "Indent Rainbow",
-		description:
-			"Colorize indentation levels in the code editor with customizable rainbow colors",
-		keywords: [
-			"indent",
-			"rainbow",
-			"color",
-			"indentation",
-			"editor",
-			"highlight",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_TRAILING_SPACES,
-		section: "vscodeExtensions",
-		title: "Trailing Spaces",
-		description:
-			"Highlight trailing whitespace at the end of lines in the code editor",
-		keywords: [
-			"trailing",
-			"spaces",
-			"whitespace",
-			"trim",
-			"editor",
-			"highlight",
 		],
 	},
 	{

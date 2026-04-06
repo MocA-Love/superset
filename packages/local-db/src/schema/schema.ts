@@ -231,14 +231,6 @@ export const settings = sqliteTable("settings", {
 	worktreeBaseDir: text("worktree_base_dir"),
 	openLinksInApp: integer("open_links_in_app", { mode: "boolean" }),
 	defaultEditor: text("default_editor").$type<ExternalApp>(),
-	indentRainbowEnabled: integer("indent_rainbow_enabled", {
-		mode: "boolean",
-	}),
-	indentRainbowColors: text("indent_rainbow_colors"),
-	trailingSpacesEnabled: integer("trailing_spaces_enabled", {
-		mode: "boolean",
-	}),
-	trailingSpacesColor: text("trailing_spaces_color"),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;

@@ -14,7 +14,6 @@ import { useActiveEditorSync } from "../hooks/useActiveEditorSync";
 import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
 import { useVscodeExtensionPanelSync } from "../hooks/useVscodeExtensionPanelSync";
 import { useVscodeOpenFileSync } from "../hooks/useVscodeOpenFileSync";
-import { useVscodeThemeSync } from "../hooks/useVscodeThemeSync";
 import { RightSidebar } from "../RightSidebar";
 
 interface WorkspaceLayoutProps {
@@ -36,11 +35,6 @@ export function WorkspaceLayout({
 	useActiveEditorSync();
 	useVscodeExtensionPanelSync();
 	useVscodeOpenFileSync();
-	useVscodeThemeSync(
-		typeof localStorage !== "undefined"
-			? localStorage.getItem("vscode-use-superset-theme") === "true"
-			: false,
-	);
 	const isSidebarOpen = useSidebarStore((s) => s.isSidebarOpen);
 	const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
 	const setSidebarWidth = useSidebarStore((s) => s.setSidebarWidth);
