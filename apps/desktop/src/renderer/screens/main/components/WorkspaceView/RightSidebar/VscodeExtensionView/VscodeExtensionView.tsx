@@ -146,7 +146,7 @@ export function VscodeExtensionView({
 			ref={iframeRef}
 			srcDoc={bridgedHtml}
 			className="w-full h-full border-0"
-			sandbox="allow-scripts allow-forms allow-popups"
+			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
 			title={`${extensionId} webview`}
 		/>
 	);
@@ -161,6 +161,7 @@ function injectVscodeApiBridge(
 	bodyClass: string,
 ): string {
 	const bridgeScript = `
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' vscode-webview-resource:; style-src 'unsafe-inline' vscode-webview-resource:; img-src vscode-webview-resource: https: data:; font-src vscode-webview-resource: https: data:; connect-src https: wss: ws:;">
 <style>${themeCss}</style>
 <script>
 (function() {
