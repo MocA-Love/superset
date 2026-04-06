@@ -456,7 +456,22 @@ const languages = {
 
 // Extensions namespace
 const extensions = {
-	getExtension(_extensionId: string): unknown {
+	getExtension(extensionId: string): unknown {
+		try {
+			const { getLoadedExtension } =
+				require("./loader") as typeof import("./loader");
+			const loaded = getLoadedExtension(extensionId);
+			if (loaded) {
+				return {
+					id: loaded.info.id,
+					extensionPath: loaded.info.extensionPath,
+					extensionUri: Uri.file(loaded.info.extensionPath),
+					isActive: loaded.info.isActive,
+					packageJSON: loaded.info.manifest,
+					exports: loaded.exports,
+				};
+			}
+		} catch {}
 		return undefined;
 	},
 	all: [] as unknown[],
@@ -544,6 +559,10 @@ export function createVscodeApi(): Record<string, unknown> {
 	const api: Record<string, unknown> = {
 		// Module interop flags
 		__esModule: true,
+
+		// VS Code version (extensions check this for feature availability)
+		version: "1.96.0",
+
 		// Namespaces
 		commands,
 		workspace,

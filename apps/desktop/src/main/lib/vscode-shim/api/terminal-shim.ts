@@ -76,7 +76,7 @@ export function createTerminal(
 	const processIdPromise = (async () => {
 		if (!manager) return undefined;
 		try {
-			const _result = await manager.createOrAttach({
+			const result = await manager.createOrAttach({
 				paneId,
 				tabId: `vscode-ext-tab-${paneId}`,
 				workspaceId: "vscode-extension-host",
@@ -84,6 +84,7 @@ export function createTerminal(
 				cols: 120,
 				rows: 30,
 			});
+			pid = result?.snapshot?.pid;
 			// Listen for exit
 			manager.on(`exit:${paneId}`, (exitCode: number) => {
 				exitStatus = { code: exitCode };

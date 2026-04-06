@@ -37,7 +37,10 @@ interface FileSystemWatcher {
 
 // Current workspace path — set via setWorkspacePath()
 let workspaceFolderPath: string | undefined;
-const _onDidChangeWorkspaceFolders = new EventEmitter<unknown>();
+const _onDidChangeWorkspaceFolders = new EventEmitter<{
+	added: Array<{ uri: Uri; name: string; index: number }>;
+	removed: Array<{ uri: Uri; name: string; index: number }>;
+}>();
 const _onDidChangeTextDocument = new EventEmitter<unknown>();
 const _onDidOpenTextDocument = new EventEmitter<TextDocument>();
 const _onDidCloseTextDocument = new EventEmitter<TextDocument>();
@@ -47,7 +50,24 @@ const fileSystemProviders = new Map<string, unknown>();
 const textDocumentContentProviders = new Map<string, unknown>();
 
 export function setWorkspacePath(folderPath: string): void {
+	const oldPath = workspaceFolderPath;
 	workspaceFolderPath = folderPath;
+	if (oldPath !== folderPath) {
+		_onDidChangeWorkspaceFolders.fire({
+			added: folderPath
+				? [
+						{
+							uri: Uri.file(folderPath),
+							name: path.basename(folderPath),
+							index: 0,
+						},
+					]
+				: [],
+			removed: oldPath
+				? [{ uri: Uri.file(oldPath), name: path.basename(oldPath), index: 0 }]
+				: [],
+		});
+	}
 }
 
 export const workspace = {
