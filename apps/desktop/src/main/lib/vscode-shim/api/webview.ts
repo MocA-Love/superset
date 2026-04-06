@@ -160,7 +160,9 @@ export function resolveWebviewView(
 	viewType: string,
 	extensionPath: string,
 ): { view: WebviewView; viewId: string } | undefined {
-	console.log(`[vscode-shim] resolveWebviewView: ${viewType}, registered providers: [${[...viewProviders.keys()].join(", ")}]`);
+	console.log(
+		`[vscode-shim] resolveWebviewView: ${viewType}, registered providers: [${[...viewProviders.keys()].join(", ")}]`,
+	);
 	const provider = viewProviders.get(viewType);
 	if (!provider) {
 		console.warn(`[vscode-shim] No provider found for viewType: ${viewType}`);

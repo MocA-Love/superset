@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import {
-	generateVscodeThemeCss,
-	getVscodeBodyClass,
-} from "./vscode-theme-bridge";
 
 interface VscodeExtensionViewProps {
 	viewType: string;
@@ -13,8 +9,8 @@ interface VscodeExtensionViewProps {
 
 /**
  * Renders a VS Code extension's webview inside an iframe.
+ * Uses vscode-webview:// protocol to serve HTML with its own CSP.
  * Bridges postMessage between the iframe and the extension host via tRPC.
- * Injects Superset theme as VS Code CSS variables.
  */
 export function VscodeExtensionView({
 	viewType,
@@ -23,61 +19,13 @@ export function VscodeExtensionView({
 }: VscodeExtensionViewProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [viewId, setViewId] = useState<string | null>(null);
-	const [html, setHtml] = useState<string | null>(null);
+	const [webviewUrl, setWebviewUrl] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [themeCss, setThemeCss] = useState("");
-	const [bodyClass, setBodyClass] = useState("vscode-dark");
 
 	const resolveMutation =
 		electronTrpc.vscodeExtensions.resolveWebview.useMutation();
 	const postMessageMutation =
 		electronTrpc.vscodeExtensions.postMessageToExtension.useMutation();
-
-	// Generate theme CSS on mount and when theme changes
-	useEffect(() => {
-		const updateTheme = () => {
-			setThemeCss(generateVscodeThemeCss());
-			setBodyClass(getVscodeBodyClass());
-		};
-		updateTheme();
-
-		// Watch for theme changes via class mutations on <html>
-		const observer = new MutationObserver((mutations) => {
-			for (const m of mutations) {
-				if (
-					m.type === "attributes" &&
-					(m.attributeName === "class" || m.attributeName === "style")
-				) {
-					updateTheme();
-					break;
-				}
-			}
-		});
-		observer.observe(document.documentElement, {
-			attributes: true,
-			attributeFilter: ["class", "style"],
-		});
-
-		return () => observer.disconnect();
-	}, []);
-
-	// Subscribe to webview events
-	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(undefined, {
-		enabled: isActive && !!viewId,
-		onData: (event) => {
-			if (!viewId) return;
-			if (event.viewId !== viewId) return;
-
-			if (event.type === "html") {
-				setHtml(event.data as string);
-			} else if (event.type === "message") {
-				iframeRef.current?.contentWindow?.postMessage(
-					{ type: "vscode-message", data: event.data },
-					"*",
-				);
-			}
-		},
-	});
 
 	// Resolve the webview when first becoming active
 	useEffect(() => {
@@ -90,9 +38,9 @@ export function VscodeExtensionView({
 			},
 			{
 				onSuccess: (result) => {
-					if (result.viewId) {
+					if (result.viewId && result.url) {
 						setViewId(result.viewId);
-						setHtml(result.html);
+						setWebviewUrl(result.url);
 					} else {
 						setError(`Extension view "${viewType}" not found`);
 					}
@@ -123,6 +71,22 @@ export function VscodeExtensionView({
 		return () => window.removeEventListener("message", handler);
 	}, [viewId, postMessageMutation.mutate]);
 
+	// Subscribe to webview events for message forwarding (extension -> webview)
+	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(undefined, {
+		enabled: isActive && !!viewId,
+		onData: (event) => {
+			if (!viewId || event.viewId !== viewId) return;
+			if (event.type === "message") {
+				iframeRef.current?.contentWindow?.postMessage(
+					{ type: "vscode-message", data: event.data },
+					"*",
+				);
+			}
+			// HTML updates trigger protocol store update on main process side
+			// iframe will get fresh content on next load
+		},
+	});
+
 	if (error) {
 		return (
 			<div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
@@ -131,7 +95,7 @@ export function VscodeExtensionView({
 		);
 	}
 
-	if (!html) {
+	if (!webviewUrl) {
 		return (
 			<div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
 				<p>Loading {extensionId}...</p>
@@ -139,70 +103,13 @@ export function VscodeExtensionView({
 		);
 	}
 
-	const bridgedHtml = injectVscodeApiBridge(html, themeCss, bodyClass);
-
 	return (
 		<iframe
 			ref={iframeRef}
-			srcDoc={bridgedHtml}
+			src={webviewUrl}
 			className="w-full h-full border-0"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
 			title={`${extensionId} webview`}
 		/>
 	);
-}
-
-/**
- * Injects acquireVsCodeApi() bridge + theme CSS into extension webview HTML.
- */
-function injectVscodeApiBridge(
-	html: string,
-	themeCss: string,
-	bodyClass: string,
-): string {
-	const bridgeScript = `
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' vscode-webview-resource:; style-src 'unsafe-inline' vscode-webview-resource:; img-src vscode-webview-resource: https: data:; font-src vscode-webview-resource: https: data:; connect-src https: wss: ws:;">
-<style>${themeCss}</style>
-<script>
-(function() {
-	let _state = null;
-	const vscodeApi = {
-		postMessage(message) {
-			window.parent.postMessage({ type: 'vscode-api', data: message }, '*');
-		},
-		getState() {
-			return _state;
-		},
-		setState(state) {
-			_state = state;
-			return state;
-		}
-	};
-
-	window.acquireVsCodeApi = function() { return vscodeApi; };
-
-	window.addEventListener('message', function(event) {
-		if (event.data && event.data.type === 'vscode-message') {
-			window.dispatchEvent(new MessageEvent('message', { data: event.data.data }));
-		}
-	});
-})();
-</script>`;
-
-	// Replace body class for theme detection
-	const themedHtml = html.replace(
-		/<body([^>]*)>/,
-		`<body$1 class="${bodyClass}">`,
-	);
-
-	if (themedHtml.includes("</head>")) {
-		return themedHtml.replace("</head>", `${bridgeScript}</head>`);
-	}
-	if (themedHtml.includes("<body")) {
-		return themedHtml.replace(
-			/<body([^>]*)>/,
-			`<body$1 class="${bodyClass}">${bridgeScript}`,
-		);
-	}
-	return `${bridgeScript}${themedHtml}`;
 }

@@ -132,9 +132,7 @@ export function getActiveExtensions(): Array<{
 
 /** Restart a specific extension (deactivate + re-activate) */
 export async function restartExtension(extensionId: string): Promise<boolean> {
-	const { deactivateExtension, getLoadedExtension } = await import(
-		"./loader"
-	);
+	const { deactivateExtension, getLoadedExtension } = await import("./loader");
 	const loaded = getLoadedExtension(extensionId);
 	if (!loaded) return false;
 

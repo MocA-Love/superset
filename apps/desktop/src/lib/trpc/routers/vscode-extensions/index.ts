@@ -223,7 +223,7 @@ export const createVscodeExtensionsRouter = () => {
 			});
 		}),
 
-		/** Resolve a webview view for a given viewType, returns initial HTML */
+		/** Resolve a webview view for a given viewType, returns viewId + protocol URL */
 		resolveWebview: publicProcedure
 			.input(
 				z.object({
@@ -237,10 +237,17 @@ export const createVscodeExtensionsRouter = () => {
 					input.extensionPath,
 				);
 				if (!viewId) {
-					return { viewId: null, html: null };
+					return { viewId: null, url: null };
 				}
-				const html = webviewBridge.getHtml(viewId) ?? null;
-				return { viewId, html };
+				// Store HTML in protocol handler and return URL
+				const html = webviewBridge.getHtml(viewId);
+				if (html) {
+					const { setWebviewHtml } =
+						require("main/lib/vscode-shim") as typeof import("main/lib/vscode-shim");
+					setWebviewHtml(viewId, html);
+				}
+				const url = `vscode-webview://${viewId}`;
+				return { viewId, url };
 			}),
 
 		/** Get current webview HTML */

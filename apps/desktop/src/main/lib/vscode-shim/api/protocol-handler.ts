@@ -76,7 +76,74 @@ export function registerWebviewProtocol(): void {
 		});
 
 		console.log("[vscode-shim] Registered vscode-webview-resource:// protocol");
+
+		// Serve webview HTML pages with their own CSP (bypasses parent CSP)
+		protocol.handle("vscode-webview", (request: Request) => {
+			const url = new URL(request.url);
+			const viewId = url.pathname.replace(/^\/+/, "");
+			let html =
+				webviewHtmlStore.get(viewId) ?? "<html><body>No content</body></html>";
+
+			// Inject acquireVsCodeApi bridge script
+			html = injectBridgeScript(html);
+
+			return new Response(html, {
+				headers: {
+					"Content-Type": "text/html; charset=utf-8",
+					"Content-Security-Policy": [
+						"default-src 'none'",
+						"script-src 'unsafe-inline' vscode-webview-resource:",
+						"style-src 'unsafe-inline' vscode-webview-resource:",
+						"img-src vscode-webview-resource: https: data:",
+						"font-src vscode-webview-resource: https: data:",
+						"connect-src https: wss: ws:",
+					].join("; "),
+				},
+			});
+		});
+
+		console.log("[vscode-shim] Registered vscode-webview:// protocol");
 	} catch (err) {
 		console.warn("[vscode-shim] Failed to register protocol handler:", err);
 	}
+}
+
+const BRIDGE_SCRIPT = `<script>
+(function() {
+	let _state = null;
+	const vscodeApi = {
+		postMessage(message) {
+			window.parent.postMessage({ type: 'vscode-api', data: message }, '*');
+		},
+		getState() { return _state; },
+		setState(state) { _state = state; return state; }
+	};
+	window.acquireVsCodeApi = function() { return vscodeApi; };
+	window.addEventListener('message', function(event) {
+		if (event.data && event.data.type === 'vscode-message') {
+			window.dispatchEvent(new MessageEvent('message', { data: event.data.data }));
+		}
+	});
+})();
+</script>`;
+
+function injectBridgeScript(html: string): string {
+	if (html.includes("</head>")) {
+		return html.replace("</head>", `${BRIDGE_SCRIPT}</head>`);
+	}
+	if (html.includes("<body")) {
+		return html.replace(/<body([^>]*)>/, `<body$1>${BRIDGE_SCRIPT}`);
+	}
+	return `${BRIDGE_SCRIPT}${html}`;
+}
+
+/** Store for webview HTML content, keyed by viewId */
+const webviewHtmlStore = new Map<string, string>();
+
+export function setWebviewHtml(viewId: string, html: string): void {
+	webviewHtmlStore.set(viewId, html);
+}
+
+export function clearWebviewHtml(viewId: string): void {
+	webviewHtmlStore.delete(viewId);
 }

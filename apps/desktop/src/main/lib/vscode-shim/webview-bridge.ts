@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from "node:events";
+import { setWebviewHtml } from "./api/protocol-handler";
 import {
 	getActiveView,
 	onWebviewEvent,
@@ -30,6 +31,8 @@ class WebviewBridge extends EventEmitter {
 		onWebviewEvent((event: WebviewEvent) => {
 			if (event.type === "html") {
 				this._viewHtml.set(event.viewId, event.data as string);
+				// Also update protocol handler store so iframe can reload
+				setWebviewHtml(event.viewId, event.data as string);
 			}
 			this.emit("webview-event", event);
 		});
@@ -40,7 +43,9 @@ class WebviewBridge extends EventEmitter {
 		console.log(`[vscode-shim] WebviewBridge.resolveView called: ${viewType}`);
 		const result = resolveWebviewView(viewType, extensionPath);
 		if (!result) {
-			console.warn(`[vscode-shim] WebviewBridge.resolveView: no result for ${viewType}`);
+			console.warn(
+				`[vscode-shim] WebviewBridge.resolveView: no result for ${viewType}`,
+			);
 			return undefined;
 		}
 

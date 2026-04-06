@@ -43,11 +43,11 @@ import {
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
+
 // Lazy import to avoid module resolution issues during Vite build
 const loadVscodeShim = () =>
-	import("./lib/vscode-shim") as Promise<
-		typeof import("./lib/vscode-shim")
-	>;
+	import("./lib/vscode-shim") as Promise<typeof import("./lib/vscode-shim")>;
+
 import { cleanupMainWindowResources, MainWindow } from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
@@ -495,6 +495,24 @@ protocol.registerSchemesAsPrivileged([
 			supportFetchAPI: true,
 		},
 	},
+	{
+		scheme: "vscode-webview-resource",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
+		scheme: "vscode-webview",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
 ]);
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -600,7 +618,10 @@ if (!gotTheLock) {
 		loadVscodeShim()
 			.then((mod) => mod.initExtensionHost())
 			.catch((err) => {
-				console.error("[main] Failed to initialize VS Code extension host:", err);
+				console.error(
+					"[main] Failed to initialize VS Code extension host:",
+					err,
+				);
 			});
 
 		const coldStartUrl = findDeepLinkInArgv(process.argv);
