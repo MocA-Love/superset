@@ -158,7 +158,7 @@ function createWebview(
 export function resolveWebviewView(
 	viewType: string,
 	extensionPath: string,
-): WebviewView | undefined {
+): { view: WebviewView; viewId: string } | undefined {
 	const provider = viewProviders.get(viewType);
 	if (!provider) return undefined;
 
@@ -209,7 +209,7 @@ export function resolveWebviewView(
 
 	provider.resolveWebviewView(view, { state: undefined }, cancellationToken);
 
-	return view;
+	return { view, viewId };
 }
 
 export function createWebviewPanel(

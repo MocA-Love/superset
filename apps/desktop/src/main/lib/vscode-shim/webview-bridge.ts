@@ -37,19 +37,12 @@ class WebviewBridge extends EventEmitter {
 
 	/** Resolve a webview view (called when renderer requests a sidebar view) */
 	resolveView(viewType: string, extensionPath: string): string | undefined {
-		const view = resolveWebviewView(viewType, extensionPath);
-		if (!view) return undefined;
+		const result = resolveWebviewView(viewType, extensionPath);
+		if (!result) return undefined;
 
-		// The viewId is set via onWebviewEvent "html" event, extract from stored data
-		// Find the latest viewId matching this viewType
-		for (const [vid] of this._viewHtml) {
-			if (vid.startsWith(`view:${viewType}:`)) {
-				this._viewIds.set(viewType, vid);
-				return vid;
-			}
-		}
-
-		return undefined;
+		const { viewId } = result;
+		this._viewIds.set(viewType, viewId);
+		return viewId;
 	}
 
 	/** Get current HTML for a view */

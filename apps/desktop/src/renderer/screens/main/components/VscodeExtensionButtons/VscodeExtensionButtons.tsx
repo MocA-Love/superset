@@ -41,7 +41,6 @@ function ExtensionButton({
 	const setSidebarOpen = useSidebarStore((s) => s.setSidebarOpen);
 	const workspaceId = useWorkspaceId();
 	const addTab = useTabsStore((s) => s.addTab);
-	const panes = useTabsStore((s) => s.panes);
 
 	const isActive = isSidebarOpen && rightSidebarTab === tab;
 
@@ -59,9 +58,9 @@ function ExtensionButton({
 	const handleOpenAsTab = () => {
 		if (!workspaceId) return;
 		const { paneId } = addTab(workspaceId);
-		// Mutate the pane to be a vscode-extension pane
-		const pane = panes[paneId];
-		if (pane) {
+		// Use getState() to read the freshly created pane (addTab updates synchronously)
+		const freshPanes = useTabsStore.getState().panes;
+		if (freshPanes[paneId]) {
 			useTabsStore.setState((state) => ({
 				panes: {
 					...state.panes,

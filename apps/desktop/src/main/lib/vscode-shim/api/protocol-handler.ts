@@ -6,7 +6,19 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+
+/** Allowed base directories for serving extension resources */
+const ALLOWED_ROOTS: string[] = [
+	path.join(os.homedir(), ".vscode", "extensions"),
+	path.join(os.homedir(), ".vscode-insiders", "extensions"),
+];
+
+function isPathAllowed(filePath: string): boolean {
+	const resolved = path.resolve(filePath);
+	return ALLOWED_ROOTS.some((root) => resolved.startsWith(root + path.sep));
+}
 
 const MIME_TYPES: Record<string, string> = {
 	".html": "text/html",
@@ -44,6 +56,11 @@ export function registerWebviewProtocol(): void {
 				filePath = filePath.slice(1);
 			}
 
+			// Prevent path traversal — only serve files from extension directories
+			if (!isPathAllowed(filePath)) {
+				return new Response("Forbidden", { status: 403 });
+			}
+
 			if (!fs.existsSync(filePath)) {
 				return new Response("Not found", { status: 404 });
 			}
@@ -54,7 +71,6 @@ export function registerWebviewProtocol(): void {
 			return new Response(content, {
 				headers: {
 					"Content-Type": mimeType,
-					"Access-Control-Allow-Origin": "*",
 				},
 			});
 		});
