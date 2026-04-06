@@ -58,7 +58,30 @@ class Memento {
 class SecretStorage {
 	private _data = new Map<string, string>();
 	private _onDidChange = new EventEmitter<{ key: string }>();
+	private _filePath: string;
 	readonly onDidChange: Event<{ key: string }> = this._onDidChange.event;
+
+	constructor(filePath: string) {
+		this._filePath = filePath;
+		try {
+			if (fs.existsSync(filePath)) {
+				const raw = fs.readFileSync(filePath, "utf-8");
+				const parsed = JSON.parse(raw) as Record<string, string>;
+				for (const [k, v] of Object.entries(parsed)) {
+					this._data.set(k, v);
+				}
+			}
+		} catch {}
+	}
+
+	private _persist(): void {
+		try {
+			const obj: Record<string, string> = {};
+			for (const [k, v] of this._data) obj[k] = v;
+			fs.mkdirSync(path.dirname(this._filePath), { recursive: true });
+			fs.writeFileSync(this._filePath, JSON.stringify(obj, null, 2));
+		} catch {}
+	}
 
 	async get(key: string): Promise<string | undefined> {
 		return this._data.get(key);
@@ -66,11 +89,13 @@ class SecretStorage {
 
 	async store(key: string, value: string): Promise<void> {
 		this._data.set(key, value);
+		this._persist();
 		this._onDidChange.fire({ key });
 	}
 
 	async delete(key: string): Promise<void> {
 		this._data.delete(key);
+		this._persist();
 		this._onDidChange.fire({ key });
 	}
 }
@@ -165,7 +190,7 @@ export function createExtensionContext(
 		extensionUri: Uri.file(extensionPath),
 		globalState: new Memento(path.join(globalStoragePath, "state.json")),
 		workspaceState: new Memento(path.join(storagePath, "state.json")),
-		secrets: new SecretStorage(),
+		secrets: new SecretStorage(path.join(globalStoragePath, "secrets.json")),
 		storagePath,
 		globalStoragePath,
 		logPath,

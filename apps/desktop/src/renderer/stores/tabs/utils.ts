@@ -1049,3 +1049,39 @@ export const activatePaneInWorkspace = ({
 		},
 	};
 };
+
+export const createVscodeExtensionPane = (
+	tabId: string,
+	extensionId: string,
+	viewType: string,
+	name: string,
+): Pane => {
+	const id = generateId("pane");
+	return {
+		id,
+		tabId,
+		type: "vscode-extension",
+		name,
+		vscodeExtension: { viewType, extensionId },
+	};
+};
+
+export const createVscodeExtensionTabWithPane = (
+	workspaceId: string,
+	extensionId: string,
+	viewType: string,
+	name: string,
+): { tab: Tab; pane: Pane } => {
+	const tabId = generateId("tab");
+	const pane = createVscodeExtensionPane(tabId, extensionId, viewType, name);
+
+	const tab: Tab = {
+		id: tabId,
+		name,
+		workspaceId,
+		layout: pane.id,
+		createdAt: Date.now(),
+	};
+
+	return { tab, pane };
+};

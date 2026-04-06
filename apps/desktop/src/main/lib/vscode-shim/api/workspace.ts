@@ -156,16 +156,30 @@ export const workspace = {
 	},
 
 	async findFiles(
-		_include: string,
-		_exclude?: string | null,
-		_maxResults?: number,
+		include: string,
+		exclude?: string | null,
+		maxResults?: number,
 		_token?: unknown,
 	): Promise<Uri[]> {
-		// Simple glob-based file search using workspace root
 		if (!workspaceFolderPath) return [];
-		// For MVP, return empty array. In Phase 2+, wire to FsHostService.searchFiles
-		shimWarn("[vscode-shim] workspace.findFiles is a stub, returning empty");
-		return [];
+		try {
+			const { globSync } = require("glob") as typeof import("glob");
+			const results = globSync(include, {
+				cwd: workspaceFolderPath,
+				ignore: exclude ? [exclude] : ["**/node_modules/**"],
+				maxDepth: 20,
+				nodir: true,
+			});
+			const limited = maxResults ? results.slice(0, maxResults) : results;
+			return limited.map((r: string) =>
+				Uri.file(path.join(workspaceFolderPath!, r)),
+			);
+		} catch {
+			shimWarn(
+				"[vscode-shim] workspace.findFiles: glob failed, returning empty",
+			);
+			return [];
+		}
 	},
 
 	async applyEdit(_edit: WorkspaceEdit): Promise<boolean> {
