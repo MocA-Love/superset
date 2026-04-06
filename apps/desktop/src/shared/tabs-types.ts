@@ -16,7 +16,8 @@ export type PaneType =
 	| "devtools"
 	| "git-graph"
 	| "database-explorer"
-	| "action-logs";
+	| "action-logs"
+	| "vscode-extension";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -148,6 +149,7 @@ export interface Pane {
 	gitGraph?: GitGraphPaneState; // For git-graph panes
 	databaseExplorer?: DatabaseExplorerPaneState; // For database explorer panes
 	actionLogs?: ActionLogsPaneState; // For GitHub Actions log panes
+	vscodeExtension?: { viewType: string; extensionId: string };
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";

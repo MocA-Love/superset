@@ -4,6 +4,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useBrowserFullscreenStore } from "renderer/stores/browser-fullscreen";
 import { useSidebarStore } from "renderer/stores/sidebar-state";
 import { SidebarControl } from "../../SidebarControl";
+import { VscodeExtensionButtons } from "../../VscodeExtensionButtons";
 import { ContentHeader } from "./ContentHeader";
 import { PresetsBar } from "./components/PresetsBar";
 import { TabsContent } from "./TabsContent";
@@ -34,9 +35,12 @@ export function ContentView({
 			{!isBrowserFullscreen && (
 				<ContentHeader
 					trailingAction={
-						!isSidebarOpen && !isTearoffWindow() ? (
-							<SidebarControl />
-						) : undefined
+						<div className="flex items-center gap-1">
+							<VscodeExtensionButtons />
+							{!isSidebarOpen && !isTearoffWindow() && (
+								<SidebarControl />
+							)}
+						</div>
 					}
 				>
 					<GroupStrip />

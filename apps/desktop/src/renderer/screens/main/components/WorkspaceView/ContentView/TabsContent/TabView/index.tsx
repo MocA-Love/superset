@@ -28,6 +28,7 @@ import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
 import { GitGraphPane } from "./GitGraphPane";
+import { VscodeExtensionPane } from "./VscodeExtensionPane";
 import { TabPane } from "./TabPane";
 
 export const MOSAIC_ID = "superset-mosaic";
@@ -153,6 +154,7 @@ export function TabView({ tab }: TabViewProps) {
 				tabId: string;
 				type: string;
 				devtools?: { targetPaneId: string };
+				vscodeExtension?: { viewType: string; extensionId: string };
 			}
 		> = {};
 		for (const paneId of layoutPaneIds) {
@@ -162,6 +164,7 @@ export function TabView({ tab }: TabViewProps) {
 					tabId: pane.tabId,
 					type: pane.type,
 					devtools: pane.devtools,
+					vscodeExtension: pane.vscodeExtension,
 				};
 			}
 		}
@@ -379,6 +382,20 @@ export function TabView({ tab }: TabViewProps) {
 						onMoveToTab={(targetTabId) => movePaneToTab(paneId, targetTabId)}
 						onMoveToNewTab={() => movePaneToNewTab(paneId)}
 						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			// Route vscode-extension panes
+			if (
+				paneInfo.type === "vscode-extension" &&
+				paneInfo.vscodeExtension
+			) {
+				return (
+					<VscodeExtensionPane
+						paneId={paneId}
+						viewType={paneInfo.vscodeExtension.viewType}
+						extensionId={paneInfo.vscodeExtension.extensionId}
 					/>
 				);
 			}
