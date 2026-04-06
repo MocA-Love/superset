@@ -44,8 +44,95 @@ function isPathAllowed(filePath: string): boolean {
 /** Store for webview HTML content, keyed by viewId */
 const htmlStore = new Map<string, string>();
 
+/** VS Code dark theme CSS variables - required for extension webviews to render */
+const VSCODE_THEME_CSS = `<style>
+:root {
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-font-weight: normal;
+  --vscode-editor-font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
+  --vscode-editor-font-size: 13px;
+  --vscode-editor-background: #1e1e1e;
+  --vscode-editor-foreground: #d4d4d4;
+  --vscode-foreground: #cccccc;
+  --vscode-disabledForeground: #cccccc80;
+  --vscode-descriptionForeground: #acacac;
+  --vscode-errorForeground: #f48771;
+  --vscode-focusBorder: #007fd4;
+  --vscode-sideBar-background: #252526;
+  --vscode-sideBar-foreground: #cccccc;
+  --vscode-sideBar-border: #2d2d2d;
+  --vscode-sideBarTitle-foreground: #bbbbbb;
+  --vscode-sideBarSectionHeader-background: #80808033;
+  --vscode-sideBarSectionHeader-foreground: #cccccc;
+  --vscode-panel-background: #1e1e1e;
+  --vscode-panel-foreground: #cccccc;
+  --vscode-panel-border: #80808059;
+  --vscode-panelTitle-activeForeground: #e7e7e7;
+  --vscode-panelTitle-inactiveForeground: #e7e7e780;
+  --vscode-input-background: #3c3c3c;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-border: #3c3c3c;
+  --vscode-input-placeholderForeground: #a6a6a6;
+  --vscode-inputOption-activeBorder: #007acc;
+  --vscode-inputOption-activeBackground: #007fd466;
+  --vscode-inputOption-activeForeground: #ffffff;
+  --vscode-button-background: #0e639c;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #1177bb;
+  --vscode-button-secondaryBackground: #3a3d41;
+  --vscode-button-secondaryForeground: #ffffff;
+  --vscode-button-secondaryHoverBackground: #45494e;
+  --vscode-badge-background: #4d4d4d;
+  --vscode-badge-foreground: #ffffff;
+  --vscode-scrollbarSlider-background: #79797966;
+  --vscode-scrollbarSlider-hoverBackground: #646464b3;
+  --vscode-scrollbarSlider-activeBackground: #bfbfbf66;
+  --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-hoverForeground: #cccccc;
+  --vscode-list-activeSelectionBackground: #04395e;
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-list-inactiveSelectionBackground: #37373d;
+  --vscode-list-inactiveSelectionForeground: #cccccc;
+  --vscode-dropdown-background: #3c3c3c;
+  --vscode-dropdown-foreground: #f0f0f0;
+  --vscode-dropdown-border: #3c3c3c;
+  --vscode-checkbox-background: #3c3c3c;
+  --vscode-checkbox-border: #3c3c3c;
+  --vscode-checkbox-foreground: #f0f0f0;
+  --vscode-textLink-foreground: #3794ff;
+  --vscode-textLink-activeForeground: #3794ff;
+  --vscode-widget-shadow: #0000005c;
+  --vscode-widget-border: #303031;
+  --vscode-toolbar-hoverBackground: #5a5d5e50;
+  --vscode-tab-activeBackground: #1e1e1e;
+  --vscode-tab-activeForeground: #ffffff;
+  --vscode-tab-inactiveBackground: #2d2d2d;
+  --vscode-tab-inactiveForeground: #ffffff80;
+  --vscode-tab-border: #252526;
+  --vscode-notifications-background: #252526;
+  --vscode-notifications-foreground: #cccccc;
+  --vscode-notifications-border: #303031;
+  --vscode-commandCenter-background: #ffffff0d;
+  --vscode-commandCenter-foreground: #cccccc;
+  --vscode-icon-foreground: #c5c5c5;
+  --vscode-keybindingLabel-foreground: #cccccc;
+  color-scheme: dark;
+}
+body {
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  margin: 0;
+  padding: 0;
+}
+body.vscode-dark { color-scheme: dark; }
+body.vscode-light { color-scheme: light; }
+</style>`;
+
 /** Bridge script injected into every webview page */
-const BRIDGE_SCRIPT = `<script>
+const BRIDGE_SCRIPT = `${VSCODE_THEME_CSS}<script>
 (function() {
 	let _state = null;
 	const vscodeApi = {
@@ -113,10 +200,18 @@ function stripExtensionCsp(html: string): string {
 }
 
 function injectBridge(html: string): string {
-	if (html.includes("</head>")) {
-		return html.replace("</head>", `${BRIDGE_SCRIPT}</head>`);
+	// Inject bridge script + theme CSS into head
+	let result = html;
+	if (result.includes("</head>")) {
+		result = result.replace("</head>", `${BRIDGE_SCRIPT}</head>`);
+	} else {
+		result = `${BRIDGE_SCRIPT}${result}`;
 	}
-	return `${BRIDGE_SCRIPT}${html}`;
+	// Add vscode-dark class to body for theme detection
+	if (result.includes("<body")) {
+		result = result.replace(/<body([^>]*)>/, '<body$1 class="vscode-dark">');
+	}
+	return result;
 }
 
 export async function startWebviewServer(): Promise<number> {
