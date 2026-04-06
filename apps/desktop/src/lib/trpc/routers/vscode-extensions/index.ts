@@ -243,10 +243,14 @@ export const createVscodeExtensionsRouter = () => {
 				}
 				// Store HTML in protocol handler and return URL
 				const html = webviewBridge.getHtml(viewId);
+				console.log(
+					`[vscode-shim] resolveWebview: viewId=${viewId}, hasHtml=${!!html}, htmlLen=${html?.length ?? 0}`,
+				);
 				if (html) {
 					setWebviewHtml(viewId, html);
 				}
-				const url = `vscode-webview://${viewId}`;
+				// Use proper URL with hostname to avoid colon parsing issues
+				const url = `vscode-webview://webview/${encodeURIComponent(viewId)}`;
 				return { viewId, url };
 			}),
 

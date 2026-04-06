@@ -79,10 +79,15 @@ export function registerWebviewProtocol(): void {
 
 		// Serve webview HTML pages with their own CSP (bypasses parent CSP)
 		protocol.handle("vscode-webview", (request: Request) => {
+			// URL format: vscode-webview://webview/{encodedViewId}
 			const url = new URL(request.url);
-			const viewId = url.pathname.replace(/^\/+/, "");
+			const viewId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+			console.log(
+				`[vscode-webview] Request for viewId: "${viewId}", stored keys: [${[...webviewHtmlStore.keys()].join(", ")}]`,
+			);
 			let html =
-				webviewHtmlStore.get(viewId) ?? "<html><body>No content</body></html>";
+				webviewHtmlStore.get(viewId) ??
+				`<html><body style="color:#ccc;background:#1e1e1e;font-family:sans-serif;padding:20px"><p>Webview content not available. viewId: ${viewId}</p></body></html>`;
 
 			// Inject acquireVsCodeApi bridge script
 			html = injectBridgeScript(html);
