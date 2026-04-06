@@ -17,6 +17,8 @@ export interface BrowserPaneData {
 	url: string;
 	mode: "docs" | "preview" | "generic";
 	reloadToken?: string;
+	/** FORK NOTE: Set on hard reload to force cache-busting via query param */
+	hardReloadToken?: string;
 }
 
 export interface DevtoolsPaneData {

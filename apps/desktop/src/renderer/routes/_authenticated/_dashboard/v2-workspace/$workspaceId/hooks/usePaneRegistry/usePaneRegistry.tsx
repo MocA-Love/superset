@@ -179,11 +179,15 @@ export function usePaneRegistry(
 				},
 				renderPane: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as BrowserPaneData;
+					// FORK NOTE: hard reload appends cache-bust param to force full re-fetch
+					const src = data.hardReloadToken
+						? `${data.url}${data.url.includes("?") ? "&" : "?"}__cb=${data.hardReloadToken}`
+						: data.url;
 					return (
 						<iframe
 							className="h-full w-full border-0 bg-background"
 							key={`${ctx.pane.id}:${data.reloadToken ?? "0"}`}
-							src={data.url}
+							src={src}
 							title={ctx.pane.titleOverride ?? "Browser"}
 						/>
 					);

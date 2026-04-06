@@ -243,20 +243,26 @@ function WorkspaceContent({
 
 	useWorkspaceHotkeys({ store, workspaceId });
 	useHotkey("QUICK_OPEN", handleQuickOpen);
+	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
+	useHotkey("SEARCH_IN_FILES", handleQuickOpen);
 
+	// FORK NOTE: BROWSER_RELOAD / BROWSER_HARD_RELOAD support for v2 workspace.
+	// Hard reload appends a cache-bust query param; normal reload just swaps the key.
 	useEffect(() => {
-		return addBrowserShortcutListener(() => {
+		return addBrowserShortcutListener((action) => {
 			const activePane = store.getState().getActivePane();
 			if (!activePane || activePane.pane.kind !== "browser") {
 				return;
 			}
 
 			const data = activePane.pane.data as BrowserPaneData;
+			const isHard = action === "hard-reload";
 			store.getState().setPaneData({
 				paneId: activePane.pane.id,
 				data: {
 					...data,
 					reloadToken: crypto.randomUUID(),
+					...(isHard && { hardReloadToken: crypto.randomUUID() }),
 				} as PaneViewerData,
 			});
 		});
