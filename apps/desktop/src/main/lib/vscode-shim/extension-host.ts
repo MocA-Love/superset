@@ -4,14 +4,14 @@
 
 import os from "node:os";
 import path from "node:path";
-import {
-	discoverExtensions,
-	loadExtension,
-	deactivateAll,
-	getLoadedExtensions,
-} from "./loader.js";
-import { setWorkspacePath } from "./api/workspace.js";
 import { registerWebviewProtocol } from "./api/protocol-handler.js";
+import { setWorkspacePath } from "./api/workspace.js";
+import {
+	deactivateAll,
+	discoverExtensions,
+	getLoadedExtensions,
+	loadExtension,
+} from "./loader.js";
 import type { ExtensionInfo } from "./types.js";
 
 // Known extension IDs we support
@@ -31,7 +31,9 @@ interface ExtensionHostOptions {
 
 let isInitialized = false;
 
-export async function initExtensionHost(options: ExtensionHostOptions = {}): Promise<void> {
+export async function initExtensionHost(
+	options: ExtensionHostOptions = {},
+): Promise<void> {
 	if (isInitialized) {
 		console.warn("[vscode-shim] Extension host already initialized");
 		return;
@@ -54,7 +56,9 @@ export async function initExtensionHost(options: ExtensionHostOptions = {}): Pro
 
 	// Filter to supported extensions, pick latest version for each
 	const toLoad = selectExtensions(discovered, targetIds);
-	console.log(`[vscode-shim] Loading ${toLoad.length} extensions: ${toLoad.map((e) => e.id).join(", ")}`);
+	console.log(
+		`[vscode-shim] Loading ${toLoad.length} extensions: ${toLoad.map((e) => e.id).join(", ")}`,
+	);
 
 	for (const ext of toLoad) {
 		try {
@@ -102,7 +106,10 @@ export function updateWorkspacePath(workspacePath: string): void {
 	setWorkspacePath(workspacePath);
 }
 
-export function getActiveExtensions(): Array<{ id: string; isActive: boolean }> {
+export function getActiveExtensions(): Array<{
+	id: string;
+	isActive: boolean;
+}> {
 	return getLoadedExtensions().map((ext) => ({
 		id: ext.info.id,
 		isActive: ext.info.isActive,
@@ -111,7 +118,9 @@ export function getActiveExtensions(): Array<{ id: string; isActive: boolean }> 
 
 /** Restart a specific extension (deactivate + re-activate) */
 export async function restartExtension(extensionId: string): Promise<boolean> {
-	const { deactivateExtension, getLoadedExtension } = await import("./loader.js");
+	const { deactivateExtension, getLoadedExtension } = await import(
+		"./loader.js"
+	);
 	const loaded = getLoadedExtension(extensionId);
 	if (!loaded) return false;
 

@@ -2,7 +2,7 @@
  * VS Code Webview API shim.
  */
 
-import { Disposable, EventEmitter, type Event } from "./event-emitter.js";
+import { Disposable, type Event, EventEmitter } from "./event-emitter.js";
 import { Uri } from "./uri.js";
 
 export interface WebviewOptions {
@@ -52,12 +52,18 @@ export interface WebviewViewProvider {
 	resolveWebviewView(
 		webviewView: WebviewView,
 		context: { state?: unknown },
-		token: { isCancellationRequested: boolean; onCancellationRequested: Event<void> },
+		token: {
+			isCancellationRequested: boolean;
+			onCancellationRequested: Event<void>;
+		},
 	): void | Promise<void>;
 }
 
 export interface WebviewPanelSerializer {
-	deserializeWebviewPanel(webviewPanel: WebviewPanel, state: unknown): Promise<void>;
+	deserializeWebviewPanel(
+		webviewPanel: WebviewPanel,
+		state: unknown,
+	): Promise<void>;
 }
 
 // Emits when webview html/messages change — consumed by tRPC router
@@ -75,7 +81,9 @@ const panelSerializers = new Map<string, WebviewPanelSerializer>();
 const activeViews = new Map<string, WebviewView>();
 const activePanels = new Map<string, WebviewPanel>();
 
-export function getViewProvider(viewType: string): WebviewViewProvider | undefined {
+export function getViewProvider(
+	viewType: string,
+): WebviewViewProvider | undefined {
 	return viewProviders.get(viewType);
 }
 
@@ -113,7 +121,10 @@ export interface WebviewInternal extends Webview {
 	_onDidPostMessage: EventEmitter<unknown>;
 }
 
-function createWebview(extensionPath: string, options?: WebviewOptions): WebviewInternal {
+function createWebview(
+	_extensionPath: string,
+	options?: WebviewOptions,
+): WebviewInternal {
 	const _onDidReceiveMessage = new EventEmitter<unknown>();
 	const _onDidPostMessage = new EventEmitter<unknown>();
 	let _html = "";
@@ -165,7 +176,7 @@ export function resolveWebviewView(
 				_onWebviewEvent.fire({ viewId, type: "html", data: value });
 				return true;
 			}
-			(target as Record<string | symbol, unknown>)[prop] = value;
+			(target as unknown as Record<string | symbol, unknown>)[prop] = value;
 			return true;
 		},
 	});
@@ -209,19 +220,26 @@ export function createWebviewPanel(
 	options?: WebviewOptions,
 ): WebviewPanel {
 	const _onDidDispose = new EventEmitter<void>();
-	const _onDidChangeViewState = new EventEmitter<{ webviewPanel: WebviewPanel }>();
+	const _onDidChangeViewState = new EventEmitter<{
+		webviewPanel: WebviewPanel;
+	}>();
 	const webview = createWebview(extensionPath, options);
 	const panelId = `panel:${viewType}:${Date.now()}`;
-	const viewColumn = typeof showOptions === "number" ? showOptions : showOptions.viewColumn;
+	const viewColumn =
+		typeof showOptions === "number" ? showOptions : showOptions.viewColumn;
 
 	const proxiedWebview = new Proxy(webview, {
 		set(target, prop, value) {
 			if (prop === "html") {
 				(target as { html: string }).html = value;
-				_onWebviewEvent.fire({ panelId, type: "html", data: value } as unknown as WebviewEvent);
+				_onWebviewEvent.fire({
+					panelId,
+					type: "html",
+					data: value,
+				} as unknown as WebviewEvent);
 				return true;
 			}
-			(target as Record<string | symbol, unknown>)[prop] = value;
+			(target as unknown as Record<string | symbol, unknown>)[prop] = value;
 			return true;
 		},
 	});

@@ -4,16 +4,21 @@
 
 import fs from "node:fs";
 import path from "node:path";
+
 function getUserDataPath(): string {
 	try {
 		return require("electron").app.getPath("userData");
 	} catch {
-		return require("node:path").join(require("node:os").homedir(), ".superset-desktop");
+		return require("node:path").join(
+			require("node:os").homedir(),
+			".superset-desktop",
+		);
 	}
 }
-import { Disposable, EventEmitter, type Event } from "./event-emitter.js";
-import { Uri } from "./uri.js";
+
 import type { ExtensionManifest } from "../types.js";
+import { type Disposable, type Event, EventEmitter } from "./event-emitter.js";
+import { Uri } from "./uri.js";
 
 class Memento {
 	private _data: Record<string, unknown>;
@@ -79,7 +84,9 @@ interface EnvironmentVariableCollection {
 	get(variable: string): unknown;
 	delete(variable: string): void;
 	clear(): void;
-	forEach(callback: (variable: string, mutator: unknown, collection: unknown) => void): void;
+	forEach(
+		callback: (variable: string, mutator: unknown, collection: unknown) => void,
+	): void;
 	[Symbol.iterator](): Iterator<[string, unknown]>;
 }
 
@@ -100,11 +107,21 @@ function createEnvironmentVariableCollection(): EnvironmentVariableCollection {
 			vars.set(variable, { type: 3, value });
 			process.env[variable] = value + (process.env[variable] ?? "");
 		},
-		get(variable: string) { return vars.get(variable); },
-		delete(variable: string) { vars.delete(variable); },
-		clear() { vars.clear(); },
-		forEach(callback) { for (const [k, v] of vars) callback(k, v, this); },
-		*[Symbol.iterator]() { yield* vars.entries(); },
+		get(variable: string) {
+			return vars.get(variable);
+		},
+		delete(variable: string) {
+			vars.delete(variable);
+		},
+		clear() {
+			vars.clear();
+		},
+		forEach(callback) {
+			for (const [k, v] of vars) callback(k, v, this);
+		},
+		*[Symbol.iterator]() {
+			yield* vars.entries();
+		},
 	};
 }
 

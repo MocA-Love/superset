@@ -14,14 +14,21 @@ export function getContextValue(key: string): unknown {
 }
 
 export const commands = {
-	registerCommand(command: string, callback: CommandHandler, _thisArg?: unknown): Disposable {
+	registerCommand(
+		command: string,
+		callback: CommandHandler,
+		_thisArg?: unknown,
+	): Disposable {
 		registry.set(command, callback);
 		return new Disposable(() => {
 			registry.delete(command);
 		});
 	},
 
-	async executeCommand<T = unknown>(command: string, ...args: unknown[]): Promise<T> {
+	async executeCommand<T = unknown>(
+		command: string,
+		...args: unknown[]
+	): Promise<T> {
 		if (command === "setContext") {
 			const [key, value] = args;
 			contextState.set(key as string, value);

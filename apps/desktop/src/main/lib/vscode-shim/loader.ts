@@ -6,12 +6,15 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import Module from "node:module";
-import { createVscodeApi } from "./vscode-api.js";
-import { createExtensionContext, type VscodeExtensionContext } from "./api/extension-context.js";
+import path from "node:path";
 import { registerExtensionDefaults } from "./api/configuration.js";
-import type { ExtensionManifest, ExtensionInfo } from "./types.js";
+import {
+	createExtensionContext,
+	type VscodeExtensionContext,
+} from "./api/extension-context.js";
+import type { ExtensionInfo, ExtensionManifest } from "./types.js";
+import { createVscodeApi } from "./vscode-api.js";
 
 const vscodeApi = createVscodeApi();
 let interceptInstalled = false;
@@ -39,18 +42,27 @@ function installRequireIntercept(): void {
 		isPreloading: false,
 	} as unknown as NodeModule;
 
-	const originalResolveFilename = (Module as unknown as { _resolveFilename: Function })._resolveFilename;
-	(Module as unknown as { _resolveFilename: Function })._resolveFilename = function (
-		request: string,
-		parent: unknown,
-		isMain: boolean,
-		options: unknown,
-	) {
-		if (request === "vscode") {
-			return VSCODE_CACHE_KEY;
-		}
-		return originalResolveFilename.call(this, request, parent, isMain, options);
-	};
+	const originalResolveFilename = (
+		Module as unknown as { _resolveFilename: Function }
+	)._resolveFilename;
+	(Module as unknown as { _resolveFilename: Function })._resolveFilename =
+		function (
+			request: string,
+			parent: unknown,
+			isMain: boolean,
+			options: unknown,
+		) {
+			if (request === "vscode") {
+				return VSCODE_CACHE_KEY;
+			}
+			return originalResolveFilename.call(
+				this,
+				request,
+				parent,
+				isMain,
+				options,
+			);
+		};
 }
 
 export function discoverExtensions(extensionsDir: string): ExtensionInfo[] {
@@ -95,7 +107,9 @@ interface LoadedExtension {
 
 const loadedExtensions = new Map<string, LoadedExtension>();
 
-export async function loadExtension(info: ExtensionInfo): Promise<LoadedExtension> {
+export async function loadExtension(
+	info: ExtensionInfo,
+): Promise<LoadedExtension> {
 	if (loadedExtensions.has(info.id)) {
 		return loadedExtensions.get(info.id)!;
 	}
@@ -106,7 +120,11 @@ export async function loadExtension(info: ExtensionInfo): Promise<LoadedExtensio
 	registerExtensionDefaults(info.manifest);
 
 	// Create extension context
-	const context = createExtensionContext(info.id, info.extensionPath, info.manifest);
+	const context = createExtensionContext(
+		info.id,
+		info.extensionPath,
+		info.manifest,
+	);
 
 	// Load the extension's main module
 	const mainPath = path.resolve(info.extensionPath, info.manifest.main!);
@@ -172,7 +190,9 @@ export async function deactivateAll(): Promise<void> {
 	}
 }
 
-export function getLoadedExtension(extensionId: string): LoadedExtension | undefined {
+export function getLoadedExtension(
+	extensionId: string,
+): LoadedExtension | undefined {
 	return loadedExtensions.get(extensionId);
 }
 

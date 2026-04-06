@@ -28,8 +28,8 @@ import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
 import { GitGraphPane } from "./GitGraphPane";
-import { VscodeExtensionPane } from "./VscodeExtensionPane";
 import { TabPane } from "./TabPane";
+import { VscodeExtensionPane } from "./VscodeExtensionPane";
 
 export const MOSAIC_ID = "superset-mosaic";
 
@@ -387,10 +387,7 @@ export function TabView({ tab }: TabViewProps) {
 			}
 
 			// Route vscode-extension panes
-			if (
-				paneInfo.type === "vscode-extension" &&
-				paneInfo.vscodeExtension
-			) {
+			if (paneInfo.type === "vscode-extension" && paneInfo.vscodeExtension) {
 				return (
 					<VscodeExtensionPane
 						paneId={paneId}

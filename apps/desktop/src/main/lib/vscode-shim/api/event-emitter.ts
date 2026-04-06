@@ -73,8 +73,10 @@ export class CancellationTokenSource {
 	cancel(): void {
 		if (!this._isCancelled) {
 			this._isCancelled = true;
-			(this.token as { isCancellationRequested: boolean }).isCancellationRequested = true;
-			this._emitter.fire(undefined as void);
+			(
+				this.token as { isCancellationRequested: boolean }
+			).isCancellationRequested = true;
+			this._emitter.fire(undefined as undefined);
 		}
 	}
 

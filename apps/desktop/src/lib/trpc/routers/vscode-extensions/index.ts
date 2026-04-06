@@ -1,8 +1,8 @@
 import { observable } from "@trpc/server/observable";
+import type { WebviewBridgeEvent } from "main/lib/vscode-shim/webview-bridge";
+import { webviewBridge } from "main/lib/vscode-shim/webview-bridge";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { webviewBridge } from "main/lib/vscode-shim/webview-bridge";
-import type { WebviewBridgeEvent } from "main/lib/vscode-shim/webview-bridge";
 
 export const createVscodeExtensionsRouter = () => {
 	return router({

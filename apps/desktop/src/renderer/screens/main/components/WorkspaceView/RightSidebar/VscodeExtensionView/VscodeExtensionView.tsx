@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
 interface VscodeExtensionViewProps {
@@ -68,7 +68,7 @@ export function VscodeExtensionView({
 				},
 			},
 		);
-	}, [isActive, viewId, viewType]);
+	}, [isActive, viewId, viewType, resolveMutation.mutate]);
 
 	// Listen for messages from iframe -> forward to extension
 	useEffect(() => {
@@ -85,7 +85,7 @@ export function VscodeExtensionView({
 
 		window.addEventListener("message", handler);
 		return () => window.removeEventListener("message", handler);
-	}, [viewId]);
+	}, [viewId, postMessageMutation.mutate]);
 
 	if (error) {
 		return (

@@ -61,7 +61,13 @@ export class Uri {
 		return result;
 	}
 
-	toJSON(): { scheme: string; authority: string; path: string; query: string; fragment: string } {
+	toJSON(): {
+		scheme: string;
+		authority: string;
+		path: string;
+		query: string;
+		fragment: string;
+	} {
 		return {
 			scheme: this.scheme,
 			authority: this.authority,

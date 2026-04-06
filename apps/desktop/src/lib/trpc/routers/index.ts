@@ -31,8 +31,8 @@ import { createSettingsRouter } from "./settings";
 import { createTabTearoffRouter } from "./tab-tearoff";
 import { createTerminalRouter } from "./terminal";
 import { createUiStateRouter } from "./ui-state";
-import { createWindowRouter } from "./window";
 import { createVscodeExtensionsRouter } from "./vscode-extensions";
+import { createWindowRouter } from "./window";
 import { createWorkspacesRouter } from "./workspaces";
 
 export const createAppRouter = (

@@ -37,10 +37,11 @@ export interface ExtensionManifest {
 				icon: string;
 			}>;
 		};
-		configuration?:
-			| ConfigurationSchema
-			| ConfigurationSchema[];
-		menus?: Record<string, Array<{ command: string; when?: string; group?: string }>>;
+		configuration?: ConfigurationSchema | ConfigurationSchema[];
+		menus?: Record<
+			string,
+			Array<{ command: string; when?: string; group?: string }>
+		>;
 		keybindings?: Array<{
 			command: string;
 			key: string;
@@ -48,7 +49,11 @@ export interface ExtensionManifest {
 			when?: string;
 		}>;
 		jsonValidation?: Array<{ fileMatch: string; url: string }>;
-		languages?: Array<{ id: string; extensions?: string[]; filenames?: string[] }>;
+		languages?: Array<{
+			id: string;
+			extensions?: string[];
+			filenames?: string[];
+		}>;
 	};
 	extensionDependencies?: string[];
 	enabledApiProposals?: string[];

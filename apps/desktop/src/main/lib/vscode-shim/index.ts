@@ -6,29 +6,29 @@
  */
 
 export {
+	getActivePanel,
+	getActiveView,
+	getViewProvider,
+	onWebviewEvent,
+	resolveWebviewView,
+} from "./api/webview.js";
+export { handleUri } from "./api/window.js";
+export {
+	getActiveExtensions,
 	initExtensionHost,
 	shutdownExtensionHost,
 	updateWorkspacePath,
-	getActiveExtensions,
 } from "./extension-host.js";
-
 export {
-	loadExtension,
 	deactivateExtension,
+	discoverExtensions,
 	getLoadedExtension,
 	getLoadedExtensions,
-	discoverExtensions,
+	loadExtension,
 } from "./loader.js";
-
-export {
-	resolveWebviewView,
-	onWebviewEvent,
-	getViewProvider,
-	getActiveView,
-	getActivePanel,
-} from "./api/webview.js";
-
+export type {
+	ExtensionInfo,
+	ExtensionManifest,
+	WebviewMessage,
+} from "./types.js";
 export { webviewBridge } from "./webview-bridge.js";
-export { handleUri } from "./api/window.js";
-
-export type { ExtensionManifest, ExtensionInfo, WebviewMessage } from "./types.js";

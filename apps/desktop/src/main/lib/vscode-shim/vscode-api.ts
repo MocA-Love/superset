@@ -8,35 +8,136 @@
 
 import { commands } from "./api/commands.js";
 import {
+	CancellationTokenSource,
 	Disposable,
 	EventEmitter,
-	CancellationTokenSource,
-	type CancellationToken,
 } from "./api/event-emitter.js";
 import { Uri } from "./api/uri.js";
-import { workspace } from "./api/workspace.js";
 import { window } from "./api/window.js";
-import type { VscodeExtensionContext } from "./api/extension-context.js";
+import { workspace } from "./api/workspace.js";
 
 // VS Code enums
 const StatusBarAlignment = { Left: 1, Right: 2 } as const;
-const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3, Four: 4 } as const;
-const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15 } as const;
-const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const;
-const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 } as const;
-const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
+const ViewColumn = {
+	Active: -1,
+	Beside: -2,
+	One: 1,
+	Two: 2,
+	Three: 3,
+	Four: 4,
+} as const;
+const ProgressLocation = {
+	SourceControl: 1,
+	Window: 10,
+	Notification: 15,
+} as const;
+const ConfigurationTarget = {
+	Global: 1,
+	Workspace: 2,
+	WorkspaceFolder: 3,
+} as const;
+const DiagnosticSeverity = {
+	Error: 0,
+	Warning: 1,
+	Information: 2,
+	Hint: 3,
+} as const;
+const FileType = {
+	Unknown: 0,
+	File: 1,
+	Directory: 2,
+	SymbolicLink: 64,
+} as const;
 const EndOfLine = { LF: 1, CRLF: 2 } as const;
 const OverviewRulerLane = { Left: 1, Center: 2, Right: 4, Full: 7 } as const;
 const ExtensionMode = { Production: 1, Development: 2, Test: 3 } as const;
-const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 } as const;
-const TextEditorRevealType = { Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 } as const;
-const EnvironmentVariableMutatorType = { Replace: 1, Append: 2, Prepend: 3 } as const;
+const TreeItemCollapsibleState = {
+	None: 0,
+	Collapsed: 1,
+	Expanded: 2,
+} as const;
+const TextEditorRevealType = {
+	Default: 0,
+	InCenter: 1,
+	InCenterIfOutsideViewport: 2,
+	AtTop: 3,
+} as const;
+const EnvironmentVariableMutatorType = {
+	Replace: 1,
+	Append: 2,
+	Prepend: 3,
+} as const;
 const UIKind = { Desktop: 1, Web: 2 } as const;
-const LogLevel = { Off: 0, Trace: 1, Debug: 2, Info: 3, Warning: 4, Error: 5 } as const;
+const LogLevel = {
+	Off: 0,
+	Trace: 1,
+	Debug: 2,
+	Info: 3,
+	Warning: 4,
+	Error: 5,
+} as const;
 const ExtensionKind = { UI: 1, Workspace: 2 } as const;
-const ColorThemeKind = { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 } as const;
-const SymbolKind = { File: 0, Module: 1, Namespace: 2, Package: 3, Class: 4, Method: 5, Property: 6, Field: 7, Constructor: 8, Enum: 9, Interface: 10, Function: 11, Variable: 12, Constant: 13, String: 14, Number: 15, Boolean: 16, Array: 17, Object: 18, Key: 19, Null: 20, EnumMember: 21, Struct: 22, Event: 23, Operator: 24, TypeParameter: 25 } as const;
-const CompletionItemKind = { Text: 0, Method: 1, Function: 2, Constructor: 3, Field: 4, Variable: 5, Class: 6, Interface: 7, Module: 8, Property: 9, Unit: 10, Value: 11, Enum: 12, Keyword: 13, Snippet: 14, Color: 15, File: 16, Reference: 17, Folder: 18, EnumMember: 19, Constant: 20, Struct: 21, Event: 22, Operator: 23, TypeParameter: 24 } as const;
+const ColorThemeKind = {
+	Light: 1,
+	Dark: 2,
+	HighContrast: 3,
+	HighContrastLight: 4,
+} as const;
+const SymbolKind = {
+	File: 0,
+	Module: 1,
+	Namespace: 2,
+	Package: 3,
+	Class: 4,
+	Method: 5,
+	Property: 6,
+	Field: 7,
+	Constructor: 8,
+	Enum: 9,
+	Interface: 10,
+	Function: 11,
+	Variable: 12,
+	Constant: 13,
+	String: 14,
+	Number: 15,
+	Boolean: 16,
+	Array: 17,
+	Object: 18,
+	Key: 19,
+	Null: 20,
+	EnumMember: 21,
+	Struct: 22,
+	Event: 23,
+	Operator: 24,
+	TypeParameter: 25,
+} as const;
+const CompletionItemKind = {
+	Text: 0,
+	Method: 1,
+	Function: 2,
+	Constructor: 3,
+	Field: 4,
+	Variable: 5,
+	Class: 6,
+	Interface: 7,
+	Module: 8,
+	Property: 9,
+	Unit: 10,
+	Value: 11,
+	Enum: 12,
+	Keyword: 13,
+	Snippet: 14,
+	Color: 15,
+	File: 16,
+	Reference: 17,
+	Folder: 18,
+	EnumMember: 19,
+	Constant: 20,
+	Struct: 21,
+	Event: 22,
+	Operator: 23,
+	TypeParameter: 24,
+} as const;
 const TextDocumentChangeReason = { Undo: 1, Redo: 2 } as const;
 
 // Stub classes
@@ -47,18 +148,41 @@ class Position {
 		this.line = line;
 		this.character = character;
 	}
-	isEqual(other: Position): boolean { return this.line === other.line && this.character === other.character; }
-	isBefore(other: Position): boolean { return this.line < other.line || (this.line === other.line && this.character < other.character); }
-	isAfter(other: Position): boolean { return !this.isEqual(other) && !this.isBefore(other); }
-	translate(lineDelta?: number, characterDelta?: number): Position { return new Position(this.line + (lineDelta ?? 0), this.character + (characterDelta ?? 0)); }
-	with(line?: number, character?: number): Position { return new Position(line ?? this.line, character ?? this.character); }
-	compareTo(other: Position): number { return this.line - other.line || this.character - other.character; }
+	isEqual(other: Position): boolean {
+		return this.line === other.line && this.character === other.character;
+	}
+	isBefore(other: Position): boolean {
+		return (
+			this.line < other.line ||
+			(this.line === other.line && this.character < other.character)
+		);
+	}
+	isAfter(other: Position): boolean {
+		return !this.isEqual(other) && !this.isBefore(other);
+	}
+	translate(lineDelta?: number, characterDelta?: number): Position {
+		return new Position(
+			this.line + (lineDelta ?? 0),
+			this.character + (characterDelta ?? 0),
+		);
+	}
+	with(line?: number, character?: number): Position {
+		return new Position(line ?? this.line, character ?? this.character);
+	}
+	compareTo(other: Position): number {
+		return this.line - other.line || this.character - other.character;
+	}
 }
 
 class Range {
 	readonly start: Position;
 	readonly end: Position;
-	constructor(startLine: number | Position, startChar: number | Position, endLine?: number, endChar?: number) {
+	constructor(
+		startLine: number | Position,
+		startChar: number | Position,
+		endLine?: number,
+		endChar?: number,
+	) {
 		if (typeof startLine === "number") {
 			this.start = new Position(startLine, startChar as number);
 			this.end = new Position(endLine!, endChar!);
@@ -67,15 +191,26 @@ class Range {
 			this.end = startChar as Position;
 		}
 	}
-	get isEmpty(): boolean { return this.start.isEqual(this.end); }
-	contains(positionOrRange: Position | Range): boolean { return true; }
-	with(start?: Position, end?: Position): Range { return new Range(start ?? this.start, end ?? this.end); }
+	get isEmpty(): boolean {
+		return this.start.isEqual(this.end);
+	}
+	contains(_positionOrRange: Position | Range): boolean {
+		return true;
+	}
+	with(start?: Position, end?: Position): Range {
+		return new Range(start ?? this.start, end ?? this.end);
+	}
 }
 
 class Selection extends Range {
 	readonly anchor: Position;
 	readonly active: Position;
-	constructor(anchorLine: number | Position, anchorChar: number | Position, activeLine?: number, activeChar?: number) {
+	constructor(
+		anchorLine: number | Position,
+		anchorChar: number | Position,
+		activeLine?: number,
+		activeChar?: number,
+	) {
 		if (typeof anchorLine === "number") {
 			super(anchorLine, anchorChar as number, activeLine!, activeChar!);
 			this.anchor = new Position(anchorLine, anchorChar as number);
@@ -86,12 +221,16 @@ class Selection extends Range {
 			this.active = anchorChar as Position;
 		}
 	}
-	get isReversed(): boolean { return this.anchor.isAfter(this.active); }
+	get isReversed(): boolean {
+		return this.anchor.isAfter(this.active);
+	}
 }
 
 class ThemeColor {
 	readonly id: string;
-	constructor(id: string) { this.id = id; }
+	constructor(id: string) {
+		this.id = id;
+	}
 }
 
 class ThemeIcon {
@@ -99,7 +238,10 @@ class ThemeIcon {
 	static readonly Folder = new ThemeIcon("folder");
 	readonly id: string;
 	readonly color?: ThemeColor;
-	constructor(id: string, color?: ThemeColor) { this.id = id; this.color = color; }
+	constructor(id: string, color?: ThemeColor) {
+		this.id = id;
+		this.color = color;
+	}
 }
 
 class MarkdownString {
@@ -111,46 +253,114 @@ class MarkdownString {
 		this.value = value ?? "";
 		this.supportThemeIcons = supportThemeIcons;
 	}
-	appendText(value: string): MarkdownString { this.value += value; return this; }
-	appendMarkdown(value: string): MarkdownString { this.value += value; return this; }
-	appendCodeblock(code: string, language?: string): MarkdownString { this.value += `\n\`\`\`${language ?? ""}\n${code}\n\`\`\`\n`; return this; }
+	appendText(value: string): MarkdownString {
+		this.value += value;
+		return this;
+	}
+	appendMarkdown(value: string): MarkdownString {
+		this.value += value;
+		return this;
+	}
+	appendCodeblock(code: string, language?: string): MarkdownString {
+		this.value += `\n\`\`\`${language ?? ""}\n${code}\n\`\`\`\n`;
+		return this;
+	}
 }
 
 class WorkspaceEdit {
-	private _edits: Array<{ uri: Uri; edits: Array<{ range: Range; newText: string }> }> = [];
-	replace(uri: Uri, range: Range, newText: string): void { this._edits.push({ uri, edits: [{ range, newText }] }); }
-	insert(uri: Uri, position: Position, newText: string): void { this.replace(uri, new Range(position, position), newText); }
-	delete(uri: Uri, range: Range): void { this.replace(uri, range, ""); }
-	entries(): Array<[Uri, Array<{ range: Range; newText: string }>]> { return this._edits.map((e) => [e.uri, e.edits]); }
+	private _edits: Array<{
+		uri: Uri;
+		edits: Array<{ range: Range; newText: string }>;
+	}> = [];
+	replace(uri: Uri, range: Range, newText: string): void {
+		this._edits.push({ uri, edits: [{ range, newText }] });
+	}
+	insert(uri: Uri, position: Position, newText: string): void {
+		this.replace(uri, new Range(position, position), newText);
+	}
+	delete(uri: Uri, range: Range): void {
+		this.replace(uri, range, "");
+	}
+	entries(): Array<[Uri, Array<{ range: Range; newText: string }>]> {
+		return this._edits.map((e) => [e.uri, e.edits]);
+	}
 }
 
 class CodeLens {
 	readonly range: Range;
 	command?: { title: string; command: string; arguments?: unknown[] };
-	constructor(range: Range, command?: { title: string; command: string; arguments?: unknown[] }) { this.range = range; this.command = command; }
-	get isResolved(): boolean { return !!this.command; }
+	constructor(
+		range: Range,
+		command?: { title: string; command: string; arguments?: unknown[] },
+	) {
+		this.range = range;
+		this.command = command;
+	}
+	get isResolved(): boolean {
+		return !!this.command;
+	}
 }
 
 class TabInputText {
 	readonly uri: Uri;
-	constructor(uri: Uri) { this.uri = uri; }
+	constructor(uri: Uri) {
+		this.uri = uri;
+	}
 }
 
 class NotebookCellOutputItem {
 	readonly mime: string;
 	readonly data: Uint8Array;
-	constructor(data: Uint8Array, mime: string) { this.data = data; this.mime = mime; }
-	static text(value: string, mime?: string): NotebookCellOutputItem { return new NotebookCellOutputItem(new TextEncoder().encode(value), mime ?? "text/plain"); }
-	static json(value: unknown, mime?: string): NotebookCellOutputItem { return new NotebookCellOutputItem(new TextEncoder().encode(JSON.stringify(value)), mime ?? "application/json"); }
-	static stdout(value: string): NotebookCellOutputItem { return NotebookCellOutputItem.text(value, "application/vnd.code.notebook.stdout"); }
-	static stderr(value: string): NotebookCellOutputItem { return NotebookCellOutputItem.text(value, "application/vnd.code.notebook.stderr"); }
-	static error(err: Error): NotebookCellOutputItem { return NotebookCellOutputItem.text(JSON.stringify({ name: err.name, message: err.message, stack: err.stack }), "application/vnd.code.notebook.error"); }
+	constructor(data: Uint8Array, mime: string) {
+		this.data = data;
+		this.mime = mime;
+	}
+	static text(value: string, mime?: string): NotebookCellOutputItem {
+		return new NotebookCellOutputItem(
+			new TextEncoder().encode(value),
+			mime ?? "text/plain",
+		);
+	}
+	static json(value: unknown, mime?: string): NotebookCellOutputItem {
+		return new NotebookCellOutputItem(
+			new TextEncoder().encode(JSON.stringify(value)),
+			mime ?? "application/json",
+		);
+	}
+	static stdout(value: string): NotebookCellOutputItem {
+		return NotebookCellOutputItem.text(
+			value,
+			"application/vnd.code.notebook.stdout",
+		);
+	}
+	static stderr(value: string): NotebookCellOutputItem {
+		return NotebookCellOutputItem.text(
+			value,
+			"application/vnd.code.notebook.stderr",
+		);
+	}
+	static error(err: Error): NotebookCellOutputItem {
+		return NotebookCellOutputItem.text(
+			JSON.stringify({
+				name: err.name,
+				message: err.message,
+				stack: err.stack,
+			}),
+			"application/vnd.code.notebook.error",
+		);
+	}
 }
 
 class NotebookCellOutput {
 	readonly items: NotebookCellOutputItem[];
 	readonly metadata?: Record<string, unknown>;
-	constructor(items: NotebookCellOutputItem[], metadata?: Record<string, unknown>) { this.items = items; this.metadata = metadata; }
+	constructor(
+		items: NotebookCellOutputItem[],
+		metadata?: Record<string, unknown>,
+	) {
+		this.items = items;
+		this.metadata = metadata;
+	}
 }
 
 class NotebookCellKind {
@@ -159,21 +369,35 @@ class NotebookCellKind {
 }
 
 class NotebookEdit {
-	static replaceCells(_range: unknown, _cells: unknown[]): NotebookEdit { return new NotebookEdit(); }
-	static insertCells(_index: number, _cells: unknown[]): NotebookEdit { return new NotebookEdit(); }
-	static deleteCells(_range: unknown): NotebookEdit { return new NotebookEdit(); }
-	static updateCellMetadata(_index: number, _metadata: Record<string, unknown>): NotebookEdit { return new NotebookEdit(); }
+	static replaceCells(_range: unknown, _cells: unknown[]): NotebookEdit {
+		return new NotebookEdit();
+	}
+	static insertCells(_index: number, _cells: unknown[]): NotebookEdit {
+		return new NotebookEdit();
+	}
+	static deleteCells(_range: unknown): NotebookEdit {
+		return new NotebookEdit();
+	}
+	static updateCellMetadata(
+		_index: number,
+		_metadata: Record<string, unknown>,
+	): NotebookEdit {
+		return new NotebookEdit();
+	}
 }
 
 class TabInputTextDiff {
 	readonly original: Uri;
 	readonly modified: Uri;
-	constructor(original: Uri, modified: Uri) { this.original = original; this.modified = modified; }
+	constructor(original: Uri, modified: Uri) {
+		this.original = original;
+		this.modified = modified;
+	}
 }
 
 // Languages namespace (stub)
 const languages = {
-	getDiagnostics(resource?: unknown): unknown[] {
+	getDiagnostics(_resource?: unknown): unknown[] {
 		// Without args: return iterable of [Uri, Diagnostic[]] pairs
 		// With uri arg: return Diagnostic[]
 		return [];
@@ -183,10 +407,18 @@ const languages = {
 		const items = new Map<string, unknown[]>();
 		return {
 			name: _name ?? "",
-			set(uri: Uri, diagnostics: unknown[]) { items.set(uri.toString(), diagnostics); },
-			delete(uri: Uri) { items.delete(uri.toString()); },
-			clear() { items.clear(); },
-			dispose() { items.clear(); },
+			set(uri: Uri, diagnostics: unknown[]) {
+				items.set(uri.toString(), diagnostics);
+			},
+			delete(uri: Uri) {
+				items.delete(uri.toString());
+			},
+			clear() {
+				items.clear();
+			},
+			dispose() {
+				items.clear();
+			},
 		};
 	},
 	registerCodeLensProvider(_selector: unknown, _provider: unknown): Disposable {
@@ -195,16 +427,29 @@ const languages = {
 	registerHoverProvider(_selector: unknown, _provider: unknown): Disposable {
 		return new Disposable(() => {});
 	},
-	registerDefinitionProvider(_selector: unknown, _provider: unknown): Disposable {
+	registerDefinitionProvider(
+		_selector: unknown,
+		_provider: unknown,
+	): Disposable {
 		return new Disposable(() => {});
 	},
-	registerReferenceProvider(_selector: unknown, _provider: unknown): Disposable {
+	registerReferenceProvider(
+		_selector: unknown,
+		_provider: unknown,
+	): Disposable {
 		return new Disposable(() => {});
 	},
-	registerDocumentSymbolProvider(_selector: unknown, _provider: unknown): Disposable {
+	registerDocumentSymbolProvider(
+		_selector: unknown,
+		_provider: unknown,
+	): Disposable {
 		return new Disposable(() => {});
 	},
-	registerCompletionItemProvider(_selector: unknown, _provider: unknown, ..._triggerCharacters: string[]): Disposable {
+	registerCompletionItemProvider(
+		_selector: unknown,
+		_provider: unknown,
+		..._triggerCharacters: string[]
+	): Disposable {
 		return new Disposable(() => {});
 	},
 };
@@ -225,15 +470,21 @@ const env = {
 	appHost: "superset-desktop",
 	language: "en",
 	clipboard: {
-		async readText(): Promise<string> { return ""; },
+		async readText(): Promise<string> {
+			return "";
+		},
 		async writeText(_text: string): Promise<void> {},
 	},
 	machineId: "superset-desktop",
 	sessionId: `session-${Date.now()}`,
 	uriScheme: "vscode",
 	shell: process.env.SHELL ?? "/bin/zsh",
-	get uiKind() { return UIKind.Desktop; },
-	get logLevel() { return LogLevel.Info; },
+	get uiKind() {
+		return UIKind.Desktop;
+	},
+	get logLevel() {
+		return LogLevel.Info;
+	},
 	onDidChangeLogLevel: new EventEmitter<number>().event,
 	remoteName: undefined as string | undefined,
 	isNewAppInstall: false,
@@ -261,10 +512,19 @@ const env = {
 
 // Authentication namespace
 const authentication = {
-	getSession(_providerId: string, _scopes: string[], _options?: unknown): Promise<unknown> {
+	getSession(
+		_providerId: string,
+		_scopes: string[],
+		_options?: unknown,
+	): Promise<unknown> {
 		return Promise.resolve(undefined);
 	},
-	registerAuthenticationProvider(_id: string, _label: string, _provider: unknown, _options?: unknown): Disposable {
+	registerAuthenticationProvider(
+		_id: string,
+		_label: string,
+		_provider: unknown,
+		_options?: unknown,
+	): Disposable {
 		return new Disposable(() => {});
 	},
 	onDidChangeSessions: new EventEmitter<unknown>().event,
@@ -351,7 +611,9 @@ export function createVscodeApi(): Record<string, unknown> {
 	return new Proxy(api, {
 		get(target, prop, receiver) {
 			if (typeof prop === "string" && !(prop in target)) {
-				console.warn(`[vscode-shim] Unimplemented API accessed: vscode.${prop}`);
+				console.warn(
+					`[vscode-shim] Unimplemented API accessed: vscode.${prop}`,
+				);
 				return undefined;
 			}
 			return Reflect.get(target, prop, receiver);

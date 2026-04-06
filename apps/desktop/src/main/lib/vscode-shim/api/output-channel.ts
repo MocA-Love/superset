@@ -76,7 +76,10 @@ export class LogOutputChannel extends OutputChannel {
 
 const channels = new Map<string, OutputChannel>();
 
-export function createOutputChannel(name: string, options?: { log: true } | string): OutputChannel {
+export function createOutputChannel(
+	name: string,
+	options?: { log: true } | string,
+): OutputChannel {
 	const existing = channels.get(name);
 	if (existing) return existing;
 

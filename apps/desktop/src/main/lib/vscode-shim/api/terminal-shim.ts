@@ -3,7 +3,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { Disposable, EventEmitter } from "./event-emitter.js";
+import { EventEmitter } from "./event-emitter.js";
 
 interface TerminalOptions {
 	name?: string;
@@ -42,7 +42,8 @@ export const terminalEvents = {
 	onDidCloseTerminal: _onDidCloseTerminal.event,
 	onDidChangeActiveTerminal: _onDidChangeActiveTerminal.event,
 	onDidEndTerminalShellExecution: _onDidEndTerminalShellExecution.event,
-	onDidChangeTerminalShellIntegration: _onDidChangeTerminalShellIntegration.event,
+	onDidChangeTerminalShellIntegration:
+		_onDidChangeTerminalShellIntegration.event,
 };
 
 const activeTerminals: ShimTerminal[] = [];
@@ -62,7 +63,7 @@ export function createTerminal(
 	const opts: TerminalOptions =
 		typeof nameOrOptions === "string"
 			? { name: nameOrOptions }
-			: nameOrOptions ?? {};
+			: (nameOrOptions ?? {});
 
 	const name = opts.name ?? "Extension Terminal";
 	const paneId = `vscode-ext-terminal-${randomUUID()}`;
@@ -75,7 +76,7 @@ export function createTerminal(
 	const processIdPromise = (async () => {
 		if (!manager) return undefined;
 		try {
-			const result = await manager.createOrAttach({
+			const _result = await manager.createOrAttach({
 				paneId,
 				tabId: `vscode-ext-tab-${paneId}`,
 				workspaceId: "vscode-extension-host",

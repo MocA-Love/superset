@@ -7,9 +7,9 @@
 
 import { EventEmitter } from "node:events";
 import {
+	getActiveView,
 	onWebviewEvent,
 	resolveWebviewView,
-	getActiveView,
 	type WebviewEvent,
 	type WebviewInternal,
 } from "./api/webview.js";
@@ -76,10 +76,15 @@ class WebviewBridge extends EventEmitter {
 	}
 
 	/** Subscribe to messages from extension to webview (postMessage calls) */
-	subscribeToExtensionMessages(viewId: string, callback: (message: unknown) => void): () => void {
+	subscribeToExtensionMessages(
+		viewId: string,
+		callback: (message: unknown) => void,
+	): () => void {
 		const view = getActiveView(viewId);
 		if (!view) return () => {};
-		const disposable = (view.webview as WebviewInternal)._onDidPostMessage.event(callback);
+		const disposable = (
+			view.webview as WebviewInternal
+		)._onDidPostMessage.event(callback);
 		return () => disposable.dispose();
 	}
 }

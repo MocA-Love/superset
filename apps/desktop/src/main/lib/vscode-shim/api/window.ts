@@ -11,21 +11,20 @@ function getDialog(): typeof import("electron").dialog {
 		} as unknown as typeof import("electron").dialog;
 	}
 }
-import { Disposable, EventEmitter, type Event } from "./event-emitter.js";
-import { Uri } from "./uri.js";
+
+import { Disposable, type Event, EventEmitter } from "./event-emitter.js";
 import { createOutputChannel, type OutputChannel } from "./output-channel.js";
 import {
 	createTerminal as createTerminalImpl,
-	getTerminals,
 	getActiveTerminal,
+	getTerminals,
 	terminalEvents,
 } from "./terminal-shim.js";
+import type { Uri } from "./uri.js";
 import {
-	registerWebviewViewProvider,
-	registerWebviewPanelSerializer,
 	createWebviewPanel,
-	type WebviewViewProvider,
-	type WebviewPanelSerializer,
+	registerWebviewPanelSerializer,
+	registerWebviewViewProvider,
 	type WebviewOptions,
 	type WebviewPanel,
 } from "./webview.js";
@@ -108,13 +107,18 @@ export const window = {
 	onDidCloseTerminal: terminalEvents.onDidCloseTerminal,
 	onDidChangeActiveTerminal: terminalEvents.onDidChangeActiveTerminal,
 	onDidEndTerminalShellExecution: terminalEvents.onDidEndTerminalShellExecution,
-	onDidChangeTerminalShellIntegration: terminalEvents.onDidChangeTerminalShellIntegration,
+	onDidChangeTerminalShellIntegration:
+		terminalEvents.onDidChangeTerminalShellIntegration,
 	onDidChangeWindowState: new EventEmitter<{ focused: boolean }>().event,
 	state: { focused: true, active: true },
 
 	// Tab groups
 	tabGroups: {
-		all: [] as Array<{ tabs: unknown[]; isActive: boolean; viewColumn: number }>,
+		all: [] as Array<{
+			tabs: unknown[];
+			isActive: boolean;
+			viewColumn: number;
+		}>,
 		get activeTabGroup() {
 			return { tabs: [], isActive: true, viewColumn: 1 };
 		},
@@ -126,7 +130,10 @@ export const window = {
 	},
 
 	// Messages
-	async showInformationMessage(message: string, ...items: string[]): Promise<string | undefined> {
+	async showInformationMessage(
+		message: string,
+		...items: string[]
+	): Promise<string | undefined> {
 		if (items.length === 0) {
 			console.log(`[vscode-shim] INFO: ${message}`);
 			return undefined;
@@ -139,7 +146,10 @@ export const window = {
 		return items[result.response];
 	},
 
-	async showWarningMessage(message: string, ...items: string[]): Promise<string | undefined> {
+	async showWarningMessage(
+		message: string,
+		...items: string[]
+	): Promise<string | undefined> {
 		if (items.length === 0) {
 			console.warn(`[vscode-shim] WARN: ${message}`);
 			return undefined;
@@ -152,7 +162,10 @@ export const window = {
 		return items[result.response];
 	},
 
-	async showErrorMessage(message: string, ...items: string[]): Promise<string | undefined> {
+	async showErrorMessage(
+		message: string,
+		...items: string[]
+	): Promise<string | undefined> {
 		if (items.length === 0) {
 			console.error(`[vscode-shim] ERROR: ${message}`);
 			return undefined;
@@ -175,16 +188,16 @@ export const window = {
 		return resolved[0];
 	},
 
-	async showInputBox(
-		_options?: { prompt?: string; value?: string; placeHolder?: string },
-	): Promise<string | undefined> {
+	async showInputBox(_options?: {
+		prompt?: string;
+		value?: string;
+		placeHolder?: string;
+	}): Promise<string | undefined> {
 		console.warn("[vscode-shim] showInputBox stub");
 		return undefined;
 	},
 
-	async showOpenDialog(
-		_options?: unknown,
-	): Promise<Uri[] | undefined> {
+	async showOpenDialog(_options?: unknown): Promise<Uri[] | undefined> {
 		console.warn("[vscode-shim] showOpenDialog stub");
 		return undefined;
 	},
@@ -193,14 +206,19 @@ export const window = {
 		document: { uri: Uri } | Uri,
 		_options?: unknown,
 	): Promise<TextEditor | undefined> {
-		const uri = "uri" in (document as object) ? (document as { uri: Uri }).uri : (document as Uri);
+		const uri =
+			"uri" in (document as object)
+				? (document as { uri: Uri }).uri
+				: (document as Uri);
 		console.log(`[vscode-shim] showTextDocument: ${uri.toString()}`);
 		// Return a minimal editor stub
 		return {
 			document: {
 				uri,
 				fileName: uri.fsPath,
-				getText() { return ""; },
+				getText() {
+					return "";
+				},
 				languageId: "plaintext",
 			},
 			selection: {
@@ -217,8 +235,13 @@ export const window = {
 	withProgress<T>(
 		_options: { location: number; title?: string; cancellable?: boolean },
 		task: (
-			progress: { report(value: { message?: string; increment?: number }): void },
-			token: { isCancellationRequested: boolean; onCancellationRequested: Event<void> },
+			progress: {
+				report(value: { message?: string; increment?: number }): void;
+			},
+			token: {
+				isCancellationRequested: boolean;
+				onCancellationRequested: Event<void>;
+			},
 		) => Promise<T>,
 	): Promise<T> {
 		const progress = {
@@ -233,12 +256,23 @@ export const window = {
 		return task(progress, token);
 	},
 
-	createOutputChannel(name: string, options?: { log: true } | string): OutputChannel {
+	createOutputChannel(
+		name: string,
+		options?: { log: true } | string,
+	): OutputChannel {
 		return createOutputChannel(name, options);
 	},
 
 	createTerminal(
-		nameOrOptions?: string | { name?: string; cwd?: string; env?: Record<string, string | null>; shellPath?: string; shellArgs?: string[] },
+		nameOrOptions?:
+			| string
+			| {
+					name?: string;
+					cwd?: string;
+					env?: Record<string, string | null>;
+					shellPath?: string;
+					shellArgs?: string[];
+			  },
 	): Terminal {
 		return createTerminalImpl(nameOrOptions) as Terminal;
 	},
@@ -253,8 +287,11 @@ export const window = {
 
 	registerCustomEditorProvider(
 		viewType: string,
-		provider: unknown,
-		options?: { webviewOptions?: { retainContextWhenHidden?: boolean }; supportsMultipleEditorsPerDocument?: boolean },
+		_provider: unknown,
+		_options?: {
+			webviewOptions?: { retainContextWhenHidden?: boolean };
+			supportsMultipleEditorsPerDocument?: boolean;
+		},
 	): Disposable {
 		console.log(`[vscode-shim] registerCustomEditorProvider: ${viewType}`);
 		return new Disposable(() => {});

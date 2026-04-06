@@ -4,9 +4,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { Disposable, EventEmitter, type Event } from "./event-emitter.js";
-import { Uri } from "./uri.js";
 import { getConfiguration, onDidChangeConfiguration } from "./configuration.js";
+import { Disposable, type Event, EventEmitter } from "./event-emitter.js";
+import { Uri } from "./uri.js";
 
 interface WorkspaceFolder {
 	readonly uri: Uri;
@@ -99,7 +99,10 @@ export const workspace = {
 		return undefined;
 	},
 
-	asRelativePath(pathOrUri: string | Uri, includeWorkspaceFolder?: boolean): string {
+	asRelativePath(
+		pathOrUri: string | Uri,
+		_includeWorkspaceFolder?: boolean,
+	): string {
 		const p = typeof pathOrUri === "string" ? pathOrUri : pathOrUri.fsPath;
 		if (!workspaceFolderPath) return p;
 		const rel = path.relative(workspaceFolderPath, p);
@@ -110,7 +113,9 @@ export const workspace = {
 	async openTextDocument(uriOrPath: Uri | string): Promise<TextDocument> {
 		const filePath =
 			typeof uriOrPath === "string" ? uriOrPath : uriOrPath.fsPath;
-		const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
+		const content = fs.existsSync(filePath)
+			? fs.readFileSync(filePath, "utf-8")
+			: "";
 		const lines = content.split("\n");
 		const ext = path.extname(filePath).slice(1);
 
@@ -130,15 +135,17 @@ export const workspace = {
 	},
 
 	async findFiles(
-		include: string,
-		exclude?: string | null,
-		maxResults?: number,
+		_include: string,
+		_exclude?: string | null,
+		_maxResults?: number,
 		_token?: unknown,
 	): Promise<Uri[]> {
 		// Simple glob-based file search using workspace root
 		if (!workspaceFolderPath) return [];
 		// For MVP, return empty array. In Phase 2+, wire to FsHostService.searchFiles
-		console.warn("[vscode-shim] workspace.findFiles is a stub, returning empty");
+		console.warn(
+			"[vscode-shim] workspace.findFiles is a stub, returning empty",
+		);
 		return [];
 	},
 
@@ -174,7 +181,9 @@ export const workspace = {
 		_options?: { isCaseSensitive?: boolean; isReadonly?: boolean },
 	): Disposable {
 		fileSystemProviders.set(scheme, provider);
-		console.log(`[vscode-shim] Registered FileSystemProvider for scheme: ${scheme}`);
+		console.log(
+			`[vscode-shim] Registered FileSystemProvider for scheme: ${scheme}`,
+		);
 		return new Disposable(() => {
 			fileSystemProviders.delete(scheme);
 		});
@@ -185,7 +194,10 @@ export const workspace = {
 		return fileSystemProviders.get(scheme);
 	},
 
-	registerTextDocumentContentProvider(scheme: string, provider: unknown): Disposable {
+	registerTextDocumentContentProvider(
+		scheme: string,
+		provider: unknown,
+	): Disposable {
 		textDocumentContentProviders.set(scheme, provider);
 		return new Disposable(() => {
 			textDocumentContentProviders.delete(scheme);
@@ -217,7 +229,14 @@ export const workspace = {
 		}> {
 			if (uri.scheme !== "file") {
 				const provider = fileSystemProviders.get(uri.scheme) as
-					| { stat?(uri: Uri): Promise<{ type: number; ctime: number; mtime: number; size: number }> }
+					| {
+							stat?(uri: Uri): Promise<{
+								type: number;
+								ctime: number;
+								mtime: number;
+								size: number;
+							}>;
+					  }
 					| undefined;
 				if (provider?.stat) {
 					return provider.stat(uri);
@@ -232,16 +251,27 @@ export const workspace = {
 				size: s.size,
 			};
 		},
-		async delete(uri: Uri, _options?: { recursive?: boolean; useTrash?: boolean }): Promise<void> {
+		async delete(
+			uri: Uri,
+			_options?: { recursive?: boolean; useTrash?: boolean },
+		): Promise<void> {
 			await fs.promises.rm(uri.fsPath, { recursive: _options?.recursive });
 		},
-		async rename(source: Uri, target: Uri, _options?: { overwrite?: boolean }): Promise<void> {
+		async rename(
+			source: Uri,
+			target: Uri,
+			_options?: { overwrite?: boolean },
+		): Promise<void> {
 			await fs.promises.rename(source.fsPath, target.fsPath);
 		},
 		async createDirectory(uri: Uri): Promise<void> {
 			await fs.promises.mkdir(uri.fsPath, { recursive: true });
 		},
-		async copy(source: Uri, target: Uri, _options?: { overwrite?: boolean }): Promise<void> {
+		async copy(
+			source: Uri,
+			target: Uri,
+			_options?: { overwrite?: boolean },
+		): Promise<void> {
 			await fs.promises.copyFile(source.fsPath, target.fsPath);
 		},
 		isWritableFileSystem(scheme: string): boolean | undefined {

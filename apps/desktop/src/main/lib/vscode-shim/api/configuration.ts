@@ -4,8 +4,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { Disposable, EventEmitter } from "./event-emitter.js";
 import type { ExtensionManifest } from "../types.js";
+import { EventEmitter } from "./event-emitter.js";
 
 interface ConfigurationChangeEvent {
 	affectsConfiguration(section: string, _scope?: unknown): boolean;
@@ -23,7 +23,10 @@ function getUserDataPath(): string {
 	}
 }
 
-const configFilePath = path.join(getUserDataPath(), "vscode-extension-settings.json");
+const configFilePath = path.join(
+	getUserDataPath(),
+	"vscode-extension-settings.json",
+);
 
 let configData: Record<string, unknown> = {};
 
@@ -81,7 +84,9 @@ class WorkspaceConfiguration {
 		return fullKey in configData;
 	}
 
-	inspect<T>(key: string): { key: string; defaultValue?: T; globalValue?: T } | undefined {
+	inspect<T>(
+		key: string,
+	): { key: string; defaultValue?: T; globalValue?: T } | undefined {
 		const fullKey = this._section ? `${this._section}.${key}` : key;
 		return {
 			key: fullKey,
@@ -89,7 +94,12 @@ class WorkspaceConfiguration {
 		};
 	}
 
-	async update(key: string, value: unknown, _configurationTarget?: unknown, _overrideInLanguage?: boolean): Promise<void> {
+	async update(
+		key: string,
+		value: unknown,
+		_configurationTarget?: unknown,
+		_overrideInLanguage?: boolean,
+	): Promise<void> {
 		const fullKey = this._section ? `${this._section}.${key}` : key;
 		configData[fullKey] = value;
 		saveConfig();
@@ -101,6 +111,9 @@ class WorkspaceConfiguration {
 	}
 }
 
-export function getConfiguration(section?: string, _scope?: unknown): WorkspaceConfiguration {
+export function getConfiguration(
+	section?: string,
+	_scope?: unknown,
+): WorkspaceConfiguration {
 	return new WorkspaceConfiguration(section ?? "");
 }

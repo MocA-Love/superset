@@ -7,12 +7,17 @@ import {
 } from "@superset/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
-import { LuBot, LuPanelRight, LuSparkles, LuSquareArrowOutUpRight } from "react-icons/lu";
+import {
+	LuBot,
+	LuPanelRight,
+	LuSparkles,
+	LuSquareArrowOutUpRight,
+} from "react-icons/lu";
+import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import {
 	RightSidebarTab,
 	useSidebarStore,
 } from "renderer/stores/sidebar-state";
-import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs/store";
 
 interface ExtensionDef {
@@ -23,7 +28,13 @@ interface ExtensionDef {
 	extensionId: string;
 }
 
-function ExtensionButton({ tab, icon: Icon, label, viewType, extensionId }: ExtensionDef) {
+function ExtensionButton({
+	tab,
+	icon: Icon,
+	label,
+	viewType,
+	extensionId,
+}: ExtensionDef) {
 	const rightSidebarTab = useSidebarStore((s) => s.rightSidebarTab);
 	const isSidebarOpen = useSidebarStore((s) => s.isSidebarOpen);
 	const setRightSidebarTab = useSidebarStore((s) => s.setRightSidebarTab);
@@ -47,7 +58,7 @@ function ExtensionButton({ tab, icon: Icon, label, viewType, extensionId }: Exte
 
 	const handleOpenAsTab = () => {
 		if (!workspaceId) return;
-		const { tabId, paneId } = addTab(workspaceId);
+		const { paneId } = addTab(workspaceId);
 		// Mutate the pane to be a vscode-extension pane
 		const pane = panes[paneId];
 		if (pane) {

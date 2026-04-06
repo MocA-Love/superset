@@ -31,6 +31,7 @@ import {
 } from "react";
 import type { IconType } from "react-icons";
 import {
+	LuBot,
 	LuBox,
 	LuCircleAlert,
 	LuDatabase,
@@ -40,9 +41,8 @@ import {
 	LuGitCompareArrows,
 	LuSearch,
 	LuShrink,
-	LuX,
-	LuBot,
 	LuSparkles,
+	LuX,
 } from "react-icons/lu";
 import { HotkeyLabel } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";

@@ -37,9 +37,7 @@ export function ContentView({
 					trailingAction={
 						<div className="flex items-center gap-1">
 							<VscodeExtensionButtons />
-							{!isSidebarOpen && !isTearoffWindow() && (
-								<SidebarControl />
-							)}
+							{!isSidebarOpen && !isTearoffWindow() && <SidebarControl />}
 						</div>
 					}
 				>
