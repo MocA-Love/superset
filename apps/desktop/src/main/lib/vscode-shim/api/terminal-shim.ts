@@ -92,8 +92,8 @@ export function createTerminal(
 				rows: 30,
 			});
 			pid = result?.snapshot?.pid;
-			// Listen for exit
-			manager.on(`exit:${paneId}`, (exitCode: number) => {
+			// Listen for exit (store handler ref for cleanup in dispose)
+			const exitHandler = (exitCode: number) => {
 				exitStatus = { code: exitCode };
 				_onDidCloseTerminal.fire(terminal);
 				const idx = activeTerminals.indexOf(terminal);
@@ -103,7 +103,10 @@ export function createTerminal(
 					exitCode,
 					execution: { commandLine: { value: "" } },
 				});
-			});
+				// Self-cleanup
+				manager.off(`exit:${paneId}`, exitHandler);
+			};
+			manager.on(`exit:${paneId}`, exitHandler);
 			return pid;
 		} catch (err) {
 			console.error(`[vscode-shim] Failed to create terminal "${name}":`, err);
@@ -181,6 +184,7 @@ export function createTerminal(
 		},
 		dispose() {
 			if (manager) {
+				manager.off(`exit:${paneId}`, () => {});
 				manager.kill(paneId).catch(() => {});
 			}
 			const idx = activeTerminals.indexOf(terminal);

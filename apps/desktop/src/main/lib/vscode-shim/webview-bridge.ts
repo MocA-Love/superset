@@ -14,7 +14,7 @@ import {
 	type WebviewEvent,
 	type WebviewInternal,
 } from "./api/webview";
-import { setWebviewHtml } from "./api/webview-server";
+import { clearWebviewHtml, setWebviewHtml } from "./api/webview-server";
 
 export interface WebviewBridgeEvent {
 	type: "html" | "message" | "title" | "dispose" | "panel-created";
@@ -39,6 +39,17 @@ class WebviewBridge extends EventEmitter {
 				shimLog(
 					`[webview-bridge] Stored HTML for ${event.viewId}, htmlStore now has ${this._viewHtml.size} entries`,
 				);
+			}
+			if (event.type === "dispose") {
+				this._viewHtml.delete(event.viewId);
+				clearWebviewHtml(event.viewId);
+				// Remove from viewType→viewId map
+				for (const [vt, vid] of this._viewIds) {
+					if (vid === event.viewId) {
+						this._viewIds.delete(vt);
+						break;
+					}
+				}
 			}
 			this.emit("webview-event", event);
 		});
