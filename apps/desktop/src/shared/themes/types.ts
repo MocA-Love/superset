@@ -222,11 +222,16 @@ export interface EditorColors {
 export interface EditorSyntaxColors {
 	plainText: string;
 	comment: string;
+	docComment: string;
 	keyword: string;
+	controlKeyword: string;
+	storageKeyword: string;
 	string: string;
+	escape: string;
 	number: string;
 	functionCall: string;
 	variableName: string;
+	variableProperty: string;
 	typeName: string;
 	className: string;
 	constant: string;
@@ -234,6 +239,24 @@ export interface EditorSyntaxColors {
 	tagName: string;
 	attributeName: string;
 	invalid: string;
+	annotation: string;
+
+	// Operators and punctuation
+	operator: string;
+	punctuation: string;
+
+	// Markdown-specific
+	markdownHeading: string;
+	markdownEmphasis: string;
+	markdownStrong: string;
+	markdownStrikethrough: string;
+	markdownLink: string;
+	markdownUrl: string;
+	markdownCode: string;
+	markdownQuote: string;
+	markdownList: string;
+	markdownSeparator: string;
+	meta: string;
 }
 
 /**

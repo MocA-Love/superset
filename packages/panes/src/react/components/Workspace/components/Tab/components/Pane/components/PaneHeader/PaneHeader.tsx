@@ -63,7 +63,8 @@ export function PaneHeader({
 			)}
 			onClick={(e) => {
 				// Don't trigger pin when clicking action buttons inside the header
-				if (e.target instanceof HTMLElement && e.target.closest("button")) return;
+				if (e.target instanceof HTMLElement && e.target.closest("button"))
+					return;
 				onClick?.();
 			}}
 			onAuxClick={(e) => {

@@ -1,5 +1,9 @@
-import { StreamLanguage, type StreamParser } from "@codemirror/language";
-import type { Extension } from "@codemirror/state";
+import {
+	LanguageDescription,
+	LanguageSupport,
+	StreamLanguage,
+	type StreamParser,
+} from "@codemirror/language";
 import {
 	csvStreamLanguage,
 	graphqlStreamLanguage,
@@ -10,14 +14,17 @@ import {
 async function loadLegacyLanguage(
 	loader: () => Promise<Record<string, unknown>>,
 	key: string,
-): Promise<Extension> {
+): Promise<LanguageSupport> {
 	const languageModule = await loader();
-	return StreamLanguage.define(languageModule[key] as StreamParser<unknown>);
+	const lang = StreamLanguage.define(
+		languageModule[key] as StreamParser<unknown>,
+	);
+	return new LanguageSupport(lang);
 }
 
 export async function loadLanguageSupport(
 	language: string,
-): Promise<Extension | null> {
+): Promise<LanguageSupport | null> {
 	switch (language) {
 		case "typescript":
 		case "javascript": {
@@ -27,10 +34,7 @@ export async function loadLanguageSupport(
 				jsx: true,
 			});
 		}
-		case "json": {
-			const { json } = await import("@codemirror/lang-json");
-			return json();
-		}
+		case "json":
 		case "jsonc": {
 			const { json } = await import("@codemirror/lang-json");
 			return json();
@@ -47,10 +51,10 @@ export async function loadLanguageSupport(
 		}
 		case "markdown": {
 			const { markdown } = await import("@codemirror/lang-markdown");
-			return markdown();
+			return markdown({ codeLanguages: markdownCodeLanguages });
 		}
 		case "graphql":
-			return StreamLanguage.define(graphqlStreamLanguage);
+			return new LanguageSupport(StreamLanguage.define(graphqlStreamLanguage));
 		case "plaintext":
 			return null;
 		case "yaml": {
@@ -101,7 +105,7 @@ export async function loadLanguageSupport(
 				"dockerFile",
 			);
 		case "makefile":
-			return StreamLanguage.define(makefileStreamLanguage);
+			return new LanguageSupport(StreamLanguage.define(makefileStreamLanguage));
 		case "toml":
 			return loadLegacyLanguage(
 				() => import("@codemirror/legacy-modes/mode/toml"),
@@ -138,10 +142,66 @@ export async function loadLanguageSupport(
 				"properties",
 			);
 		case "csv":
-			return StreamLanguage.define(csvStreamLanguage);
+			return new LanguageSupport(StreamLanguage.define(csvStreamLanguage));
 		case "tsv":
-			return StreamLanguage.define(tsvStreamLanguage);
+			return new LanguageSupport(StreamLanguage.define(tsvStreamLanguage));
 		default:
 			return null;
 	}
 }
+
+/**
+ * Languages available for nested highlighting inside Markdown fenced code blocks.
+ * Each entry delegates to loadLanguageSupport so there is a single source of truth.
+ */
+const MARKDOWN_NESTED_LANGUAGES: Array<{ name: string; alias?: string[] }> = [
+	{ name: "javascript", alias: ["js", "jsx", "mjs", "cjs"] },
+	{ name: "typescript", alias: ["ts", "tsx"] },
+	{ name: "json", alias: ["jsonc"] },
+	{ name: "html", alias: ["htm"] },
+	{ name: "css", alias: ["scss", "less"] },
+	{ name: "python", alias: ["py"] },
+	{ name: "yaml", alias: ["yml"] },
+	{ name: "xml" },
+	{ name: "sql" },
+	{ name: "rust", alias: ["rs"] },
+	{ name: "java" },
+	{ name: "cpp", alias: ["c", "h", "hpp"] },
+	{ name: "go", alias: ["golang"] },
+	{ name: "php" },
+	{ name: "shell", alias: ["bash", "sh", "zsh"] },
+	{ name: "dockerfile", alias: ["docker"] },
+	{ name: "toml" },
+	{ name: "ruby", alias: ["rb"] },
+	{ name: "swift" },
+	{ name: "graphql", alias: ["gql"] },
+	{ name: "dart" },
+	{ name: "csharp", alias: ["cs", "c#"] },
+	{ name: "kotlin", alias: ["kt"] },
+	{ name: "makefile", alias: ["make"] },
+	{ name: "dotenv", alias: ["env"] },
+	{ name: "csv" },
+	{ name: "tsv" },
+];
+
+const markdownCodeLanguages: LanguageDescription[] =
+	MARKDOWN_NESTED_LANGUAGES.map(({ name, alias }) =>
+		LanguageDescription.of({
+			name,
+			alias,
+			async load() {
+				const support = await loadLanguageSupport(name);
+				return (
+					support ??
+					new LanguageSupport(
+						StreamLanguage.define({
+							token: (stream) => {
+								stream.next();
+								return null;
+							},
+						}),
+					)
+				);
+			},
+		}),
+	);

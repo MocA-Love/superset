@@ -25,6 +25,13 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 			{
+				scope: ["comment.block.documentation", "comment.line.documentation"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.docComment),
+					fontStyle: "italic",
+				},
+			},
+			{
 				scope: ["comment", "punctuation.definition.comment"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.comment),
@@ -32,13 +39,31 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 			{
-				scope: ["keyword", "storage", "storage.type"],
+				scope: ["keyword.control"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.controlKeyword),
+				},
+			},
+			{
+				scope: ["storage", "storage.type", "storage.modifier"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.storageKeyword),
+				},
+			},
+			{
+				scope: ["keyword"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.keyword),
 				},
 			},
 			{
-				scope: ["string", "string.template", "string.regexp"],
+				scope: ["constant.character.escape"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.escape),
+				},
+			},
+			{
+				scope: ["string", "string.template"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.string),
 				},
@@ -60,13 +85,23 @@ export function createShikiTheme(theme: Theme) {
 				},
 			},
 			{
+				scope: [
+					"variable.other.property",
+					"support.variable.property",
+					"meta.property.object",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.variableProperty),
+				},
+			},
+			{
 				scope: ["variable", "meta.definition.variable", "identifier"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.variableName),
 				},
 			},
 			{
-				scope: ["entity.name.type", "support.type", "storage.type"],
+				scope: ["entity.name.type", "support.type"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.typeName),
 				},
@@ -109,6 +144,132 @@ export function createShikiTheme(theme: Theme) {
 				scope: ["invalid", "invalid.illegal"],
 				settings: {
 					foreground: toHex(editorTheme.syntax.invalid),
+				},
+			},
+			{
+				scope: [
+					"meta.decorator",
+					"meta.function.decorator",
+					"punctuation.definition.annotation",
+					"storage.type.annotation",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.annotation),
+				},
+			},
+
+			// Operators
+			{
+				scope: [
+					"keyword.operator",
+					"keyword.operator.assignment",
+					"keyword.operator.arithmetic",
+					"keyword.operator.logical",
+					"keyword.operator.comparison",
+					"keyword.operator.ternary",
+					"keyword.operator.spread",
+					"keyword.operator.rest",
+					"keyword.operator.type",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.operator),
+				},
+			},
+
+			// Punctuation
+			{
+				scope: [
+					"punctuation",
+					"punctuation.definition.block",
+					"punctuation.definition.parameters",
+					"punctuation.definition.array",
+					"punctuation.separator",
+					"punctuation.terminator",
+					"meta.brace",
+					"meta.bracket",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.punctuation),
+				},
+			},
+
+			// Markdown
+			{
+				scope: [
+					"markup.heading",
+					"punctuation.definition.heading",
+					"entity.name.section",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownHeading),
+					fontStyle: "bold",
+				},
+			},
+			{
+				scope: ["markup.italic"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownEmphasis),
+					fontStyle: "italic",
+				},
+			},
+			{
+				scope: ["markup.bold"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownStrong),
+					fontStyle: "bold",
+				},
+			},
+			{
+				scope: ["markup.strikethrough"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownStrikethrough),
+				},
+			},
+			{
+				scope: ["markup.underline.link", "string.other.link"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownLink),
+				},
+			},
+			{
+				scope: ["markup.underline.link.image"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownUrl),
+				},
+			},
+			{
+				scope: [
+					"markup.inline.raw",
+					"markup.fenced_code.block",
+					"markup.raw.block",
+				],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownCode),
+				},
+			},
+			{
+				scope: ["markup.quote"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownQuote),
+					fontStyle: "italic",
+				},
+			},
+			{
+				scope: ["markup.list", "punctuation.definition.list"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownList),
+				},
+			},
+			{
+				scope: ["meta.separator"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.markdownSeparator),
+				},
+			},
+			{
+				scope: ["fenced_code.block.language"],
+				settings: {
+					foreground: toHex(editorTheme.syntax.meta),
 				},
 			},
 		],

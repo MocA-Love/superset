@@ -9,8 +9,8 @@ import {
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
-import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
 import { useHotkey } from "renderer/hotkeys";
+import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
@@ -442,33 +442,51 @@ export function WorkspacePage({
 		{ enabled: isActive },
 	);
 
-	useHotkey("PREV_TAB", () => {
-		if (!activeTabId || tabs.length === 0) return;
-		const index = tabs.findIndex((t) => t.id === activeTabId);
-		const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
-		setActiveTab(workspaceId, tabs[prevIndex].id);
-	}, { enabled: isActive });
+	useHotkey(
+		"PREV_TAB",
+		() => {
+			if (!activeTabId || tabs.length === 0) return;
+			const index = tabs.findIndex((t) => t.id === activeTabId);
+			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
+			setActiveTab(workspaceId, tabs[prevIndex].id);
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("NEXT_TAB", () => {
-		if (!activeTabId || tabs.length === 0) return;
-		const index = tabs.findIndex((t) => t.id === activeTabId);
-		const nextIndex = index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
-		setActiveTab(workspaceId, tabs[nextIndex].id);
-	}, { enabled: isActive });
+	useHotkey(
+		"NEXT_TAB",
+		() => {
+			if (!activeTabId || tabs.length === 0) return;
+			const index = tabs.findIndex((t) => t.id === activeTabId);
+			const nextIndex =
+				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
+			setActiveTab(workspaceId, tabs[nextIndex].id);
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("PREV_TAB_ALT", () => {
-		if (!activeTabId || tabs.length === 0) return;
-		const index = tabs.findIndex((t) => t.id === activeTabId);
-		const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
-		setActiveTab(workspaceId, tabs[prevIndex].id);
-	}, { enabled: isActive });
+	useHotkey(
+		"PREV_TAB_ALT",
+		() => {
+			if (!activeTabId || tabs.length === 0) return;
+			const index = tabs.findIndex((t) => t.id === activeTabId);
+			const prevIndex = index <= 0 ? tabs.length - 1 : index - 1;
+			setActiveTab(workspaceId, tabs[prevIndex].id);
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("NEXT_TAB_ALT", () => {
-		if (!activeTabId || tabs.length === 0) return;
-		const index = tabs.findIndex((t) => t.id === activeTabId);
-		const nextIndex = index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
-		setActiveTab(workspaceId, tabs[nextIndex].id);
-	}, { enabled: isActive });
+	useHotkey(
+		"NEXT_TAB_ALT",
+		() => {
+			if (!activeTabId || tabs.length === 0) return;
+			const index = tabs.findIndex((t) => t.id === activeTabId);
+			const nextIndex =
+				index >= tabs.length - 1 || index === -1 ? 0 : index + 1;
+			setActiveTab(workspaceId, tabs[nextIndex].id);
+		},
+		{ enabled: isActive },
+	);
 
 	const switchToTab = useCallback(
 		(index: number) => {
@@ -490,21 +508,29 @@ export function WorkspacePage({
 	useHotkey("JUMP_TO_TAB_8", () => switchToTab(7), { enabled: isActive });
 	useHotkey("JUMP_TO_TAB_9", () => switchToTab(8), { enabled: isActive });
 
-	useHotkey("PREV_PANE", () => {
-		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-		const prevPaneId = getPreviousPaneId(activeTab.layout, focusedPaneId);
-		if (prevPaneId) {
-			setFocusedPane(activeTabId, prevPaneId);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"PREV_PANE",
+		() => {
+			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
+			const prevPaneId = getPreviousPaneId(activeTab.layout, focusedPaneId);
+			if (prevPaneId) {
+				setFocusedPane(activeTabId, prevPaneId);
+			}
+		},
+		{ enabled: isActive },
+	);
 
-	useHotkey("NEXT_PANE", () => {
-		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-		const nextPaneId = getNextPaneId(activeTab.layout, focusedPaneId);
-		if (nextPaneId) {
-			setFocusedPane(activeTabId, nextPaneId);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"NEXT_PANE",
+		() => {
+			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
+			const nextPaneId = getNextPaneId(activeTab.layout, focusedPaneId);
+			if (nextPaneId) {
+				setFocusedPane(activeTabId, nextPaneId);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Open in last used app shortcut
 	const projectId = workspace?.projectId;
@@ -645,15 +671,19 @@ export function WorkspacePage({
 	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), { enabled: isActive });
 
 	// Toggle expand/collapse sidebar (⌘⇧L)
-	useHotkey("TOGGLE_EXPAND_SIDEBAR", () => {
-		if (!isSidebarOpen) {
-			setSidebarOpen(true);
-			setSidebarMode(SidebarMode.Changes);
-		} else {
-			const isExpanded = currentSidebarMode === SidebarMode.Changes;
-			setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"TOGGLE_EXPAND_SIDEBAR",
+		() => {
+			if (!isSidebarOpen) {
+				setSidebarOpen(true);
+				setSidebarMode(SidebarMode.Changes);
+			} else {
+				const isExpanded = currentSidebarMode === SidebarMode.Changes;
+				setSidebarMode(isExpanded ? SidebarMode.Tabs : SidebarMode.Changes);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Pane splitting helper - resolves target pane for split operations
 	const resolveSplitTarget = useCallback(
@@ -774,24 +804,32 @@ export function WorkspacePage({
 			{ id: workspaceId },
 			{ enabled: !!workspaceId },
 		);
-	useHotkey("PREV_WORKSPACE", () => {
-		const prevWorkspaceId = getPreviousWorkspace.data;
-		if (prevWorkspaceId) {
-			navigateToWorkspace(prevWorkspaceId, navigate);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"PREV_WORKSPACE",
+		() => {
+			const prevWorkspaceId = getPreviousWorkspace.data;
+			if (prevWorkspaceId) {
+				navigateToWorkspace(prevWorkspaceId, navigate);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Navigate to next workspace (⌘↓)
 	const getNextWorkspace = electronTrpc.workspaces.getNextWorkspace.useQuery(
 		{ id: workspaceId },
 		{ enabled: !!workspaceId },
 	);
-	useHotkey("NEXT_WORKSPACE", () => {
-		const nextWorkspaceId = getNextWorkspace.data;
-		if (nextWorkspaceId) {
-			navigateToWorkspace(nextWorkspaceId, navigate);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"NEXT_WORKSPACE",
+		() => {
+			const nextWorkspaceId = getNextWorkspace.data;
+			if (nextWorkspaceId) {
+				navigateToWorkspace(nextWorkspaceId, navigate);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	return (
 		<WorkspaceIdProvider value={workspaceId}>
