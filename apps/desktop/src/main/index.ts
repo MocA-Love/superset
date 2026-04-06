@@ -1,6 +1,6 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { projects, settings, workspaces, worktrees } from "@superset/local-db";
+import { projects, settings, workspaces } from "@superset/local-db";
 import { desc, eq, isNull } from "drizzle-orm";
 import {
 	app,
@@ -74,22 +74,6 @@ if (process.defaultApp) {
 	}
 } else {
 	app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
-}
-
-function getLastOpenedWorkspacePath(): string | null {
-	try {
-		const row = localDb
-			.select({ worktreePath: worktrees.path })
-			.from(workspaces)
-			.innerJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
-			.where(isNull(workspaces.deletingAt))
-			.orderBy(desc(workspaces.lastOpenedAt))
-			.limit(1)
-			.get();
-		return row?.worktreePath ?? null;
-	} catch {
-		return null;
-	}
 }
 
 function normalizeRepoValue(
@@ -631,15 +615,10 @@ if (!gotTheLock) {
 		setupAutoUpdater();
 		initTray();
 
-		// Initialize VS Code extension host (loads Claude Code, ChatGPT etc.)
-		// Get the last opened workspace path so extensions start with correct cwd
+		// Initialize VS Code extension host (registers protocols, starts webview server)
+		// Each workspace spawns its own worker process via ExtensionHostManager.
 		loadVscodeShim()
-			.then((mod) => {
-				const lastWorkspacePath = getLastOpenedWorkspacePath();
-				return mod.initExtensionHost({
-					workspacePath: lastWorkspacePath ?? undefined,
-				});
-			})
+			.then((mod) => mod.initExtensionHost())
 			.catch((err) => {
 				console.error(
 					"[main] Failed to initialize VS Code extension host:",

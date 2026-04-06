@@ -1,9 +1,12 @@
+import { ChatServiceProvider } from "@superset/chat/client";
 import { Alert, AlertDescription, AlertTitle } from "@superset/ui/alert";
 import { Button } from "@superset/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
+import { createChatServiceIpcClient } from "renderer/components/Chat/utils/chat-service-client";
 import type { MarkdownEditorAdapter } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { electronQueryClient } from "renderer/providers/ElectronTRPCProvider";
 import { FileSaveConflictDialog } from "renderer/screens/main/components/WorkspaceView/components/FileSaveConflictDialog";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -50,6 +53,8 @@ import { useFileContent } from "./hooks/useFileContent";
 import { useFileSave } from "./hooks/useFileSave";
 import { useMarkdownSearch } from "./hooks/useMarkdownSearch";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
+
+const chatServiceIpcClient = createChatServiceIpcClient();
 
 interface FileViewerPaneProps {
 	paneId: string;
@@ -659,7 +664,10 @@ export function FileViewerPane({
 	}
 
 	return (
-		<>
+		<ChatServiceProvider
+			client={chatServiceIpcClient}
+			queryClient={electronQueryClient}
+		>
 			<BasePaneWindow
 				paneId={paneId}
 				path={path}
@@ -828,6 +836,6 @@ export function FileViewerPane({
 					void handleOverwriteSave();
 				}}
 			/>
-		</>
+		</ChatServiceProvider>
 	);
 }

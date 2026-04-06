@@ -22,6 +22,23 @@ async function getGitWithShellPath(worktreePath: string) {
 	return getSimpleGitWithShellPath(worktreePath);
 }
 
+function normalizeBranchName(branch: string): string {
+	const trimmed = branch.trim();
+	if (trimmed.startsWith("refs/heads/")) {
+		return trimmed.slice("refs/heads/".length);
+	}
+	if (trimmed.startsWith("refs/remotes/origin/")) {
+		return trimmed.slice("refs/remotes/origin/".length);
+	}
+	if (trimmed.startsWith("remotes/origin/")) {
+		return trimmed.slice("remotes/origin/".length);
+	}
+	if (trimmed.startsWith("origin/")) {
+		return trimmed.slice("origin/".length);
+	}
+	return trimmed;
+}
+
 function assertValidBranchName(branch: string): void {
 	// Validate: reject anything that looks like a flag
 	if (branch.startsWith("-")) {
@@ -72,22 +89,23 @@ export async function gitSwitchBranch(
 	branch: string,
 ): Promise<void> {
 	assertRegisteredWorktree(worktreePath);
-	assertValidBranchName(branch);
+	const normalizedBranch = normalizeBranchName(branch);
+	assertValidBranchName(normalizedBranch);
 
 	const git = await getGitWithShellPath(worktreePath);
 
 	await runWithPostCheckoutHookTolerance({
-		context: `Switched branch to "${branch}" in ${worktreePath}`,
+		context: `Switched branch to "${normalizedBranch}" in ${worktreePath}`,
 		run: async () => {
 			const localBranches = await git.branchLocal();
-			if (localBranches.all.includes(branch)) {
+			if (localBranches.all.includes(normalizedBranch)) {
 				try {
-					await git.raw(["switch", branch]);
+					await git.raw(["switch", normalizedBranch]);
 					return;
 				} catch (switchError) {
 					const errorMessage = String(switchError);
 					if (errorMessage.includes("is not a git command")) {
-						await git.checkout(branch);
+						await git.checkout(normalizedBranch);
 						return;
 					}
 					throw switchError;
@@ -95,15 +113,26 @@ export async function gitSwitchBranch(
 			}
 
 			const remoteBranches = await git.branch(["-r"]);
-			const remoteBranch = `origin/${branch}`;
+			const remoteBranch = `origin/${normalizedBranch}`;
 			if (remoteBranches.all.includes(remoteBranch)) {
 				try {
-					await git.raw(["switch", "--track", "-c", branch, remoteBranch]);
+					await git.raw([
+						"switch",
+						"--track",
+						"-c",
+						normalizedBranch,
+						remoteBranch,
+					]);
 					return;
 				} catch (switchError) {
 					const errorMessage = String(switchError);
 					if (errorMessage.includes("is not a git command")) {
-						await git.checkout(["-b", branch, "--track", remoteBranch]);
+						await git.checkout([
+							"-b",
+							normalizedBranch,
+							"--track",
+							remoteBranch,
+						]);
 						return;
 					}
 					throw switchError;
@@ -112,7 +141,7 @@ export async function gitSwitchBranch(
 
 			try {
 				// Prefer `git switch` - unambiguous branch operation (git 2.23+)
-				await git.raw(["switch", branch]);
+				await git.raw(["switch", normalizedBranch]);
 			} catch (switchError) {
 				// Check if it's because `switch` command doesn't exist (old git < 2.23)
 				// Git outputs: "git: 'switch' is not a git command. See 'git --help'."
@@ -120,14 +149,14 @@ export async function gitSwitchBranch(
 				if (errorMessage.includes("is not a git command")) {
 					// Fallback for older git versions
 					// Note: checkout WITHOUT -- is correct for branches
-					await git.checkout(branch);
+					await git.checkout(normalizedBranch);
 				} else {
 					throw switchError;
 				}
 			}
 		},
 		didSucceed: async () =>
-			isCurrentBranch({ worktreePath, expectedBranch: branch }),
+			isCurrentBranch({ worktreePath, expectedBranch: normalizedBranch }),
 	});
 }
 

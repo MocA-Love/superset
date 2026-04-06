@@ -110,6 +110,10 @@ export default defineConfig({
 					"git-task-worker": resolve("src/main/git-task-worker.ts"),
 					// Workspace service - local HTTP/tRPC server per org
 					"host-service": resolve("src/main/host-service/index.ts"),
+					// VS Code extension host worker - one per active workspace
+					"extension-host-worker": resolve(
+						"src/main/extension-host-worker/index.ts",
+					),
 				},
 				output: {
 					dir: resolve(devPath, "main"),

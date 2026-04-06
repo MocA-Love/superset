@@ -53,7 +53,6 @@ export function VscodeExtensionsSettings({
 		electronTrpc.vscodeExtensions.restartExtension.useMutation({
 			onSuccess: () => {
 				utils.vscodeExtensions.getKnownExtensions.invalidate();
-				utils.vscodeExtensions.getExtensions.invalidate();
 			},
 		});
 	const installMutation =

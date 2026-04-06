@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useWorkspaceId } from "../../WorkspaceIdContext";
 
 interface VscodeExtensionViewProps {
 	viewType: string;
@@ -17,6 +18,11 @@ export function VscodeExtensionView({
 	extensionId,
 	isActive,
 }: VscodeExtensionViewProps) {
+	const workspaceId = useWorkspaceId();
+	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+		{ id: workspaceId ?? "" },
+		{ enabled: !!workspaceId },
+	);
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [viewId, setViewId] = useState<string | null>(null);
 	const [iframeUrl, setIframeUrl] = useState<string | null>(null);
@@ -29,44 +35,47 @@ export function VscodeExtensionView({
 
 	// Resolve the webview when first becoming active
 	useEffect(() => {
-		if (!isActive || viewId) return;
+		if (!isActive || viewId || !workspaceId || !workspace?.worktreePath) return;
 
-		console.log(`[VscodeExtensionView] Resolving webview: ${viewType}`);
 		resolveMutation.mutate(
-			{ viewType, extensionPath: "" },
+			{
+				workspaceId,
+				workspacePath: workspace.worktreePath,
+				viewType,
+				extensionPath: "",
+			},
 			{
 				onSuccess: (result) => {
-					console.log(
-						`[VscodeExtensionView] Resolve result:`,
-						JSON.stringify(result),
-					);
 					if (result.viewId && result.url) {
 						setViewId(result.viewId);
 						setIframeUrl(result.url);
-						console.log(
-							`[VscodeExtensionView] iframe URL set to: ${result.url}`,
-						);
 					} else {
-						console.warn(`[VscodeExtensionView] No viewId/url in result`);
 						setError(`Extension view "${viewType}" not found`);
 					}
 				},
 				onError: (err) => {
-					console.error(`[VscodeExtensionView] Resolve error:`, err);
 					setError(err.message);
 				},
 			},
 		);
-	}, [isActive, viewId, viewType, resolveMutation.mutate]);
+	}, [
+		isActive,
+		viewId,
+		viewType,
+		workspaceId,
+		workspace?.worktreePath,
+		resolveMutation.mutate,
+	]);
 
 	// Listen for messages from iframe -> forward to extension
 	useEffect(() => {
-		if (!viewId) return;
+		if (!viewId || !workspaceId) return;
 
 		const handler = (event: MessageEvent) => {
 			if (event.source !== iframeRef.current?.contentWindow) return;
 			if (event.data?.type === "vscode-api") {
 				postMessageMutation.mutate({
+					workspaceId,
 					viewId,
 					message: event.data.data,
 				});
@@ -75,26 +84,26 @@ export function VscodeExtensionView({
 
 		window.addEventListener("message", handler);
 		return () => window.removeEventListener("message", handler);
-	}, [viewId, postMessageMutation.mutate]);
+	}, [viewId, workspaceId, postMessageMutation.mutate]);
 
 	// Subscribe to webview events (extension -> webview messages)
-	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(undefined, {
-		enabled: isActive && !!viewId,
-		onData: (event) => {
-			console.log(
-				`[VscodeExtensionView] Subscription event: type=${event.type}, eventViewId=${event.viewId}, myViewId=${viewId}`,
-			);
-			if (!viewId || event.viewId !== viewId) return;
-			if (event.type === "message") {
-				iframeRef.current?.contentWindow?.postMessage(
-					{ type: "vscode-message", data: event.data },
-					"*",
-				);
-			}
-			// Don't reload iframe on HTML updates - the initial load already has
-			// the correct content, and reloading would reset extension state
+	electronTrpc.vscodeExtensions.subscribeWebview.useSubscription(
+		{ workspaceId: workspaceId ?? undefined },
+		{
+			enabled: isActive && !!viewId && !!workspaceId,
+			onData: (event) => {
+				if (!viewId || event.viewId !== viewId) return;
+				if (event.type === "message") {
+					iframeRef.current?.contentWindow?.postMessage(
+						{ type: "vscode-message", data: event.data },
+						"*",
+					);
+				}
+				// Don't reload iframe on HTML updates - the initial load already has
+				// the correct content, and reloading would reset extension state
+			},
 		},
-	});
+	);
 
 	if (error) {
 		return (
@@ -117,11 +126,8 @@ export function VscodeExtensionView({
 			ref={iframeRef}
 			src={iframeUrl}
 			className="w-full h-full border-0"
-			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-			onLoad={() =>
-				console.log(`[VscodeExtensionView] iframe loaded: ${iframeUrl}`)
-			}
-			onError={(e) => console.error(`[VscodeExtensionView] iframe error:`, e)}
+			sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+			allow="clipboard-read; clipboard-write; microphone; camera"
 			title={`${extensionId} webview`}
 		/>
 	);

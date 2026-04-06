@@ -116,6 +116,24 @@ interface SearchableRefItem {
 	checkedOutPath: string | null;
 }
 
+function normalizeBranchName(branch: string | null | undefined): string | null {
+	const trimmed = branch?.trim();
+	if (!trimmed) return null;
+	if (trimmed.startsWith("refs/heads/")) {
+		return trimmed.slice("refs/heads/".length);
+	}
+	if (trimmed.startsWith("refs/remotes/origin/")) {
+		return trimmed.slice("refs/remotes/origin/".length);
+	}
+	if (trimmed.startsWith("remotes/origin/")) {
+		return trimmed.slice("remotes/origin/".length);
+	}
+	if (trimmed.startsWith("origin/")) {
+		return trimmed.slice("origin/".length);
+	}
+	return trimmed;
+}
+
 function isCheckedOutElsewhereMessage(message: string): boolean {
 	const normalized = message.toLowerCase();
 	return (
@@ -532,7 +550,9 @@ function CurrentBranchSelector({
 	});
 
 	const effectiveCurrentBranch =
-		currentBranch ?? branchData?.currentBranch ?? null;
+		normalizeBranchName(currentBranch) ??
+		normalizeBranchName(branchData?.currentBranch) ??
+		null;
 	const effectiveBaseBranch =
 		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
 	const existingBranchNames = useMemo(
@@ -594,11 +614,12 @@ function CurrentBranchSelector({
 	);
 
 	const handleBranchSelect = (branch: string) => {
+		const normalizedBranch = normalizeBranchName(branch) ?? branch;
 		const target = {
 			action: "switch" as const,
-			branch,
+			branch: normalizedBranch,
 		};
-		if (branch === effectiveCurrentBranch) {
+		if (normalizedBranch === effectiveCurrentBranch) {
 			setOpen(false);
 			return;
 		}

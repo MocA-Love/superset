@@ -33,8 +33,12 @@ export function useActiveEditorSync() {
 		if (worktreePath === lastWorkspacePath.current) return;
 
 		lastWorkspacePath.current = worktreePath;
-		setWorkspacePathMutation.mutate({ workspacePath: worktreePath });
-	}, [workspace?.worktreePath, setWorkspacePathMutation.mutate]);
+		if (!workspaceId) return;
+		setWorkspacePathMutation.mutate({
+			workspaceId,
+			workspacePath: worktreePath,
+		});
+	}, [workspace?.worktreePath, setWorkspacePathMutation.mutate, workspaceId]);
 
 	// Sync active file
 	useEffect(() => {
@@ -78,7 +82,8 @@ export function useActiveEditorSync() {
 
 		if (filePath !== lastFilePath.current) {
 			lastFilePath.current = filePath;
-			setActiveEditorMutation.mutate({ filePath, languageId });
+			if (!workspaceId) return;
+			setActiveEditorMutation.mutate({ workspaceId, filePath, languageId });
 		}
 	}, [
 		workspaceId,

@@ -10,17 +10,8 @@ import {
 	setCustomThemeCss,
 	setWebviewHtml,
 } from "main/lib/vscode-shim/api/webview-server";
-import {
-	onOpenFile,
-	setActiveTextEditor,
-} from "main/lib/vscode-shim/api/window";
-import {
-	getActiveExtensions,
-	restartExtension,
-	updateWorkspacePath,
-} from "main/lib/vscode-shim/extension-host";
+import { getExtensionHostManager } from "main/lib/vscode-shim/extension-host-manager";
 import type { WebviewBridgeEvent } from "main/lib/vscode-shim/webview-bridge";
-import { webviewBridge } from "main/lib/vscode-shim/webview-bridge";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
@@ -93,39 +84,6 @@ function isExtensionInstalled(extensionId: string): boolean {
 	return entries.some((entry) =>
 		entry.toLowerCase().startsWith(extensionId.toLowerCase()),
 	);
-}
-
-/** Wait for HTML to be set on a webview (for async providers) */
-function waitForHtml(
-	viewId: string,
-	timeoutMs: number,
-): Promise<string | null> {
-	return new Promise((resolve) => {
-		// Check immediately before starting poll
-		const html = webviewBridge.getHtml(viewId);
-		if (html) {
-			resolve(html);
-			return;
-		}
-
-		// Poll every 200ms
-		const interval = setInterval(() => {
-			const html = webviewBridge.getHtml(viewId);
-			if (html) {
-				clearInterval(interval);
-				resolve(html);
-			}
-		}, 200);
-
-		// Timeout
-		setTimeout(() => {
-			clearInterval(interval);
-			console.warn(
-				`[vscode-shim] waitForHtml timed out after ${timeoutMs}ms for ${viewId}`,
-			);
-			resolve(null);
-		}, timeoutMs);
-	});
 }
 
 /**
@@ -215,10 +173,6 @@ async function downloadAndInstallExtension(extensionId: string): Promise<void> {
 		throw new Error(`No VSIX package found for ${extensionId}`);
 	}
 
-	console.log(
-		`[vscode-shim] Downloading ${extensionId}@${version.version} (${version.targetPlatform ?? "universal"})`,
-	);
-
 	// Step 2: Download .vsix
 	const vsixResponse = await fetch(vsixAsset.source);
 	if (!vsixResponse.ok || !vsixResponse.body) {
@@ -271,8 +225,6 @@ async function downloadAndInstallExtension(extensionId: string): Promise<void> {
 		if (fs.existsSync(vsixManifest)) {
 			fs.copyFileSync(vsixManifest, path.join(extDir, ".vsixmanifest"));
 		}
-
-		console.log(`[vscode-shim] Installed ${extensionId} to ${extDir}`);
 	} finally {
 		// Always cleanup temp directory
 		fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -281,25 +233,18 @@ async function downloadAndInstallExtension(extensionId: string): Promise<void> {
 
 export const createVscodeExtensionsRouter = () => {
 	return router({
-		/** Get list of loaded (active) extensions */
-		getExtensions: publicProcedure.query(() => {
-			return getActiveExtensions();
-		}),
-
 		/** Get all known extensions with their install/active status */
 		getKnownExtensions: publicProcedure.query(() => {
-			let activeExtensions: Array<{ id: string; isActive: boolean }> = [];
-			try {
-				activeExtensions = getActiveExtensions();
-			} catch {}
-
+			const manager = getExtensionHostManager();
+			const hasRunningExtensionHost = manager.getRunningWorkspaceIds().length > 0;
 			return KNOWN_EXTENSIONS.map((ext) => {
-				const active = activeExtensions.find((a) => a.id === ext.id);
+				const installed = isExtensionInstalled(ext.id);
+				const enabled = isExtensionEnabled(ext.id);
 				return {
 					...ext,
-					installed: isExtensionInstalled(ext.id),
-					enabled: isExtensionEnabled(ext.id),
-					active: active?.isActive ?? false,
+					installed,
+					enabled,
+					active: installed && enabled && hasRunningExtensionHost,
 				};
 			});
 		}),
@@ -308,55 +253,61 @@ export const createVscodeExtensionsRouter = () => {
 		resolveWebview: publicProcedure
 			.input(
 				z.object({
+					workspaceId: z.string(),
+					workspacePath: z.string(),
 					viewType: z.string(),
 					extensionPath: z.string(),
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const viewId = webviewBridge.resolveView(
+				const manager = getExtensionHostManager();
+
+				// Start worker for this workspace if not already running
+				if (!manager.isRunning(input.workspaceId)) {
+					await manager.start(input.workspaceId, input.workspacePath);
+				}
+
+				const result = await manager.resolveWebview(
+					input.workspaceId,
 					input.viewType,
 					input.extensionPath,
 				);
-				if (!viewId) {
+
+				if (!result.viewId) {
 					return { viewId: null, url: null };
 				}
-				// Wait for HTML if provider sets it asynchronously
-				let html = webviewBridge.getHtml(viewId);
-				if (!html) {
-					console.log(
-						`[vscode-shim] resolveWebview: waiting for async HTML on ${viewId}`,
-					);
-					html = (await waitForHtml(viewId, 5000)) ?? undefined;
+
+				if (result.html) {
+					setWebviewHtml(result.viewId, result.html);
 				}
-				if (html) {
-					setWebviewHtml(viewId, html);
-				}
-				const url = getWebviewUrl(viewId);
-				console.log(
-					`[vscode-shim] resolveWebview: viewId=${viewId}, hasHtml=${!!html}, url=${url}`,
-				);
-				return { viewId, url };
+
+				const url = getWebviewUrl(result.viewId);
+				return { viewId: result.viewId, url };
 			}),
 
 		/** Get current webview HTML */
 		getWebviewHtml: publicProcedure
 			.input(z.object({ viewType: z.string() }))
-			.query(({ input }) => {
-				const viewId = webviewBridge.getViewId(input.viewType);
-				if (!viewId) return null;
-				return webviewBridge.getHtml(viewId) ?? null;
+			.query(() => {
+				return null;
 			}),
 
 		/** Send a message from renderer to extension webview */
 		postMessageToExtension: publicProcedure
 			.input(
 				z.object({
+					workspaceId: z.string(),
 					viewId: z.string(),
 					message: z.unknown(),
 				}),
 			)
 			.mutation(({ input }) => {
-				webviewBridge.postMessageToExtension(input.viewId, input.message);
+				const manager = getExtensionHostManager();
+				manager.postMessageToExtension(
+					input.workspaceId,
+					input.viewId,
+					input.message,
+				);
 				return { success: true };
 			}),
 
@@ -379,16 +330,6 @@ export const createVscodeExtensionsRouter = () => {
 				config[input.extensionId] = input.enabled;
 				writeEnabledConfig(config);
 
-				// If disabling, deactivate immediately
-				if (!input.enabled) {
-					try {
-						const { deactivateExtension } = await import(
-							"main/lib/vscode-shim/loader"
-						);
-						await deactivateExtension(input.extensionId);
-					} catch {}
-				}
-
 				return { success: true, needsRestart: true };
 			}),
 
@@ -402,9 +343,15 @@ export const createVscodeExtensionsRouter = () => {
 
 		/** Set the workspace folder path for extensions */
 		setWorkspacePath: publicProcedure
-			.input(z.object({ workspacePath: z.string() }))
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					workspacePath: z.string(),
+				}),
+			)
 			.mutation(({ input }) => {
-				updateWorkspacePath(input.workspacePath);
+				const manager = getExtensionHostManager();
+				manager.setWorkspacePath(input.workspaceId, input.workspacePath);
 				return { success: true };
 			}),
 
@@ -412,12 +359,18 @@ export const createVscodeExtensionsRouter = () => {
 		setActiveEditor: publicProcedure
 			.input(
 				z.object({
+					workspaceId: z.string(),
 					filePath: z.string().nullable(),
 					languageId: z.string().optional(),
 				}),
 			)
 			.mutation(({ input }) => {
-				setActiveTextEditor(input.filePath, input.languageId);
+				const manager = getExtensionHostManager();
+				manager.setActiveEditor(
+					input.workspaceId,
+					input.filePath,
+					input.languageId,
+				);
 				return { success: true };
 			}),
 
@@ -429,35 +382,77 @@ export const createVscodeExtensionsRouter = () => {
 				return { success: true };
 			}),
 
-		/** Restart a specific extension */
+		/** Restart a specific extension (stops and restarts the workspace worker) */
 		restartExtension: publicProcedure
-			.input(z.object({ extensionId: z.string() }))
+			.input(
+				z.object({
+					extensionId: z.string(),
+					workspaceId: z.string().optional(),
+				}),
+			)
 			.mutation(async ({ input }) => {
-				const success = await restartExtension(input.extensionId);
-				return { success };
+				if (!input.workspaceId) {
+					const manager = getExtensionHostManager();
+					const runningWorkspaceIds = manager.getRunningWorkspaceIds();
+					if (runningWorkspaceIds.length === 0) {
+						return { success: false };
+					}
+
+					await Promise.all(
+						runningWorkspaceIds.map(async (workspaceId) => {
+							const workspacePath = manager.getWorkspacePath(workspaceId) ?? "";
+							manager.stop(workspaceId);
+							await manager.start(workspaceId, workspacePath);
+						}),
+					);
+					return { success: true };
+				}
+				const manager = getExtensionHostManager();
+				if (!manager.isRunning(input.workspaceId)) {
+					return { success: false };
+				}
+				// Stop then explicitly restart (stop sets "stopped" status which prevents auto-restart)
+				const workspacePath = manager.getWorkspacePath(input.workspaceId) ?? "";
+				manager.stop(input.workspaceId);
+				await manager.start(input.workspaceId, workspacePath);
+				return { success: true };
 			}),
 
 		/** Subscribe to file open requests from extensions (showTextDocument) */
-		subscribeOpenFile: publicProcedure.subscription(() => {
-			return observable<{ filePath: string; line?: number }>((emit) => {
-				const disposable = onOpenFile((data) => {
-					emit.next(data);
+		subscribeOpenFile: publicProcedure
+			.input(z.object({ workspaceId: z.string().optional() }).optional())
+			.subscription(({ input }) => {
+				return observable<{ filePath: string; line?: number }>((emit) => {
+					const manager = getExtensionHostManager();
+					const handler = (
+						wsId: string,
+						data: { filePath: string; line?: number },
+					) => {
+						if (input?.workspaceId && wsId !== input.workspaceId) return;
+						emit.next(data);
+					};
+					manager.on("open-file", handler);
+					return () => {
+						manager.off("open-file", handler);
+					};
 				});
-				return () => disposable.dispose();
-			});
-		}),
+			}),
 
 		/** Subscribe to webview events (HTML changes, messages from extension) */
-		subscribeWebview: publicProcedure.subscription(() => {
-			return observable<WebviewBridgeEvent>((emit) => {
-				const handler = (event: WebviewBridgeEvent) => {
-					emit.next(event);
-				};
-				webviewBridge.on("webview-event", handler);
-				return () => {
-					webviewBridge.off("webview-event", handler);
-				};
-			});
-		}),
+		subscribeWebview: publicProcedure
+			.input(z.object({ workspaceId: z.string().optional() }).optional())
+			.subscription(({ input }) => {
+				return observable<WebviewBridgeEvent>((emit) => {
+					const manager = getExtensionHostManager();
+					const handler = (wsId: string, event: WebviewBridgeEvent) => {
+						if (input?.workspaceId && wsId !== input.workspaceId) return;
+						emit.next(event);
+					};
+					manager.on("webview-event", handler);
+					return () => {
+						manager.off("webview-event", handler);
+					};
+				});
+			}),
 	});
 };

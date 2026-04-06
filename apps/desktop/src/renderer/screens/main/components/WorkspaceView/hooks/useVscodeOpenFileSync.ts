@@ -10,15 +10,18 @@ export function useVscodeOpenFileSync() {
 	const workspaceId = useWorkspaceId();
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
-	electronTrpc.vscodeExtensions.subscribeOpenFile.useSubscription(undefined, {
-		enabled: !!workspaceId,
-		onData: (data) => {
-			if (!workspaceId) return;
-			addFileViewerPane(workspaceId, {
-				filePath: data.filePath,
-				line: data.line,
-				viewMode: "raw",
-			});
+	electronTrpc.vscodeExtensions.subscribeOpenFile.useSubscription(
+		{ workspaceId: workspaceId ?? undefined },
+		{
+			enabled: !!workspaceId,
+			onData: (data) => {
+				if (!workspaceId) return;
+				addFileViewerPane(workspaceId, {
+					filePath: data.filePath,
+					line: data.line,
+					viewMode: "raw",
+				});
+			},
 		},
-	});
+	);
 }

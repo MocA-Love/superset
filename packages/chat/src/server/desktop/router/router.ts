@@ -2,6 +2,7 @@ import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { z } from "zod";
 import type { ChatService } from "../chat-service";
+import { nextEditConfigSchema } from "../chat-service/next-edit-config";
 import { getSlashCommands, resolveSlashCommand } from "../slash-commands";
 import { searchFiles } from "./file-search";
 import { getMcpOverview } from "./mcp-overview";
@@ -47,6 +48,25 @@ export const anthropicEnvConfigInput = z.object({
 
 export const openAIApiKeyInput = z.object({
 	apiKey: z.string().min(1),
+});
+
+export const inceptionApiKeyInput = z.object({
+	apiKey: z.string().min(1),
+});
+
+export const nextEditCompletionInput = z.object({
+	filePath: z.string().min(1),
+	currentFileContent: z.string(),
+	cursorOffset: z.number().int().min(0),
+	recentSnippets: z
+		.array(
+			z.object({
+				filePath: z.string().min(1),
+				content: z.string(),
+			}),
+		)
+		.optional(),
+	editHistory: z.array(z.string()).optional(),
 });
 
 function resolveWorkspaceSlashCommand(input: { cwd: string; text: string }) {
@@ -156,6 +176,42 @@ export function createChatServiceRouter(service: ChatService) {
 			clearOpenAIApiKey: t.procedure.mutation(() => {
 				return service.clearOpenAIApiKey();
 			}),
+			getInceptionStatus: t.procedure.query(() => {
+				return service.getInceptionAuthStatus();
+			}),
+			setInceptionApiKey: t.procedure
+				.input(inceptionApiKeyInput)
+				.mutation(({ input }) => {
+					return service.setInceptionApiKey({ apiKey: input.apiKey });
+				}),
+			clearInceptionApiKey: t.procedure.mutation(() => {
+				return service.clearInceptionApiKey();
+			}),
+		}),
+		nextEdit: t.router({
+			getConfig: t.procedure.query(() => {
+				return service.getNextEditConfig();
+			}),
+			getUsageSummary: t.procedure.query(() => {
+				return service.getNextEditUsageSummary();
+			}),
+			setConfig: t.procedure
+				.input(nextEditConfigSchema)
+				.mutation(({ input }) => {
+					return service.setNextEditConfig(input);
+				}),
+			complete: t.procedure
+				.input(nextEditCompletionInput)
+				.mutation(({ input }) => {
+					console.log("[NextEditRouter] complete called", {
+						filePath: input.filePath,
+						cursorOffset: input.cursorOffset,
+						contentLength: input.currentFileContent.length,
+						recentSnippetCount: input.recentSnippets?.length ?? 0,
+						editHistoryCount: input.editHistory?.length ?? 0,
+					});
+					return service.completeNextEdit(input);
+				}),
 		}),
 	});
 }
