@@ -109,6 +109,8 @@ export function VscodeExtensionView({
 		if (!viewId) return;
 
 		const handler = (event: MessageEvent) => {
+			// Verify message source is our iframe
+			if (event.source !== iframeRef.current?.contentWindow) return;
 			if (event.data?.type === "vscode-api") {
 				postMessageMutation.mutate({
 					viewId,
@@ -144,7 +146,7 @@ export function VscodeExtensionView({
 			ref={iframeRef}
 			srcDoc={bridgedHtml}
 			className="w-full h-full border-0"
-			sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+			sandbox="allow-scripts allow-forms allow-popups"
 			title={`${extensionId} webview`}
 		/>
 	);
@@ -162,17 +164,16 @@ function injectVscodeApiBridge(
 <style>${themeCss}</style>
 <script>
 (function() {
+	let _state = null;
 	const vscodeApi = {
 		postMessage(message) {
 			window.parent.postMessage({ type: 'vscode-api', data: message }, '*');
 		},
 		getState() {
-			try {
-				return JSON.parse(sessionStorage.getItem('vscodeState') || 'null');
-			} catch { return null; }
+			return _state;
 		},
 		setState(state) {
-			sessionStorage.setItem('vscodeState', JSON.stringify(state));
+			_state = state;
 			return state;
 		}
 	};

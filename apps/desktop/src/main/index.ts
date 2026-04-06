@@ -43,6 +43,7 @@ import {
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
+import { initExtensionHost, shutdownExtensionHost } from "./lib/vscode-shim";
 import { cleanupMainWindowResources, MainWindow } from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
@@ -408,6 +409,7 @@ app.on("before-quit", async (event) => {
 	}
 
 	isQuitting = true;
+	shutdownExtensionHost().catch(() => {});
 	closeLocalDb();
 	if (quitMode === "stop") {
 		manager.stopAll();
@@ -587,6 +589,11 @@ if (!gotTheLock) {
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
 		initTray();
+
+		// Initialize VS Code extension host (loads Claude Code, ChatGPT etc.)
+		initExtensionHost().catch((err) => {
+			console.error("[main] Failed to initialize VS Code extension host:", err);
+		});
 
 		const coldStartUrl = findDeepLinkInArgv(process.argv);
 		if (coldStartUrl) {

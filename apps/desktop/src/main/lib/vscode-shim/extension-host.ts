@@ -72,6 +72,19 @@ export async function initExtensionHost(
 	isInitialized = true;
 }
 
+/** Compare semver-like version strings. Returns positive if a > b. */
+function compareVersions(a: string, b: string): number {
+	const pa = a.split(".").map(Number);
+	const pb = b.split(".").map(Number);
+	const len = Math.max(pa.length, pb.length);
+	for (let i = 0; i < len; i++) {
+		const va = pa[i] ?? 0;
+		const vb = pb[i] ?? 0;
+		if (va !== vb) return va - vb;
+	}
+	return 0;
+}
+
 /** Pick the latest version of each target extension */
 function selectExtensions(
 	all: ExtensionInfo[],
@@ -86,8 +99,9 @@ function selectExtensions(
 		if (!existing) {
 			byId.set(ext.id, ext);
 		} else {
-			// Simple version comparison: prefer later directory (higher version)
-			if (ext.extensionPath > existing.extensionPath) {
+			if (
+				compareVersions(ext.manifest.version, existing.manifest.version) > 0
+			) {
 				byId.set(ext.id, ext);
 			}
 		}

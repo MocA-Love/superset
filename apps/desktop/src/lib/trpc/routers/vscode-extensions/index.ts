@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +49,16 @@ function isExtensionInstalled(extensionId: string): boolean {
  * Uses the VS Code Marketplace Gallery API to fetch the .vsix package.
  */
 async function downloadAndInstallExtension(extensionId: string): Promise<void> {
+	// Validate against known extensions whitelist
+	if (!KNOWN_EXTENSIONS.some((e) => e.id === extensionId)) {
+		throw new Error(`Unknown extension: ${extensionId}`);
+	}
+
+	// Strict format validation
+	if (!/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/.test(extensionId)) {
+		throw new Error(`Invalid extension ID format: ${extensionId}`);
+	}
+
 	const [publisher, name] = extensionId.split(".");
 	if (!publisher || !name) {
 		throw new Error(`Invalid extension ID: ${extensionId}`);
@@ -147,31 +157,42 @@ async function downloadAndInstallExtension(extensionId: string): Promise<void> {
 		`${publisher}.${name}-${version.version}${targetSuffix}`,
 	);
 
-	if (fs.existsSync(extDir)) {
-		fs.rmSync(extDir, { recursive: true });
+	try {
+		if (fs.existsSync(extDir)) {
+			fs.rmSync(extDir, { recursive: true });
+		}
+		fs.mkdirSync(extDir, { recursive: true });
+
+		// Extract .vsix using spawnSync (no shell injection risk)
+		const extractDir = path.join(tmpDir, "extracted");
+		const unzipResult = spawnSync(
+			"unzip",
+			["-q", "-o", vsixPath, "-d", extractDir],
+			{
+				stdio: "pipe",
+			},
+		);
+		if (unzipResult.status !== 0) {
+			throw new Error(`unzip failed: ${unzipResult.stderr?.toString()}`);
+		}
+
+		// Copy extension content using Node.js fs (no shell commands)
+		const extractedExtDir = path.join(extractDir, "extension");
+		if (fs.existsSync(extractedExtDir)) {
+			fs.cpSync(extractedExtDir, extDir, { recursive: true });
+		}
+
+		// Copy vsixmanifest if present
+		const vsixManifest = path.join(extractDir, "extension.vsixmanifest");
+		if (fs.existsSync(vsixManifest)) {
+			fs.copyFileSync(vsixManifest, path.join(extDir, ".vsixmanifest"));
+		}
+
+		console.log(`[vscode-shim] Installed ${extensionId} to ${extDir}`);
+	} finally {
+		// Always cleanup temp directory
+		fs.rmSync(tmpDir, { recursive: true, force: true });
 	}
-	fs.mkdirSync(extDir, { recursive: true });
-
-	// Use unzip command (available on macOS/Linux)
-	execSync(`unzip -q -o "${vsixPath}" -d "${tmpDir}/extracted"`);
-
-	// The extension content is in the "extension/" subdirectory of the vsix
-	const extractedExtDir = path.join(tmpDir, "extracted", "extension");
-	if (fs.existsSync(extractedExtDir)) {
-		// Move contents to target directory
-		execSync(`cp -R "${extractedExtDir}/"* "${extDir}/"`);
-	}
-
-	// Copy [Content_Types].xml and extension.vsixmanifest if needed
-	const vsixManifest = path.join(tmpDir, "extracted", "extension.vsixmanifest");
-	if (fs.existsSync(vsixManifest)) {
-		fs.copyFileSync(vsixManifest, path.join(extDir, ".vsixmanifest"));
-	}
-
-	// Cleanup
-	fs.rmSync(tmpDir, { recursive: true });
-
-	console.log(`[vscode-shim] Installed ${extensionId} to ${extDir}`);
 }
 
 export const createVscodeExtensionsRouter = () => {
