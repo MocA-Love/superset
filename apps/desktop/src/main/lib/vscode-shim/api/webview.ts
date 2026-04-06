@@ -320,7 +320,7 @@ export function createWebviewPanel(
 	_onWebviewEvent.fire({
 		viewId: panelId,
 		type: "panel-created" as WebviewEvent["type"],
-		data: { viewType, title, panelId },
+		data: { viewType, title, panelId, extensionPath },
 	});
 
 	return panel;

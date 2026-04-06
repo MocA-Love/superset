@@ -55,6 +55,23 @@ class Memento {
 	}
 }
 
+function getSafeStorage(): {
+	encryptString(plainText: string): Buffer;
+	decryptString(encrypted: Buffer): string;
+	isEncryptionAvailable(): boolean;
+} | null {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		return require("electron").safeStorage as {
+			encryptString(plainText: string): Buffer;
+			decryptString(encrypted: Buffer): string;
+			isEncryptionAvailable(): boolean;
+		};
+	} catch {
+		return null;
+	}
+}
+
 class SecretStorage {
 	private _data = new Map<string, string>();
 	private _onDidChange = new EventEmitter<{ key: string }>();
@@ -67,8 +84,19 @@ class SecretStorage {
 			if (fs.existsSync(filePath)) {
 				const raw = fs.readFileSync(filePath, "utf-8");
 				const parsed = JSON.parse(raw) as Record<string, string>;
+				const safeStorage = getSafeStorage();
 				for (const [k, v] of Object.entries(parsed)) {
-					this._data.set(k, v);
+					try {
+						if (safeStorage?.isEncryptionAvailable()) {
+							const buf = Buffer.from(v, "base64");
+							this._data.set(k, safeStorage.decryptString(buf));
+						} else {
+							this._data.set(k, v);
+						}
+					} catch {
+						// If decryption fails (e.g. key changed), store as-is
+						this._data.set(k, v);
+					}
 				}
 			}
 		} catch {}
@@ -76,8 +104,15 @@ class SecretStorage {
 
 	private _persist(): void {
 		try {
+			const safeStorage = getSafeStorage();
 			const obj: Record<string, string> = {};
-			for (const [k, v] of this._data) obj[k] = v;
+			for (const [k, v] of this._data) {
+				if (safeStorage?.isEncryptionAvailable()) {
+					obj[k] = safeStorage.encryptString(v).toString("base64");
+				} else {
+					obj[k] = v;
+				}
+			}
 			fs.mkdirSync(path.dirname(this._filePath), { recursive: true });
 			fs.writeFileSync(this._filePath, JSON.stringify(obj, null, 2));
 		} catch {}
@@ -122,15 +157,12 @@ function createEnvironmentVariableCollection(): EnvironmentVariableCollection {
 		description: undefined,
 		replace(variable: string, value: string) {
 			vars.set(variable, { type: 1, value });
-			process.env[variable] = value;
 		},
 		append(variable: string, value: string) {
 			vars.set(variable, { type: 2, value });
-			process.env[variable] = (process.env[variable] ?? "") + value;
 		},
 		prepend(variable: string, value: string) {
 			vars.set(variable, { type: 3, value });
-			process.env[variable] = value + (process.env[variable] ?? "");
 		},
 		get(variable: string) {
 			return vars.get(variable);

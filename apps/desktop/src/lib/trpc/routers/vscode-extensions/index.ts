@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import {
 	getWebviewUrl,
@@ -366,6 +367,12 @@ export const createVscodeExtensionsRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
+				if (!KNOWN_EXTENSIONS.some((e) => e.id === input.extensionId)) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Unknown extension",
+					});
+				}
 				const config = readEnabledConfig();
 				config[input.extensionId] = input.enabled;
 				writeEnabledConfig(config);

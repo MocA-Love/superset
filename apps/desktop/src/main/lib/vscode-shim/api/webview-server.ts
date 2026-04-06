@@ -243,7 +243,7 @@ export async function startWebviewServer(): Promise<number> {
 					shimWarn(`[webview-server] HTML not found for viewId: ${viewId}`);
 					res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
 					res.end(
-						`<html><body style="color:#ccc;background:#1e1e1e;font-family:sans-serif;padding:20px"><h3>Webview loading...</h3><p>viewId: ${viewId}</p><p>Available: ${[...htmlStore.keys()].join(", ") || "none"}</p><script>setTimeout(()=>location.reload(),2000)</script></body></html>`,
+						`<html><body style="color:#ccc;background:#1e1e1e;font-family:sans-serif;padding:20px"><h3>Webview content not available</h3><script>setTimeout(()=>location.reload(),2000)</script></body></html>`,
 					);
 					return;
 				}
@@ -281,7 +281,6 @@ export async function startWebviewServer(): Promise<number> {
 						`frame-src http://127.0.0.1:${serverPort} https:`,
 						"worker-src blob:",
 					].join("; "),
-					"Access-Control-Allow-Origin": "*",
 				});
 				res.end(html);
 				return;

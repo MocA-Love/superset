@@ -429,9 +429,10 @@ app.on("before-quit", async (event) => {
 	}
 
 	isQuitting = true;
-	loadVscodeShim()
-		.then((mod) => mod.shutdownExtensionHost())
-		.catch(() => {});
+	try {
+		const mod = await loadVscodeShim();
+		await mod.shutdownExtensionHost();
+	} catch {}
 	closeLocalDb();
 	if (quitMode === "stop") {
 		manager.stopAll();
