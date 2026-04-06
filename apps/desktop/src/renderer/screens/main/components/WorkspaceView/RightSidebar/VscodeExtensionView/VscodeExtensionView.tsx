@@ -91,15 +91,8 @@ export function VscodeExtensionView({
 					"*",
 				);
 			}
-			if (event.type === "html" && iframeUrl) {
-				console.log(
-					`[VscodeExtensionView] HTML updated, reloading iframe: ${iframeUrl}`,
-				);
-				const iframe = iframeRef.current;
-				if (iframe) {
-					iframe.src = iframeUrl;
-				}
-			}
+			// Don't reload iframe on HTML updates - the initial load already has
+			// the correct content, and reloading would reset extension state
 		},
 	});
 
