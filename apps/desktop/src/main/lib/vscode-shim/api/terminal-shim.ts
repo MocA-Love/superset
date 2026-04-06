@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { shimLog } from "./debug-log";
 import { EventEmitter } from "./event-emitter";
+import { workspace } from "./workspace";
 
 interface TerminalOptions {
 	name?: string;
@@ -86,7 +87,7 @@ export function createTerminal(
 				paneId,
 				tabId: `vscode-ext-tab-${paneId}`,
 				workspaceId: "vscode-extension-host",
-				cwd: opts.cwd,
+				cwd: opts.cwd ?? workspace.rootPath,
 				cols: 120,
 				rows: 30,
 			});

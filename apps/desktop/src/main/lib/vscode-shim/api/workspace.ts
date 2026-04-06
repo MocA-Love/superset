@@ -53,6 +53,15 @@ const textDocumentContentProviders = new Map<string, unknown>();
 export function setWorkspacePath(folderPath: string): void {
 	const oldPath = workspaceFolderPath;
 	workspaceFolderPath = folderPath;
+
+	// Also set process.cwd so spawned subprocesses (claude CLI, codex CLI)
+	// inherit the correct working directory for finding CLAUDE.md, etc.
+	if (folderPath && fs.existsSync(folderPath)) {
+		try {
+			process.chdir(folderPath);
+		} catch {}
+	}
+
 	if (oldPath !== folderPath) {
 		_onDidChangeWorkspaceFolders.fire({
 			added: folderPath
