@@ -35,6 +35,8 @@ const INLINE_COMPLETION_INSTRUCTION = [
 	"You are generating an inline tab completion for a code editor.",
 	"Prefer preserving all existing code exactly.",
 	"When possible, continue by appending code at the cursor instead of rewriting earlier text.",
+	"When adding a new object literal with an id field, prefer generating a fresh unique UUID instead of copying a nearby UUID.",
+	"Do not reuse an adjacent UUID unless the code clearly indicates it should refer to the same existing entity.",
 	"Return the updated <|code_to_edit|> region in triple backticks.",
 ].join(" ");
 

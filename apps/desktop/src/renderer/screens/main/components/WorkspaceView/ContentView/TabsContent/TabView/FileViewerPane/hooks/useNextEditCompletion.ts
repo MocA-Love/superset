@@ -17,6 +17,18 @@ const SNIPPET_CONTEXT_BEFORE_LINES = 10;
 const SNIPPET_CONTEXT_AFTER_LINES = 9;
 const EDIT_HISTORY_FLUSH_DELAY_MS = 900;
 
+function logNextEditDebug(
+	message: string,
+	details?: Record<string, unknown>,
+): void {
+	if (details) {
+		console.log(`[NextEdit] ${message}`, details);
+		return;
+	}
+
+	console.log(`[NextEdit] ${message}`);
+}
+
 function getLineStartOffsets(content: string): number[] {
 	const offsets = [0];
 	for (let index = 0; index < content.length; index += 1) {
@@ -153,6 +165,22 @@ export function useNextEditCompletion({
 		activeFilePathRef.current = filePath;
 	}, [filePath]);
 
+	useEffect(() => {
+		logNextEditDebug("state updated", {
+			filePath,
+			enabled: nextEditConfig?.enabled ?? false,
+			authenticated: inceptionStatus?.authenticated ?? false,
+			isAvailable,
+			model: nextEditConfig?.model ?? null,
+		});
+	}, [
+		filePath,
+		inceptionStatus?.authenticated,
+		isAvailable,
+		nextEditConfig?.enabled,
+		nextEditConfig?.model,
+	]);
+
 	const commitEditHistoryEntry = useCallback((nextContent: string) => {
 		const previousContent = committedContentRef.current;
 		if (previousContent === nextContent) {
@@ -175,6 +203,10 @@ export function useNextEditCompletion({
 		editHistoryRef.current = [...editHistoryRef.current, diff].slice(
 			-EDIT_HISTORY_LIMIT,
 		);
+		logNextEditDebug("edit history updated", {
+			filePath: activeFilePathRef.current,
+			editHistoryCount: editHistoryRef.current.length,
+		});
 	}, []);
 
 	const flushPendingEditHistory = useCallback(() => {
@@ -199,6 +231,10 @@ export function useNextEditCompletion({
 				window.clearTimeout(pendingFlushTimerRef.current);
 				pendingFlushTimerRef.current = null;
 			}
+			logNextEditDebug("document snapshot synced", {
+				filePath,
+				contentLength: content.length,
+			});
 		},
 		[filePath],
 	);
@@ -237,6 +273,11 @@ export function useNextEditCompletion({
 			cursorOffset: number;
 		}) => {
 			if (!isAvailable) {
+				logNextEditDebug("request skipped: unavailable", {
+					filePath,
+					enabled: nextEditConfig?.enabled ?? false,
+					authenticated: inceptionStatus?.authenticated ?? false,
+				});
 				return null;
 			}
 
@@ -255,6 +296,19 @@ export function useNextEditCompletion({
 						nextSnippet,
 					].slice(-RECENT_SNIPPET_LIMIT);
 				}
+				logNextEditDebug("request started", {
+					filePath,
+					cursorOffset,
+					contentLength: currentFileContent.length,
+					recentSnippetCount: recentSnippetsRef.current.length,
+					editHistoryCount: editHistoryRef.current.length,
+					recentSnippetKeys: recentSnippetsRef.current.map(
+						(snippet) => snippet.key,
+					),
+					editHistoryPreview: editHistoryRef.current
+						.slice(-2)
+						.map((entry) => entry.slice(0, 160)),
+				});
 
 				const result = await completeMutation.mutateAsync({
 					filePath,
@@ -266,13 +320,30 @@ export function useNextEditCompletion({
 					})),
 					editHistory: editHistoryRef.current,
 				});
+				logNextEditDebug("request completed", {
+					filePath,
+					hasInsertText: Boolean(result.insertText),
+					insertTextLength: result.insertText?.length ?? 0,
+					insertTextPreview: result.insertText?.slice(0, 120) ?? null,
+					cursorOffset,
+				});
 				return result.insertText;
 			} catch (error) {
-				console.warn("[FileViewerPane] Next Edit request failed:", error);
+				console.log("[NextEdit] request failed", {
+					filePath,
+					error,
+				});
 				return null;
 			}
 		},
-		[completeMutation, filePath, flushPendingEditHistory, isAvailable],
+		[
+			completeMutation,
+			filePath,
+			flushPendingEditHistory,
+			inceptionStatus?.authenticated,
+			isAvailable,
+			nextEditConfig?.enabled,
+		],
 	);
 
 	return {
