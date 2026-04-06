@@ -67,6 +67,13 @@ interface Terminal {
 const _onDidChangeActiveTextEditor = new EventEmitter<TextEditor | undefined>();
 const _onDidChangeVisibleTextEditors = new EventEmitter<TextEditor[]>();
 const _onDidChangeTextEditorSelection = new EventEmitter<unknown>();
+
+// Emits when showTextDocument is called - renderer listens to open file viewer
+const _openFileEmitter = new EventEmitter<{
+	filePath: string;
+	line?: number;
+}>();
+export const onOpenFile = _openFileEmitter.event;
 // Active text editor state — updated from renderer via tRPC
 let _activeTextEditor: TextEditor | undefined;
 const _visibleTextEditors: TextEditor[] = [];
@@ -267,6 +274,16 @@ export const window = {
 				? (document as { uri: Uri }).uri
 				: (document as Uri);
 		shimLog(`[vscode-shim] showTextDocument: ${uri.toString()}`);
+
+		// Notify renderer to open the file in file viewer
+		if (uri.scheme === "file" && uri.fsPath) {
+			_openFileEmitter.fire({
+				filePath: uri.fsPath,
+				line: (_options as { selection?: { start?: { line?: number } } })
+					?.selection?.start?.line,
+			});
+		}
+
 		// Return a minimal editor stub
 		return {
 			document: {

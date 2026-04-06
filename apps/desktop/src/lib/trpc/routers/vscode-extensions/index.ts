@@ -9,7 +9,10 @@ import {
 	getWebviewUrl,
 	setWebviewHtml,
 } from "main/lib/vscode-shim/api/webview-server";
-import { setActiveTextEditor } from "main/lib/vscode-shim/api/window";
+import {
+	onOpenFile,
+	setActiveTextEditor,
+} from "main/lib/vscode-shim/api/window";
 import {
 	getActiveExtensions,
 	restartExtension,
@@ -424,6 +427,16 @@ export const createVscodeExtensionsRouter = () => {
 				const success = await restartExtension(input.extensionId);
 				return { success };
 			}),
+
+		/** Subscribe to file open requests from extensions (showTextDocument) */
+		subscribeOpenFile: publicProcedure.subscription(() => {
+			return observable<{ filePath: string; line?: number }>((emit) => {
+				const disposable = onOpenFile((data) => {
+					emit.next(data);
+				});
+				return () => disposable.dispose();
+			});
+		}),
 
 		/** Subscribe to webview events (HTML changes, messages from extension) */
 		subscribeWebview: publicProcedure.subscription(() => {
