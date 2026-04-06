@@ -53,6 +53,41 @@ function isExtensionInstalled(extensionId: string): boolean {
 	);
 }
 
+/** Wait for HTML to be set on a webview (for async providers) */
+function waitForHtml(
+	viewId: string,
+	timeoutMs: number,
+): Promise<string | null> {
+	return new Promise((resolve) => {
+		const check = () => {
+			const html = webviewBridge.getHtml(viewId);
+			if (html) return resolve(html);
+			return null;
+		};
+		// Check immediately
+		const immediate = check();
+		if (immediate) return;
+
+		// Poll every 200ms
+		const interval = setInterval(() => {
+			const html = webviewBridge.getHtml(viewId);
+			if (html) {
+				clearInterval(interval);
+				resolve(html);
+			}
+		}, 200);
+
+		// Timeout
+		setTimeout(() => {
+			clearInterval(interval);
+			console.warn(
+				`[vscode-shim] waitForHtml timed out after ${timeoutMs}ms for ${viewId}`,
+			);
+			resolve(null);
+		}, timeoutMs);
+	});
+}
+
 /**
  * Download a VS Code extension from the marketplace and extract to extensions dir.
  * Uses the VS Code Marketplace Gallery API to fetch the .vsix package.
@@ -236,7 +271,7 @@ export const createVscodeExtensionsRouter = () => {
 					extensionPath: z.string(),
 				}),
 			)
-			.mutation(({ input }) => {
+			.mutation(async ({ input }) => {
 				const viewId = webviewBridge.resolveView(
 					input.viewType,
 					input.extensionPath,
@@ -244,8 +279,14 @@ export const createVscodeExtensionsRouter = () => {
 				if (!viewId) {
 					return { viewId: null, url: null };
 				}
-				// Store HTML in webview server and return HTTP URL
-				const html = webviewBridge.getHtml(viewId);
+				// Wait for HTML if provider sets it asynchronously
+				let html = webviewBridge.getHtml(viewId);
+				if (!html) {
+					console.log(
+						`[vscode-shim] resolveWebview: waiting for async HTML on ${viewId}`,
+					);
+					html = (await waitForHtml(viewId, 5000)) ?? undefined;
+				}
 				if (html) {
 					setWebviewHtml(viewId, html);
 				}
