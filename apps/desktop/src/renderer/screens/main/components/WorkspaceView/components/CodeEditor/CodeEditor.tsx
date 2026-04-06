@@ -32,6 +32,8 @@ import { useResolvedTheme } from "renderer/stores/theme";
 import { getEditorTheme } from "shared/themes";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
+import { createIndentRainbowPlugin } from "./createIndentRainbowPlugin";
+import { createTrailingSpacesPlugin } from "./createTrailingSpacesPlugin";
 import { loadLanguageSupport } from "./loadLanguageSupport";
 
 interface CodeEditorProps {
@@ -433,6 +435,8 @@ export function CodeEditor({
 	const themeCompartment = useRef(new Compartment()).current;
 	const editableCompartment = useRef(new Compartment()).current;
 	const blameCompartment = useRef(new Compartment()).current;
+	const indentRainbowCompartment = useRef(new Compartment()).current;
+	const trailingSpacesCompartment = useRef(new Compartment()).current;
 	const diagnosticsCompartment = useRef(new Compartment()).current;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
@@ -444,6 +448,14 @@ export function CodeEditor({
 			staleTime: 30_000,
 		},
 	);
+	const { data: indentRainbow } =
+		electronTrpc.settings.getIndentRainbow.useQuery(undefined, {
+			staleTime: 30_000,
+		});
+	const { data: trailingSpaces } =
+		electronTrpc.settings.getTrailingSpaces.useQuery(undefined, {
+			staleTime: 30_000,
+		});
 	const editorFontFamily = fontSettings?.editorFontFamily ?? undefined;
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const activeTheme = useResolvedTheme();
@@ -515,6 +527,8 @@ export function CodeEditor({
 				]),
 				languageCompartment.of([]),
 				blameCompartment.of([]),
+				indentRainbowCompartment.of([]),
+				trailingSpacesCompartment.of([]),
 				diagnosticsCompartment.of([
 					createDiagnosticsTheme(editorTheme),
 					EditorView.decorations.of(
@@ -623,6 +637,36 @@ export function CodeEditor({
 			]),
 		});
 	}, [editableCompartment, readOnly]);
+
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view) return;
+
+		view.dispatch({
+			effects: indentRainbowCompartment.reconfigure(
+				indentRainbow?.enabled
+					? createIndentRainbowPlugin(indentRainbow.colors)
+					: [],
+			),
+		});
+	}, [indentRainbow?.enabled, indentRainbow?.colors, indentRainbowCompartment]);
+
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view) return;
+
+		view.dispatch({
+			effects: trailingSpacesCompartment.reconfigure(
+				trailingSpaces?.enabled
+					? createTrailingSpacesPlugin(trailingSpaces.color)
+					: [],
+			),
+		});
+	}, [
+		trailingSpaces?.enabled,
+		trailingSpaces?.color,
+		trailingSpacesCompartment,
+	]);
 
 	useEffect(() => {
 		const view = viewRef.current;
