@@ -8,16 +8,16 @@ import {
 } from "@codemirror/view";
 
 const DEFAULT_COLORS = [
-	"rgba(3, 4, 94, 0.15)",
-	"rgba(2, 62, 138, 0.15)",
-	"rgba(0, 119, 182, 0.15)",
-	"rgba(0, 150, 199, 0.15)",
-	"rgba(0, 180, 216, 0.15)",
-	"rgba(72, 202, 228, 0.15)",
-	"rgba(144, 224, 239, 0.15)",
-	"rgba(144, 224, 239, 0.1)",
-	"rgba(144, 224, 239, 0.05)",
-	"rgba(144, 224, 239, 0.025)",
+	"#03045e26",
+	"#023e8a26",
+	"#0077b626",
+	"#0096c726",
+	"#00b4d826",
+	"#48cae426",
+	"#90e0ef26",
+	"#90e0ef1a",
+	"#90e0ef0d",
+	"#90e0ef06",
 ];
 
 function buildIndentRainbowTheme(colors: string[]): Extension {

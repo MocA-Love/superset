@@ -1,7 +1,7 @@
 import { Button } from "@superset/ui/button";
 import { Input } from "@superset/ui/input";
 import { Switch } from "@superset/ui/switch";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	LuBot,
 	LuDownload,
@@ -16,6 +16,7 @@ import {
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { INDENT_RAINBOW_DEFAULT_COLORS } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createIndentRainbowPlugin";
 import { TRAILING_SPACES_DEFAULT_COLOR } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createTrailingSpacesPlugin";
+import { toHex, toHex8, withAlpha } from "shared/themes/utils";
 import {
 	isItemVisible,
 	SETTING_ITEM_ID,
@@ -33,6 +34,168 @@ const EXTENSION_ICONS: Record<
 	"anthropic.claude-code": LuBot,
 	"openai.chatgpt": LuSparkles,
 };
+
+const HEX6_COLOR_RE = /^#[0-9a-f]{6}$/i;
+const HEX8_COLOR_RE = /^#[0-9a-f]{8}$/i;
+const FALLBACK_PICKER_COLOR = "#808080";
+
+function normalizeColorValue(color: string): string {
+	const normalized = toHex8(color.trim());
+	return HEX8_COLOR_RE.test(normalized)
+		? normalized.toLowerCase()
+		: color.trim();
+}
+
+function getColorPickerValue(color: string): string {
+	const normalized = toHex(color);
+	return HEX6_COLOR_RE.test(normalized)
+		? normalized.toLowerCase()
+		: FALLBACK_PICKER_COLOR;
+}
+
+function getColorAlpha(color: string): number {
+	const normalized = normalizeColorValue(color);
+	if (!HEX8_COLOR_RE.test(normalized)) {
+		return 1;
+	}
+
+	return Number.parseInt(normalized.slice(7, 9), 16) / 255;
+}
+
+function getOpacityPercent(color: string): number {
+	return Math.round(getColorAlpha(color) * 100);
+}
+
+function normalizeHexInput(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	const candidate = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+	const normalized = toHex(candidate);
+	return HEX6_COLOR_RE.test(normalized) ? normalized.toLowerCase() : null;
+}
+
+function toStoredHex8(hex: string, opacityPercent: number): string {
+	const next = normalizeColorValue(withAlpha(hex, opacityPercent / 100));
+	return HEX8_COLOR_RE.test(next) ? next : withAlpha(FALLBACK_PICKER_COLOR, 1);
+}
+
+function ColorControl({
+	value,
+	onCommit,
+	ariaLabel,
+	className,
+}: {
+	value: string;
+	onCommit: (value: string) => void;
+	ariaLabel: string;
+	className?: string;
+}) {
+	const [hexDraft, setHexDraft] = useState(() => getColorPickerValue(value));
+	const [opacityDraft, setOpacityDraft] = useState(() =>
+		getOpacityPercent(value),
+	);
+	const colorInputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		setHexDraft(getColorPickerValue(value));
+		setOpacityDraft(getOpacityPercent(value));
+	}, [value]);
+
+	const commitHexDraft = useCallback(() => {
+		const normalizedHex = normalizeHexInput(hexDraft);
+		if (!normalizedHex) {
+			setHexDraft(getColorPickerValue(value));
+			return;
+		}
+
+		setHexDraft(normalizedHex);
+		const next = toStoredHex8(normalizedHex, opacityDraft);
+		if (next !== value) {
+			onCommit(next);
+		}
+	}, [hexDraft, onCommit, opacityDraft, value]);
+
+	const handlePickerChange = useCallback(
+		(event: React.ChangeEvent<HTMLInputElement>) => {
+			const nextHex = event.target.value.toLowerCase();
+			setHexDraft(nextHex);
+			const next = toStoredHex8(nextHex, opacityDraft);
+			if (next !== value) {
+				onCommit(next);
+			}
+		},
+		[onCommit, opacityDraft, value],
+	);
+
+	const handleOpacityChange = useCallback(
+		(event: React.ChangeEvent<HTMLInputElement>) => {
+			const nextOpacity = Number(event.target.value);
+			setOpacityDraft(nextOpacity);
+			const nextHex = normalizeHexInput(hexDraft) ?? getColorPickerValue(value);
+			const next = toStoredHex8(nextHex, nextOpacity);
+			if (next !== value) {
+				onCommit(next);
+			}
+		},
+		[hexDraft, onCommit, value],
+	);
+
+	return (
+		<div className="flex items-center gap-2 flex-1 min-w-0">
+			<button
+				type="button"
+				onClick={() => colorInputRef.current?.click()}
+				className="size-6 rounded border flex-shrink-0 cursor-pointer transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				style={{ backgroundColor: value }}
+				aria-label={ariaLabel}
+			/>
+			<input
+				ref={colorInputRef}
+				type="color"
+				value={normalizeHexInput(hexDraft) ?? getColorPickerValue(value)}
+				onChange={handlePickerChange}
+				className="sr-only"
+				tabIndex={-1}
+				aria-hidden="true"
+			/>
+			<Input
+				value={hexDraft}
+				onChange={(event) => setHexDraft(event.target.value)}
+				onBlur={commitHexDraft}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						event.currentTarget.blur();
+					}
+					if (event.key === "Escape") {
+						setHexDraft(getColorPickerValue(value));
+						event.currentTarget.blur();
+					}
+				}}
+				className={className}
+				spellCheck={false}
+				autoCapitalize="off"
+				autoCorrect="off"
+			/>
+			<div className="flex items-center gap-2 min-w-0 w-40">
+				<input
+					type="range"
+					min="0"
+					max="100"
+					value={opacityDraft}
+					onChange={handleOpacityChange}
+					className="h-7 flex-1 accent-primary"
+					aria-label={`${ariaLabel} opacity`}
+				/>
+				<span className="w-10 text-right text-xs text-muted-foreground tabular-nums">
+					{opacityDraft}%
+				</span>
+			</div>
+		</div>
+	);
+}
 
 export function VscodeExtensionsSettings({
 	visibleItems,
@@ -323,7 +486,9 @@ function IndentRainbowSettings() {
 	});
 
 	const enabled = data?.enabled ?? false;
-	const colors = data?.colors ?? INDENT_RAINBOW_DEFAULT_COLORS;
+	const colors = (data?.colors ?? INDENT_RAINBOW_DEFAULT_COLORS).map(
+		normalizeColorValue,
+	);
 
 	const handleToggle = useCallback(
 		(checked: boolean) => {
@@ -350,7 +515,7 @@ function IndentRainbowSettings() {
 	);
 
 	const handleAddColor = useCallback(() => {
-		const next = [...colors, "rgba(128, 128, 128, 0.15)"];
+		const next = [...colors, "#80808026"];
 		mutation.mutate({ colors: next });
 	}, [colors, mutation]);
 
@@ -414,31 +579,37 @@ function IndentRainbowSettings() {
 						</div>
 					</div>
 					<div className="space-y-2">
-						{colors.map((color, index) => (
-							<div key={`color-${index}`} className="flex items-center gap-2">
+						{colors.map((color, index) => {
+							const duplicateCount = colors
+								.slice(0, index + 1)
+								.filter((entry) => entry === color).length;
+
+							return (
 								<div
-									className="w-6 h-6 rounded border flex-shrink-0"
-									style={{ backgroundColor: color }}
-								/>
-								<span className="text-xs text-muted-foreground w-5 flex-shrink-0 tabular-nums">
-									{index + 1}
-								</span>
-								<Input
-									value={color}
-									onChange={(e) => handleColorChange(index, e.target.value)}
-									className="h-7 text-xs font-mono"
-								/>
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() => handleRemoveColor(index)}
-									className="h-7 w-7 p-0 flex-shrink-0"
-									disabled={colors.length <= 1}
+									key={`${color}-${duplicateCount}`}
+									className="flex items-center gap-2"
 								>
-									<LuTrash2 className="size-3 text-muted-foreground" />
-								</Button>
-							</div>
-						))}
+									<span className="text-xs text-muted-foreground w-5 flex-shrink-0 tabular-nums">
+										{index + 1}
+									</span>
+									<ColorControl
+										value={color}
+										onCommit={(value) => handleColorChange(index, value)}
+										ariaLabel={`Pick indent rainbow color ${index + 1}`}
+										className="h-7 text-xs font-mono w-32"
+									/>
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => handleRemoveColor(index)}
+										className="h-7 w-7 p-0 flex-shrink-0"
+										disabled={colors.length <= 1}
+									>
+										<LuTrash2 className="size-3 text-muted-foreground" />
+									</Button>
+								</div>
+							);
+						})}
 					</div>
 				</div>
 			)}
@@ -458,7 +629,9 @@ function TrailingSpacesSettings() {
 	});
 
 	const enabled = data?.enabled ?? false;
-	const color = data?.color ?? TRAILING_SPACES_DEFAULT_COLOR;
+	const color = normalizeColorValue(
+		data?.color ?? TRAILING_SPACES_DEFAULT_COLOR,
+	);
 
 	const handleToggle = useCallback(
 		(checked: boolean) => {
@@ -514,14 +687,11 @@ function TrailingSpacesSettings() {
 					<div className="flex items-center gap-3">
 						<p className="text-sm font-medium">Highlight Color</p>
 						<div className="flex items-center gap-2 flex-1">
-							<div
-								className="w-6 h-6 rounded border flex-shrink-0"
-								style={{ backgroundColor: color }}
-							/>
-							<Input
+							<ColorControl
 								value={color}
-								onChange={(e) => handleColorChange(e.target.value)}
-								className="h-7 text-xs font-mono"
+								onCommit={handleColorChange}
+								ariaLabel="Pick trailing spaces highlight color"
+								className="h-7 text-xs font-mono w-32"
 							/>
 							<Button
 								variant="ghost"

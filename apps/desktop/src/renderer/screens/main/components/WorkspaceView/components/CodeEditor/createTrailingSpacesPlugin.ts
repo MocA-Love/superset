@@ -7,7 +7,7 @@ import {
 	type ViewUpdate,
 } from "@codemirror/view";
 
-const DEFAULT_COLOR = "rgba(255, 0, 0, 0.3)";
+const DEFAULT_COLOR = "#ff00004d";
 
 /** Check if a character is any kind of whitespace (including full-width, NBSP, etc.) */
 function isWhitespace(ch: string): boolean {

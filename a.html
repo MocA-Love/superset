@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover"
+		/>
+		<title>Color Controls Mock</title>
+		<style>
+			:root {
+				color-scheme: dark;
+				--bg: #0a0d14;
+				--panel: #131722;
+				--panel-2: #0f1420;
+				--border: #242b3a;
+				--border-strong: #334155;
+				--text: #e5e7eb;
+				--muted: #94a3b8;
+				--accent: #60a5fa;
+				--accent-soft: rgba(96, 165, 250, 0.14);
+				--success: #4ade80;
+				--shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+				--radius: 18px;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				min-height: 100vh;
+				font-family:
+					Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+					"Segoe UI", sans-serif;
+				background:
+					radial-gradient(circle at top, rgba(96, 165, 250, 0.12), transparent 28%),
+					radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.08), transparent 28%),
+					linear-gradient(180deg, #0b0f17 0%, #070a11 100%);
+				color: var(--text);
+				padding: 48px 24px;
+			}
+
+			.shell {
+				max-width: 980px;
+				margin: 0 auto;
+				padding: 28px;
+				border: 1px solid rgba(148, 163, 184, 0.14);
+				border-radius: 28px;
+				background: rgba(8, 12, 20, 0.72);
+				backdrop-filter: blur(24px);
+				box-shadow: var(--shadow);
+			}
+
+			.header {
+				display: flex;
+				align-items: end;
+				justify-content: space-between;
+				gap: 24px;
+				margin-bottom: 28px;
+			}
+
+			.header h1 {
+				margin: 0 0 6px;
+				font-size: 28px;
+				font-weight: 700;
+				letter-spacing: -0.03em;
+			}
+
+			.header p {
+				margin: 0;
+				color: var(--muted);
+				font-size: 14px;
+			}
+
+			.mock-badge {
+				padding: 8px 12px;
+				border: 1px solid rgba(96, 165, 250, 0.3);
+				border-radius: 999px;
+				background: var(--accent-soft);
+				color: #bfdbfe;
+				font-size: 12px;
+				font-weight: 600;
+				letter-spacing: 0.04em;
+				text-transform: uppercase;
+			}
+
+			.stack {
+				display: grid;
+				gap: 18px;
+			}
+
+			.card {
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				background:
+					linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+					var(--panel);
+				overflow: hidden;
+			}
+
+			.card-head {
+				display: grid;
+				grid-template-columns: auto 1fr auto;
+				gap: 16px;
+				padding: 18px;
+			}
+
+			.icon {
+				width: 40px;
+				height: 40px;
+				border-radius: 12px;
+				display: grid;
+				place-items: center;
+				background: rgba(148, 163, 184, 0.08);
+				border: 1px solid rgba(148, 163, 184, 0.08);
+				color: #cbd5e1;
+				font-size: 18px;
+			}
+
+			.title-row {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				flex-wrap: wrap;
+				margin-bottom: 6px;
+			}
+
+			.title-row h2 {
+				margin: 0;
+				font-size: 15px;
+				font-weight: 650;
+			}
+
+			.active-pill {
+				padding: 2px 8px;
+				border-radius: 999px;
+				background: rgba(74, 222, 128, 0.12);
+				color: var(--success);
+				font-size: 11px;
+				font-weight: 600;
+			}
+
+			.description {
+				margin: 0;
+				color: var(--muted);
+				font-size: 13px;
+				line-height: 1.45;
+			}
+
+			.toggle {
+				width: 46px;
+				height: 26px;
+				border-radius: 999px;
+				padding: 3px;
+				border: 1px solid rgba(96, 165, 250, 0.4);
+				background: rgba(96, 165, 250, 0.2);
+				display: flex;
+				justify-content: end;
+			}
+
+			.toggle::after {
+				content: "";
+				width: 18px;
+				height: 18px;
+				border-radius: 999px;
+				background: #f8fafc;
+				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+			}
+
+			.card-body {
+				padding: 18px;
+				border-top: 1px solid var(--border);
+				background: var(--panel-2);
+			}
+
+			.toolbar {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 16px;
+				margin-bottom: 14px;
+			}
+
+			.toolbar h3 {
+				margin: 0;
+				font-size: 14px;
+				font-weight: 600;
+			}
+
+			.actions {
+				display: flex;
+				gap: 8px;
+				flex-wrap: wrap;
+			}
+
+			.button {
+				border: 1px solid transparent;
+				background: transparent;
+				color: var(--muted);
+				font-size: 12px;
+				font-weight: 600;
+				padding: 6px 10px;
+				border-radius: 10px;
+			}
+
+			.button:hover {
+				color: var(--text);
+				background: rgba(148, 163, 184, 0.08);
+			}
+
+			.rows {
+				display: grid;
+				gap: 10px;
+			}
+
+			.row {
+				display: grid;
+				grid-template-columns: 32px minmax(120px, 1fr) minmax(180px, 260px) 88px 64px;
+				align-items: center;
+				gap: 10px;
+				padding: 10px 12px;
+				border: 1px solid rgba(148, 163, 184, 0.08);
+				border-radius: 14px;
+				background: rgba(255, 255, 255, 0.015);
+			}
+
+			.index {
+				font-size: 12px;
+				color: var(--muted);
+				text-align: center;
+				font-variant-numeric: tabular-nums;
+			}
+
+			.color-control {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				min-width: 0;
+			}
+
+			.swatch {
+				position: relative;
+				width: 28px;
+				height: 28px;
+				flex: 0 0 auto;
+				border-radius: 10px;
+				border: 1px solid rgba(255, 255, 255, 0.16);
+				overflow: hidden;
+				cursor: pointer;
+				background:
+					linear-gradient(45deg, #111827 25%, transparent 25%),
+					linear-gradient(-45deg, #111827 25%, transparent 25%),
+					linear-gradient(45deg, transparent 75%, #111827 75%),
+					linear-gradient(-45deg, transparent 75%, #111827 75%);
+				background-size: 10px 10px;
+				background-position:
+					0 0,
+					0 5px,
+					5px -5px,
+					-5px 0;
+			}
+
+			.swatch-fill {
+				position: absolute;
+				inset: 0;
+			}
+
+			.sr-only {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				padding: 0;
+				margin: -1px;
+				overflow: hidden;
+				clip: rect(0, 0, 0, 0);
+				white-space: nowrap;
+				border: 0;
+			}
+
+			.hex-input,
+			.percent {
+				width: 100%;
+				height: 34px;
+				border-radius: 10px;
+				border: 1px solid var(--border-strong);
+				background: rgba(15, 23, 42, 0.76);
+				color: var(--text);
+				padding: 0 10px;
+				font: 12px/1.2 "SFMono-Regular", ui-monospace, monospace;
+			}
+
+			.hex-input:focus,
+			.opacity-slider:focus-visible,
+			.swatch:focus-visible {
+				outline: none;
+				box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.22);
+			}
+
+			.opacity-wrap {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				min-width: 0;
+			}
+
+			.opacity-slider {
+				width: 100%;
+				appearance: none;
+				height: 6px;
+				border-radius: 999px;
+				background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.88));
+			}
+
+			.opacity-slider::-webkit-slider-thumb {
+				appearance: none;
+				width: 16px;
+				height: 16px;
+				border-radius: 50%;
+				border: 0;
+				background: #f8fafc;
+				box-shadow: 0 2px 12px rgba(0, 0, 0, 0.36);
+			}
+
+			.percent {
+				text-align: right;
+				padding-right: 8px;
+			}
+
+			.delete {
+				width: 36px;
+				height: 36px;
+				border: 1px solid rgba(148, 163, 184, 0.16);
+				border-radius: 10px;
+				background: transparent;
+				color: var(--muted);
+				font-size: 15px;
+			}
+
+			.delete:hover {
+				background: rgba(239, 68, 68, 0.1);
+				color: #fca5a5;
+				border-color: rgba(239, 68, 68, 0.24);
+			}
+
+			.legend {
+				margin-top: 22px;
+				padding: 16px 18px;
+				border-radius: 16px;
+				background: rgba(96, 165, 250, 0.08);
+				border: 1px solid rgba(96, 165, 250, 0.16);
+			}
+
+			.legend strong {
+				display: block;
+				margin-bottom: 8px;
+				font-size: 13px;
+			}
+
+			.legend p {
+				margin: 0;
+				color: #cbd5e1;
+				font-size: 13px;
+				line-height: 1.55;
+			}
+
+			@media (max-width: 820px) {
+				body {
+					padding: 20px;
+				}
+
+				.shell {
+					padding: 18px;
+				}
+
+				.header {
+					align-items: start;
+					flex-direction: column;
+				}
+
+				.row {
+					grid-template-columns: 28px 1fr;
+				}
+
+				.opacity-wrap,
+				.percent,
+				.delete {
+					grid-column: 2;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="shell">
+			<div class="header">
+				<div>
+					<h1>Editor Features</h1>
+					<p>
+						Mock for color controls with a native picker, hex input, and a
+						dedicated opacity slider.
+					</p>
+				</div>
+				<div class="mock-badge">a.html mock</div>
+			</div>
+
+			<div class="stack">
+				<section class="card">
+					<div class="card-head">
+						<div class="icon">🎨</div>
+						<div>
+							<div class="title-row">
+								<h2>Indent Rainbow</h2>
+								<span class="active-pill">Active</span>
+							</div>
+							<p class="description">
+								Colorize indentation levels in the code editor with a swatch,
+								hex input, and opacity control.
+							</p>
+						</div>
+						<div class="toggle" aria-hidden="true"></div>
+					</div>
+					<div class="card-body">
+						<div class="toolbar">
+							<h3>Colors</h3>
+							<div class="actions">
+								<button class="button" type="button">Reset</button>
+								<button class="button" type="button">Add</button>
+							</div>
+						</div>
+						<div class="rows" id="indent-rows"></div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card-head">
+						<div class="icon">⌫</div>
+						<div>
+							<div class="title-row">
+								<h2>Trailing Spaces</h2>
+								<span class="active-pill">Active</span>
+							</div>
+							<p class="description">
+								Single highlight color using the same control shape for
+								consistency.
+							</p>
+						</div>
+						<div class="toggle" aria-hidden="true"></div>
+					</div>
+					<div class="card-body">
+						<div class="toolbar">
+							<h3>Highlight Color</h3>
+						</div>
+						<div class="rows" id="trailing-rows"></div>
+					</div>
+				</section>
+			</div>
+
+			<div class="legend">
+				<strong>Intent</strong>
+				<p>
+					Left: click the swatch to open the native picker. Middle: edit
+					<code>#RRGGBB</code>. Right: adjust opacity with a simple slider.
+					Internal storage can still stay <code>#RRGGBBAA</code> while the UI
+					shows a cleaner split.
+				</p>
+			</div>
+		</div>
+
+		<script>
+			const indentColors = [
+				{ hex: "#03045e", opacity: 15 },
+				{ hex: "#023e8a", opacity: 15 },
+				{ hex: "#0077b6", opacity: 15 },
+				{ hex: "#0096c7", opacity: 15 },
+				{ hex: "#00b4d8", opacity: 15 },
+				{ hex: "#48cae4", opacity: 15 },
+			];
+
+			const trailingColor = [{ hex: "#ff0000", opacity: 30 }];
+
+			function hexToRgb(hex) {
+				const value = hex.replace("#", "");
+				return {
+					r: Number.parseInt(value.slice(0, 2), 16),
+					g: Number.parseInt(value.slice(2, 4), 16),
+					b: Number.parseInt(value.slice(4, 6), 16),
+				};
+			}
+
+			function rgbaString(hex, opacity) {
+				const { r, g, b } = hexToRgb(hex);
+				return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
+			}
+
+			function createRow(item, index) {
+				const row = document.createElement("div");
+				row.className = "row";
+
+				const indexEl = document.createElement("div");
+				indexEl.className = "index";
+				indexEl.textContent = String(index + 1);
+
+				const colorControl = document.createElement("div");
+				colorControl.className = "color-control";
+
+				const swatch = document.createElement("button");
+				swatch.className = "swatch";
+				swatch.type = "button";
+				swatch.setAttribute("aria-label", `pick color ${index + 1}`);
+
+				const swatchFill = document.createElement("div");
+				swatchFill.className = "swatch-fill";
+				swatchFill.style.backgroundColor = rgbaString(item.hex, item.opacity);
+				swatch.appendChild(swatchFill);
+
+				const picker = document.createElement("input");
+				picker.type = "color";
+				picker.className = "sr-only";
+				picker.value = item.hex;
+				swatch.addEventListener("click", () => picker.click());
+
+				const hexInput = document.createElement("input");
+				hexInput.className = "hex-input";
+				hexInput.value = item.hex;
+				hexInput.spellcheck = false;
+
+				const opacityWrap = document.createElement("div");
+				opacityWrap.className = "opacity-wrap";
+
+				const opacity = document.createElement("input");
+				opacity.className = "opacity-slider";
+				opacity.type = "range";
+				opacity.min = "0";
+				opacity.max = "100";
+				opacity.value = String(item.opacity);
+
+				const percent = document.createElement("input");
+				percent.className = "percent";
+				percent.value = `${item.opacity}%`;
+				percent.readOnly = true;
+
+				const deleteButton = document.createElement("button");
+				deleteButton.className = "delete";
+				deleteButton.type = "button";
+				deleteButton.textContent = "×";
+
+				function sync() {
+					swatchFill.style.backgroundColor = rgbaString(item.hex, item.opacity);
+					picker.value = item.hex;
+					hexInput.value = item.hex;
+					opacity.value = String(item.opacity);
+					percent.value = `${item.opacity}%`;
+				}
+
+				picker.addEventListener("input", () => {
+					item.hex = picker.value.toLowerCase();
+					sync();
+				});
+
+				hexInput.addEventListener("blur", () => {
+					const value = hexInput.value.trim();
+					if (/^#[0-9a-f]{6}$/i.test(value)) {
+						item.hex = value.toLowerCase();
+					}
+					sync();
+				});
+
+				hexInput.addEventListener("keydown", (event) => {
+					if (event.key === "Enter") {
+						hexInput.blur();
+					}
+				});
+
+				opacity.addEventListener("input", () => {
+					item.opacity = Number(opacity.value);
+					sync();
+				});
+
+				colorControl.append(swatch, picker, hexInput);
+				opacityWrap.append(opacity);
+
+				row.append(indexEl, colorControl, opacityWrap, percent, deleteButton);
+				sync();
+				return row;
+			}
+
+			function renderRows(targetId, items) {
+				const target = document.getElementById(targetId);
+				items.forEach((item, index) => {
+					target.appendChild(createRow(item, index));
+				});
+			}
+
+			renderRows("indent-rows", indentColors);
+			renderRows("trailing-rows", trailingColor);
+		</script>
+	</body>
+</html>
