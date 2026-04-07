@@ -29,6 +29,7 @@ import {
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchGitHubPreviewUrl,
 	fetchJobStatuses,
 	fetchStructuredJobLogs,
 	getRepoContext,
@@ -1266,8 +1267,8 @@ async function getPullRequestIdentityCandidates({
 // Initialize the SyncService with fetch dependencies (idempotent)
 githubSyncService.initialize({
 	fetchPRStatus: fetchGitHubPRStatus,
-	fetchPRComments: ({ worktreePath }) =>
-		fetchGitHubPRComments({ worktreePath }),
+	fetchPRComments: ({ worktreePath, pullRequest }) =>
+		fetchGitHubPRComments({ worktreePath, pullRequest }),
 });
 
 export const createGitStatusProcedures = () => {
@@ -1358,6 +1359,7 @@ export const createGitStatusProcedures = () => {
 				z.object({
 					workspaceId: z.string(),
 					forceFresh: z.boolean().optional(),
+					includePreview: z.boolean().optional(),
 				}),
 			)
 			.query(async ({ input }) => {
@@ -1406,7 +1408,20 @@ export const createGitStatusProcedures = () => {
 						.run();
 				}
 
-				return freshStatus;
+				if (!input.includePreview || !freshStatus) {
+					return freshStatus;
+				}
+
+				const previewUrl = await fetchGitHubPreviewUrl({
+					worktreePath: repoPath,
+					githubStatus: freshStatus,
+					forceFresh: input.forceFresh,
+				});
+
+				return {
+					...freshStatus,
+					previewUrl: previewUrl ?? undefined,
+				};
 			}),
 
 		getGitHubPRComments: publicProcedure

@@ -4,6 +4,7 @@ export {
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
 	fetchGitHubPRStatus,
+	fetchGitHubPreviewUrl,
 	fetchJobStatuses,
 	fetchStructuredJobLogs,
 	resolveReviewThread,

@@ -6,13 +6,15 @@ import {
 } from "./cached-resource";
 import type { RepoContext } from "./types";
 
-const GITHUB_STATUS_CACHE_TTL_MS = 5_000;
-const GITHUB_PR_COMMENTS_CACHE_TTL_MS = 20_000;
+const GITHUB_STATUS_CACHE_TTL_MS = 30_000;
+const GITHUB_PR_COMMENTS_CACHE_TTL_MS = 60_000;
+const GITHUB_PREVIEW_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 const GITHUB_REPO_CONTEXT_CACHE_TTL_MS = 300_000;
 const GITHUB_COMMIT_AUTHOR_CACHE_TTL_MS = 300_000;
 
 const MAX_GITHUB_STATUS_CACHE_ENTRIES = 256;
 const MAX_GITHUB_PR_COMMENTS_CACHE_ENTRIES = 512;
+const MAX_GITHUB_PREVIEW_URL_CACHE_ENTRIES = 512;
 const MAX_GITHUB_REPO_CONTEXT_CACHE_ENTRIES = 256;
 const MAX_GITHUB_COMMIT_AUTHOR_CACHE_ENTRIES = 2048;
 
@@ -24,6 +26,11 @@ const githubStatusResource = createCachedResource<GitHubStatus | null>({
 const pullRequestCommentsResource = createCachedResource<PullRequestComment[]>({
 	ttlMs: GITHUB_PR_COMMENTS_CACHE_TTL_MS,
 	maxEntries: MAX_GITHUB_PR_COMMENTS_CACHE_ENTRIES,
+});
+
+const previewUrlResource = createCachedResource<string | null>({
+	ttlMs: GITHUB_PREVIEW_URL_CACHE_TTL_MS,
+	maxEntries: MAX_GITHUB_PREVIEW_URL_CACHE_ENTRIES,
 });
 
 const repoContextResource = createCachedResource<RepoContext | null>({
@@ -116,6 +123,42 @@ export function readCachedPullRequestComments(
 	return pullRequestCommentsResource.read(cacheKey, load, options);
 }
 
+export function makeGitHubPreviewCachePrefix(worktreePath: string): string {
+	return `${worktreePath}::preview::`;
+}
+
+export function makeGitHubPreviewCacheKey({
+	worktreePath,
+	repoNameWithOwner,
+	branchName,
+	headSha,
+	pullRequestNumber,
+}: {
+	worktreePath: string;
+	repoNameWithOwner: string;
+	branchName: string;
+	headSha?: string;
+	pullRequestNumber?: number | null;
+}): string {
+	return `${makeGitHubPreviewCachePrefix(worktreePath)}${repoNameWithOwner}::${branchName}::${headSha ?? "no-head"}::pr-${pullRequestNumber ?? "none"}`;
+}
+
+export function getCachedGitHubPreviewUrl(cacheKey: string): string | null {
+	return previewUrlResource.get(cacheKey);
+}
+
+export function readCachedGitHubPreviewUrl(
+	cacheKey: string,
+	load: () => Promise<string | null>,
+	options?: CachedResourceReadOptions<string | null>,
+): Promise<string | null> {
+	return previewUrlResource.read(cacheKey, load, {
+		...options,
+		// Cache misses too so preview-less branches don't repeatedly hit deployments.
+		shouldCache: options?.shouldCache ?? (() => true),
+	});
+}
+
 export function getCachedRepoContext(worktreePath: string): RepoContext | null {
 	return repoContextResource.get(worktreePath);
 }
@@ -165,6 +208,9 @@ export function readCachedGitHubCommitAuthor(
 export function clearGitHubCachesForWorktree(worktreePath: string): void {
 	githubStatusResource.invalidate(worktreePath);
 	repoContextResource.invalidate(worktreePath);
+	previewUrlResource.invalidatePrefix(
+		makeGitHubPreviewCachePrefix(worktreePath),
+	);
 	pullRequestCommentsResource.invalidatePrefix(
 		makePullRequestCommentsCachePrefix(worktreePath),
 	);

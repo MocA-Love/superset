@@ -29,9 +29,9 @@ describe("getGitHubStatusQueryPolicy", () => {
 			}),
 		).toEqual({
 			enabled: true,
-			refetchInterval: 5_000,
+			refetchInterval: 15_000,
 			refetchOnWindowFocus: false,
-			staleTime: 5_000,
+			staleTime: 15_000,
 		});
 	});
 
@@ -46,7 +46,7 @@ describe("getGitHubStatusQueryPolicy", () => {
 			enabled: false,
 			refetchInterval: false,
 			refetchOnWindowFocus: false,
-			staleTime: 5_000,
+			staleTime: 15_000,
 		});
 	});
 
@@ -120,7 +120,7 @@ describe("getGitHubPRCommentsQueryPolicy", () => {
 			enabled: true,
 			refetchInterval: false,
 			refetchOnWindowFocus: false,
-			staleTime: 20_000,
+			staleTime: 60_000,
 		});
 	});
 
@@ -134,9 +134,9 @@ describe("getGitHubPRCommentsQueryPolicy", () => {
 			}),
 		).toEqual({
 			enabled: true,
-			refetchInterval: 20_000,
+			refetchInterval: 60_000,
 			refetchOnWindowFocus: false,
-			staleTime: 20_000,
+			staleTime: 60_000,
 		});
 	});
 
@@ -152,7 +152,7 @@ describe("getGitHubPRCommentsQueryPolicy", () => {
 			enabled: false,
 			refetchInterval: false,
 			refetchOnWindowFocus: false,
-			staleTime: 20_000,
+			staleTime: 60_000,
 		});
 	});
 });

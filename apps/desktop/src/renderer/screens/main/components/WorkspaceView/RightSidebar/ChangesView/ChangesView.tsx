@@ -1,3 +1,4 @@
+import type { GitHubStatus } from "@superset/local-db";
 import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
@@ -57,6 +58,8 @@ interface PendingChangesRefresh {
 	invalidateBranches: boolean;
 	invalidateSelectedFile: boolean;
 }
+
+type GitHubStatusCacheValue = GitHubStatus | null | undefined;
 
 function buildGitHubCommentsQueryInput({
 	workspaceId,
@@ -360,6 +363,21 @@ export function ChangesView({
 		githubPRCommentsQueryPolicy,
 	);
 	const [isReviewRefreshing, setIsReviewRefreshing] = useState(false);
+	const setGitHubStatusCaches = (
+		workspaceIdToUpdate: string,
+		nextValue:
+			| GitHubStatusCacheValue
+			| ((current: GitHubStatusCacheValue) => GitHubStatusCacheValue),
+	) => {
+		trpcUtils.workspaces.getGitHubStatus.setData(
+			{ workspaceId: workspaceIdToUpdate },
+			nextValue,
+		);
+		trpcUtils.workspaces.getGitHubStatus.setData(
+			{ workspaceId: workspaceIdToUpdate, includePreview: true },
+			nextValue,
+		);
+	};
 
 	useBranchSyncInvalidation({
 		gitBranch: status?.branch ?? branchData?.currentBranch ?? undefined,
@@ -386,11 +404,9 @@ export function ChangesView({
 				await trpcUtils.workspaces.getGitHubStatus.fetch({
 					workspaceId,
 					forceFresh: true,
+					includePreview: true,
 				});
-			trpcUtils.workspaces.getGitHubStatus.setData(
-				{ workspaceId },
-				freshGitHubStatus,
-			);
+			setGitHubStatusCaches(workspaceId, freshGitHubStatus);
 
 			if (scope === "full") {
 				const freshComments =
