@@ -11,8 +11,8 @@
  * and the new one is activated (timers started).
  *
  * Intervals:
- *   - PR status: 5 seconds
- *   - PR comments: 20 seconds
+ *   - PR status: 30 seconds by default, 15 seconds while checks are pending
+ *   - PR comments: 60 seconds for the currently attached PR only
  *
  * Rate limiting is handled by rateLimitedRefresh() in github.ts — the
  * SyncService does NOT call onRateLimitHit/Success directly to avoid
@@ -27,23 +27,27 @@
  */
 
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
+import type { PullRequestCommentsTarget } from "./github";
 import { isRateLimited } from "./github-rate-limiter";
 
-export const SYNC_PR_STATUS_INTERVAL_MS = 5_000;
-export const SYNC_PR_COMMENTS_INTERVAL_MS = 20_000;
+export const SYNC_PR_STATUS_INTERVAL_MS = 30_000;
+export const SYNC_PR_STATUS_PENDING_INTERVAL_MS = 15_000;
+export const SYNC_PR_COMMENTS_INTERVAL_MS = 60_000;
 
 type FetchPRStatusFn = (worktreePath: string) => Promise<GitHubStatus | null>;
 type FetchPRCommentsFn = (params: {
 	worktreePath: string;
+	pullRequest?: PullRequestCommentsTarget | null;
 }) => Promise<PullRequestComment[]>;
 
 interface WorkspaceSyncState {
 	worktreePath: string;
-	prStatusTimer: ReturnType<typeof setInterval> | null;
-	prCommentsTimer: ReturnType<typeof setInterval> | null;
+	prStatusTimer: ReturnType<typeof setTimeout> | null;
+	prCommentsTimer: ReturnType<typeof setTimeout> | null;
 	isActive: boolean;
 	prStatusInFlight: boolean;
 	prCommentsInFlight: boolean;
+	latestStatus: GitHubStatus | null;
 }
 
 interface SyncServiceDeps {
@@ -83,6 +87,7 @@ class GitHubSyncServiceImpl {
 			isActive: false,
 			prStatusInFlight: false,
 			prCommentsInFlight: false,
+			latestStatus: null,
 		};
 
 		this.workspaces.set(worktreePath, state);
@@ -110,17 +115,18 @@ class GitHubSyncServiceImpl {
 
 		if (!state) {
 			this.registerWorkspace(worktreePath);
-			state = this.workspaces.get(worktreePath)!;
+			const registeredState = this.workspaces.get(worktreePath);
+			if (!registeredState) {
+				return;
+			}
+			state = registeredState;
 		}
 
 		if (state.isActive) return;
 
 		state.isActive = true;
-		this.startTimers(state);
-
-		// Immediate sync so the user doesn't wait up to 5s for fresh data
-		void this.syncPRStatus(worktreePath);
-		void this.syncPRComments(worktreePath);
+		this.stopTimers(state);
+		void this.primeWorkspace(worktreePath);
 	}
 
 	/**
@@ -145,10 +151,8 @@ class GitHubSyncServiceImpl {
 			if (worktreePath && state.worktreePath === worktreePath) {
 				if (!state.isActive) {
 					state.isActive = true;
-					this.startTimers(state);
-					// Immediate sync on activation
-					void this.syncPRStatus(state.worktreePath);
-					void this.syncPRComments(state.worktreePath);
+					this.stopTimers(state);
+					void this.primeWorkspace(state.worktreePath);
 				}
 			} else if (state.isActive) {
 				state.isActive = false;
@@ -209,64 +213,168 @@ class GitHubSyncServiceImpl {
 		return this.workspaces.has(worktreePath);
 	}
 
-	private startTimers(state: WorkspaceSyncState): void {
-		// Defensive: stop existing timers to prevent leaks
-		this.stopTimers(state);
-
-		state.prStatusTimer = setInterval(() => {
-			void this.syncPRStatus(state.worktreePath);
-		}, SYNC_PR_STATUS_INTERVAL_MS);
-
-		state.prCommentsTimer = setInterval(() => {
-			void this.syncPRComments(state.worktreePath);
-		}, SYNC_PR_COMMENTS_INTERVAL_MS);
+	private async primeWorkspace(worktreePath: string): Promise<void> {
+		await this.syncPRStatus(worktreePath);
+		await this.syncPRComments(worktreePath);
 	}
 
 	private stopTimers(state: WorkspaceSyncState): void {
 		if (state.prStatusTimer) {
-			clearInterval(state.prStatusTimer);
+			clearTimeout(state.prStatusTimer);
 			state.prStatusTimer = null;
 		}
 		if (state.prCommentsTimer) {
-			clearInterval(state.prCommentsTimer);
+			clearTimeout(state.prCommentsTimer);
 			state.prCommentsTimer = null;
 		}
 	}
 
+	private getPRStatusInterval(state: WorkspaceSyncState): number {
+		return state.latestStatus?.pr?.checksStatus === "pending"
+			? SYNC_PR_STATUS_PENDING_INTERVAL_MS
+			: SYNC_PR_STATUS_INTERVAL_MS;
+	}
+
+	private scheduleNextPRStatusSync(state: WorkspaceSyncState): void {
+		if (!state.isActive) {
+			return;
+		}
+
+		if (state.prStatusTimer) {
+			clearTimeout(state.prStatusTimer);
+		}
+
+		state.prStatusTimer = setTimeout(() => {
+			void this.syncPRStatus(state.worktreePath);
+		}, this.getPRStatusInterval(state));
+	}
+
+	private scheduleNextPRCommentsSync(state: WorkspaceSyncState): void {
+		if (state.prCommentsTimer) {
+			clearTimeout(state.prCommentsTimer);
+			state.prCommentsTimer = null;
+		}
+
+		if (
+			!state.isActive ||
+			!getPullRequestCommentsTargetFromStatus(state.latestStatus)
+		) {
+			return;
+		}
+
+		state.prCommentsTimer = setTimeout(() => {
+			void this.syncPRComments(state.worktreePath);
+		}, SYNC_PR_COMMENTS_INTERVAL_MS);
+	}
+
 	private async syncPRStatus(worktreePath: string): Promise<void> {
-		if (!this.deps || isRateLimited()) return;
 		const state = this.workspaces.get(worktreePath);
-		if (!state || state.prStatusInFlight) return;
+		if (!this.deps || !state) return;
+		if (state.prStatusTimer) {
+			clearTimeout(state.prStatusTimer);
+			state.prStatusTimer = null;
+		}
+		if (isRateLimited() || state.prStatusInFlight) {
+			if (state.isActive && !state.prStatusInFlight) {
+				this.scheduleNextPRStatusSync(state);
+			}
+			return;
+		}
 		state.prStatusInFlight = true;
+
+		const previousCommentsTargetKey = getPullRequestCommentsTargetKey(
+			state.latestStatus,
+		);
 
 		try {
 			const status = await this.deps.fetchPRStatus(worktreePath);
 			if (!this.workspaces.has(worktreePath)) return;
+			state.latestStatus = status;
 			this.deps.onPRStatusUpdate?.(worktreePath, status);
+
+			const nextCommentsTargetKey = getPullRequestCommentsTargetKey(status);
+			if (
+				previousCommentsTargetKey !== nextCommentsTargetKey &&
+				!state.prCommentsInFlight
+			) {
+				this.scheduleNextPRCommentsSync(state);
+			}
 		} catch (error) {
 			console.warn("[GitHub SyncService] PR status sync failed:", error);
 		} finally {
 			const current = this.workspaces.get(worktreePath);
-			if (current) current.prStatusInFlight = false;
+			if (current) {
+				current.prStatusInFlight = false;
+				this.scheduleNextPRStatusSync(current);
+			}
 		}
 	}
 
 	private async syncPRComments(worktreePath: string): Promise<void> {
-		if (!this.deps || isRateLimited()) return;
 		const state = this.workspaces.get(worktreePath);
-		if (!state || state.prCommentsInFlight) return;
+		if (!this.deps || !state) return;
+		if (state.prCommentsTimer) {
+			clearTimeout(state.prCommentsTimer);
+			state.prCommentsTimer = null;
+		}
+		if (isRateLimited() || state.prCommentsInFlight) {
+			if (state.isActive && !state.prCommentsInFlight) {
+				this.scheduleNextPRCommentsSync(state);
+			}
+			return;
+		}
+
+		const pullRequest = getPullRequestCommentsTargetFromStatus(
+			state.latestStatus,
+		);
+		if (!pullRequest) {
+			return;
+		}
+
 		state.prCommentsInFlight = true;
 
 		try {
-			await this.deps.fetchPRComments({ worktreePath });
+			await this.deps.fetchPRComments({ worktreePath, pullRequest });
 			if (!this.workspaces.has(worktreePath)) return;
 		} catch (error) {
 			console.warn("[GitHub SyncService] PR comments sync failed:", error);
 		} finally {
 			const current = this.workspaces.get(worktreePath);
-			if (current) current.prCommentsInFlight = false;
+			if (current) {
+				current.prCommentsInFlight = false;
+				this.scheduleNextPRCommentsSync(current);
+			}
 		}
 	}
+}
+
+function getPullRequestCommentsTargetFromStatus(
+	status: GitHubStatus | null,
+): PullRequestCommentsTarget | null {
+	if (!status?.pr) {
+		return null;
+	}
+
+	return {
+		prNumber: status.pr.number,
+		repoContext: {
+			repoUrl: status.repoUrl,
+			upstreamUrl: status.upstreamUrl ?? status.repoUrl,
+			isFork: status.isFork ?? false,
+		},
+		prUrl: status.pr.url,
+	};
+}
+
+function getPullRequestCommentsTargetKey(
+	status: GitHubStatus | null,
+): string | null {
+	const target = getPullRequestCommentsTargetFromStatus(status);
+	if (!target) {
+		return null;
+	}
+
+	return `${target.repoContext.repoUrl}::${target.repoContext.upstreamUrl}::${target.prNumber}::${target.prUrl ?? ""}`;
 }
 
 export const githubSyncService = new GitHubSyncServiceImpl();

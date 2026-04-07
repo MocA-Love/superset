@@ -9,9 +9,12 @@ import { execWithShellEnv } from "../shell-env";
 import { parseUpstreamRef } from "../upstream-ref";
 import {
 	clearGitHubCachesForWorktree,
+	getCachedGitHubPreviewUrl,
 	getCachedGitHubStatus,
 	getCachedPullRequestCommentsState,
+	makeGitHubPreviewCacheKey,
 	makePullRequestCommentsCacheKey,
+	readCachedGitHubPreviewUrl,
 	readCachedGitHubStatus,
 	readCachedPullRequestComments,
 } from "./cache";
@@ -136,95 +139,95 @@ export function resolveRemoteBranchNameForGitHubStatus({
 	return upstreamBranchName?.trim() || prHeadRefName?.trim() || localBranchName;
 }
 
+interface ResolvedGitHubStatusContext {
+	repoContext: RepoContext;
+	branchName: string;
+	headSha?: string;
+	trackingRemote: string;
+	previewBranchName: string;
+	parsedUpstreamBranchName?: string | null;
+}
+
+async function resolveGitHubStatusContext(
+	worktreePath: string,
+): Promise<ResolvedGitHubStatusContext | null> {
+	const repoContext = await getRepoContext(worktreePath);
+	if (!repoContext) {
+		return null;
+	}
+
+	const branchName = await getCurrentBranch(worktreePath);
+	if (!branchName) {
+		return null;
+	}
+
+	const [shaResult, upstreamResult] = await Promise.all([
+		execGitWithShellPath(["rev-parse", "HEAD"], {
+			cwd: worktreePath,
+		}).catch((error) => {
+			if (isUnbornHeadError(error)) {
+				return { stdout: "", stderr: "" };
+			}
+			throw error;
+		}),
+		execGitWithShellPath(["rev-parse", "--abbrev-ref", "@{upstream}"], {
+			cwd: worktreePath,
+		}).catch(() => ({ stdout: "", stderr: "" })),
+	]);
+
+	const headSha = shaResult.stdout.trim() || undefined;
+	const parsedUpstreamRef = parseUpstreamRef(upstreamResult.stdout.trim());
+
+	return {
+		repoContext,
+		branchName,
+		headSha,
+		trackingRemote: parsedUpstreamRef?.remoteName ?? "origin",
+		previewBranchName: resolveRemoteBranchNameForGitHubStatus({
+			localBranchName: branchName,
+			upstreamBranchName: parsedUpstreamRef?.branchName,
+		}),
+		parsedUpstreamBranchName: parsedUpstreamRef?.branchName,
+	};
+}
+
 async function refreshGitHubPRStatus(
 	worktreePath: string,
 ): Promise<GitHubStatus | null> {
 	try {
-		const repoContext = await getRepoContext(worktreePath);
-		if (!repoContext) {
+		const context = await resolveGitHubStatusContext(worktreePath);
+		if (!context) {
 			return null;
 		}
 
-		const branchName = await getCurrentBranch(worktreePath);
-		if (!branchName) {
-			return null;
-		}
-
-		const [shaResult, upstreamResult] = await Promise.all([
-			execGitWithShellPath(["rev-parse", "HEAD"], {
-				cwd: worktreePath,
-			}).catch((error) => {
-				if (isUnbornHeadError(error)) {
-					return { stdout: "", stderr: "" };
-				}
-				throw error;
-			}),
-			execGitWithShellPath(["rev-parse", "--abbrev-ref", "@{upstream}"], {
-				cwd: worktreePath,
-			}).catch(() => ({ stdout: "", stderr: "" })),
-		]);
-		const headSha = shaResult.stdout.trim() || undefined;
-		const parsedUpstreamRef = parseUpstreamRef(upstreamResult.stdout.trim());
-		const trackingRemote = parsedUpstreamRef?.remoteName ?? "origin";
-		const previewBranchName = resolveRemoteBranchNameForGitHubStatus({
-			localBranchName: branchName,
-			upstreamBranchName: parsedUpstreamRef?.branchName,
+		const prInfo = await resolveAttachedPullRequest({
+			worktreePath,
+			localBranch: context.branchName,
+			repoContext: context.repoContext,
+			headSha: context.headSha,
+			fallbackRemote: context.trackingRemote,
 		});
 
-		const [prInfo, previewUrl] = await Promise.all([
-			resolveAttachedPullRequest({
-				worktreePath,
-				localBranch: branchName,
-				repoContext,
-				headSha,
-				fallbackRemote: trackingRemote,
-			}),
-			fetchPreviewDeploymentUrl(
-				worktreePath,
-				headSha,
-				previewBranchName,
-				repoContext,
-			),
-		]);
-
 		const remoteBranchName = resolveRemoteBranchNameForGitHubStatus({
-			localBranchName: branchName,
-			upstreamBranchName: parsedUpstreamRef?.branchName,
+			localBranchName: context.branchName,
+			upstreamBranchName: context.parsedUpstreamBranchName,
 			prHeadRefName: prInfo?.headRefName,
 		});
 
 		const branchCheck = await branchExistsOnRemote(
 			worktreePath,
 			remoteBranchName,
-			trackingRemote,
+			context.trackingRemote,
 		);
 
-		let finalPreviewUrl = previewUrl;
-		if (!finalPreviewUrl && prInfo?.number) {
-			const targetUrl = repoContext.isFork
-				? repoContext.upstreamUrl
-				: repoContext.repoUrl;
-			const nwo = extractNwoFromUrl(targetUrl);
-			if (nwo) {
-				finalPreviewUrl = await queryDeploymentUrl(
-					worktreePath,
-					nwo,
-					`ref=${encodeURIComponent(`refs/pull/${prInfo.number}/merge`)}`,
-				);
-			}
-		}
-
-		const result: GitHubStatus = {
+		return {
 			pr: prInfo,
-			repoUrl: repoContext.repoUrl,
-			upstreamUrl: repoContext.upstreamUrl,
-			isFork: repoContext.isFork,
+			repoUrl: context.repoContext.repoUrl,
+			upstreamUrl: context.repoContext.upstreamUrl,
+			isFork: context.repoContext.isFork,
 			branchExistsOnRemote: branchCheck.status === "exists",
-			previewUrl: finalPreviewUrl,
 			lastRefreshed: Date.now(),
 		};
-
-		return result;
 	} catch {
 		return null;
 	}
@@ -331,6 +334,58 @@ export async function fetchGitHubPRComments({
 	}
 }
 
+export async function fetchGitHubPreviewUrl({
+	worktreePath,
+	githubStatus,
+	forceFresh = false,
+}: {
+	worktreePath: string;
+	githubStatus?: GitHubStatus | null;
+	forceFresh?: boolean;
+}): Promise<string | null> {
+	const context = await resolveGitHubStatusContext(worktreePath);
+	if (!context) {
+		return null;
+	}
+
+	const targetUrl = context.repoContext.isFork
+		? context.repoContext.upstreamUrl
+		: context.repoContext.repoUrl;
+	const repoNameWithOwner = extractNwoFromUrl(targetUrl);
+	if (!repoNameWithOwner) {
+		return null;
+	}
+
+	const cacheKey = makeGitHubPreviewCacheKey({
+		worktreePath,
+		repoNameWithOwner,
+		branchName: context.previewBranchName,
+		headSha: context.headSha,
+		pullRequestNumber: githubStatus?.pr?.number,
+	});
+
+	if (isRateLimited()) {
+		return getCachedGitHubPreviewUrl(cacheKey);
+	}
+
+	return readCachedGitHubPreviewUrl(
+		cacheKey,
+		() =>
+			rateLimitedRefresh(() =>
+				refreshGitHubPreviewUrl({
+					worktreePath,
+					repoNameWithOwner,
+					branchName: context.previewBranchName,
+					headSha: context.headSha,
+					pullRequestNumber: githubStatus?.pr?.number,
+				}),
+			),
+		{
+			forceFresh,
+		},
+	);
+}
+
 function isSafeHttpUrl(url: string): boolean {
 	try {
 		const parsed = new URL(url);
@@ -410,29 +465,26 @@ async function queryDeploymentUrl(
  * Fetches the preview deployment URL by trying multiple query strategies:
  * 1. By commit SHA (works for Vercel, Netlify official integrations)
  * 2. By branch name ref (works for some CI configurations)
- * The PR merge ref (refs/pull/N/merge) is handled in fetchGitHubPRStatus
- * after the PR number is known.
+ * 3. By PR merge ref when the PR number is already known
  */
-async function fetchPreviewDeploymentUrl(
-	worktreePath: string,
-	headSha: string | undefined,
-	branchName: string,
-	repoContext: RepoContext,
-): Promise<string | undefined> {
+async function refreshGitHubPreviewUrl({
+	worktreePath,
+	repoNameWithOwner,
+	headSha,
+	branchName,
+	pullRequestNumber,
+}: {
+	worktreePath: string;
+	repoNameWithOwner: string;
+	headSha?: string;
+	branchName: string;
+	pullRequestNumber?: number;
+}): Promise<string | null> {
 	try {
-		const targetUrl = repoContext.isFork
-			? repoContext.upstreamUrl
-			: repoContext.repoUrl;
-		const nwo = extractNwoFromUrl(targetUrl);
-		if (!nwo) {
-			return undefined;
-		}
-
 		if (headSha) {
-			// Try by commit SHA (works for Vercel, Netlify official integrations)
 			const bySha = await queryDeploymentUrl(
 				worktreePath,
-				nwo,
+				repoNameWithOwner,
 				`sha=${headSha}`,
 			);
 			if (bySha) {
@@ -440,14 +492,28 @@ async function fetchPreviewDeploymentUrl(
 			}
 		}
 
-		// Fall back to branch name (works for some CI configurations)
-		return await queryDeploymentUrl(
+		const byBranch = await queryDeploymentUrl(
 			worktreePath,
-			nwo,
+			repoNameWithOwner,
 			`ref=${encodeURIComponent(branchName)}`,
 		);
+		if (byBranch) {
+			return byBranch;
+		}
+
+		if (!pullRequestNumber) {
+			return null;
+		}
+
+		return (
+			(await queryDeploymentUrl(
+				worktreePath,
+				repoNameWithOwner,
+				`ref=${encodeURIComponent(`refs/pull/${pullRequestNumber}/merge`)}`,
+			)) ?? null
+		);
 	} catch {
-		return undefined;
+		return null;
 	}
 }
 

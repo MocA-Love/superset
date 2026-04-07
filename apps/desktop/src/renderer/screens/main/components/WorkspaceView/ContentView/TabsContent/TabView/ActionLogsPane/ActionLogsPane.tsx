@@ -378,7 +378,7 @@ export function ActionLogsPane({
 	const { data: githubStatus } =
 		electronTrpc.workspaces.getGitHubStatus.useQuery(
 			{ workspaceId },
-			{ staleTime: 5_000, refetchInterval: 5_000 },
+			{ staleTime: 15_000, refetchInterval: 15_000 },
 		);
 	const checks = githubStatus?.pr?.checks ?? [];
 

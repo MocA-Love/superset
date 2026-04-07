@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitHub API 最適化計画</title>
+    <style>
+      :root {
+        --bg: #f6f2ea;
+        --panel: rgba(255, 252, 247, 0.92);
+        --panel-strong: #fffaf2;
+        --text: #1f1c18;
+        --muted: #6b6258;
+        --line: rgba(80, 63, 44, 0.14);
+        --accent: #18634f;
+        --accent-soft: rgba(24, 99, 79, 0.12);
+        --warn: #9a3d16;
+        --warn-soft: rgba(154, 61, 22, 0.1);
+        --shadow: 0 24px 60px rgba(52, 39, 23, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          "SF Pro Display", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(24, 99, 79, 0.14), transparent 34%),
+          radial-gradient(circle at bottom right, rgba(154, 61, 22, 0.12), transparent 28%),
+          linear-gradient(180deg, #faf7f1 0%, var(--bg) 100%);
+        line-height: 1.7;
+      }
+
+      .container {
+        width: min(1120px, calc(100vw - 40px));
+        margin: 0 auto;
+        padding: 48px 0 72px;
+      }
+
+      .hero {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(255, 249, 240, 0.92));
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        padding: 36px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+      }
+
+      .eyebrow,
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        background: var(--accent-soft);
+        font-weight: 700;
+      }
+
+      .hero h1 {
+        margin: 18px 0 14px;
+        font-size: clamp(32px, 4vw, 56px);
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 17px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 28px;
+      }
+
+      .hero-stat {
+        padding: 18px 20px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.76);
+      }
+
+      .hero-stat strong {
+        display: block;
+        font-size: 28px;
+        line-height: 1.1;
+        margin-bottom: 6px;
+      }
+
+      .hero-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      section {
+        margin-top: 28px;
+      }
+
+      .section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: var(--shadow);
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 28px;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+      }
+
+      h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      .lead {
+        margin: 0 0 18px;
+        color: var(--muted);
+      }
+
+      .grid-2,
+      .grid-3 {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        padding: 20px;
+        border-radius: 20px;
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+      }
+
+      .card p,
+      .card li,
+      .section li,
+      .section p {
+        color: var(--muted);
+      }
+
+      ul,
+      ol {
+        margin: 0;
+        padding-left: 20px;
+      }
+
+      .flow {
+        display: grid;
+        gap: 14px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .flow-key {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 700;
+        border: 1px solid rgba(24, 99, 79, 0.16);
+      }
+
+      .flow-body {
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: #fffdf9;
+        border: 1px solid var(--line);
+      }
+
+      .tag {
+        background: rgba(31, 28, 24, 0.06);
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+        border-color: rgba(154, 61, 22, 0.16);
+      }
+
+      .compare {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 18px;
+      }
+
+      .compare th,
+      .compare td {
+        text-align: left;
+        vertical-align: top;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .compare th {
+        background: rgba(31, 28, 24, 0.04);
+        font-size: 13px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .compare tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .phase {
+        position: relative;
+        padding-left: 22px;
+      }
+
+      .phase::before {
+        content: "";
+        position: absolute;
+        top: 8px;
+        left: 0;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--accent);
+        box-shadow: 0 0 0 8px rgba(24, 99, 79, 0.1);
+      }
+
+      .note {
+        margin-top: 16px;
+        padding: 16px 18px;
+        border-radius: 18px;
+        border: 1px dashed rgba(24, 99, 79, 0.24);
+        background: rgba(24, 99, 79, 0.05);
+        color: var(--muted);
+      }
+
+      .sources a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .sources li + li {
+        margin-top: 6px;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 8px;
+        font-family: "SF Mono", "Menlo", monospace;
+        font-size: 0.92em;
+        background: rgba(31, 28, 24, 0.07);
+        color: #2c241c;
+      }
+
+      @media (max-width: 920px) {
+        .hero-grid,
+        .grid-2,
+        .grid-3 {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <div class="eyebrow">GitHub API Optimization Plan</div>
+        <h1>UX を落とさずに GitHub API を減らすための整理</h1>
+        <p>
+          現状の Desktop 側ロジックは「active workspace だけを同期する」という大きな方向性は良いが、
+          5 秒ループの中に重い処理が入りすぎている。特に <code>PR status</code> と
+          <code>preview deployment</code> が同じホットパスに乗っており、
+          comments 同期も内部で status 解決を再実行している。問題はポーリングそのものではなく、
+          「高頻度で回す対象の切り分けが甘いこと」にある。
+        </p>
+        <div class="hero-grid">
+          <div class="hero-stat">
+            <strong>5 秒</strong>
+            <span>現在の <code>PR status</code> キャッシュ TTL / Sync interval</span>
+          </div>
+          <div class="hero-stat">
+            <strong>20 秒</strong>
+            <span>現在の <code>PR comments</code> キャッシュ TTL / Sync interval</span>
+          </div>
+          <div class="hero-stat">
+            <strong>60 秒</strong>
+            <span>VS Code 拡張の webview 既定 refresh 間隔。非アクティブ時はさらに鈍い</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="section">
+        <h2>先に結論</h2>
+        <p class="lead">
+          最適化の中心は <code>GitHubSyncService</code> で合っている。ただし、
+          SyncService を削るのではなく「scheduler に徹させる」方向で設計し直すのが良い。
+          具体的には status を 1 本の重い取得として扱うのをやめ、
+          <code>PR identity</code> / <code>checks summary</code> /
+          <code>comments</code> / <code>preview URL</code> / <code>overview</code>
+          のレーンに分けるべき。
+        </p>
+        <div class="pill-row">
+          <span class="tag">active workspace only は維持</span>
+          <span class="tag">visible UI 優先</span>
+          <span class="tag">cheap sentinel 先行</span>
+          <span class="tag">重い fetch は lazy / 長 TTL</span>
+          <span class="tag">ユーザー操作後だけ短周期</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>現状ロジック</h2>
+        <p class="lead">
+          現在の構成は「backend cache を温めて、frontend はそのキャッシュを読む」方式。
+          方向性は悪くないが、温める粒度と頻度に無駄がある。
+        </p>
+        <div class="flow">
+          <div class="flow-row">
+            <div class="flow-key">Active Workspace</div>
+            <div class="flow-body">
+              <p>
+                <code>KeepAliveWorkspaces</code> が active な workspace を backend に通知し、
+                <code>GitHubSyncService</code> はその workspace だけを対象にする。
+              </p>
+              <div class="pill-row">
+                <span class="tag">良い点</span>
+                <span class="tag">全 workspace 一斉 poll ではない</span>
+              </div>
+            </div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-key">5 秒ループ</div>
+            <div class="flow-body">
+              <h3><code>refreshGitHubPRStatus</code></h3>
+              <ul>
+                <li><code>repo context</code> 解決</li>
+                <li>現在 branch / HEAD の解決</li>
+                <li><code>getPRForBranch</code> による PR 特定</li>
+                <li><code>branchExistsOnRemote</code> の確認</li>
+                <li><code>fetchPreviewDeploymentUrl</code> による preview 探索</li>
+              </ul>
+              <p class="note">
+                問題はこの 1 本に責務が集まりすぎていること。特に preview 探索は
+                GitHub API コール数が膨らみやすく、5 秒ループに載せるべきではない。
+              </p>
+            </div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-key">20 秒ループ</div>
+            <div class="flow-body">
+              <h3><code>refreshGitHubPRComments</code></h3>
+              <ul>
+                <li>review threads を GraphQL で取得</li>
+                <li>issue comments を REST で取得</li>
+                <li>ページネーション次第で API 呼び出し数が増える</li>
+              </ul>
+              <p class="note">
+                現在の SyncService パスでは comments 同期の前に
+                <code>resolvePullRequestCommentsTarget</code> が走り、
+                内部で <code>fetchGitHubPRStatus</code> を再実行する。
+                つまり comments ループが status ループを暗黙に二重化している。
+              </p>
+            </div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-key">UI 追加ポーリング</div>
+            <div class="flow-body">
+              <ul>
+                <li>Actions / logs 表示中は workflow jobs と job logs が 3 秒ポーリング</li>
+                <li><code>RepositoryOverview</code> は active 時に 60 秒 stale で再取得</li>
+                <li>hover や list item は lazy fetch で、ここは比較的まとも</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>現状の良い点と悪い点</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>良い点</h3>
+            <ul>
+              <li>active workspace のみに同期対象を絞れている</li>
+              <li>frontend は GitHub API を直接連打せず backend cache を見ている</li>
+              <li>workspace row / hover card は lazy で、常時 warm していない</li>
+              <li>review panel の一部 query は popover open 時のみで比較的軽い</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>悪い点</h3>
+            <ul>
+              <li>5 秒で回す status の中身が重すぎる</li>
+              <li>preview URL 探索が hot path に直結している</li>
+              <li>comments 同期が status 解決を再実行している</li>
+              <li>interval が固定で、状態に応じた強弱がない</li>
+              <li>1 つの status object に責務が集約されすぎている</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>主なボトルネック</h2>
+        <div class="grid-3">
+          <div class="card">
+            <div class="tag warn">Hot Path</div>
+            <h3>1. Preview Deployment 探索</h3>
+            <p>
+              <code>deployments</code> 一覧取得に加えて、候補ごとに
+              <code>deployment statuses</code> を確認するため、
+              条件次第で GitHub API の呼び出し数が大きく増える。
+            </p>
+          </div>
+          <div class="card">
+            <div class="tag warn">Redundant</div>
+            <h3>2. Comments ループの二重 status 解決</h3>
+            <p>
+              comments 同期の前段で PR target を解決する際、
+              status 取得を再度走らせている。UX に寄与しない重複コスト。
+            </p>
+          </div>
+          <div class="card">
+            <div class="tag warn">Scheduler</div>
+            <h3>3. 固定 5 秒</h3>
+            <p>
+              check 実行中でも idle 状態でも同じ頻度で回る。
+              状況に応じて interval を変える仕組みがない。
+            </p>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top: 16px">
+          <div class="card">
+            <h3>4. Status の責務過多</h3>
+            <p>
+              branch, PR identity, checks, preview, comments の関心が混ざっており、
+              1 つの再取得で全部を巻き込んでいる。
+            </p>
+          </div>
+          <div class="card">
+            <h3>5. Overview / Actions の切り分け不足</h3>
+            <p>
+              Repository overview や workflow logs は本来「そのパネルが見えている時だけ」
+              強く同期すればよい。常時 warm 対象とは分けて考えるべき。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>VS Code から持ち込める原則</h2>
+        <p class="lead">
+          VS Code の GitHub Pull Requests 拡張は、少なくとも現状の設計よりかなり慎重。
+          常時短周期でフル query を回すのではなく、軽い変化検知を先に挟む。
+        </p>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>観点</th>
+              <th>現状</th>
+              <th>VS Code の原則</th>
+              <th>持ち込むべき判断</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>基本 refresh</td>
+              <td>status 5 秒 / comments 20 秒</td>
+              <td>webview は既定 60 秒、非アクティブ時はさらに鈍い</td>
+              <td>平常時は 60 秒寄り、短周期は例外扱いにする</td>
+            </tr>
+            <tr>
+              <td>重い query の前処理</td>
+              <td>即フル取得</td>
+              <td><code>lastUpdateTime</code> や <code>maxKnownPR</code> で先に変化検知</td>
+              <td>cheap sentinel を先に確認してから重い fetch に進む</td>
+            </tr>
+            <tr>
+              <td>非アクティブ時</td>
+              <td>active workspace 基準のみ</td>
+              <td>window / tab 状態で interval を落とす</td>
+              <td>visibility を scheduler 条件に含める</td>
+            </tr>
+            <tr>
+              <td>通知 polling</td>
+              <td>固定値中心</td>
+              <td><code>x-poll-interval</code> を利用</td>
+              <td>取れる所は server hint を尊重する</td>
+            </tr>
+            <tr>
+              <td>PR list refresh</td>
+              <td>重い overview fetch に寄りやすい</td>
+              <td>新しい PR があるかだけ先に確認</td>
+              <td>一覧系は lightweight sentinel を持つ</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>提案アーキテクチャ</h2>
+        <p class="lead">
+          中央の考え方は「1 本の status を warm する」から
+          「複数レーンを scheduler が必要に応じて warm する」への移行。
+        </p>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Lane 分割</h3>
+            <ul>
+              <li><strong>PR identity lane</strong>: PR 番号、URL、draft、mergeable など</li>
+              <li><strong>Checks lane</strong>: CI 状態、最新 run、pending かどうか</li>
+              <li><strong>Comments lane</strong>: review threads と issue comments</li>
+              <li><strong>Preview lane</strong>: preview URL。完全に別扱い</li>
+              <li><strong>Overview lane</strong>: labels, assignees, workflow list など</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Scheduler 状態</h3>
+            <ul>
+              <li><strong>Active / idle</strong>: 平常時。60 秒前後</li>
+              <li><strong>Active / checks pending</strong>: CI 実行中。10〜15 秒</li>
+              <li><strong>User action just happened</strong>: manual refresh, rerun, reviewer 更新直後のみ短周期</li>
+              <li><strong>Inactive / hidden</strong>: 停止または 5 分程度</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note">
+          重要なのは <code>active workspace</code> だけでなく
+          <code>active surface</code> も見ること。
+          例: review パネルを見ていないのに comments を高頻度で温める必要は薄い。
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>各レーンの推奨 TTL / トリガー</h2>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>レーン</th>
+              <th>推奨間隔</th>
+              <th>主トリガー</th>
+              <th>狙い</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>PR identity</td>
+              <td>active 60 秒 / inactive 5 分</td>
+              <td>branch 変更、HEAD 変更、manual refresh</td>
+              <td>PR 番号や URL がそう頻繁に変わらない前提で軽く保つ</td>
+            </tr>
+            <tr>
+              <td>Checks</td>
+              <td>pending 10〜15 秒 / idle 60 秒</td>
+              <td>workflow run 中、rerun 直後</td>
+              <td>CI 状態だけは比較的リアルタイムに維持</td>
+            </tr>
+            <tr>
+              <td>Comments</td>
+              <td>review 可視時 30〜60 秒</td>
+              <td>review タブ表示、manual refresh</td>
+              <td>可視時は追従しつつ、背景では抑制</td>
+            </tr>
+            <tr>
+              <td>Preview</td>
+              <td>5〜15 分、または lazy</td>
+              <td>PR 生成直後、head SHA 変更時、ユーザーが必要にした時</td>
+              <td>重い探索をホットパスから外す</td>
+            </tr>
+            <tr>
+              <td>Overview</td>
+              <td>5〜10 分</td>
+              <td>popover open、mutation 後 invalidate</td>
+              <td>一覧系の無駄 fetch を削る</td>
+            </tr>
+            <tr>
+              <td>Action logs</td>
+              <td>可視 + pending 時のみ 3 秒</td>
+              <td>pane open、run pending</td>
+              <td>UX を維持しながら対象範囲を限定する</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>cheap sentinel の設計</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Workspace sentinel</h3>
+            <p>
+              ローカルの <code>headSha</code>、current branch、worktree 状態。
+              ここが変わっていなければ PR identity の再解決頻度を落とせる。
+            </p>
+          </div>
+          <div class="card">
+            <h3>PR sentinel</h3>
+            <p>
+              直前に解決した <code>prNumber</code> と <code>updatedAt</code>。
+              comments や overview の重い再取得前にまず軽い更新時刻を見る。
+            </p>
+          </div>
+          <div class="card">
+            <h3>Checks sentinel</h3>
+            <p>
+              最新 run の state だけ先に見る。pending の間だけ短周期にし、
+              settled したら interval を落とす。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>最小変更で効く順</h2>
+        <div class="grid-3">
+          <div class="card phase">
+            <h3>Phase 1</h3>
+            <ul>
+              <li><code>previewUrl</code> を status ループから外す</li>
+              <li>SyncService comments fetch に既知の PR target を渡す</li>
+              <li>平常時 status interval を 5 秒から 30〜60 秒へ引き上げる</li>
+            </ul>
+          </div>
+          <div class="card phase">
+            <h3>Phase 2</h3>
+            <ul>
+              <li>status を lane に分割する</li>
+              <li>cheap sentinel を導入して重い取得を gate する</li>
+              <li>comments を review 可視時中心に寄せる</li>
+            </ul>
+          </div>
+          <div class="card phase">
+            <h3>Phase 3</h3>
+            <ul>
+              <li>overview / actions を共通 scheduler で統合管理</li>
+              <li><code>gh</code> 呼び出し回数と rate header を可視化する</li>
+              <li>low-API mode を常設オプションとして追加する</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>UX への影響</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>維持できるもの</h3>
+            <ul>
+              <li>active workspace の PR 状態は見た目上ほぼ維持できる</li>
+              <li>CI pending 中の即時感は 10〜15 秒ポーリングで十分保てる</li>
+              <li>Actions / logs は可視時だけ今の速さを維持できる</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>少し遅くしてよいもの</h3>
+            <ul>
+              <li>preview URL</li>
+              <li>review comments の背景同期</li>
+              <li>assignees / labels / workflow list の overview 情報</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note">
+          UX を守る鍵は「全部を速くする」ではなく、「人間が見ているものだけ速くする」こと。
+          逆に言えば、見えていない preview や overview を 5 秒で温め続けるのは UX にほぼ寄与しない。
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>期待できる効果</h2>
+        <ul>
+          <li>secondary rate limit に触る頻度を大きく下げられる可能性が高い</li>
+          <li>active workspace 1 個あたりの steady-state API 使用量をかなり削れる</li>
+          <li>ボトルネックがレーンごとに見えるようになり、将来の調整がしやすくなる</li>
+          <li>「何が UX 上本当に重要か」がコード構造にも反映される</li>
+        </ul>
+      </section>
+
+      <section class="section sources">
+        <h2>参照したコードと資料</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>ローカルコード</h3>
+            <ul>
+              <li><code>apps/desktop/src/lib/trpc/routers/workspaces/utils/github/github-sync-service.ts</code></li>
+              <li><code>apps/desktop/src/lib/trpc/routers/workspaces/utils/github/github.ts</code></li>
+              <li><code>apps/desktop/src/lib/trpc/routers/workspaces/utils/github/pr-resolution.ts</code></li>
+              <li><code>apps/desktop/src/lib/trpc/routers/workspaces/utils/github/comments.ts</code></li>
+              <li><code>apps/desktop/src/lib/trpc/routers/workspaces/utils/github/cache.ts</code></li>
+              <li><code>apps/desktop/src/renderer/lib/githubQueryPolicy/githubQueryPolicy.ts</code></li>
+              <li><code>apps/desktop/src/renderer/routes/_authenticated/_dashboard/components/KeepAliveWorkspaces.tsx</code></li>
+              <li><code>apps/desktop/src/renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/ChangesView.tsx</code></li>
+              <li><code>apps/desktop/src/renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/ActionLogsPane/ActionLogsPane.tsx</code></li>
+              <li><code>apps/desktop/src/renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RepositoryPanel/RepositoryPanel.tsx</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>VS Code 参考</h3>
+            <ul>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github">microsoft/vscode-pull-request-github</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/blob/main/src/github/issueOverview.ts">issueOverview.ts</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/blob/main/src/github/issueModel.ts">issueModel.ts</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/blob/main/src/view/prsTreeModel.ts">prsTreeModel.ts</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/blob/main/src/github/copilotPrWatcher.ts">copilotPrWatcher.ts</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/blob/main/src/notifications/notificationsManager.ts">notificationsManager.ts</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/blob/main/src/notifications/notificationsProvider.ts">notificationsProvider.ts</a></li>
+              <li><a href="https://github.com/microsoft/vscode-pull-request-github/releases">release notes</a></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

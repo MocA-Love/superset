@@ -41,7 +41,7 @@ export function usePRStatus({
 		isLoading,
 		refetch,
 	} = electronTrpc.workspaces.getGitHubStatus.useQuery(
-		{ workspaceId: workspaceId ?? "" },
+		{ workspaceId: workspaceId ?? "", includePreview: true },
 		queryPolicy,
 	);
 

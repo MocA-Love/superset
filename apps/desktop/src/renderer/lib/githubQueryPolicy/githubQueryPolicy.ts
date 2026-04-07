@@ -19,12 +19,12 @@
  * prefer keeping the SyncService architecture unless upstream's approach
  * has evolved to match or exceed the efficiency of backend-centralized polling.
  */
-const ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS = 5_000;
-const ACTIVE_GITHUB_STATUS_STALE_TIME_MS = 5_000;
+const ACTIVE_GITHUB_STATUS_REFETCH_INTERVAL_MS = 15_000;
+const ACTIVE_GITHUB_STATUS_STALE_TIME_MS = 15_000;
 const WORKSPACE_LIST_ITEM_GITHUB_STATUS_STALE_TIME_MS = 30_000;
 const PASSIVE_GITHUB_STATUS_STALE_TIME_MS = 5 * 60 * 1000;
-const GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS = 20_000;
-const GITHUB_PR_COMMENTS_STALE_TIME_MS = 20_000;
+const GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS = 60_000;
+const GITHUB_PR_COMMENTS_STALE_TIME_MS = 60_000;
 
 export type GitHubStatusQuerySurface =
 	| "changes-sidebar"
