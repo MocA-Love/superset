@@ -100,6 +100,61 @@ interface NormalizedRepoIdentity {
 	remoteName: string;
 }
 
+interface PullRequestMatchCandidate {
+	id: string;
+	node: Awaited<ReturnType<typeof fetchRepositoryPullRequests>>[number];
+}
+
+function getRepoKey(
+	repo: Pick<NormalizedRepoIdentity, "provider" | "owner" | "name">,
+) {
+	return `${repo.provider}:${repo.owner}/${repo.name}`;
+}
+
+function getPullRequestStatePriority(state: "OPEN" | "CLOSED" | "MERGED") {
+	switch (state) {
+		case "OPEN":
+			return 3;
+		case "MERGED":
+			return 2;
+		default:
+			return 1;
+	}
+}
+
+function comparePullRequestCandidates(
+	a: PullRequestMatchCandidate,
+	b: PullRequestMatchCandidate,
+	headSha: string | null,
+) {
+	const aHeadShaMatches = Boolean(headSha && a.node.headRefOid === headSha);
+	const bHeadShaMatches = Boolean(headSha && b.node.headRefOid === headSha);
+	if (aHeadShaMatches !== bHeadShaMatches) {
+		return aHeadShaMatches ? -1 : 1;
+	}
+
+	const stateDelta =
+		getPullRequestStatePriority(b.node.state) -
+		getPullRequestStatePriority(a.node.state);
+	if (stateDelta !== 0) {
+		return stateDelta;
+	}
+
+	return (
+		new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime()
+	);
+}
+
+function getTrackingRemoteName(upstreamRef: string | null) {
+	if (!upstreamRef) return null;
+
+	const trimmed = upstreamRef.trim();
+	if (!trimmed) return null;
+
+	const slashIndex = trimmed.indexOf("/");
+	return slashIndex >= 0 ? trimmed.slice(0, slashIndex) : trimmed;
+}
+
 export class PullRequestRuntimeManager {
 	private readonly db: HostDb;
 	private readonly git: GitFactory;
@@ -299,9 +354,6 @@ export class PullRequestRuntimeManager {
 	}
 
 	private async performProjectRefresh(projectId: string): Promise<void> {
-		const repo = await this.getProjectRepository(projectId);
-		if (!repo) return;
-
 		const projectWorkspaces = this.db
 			.select()
 			.from(workspaces)
@@ -309,17 +361,63 @@ export class PullRequestRuntimeManager {
 			.all();
 		if (projectWorkspaces.length === 0) return;
 
+		const projectRepo = await this.getProjectRepository(projectId);
 		const branchNames = [
 			...new Set(projectWorkspaces.map((workspace) => workspace.branch)),
 		];
-		const branchToPullRequest = await this.fetchRepoPullRequests(
-			projectId,
-			repo,
-			branchNames,
+
+		const workspaceRepos = await Promise.all(
+			projectWorkspaces.map(async (workspace) => {
+				try {
+					return {
+						workspace,
+						repos: await this.getWorkspaceRepositories(
+							workspace.worktreePath,
+							projectRepo,
+						),
+					};
+				} catch (error) {
+					console.warn(
+						"[host-service:pull-request-runtime] Failed to resolve workspace repositories",
+						{
+							workspaceId: workspace.id,
+							worktreePath: workspace.worktreePath,
+							error,
+						},
+					);
+
+					return {
+						workspace,
+						repos: projectRepo ? [projectRepo] : [],
+					};
+				}
+			}),
 		);
 
-		for (const workspace of projectWorkspaces) {
-			const match = branchToPullRequest.get(workspace.branch) ?? null;
+		const repos = [
+			...new Map(
+				workspaceRepos
+					.flatMap(({ repos }) => repos)
+					.map((repo) => [getRepoKey(repo), repo]),
+			).values(),
+		];
+		if (repos.length === 0) return;
+
+		const repoToPullRequests = new Map<string, PullRequestMatchCandidate[]>();
+		for (const repo of repos) {
+			repoToPullRequests.set(
+				getRepoKey(repo),
+				await this.fetchRepoPullRequests(projectId, repo, branchNames),
+			);
+		}
+
+		for (const { workspace, repos: candidateRepos } of workspaceRepos) {
+			const match = this.findBestPullRequestMatch(
+				workspace.branch,
+				workspace.headSha,
+				candidateRepos,
+				repoToPullRequests,
+			);
 			this.db
 				.update(workspaces)
 				.set({
@@ -327,6 +425,66 @@ export class PullRequestRuntimeManager {
 				})
 				.where(eq(workspaces.id, workspace.id))
 				.run();
+		}
+	}
+
+	private async getWorkspaceRepositories(
+		worktreePath: string,
+		projectRepo: NormalizedRepoIdentity | null,
+	): Promise<NormalizedRepoIdentity[]> {
+		const git = await this.git(worktreePath);
+		const repos: NormalizedRepoIdentity[] = [];
+		const pushRepo = (repo: NormalizedRepoIdentity | null) => {
+			if (!repo) return;
+			if (repos.some((existing) => getRepoKey(existing) === getRepoKey(repo))) {
+				return;
+			}
+			repos.push(repo);
+		};
+
+		let trackingRemoteName: string | null = null;
+		try {
+			trackingRemoteName = getTrackingRemoteName(
+				await git.raw([
+					"rev-parse",
+					"--abbrev-ref",
+					"--symbolic-full-name",
+					"@{upstream}",
+				]),
+			);
+		} catch {}
+
+		pushRepo(
+			trackingRemoteName
+				? await this.getRemoteRepository(git, trackingRemoteName)
+				: null,
+		);
+		pushRepo(await this.getRemoteRepository(git, "origin"));
+		pushRepo(await this.getRemoteRepository(git, "upstream"));
+		pushRepo(projectRepo);
+
+		return repos;
+	}
+
+	private async getRemoteRepository(
+		git: Awaited<ReturnType<GitFactory>>,
+		remoteName: string,
+	): Promise<NormalizedRepoIdentity | null> {
+		try {
+			const remoteUrl = await git.remote(["get-url", remoteName]);
+			if (typeof remoteUrl !== "string") {
+				return null;
+			}
+
+			const parsedRemote = parseGitHubRemote(remoteUrl);
+			if (!parsedRemote) return null;
+
+			return {
+				...parsedRemote,
+				remoteName,
+			};
+		} catch {
+			return null;
 		}
 	}
 
@@ -392,7 +550,7 @@ export class PullRequestRuntimeManager {
 		projectId: string,
 		repo: NormalizedRepoIdentity,
 		branches: string[],
-	): Promise<Map<string, { id: string }>> {
+	): Promise<PullRequestMatchCandidate[]> {
 		const octokit = await this.github();
 		const nodes = await fetchRepositoryPullRequests(octokit, {
 			owner: repo.owner,
@@ -400,24 +558,11 @@ export class PullRequestRuntimeManager {
 		});
 
 		const wantedBranches = new Set(branches);
-		const latestByBranch = new Map<string, (typeof nodes)[number]>();
+		const matches: PullRequestMatchCandidate[] = [];
+		const now = Date.now();
 
 		for (const node of nodes) {
 			if (!wantedBranches.has(node.headRefName)) continue;
-			const existing = latestByBranch.get(node.headRefName);
-			if (
-				!existing ||
-				new Date(node.updatedAt).getTime() >
-					new Date(existing.updatedAt).getTime()
-			) {
-				latestByBranch.set(node.headRefName, node);
-			}
-		}
-
-		const branchToRow = new Map<string, { id: string }>();
-		const now = Date.now();
-
-		for (const [branch, node] of latestByBranch) {
 			const existing = this.db.query.pullRequests
 				.findFirst({
 					where: and(
@@ -470,9 +615,31 @@ export class PullRequestRuntimeManager {
 					.run();
 			}
 
-			branchToRow.set(branch, { id: rowId });
+			matches.push({ id: rowId, node });
 		}
 
-		return branchToRow;
+		return matches;
+	}
+
+	private findBestPullRequestMatch(
+		branch: string,
+		headSha: string | null,
+		repos: NormalizedRepoIdentity[],
+		repoToPullRequests: Map<string, PullRequestMatchCandidate[]>,
+	): PullRequestMatchCandidate | null {
+		for (const repo of repos) {
+			const candidates =
+				repoToPullRequests
+					.get(getRepoKey(repo))
+					?.filter((candidate) => candidate.node.headRefName === branch) ?? [];
+			if (candidates.length === 0) {
+				continue;
+			}
+
+			candidates.sort((a, b) => comparePullRequestCandidates(a, b, headSha));
+			return candidates[0] ?? null;
+		}
+
+		return null;
 	}
 }

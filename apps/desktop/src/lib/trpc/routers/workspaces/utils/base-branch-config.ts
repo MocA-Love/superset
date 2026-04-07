@@ -15,6 +15,10 @@ interface BranchBaseConfig {
 	isExplicit: boolean;
 }
 
+export interface BranchPullRequestBaseRepoConfig {
+	baseRepoUrl: string | null;
+}
+
 function parseBooleanConfig(value: string): boolean {
 	const normalized = value.trim().toLowerCase();
 	return (
@@ -77,4 +81,39 @@ export async function unsetBranchBaseConfig({
 			.raw(["config", "--unset", `branch.${branch}.base-explicit`])
 			.catch(() => {}),
 	]);
+}
+
+export async function getBranchPullRequestBaseRepoConfig({
+	repoPath,
+	branch,
+}: BranchConfigParams): Promise<BranchPullRequestBaseRepoConfig> {
+	const git = await getSimpleGitWithShellPath(repoPath);
+	const baseRepoOutput = await git
+		.raw(["config", `branch.${branch}.pr-base-repo`])
+		.catch(() => "");
+
+	return {
+		baseRepoUrl: baseRepoOutput.trim() || null,
+	};
+}
+
+export async function setBranchPullRequestBaseRepoConfig({
+	repoPath,
+	branch,
+	baseRepoUrl,
+}: BranchConfigParams & { baseRepoUrl: string }): Promise<void> {
+	const git = await getSimpleGitWithShellPath(repoPath);
+	await git
+		.raw(["config", `branch.${branch}.pr-base-repo`, baseRepoUrl])
+		.catch(() => {});
+}
+
+export async function unsetBranchPullRequestBaseRepoConfig({
+	repoPath,
+	branch,
+}: BranchConfigParams): Promise<void> {
+	const git = await getSimpleGitWithShellPath(repoPath);
+	await git
+		.raw(["config", "--unset", `branch.${branch}.pr-base-repo`])
+		.catch(() => {});
 }

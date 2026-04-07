@@ -6,6 +6,10 @@ import { TRPCError } from "@trpc/server";
 import { callSmallModel } from "lib/ai/call-small-model";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import {
+	setBranchPullRequestBaseRepoConfig,
+	unsetBranchPullRequestBaseRepoConfig,
+} from "../workspaces/utils/base-branch-config";
 import { getCurrentBranch } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import {
@@ -25,6 +29,7 @@ import { mergePullRequest } from "./utils/merge-pull-request";
 import {
 	buildNewPullRequestUrl,
 	findExistingOpenPRUrl,
+	resolvePullRequestBaseRepoSelection,
 } from "./utils/pull-request-discovery";
 import { clearStatusCacheForWorktree } from "./utils/status-cache";
 import { clearWorktreeStatusCaches } from "./utils/worktree-status-caches";
@@ -198,6 +203,7 @@ export const createGitOperationsRouter = () => {
 				z.object({
 					worktreePath: z.string(),
 					allowOutOfDate: z.boolean().optional().default(false),
+					baseRepoUrl: z.string().url().optional(),
 				}),
 			)
 			.mutation(
@@ -209,6 +215,20 @@ export const createGitOperationsRouter = () => {
 						worktreePath: input.worktreePath,
 						action: "create a pull request",
 					});
+					if (input.baseRepoUrl) {
+						const selection = await resolvePullRequestBaseRepoSelection({
+							worktreePath: input.worktreePath,
+							branch,
+							preferredBaseRepoUrl: input.baseRepoUrl,
+						});
+						if (selection.selectedBaseRepoUrl === input.baseRepoUrl) {
+							await setBranchPullRequestBaseRepoConfig({
+								repoPath: input.worktreePath,
+								branch,
+								baseRepoUrl: input.baseRepoUrl,
+							});
+						}
+					}
 
 					const trackingStatus = await getTrackingBranchStatus(git);
 					const hasUpstream = trackingStatus.hasUpstream;
@@ -271,6 +291,7 @@ export const createGitOperationsRouter = () => {
 							input.worktreePath,
 							git,
 							branch,
+							input.baseRepoUrl,
 						);
 						await fetchCurrentBranch(git, input.worktreePath);
 						clearWorktreeStatusCaches(input.worktreePath);
@@ -291,6 +312,86 @@ export const createGitOperationsRouter = () => {
 					}
 				},
 			),
+
+		resolveCreatePRBaseOptions: publicProcedure
+			.input(
+				z.object({
+					worktreePath: z.string(),
+				}),
+			)
+			.mutation(
+				async ({
+					input,
+				}): Promise<{
+					baseRepoOptions: Awaited<
+						ReturnType<typeof resolvePullRequestBaseRepoSelection>
+					>["baseRepoOptions"];
+					selectedBaseRepoUrl: string | null;
+					requiresChoice: boolean;
+				}> => {
+					assertRegisteredWorktree(input.worktreePath);
+
+					const branch = await getLocalBranchOrThrow({
+						worktreePath: input.worktreePath,
+						action: "create a pull request",
+					});
+					const selection = await resolvePullRequestBaseRepoSelection({
+						worktreePath: input.worktreePath,
+						branch,
+					});
+
+					return {
+						...selection,
+						requiresChoice:
+							selection.selectedBaseRepoUrl === null &&
+							selection.baseRepoOptions.length > 1,
+					};
+				},
+			),
+
+		updatePullRequestBaseRepo: publicProcedure
+			.input(
+				z.object({
+					worktreePath: z.string(),
+					baseRepoUrl: z.string().url().nullable(),
+				}),
+			)
+			.mutation(async ({ input }): Promise<{ success: boolean }> => {
+				assertRegisteredWorktree(input.worktreePath);
+
+				const branch = await getLocalBranchOrThrow({
+					worktreePath: input.worktreePath,
+					action: "update the pull request base repository",
+				});
+
+				if (input.baseRepoUrl) {
+					const selection = await resolvePullRequestBaseRepoSelection({
+						worktreePath: input.worktreePath,
+						branch,
+						preferredBaseRepoUrl: input.baseRepoUrl,
+					});
+					if (selection.selectedBaseRepoUrl !== input.baseRepoUrl) {
+						throw new TRPCError({
+							code: "BAD_REQUEST",
+							message: "Invalid pull request base repository selection.",
+						});
+					}
+
+					await setBranchPullRequestBaseRepoConfig({
+						repoPath: input.worktreePath,
+						branch,
+						baseRepoUrl: input.baseRepoUrl,
+					});
+				} else {
+					await unsetBranchPullRequestBaseRepoConfig({
+						repoPath: input.worktreePath,
+						branch,
+					});
+				}
+
+				clearWorktreeStatusCaches(input.worktreePath);
+				return { success: true };
+			}),
 
 		mergePR: publicProcedure
 			.input(
