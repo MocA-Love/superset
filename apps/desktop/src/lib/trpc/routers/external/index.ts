@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import {
 	EXTERNAL_APPS,
 	NON_EDITOR_APPS,
@@ -40,7 +40,33 @@ function isMissingExternalAppError(error: unknown): boolean {
 	);
 }
 
+function isMissingPathError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		error.code === "ENOENT"
+	);
+}
+
+async function assertPathExists(filePath: string): Promise<void> {
+	try {
+		await access(filePath);
+	} catch (error) {
+		// Missing paths are expected in stale UI selections and should not hit Sentry.
+		if (isMissingPathError(error)) {
+			throw new TRPCError({
+				code: "NOT_FOUND",
+				message: `The file ${filePath} does not exist.`,
+			});
+		}
+		throw error;
+	}
+}
+
 function normalizeOpenInAppError(error: unknown): never {
+	if (error instanceof TRPCError) {
+		throw error;
+	}
 	if (isMissingExternalAppError(error)) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
@@ -150,6 +176,8 @@ export const createExternalRouter = () => {
 		openInDefaultApp: publicProcedure
 			.input(z.string())
 			.mutation(async ({ input }) => {
+				// Surface missing files as a typed user-facing error before invoking the shell.
+				await assertPathExists(input);
 				const openError = await shell.openPath(input);
 				if (openError) {
 					throw new TRPCError({
@@ -168,6 +196,8 @@ export const createExternalRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
+				// Avoid turning deleted/moved files into INTERNAL_SERVER_ERROR during app launch.
+				await assertPathExists(input.path);
 				try {
 					await openPathInApp(input.path, input.app);
 				} catch (error) {
@@ -308,6 +338,8 @@ export const createExternalRouter = () => {
 			)
 			.mutation(async ({ input }) => {
 				const filePath = resolvePath(input.path, input.cwd);
+				// Editor open is also triggered from stale paths in the UI, so normalize ENOENT here too.
+				await assertPathExists(filePath);
 				const app = resolveDefaultEditor(input.projectId);
 
 				if (!app) {
