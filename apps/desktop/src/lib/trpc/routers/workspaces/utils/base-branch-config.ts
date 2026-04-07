@@ -103,9 +103,7 @@ export async function setBranchPullRequestBaseRepoConfig({
 	baseRepoUrl,
 }: BranchConfigParams & { baseRepoUrl: string }): Promise<void> {
 	const git = await getSimpleGitWithShellPath(repoPath);
-	await git
-		.raw(["config", `branch.${branch}.pr-base-repo`, baseRepoUrl])
-		.catch(() => {});
+	await git.raw(["config", `branch.${branch}.pr-base-repo`, baseRepoUrl]);
 }
 
 export async function unsetBranchPullRequestBaseRepoConfig({

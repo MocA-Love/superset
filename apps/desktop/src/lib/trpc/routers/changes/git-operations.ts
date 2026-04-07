@@ -31,6 +31,7 @@ import {
 	findExistingOpenPRUrl,
 	resolvePullRequestBaseRepoSelection,
 } from "./utils/pull-request-discovery";
+import { normalizeGitHubRepoUrl } from "./utils/pull-request-url";
 import { clearStatusCacheForWorktree } from "./utils/status-cache";
 import { clearWorktreeStatusCaches } from "./utils/worktree-status-caches";
 
@@ -215,17 +216,20 @@ export const createGitOperationsRouter = () => {
 						worktreePath: input.worktreePath,
 						action: "create a pull request",
 					});
-					if (input.baseRepoUrl) {
+					const normalizedBaseRepoUrl = input.baseRepoUrl
+						? normalizeGitHubRepoUrl(input.baseRepoUrl)
+						: null;
+					if (normalizedBaseRepoUrl) {
 						const selection = await resolvePullRequestBaseRepoSelection({
 							worktreePath: input.worktreePath,
 							branch,
-							preferredBaseRepoUrl: input.baseRepoUrl,
+							preferredBaseRepoUrl: normalizedBaseRepoUrl,
 						});
-						if (selection.selectedBaseRepoUrl === input.baseRepoUrl) {
+						if (selection.selectedBaseRepoUrl === normalizedBaseRepoUrl) {
 							await setBranchPullRequestBaseRepoConfig({
 								repoPath: input.worktreePath,
 								branch,
-								baseRepoUrl: input.baseRepoUrl,
+								baseRepoUrl: normalizedBaseRepoUrl,
 							});
 						}
 					}
@@ -291,7 +295,7 @@ export const createGitOperationsRouter = () => {
 							input.worktreePath,
 							git,
 							branch,
-							input.baseRepoUrl,
+							normalizedBaseRepoUrl,
 						);
 						await fetchCurrentBranch(git, input.worktreePath);
 						clearWorktreeStatusCaches(input.worktreePath);
@@ -363,14 +367,17 @@ export const createGitOperationsRouter = () => {
 					worktreePath: input.worktreePath,
 					action: "update the pull request base repository",
 				});
+				const normalizedBaseRepoUrl = input.baseRepoUrl
+					? normalizeGitHubRepoUrl(input.baseRepoUrl)
+					: null;
 
-				if (input.baseRepoUrl) {
+				if (normalizedBaseRepoUrl) {
 					const selection = await resolvePullRequestBaseRepoSelection({
 						worktreePath: input.worktreePath,
 						branch,
-						preferredBaseRepoUrl: input.baseRepoUrl,
+						preferredBaseRepoUrl: normalizedBaseRepoUrl,
 					});
-					if (selection.selectedBaseRepoUrl !== input.baseRepoUrl) {
+					if (selection.selectedBaseRepoUrl !== normalizedBaseRepoUrl) {
 						throw new TRPCError({
 							code: "BAD_REQUEST",
 							message: "Invalid pull request base repository selection.",
@@ -380,7 +387,7 @@ export const createGitOperationsRouter = () => {
 					await setBranchPullRequestBaseRepoConfig({
 						repoPath: input.worktreePath,
 						branch,
-						baseRepoUrl: input.baseRepoUrl,
+						baseRepoUrl: normalizedBaseRepoUrl,
 					});
 				} else {
 					await unsetBranchPullRequestBaseRepoConfig({

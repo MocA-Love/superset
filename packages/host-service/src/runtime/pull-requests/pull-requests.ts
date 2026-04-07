@@ -155,6 +155,22 @@ function getTrackingRemoteName(upstreamRef: string | null) {
 	return slashIndex >= 0 ? trimmed.slice(0, slashIndex) : trimmed;
 }
 
+function branchMatchesPullRequestHead(
+	branch: string,
+	headRefName: string,
+	headRepositoryOwner: string | null,
+) {
+	if (branch === headRefName) {
+		return true;
+	}
+
+	if (!headRepositoryOwner) {
+		return false;
+	}
+
+	return branch === `${headRepositoryOwner}/${headRefName}`;
+}
+
 export class PullRequestRuntimeManager {
 	private readonly db: HostDb;
 	private readonly git: GitFactory;
@@ -631,7 +647,13 @@ export class PullRequestRuntimeManager {
 			const candidates =
 				repoToPullRequests
 					.get(getRepoKey(repo))
-					?.filter((candidate) => candidate.node.headRefName === branch) ?? [];
+					?.filter((candidate) =>
+						branchMatchesPullRequestHead(
+							branch,
+							candidate.node.headRefName,
+							candidate.node.headRepositoryOwner?.login ?? null,
+						),
+					) ?? [];
 			if (candidates.length === 0) {
 				continue;
 			}

@@ -202,11 +202,12 @@ export async function buildNewPullRequestUrl(
 	);
 	const repoMetadata = ghRepoMetadataSchema.parse(JSON.parse(stdout));
 	const currentRepoUrl = normalizeGitHubRepoUrl(repoMetadata.url);
-	const { selectedBaseRepoUrl } = await resolvePullRequestBaseRepoSelection({
-		worktreePath,
-		branch,
-		preferredBaseRepoUrl,
-	});
+	const { baseRepoOptions, selectedBaseRepoUrl } =
+		await resolvePullRequestBaseRepoSelection({
+			worktreePath,
+			branch,
+			preferredBaseRepoUrl,
+		});
 	const baseRepoUrl = selectedBaseRepoUrl;
 
 	if (!currentRepoUrl) {
@@ -218,9 +219,12 @@ export async function buildNewPullRequestUrl(
 
 	if (!baseRepoUrl) {
 		throw new TRPCError({
-			code: "PRECONDITION_FAILED",
+			code:
+				baseRepoOptions.length === 0 ? "BAD_REQUEST" : "PRECONDITION_FAILED",
 			message:
-				"Multiple base repositories are available. Choose a base repository before creating a pull request.",
+				baseRepoOptions.length === 0
+					? "No GitHub pull request base repository is available for this workspace."
+					: "Multiple base repositories are available. Choose a base repository before creating a pull request.",
 		});
 	}
 
