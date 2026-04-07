@@ -29,8 +29,38 @@ const AVAILABLE_MODELS = [
 		provider: "OpenAI",
 	},
 	{
+		id: "openai/gpt-5.4-mini",
+		name: "GPT-5.4-Mini",
+		provider: "OpenAI",
+	},
+	{
 		id: "openai/gpt-5.3-codex",
 		name: "GPT-5.3 Codex",
+		provider: "OpenAI",
+	},
+	{
+		id: "openai/gpt-5.2-codex",
+		name: "GPT-5.2-Codex",
+		provider: "OpenAI",
+	},
+	{
+		id: "openai/gpt-5.2",
+		name: "GPT-5.2",
+		provider: "OpenAI",
+	},
+	{
+		id: "openai/gpt-5.1-codex",
+		name: "GPT-5.1-Codex",
+		provider: "OpenAI",
+	},
+	{
+		id: "openai/gpt-5.1-codex-max",
+		name: "GPT-5.1-Codex-Max",
+		provider: "OpenAI",
+	},
+	{
+		id: "openai/gpt-5.1-codex-mini",
+		name: "GPT-5.1-Codex-Mini",
 		provider: "OpenAI",
 	},
 ];

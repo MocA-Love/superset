@@ -3,6 +3,7 @@ import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import { initTRPC } from "@trpc/server";
 import { createAuthStorage, createMastraCode } from "mastracode";
 import superjson from "superjson";
+import { getOpenAICredentialsFromAuthStorage } from "../desktop/auth/openai/openai";
 import { searchFiles } from "./utils/file-search";
 import {
 	authenticateRuntimeMcpServer,
@@ -47,12 +48,9 @@ function resolveOmModelFromAuth(): string | undefined {
 	) {
 		return "anthropic/claude-haiku-4-5";
 	}
-	const openai = authStorage.get("openai-codex");
-	if (
-		openai?.type === "oauth" ||
-		(openai?.type === "api_key" && openai.key.trim())
-	) {
-		return "openai/gpt-4.1-nano";
+	const openai = getOpenAICredentialsFromAuthStorage(authStorage);
+	if (openai) {
+		return "openai/gpt-5.4-mini";
 	}
 	return undefined;
 }
