@@ -99,20 +99,18 @@ export function useDashboardSidebarData() {
 					({ sidebarWorkspaces, workspaces }) =>
 						eq(sidebarWorkspaces.workspaceId, workspaces.id),
 				)
-				.leftJoin(
-					{ devices: collections.v2Devices },
-					({ workspaces, devices }) => eq(workspaces.deviceId, devices.id),
+				.leftJoin({ hosts: collections.v2Hosts }, ({ workspaces, hosts }) =>
+					eq(workspaces.hostId, hosts.id),
 				)
 				.orderBy(
 					({ sidebarWorkspaces }) => sidebarWorkspaces.sidebarState.tabOrder,
 					"asc",
 				)
-				.select(({ sidebarWorkspaces, workspaces, devices }) => ({
+				.select(({ sidebarWorkspaces, workspaces, hosts }) => ({
 					id: workspaces.id,
 					projectId: sidebarWorkspaces.sidebarState.projectId,
-					deviceId: workspaces.deviceId,
-					deviceType: devices?.type ?? null,
-					deviceClientId: devices?.clientId ?? null,
+					hostId: workspaces.hostId,
+					hostMachineId: hosts?.machineId ?? null,
 					name: workspaces.name,
 					branch: workspaces.branch,
 					createdAt: workspaces.createdAt,
@@ -128,8 +126,8 @@ export function useDashboardSidebarData() {
 			sidebarWorkspaces
 				.filter(
 					(workspace) =>
-						workspace.deviceType !== "cloud" &&
-						workspace.deviceClientId === deviceInfo?.deviceId,
+						workspace.hostMachineId != null &&
+						workspace.hostMachineId === deviceInfo?.deviceId,
 				)
 				.map((workspace) => workspace.id)
 				.sort(),
@@ -144,9 +142,7 @@ export function useDashboardSidebarData() {
 			localWorkspaceIds,
 		],
 		enabled: activeHostService !== null && localWorkspaceIds.length > 0,
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-		refetchOnWindowFocus: false,
+		refetchInterval: 10_000,
 		queryFn: () =>
 			activeHostService?.client.pullRequests.getByWorkspaces.query({
 				workspaceIds: localWorkspaceIds,
@@ -223,16 +219,16 @@ export function useDashboardSidebarData() {
 			if (!project) continue;
 
 			const hostType: DashboardSidebarWorkspace["hostType"] =
-				workspace.deviceType === "cloud"
+				workspace.hostMachineId == null
 					? "cloud"
-					: workspace.deviceClientId === deviceInfo?.deviceId
+					: workspace.hostMachineId === deviceInfo?.deviceId
 						? "local-device"
 						: "remote-device";
 
 			const sidebarWorkspace: DashboardSidebarWorkspace = {
 				id: workspace.id,
 				projectId: workspace.projectId,
-				deviceId: workspace.deviceId,
+				hostId: workspace.hostId,
 				hostType,
 				accentColor: null,
 				name: workspace.name,
@@ -286,7 +282,7 @@ export function useDashboardSidebarData() {
 				const pendingItem: DashboardSidebarWorkspace = {
 					id: pendingWorkspace.id,
 					projectId: pendingWorkspace.projectId,
-					deviceId: deviceInfo.deviceId,
+					hostId: "",
 					hostType: "local-device",
 					accentColor: null,
 					name: pendingWorkspace.name,
