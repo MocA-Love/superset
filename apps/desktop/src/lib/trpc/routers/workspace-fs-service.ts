@@ -6,6 +6,7 @@ import {
 	toRelativePath,
 	type WorkspaceFsPathError,
 } from "@superset/workspace-fs/host";
+import { TRPCError } from "@trpc/server";
 import { shell } from "electron";
 import { getWorkspace } from "./workspaces/utils/db-helpers";
 import { execWithShellEnv } from "./workspaces/utils/shell-env";
@@ -82,7 +83,12 @@ export function toRegisteredWorktreeRelativePath(
 		relativePath.startsWith(`..${path.sep}`) ||
 		path.isAbsolute(relativePath)
 	) {
-		throw new Error(`Path is outside worktree: ${absolutePath}`);
+		// This helper is only consumed by tRPC routers, so out-of-worktree access
+		// should be surfaced directly as BAD_REQUEST instead of bubbling as internal.
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: `Path is outside worktree: ${absolutePath}`,
+		});
 	}
 
 	return relativePath.replace(/\\/g, "/");

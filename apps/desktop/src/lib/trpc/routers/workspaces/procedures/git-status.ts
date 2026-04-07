@@ -107,6 +107,34 @@ const ghRepositoryAssigneeSchema = z.object({
 	avatar_url: z.string().optional(),
 });
 
+async function loadGitHubOverviewSegment<T>({
+	label,
+	load,
+	fallback,
+	workspaceId,
+	repositoryNameWithOwner,
+}: {
+	label: string;
+	load: () => Promise<T>;
+	fallback: T;
+	workspaceId: string;
+	repositoryNameWithOwner: string;
+}): Promise<T> {
+	try {
+		return await load();
+	} catch (error) {
+		// Overview data is best-effort. A flaky GitHub endpoint should degrade this
+		// segment to empty data rather than failing the entire repository overview.
+		console.warn("[git-status/github-overview] Falling back to empty segment", {
+			label,
+			workspaceId,
+			repositoryNameWithOwner,
+			error,
+		});
+		return fallback;
+	}
+}
+
 function sanitizeIssueAssetBasename(value: string): string {
 	return value
 		.toLowerCase()
@@ -537,56 +565,88 @@ async function getGitHubRepositoryOverview(workspaceId: string) {
 		defaultBranch,
 	} = await resolveRepositoryTargetForWorkspace(workspaceId);
 
-	const [pullRequestsResult, workflowsResult, labelsResult, assigneesResult] =
-		await Promise.all([
-			execWithShellEnv(
-				"gh",
-				[
-					"pr",
-					"list",
-					"--repo",
-					repositoryNameWithOwner,
-					"--state",
-					"open",
-					"--limit",
-					"8",
-					"--json",
-					"number,title,url,state,isDraft,headRefName,updatedAt,author",
-				],
-				{ cwd: repoPath },
-			),
-			execWithShellEnv(
-				"gh",
-				[
-					"api",
-					`repos/${repositoryNameWithOwner}/actions/workflows?per_page=100`,
-				],
-				{ cwd: repoPath },
-			),
-			execWithShellEnv(
-				"gh",
-				["api", `repos/${repositoryNameWithOwner}/labels?per_page=100`],
-				{ cwd: repoPath },
-			),
-			execWithShellEnv(
-				"gh",
-				["api", `repos/${repositoryNameWithOwner}/assignees?per_page=100`],
-				{ cwd: repoPath },
-			),
-		]);
-
-	const rawPullRequests = JSON.parse(pullRequestsResult.stdout) as unknown;
-	const pullRequests = z
-		.array(ghRepositoryPullRequestSchema)
-		.parse(rawPullRequests);
-
-	const rawWorkflows = JSON.parse(workflowsResult.stdout) as unknown;
-	const workflows =
-		ghRepositoryWorkflowsResponseSchema.parse(rawWorkflows).workflows ?? [];
-	const rawLabels = JSON.parse(labelsResult.stdout) as unknown;
-	const labels = z.array(ghRepositoryLabelSchema).parse(rawLabels);
-	const rawAssignees = JSON.parse(assigneesResult.stdout) as unknown;
-	const assignees = z.array(ghRepositoryAssigneeSchema).parse(rawAssignees);
+	const [pullRequests, workflows, labels, assignees] = await Promise.all([
+		loadGitHubOverviewSegment({
+			label: "pullRequests",
+			workspaceId,
+			repositoryNameWithOwner,
+			fallback: [] as Array<z.infer<typeof ghRepositoryPullRequestSchema>>,
+			load: async () => {
+				const result = await execWithShellEnv(
+					"gh",
+					[
+						"pr",
+						"list",
+						"--repo",
+						repositoryNameWithOwner,
+						"--state",
+						"open",
+						"--limit",
+						"8",
+						"--json",
+						"number,title,url,state,isDraft,headRefName,updatedAt,author",
+					],
+					{ cwd: repoPath },
+				);
+				return z
+					.array(ghRepositoryPullRequestSchema)
+					.parse(JSON.parse(result.stdout) as unknown);
+			},
+		}),
+		loadGitHubOverviewSegment({
+			label: "workflows",
+			workspaceId,
+			repositoryNameWithOwner,
+			fallback: [] as Array<z.infer<typeof ghRepositoryWorkflowSchema>>,
+			load: async () => {
+				const result = await execWithShellEnv(
+					"gh",
+					[
+						"api",
+						`repos/${repositoryNameWithOwner}/actions/workflows?per_page=100`,
+					],
+					{ cwd: repoPath },
+				);
+				return (
+					ghRepositoryWorkflowsResponseSchema.parse(
+						JSON.parse(result.stdout) as unknown,
+					).workflows ?? []
+				);
+			},
+		}),
+		loadGitHubOverviewSegment({
+			label: "labels",
+			workspaceId,
+			repositoryNameWithOwner,
+			fallback: [] as Array<z.infer<typeof ghRepositoryLabelSchema>>,
+			load: async () => {
+				const result = await execWithShellEnv(
+					"gh",
+					["api", `repos/${repositoryNameWithOwner}/labels?per_page=100`],
+					{ cwd: repoPath },
+				);
+				return z
+					.array(ghRepositoryLabelSchema)
+					.parse(JSON.parse(result.stdout) as unknown);
+			},
+		}),
+		loadGitHubOverviewSegment({
+			label: "assignees",
+			workspaceId,
+			repositoryNameWithOwner,
+			fallback: [] as Array<z.infer<typeof ghRepositoryAssigneeSchema>>,
+			load: async () => {
+				const result = await execWithShellEnv(
+					"gh",
+					["api", `repos/${repositoryNameWithOwner}/assignees?per_page=100`],
+					{ cwd: repoPath },
+				);
+				return z
+					.array(ghRepositoryAssigneeSchema)
+					.parse(JSON.parse(result.stdout) as unknown);
+			},
+		}),
+	]);
 
 	return {
 		repositoryNameWithOwner,

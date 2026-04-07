@@ -10,6 +10,37 @@ type AppStateDB = Awaited<ReturnType<typeof JSONFilePreset<AppState>>>;
 
 let _appState: AppStateDB | null = null;
 
+function isMissingPathError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		error.code === "ENOENT"
+	);
+}
+
+function withWriteRetry(appStateDb: AppStateDB): AppStateDB {
+	const originalWrite = appStateDb.write.bind(appStateDb);
+
+	appStateDb.write = async () => {
+		// The Superset home directory can disappear after startup. Recreate it before
+		// each write and retry once on ENOENT so app-state persistence self-heals.
+		ensureSupersetHomeDirExists();
+
+		try {
+			await originalWrite();
+		} catch (error) {
+			if (!isMissingPathError(error)) {
+				throw error;
+			}
+
+			ensureSupersetHomeDirExists();
+			await originalWrite();
+		}
+	};
+
+	return appStateDb;
+}
+
 /**
  * Ensures loaded data has the correct shape by merging with defaults.
  * Handles legacy app-state.json files that may have a different structure
@@ -40,7 +71,9 @@ export async function initAppState(): Promise<void> {
 	if (_appState) return;
 
 	ensureSupersetHomeDirExists();
-	_appState = await JSONFilePreset<AppState>(APP_STATE_PATH, defaultAppState);
+	_appState = withWriteRetry(
+		await JSONFilePreset<AppState>(APP_STATE_PATH, defaultAppState),
+	);
 
 	// Reshape data to ensure it has the correct structure (handles legacy formats)
 	_appState.data = ensureValidShape(_appState.data);
