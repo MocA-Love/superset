@@ -27,6 +27,7 @@ import {
 	CommandPalette,
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
+import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { UnsavedChangesDialog } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/FileViewerPane/UnsavedChangesDialog";
 import { useWorkspaceFileEventBridge } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceRenameReconciliation } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceRenameReconciliation";
@@ -576,7 +577,11 @@ export function WorkspacePage({
 
 	// Open PR shortcut (⌘⇧P)
 	const { pr } = usePRStatus({ workspaceId, surface: "workspace-page" });
-	const { createOrOpenPR } = useCreateOrOpenPR({
+	const {
+		createOrOpenPR,
+		baseRepoDialog,
+		isPending: isCreateOrOpenPRPending,
+	} = useCreateOrOpenPR({
 		worktreePath: workspace?.worktreePath,
 	});
 	useHotkey(
@@ -919,6 +924,13 @@ export function WorkspacePage({
 					}
 					discardLabel="Discard & Close Tab"
 					saveLabel="Save & Close Tab"
+				/>
+				<CreatePullRequestBaseRepoDialog
+					open={baseRepoDialog.open}
+					options={baseRepoDialog.options}
+					isPending={isCreateOrOpenPRPending}
+					onOpenChange={baseRepoDialog.onOpenChange}
+					onConfirm={baseRepoDialog.onConfirm}
 				/>
 			</div>
 		</WorkspaceIdProvider>

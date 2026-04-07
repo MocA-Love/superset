@@ -391,8 +391,14 @@ export function TabView({ tab }: TabViewProps) {
 				return (
 					<VscodeExtensionPane
 						paneId={paneId}
+						path={path}
+						tabId={tab.id}
 						viewType={paneInfo.vscodeExtension.viewType}
 						extensionId={paneInfo.vscodeExtension.extensionId}
+						splitPaneAuto={splitPaneAuto}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);
 			}

@@ -14,6 +14,8 @@ export { getPRForBranch } from "./pr-resolution";
 export {
 	extractNwoFromUrl,
 	getPullRequestRepoArgs,
+	getPullRequestRepoNamesForWorktree,
 	getRepoContext,
+	getTrackingRepoUrl,
 	normalizeGitHubUrl,
 } from "./repo-context";

@@ -1,7 +1,7 @@
 import type { CheckItem, GitHubStatus } from "@superset/local-db";
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
-import { getPullRequestRepoNames } from "./repo-context";
+import { getPullRequestRepoNamesForWorktree } from "./repo-context";
 import {
 	type GHPRResponse,
 	GHPRResponseSchema,
@@ -11,9 +11,7 @@ import {
 const PR_JSON_FIELDS =
 	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepository,headRepositoryOwner,isCrossRepository,reviewDecision,statusCheckRollup,reviewRequests,assignees";
 
-function getPullRequestRepoArgSets(repoContext?: RepoContext): string[][] {
-	const repoNames = getPullRequestRepoNames(repoContext);
-
+function getPullRequestRepoArgSets(repoNames: string[]): string[][] {
 	if (repoNames.length === 0) {
 		return [[]];
 	}
@@ -36,17 +34,22 @@ export async function getPRForBranch(
 		return byTracking;
 	}
 
+	const repoNames = await getPullRequestRepoNamesForWorktree({
+		worktreePath,
+		repoContext,
+	});
+
 	const byHeadBranch = await findPRByHeadBranch(
 		worktreePath,
 		localBranch,
-		repoContext,
+		repoNames,
 		headSha,
 	);
 	if (byHeadBranch) {
 		return byHeadBranch;
 	}
 
-	return findPRByHeadCommit(worktreePath, repoContext, headSha);
+	return findPRByHeadCommit(worktreePath, repoNames, headSha);
 }
 
 /**
@@ -218,12 +221,12 @@ async function getPRByBranchTracking(
 async function findPRByHeadBranch(
 	worktreePath: string,
 	localBranch: string,
-	repoContext?: RepoContext,
+	repoNames: string[],
 	headSha?: string,
 ): Promise<GitHubStatus["pr"]> {
 	try {
 		const matches = new Map<number, GHPRResponse>();
-		const repoArgSets = getPullRequestRepoArgSets(repoContext);
+		const repoArgSets = getPullRequestRepoArgSets(repoNames);
 
 		for (const repoArgs of repoArgSets) {
 			for (const branchCandidate of getPRHeadBranchCandidates(localBranch)) {
@@ -280,7 +283,7 @@ async function findPRByHeadBranch(
  */
 async function findPRByHeadCommit(
 	worktreePath: string,
-	repoContext?: RepoContext,
+	repoNames: string[],
 	providedSha?: string,
 ): Promise<GitHubStatus["pr"]> {
 	try {
@@ -297,7 +300,7 @@ async function findPRByHeadCommit(
 		}
 
 		const exactHeadMatches: GHPRResponse[] = [];
-		for (const repoArgs of getPullRequestRepoArgSets(repoContext)) {
+		for (const repoArgs of getPullRequestRepoArgSets(repoNames)) {
 			let stdout: string;
 			try {
 				({ stdout } = await execWithShellEnv(

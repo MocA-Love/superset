@@ -4,6 +4,7 @@ import {
 } from "../../workspaces/utils/git";
 import { execGitWithShellPath } from "../../workspaces/utils/git-client";
 import {
+	extractNwoFromUrl,
 	getPRForBranch,
 	getPullRequestRepoArgs,
 	getRepoContext,
@@ -77,12 +78,15 @@ export async function mergePullRequest({
 		throw new Error(PR_CLOSED_MESSAGE);
 	}
 
+	const prRepoNameWithOwner = extractNwoFromUrl(pr.url);
 	const args = [
 		"pr",
 		"merge",
 		String(pr.number),
 		`--${strategy}`,
-		...getPullRequestRepoArgs(repoContext),
+		...(prRepoNameWithOwner
+			? ["--repo", prRepoNameWithOwner]
+			: getPullRequestRepoArgs(repoContext)),
 	];
 
 	try {

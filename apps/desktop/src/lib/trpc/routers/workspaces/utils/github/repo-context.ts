@@ -1,5 +1,6 @@
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
+import { parseUpstreamRef } from "../upstream-ref";
 import { getCachedRepoContextState, readCachedRepoContext } from "./cache";
 import { GHRepoResponseSchema, type RepoContext } from "./types";
 
@@ -121,8 +122,19 @@ export function shouldRefreshCachedRepoContext({
 
 async function getOriginUrl(worktreePath: string): Promise<string | null> {
 	try {
+		return getRemoteUrl(worktreePath, "origin");
+	} catch {
+		return null;
+	}
+}
+
+async function getRemoteUrl(
+	worktreePath: string,
+	remoteName: string,
+): Promise<string | null> {
+	try {
 		const { stdout } = await execGitWithShellPath(
-			["remote", "get-url", "origin"],
+			["remote", "get-url", remoteName],
 			{ cwd: worktreePath },
 		);
 		return normalizeGitHubUrl(stdout.trim());
@@ -169,6 +181,53 @@ export function getPullRequestRepoNames(
 	const candidates = [
 		repoContext.repoUrl,
 		repoContext.isFork ? repoContext.upstreamUrl : null,
+	];
+
+	return Array.from(
+		new Set(
+			candidates
+				.map((candidate) => normalizeGitHubUrl(candidate ?? ""))
+				.filter((candidate): candidate is string => Boolean(candidate))
+				.map((candidate) => extractNwoFromUrl(candidate))
+				.filter((candidate): candidate is string => Boolean(candidate)),
+		),
+	);
+}
+
+export async function getTrackingRepoUrl(
+	worktreePath: string,
+): Promise<string | null> {
+	try {
+		const { stdout } = await execGitWithShellPath(
+			["rev-parse", "--abbrev-ref", "@{upstream}"],
+			{ cwd: worktreePath },
+		);
+		const parsed = parseUpstreamRef(stdout.trim());
+		if (!parsed) {
+			return null;
+		}
+
+		return getRemoteUrl(worktreePath, parsed.remoteName);
+	} catch {
+		return null;
+	}
+}
+
+export async function getPullRequestRepoNamesForWorktree({
+	worktreePath,
+	repoContext,
+}: {
+	worktreePath: string;
+	repoContext?: Pick<RepoContext, "repoUrl" | "upstreamUrl" | "isFork"> | null;
+}): Promise<string[]> {
+	const [resolvedRepoContext, trackingRepoUrl] = await Promise.all([
+		repoContext ? Promise.resolve(repoContext) : getRepoContext(worktreePath),
+		getTrackingRepoUrl(worktreePath),
+	]);
+
+	const candidates = [
+		trackingRepoUrl,
+		...getPullRequestRepoNames(resolvedRepoContext),
 	];
 
 	return Array.from(

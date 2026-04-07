@@ -4,6 +4,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { toast } from "@superset/ui/sonner";
@@ -15,6 +16,7 @@ import {
 	VscLoading,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useCreateOrOpenPR } from "renderer/screens/main/hooks";
 
@@ -50,11 +52,16 @@ export function PRButton({
 			}),
 	});
 
-	const { createOrOpenPR, isPending: isCreateOrOpenPRPending } =
-		useCreateOrOpenPR({
-			worktreePath,
-			onSuccess: onRefresh,
-		});
+	const {
+		createOrOpenPR,
+		isPending: isCreateOrOpenPRPending,
+		baseRepoDialog,
+		openBaseRepoConfiguration,
+		resetBaseRepoConfiguration,
+	} = useCreateOrOpenPR({
+		worktreePath,
+		onSuccess: onRefresh,
+	});
 
 	const isCreatePending = isCreateOrOpenPRPending;
 
@@ -86,23 +93,71 @@ export function PRButton({
 		}
 
 		return (
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<button
-						type="button"
-						className="flex items-center ml-auto hover:opacity-80 transition-opacity disabled:opacity-50"
-						onClick={handleCreatePR}
-						disabled={isCreatePending}
-					>
-						{isCreatePending ? (
-							<VscLoading className="w-4 h-4 animate-spin text-muted-foreground" />
-						) : (
-							<VscGitPullRequest className="w-4 h-4 text-muted-foreground" />
-						)}
-					</button>
-				</TooltipTrigger>
-				<TooltipContent side="top">Create Pull Request</TooltipContent>
-			</Tooltip>
+			<>
+				<div className="flex items-center ml-auto rounded border border-border overflow-hidden">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								className="flex items-center px-1.5 py-0.5 hover:bg-accent transition-colors disabled:opacity-50"
+								onClick={handleCreatePR}
+								disabled={isCreatePending}
+								aria-label="Create pull request"
+							>
+								{isCreatePending ? (
+									<VscLoading className="w-4 h-4 animate-spin text-muted-foreground" />
+								) : (
+									<VscGitPullRequest className="w-4 h-4 text-muted-foreground" />
+								)}
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="top">Create Pull Request</TooltipContent>
+					</Tooltip>
+					<div className="w-px h-full bg-border" />
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button
+								type="button"
+								className="flex items-center px-1 py-0.5 hover:bg-accent transition-colors disabled:opacity-50"
+								disabled={isCreatePending}
+								aria-label="Open pull request options"
+							>
+								<VscChevronDown className="size-3 text-muted-foreground" />
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-56">
+							<DropdownMenuItem onClick={handleCreatePR} className="text-xs">
+								<VscGitPullRequest className="size-3.5" />
+								Create Pull Request
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								onClick={openBaseRepoConfiguration}
+								className="text-xs"
+							>
+								<VscGitPullRequest className="size-3.5" />
+								Change PR base repository
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onClick={resetBaseRepoConfiguration}
+								className="text-xs"
+							>
+								<VscGitPullRequest className="size-3.5" />
+								Reset PR base repository
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+				<CreatePullRequestBaseRepoDialog
+					open={baseRepoDialog.open}
+					options={baseRepoDialog.options}
+					isPending={isCreatePending}
+					title="Choose pull request base repository"
+					description="Choose which repository new pull requests from this branch should target. The selection will be remembered for this branch."
+					onOpenChange={baseRepoDialog.onOpenChange}
+					onConfirm={baseRepoDialog.onConfirm}
+				/>
+			</>
 		);
 	}
 
@@ -188,8 +243,35 @@ export function PRButton({
 						<VscGitMerge className="size-3.5" />
 						Rebase and merge
 					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						onClick={openBaseRepoConfiguration}
+						className="text-xs"
+						disabled={mergePRMutation.isPending}
+					>
+						<VscGitPullRequest className="size-3.5" />
+						Change PR base repository
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={resetBaseRepoConfiguration}
+						className="text-xs"
+						disabled={mergePRMutation.isPending}
+					>
+						<VscGitPullRequest className="size-3.5" />
+						Reset PR base repository
+					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
+			<CreatePullRequestBaseRepoDialog
+				open={baseRepoDialog.open}
+				options={baseRepoDialog.options}
+				isPending={isCreatePending}
+				title="Update pull request base repository"
+				description="Choose which repository new pull requests from this branch should target. This updates the saved preference for the current branch."
+				confirmLabel="Save"
+				onOpenChange={baseRepoDialog.onOpenChange}
+				onConfirm={baseRepoDialog.onConfirm}
+			/>
 		</div>
 	);
 }
