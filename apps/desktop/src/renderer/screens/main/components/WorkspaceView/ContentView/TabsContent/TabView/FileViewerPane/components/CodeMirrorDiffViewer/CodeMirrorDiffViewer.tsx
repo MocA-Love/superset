@@ -20,6 +20,10 @@ import {
 	createBlamePlugin,
 } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createBlamePlugin";
 import { createCodeMirrorTheme } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createCodeMirrorTheme";
+import {
+	createInlineCompletionPlugin,
+	type InlineCompletionRequest,
+} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createInlineCompletionPlugin";
 import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/loadLanguageSupport";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
@@ -134,6 +138,7 @@ interface CodeMirrorDiffViewerProps {
 		endColumn: number | null;
 		severity: "error" | "warning" | "info" | "hint";
 	}>;
+	inlineCompletionRequest?: InlineCompletionRequest | null;
 }
 
 function createDiagnosticsTheme(theme: ReturnType<typeof getEditorTheme>) {
@@ -207,6 +212,7 @@ export function CodeMirrorDiffViewer({
 	onSave,
 	blameEntries,
 	diagnostics = [],
+	inlineCompletionRequest,
 }: CodeMirrorDiffViewerProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const mergeViewRef = useRef<MergeView | null>(null);
@@ -216,8 +222,10 @@ export function CodeMirrorDiffViewer({
 	const themeCompartmentB = useRef(new Compartment()).current;
 	const blameCompartmentB = useRef(new Compartment()).current;
 	const diagnosticsCompartmentB = useRef(new Compartment()).current;
+	const inlineCompletionCompartmentB = useRef(new Compartment()).current;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
+	const inlineCompletionRequestRef = useRef(inlineCompletionRequest);
 	const activeTheme = useResolvedTheme();
 	const { data: fontSettings } = electronTrpc.settings.getFontSettings.useQuery(
 		undefined,
@@ -234,6 +242,10 @@ export function CodeMirrorDiffViewer({
 	useEffect(() => {
 		onSaveRef.current = onSave;
 	}, [onSave]);
+
+	useEffect(() => {
+		inlineCompletionRequestRef.current = inlineCompletionRequest;
+	}, [inlineCompletionRequest]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: MergeView is created once and destroyed on unmount
 	useEffect(() => {
@@ -269,6 +281,15 @@ export function CodeMirrorDiffViewer({
 					},
 				},
 			]),
+			inlineCompletionCompartmentB.of(
+				inlineCompletionRequestRef.current
+					? createInlineCompletionPlugin(
+							(args) =>
+								inlineCompletionRequestRef.current?.(args) ??
+								Promise.resolve(null),
+						)
+					: [],
+			),
 			EditorView.updateListener.of((update) => {
 				if (update.docChanged) {
 					onChangeRef.current?.(update.state.doc.toString());
@@ -381,6 +402,23 @@ export function CodeMirrorDiffViewer({
 			),
 		});
 	}, [blameEntries, blameCompartmentB, worktreePath]);
+
+	useEffect(() => {
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+
+		mv.b.dispatch({
+			effects: inlineCompletionCompartmentB.reconfigure(
+				inlineCompletionRequest
+					? createInlineCompletionPlugin(
+							(args) =>
+								inlineCompletionRequestRef.current?.(args) ??
+								Promise.resolve(null),
+						)
+					: [],
+			),
+		});
+	}, [inlineCompletionCompartmentB, inlineCompletionRequest]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }

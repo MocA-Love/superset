@@ -16,7 +16,7 @@ import type { CodeEditorAdapter } from "renderer/screens/main/components/Workspa
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import type { Tab } from "renderer/stores/tabs/types";
 import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
-import type { DiffViewMode } from "shared/changes-types";
+import { type DiffViewMode, isDiffEditable } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
 import { isHtmlFile, isImageFile, isSpreadsheetFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
@@ -351,6 +351,7 @@ export function FileViewerContent({
 	}, [initialLine, initialColumn]);
 
 	const rawFileContent = rawFileData?.ok ? rawFileData.content : null;
+	const isEditableDiff = diffCategory ? isDiffEditable(diffCategory) : false;
 
 	useEffect(() => {
 		if (viewMode !== "raw" || rawFileContent === null) {
@@ -359,6 +360,14 @@ export function FileViewerContent({
 
 		syncDocumentSnapshot(rawFileContent);
 	}, [rawFileContent, syncDocumentSnapshot, viewMode]);
+
+	useEffect(() => {
+		if (viewMode !== "diff" || !isEditableDiff || !diffData) {
+			return;
+		}
+
+		syncDocumentSnapshot(diffData.modified);
+	}, [diffData, isEditableDiff, syncDocumentSnapshot, viewMode]);
 
 	useEffect(() => {
 		if (viewMode !== "raw") {
@@ -418,6 +427,16 @@ export function FileViewerContent({
 	};
 
 	const handleRawEditorChange = useCallback(
+		(value: string | undefined) => {
+			if (typeof value === "string") {
+				trackDocumentChange(value);
+			}
+			onContentChange(value);
+		},
+		[onContentChange, trackDocumentChange],
+	);
+
+	const handleDiffEditorChange = useCallback(
 		(value: string | undefined) => {
 			if (typeof value === "string") {
 				trackDocumentChange(value);
@@ -555,10 +574,15 @@ export function FileViewerContent({
 							language={diffData.language}
 							worktreePath={worktreePath}
 							viewMode={diffViewMode}
-							onChange={onContentChange}
+							onChange={handleDiffEditorChange}
 							onSave={onSaveFile}
 							blameEntries={blameData?.entries}
 							diagnostics={fileDiagnostics}
+							inlineCompletionRequest={
+								isEditableDiff && isNextEditAvailable
+									? requestInlineCompletion
+									: null
+							}
 						/>
 					</div>
 				</div>
