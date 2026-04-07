@@ -125,6 +125,8 @@ interface ReviewPanelProps {
 	onRefreshReview?: (scope?: "full" | "status") => Promise<void>;
 }
 
+type GitHubStatusCacheValue = GitHubStatus | null | undefined;
+
 export function ReviewPanel({
 	pr,
 	comments = [],
@@ -188,6 +190,27 @@ export function ReviewPanel({
 	const [pendingRerunMode, setPendingRerunMode] = useState<
 		"all" | "failed" | null
 	>(null);
+	const setGitHubStatusCaches = useCallback(
+		(
+			nextValue:
+				| GitHubStatusCacheValue
+				| ((current: GitHubStatusCacheValue) => GitHubStatusCacheValue),
+		) => {
+			if (!resolvedWorkspaceId) {
+				return;
+			}
+
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId: resolvedWorkspaceId },
+				nextValue,
+			);
+			trpcUtils.workspaces.getGitHubStatus.setData(
+				{ workspaceId: resolvedWorkspaceId, includePreview: true },
+				nextValue,
+			);
+		},
+		[resolvedWorkspaceId, trpcUtils],
+	);
 	const {
 		data: identityCandidates = [],
 		isLoading: isIdentityCandidatesLoading,
@@ -268,22 +291,19 @@ export function ReviewPanel({
 		const previousState = pr.state;
 
 		setIsDraftTogglePending(true);
-		trpcUtils.workspaces.getGitHubStatus.setData(
-			{ workspaceId: resolvedWorkspaceId },
-			(current) => {
-				if (!current?.pr) {
-					return current;
-				}
+		setGitHubStatusCaches((current) => {
+			if (!current?.pr) {
+				return current;
+			}
 
-				return {
-					...current,
-					pr: {
-						...current.pr,
-						state: nextIsDraft ? "draft" : "open",
-					},
-				};
-			},
-		);
+			return {
+				...current,
+				pr: {
+					...current.pr,
+					state: nextIsDraft ? "draft" : "open",
+				},
+			};
+		});
 
 		void setPullRequestDraftStateMutation
 			.mutateAsync({
@@ -294,22 +314,19 @@ export function ReviewPanel({
 			.catch((error) => {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
-				trpcUtils.workspaces.getGitHubStatus.setData(
-					{ workspaceId: resolvedWorkspaceId },
-					(current) => {
-						if (!current?.pr) {
-							return current;
-						}
+				setGitHubStatusCaches((current) => {
+					if (!current?.pr) {
+						return current;
+					}
 
-						return {
-							...current,
-							pr: {
-								...current.pr,
-								state: previousState,
-							},
-						};
-					},
-				);
+					return {
+						...current,
+						pr: {
+							...current.pr,
+							state: previousState,
+						},
+					};
+				});
 				toast.error(`Failed to update pull request: ${message}`);
 				void refreshReview("status");
 			})
@@ -411,38 +428,35 @@ export function ReviewPanel({
 				remove.map((value) => value.trim()).filter(Boolean),
 			);
 
-			trpcUtils.workspaces.getGitHubStatus.setData(
-				{ workspaceId: resolvedWorkspaceId },
-				(current) => {
-					if (!current?.pr) {
-						return current;
-					}
+			setGitHubStatusCaches((current) => {
+				if (!current?.pr) {
+					return current;
+				}
 
-					const existingValues =
-						kind === "reviewer"
-							? (current.pr.requestedReviewers ?? [])
-							: (current.pr.assignees ?? []);
-					const nextValues = Array.from(
-						new Set(
-							existingValues
-								.filter((value) => !normalizedRemove.has(value))
-								.concat(normalizedAdd),
-						),
-					);
+				const existingValues =
+					kind === "reviewer"
+						? (current.pr.requestedReviewers ?? [])
+						: (current.pr.assignees ?? []);
+				const nextValues = Array.from(
+					new Set(
+						existingValues
+							.filter((value) => !normalizedRemove.has(value))
+							.concat(normalizedAdd),
+					),
+				);
 
-					return {
-						...current,
-						pr: {
-							...current.pr,
-							...(kind === "reviewer"
-								? { requestedReviewers: nextValues }
-								: { assignees: nextValues }),
-						},
-					};
-				},
-			);
+				return {
+					...current,
+					pr: {
+						...current.pr,
+						...(kind === "reviewer"
+							? { requestedReviewers: nextValues }
+							: { assignees: nextValues }),
+					},
+				};
+			});
 		},
-		[resolvedWorkspaceId, trpcUtils],
+		[resolvedWorkspaceId, setGitHubStatusCaches],
 	);
 
 	const restoreOptimisticMemberUpdate = useCallback(
@@ -451,26 +465,23 @@ export function ReviewPanel({
 				return;
 			}
 
-			trpcUtils.workspaces.getGitHubStatus.setData(
-				{ workspaceId: resolvedWorkspaceId },
-				(current) => {
-					if (!current?.pr) {
-						return current;
-					}
+			setGitHubStatusCaches((current) => {
+				if (!current?.pr) {
+					return current;
+				}
 
-					return {
-						...current,
-						pr: {
-							...current.pr,
-							...(kind === "reviewer"
-								? { requestedReviewers: values }
-								: { assignees: values }),
-						},
-					};
-				},
-			);
+				return {
+					...current,
+					pr: {
+						...current.pr,
+						...(kind === "reviewer"
+							? { requestedReviewers: values }
+							: { assignees: values }),
+					},
+				};
+			});
 		},
-		[resolvedWorkspaceId, trpcUtils],
+		[resolvedWorkspaceId, setGitHubStatusCaches],
 	);
 
 	if (isLoading && !pr) {

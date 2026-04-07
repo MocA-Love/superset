@@ -300,6 +300,7 @@ class GitHubSyncServiceImpl {
 			}
 		} catch (error) {
 			console.warn("[GitHub SyncService] PR status sync failed:", error);
+			this.scheduleNextPRCommentsSync(state);
 		} finally {
 			const current = this.workspaces.get(worktreePath);
 			if (current) {
