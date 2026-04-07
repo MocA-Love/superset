@@ -17,6 +17,7 @@ export type SettingsSection =
 	| "extensions"
 	| "billing"
 	| "apikeys"
+	| "metrics"
 	| "permissions"
 	| "project"
 	| "vscodeExtensions";

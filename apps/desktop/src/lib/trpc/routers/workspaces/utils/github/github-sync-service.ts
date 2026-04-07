@@ -44,10 +44,18 @@ interface WorkspaceSyncState {
 	worktreePath: string;
 	prStatusTimer: ReturnType<typeof setTimeout> | null;
 	prCommentsTimer: ReturnType<typeof setTimeout> | null;
+	nextPRStatusSyncAt: number | null;
+	nextPRCommentsSyncAt: number | null;
 	isActive: boolean;
 	prStatusInFlight: boolean;
 	prCommentsInFlight: boolean;
 	latestStatus: GitHubStatus | null;
+	lastPRStatusSuccessAt: number | null;
+	lastPRStatusErrorAt: number | null;
+	lastPRStatusErrorMessage: string | null;
+	lastPRCommentsSuccessAt: number | null;
+	lastPRCommentsErrorAt: number | null;
+	lastPRCommentsErrorMessage: string | null;
 }
 
 interface SyncServiceDeps {
@@ -57,6 +65,38 @@ interface SyncServiceDeps {
 		worktreePath: string,
 		status: GitHubStatus | null,
 	) => void;
+}
+
+export interface GitHubSyncWorkspaceDebugSnapshot {
+	worktreePath: string;
+	isActive: boolean;
+	prStatusInFlight: boolean;
+	prCommentsInFlight: boolean;
+	nextPRStatusSyncAt: number | null;
+	nextPRCommentsSyncAt: number | null;
+	prStatusIntervalMs: number;
+	prCommentsIntervalMs: number | null;
+	lastPRStatusSuccessAt: number | null;
+	lastPRStatusErrorAt: number | null;
+	lastPRStatusErrorMessage: string | null;
+	lastPRCommentsSuccessAt: number | null;
+	lastPRCommentsErrorAt: number | null;
+	lastPRCommentsErrorMessage: string | null;
+	latestStatus: {
+		hasPr: boolean;
+		prNumber: number | null;
+		checksStatus: NonNullable<GitHubStatus["pr"]>["checksStatus"] | null;
+		repoUrl: string | null;
+		branchExistsOnRemote: boolean;
+		lastRefreshed: number | null;
+	};
+}
+
+export interface GitHubSyncServiceDebugSnapshot {
+	registeredWorkspaceCount: number;
+	activeWorkspaceCount: number;
+	activeWorktreePaths: string[];
+	workspaces: GitHubSyncWorkspaceDebugSnapshot[];
 }
 
 class GitHubSyncServiceImpl {
@@ -84,10 +124,18 @@ class GitHubSyncServiceImpl {
 			worktreePath,
 			prStatusTimer: null,
 			prCommentsTimer: null,
+			nextPRStatusSyncAt: null,
+			nextPRCommentsSyncAt: null,
 			isActive: false,
 			prStatusInFlight: false,
 			prCommentsInFlight: false,
 			latestStatus: null,
+			lastPRStatusSuccessAt: null,
+			lastPRStatusErrorAt: null,
+			lastPRStatusErrorMessage: null,
+			lastPRCommentsSuccessAt: null,
+			lastPRCommentsErrorAt: null,
+			lastPRCommentsErrorMessage: null,
 		};
 
 		this.workspaces.set(worktreePath, state);
@@ -213,6 +261,47 @@ class GitHubSyncServiceImpl {
 		return this.workspaces.has(worktreePath);
 	}
 
+	getDebugSnapshot(): GitHubSyncServiceDebugSnapshot {
+		const workspaces = [...this.workspaces.values()].map((state) => ({
+			worktreePath: state.worktreePath,
+			isActive: state.isActive,
+			prStatusInFlight: state.prStatusInFlight,
+			prCommentsInFlight: state.prCommentsInFlight,
+			nextPRStatusSyncAt: state.nextPRStatusSyncAt,
+			nextPRCommentsSyncAt: state.nextPRCommentsSyncAt,
+			prStatusIntervalMs: this.getPRStatusInterval(state),
+			prCommentsIntervalMs: getPullRequestCommentsTargetFromStatus(
+				state.latestStatus,
+			)
+				? SYNC_PR_COMMENTS_INTERVAL_MS
+				: null,
+			lastPRStatusSuccessAt: state.lastPRStatusSuccessAt,
+			lastPRStatusErrorAt: state.lastPRStatusErrorAt,
+			lastPRStatusErrorMessage: state.lastPRStatusErrorMessage,
+			lastPRCommentsSuccessAt: state.lastPRCommentsSuccessAt,
+			lastPRCommentsErrorAt: state.lastPRCommentsErrorAt,
+			lastPRCommentsErrorMessage: state.lastPRCommentsErrorMessage,
+			latestStatus: {
+				hasPr: Boolean(state.latestStatus?.pr),
+				prNumber: state.latestStatus?.pr?.number ?? null,
+				checksStatus: state.latestStatus?.pr?.checksStatus ?? null,
+				repoUrl: state.latestStatus?.repoUrl ?? null,
+				branchExistsOnRemote: state.latestStatus?.branchExistsOnRemote ?? false,
+				lastRefreshed: state.latestStatus?.lastRefreshed ?? null,
+			},
+		}));
+
+		return {
+			registeredWorkspaceCount: workspaces.length,
+			activeWorkspaceCount: workspaces.filter((workspace) => workspace.isActive)
+				.length,
+			activeWorktreePaths: workspaces
+				.filter((workspace) => workspace.isActive)
+				.map((workspace) => workspace.worktreePath),
+			workspaces,
+		};
+	}
+
 	private async primeWorkspace(worktreePath: string): Promise<void> {
 		await this.syncPRStatus(worktreePath);
 	}
@@ -222,10 +311,12 @@ class GitHubSyncServiceImpl {
 			clearTimeout(state.prStatusTimer);
 			state.prStatusTimer = null;
 		}
+		state.nextPRStatusSyncAt = null;
 		if (state.prCommentsTimer) {
 			clearTimeout(state.prCommentsTimer);
 			state.prCommentsTimer = null;
 		}
+		state.nextPRCommentsSyncAt = null;
 	}
 
 	private getPRStatusInterval(state: WorkspaceSyncState): number {
@@ -243,9 +334,11 @@ class GitHubSyncServiceImpl {
 			clearTimeout(state.prStatusTimer);
 		}
 
+		const intervalMs = this.getPRStatusInterval(state);
+		state.nextPRStatusSyncAt = Date.now() + intervalMs;
 		state.prStatusTimer = setTimeout(() => {
 			void this.syncPRStatus(state.worktreePath);
-		}, this.getPRStatusInterval(state));
+		}, intervalMs);
 	}
 
 	private scheduleNextPRCommentsSync(state: WorkspaceSyncState): void {
@@ -253,6 +346,7 @@ class GitHubSyncServiceImpl {
 			clearTimeout(state.prCommentsTimer);
 			state.prCommentsTimer = null;
 		}
+		state.nextPRCommentsSyncAt = null;
 
 		if (
 			!state.isActive ||
@@ -261,6 +355,7 @@ class GitHubSyncServiceImpl {
 			return;
 		}
 
+		state.nextPRCommentsSyncAt = Date.now() + SYNC_PR_COMMENTS_INTERVAL_MS;
 		state.prCommentsTimer = setTimeout(() => {
 			void this.syncPRComments(state.worktreePath);
 		}, SYNC_PR_COMMENTS_INTERVAL_MS);
@@ -273,6 +368,7 @@ class GitHubSyncServiceImpl {
 			clearTimeout(state.prStatusTimer);
 			state.prStatusTimer = null;
 		}
+		state.nextPRStatusSyncAt = null;
 		if (isRateLimited() || state.prStatusInFlight) {
 			if (state.isActive && !state.prStatusInFlight) {
 				this.scheduleNextPRStatusSync(state);
@@ -289,6 +385,9 @@ class GitHubSyncServiceImpl {
 			const status = await this.deps.fetchPRStatus(worktreePath);
 			if (!this.workspaces.has(worktreePath)) return;
 			state.latestStatus = status;
+			state.lastPRStatusSuccessAt = Date.now();
+			state.lastPRStatusErrorAt = null;
+			state.lastPRStatusErrorMessage = null;
 			this.deps.onPRStatusUpdate?.(worktreePath, status);
 
 			const nextCommentsTargetKey = getPullRequestCommentsTargetKey(status);
@@ -300,6 +399,9 @@ class GitHubSyncServiceImpl {
 			}
 		} catch (error) {
 			console.warn("[GitHub SyncService] PR status sync failed:", error);
+			state.lastPRStatusErrorAt = Date.now();
+			state.lastPRStatusErrorMessage =
+				error instanceof Error ? error.message : String(error);
 			this.scheduleNextPRCommentsSync(state);
 		} finally {
 			const current = this.workspaces.get(worktreePath);
@@ -317,6 +419,7 @@ class GitHubSyncServiceImpl {
 			clearTimeout(state.prCommentsTimer);
 			state.prCommentsTimer = null;
 		}
+		state.nextPRCommentsSyncAt = null;
 		if (isRateLimited() || state.prCommentsInFlight) {
 			if (state.isActive && !state.prCommentsInFlight) {
 				this.scheduleNextPRCommentsSync(state);
@@ -336,8 +439,14 @@ class GitHubSyncServiceImpl {
 		try {
 			await this.deps.fetchPRComments({ worktreePath, pullRequest });
 			if (!this.workspaces.has(worktreePath)) return;
+			state.lastPRCommentsSuccessAt = Date.now();
+			state.lastPRCommentsErrorAt = null;
+			state.lastPRCommentsErrorMessage = null;
 		} catch (error) {
 			console.warn("[GitHub SyncService] PR comments sync failed:", error);
+			state.lastPRCommentsErrorAt = Date.now();
+			state.lastPRCommentsErrorMessage =
+				error instanceof Error ? error.message : String(error);
 		} finally {
 			const current = this.workspaces.get(worktreePath);
 			if (current) {

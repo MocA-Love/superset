@@ -1,6 +1,7 @@
 import type { CheckItem, GitHubStatus } from "@superset/local-db";
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
+import { trackGitHubOperation } from "./github-metrics";
 import { getPullRequestRepoNamesForWorktree } from "./repo-context";
 import {
 	type GHPRResponse,
@@ -183,11 +184,15 @@ async function getPRByBranchTracking(
 	headSha?: string,
 ): Promise<GitHubStatus["pr"]> {
 	try {
-		const { stdout } = await execWithShellEnv(
-			"gh",
-			["pr", "view", "--json", PR_JSON_FIELDS],
-			{ cwd: worktreePath },
-		);
+		const { stdout } = await trackGitHubOperation({
+			name: "gh_pr_view",
+			category: "gh",
+			worktreePath,
+			fn: () =>
+				execWithShellEnv("gh", ["pr", "view", "--json", PR_JSON_FIELDS], {
+					cwd: worktreePath,
+				}),
+		});
 
 		const data = parsePRResponse(stdout);
 		if (!data) {
@@ -232,23 +237,29 @@ async function findPRByHeadBranch(
 			for (const branchCandidate of getPRHeadBranchCandidates(localBranch)) {
 				let stdout: string;
 				try {
-					({ stdout } = await execWithShellEnv(
-						"gh",
-						[
-							"pr",
-							"list",
-							...repoArgs,
-							"--state",
-							"all",
-							"--head",
-							branchCandidate,
-							"--limit",
-							"20",
-							"--json",
-							PR_JSON_FIELDS,
-						],
-						{ cwd: worktreePath },
-					));
+					({ stdout } = await trackGitHubOperation({
+						name: "gh_pr_list_by_head_branch",
+						category: "gh",
+						worktreePath,
+						fn: () =>
+							execWithShellEnv(
+								"gh",
+								[
+									"pr",
+									"list",
+									...repoArgs,
+									"--state",
+									"all",
+									"--head",
+									branchCandidate,
+									"--limit",
+									"20",
+									"--json",
+									PR_JSON_FIELDS,
+								],
+								{ cwd: worktreePath },
+							),
+					}));
 				} catch (error) {
 					console.warn(
 						"[GitHub/findPRByHeadBranch] Failed repo-scoped PR lookup:",
@@ -303,23 +314,29 @@ async function findPRByHeadCommit(
 		for (const repoArgs of getPullRequestRepoArgSets(repoNames)) {
 			let stdout: string;
 			try {
-				({ stdout } = await execWithShellEnv(
-					"gh",
-					[
-						"pr",
-						"list",
-						...repoArgs,
-						"--state",
-						"all",
-						"--search",
-						`${headSha} is:pr`,
-						"--limit",
-						"20",
-						"--json",
-						PR_JSON_FIELDS,
-					],
-					{ cwd: worktreePath },
-				));
+				({ stdout } = await trackGitHubOperation({
+					name: "gh_pr_list_by_head_commit",
+					category: "gh",
+					worktreePath,
+					fn: () =>
+						execWithShellEnv(
+							"gh",
+							[
+								"pr",
+								"list",
+								...repoArgs,
+								"--state",
+								"all",
+								"--search",
+								`${headSha} is:pr`,
+								"--limit",
+								"20",
+								"--json",
+								PR_JSON_FIELDS,
+							],
+							{ cwd: worktreePath },
+						),
+				}));
 			} catch (error) {
 				console.warn(
 					"[GitHub/findPRByHeadCommit] Failed repo-scoped PR lookup:",

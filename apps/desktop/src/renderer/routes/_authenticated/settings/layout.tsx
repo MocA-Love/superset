@@ -38,6 +38,7 @@ const SECTION_ORDER: SettingsSection[] = [
 	"integrations",
 	"billing",
 	"apikeys",
+	"metrics",
 	"permissions",
 ];
 
@@ -57,6 +58,7 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 		return "vscodeExtensions";
 	if (pathname.includes("/settings/extensions")) return "extensions";
 	if (pathname.includes("/settings/permissions")) return "permissions";
+	if (pathname.includes("/settings/metrics")) return "metrics";
 	if (pathname.includes("/settings/project")) return "project";
 	return null;
 }
@@ -91,6 +93,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/vscode-extensions";
 		case "permissions":
 			return "/settings/permissions";
+		case "metrics":
+			return "/settings/metrics";
 		default:
 			return "/settings/account";
 	}

@@ -1,6 +1,7 @@
 import type { PullRequestComment } from "@superset/local-db";
 import type { z } from "zod";
 import { execWithShellEnv } from "../shell-env";
+import { trackGitHubOperation } from "./github-metrics";
 import {
 	GHIssueCommentSchema,
 	type GHReviewThreadCommentSchema,
@@ -135,11 +136,24 @@ export async function resolveReviewThread({
 		? RESOLVE_REVIEW_THREAD_MUTATION
 		: UNRESOLVE_REVIEW_THREAD_MUTATION;
 
-	const { stdout } = await execWithShellEnv(
-		"gh",
-		["api", "graphql", "-f", `query=${mutation}`, "-F", `threadId=${threadId}`],
-		{ cwd: worktreePath },
-	);
+	const { stdout } = await trackGitHubOperation({
+		name: "gh_graphql_resolve_review_thread",
+		category: "gh",
+		worktreePath,
+		fn: () =>
+			execWithShellEnv(
+				"gh",
+				[
+					"api",
+					"graphql",
+					"-f",
+					`query=${mutation}`,
+					"-F",
+					`threadId=${threadId}`,
+				],
+				{ cwd: worktreePath },
+			),
+	});
 
 	const json = JSON.parse(stdout.trim());
 	if (Array.isArray(json.errors) && json.errors.length > 0) {
@@ -315,11 +329,15 @@ async function fetchPaginatedCommentsEndpoint(
 	worktreePath: string,
 	endpoint: string,
 ): Promise<unknown[]> {
-	const { stdout } = await execWithShellEnv(
-		"gh",
-		["api", "--paginate", "--slurp", endpoint],
-		{ cwd: worktreePath },
-	);
+	const { stdout } = await trackGitHubOperation({
+		name: "gh_api_issue_comments_paginated",
+		category: "gh",
+		worktreePath,
+		fn: () =>
+			execWithShellEnv("gh", ["api", "--paginate", "--slurp", endpoint], {
+				cwd: worktreePath,
+			}),
+	});
 
 	return parsePaginatedApiArray(stdout);
 }
@@ -362,20 +380,26 @@ async function fetchAdditionalReviewThreadCommentsForThread({
 	while (afterCursor) {
 		let stdout: string;
 		try {
-			const result = await execWithShellEnv(
-				"gh",
-				[
-					"api",
-					"graphql",
-					"-f",
-					`query=${REVIEW_THREAD_COMMENTS_QUERY}`,
-					"-F",
-					`threadId=${threadId}`,
-					"-F",
-					`after=${afterCursor}`,
-				],
-				{ cwd: worktreePath },
-			);
+			const result = await trackGitHubOperation({
+				name: "gh_graphql_review_thread_comments_page",
+				category: "gh",
+				worktreePath,
+				fn: () =>
+					execWithShellEnv(
+						"gh",
+						[
+							"api",
+							"graphql",
+							"-f",
+							`query=${REVIEW_THREAD_COMMENTS_QUERY}`,
+							"-F",
+							`threadId=${threadId}`,
+							"-F",
+							`after=${afterCursor}`,
+						],
+						{ cwd: worktreePath },
+					),
+			});
 			stdout = result.stdout;
 		} catch (error) {
 			console.warn(
@@ -461,8 +485,14 @@ async function fetchReviewThreadCommentsForPullRequest(
 
 		let stdout: string;
 		try {
-			const result = await execWithShellEnv("gh", args, {
-				cwd: worktreePath,
+			const result = await trackGitHubOperation({
+				name: "gh_graphql_review_threads",
+				category: "gh",
+				worktreePath,
+				fn: () =>
+					execWithShellEnv("gh", args, {
+						cwd: worktreePath,
+					}),
 			});
 			stdout = result.stdout;
 		} catch (error) {

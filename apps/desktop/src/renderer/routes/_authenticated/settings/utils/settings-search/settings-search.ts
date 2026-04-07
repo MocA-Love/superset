@@ -73,6 +73,10 @@ export const SETTING_ITEM_ID = {
 	VSCODE_EXTENSIONS_INDENT_RAINBOW: "vscode-extensions-indent-rainbow",
 	VSCODE_EXTENSIONS_TRAILING_SPACES: "vscode-extensions-trailing-spaces",
 
+	METRICS_GITHUB_OVERVIEW: "metrics-github-overview",
+	METRICS_GITHUB_TRAFFIC: "metrics-github-traffic",
+	METRICS_GITHUB_COPY: "metrics-github-copy",
+
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
@@ -1053,6 +1057,59 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"trim",
 			"editor",
 			"highlight",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW,
+		section: "metrics",
+		title: "GitHub Overview",
+		description:
+			"GitHub sync health, active workspaces, rate limits, and scheduler state",
+		keywords: [
+			"metrics",
+			"github",
+			"overview",
+			"health",
+			"rate limit",
+			"scheduler",
+			"debug",
+			"sync",
+			"status",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.METRICS_GITHUB_TRAFFIC,
+		section: "metrics",
+		title: "GitHub Traffic",
+		description:
+			"Operation volume, cache efficiency, and workspace-level GitHub activity",
+		keywords: [
+			"metrics",
+			"github",
+			"traffic",
+			"cache",
+			"efficiency",
+			"calls",
+			"api",
+			"preview",
+			"comments",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.METRICS_GITHUB_COPY,
+		section: "metrics",
+		title: "GitHub Debug Copy",
+		description:
+			"Copy summary, JSON bundle, and repro template for GitHub sync debugging",
+		keywords: [
+			"metrics",
+			"github",
+			"copy",
+			"debug bundle",
+			"repro",
+			"json",
+			"support",
+			"diagnostics",
 		],
 	},
 	{

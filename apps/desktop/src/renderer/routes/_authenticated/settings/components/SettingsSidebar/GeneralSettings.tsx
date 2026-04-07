@@ -3,6 +3,7 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
 	HiOutlineBell,
 	HiOutlineBuildingOffice2,
+	HiOutlineChartBar,
 	HiOutlineCommandLine,
 	HiOutlineCpuChip,
 	HiOutlineCreditCard,
@@ -40,6 +41,7 @@ type SettingsRoute =
 	| "/settings/vscode-extensions"
 	| "/settings/billing"
 	| "/settings/api-keys"
+	| "/settings/metrics"
 	| "/settings/permissions";
 
 interface SectionItem {
@@ -170,6 +172,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 	{
 		label: "System",
 		items: [
+			{
+				id: "/settings/metrics",
+				section: "metrics",
+				label: "Metrics",
+				icon: <HiOutlineChartBar className="h-4 w-4" />,
+			},
 			{
 				id: "/settings/permissions",
 				section: "permissions",

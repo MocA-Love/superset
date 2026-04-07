@@ -17,6 +17,7 @@ import { createDockerRouter } from "./docker";
 import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
+import { createGitHubMetricsRouter } from "./github-metrics";
 import { createHostServiceManagerRouter } from "./host-service-manager";
 import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
@@ -55,6 +56,7 @@ export const createAppRouter = (
 		terminal: createTerminalRouter(),
 		changes: createChangesRouter(),
 		filesystem: createFilesystemRouter(),
+		githubMetrics: createGitHubMetricsRouter(),
 		notifications: createNotificationsRouter(),
 		permissions: createPermissionsRouter(),
 		ports: createPortsRouter(),

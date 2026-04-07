@@ -14,12 +14,28 @@ let pausedUntil = 0;
 let currentBackoffMs = INITIAL_BACKOFF_MS;
 let consecutiveFailures = 0;
 
+export interface GitHubRateLimitState {
+	isRateLimited: boolean;
+	resumeAt: number | null;
+	currentBackoffMs: number;
+	consecutiveFailures: number;
+}
+
 export function isRateLimited(): boolean {
 	return Date.now() < pausedUntil;
 }
 
 export function getRateLimitResumeTime(): number {
 	return pausedUntil;
+}
+
+export function getGitHubRateLimitState(): GitHubRateLimitState {
+	return {
+		isRateLimited: isRateLimited(),
+		resumeAt: pausedUntil > 0 ? pausedUntil : null,
+		currentBackoffMs,
+		consecutiveFailures,
+	};
 }
 
 export function onRateLimitHit(): void {

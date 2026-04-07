@@ -11,6 +11,7 @@ import {
 	clearGitHubCachesForWorktree,
 	getCachedGitHubPreviewUrl,
 	getCachedGitHubStatus,
+	getCachedGitHubStatusState,
 	getCachedPullRequestCommentsState,
 	makeGitHubPreviewCacheKey,
 	makePullRequestCommentsCacheKey,
@@ -19,6 +20,10 @@ import {
 	readCachedPullRequestComments,
 } from "./cache";
 import { fetchPullRequestComments, resolveReviewThread } from "./comments";
+import {
+	trackGitHubOperation,
+	trackGitHubOperationEvent,
+} from "./github-metrics";
 import {
 	isRateLimited,
 	isSecondaryRateLimitError,
@@ -259,11 +264,31 @@ export async function fetchGitHubPRStatus(
 	if (isRateLimited()) {
 		// When rate limited, return stale cache or null — never throw,
 		// and never overwrite stale cache with null
-		return getCachedGitHubStatus(worktreePath);
+		const cached = getCachedGitHubStatus(worktreePath);
+		trackGitHubOperationEvent({
+			name: "status_refresh",
+			category: "sync",
+			worktreePath,
+			success:
+				cached !== null || getCachedGitHubStatusState(worktreePath) !== null,
+			durationMs: 0,
+			rateLimited: true,
+			error:
+				cached === null && getCachedGitHubStatusState(worktreePath) === null
+					? "Rate limited without cached status"
+					: undefined,
+		});
+		return cached;
 	}
-	return readCachedGitHubStatus(worktreePath, () =>
-		rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
-	);
+	return trackGitHubOperation({
+		name: "status_refresh",
+		category: "sync",
+		worktreePath,
+		fn: () =>
+			readCachedGitHubStatus(worktreePath, () =>
+				rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
+			),
+	});
 }
 
 async function rateLimitedRefresh<T>(fn: () => Promise<T>): Promise<T> {
@@ -287,48 +312,63 @@ export async function fetchGitHubPRComments({
 	pullRequest?: PullRequestCommentsTarget | null;
 }): Promise<PullRequestComment[]> {
 	if (isRateLimited()) {
+		trackGitHubOperationEvent({
+			name: "comments_refresh",
+			category: "sync",
+			worktreePath,
+			success: true,
+			durationMs: 0,
+			rateLimited: true,
+		});
 		return [];
 	}
 	try {
-		const pullRequestTarget =
-			pullRequest ?? (await resolvePullRequestCommentsTarget(worktreePath));
-		if (!pullRequestTarget) {
-			return [];
-		}
-
-		const repoNameWithOwner =
-			getPullRequestCommentsRepoNameWithOwner(pullRequestTarget);
-		if (!repoNameWithOwner) {
-			return [];
-		}
-
-		const cacheKey = makePullRequestCommentsCacheKey({
+		return await trackGitHubOperation({
+			name: "comments_refresh",
+			category: "sync",
 			worktreePath,
-			repoNameWithOwner,
-			pullRequestNumber: pullRequestTarget.prNumber,
-		});
-		try {
-			return await readCachedPullRequestComments(cacheKey, () =>
-				rateLimitedRefresh(() =>
-					refreshGitHubPRComments({
-						worktreePath,
-						repoNameWithOwner,
-						pullRequestNumber: pullRequestTarget.prNumber,
-					}),
-				),
-			);
-		} catch (error) {
-			const cached = getCachedPullRequestCommentsState(cacheKey);
-			if (cached) {
-				console.warn(
-					"[GitHub] Failed to refresh pull request comments; using cached value:",
-					error,
-				);
-				return cached.value;
-			}
+			fn: async () => {
+				const pullRequestTarget =
+					pullRequest ?? (await resolvePullRequestCommentsTarget(worktreePath));
+				if (!pullRequestTarget) {
+					return [];
+				}
 
-			throw error;
-		}
+				const repoNameWithOwner =
+					getPullRequestCommentsRepoNameWithOwner(pullRequestTarget);
+				if (!repoNameWithOwner) {
+					return [];
+				}
+
+				const cacheKey = makePullRequestCommentsCacheKey({
+					worktreePath,
+					repoNameWithOwner,
+					pullRequestNumber: pullRequestTarget.prNumber,
+				});
+				try {
+					return await readCachedPullRequestComments(cacheKey, () =>
+						rateLimitedRefresh(() =>
+							refreshGitHubPRComments({
+								worktreePath,
+								repoNameWithOwner,
+								pullRequestNumber: pullRequestTarget.prNumber,
+							}),
+						),
+					);
+				} catch (error) {
+					const cached = getCachedPullRequestCommentsState(cacheKey);
+					if (cached) {
+						console.warn(
+							"[GitHub] Failed to refresh pull request comments; using cached value:",
+							error,
+						);
+						return cached.value;
+					}
+
+					throw error;
+				}
+			},
+		});
 	} catch {
 		return [];
 	}
@@ -365,25 +405,41 @@ export async function fetchGitHubPreviewUrl({
 	});
 
 	if (isRateLimited()) {
-		return getCachedGitHubPreviewUrl(cacheKey);
+		const cached = getCachedGitHubPreviewUrl(cacheKey);
+		trackGitHubOperationEvent({
+			name: "preview_refresh",
+			category: "sync",
+			worktreePath,
+			success: true,
+			durationMs: 0,
+			rateLimited: true,
+		});
+		return cached;
 	}
 
-	return readCachedGitHubPreviewUrl(
-		cacheKey,
-		() =>
-			rateLimitedRefresh(() =>
-				refreshGitHubPreviewUrl({
-					worktreePath,
-					repoNameWithOwner,
-					branchName: context.previewBranchName,
-					headSha: context.headSha,
-					pullRequestNumber: githubStatus?.pr?.number,
-				}),
-			),
-		{
-			forceFresh,
+	return trackGitHubOperation({
+		name: "preview_refresh",
+		category: "sync",
+		worktreePath,
+		fn: async () => {
+			return readCachedGitHubPreviewUrl(
+				cacheKey,
+				() =>
+					rateLimitedRefresh(() =>
+						refreshGitHubPreviewUrl({
+							worktreePath,
+							repoNameWithOwner,
+							branchName: context.previewBranchName,
+							headSha: context.headSha,
+							pullRequestNumber: githubStatus?.pr?.number,
+						}),
+					),
+				{
+					forceFresh,
+				},
+			);
 		},
-	);
+	});
 }
 
 function isSafeHttpUrl(url: string): boolean {
@@ -405,11 +461,17 @@ async function queryDeploymentUrl(
 	nwo: string,
 	queryParams: string,
 ): Promise<string | undefined> {
-	const { stdout } = await execWithShellEnv(
-		"gh",
-		["api", `repos/${nwo}/deployments?${queryParams}&per_page=5`],
-		{ cwd: worktreePath },
-	);
+	const { stdout } = await trackGitHubOperation({
+		name: "gh_api_deployments",
+		category: "gh",
+		worktreePath,
+		fn: () =>
+			execWithShellEnv(
+				"gh",
+				["api", `repos/${nwo}/deployments?${queryParams}&per_page=5`],
+				{ cwd: worktreePath },
+			),
+	});
 
 	const rawDeployments: unknown = JSON.parse(stdout.trim());
 	if (!Array.isArray(rawDeployments) || rawDeployments.length === 0) {
@@ -430,11 +492,17 @@ async function queryDeploymentUrl(
 	const urls = await Promise.all(
 		deploymentIds.map(async (id): Promise<string | undefined> => {
 			try {
-				const { stdout: out } = await execWithShellEnv(
-					"gh",
-					["api", `repos/${nwo}/deployments/${id}/statuses?per_page=1`],
-					{ cwd: worktreePath },
-				);
+				const { stdout: out } = await trackGitHubOperation({
+					name: "gh_api_deployment_status",
+					category: "gh",
+					worktreePath,
+					fn: () =>
+						execWithShellEnv(
+							"gh",
+							["api", `repos/${nwo}/deployments/${id}/statuses?per_page=1`],
+							{ cwd: worktreePath },
+						),
+				});
 				const rawStatuses: unknown = JSON.parse(out.trim());
 				if (!Array.isArray(rawStatuses) || rawStatuses.length === 0) {
 					return undefined;
@@ -565,11 +633,15 @@ export async function fetchCheckJobSteps(
 	}
 
 	try {
-		const { stdout } = await execWithShellEnv(
-			"gh",
-			["api", `repos/${nwo}/actions/jobs/${jobId}`],
-			{ cwd: worktreePath },
-		);
+		const { stdout } = await trackGitHubOperation({
+			name: "gh_api_actions_job",
+			category: "gh",
+			worktreePath,
+			fn: () =>
+				execWithShellEnv("gh", ["api", `repos/${nwo}/actions/jobs/${jobId}`], {
+					cwd: worktreePath,
+				}),
+		});
 
 		const raw: unknown = JSON.parse(stdout.trim());
 		const result = GHJobResponseSchema.safeParse(raw);
@@ -623,11 +695,15 @@ export async function fetchStructuredJobLogs(
 
 	try {
 		// Always fetch job metadata; logs may 404 for in-progress jobs
-		const jobResult = await execWithShellEnv(
-			"gh",
-			["api", `repos/${nwo}/actions/jobs/${jobId}`],
-			{ cwd: worktreePath },
-		);
+		const jobResult = await trackGitHubOperation({
+			name: "gh_api_actions_job",
+			category: "gh",
+			worktreePath,
+			fn: () =>
+				execWithShellEnv("gh", ["api", `repos/${nwo}/actions/jobs/${jobId}`], {
+					cwd: worktreePath,
+				}),
+		});
 
 		const raw: unknown = JSON.parse(jobResult.stdout.trim());
 		const result = GHJobResponseSchema.safeParse(raw);
@@ -643,11 +719,17 @@ export async function fetchStructuredJobLogs(
 		let rawLogs = "";
 		if (jobCompleted) {
 			try {
-				const logsResult = await execWithShellEnv(
-					"gh",
-					["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
-					{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
-				);
+				const logsResult = await trackGitHubOperation({
+					name: "gh_api_actions_job_logs",
+					category: "gh",
+					worktreePath,
+					fn: () =>
+						execWithShellEnv(
+							"gh",
+							["api", `repos/${nwo}/actions/jobs/${jobId}/logs`],
+							{ cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
+						),
+				});
 				rawLogs = logsResult.stdout;
 			} catch {
 				// Logs not yet available
@@ -738,16 +820,22 @@ export async function fetchJobStatuses(
 			if (!jobId || !nwo) {
 				return { detailsUrl, status: "queued" as const, conclusion: null };
 			}
-			const { stdout } = await execWithShellEnv(
-				"gh",
-				[
-					"api",
-					`repos/${nwo}/actions/jobs/${jobId}`,
-					"--jq",
-					'.status + "|" + (.conclusion // "")',
-				],
-				{ cwd: worktreePath },
-			);
+			const { stdout } = await trackGitHubOperation({
+				name: "gh_api_actions_job_status",
+				category: "gh",
+				worktreePath,
+				fn: () =>
+					execWithShellEnv(
+						"gh",
+						[
+							"api",
+							`repos/${nwo}/actions/jobs/${jobId}`,
+							"--jq",
+							'.status + "|" + (.conclusion // "")',
+						],
+						{ cwd: worktreePath },
+					),
+			});
 			const [status, conclusion] = stdout.trim().split("|");
 			return {
 				detailsUrl,

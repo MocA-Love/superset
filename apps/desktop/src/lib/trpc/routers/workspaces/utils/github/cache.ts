@@ -4,6 +4,7 @@ import {
 	type CacheState,
 	createCachedResource,
 } from "./cached-resource";
+import { recordGitHubCacheMetric } from "./github-metrics";
 import type { RepoContext } from "./types";
 
 const GITHUB_STATUS_CACHE_TTL_MS = 30_000;
@@ -51,7 +52,14 @@ const commitAuthorResource = createCachedResource<GitHubCommitAuthor | null>({
 export function getCachedGitHubStatus(
 	worktreePath: string,
 ): GitHubStatus | null {
-	return githubStatusResource.get(worktreePath);
+	const cachedState = githubStatusResource.getState(worktreePath);
+	const cached = cachedState?.isFresh ? cachedState.value : null;
+	recordGitHubCacheMetric({
+		kind: "status",
+		event: cachedState?.isFresh ? "fresh_hit" : "miss",
+		worktreePath,
+	});
+	return cached;
 }
 
 export function getCachedGitHubStatusState(
@@ -65,6 +73,11 @@ export function setCachedGitHubStatus(
 	value: GitHubStatus,
 ): void {
 	githubStatusResource.set(worktreePath, value);
+	recordGitHubCacheMetric({
+		kind: "status",
+		event: "write",
+		worktreePath,
+	});
 }
 
 export function readCachedGitHubStatus(
@@ -72,9 +85,34 @@ export function readCachedGitHubStatus(
 	load: () => Promise<GitHubStatus | null>,
 	options?: CachedResourceReadOptions<GitHubStatus | null>,
 ): Promise<GitHubStatus | null> {
+	const cached = githubStatusResource.getState(worktreePath);
+	recordGitHubCacheMetric({
+		kind: "status",
+		event: options?.forceFresh
+			? "force_fresh"
+			: cached?.isFresh
+				? "fresh_hit"
+				: cached
+					? "stale_hit"
+					: "miss",
+		worktreePath,
+	});
+
 	return githubStatusResource.read(worktreePath, load, {
 		...options,
-		shouldCache: options?.shouldCache ?? ((value) => value !== null),
+		shouldCache:
+			options?.shouldCache ??
+			((value) => {
+				const shouldCache = value !== null;
+				if (shouldCache) {
+					recordGitHubCacheMetric({
+						kind: "status",
+						event: "write",
+						worktreePath,
+					});
+				}
+				return shouldCache;
+			}),
 	});
 }
 
@@ -99,7 +137,14 @@ export function makePullRequestCommentsCacheKey({
 export function getCachedPullRequestComments(
 	cacheKey: string,
 ): PullRequestComment[] | null {
-	return pullRequestCommentsResource.get(cacheKey);
+	const cachedState = pullRequestCommentsResource.getState(cacheKey);
+	const cached = cachedState?.isFresh ? cachedState.value : null;
+	recordGitHubCacheMetric({
+		kind: "comments",
+		event: cachedState?.isFresh ? "fresh_hit" : "miss",
+		worktreePath: extractWorktreePathFromCacheKey(cacheKey),
+	});
+	return cached;
 }
 
 export function getCachedPullRequestCommentsState(
@@ -113,6 +158,11 @@ export function setCachedPullRequestComments(
 	value: PullRequestComment[],
 ): void {
 	pullRequestCommentsResource.set(cacheKey, value);
+	recordGitHubCacheMetric({
+		kind: "comments",
+		event: "write",
+		worktreePath: extractWorktreePathFromCacheKey(cacheKey),
+	});
 }
 
 export function readCachedPullRequestComments(
@@ -120,7 +170,33 @@ export function readCachedPullRequestComments(
 	load: () => Promise<PullRequestComment[]>,
 	options?: CachedResourceReadOptions<PullRequestComment[]>,
 ): Promise<PullRequestComment[]> {
-	return pullRequestCommentsResource.read(cacheKey, load, options);
+	const worktreePath = extractWorktreePathFromCacheKey(cacheKey);
+	const cached = pullRequestCommentsResource.getState(cacheKey);
+	recordGitHubCacheMetric({
+		kind: "comments",
+		event: options?.forceFresh
+			? "force_fresh"
+			: cached?.isFresh
+				? "fresh_hit"
+				: cached
+					? "stale_hit"
+					: "miss",
+		worktreePath,
+	});
+
+	return pullRequestCommentsResource.read(
+		cacheKey,
+		async () => {
+			const value = await load();
+			recordGitHubCacheMetric({
+				kind: "comments",
+				event: "write",
+				worktreePath,
+			});
+			return value;
+		},
+		options,
+	);
 }
 
 export function makeGitHubPreviewCachePrefix(worktreePath: string): string {
@@ -144,7 +220,14 @@ export function makeGitHubPreviewCacheKey({
 }
 
 export function getCachedGitHubPreviewUrl(cacheKey: string): string | null {
-	return previewUrlResource.get(cacheKey);
+	const cachedState = previewUrlResource.getState(cacheKey);
+	const cached = cachedState?.isFresh ? cachedState.value : null;
+	recordGitHubCacheMetric({
+		kind: "preview",
+		event: cachedState?.isFresh ? "fresh_hit" : "miss",
+		worktreePath: extractWorktreePathFromCacheKey(cacheKey),
+	});
+	return cached;
 }
 
 export function readCachedGitHubPreviewUrl(
@@ -152,10 +235,33 @@ export function readCachedGitHubPreviewUrl(
 	load: () => Promise<string | null>,
 	options?: CachedResourceReadOptions<string | null>,
 ): Promise<string | null> {
+	const worktreePath = extractWorktreePathFromCacheKey(cacheKey);
+	const cached = previewUrlResource.getState(cacheKey);
+	recordGitHubCacheMetric({
+		kind: "preview",
+		event: options?.forceFresh
+			? "force_fresh"
+			: cached?.isFresh
+				? "fresh_hit"
+				: cached
+					? "stale_hit"
+					: "miss",
+		worktreePath,
+	});
+
 	return previewUrlResource.read(cacheKey, load, {
 		...options,
 		// Cache misses too so preview-less branches don't repeatedly hit deployments.
-		shouldCache: options?.shouldCache ?? (() => true),
+		shouldCache:
+			options?.shouldCache ??
+			(() => {
+				recordGitHubCacheMetric({
+					kind: "preview",
+					event: "write",
+					worktreePath,
+				});
+				return true;
+			}),
 	});
 }
 
@@ -208,10 +314,40 @@ export function readCachedGitHubCommitAuthor(
 export function clearGitHubCachesForWorktree(worktreePath: string): void {
 	githubStatusResource.invalidate(worktreePath);
 	repoContextResource.invalidate(worktreePath);
+	recordGitHubCacheMetric({
+		kind: "status",
+		event: "invalidate",
+		worktreePath,
+	});
 	previewUrlResource.invalidatePrefix(
 		makeGitHubPreviewCachePrefix(worktreePath),
 	);
+	recordGitHubCacheMetric({
+		kind: "preview",
+		event: "invalidate",
+		worktreePath,
+	});
 	pullRequestCommentsResource.invalidatePrefix(
 		makePullRequestCommentsCachePrefix(worktreePath),
 	);
+	recordGitHubCacheMetric({
+		kind: "comments",
+		event: "invalidate",
+		worktreePath,
+	});
+}
+
+function extractWorktreePathFromCacheKey(cacheKey: string): string | null {
+	const commentsSeparator = "::comments::";
+	const previewSeparator = "::preview::";
+
+	if (cacheKey.includes(commentsSeparator)) {
+		return cacheKey.split(commentsSeparator)[0] || null;
+	}
+
+	if (cacheKey.includes(previewSeparator)) {
+		return cacheKey.split(previewSeparator)[0] || null;
+	}
+
+	return cacheKey || null;
 }
