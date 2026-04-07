@@ -215,7 +215,6 @@ class GitHubSyncServiceImpl {
 
 	private async primeWorkspace(worktreePath: string): Promise<void> {
 		await this.syncPRStatus(worktreePath);
-		await this.syncPRComments(worktreePath);
 	}
 
 	private stopTimers(state: WorkspaceSyncState): void {

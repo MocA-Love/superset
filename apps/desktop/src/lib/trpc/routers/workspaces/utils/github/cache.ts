@@ -154,7 +154,8 @@ export function readCachedGitHubPreviewUrl(
 ): Promise<string | null> {
 	return previewUrlResource.read(cacheKey, load, {
 		...options,
-		shouldCache: options?.shouldCache ?? ((value) => value !== null),
+		// Cache misses too so preview-less branches don't repeatedly hit deployments.
+		shouldCache: options?.shouldCache ?? (() => true),
 	});
 }
 

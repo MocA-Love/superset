@@ -376,7 +376,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 		{
 			enabled: !!workspaceId && isActive,
 			staleTime: 300_000,
-			refetchOnWindowFocus: false,
+			refetchOnWindowFocus: isActive,
 		},
 	);
 	const createIssueMutation =
