@@ -10,7 +10,10 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
 import { useHotkey } from "renderer/hotkeys";
-import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
+import {
+	addBrowserShortcutListener,
+	dispatchBrowserShortcutEvent,
+} from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
@@ -652,6 +655,16 @@ export function WorkspacePage({
 			});
 		},
 		[isActive, workspaceId],
+	);
+
+	// FORK NOTE: useHotkey wiring so remapped keys also trigger browser reload
+	useHotkey("BROWSER_RELOAD", () => dispatchBrowserShortcutEvent("reload"), {
+		enabled: isActive,
+	});
+	useHotkey(
+		"BROWSER_HARD_RELOAD",
+		() => dispatchBrowserShortcutEvent("hard-reload"),
+		{ enabled: isActive },
 	);
 
 	useEffect(() => {

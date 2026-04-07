@@ -12,7 +12,10 @@ import { useCallback, useEffect, useMemo } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
 import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
 import { HotkeyLabel, useHotkey } from "renderer/hotkeys";
-import { addBrowserShortcutListener } from "renderer/lib/browser-shortcut-events";
+import {
+	addBrowserShortcutListener,
+	dispatchBrowserShortcutEvent,
+} from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
@@ -245,6 +248,11 @@ function WorkspaceContent({
 	useHotkey("QUICK_OPEN", handleQuickOpen);
 	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
 	useHotkey("SEARCH_IN_FILES", handleQuickOpen);
+	// FORK NOTE: useHotkey wiring so remapped keys also trigger browser reload
+	useHotkey("BROWSER_RELOAD", () => dispatchBrowserShortcutEvent("reload"));
+	useHotkey("BROWSER_HARD_RELOAD", () =>
+		dispatchBrowserShortcutEvent("hard-reload"),
+	);
 
 	// FORK NOTE: BROWSER_RELOAD / BROWSER_HARD_RELOAD support for v2 workspace.
 	// Hard reload appends a cache-bust query param; normal reload just swaps the key.
