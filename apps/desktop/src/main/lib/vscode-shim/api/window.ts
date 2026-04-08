@@ -253,13 +253,34 @@ export const window = {
 	},
 
 	async showQuickPick(
-		items: string[] | Promise<string[]>,
-		_options?: { placeHolder?: string; canPickMany?: boolean },
-	): Promise<string | undefined> {
+		items:
+			| string[]
+			| Array<{ label: string; description?: string; detail?: string }>
+			| Promise<
+					| string[]
+					| Array<{ label: string; description?: string; detail?: string }>
+			  >,
+		options?: { placeHolder?: string; canPickMany?: boolean },
+	): Promise<string | { label: string } | undefined> {
 		const resolved = await items;
-		// For MVP, return first item. In Phase 3, render a proper picker in renderer
-		shimWarn("[vscode-shim] showQuickPick stub, returning first item");
-		return resolved[0];
+		if (!resolved || resolved.length === 0) return undefined;
+		const labels = resolved.map((item) =>
+			typeof item === "string" ? item : item.label,
+		);
+		try {
+			const { dialog } = require("electron") as typeof import("electron");
+			const result = await dialog.showMessageBox({
+				type: "question",
+				title: options?.placeHolder ?? "Select",
+				message: options?.placeHolder ?? "Select an option",
+				buttons: [...labels, "Cancel"],
+				cancelId: labels.length,
+			});
+			if (result.response === labels.length) return undefined;
+			return resolved[result.response];
+		} catch {
+			return resolved[0];
+		}
 	},
 
 	async showInputBox(_options?: {
@@ -271,9 +292,46 @@ export const window = {
 		return undefined;
 	},
 
-	async showOpenDialog(_options?: unknown): Promise<Uri[] | undefined> {
-		shimWarn("[vscode-shim] showOpenDialog stub");
-		return undefined;
+	async showOpenDialog(
+		options?: {
+			canSelectFiles?: boolean;
+			canSelectFolders?: boolean;
+			canSelectMany?: boolean;
+			title?: string;
+			filters?: Record<string, string[]>;
+			defaultUri?: Uri;
+		},
+	): Promise<Uri[] | undefined> {
+		try {
+			const { dialog } = require("electron") as typeof import("electron");
+			const properties: Array<
+				"openFile" | "openDirectory" | "multiSelections"
+			> = [];
+			if (options?.canSelectFolders) {
+				properties.push("openDirectory");
+			} else {
+				properties.push("openFile");
+			}
+			if (options?.canSelectMany) {
+				properties.push("multiSelections");
+			}
+			const filters = options?.filters
+				? Object.entries(options.filters).map(([name, extensions]) => ({
+						name,
+						extensions,
+					}))
+				: undefined;
+			const result = await dialog.showOpenDialog({
+				properties,
+				title: options?.title,
+				filters,
+				defaultPath: options?.defaultUri?.fsPath,
+			});
+			if (result.canceled || result.filePaths.length === 0) return undefined;
+			return result.filePaths.map((p) => Uri.file(p));
+		} catch {
+			return undefined;
+		}
 	},
 
 	async showTextDocument(

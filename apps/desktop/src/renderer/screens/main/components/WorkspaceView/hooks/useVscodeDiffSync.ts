@@ -16,10 +16,16 @@ export function useVscodeDiffSync() {
 			enabled: !!workspaceId,
 			onData: (data) => {
 				if (!workspaceId) return;
+				// leftUri がファイルシステムパスかつ rightUri と異なる場合はリネーム/移動。
+				// git URI (例: git:///path?ref) の場合は unstaged diff として git が差分を解決するため oldPath 不要。
+				const leftIsFilePath =
+					data.leftUri.startsWith("/") || data.leftUri.startsWith("file://");
+				const isRename = leftIsFilePath && data.leftUri !== data.rightUri;
 				addFileViewerPane(workspaceId, {
 					filePath: data.rightUri,
 					viewMode: "diff",
 					diffCategory: "unstaged",
+					...(isRename ? { oldPath: data.leftUri } : {}),
 				});
 			},
 		},

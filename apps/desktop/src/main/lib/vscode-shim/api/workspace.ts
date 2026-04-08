@@ -25,8 +25,13 @@ interface TextDocument {
 	save(): Promise<boolean>;
 }
 
+interface TextEditRange {
+	start: { line: number; character: number };
+	end: { line: number; character: number };
+}
+
 interface WorkspaceEdit {
-	entries(): Array<[Uri, Array<{ range: unknown; newText: string }>]>;
+	entries(): Array<[Uri, Array<{ range: TextEditRange; newText: string }>]>;
 }
 
 interface FileSystemWatcher {
@@ -199,9 +204,44 @@ export const workspace = {
 		}
 	},
 
-	async applyEdit(_edit: WorkspaceEdit): Promise<boolean> {
-		shimWarn("[vscode-shim] workspace.applyEdit is a stub");
-		return true;
+	async applyEdit(edit: WorkspaceEdit): Promise<boolean> {
+		try {
+			for (const [uri, textEdits] of edit.entries()) {
+				if (uri.scheme !== "file" || !uri.fsPath || textEdits.length === 0)
+					continue;
+				const content = fs.readFileSync(uri.fsPath, "utf-8");
+				const lines = content.split("\n");
+				// 後ろから適用することでインデックスのずれを防ぐ
+				const sorted = [...textEdits].sort((a, b) => {
+					const dl = b.range.start.line - a.range.start.line;
+					return dl !== 0 ? dl : b.range.start.character - a.range.start.character;
+				});
+				for (const te of sorted) {
+					const { start, end } = te.range;
+					if (start.line === end.line) {
+						const line = lines[start.line] ?? "";
+						lines[start.line] =
+							line.slice(0, start.character) +
+							te.newText +
+							line.slice(end.character);
+					} else {
+						const startLine = lines[start.line] ?? "";
+						const endLine = lines[end.line] ?? "";
+						const merged =
+							startLine.slice(0, start.character) +
+							te.newText +
+							endLine.slice(end.character);
+						lines.splice(start.line, end.line - start.line + 1, ...merged.split("\n"));
+					}
+				}
+				fs.writeFileSync(uri.fsPath, lines.join("\n"), "utf-8");
+				shimLog(`[vscode-shim] workspace.applyEdit: wrote ${uri.fsPath}`);
+			}
+			return true;
+		} catch (err) {
+			shimWarn("[vscode-shim] workspace.applyEdit failed:", err);
+			return false;
+		}
 	},
 
 	createFileSystemWatcher(
