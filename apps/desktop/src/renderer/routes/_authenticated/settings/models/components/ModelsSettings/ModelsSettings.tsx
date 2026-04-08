@@ -792,9 +792,7 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 							<div className="rounded-lg border bg-muted/20 p-4">
 								<div className="flex items-start justify-between gap-4">
 									<div>
-										<h3 className="text-sm font-semibold">
-											Estimated usage
-										</h3>
+										<h3 className="text-sm font-semibold">Estimated usage</h3>
 										<p className="mt-1 text-xs text-muted-foreground">
 											Based on successful Inception requests sent from this
 											desktop app. This is a local estimate, not your exact
@@ -838,7 +836,8 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 											</div>
 											<div className="mt-2 space-y-1 text-xs text-muted-foreground">
 												<div>
-													Requests: {formatTokenCount(bucket?.requestCount ?? 0)}
+													Requests:{" "}
+													{formatTokenCount(bucket?.requestCount ?? 0)}
 												</div>
 												<div>
 													Input: {formatTokenCount(bucket?.promptTokens ?? 0)}
@@ -868,10 +867,12 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 											</div>
 											<div className="mt-2 space-y-1 text-xs text-muted-foreground">
 												<div>
-													Requests: {formatTokenCount(bucket?.requestCount ?? 0)}
+													Requests:{" "}
+													{formatTokenCount(bucket?.requestCount ?? 0)}
 												</div>
 												<div>
-													Total tokens: {formatTokenCount(bucket?.totalTokens ?? 0)}
+													Total tokens:{" "}
+													{formatTokenCount(bucket?.totalTokens ?? 0)}
 												</div>
 											</div>
 										</div>
