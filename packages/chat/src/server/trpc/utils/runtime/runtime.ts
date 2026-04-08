@@ -493,28 +493,31 @@ export async function generateAndSetTitle(
 		// because the chat model may use OAuth auth that isn't accessible via
 		// process.env API keys (e.g. OpenAI Codex OAuth).
 		const providers = getDefaultSmallModelProviders();
-		let model: unknown = null;
 		for (const provider of providers) {
 			const creds = provider.resolveCredentials();
 			if (!creds) continue;
 			const { supported } = provider.isSupported(creds);
 			if (!supported) continue;
-			model = await provider.createModel(creds);
-			break;
+			try {
+				const model = await provider.createModel(creds);
+				const title = await generateTitleFromMessageWithStreamingModel({
+					message: text,
+					model: model as import("ai").LanguageModel,
+				});
+				if (!title?.trim()) return;
+
+				await apiClient.chat.updateTitle.mutate({
+					sessionId: runtime.sessionId,
+					title: title.trim(),
+				});
+				return;
+			} catch (error) {
+				console.warn(
+					`[chat] Title generation failed with ${provider.id}, trying next provider:`,
+					error,
+				);
+			}
 		}
-
-		if (!model) return;
-
-		const title = await generateTitleFromMessageWithStreamingModel({
-			message: text,
-			model: model as import("ai").LanguageModel,
-		});
-		if (!title?.trim()) return;
-
-		await apiClient.chat.updateTitle.mutate({
-			sessionId: runtime.sessionId,
-			title: title.trim(),
-		});
 	} catch (error) {
 		console.warn("[chat] Title generation failed:", error);
 	}
