@@ -1,16 +1,20 @@
 import { Message, MessageContent } from "@superset/ui/ai-elements/message";
 import { ShimmerLabel } from "@superset/ui/ai-elements/shimmer-label";
 import { FileSearchIcon } from "lucide-react";
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { StreamingMessageText } from "renderer/components/Chat/ChatInterface/components/MessagePartsRenderer/components/StreamingMessageText";
 import { ReasoningBlock } from "renderer/components/Chat/ChatInterface/components/ReasoningBlock";
 import { ToolCallBlock } from "renderer/components/Chat/ChatInterface/components/ToolCallBlock";
 import type { ToolPart } from "renderer/components/Chat/ChatInterface/utils/tool-helpers";
 import { normalizeToolName } from "renderer/components/Chat/ChatInterface/utils/tool-helpers";
 import type { UseChatDisplayReturn } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/usePaneRegistry/components/ChatPane/hooks/useWorkspaceChatDisplay";
+import { createShikiTheme } from "renderer/screens/main/components/WorkspaceView/utils/code-theme/shiki-theme";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { useResolvedTheme } from "renderer/stores/theme";
 import { AttachmentChip } from "../AttachmentChip";
 import { PendingPlanApprovalMessage } from "../PendingPlanApprovalMessage";
+import { SubagentExecutionMessage } from "../SubagentExecutionMessage";
+import type { SubagentEntries } from "../SubagentExecutionMessage/utils/toSubagentViewModels";
 
 type ChatMessage = NonNullable<UseChatDisplayReturn["messages"]>[number];
 type ChatMessageContent = ChatMessage["content"][number];
@@ -30,6 +34,8 @@ interface AssistantMessageProps {
 	pendingPlanApproval?: ChatPendingPlanApproval;
 	pendingPlanToolCallId?: string | null;
 	isPlanSubmitting?: boolean;
+	subagentEntries?: SubagentEntries;
+	showReasoning?: boolean;
 	onPlanRespond?: (response: {
 		action: "approved" | "rejected";
 		feedback?: string;
@@ -110,12 +116,23 @@ export function AssistantMessage({
 	pendingPlanApproval,
 	pendingPlanToolCallId = null,
 	isPlanSubmitting = false,
+	subagentEntries = [],
+	showReasoning = true,
 	onPlanRespond,
 }: AssistantMessageProps) {
 	const addFileViewerPane = useTabsStore((store) => store.addFileViewerPane);
+	const theme = useResolvedTheme();
 	const nodes: ReactNode[] = [];
 	const renderedToolCallIds = new Set<string>();
+	const renderedSubagentToolCallIds = new Set<string>();
 	let didRenderPendingPlanApproval = false;
+	const shikiTheme = useMemo(() => {
+		const currentTheme = createShikiTheme(theme);
+		return [currentTheme, currentTheme] as [
+			typeof currentTheme,
+			typeof currentTheme,
+		];
+	}, [theme]);
 	const handleAttachmentClick = useCallback(
 		(url: string, filename?: string) => {
 			addFileViewerPane(workspaceId, {
@@ -148,6 +165,23 @@ export function AssistantMessage({
 			);
 		}
 
+		const matchedSubagents = subagentEntries.filter(
+			([id]) => id === toolCallId,
+		);
+		if (
+			matchedSubagents.length > 0 &&
+			!renderedSubagentToolCallIds.has(toolCallId)
+		) {
+			renderedSubagentToolCallIds.add(toolCallId);
+			inlineNodes.push(
+				<SubagentExecutionMessage
+					key={`${message.id}-subagent-${toolCallId}`}
+					subagents={matchedSubagents}
+					inline
+				/>,
+			);
+		}
+
 		return inlineNodes;
 	};
 	for (let partIndex = 0; partIndex < message.content.length; partIndex++) {
@@ -164,12 +198,16 @@ export function AssistantMessage({
 							theme: "default",
 						},
 					}}
+					shikiTheme={shikiTheme}
 				/>,
 			);
 			continue;
 		}
 
 		if (part.type === "thinking") {
+			if (!showReasoning) {
+				continue;
+			}
 			nodes.push(
 				<ReasoningBlock
 					key={`${message.id}-${partIndex}`}

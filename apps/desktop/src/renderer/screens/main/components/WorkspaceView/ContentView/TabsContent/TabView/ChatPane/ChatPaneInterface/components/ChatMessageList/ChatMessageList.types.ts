@@ -1,4 +1,5 @@
 import type { UseChatDisplayReturn } from "@superset/chat/client";
+import type { ThinkingLevel } from "@superset/ui/ai-elements/thinking-toggle";
 
 export type ChatMessage = NonNullable<UseChatDisplayReturn["messages"]>[number];
 
@@ -60,6 +61,7 @@ export interface ChatMessageListProps {
 	isRunning: boolean;
 	isConversationLoading: boolean;
 	isAwaitingAssistant: boolean;
+	thinkingLevel?: ThinkingLevel;
 	currentMessage: ChatMessage | null;
 	interruptedMessage: InterruptedMessagePreview | null;
 	workspaceId: string;

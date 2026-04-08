@@ -155,7 +155,12 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 				tabId: string;
 				type: string;
 				devtools?: { targetPaneId: string };
-				vscodeExtension?: { viewType: string; extensionId: string };
+				vscodeExtension?: {
+					viewType: string;
+					extensionId: string;
+					source?: "view" | "panel";
+					sessionId?: string;
+				};
 			}
 		> = {};
 		for (const paneId of layoutPaneIds) {
@@ -396,6 +401,8 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 						tabId={tab.id}
 						viewType={paneInfo.vscodeExtension.viewType}
 						extensionId={paneInfo.vscodeExtension.extensionId}
+						source={paneInfo.vscodeExtension.source}
+						sessionId={paneInfo.vscodeExtension.sessionId}
 						splitPaneAuto={splitPaneAuto}
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}

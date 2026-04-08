@@ -6,7 +6,12 @@ import { pipeline } from "node:stream/promises";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import {
+	getActivePanel,
+	getActiveView,
+} from "main/lib/vscode-shim/api/webview";
+import {
 	getWebviewUrl,
+	hasWebviewHtml,
 	setCustomThemeCss,
 	setWebviewHtml,
 } from "main/lib/vscode-shim/api/webview-server";
@@ -231,6 +236,26 @@ async function downloadAndInstallExtension(extensionId: string): Promise<void> {
 	}
 }
 
+async function waitForWebviewHtml(
+	viewId: string,
+	timeoutMs = 5000,
+	pollIntervalMs = 100,
+): Promise<boolean> {
+	if (hasWebviewHtml(viewId)) {
+		return true;
+	}
+
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+		if (hasWebviewHtml(viewId)) {
+			return true;
+		}
+	}
+
+	return hasWebviewHtml(viewId);
+}
+
 export const createVscodeExtensionsRouter = () => {
 	return router({
 		/** Get all known extensions with their install/active status */
@@ -284,6 +309,45 @@ export const createVscodeExtensionsRouter = () => {
 
 				const url = getWebviewUrl(result.viewId);
 				return { viewId: result.viewId, url };
+			}),
+
+		/** Attach to an existing webview session by viewId/panelId */
+		attachWebview: publicProcedure
+			.input(
+				z.object({
+					viewId: z.string(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const target =
+					getActiveView(input.viewId) ?? getActivePanel(input.viewId);
+				if (!target) {
+					return { viewId: null, url: null };
+				}
+
+				const hasHtml = await waitForWebviewHtml(input.viewId);
+				if (!hasHtml) {
+					return { viewId: null, url: null };
+				}
+
+				return { viewId: input.viewId, url: getWebviewUrl(input.viewId) };
+			}),
+
+		/** Dispose an existing panel-backed webview session */
+		disposeWebview: publicProcedure
+			.input(
+				z.object({
+					viewId: z.string(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const panel = getActivePanel(input.viewId);
+				if (!panel) {
+					return { success: false };
+				}
+
+				panel.dispose();
+				return { success: true };
 			}),
 
 		/** Get current webview HTML */

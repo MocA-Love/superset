@@ -5,6 +5,7 @@
 @source "./**/*.{ts,tsx}";
 @source "../../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../../packages/ui/node_modules/streamdown/dist/*.js";
+@source "../../../../packages/ui/node_modules/@streamdown/code/dist/*.js";
 
 /**
  * Theme CSS Variables

@@ -24,6 +24,7 @@ import {
 import type {
 	AddFileViewerPaneOptions,
 	AddTabWithMultiplePanesOptions,
+	ClosedTabEntry,
 	TabsState,
 	TabsStore,
 } from "./types";
@@ -130,6 +131,62 @@ const normalizePersistedChatPane = (pane: TabsState["panes"][string]): void => {
 		launchConfig: legacyChatState?.launchConfig ?? null,
 	};
 	delete legacyPane.chatMastra;
+};
+
+const sanitizePersistedVscodeExtensionPane = (
+	pane: TabsState["panes"][string],
+): TabsState["panes"][string] => {
+	if (
+		pane.type !== "vscode-extension" ||
+		pane.vscodeExtension?.source !== "panel" ||
+		!pane.vscodeExtension.sessionId
+	) {
+		return pane;
+	}
+
+	return {
+		...pane,
+		vscodeExtension: {
+			...pane.vscodeExtension,
+			sessionId: undefined,
+		},
+	};
+};
+
+const sanitizePersistedPanes = (
+	panes: TabsState["panes"],
+): TabsState["panes"] => {
+	let hasChanges = false;
+	const sanitizedEntries = Object.entries(panes).map(([paneId, pane]) => {
+		const nextPane = sanitizePersistedVscodeExtensionPane(pane);
+		if (nextPane !== pane) {
+			hasChanges = true;
+		}
+		return [paneId, nextPane] as const;
+	});
+
+	return hasChanges ? Object.fromEntries(sanitizedEntries) : panes;
+};
+
+const sanitizeClosedTabsStack = (
+	closedTabsStack: ClosedTabEntry[],
+): ClosedTabEntry[] => {
+	let hasChanges = false;
+	const nextEntries = closedTabsStack.map((entry) => {
+		let entryChanged = false;
+		const nextPanes = entry.panes.map((pane) => {
+			const nextPane = sanitizePersistedVscodeExtensionPane(pane);
+			if (nextPane !== pane) {
+				hasChanges = true;
+				entryChanged = true;
+			}
+			return nextPane;
+		});
+
+		return entryChanged ? { ...entry, panes: nextPanes } : entry;
+	});
+
+	return hasChanges ? nextEntries : closedTabsStack;
 };
 
 const deriveTabName = (
@@ -386,7 +443,14 @@ export const useTabsStore = create<TabsStore>()(
 						.filter(Boolean);
 					const closedEntry = {
 						tab: tabToRemove,
-						panes: closedPanes,
+						panes:
+							sanitizeClosedTabsStack([
+								{
+									tab: tabToRemove,
+									panes: closedPanes,
+									closedAt: Date.now(),
+								},
+							])[0]?.panes ?? closedPanes,
 						closedAt: Date.now(),
 					};
 					const closedTabsStack = [closedEntry, ...state.closedTabsStack].slice(
@@ -1730,6 +1794,8 @@ export const useTabsStore = create<TabsStore>()(
 					extensionId: string,
 					viewType: string,
 					name: string,
+					source: "view" | "panel" = "view",
+					sessionId?: string,
 				) => {
 					const state = get();
 
@@ -1738,6 +1804,8 @@ export const useTabsStore = create<TabsStore>()(
 						extensionId,
 						viewType,
 						name,
+						source,
+						sessionId,
 					);
 
 					const currentActiveId = state.activeTabIds[workspaceId];
@@ -2466,14 +2534,20 @@ export const useTabsStore = create<TabsStore>()(
 				name: "tabs-storage",
 				version: 9,
 				storage: trpcTabsStorage,
-				partialize: (state) => ({
-					tabs: state.tabs,
-					panes: state.panes,
-					activeTabIds: state.activeTabIds,
-					focusedPaneIds: state.focusedPaneIds,
-					tabHistoryStacks: state.tabHistoryStacks,
-					closedTabsStack: state.closedTabsStack,
-				}),
+				partialize: (state) => {
+					const panes = sanitizePersistedPanes(state.panes);
+					const closedTabsStack = sanitizeClosedTabsStack(
+						state.closedTabsStack,
+					);
+					return {
+						tabs: state.tabs,
+						panes,
+						activeTabIds: state.activeTabIds,
+						focusedPaneIds: state.focusedPaneIds,
+						tabHistoryStacks: state.tabHistoryStacks,
+						closedTabsStack,
+					};
+				},
 				migrate: (persistedState, version) => {
 					const state = persistedState as TabsState;
 					if (version < 2 && state.panes) {
@@ -2525,6 +2599,7 @@ export const useTabsStore = create<TabsStore>()(
 					// - "permission": Permission dialog is gone after restart
 					// Note: "review" is intentionally preserved so users see missed completions
 					if (persisted.panes) {
+						persisted.panes = sanitizePersistedPanes(persisted.panes);
 						for (const pane of Object.values(persisted.panes)) {
 							if (pane.status === "working" || pane.status === "permission") {
 								pane.status = "idle";
@@ -2539,6 +2614,11 @@ export const useTabsStore = create<TabsStore>()(
 								};
 							}
 						}
+					}
+					if (persisted.closedTabsStack) {
+						persisted.closedTabsStack = sanitizeClosedTabsStack(
+							persisted.closedTabsStack,
+						);
 					}
 
 					const mergedState = { ...currentState, ...persisted };

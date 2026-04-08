@@ -53,11 +53,15 @@ export type ThinkingToggleProps = Omit<
 > & {
 	level: ThinkingLevel;
 	onLevelChange: (level: ThinkingLevel) => void;
+	disabledLevels?: Partial<Record<ThinkingLevel, string>>;
+	hint?: string;
 };
 
 export const ThinkingToggle = ({
 	level,
 	onLevelChange,
+	disabledLevels,
+	hint,
 	className,
 	...props
 }: ThinkingToggleProps) => {
@@ -92,22 +96,25 @@ export const ThinkingToggle = ({
 					</TooltipTrigger>
 					<TooltipContent>
 						<p>Extended thinking: {activeOption.label}</p>
+						{hint ? <p>{hint}</p> : null}
 					</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
 			<DropdownMenuContent align="start" className="w-56">
 				{THINKING_LEVELS.map((option) => {
 					const isSelected = option.value === level;
+					const disabledReason = disabledLevels?.[option.value];
 					return (
 						<DropdownMenuItem
 							key={option.value}
 							onSelect={() => onLevelChange(option.value)}
+							disabled={Boolean(disabledReason)}
 							className="flex items-center gap-2"
 						>
 							<div className="flex flex-1 flex-col gap-0.5">
 								<span className="text-sm font-medium">{option.label}</span>
 								<span className="text-xs text-muted-foreground">
-									{option.description}
+									{disabledReason ?? option.description}
 								</span>
 							</div>
 							{isSelected && <CheckIcon className="size-4 shrink-0" />}

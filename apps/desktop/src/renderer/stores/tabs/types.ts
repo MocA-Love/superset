@@ -216,6 +216,8 @@ export interface TabsStore extends TabsState {
 		extensionId: string,
 		viewType: string,
 		name: string,
+		source?: "view" | "panel",
+		sessionId?: string,
 	) => { tabId: string; paneId: string };
 	addGitGraphTab: (
 		workspaceId: string,

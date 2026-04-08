@@ -21,6 +21,11 @@ import type {
 	ModelOption,
 	PermissionMode,
 } from "renderer/components/Chat/ChatInterface/types";
+import {
+	getEffectiveThinkingLevel,
+	getForcedThinkingDisabledLevels,
+	getForcedThinkingHint,
+} from "renderer/components/Chat/ChatInterface/utils/thinking-levels";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 import {
 	getDesktopChatModelOptions,
@@ -121,7 +126,9 @@ function ChatUploadFooter({
 	return (
 		<ChatInputFooter
 			{...footerProps}
-			submitDisabled={sessionId ? isUploading : false}
+			submitDisabled={
+				Boolean(footerProps.submitDisabled) || (sessionId ? isUploading : false)
+			}
 			renderAttachment={renderAttachment}
 			onSend={handleSend}
 		/>
@@ -131,6 +138,7 @@ function ChatUploadFooter({
 function useAvailableModels(): {
 	models: ModelOption[];
 	defaultModel: ModelOption | null;
+	authLoading: boolean;
 } {
 	const localModels = getDesktopChatModelOptions();
 	const { data } = useQuery({
@@ -145,20 +153,18 @@ function useAvailableModels(): {
 		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
 
 	const allModels = localModels.length > 0 ? localModels : (data?.models ?? []);
-
-	// ローディング中はフィルタをスキップして全モデルを表示する（フラッシュ防止）
 	const authLoading = anthropicLoading || openaiLoading;
-	const models = authLoading
-		? allModels
-		: allModels.filter((model) => {
-				if (model.id.startsWith("anthropic/"))
-					return anthropicStatus?.authenticated ?? false;
-				if (model.id.startsWith("openai/"))
-					return openaiStatus?.authenticated ?? false;
-				return true;
-			});
+	const models = allModels.filter((model) => {
+		if (model.id.startsWith("anthropic/")) {
+			return !authLoading && (anthropicStatus?.authenticated ?? false);
+		}
+		if (model.id.startsWith("openai/")) {
+			return !authLoading && (openaiStatus?.authenticated ?? false);
+		}
+		return true;
+	});
 
-	return { models, defaultModel: models[0] ?? null };
+	return { models, defaultModel: models[0] ?? null, authLoading };
 }
 
 function toErrorMessage(error: unknown): string | null {
@@ -220,7 +226,11 @@ export function ChatPaneInterface({
 	onUserMessageSubmitted,
 	onRawSnapshotChange,
 }: ChatPaneInterfaceProps) {
-	const { models: availableModels, defaultModel } = useAvailableModels();
+	const {
+		models: availableModels,
+		defaultModel,
+		authLoading,
+	} = useAvailableModels();
 	const selectedModelId = useChatPreferencesStore(
 		(state) => state.selectedModelId,
 	);
@@ -234,6 +244,18 @@ export function ChatPaneInterface({
 	const thinkingLevel = useChatPreferencesStore((state) => state.thinkingLevel);
 	const setThinkingLevel = useChatPreferencesStore(
 		(state) => state.setThinkingLevel,
+	);
+	const effectiveThinkingLevel = useMemo(
+		() => getEffectiveThinkingLevel(thinkingLevel, activeModel?.id),
+		[activeModel?.id, thinkingLevel],
+	);
+	const thinkingDisabledLevels = useMemo(
+		() => getForcedThinkingDisabledLevels(activeModel?.id),
+		[activeModel?.id],
+	);
+	const thinkingHint = useMemo(
+		() => getForcedThinkingHint(activeModel?.id),
+		[activeModel?.id],
 	);
 	const [permissionMode, setPermissionMode] =
 		useState<PermissionMode>("bypassPermissions");
@@ -563,6 +585,16 @@ export function ChatPaneInterface({
 			}
 			content = slashCommandResult.nextText.trim();
 
+			if (!activeModel?.id) {
+				setSubmitStatus(undefined);
+				setRuntimeErrorMessage(
+					authLoading
+						? "Models are still loading. Please wait a moment and try again."
+						: "No authenticated chat model is available.",
+				);
+				return;
+			}
+
 			if (!content && (!payload.files || payload.files.length === 0)) {
 				setSubmitStatus(undefined);
 				return;
@@ -622,7 +654,7 @@ export function ChatPaneInterface({
 					},
 					metadata: {
 						model: activeModel?.id,
-						thinkingLevel,
+						thinkingLevel: effectiveThinkingLevel,
 					},
 				};
 				immediateUserMessage =
@@ -691,6 +723,7 @@ export function ChatPaneInterface({
 		},
 		[
 			activeModel?.id,
+			authLoading,
 			captureChatEvent,
 			clearRuntimeError,
 			commands,
@@ -703,7 +736,7 @@ export function ChatPaneInterface({
 			sendMessageToSession,
 			setRuntimeErrorMessage,
 			onUserMessageSubmitted,
-			thinkingLevel,
+			effectiveThinkingLevel,
 			clearDraftInStore,
 		],
 	);
@@ -741,6 +774,15 @@ export function ChatPaneInterface({
 				initialLaunchConfig.retryCount ?? AUTO_LAUNCH_MAX_RETRIES;
 			if (previousAttempts >= retryLimit) return;
 
+			const modelId = initialLaunchConfig.metadata?.model ?? activeModel?.id;
+			if (!modelId) {
+				setSubmitStatus(undefined);
+				if (!authLoading) {
+					setRuntimeErrorMessage("No authenticated chat model is available.");
+				}
+				return;
+			}
+
 			autoLaunchAttemptsRef.current[launchConfigKey] = previousAttempts + 1;
 			autoLaunchInFlightRef.current = launchConfigKey;
 			if (autoLaunchRetryTimerRef.current) {
@@ -750,8 +792,10 @@ export function ChatPaneInterface({
 
 			clearRuntimeError();
 			setSubmitStatus("submitted");
-
-			const modelId = initialLaunchConfig.metadata?.model ?? activeModel?.id;
+			const effectiveLaunchThinkingLevel = getEffectiveThinkingLevel(
+				thinkingLevel,
+				modelId,
+			);
 			const sendInput: ChatSendMessageInput = {
 				payload: {
 					content: prompt ?? "",
@@ -759,7 +803,7 @@ export function ChatPaneInterface({
 				},
 				metadata: {
 					model: modelId,
-					thinkingLevel,
+					thinkingLevel: effectiveLaunchThinkingLevel,
 				},
 			};
 
@@ -821,6 +865,7 @@ export function ChatPaneInterface({
 		};
 	}, [
 		activeModel?.id,
+		authLoading,
 		captureChatEvent,
 		clearRuntimeError,
 		commands,
@@ -870,7 +915,7 @@ export function ChatPaneInterface({
 				payload: request.payload,
 				metadata: {
 					model: activeModel?.id,
-					thinkingLevel,
+					thinkingLevel: effectiveThinkingLevel,
 				},
 			});
 			if (optimisticMessage) {
@@ -890,7 +935,7 @@ export function ChatPaneInterface({
 						payload: request.payload,
 						metadata: {
 							model: activeModel?.id,
-							thinkingLevel,
+							thinkingLevel: effectiveThinkingLevel,
 						},
 					},
 				);
@@ -930,7 +975,7 @@ export function ChatPaneInterface({
 			onUserMessageSubmitted,
 			sessionId,
 			setRuntimeErrorMessage,
-			thinkingLevel,
+			effectiveThinkingLevel,
 			clearDraftInStore,
 		],
 	);
@@ -1023,6 +1068,7 @@ export function ChatPaneInterface({
 					isRunning={canAbort}
 					isConversationLoading={isConversationLoading}
 					isAwaitingAssistant={isAwaitingAssistant}
+					thinkingLevel={effectiveThinkingLevel}
 					currentMessage={currentMessage ?? null}
 					interruptedMessage={interruptedMessage}
 					workspaceId={workspaceId}
@@ -1062,8 +1108,11 @@ export function ChatPaneInterface({
 					setModelSelectorOpen={setModelSelectorOpen}
 					permissionMode={permissionMode}
 					setPermissionMode={setPermissionMode}
-					thinkingLevel={thinkingLevel}
+					thinkingLevel={effectiveThinkingLevel}
 					setThinkingLevel={setThinkingLevel}
+					thinkingDisabledLevels={thinkingDisabledLevels}
+					thinkingHint={thinkingHint}
+					submitDisabled={!activeModel?.id}
 					slashCommands={slashCommands}
 					sessionId={sessionId}
 					onError={setRuntimeErrorMessage}

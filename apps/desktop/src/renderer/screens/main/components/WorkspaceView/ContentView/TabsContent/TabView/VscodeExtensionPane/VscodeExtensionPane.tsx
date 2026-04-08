@@ -10,6 +10,8 @@ interface VscodeExtensionPaneProps {
 	tabId: string;
 	viewType: string;
 	extensionId: string;
+	source?: "view" | "panel";
+	sessionId?: string;
 	splitPaneAuto: (
 		tabId: string,
 		sourcePaneId: string,
@@ -27,6 +29,8 @@ export function VscodeExtensionPane({
 	tabId,
 	viewType,
 	extensionId,
+	source,
+	sessionId,
 	splitPaneAuto,
 	removePane,
 	setFocusedPane,
@@ -68,6 +72,8 @@ export function VscodeExtensionPane({
 					extensionId={extensionId}
 					isActive={true}
 					persistenceId={createVscodeExtensionPanePersistenceId(paneId)}
+					source={source}
+					sessionId={sessionId}
 				/>
 			</div>
 		</BasePaneWindow>

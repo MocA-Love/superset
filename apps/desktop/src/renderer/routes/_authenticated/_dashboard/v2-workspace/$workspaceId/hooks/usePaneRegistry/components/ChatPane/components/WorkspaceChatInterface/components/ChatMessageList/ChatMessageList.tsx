@@ -7,6 +7,7 @@ import {
 } from "@superset/ui/ai-elements/conversation";
 import { useMemo, useRef } from "react";
 import { HiMiniChatBubbleLeftRight } from "react-icons/hi2";
+import { getThinkingIndicatorLabel } from "renderer/components/Chat/ChatInterface/utils/thinking-levels";
 import type {
 	ChatMessage,
 	ChatMessageListProps,
@@ -32,12 +33,26 @@ import {
 	resolvePendingPlanToolCallId,
 } from "./utils/messageListHelpers";
 
+function isCompactAssistantMessage(message: ChatMessage): boolean {
+	if (message.role !== "assistant" || message.content.length === 0) {
+		return false;
+	}
+
+	return message.content.every(
+		(part) =>
+			part.type === "tool_call" ||
+			part.type === "tool_result" ||
+			part.type.startsWith("om_"),
+	);
+}
+
 export function ChatMessageList({
 	messages,
 	isFocused,
 	isRunning,
 	isConversationLoading,
 	isAwaitingAssistant,
+	thinkingLevel = "off",
 	currentMessage,
 	interruptedMessage,
 	workspaceId,
@@ -96,6 +111,60 @@ export function ChatMessageList({
 			}),
 		[interruptedMessage, interruptedPreview, visibleMessages],
 	);
+	const messageRenderGroups = useMemo(() => {
+		const groups: Array<
+			| {
+					kind: "single";
+					message: ChatMessage;
+					originalIndex: number;
+			  }
+			| {
+					kind: "compact-assistant-group";
+					messages: ChatMessage[];
+					startIndex: number;
+			  }
+		> = [];
+
+		for (let index = 0; index < renderedMessages.length; index++) {
+			const message = renderedMessages[index];
+			if (!isCompactAssistantMessage(message)) {
+				groups.push({
+					kind: "single",
+					message,
+					originalIndex: index,
+				});
+				continue;
+			}
+
+			const compactGroup = [message];
+			let nextIndex = index + 1;
+			while (
+				nextIndex < renderedMessages.length &&
+				isCompactAssistantMessage(renderedMessages[nextIndex] as ChatMessage)
+			) {
+				compactGroup.push(renderedMessages[nextIndex] as ChatMessage);
+				nextIndex++;
+			}
+
+			if (compactGroup.length === 1) {
+				groups.push({
+					kind: "single",
+					message,
+					originalIndex: index,
+				});
+				continue;
+			}
+
+			groups.push({
+				kind: "compact-assistant-group",
+				messages: compactGroup,
+				startIndex: index,
+			});
+			index = nextIndex - 1;
+		}
+
+		return groups;
+	}, [renderedMessages]);
 
 	const previewToolParts = useMemo(
 		() =>
@@ -108,6 +177,47 @@ export function ChatMessageList({
 	const activeSubagentEntries = useMemo(
 		() => (activeSubagents ? [...activeSubagents.entries()] : []),
 		[activeSubagents],
+	);
+	const anchoredSubagentToolCallIds = useMemo(() => {
+		const toolCallIds = new Set<string>();
+		const collectFromMessage = (message: ChatMessage | null) => {
+			if (!message) return;
+			for (const part of message.content) {
+				if (
+					(part.type === "tool_call" || part.type === "tool_result") &&
+					typeof part.id === "string" &&
+					part.id.length > 0
+				) {
+					toolCallIds.add(part.id);
+				}
+			}
+		};
+
+		for (const message of renderedMessages) {
+			collectFromMessage(message);
+		}
+		collectFromMessage(interruptedPreview);
+		if (currentMessage?.role === "assistant") {
+			collectFromMessage(currentMessage);
+		}
+		for (const previewPart of previewToolParts) {
+			toolCallIds.add(previewPart.toolCallId);
+		}
+		return toolCallIds;
+	}, [currentMessage, interruptedPreview, previewToolParts, renderedMessages]);
+	const inlineSubagentEntries = useMemo(
+		() =>
+			activeSubagentEntries.filter(([toolCallId]) =>
+				anchoredSubagentToolCallIds.has(toolCallId),
+			),
+		[activeSubagentEntries, anchoredSubagentToolCallIds],
+	);
+	const orphanedSubagentEntries = useMemo(
+		() =>
+			activeSubagentEntries.filter(
+				([toolCallId]) => !anchoredSubagentToolCallIds.has(toolCallId),
+			),
+		[activeSubagentEntries, anchoredSubagentToolCallIds],
 	);
 	const hasSubagentActivity = activeSubagentEntries.length > 0;
 
@@ -169,6 +279,22 @@ export function ChatMessageList({
 		isPlanSubmitting,
 		onPlanRespond,
 	} as const;
+	const showReasoning = thinkingLevel !== "off";
+	const renderAssistantMessage = (message: ChatMessage) => (
+		<AssistantMessage
+			key={message.id}
+			message={message}
+			workspaceId={workspaceId}
+			sessionId={sessionId}
+			organizationId={organizationId}
+			workspaceCwd={workspaceCwd}
+			isStreaming={false}
+			previewToolParts={[]}
+			subagentEntries={inlineSubagentEntries}
+			showReasoning={showReasoning}
+			{...inlineToolStateProps}
+		/>
+	);
 
 	return (
 		<Conversation className="flex-1">
@@ -183,13 +309,28 @@ export function ChatMessageList({
 							icon={<HiMiniChatBubbleLeftRight className="size-8" />}
 						/>
 					) : (
-						renderedMessages.map((message, messageIndex) => {
+						messageRenderGroups.map((group) => {
+							if (group.kind === "compact-assistant-group") {
+								return (
+									<div
+										key={`compact-group-${group.startIndex}`}
+										data-compact-assistant-group={group.messages.length}
+										className="flex flex-col gap-2"
+									>
+										{group.messages.map((message) =>
+											renderAssistantMessage(message),
+										)}
+									</div>
+								);
+							}
+
+							const { message, originalIndex } = group;
 							if (message.role === "user") {
 								return (
 									<UserMessage
 										key={message.id}
 										message={message}
-										prefixMessages={renderedMessages.slice(0, messageIndex)}
+										prefixMessages={renderedMessages.slice(0, originalIndex)}
 										workspaceId={workspaceId}
 										workspaceCwd={workspaceCwd}
 										isEditing={editingUserMessageId === message.id}
@@ -203,19 +344,7 @@ export function ChatMessageList({
 								);
 							}
 
-							return (
-								<AssistantMessage
-									key={message.id}
-									message={message}
-									workspaceId={workspaceId}
-									sessionId={sessionId}
-									organizationId={organizationId}
-									workspaceCwd={workspaceCwd}
-									isStreaming={false}
-									previewToolParts={[]}
-									{...inlineToolStateProps}
-								/>
-							);
+							return renderAssistantMessage(message);
 						})
 					)}
 					{interruptedPreview && (
@@ -228,6 +357,8 @@ export function ChatMessageList({
 							workspaceCwd={workspaceCwd}
 							isStreaming={false}
 							previewToolParts={[]}
+							subagentEntries={inlineSubagentEntries}
+							showReasoning={showReasoning}
 							{...inlineToolStateProps}
 							footer={<InterruptedFooter />}
 						/>
@@ -242,10 +373,14 @@ export function ChatMessageList({
 							workspaceCwd={workspaceCwd}
 							isStreaming
 							previewToolParts={previewToolParts}
+							subagentEntries={inlineSubagentEntries}
+							showReasoning={showReasoning}
 							{...inlineToolStateProps}
 						/>
 					)}
-					{shouldShowThinking ? <ThinkingMessage /> : null}
+					{shouldShowThinking ? (
+						<ThinkingMessage label={getThinkingIndicatorLabel(thinkingLevel)} />
+					) : null}
 					{shouldShowToolPreview ? (
 						<ToolPreviewMessage
 							previewToolParts={previewToolParts}
@@ -259,8 +394,8 @@ export function ChatMessageList({
 							onPlanRespond={onPlanRespond}
 						/>
 					) : null}
-					{hasSubagentActivity ? (
-						<SubagentExecutionMessage subagents={activeSubagentEntries} />
+					{orphanedSubagentEntries.length > 0 ? (
+						<SubagentExecutionMessage subagents={orphanedSubagentEntries} />
 					) : null}
 					{pendingApproval && (
 						<PendingApprovalMessage

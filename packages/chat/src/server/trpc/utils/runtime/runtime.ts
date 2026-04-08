@@ -7,6 +7,8 @@ import {
 } from "../../../desktop";
 import type { ThinkingLevel } from "../../zod";
 
+const SUBAGENT_AGENT_TYPES = ["explore", "plan", "execute"] as const;
+
 export type RuntimeHarness = Awaited<
 	ReturnType<typeof createMastraCode>
 >["harness"];
@@ -107,6 +109,23 @@ interface HarnessWithConfig {
 			getStore: (domain: "memory") => Promise<RuntimeMemoryStore | null>;
 		};
 	};
+}
+
+export async function syncSubagentModelToCurrentSelection(
+	runtime: RuntimeSession,
+	modelId?: string,
+): Promise<void> {
+	const nextModelId = modelId?.trim();
+	if (!nextModelId) return;
+
+	await Promise.all(
+		SUBAGENT_AGENT_TYPES.map(async (agentType) => {
+			await runtime.harness.setSubagentModelId({
+				modelId: nextModelId,
+				agentType,
+			});
+		}),
+	);
 }
 
 async function getRuntimeMemoryStore(
@@ -419,6 +438,7 @@ export async function restartRuntimeFromUserMessage(
 			modelId: selectedModel,
 			scope: "thread",
 		});
+		await syncSubagentModelToCurrentSelection(runtime, selectedModel);
 	}
 
 	const thinkingLevel = input.metadata?.thinkingLevel;

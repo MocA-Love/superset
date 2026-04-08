@@ -18,6 +18,7 @@ import {
 	runSessionStartHook,
 	subscribeToSessionEvents,
 	syncRuntimeHookSessionId,
+	syncSubagentModelToCurrentSelection,
 } from "./utils/runtime";
 import { getSupersetMcpTools } from "./utils/runtime/superset-mcp";
 import {
@@ -35,7 +36,6 @@ import {
 } from "./zod";
 
 const ENABLE_MASTRA_MCP_SERVERS = false;
-
 function resolveOmModelFromAuth(): string | undefined {
 	if (process.env.GOOGLE_GENERATIVE_AI_API_KEY)
 		return "google/gemini-2.5-flash";
@@ -271,6 +271,7 @@ export class ChatRuntimeService {
 								modelId: selectedModel,
 								scope: "thread",
 							});
+							await syncSubagentModelToCurrentSelection(runtime, selectedModel);
 						}
 						const thinkingLevel = input.metadata?.thinkingLevel;
 						if (thinkingLevel) {

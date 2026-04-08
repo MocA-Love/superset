@@ -3,6 +3,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "../../WorkspaceIdContext";
 import {
 	createPersistentVscodeExtensionHostId,
+	destroyPersistentVscodeExtensionHost,
 	getPersistentVscodeExtensionHost,
 	parkPersistentVscodeExtensionHost,
 	setPersistentVscodeExtensionHost,
@@ -13,6 +14,8 @@ interface VscodeExtensionViewProps {
 	extensionId: string;
 	isActive: boolean;
 	persistenceId: string;
+	source?: "view" | "panel";
+	sessionId?: string;
 }
 
 /**
@@ -25,6 +28,8 @@ export function VscodeExtensionView({
 	extensionId,
 	isActive,
 	persistenceId,
+	source = "view",
+	sessionId,
 }: VscodeExtensionViewProps) {
 	const workspaceId = useWorkspaceId();
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
@@ -52,10 +57,14 @@ export function VscodeExtensionView({
 
 	const resolveMutation =
 		electronTrpc.vscodeExtensions.resolveWebview.useMutation();
+	const attachMutation =
+		electronTrpc.vscodeExtensions.attachWebview.useMutation();
 	const postMessageMutation =
 		electronTrpc.vscodeExtensions.postMessageToExtension.useMutation();
 	const resolveWebviewRef = useRef(resolveMutation.mutate);
 	resolveWebviewRef.current = resolveMutation.mutate;
+	const attachWebviewRef = useRef(attachMutation.mutate);
+	attachWebviewRef.current = attachMutation.mutate;
 
 	useEffect(() => {
 		const existingHost = getPersistentVscodeExtensionHost(persistentHostId);
@@ -83,14 +92,93 @@ export function VscodeExtensionView({
 			};
 		}
 
-		if (!isActive || !workspaceId || !workspace?.worktreePath) {
+		if (!isActive || !workspaceId) {
 			setIframeAttached(false);
 			return;
 		}
 
+		const createHost = (nextViewId: string, url: string) => {
+			const wrapper = document.createElement("div");
+			wrapper.style.display = "flex";
+			wrapper.style.flex = "1";
+			wrapper.style.width = "100%";
+			wrapper.style.height = "100%";
+			wrapper.style.minHeight = "0";
+
+			const iframe = document.createElement("iframe");
+			iframe.src = url;
+			iframe.className = "w-full h-full border-0";
+			iframe.sandbox.add(
+				"allow-scripts",
+				"allow-same-origin",
+				"allow-forms",
+				"allow-popups",
+				"allow-modals",
+				"allow-downloads",
+			);
+			iframe.allow = "clipboard-read; clipboard-write; microphone; camera";
+			iframe.title = `${extensionId} webview`;
+
+			wrapper.appendChild(iframe);
+			container.appendChild(wrapper);
+			iframeRef.current = iframe;
+			setPersistentVscodeExtensionHost(persistentHostId, {
+				wrapper,
+				iframe,
+				viewId: nextViewId,
+			});
+			setViewId(nextViewId);
+			setIframeAttached(true);
+		};
+
+		const markUnavailable = (message: string) => {
+			destroyPersistentVscodeExtensionHost(persistentHostId);
+			iframeRef.current = null;
+			setViewId(null);
+			setIframeAttached(false);
+			setError(message);
+		};
+
 		setIframeAttached(false);
 		setError(null);
 
+		if (source === "panel") {
+			if (!sessionId) {
+				markUnavailable(`Extension panel "${viewType}" is no longer available`);
+				return;
+			}
+
+			attachWebviewRef.current(
+				{ viewId: sessionId },
+				{
+					onSuccess: (result) => {
+						if (cancelled) return;
+						if (!result.viewId || !result.url) {
+							markUnavailable(
+								`Extension panel "${viewType}" is no longer available`,
+							);
+							return;
+						}
+
+						createHost(result.viewId, result.url);
+					},
+					onError: (err) => {
+						if (cancelled) return;
+						destroyPersistentVscodeExtensionHost(persistentHostId);
+						setError(err.message);
+					},
+				},
+			);
+
+			return () => {
+				cancelled = true;
+				parkPersistentVscodeExtensionHost(persistentHostId);
+			};
+		}
+
+		if (!workspace?.worktreePath) {
+			return;
+		}
 		resolveWebviewRef.current(
 			{
 				workspaceId,
@@ -106,37 +194,7 @@ export function VscodeExtensionView({
 						return;
 					}
 
-					const wrapper = document.createElement("div");
-					wrapper.style.display = "flex";
-					wrapper.style.flex = "1";
-					wrapper.style.width = "100%";
-					wrapper.style.height = "100%";
-					wrapper.style.minHeight = "0";
-
-					const iframe = document.createElement("iframe");
-					iframe.src = result.url;
-					iframe.className = "w-full h-full border-0";
-					iframe.sandbox.add(
-						"allow-scripts",
-						"allow-same-origin",
-						"allow-forms",
-						"allow-popups",
-						"allow-modals",
-						"allow-downloads",
-					);
-					iframe.allow = "clipboard-read; clipboard-write; microphone; camera";
-					iframe.title = `${extensionId} webview`;
-
-					wrapper.appendChild(iframe);
-					container.appendChild(wrapper);
-					iframeRef.current = iframe;
-					setPersistentVscodeExtensionHost(persistentHostId, {
-						wrapper,
-						iframe,
-						viewId: result.viewId,
-					});
-					setViewId(result.viewId);
-					setIframeAttached(true);
+					createHost(result.viewId, result.url);
 				},
 				onError: (err) => {
 					if (cancelled) return;
@@ -151,6 +209,8 @@ export function VscodeExtensionView({
 		};
 	}, [
 		isActive,
+		source,
+		sessionId,
 		viewType,
 		workspaceId,
 		workspace?.worktreePath,
@@ -184,6 +244,16 @@ export function VscodeExtensionView({
 			enabled: !!viewId && !!workspaceId,
 			onData: (event) => {
 				if (!viewId || event.viewId !== viewId) return;
+				if (event.type === "dispose") {
+					destroyPersistentVscodeExtensionHost(persistentHostId);
+					iframeRef.current = null;
+					setViewId(null);
+					setIframeAttached(false);
+					if (source === "panel") {
+						setError(`Extension panel "${viewType}" is no longer available`);
+					}
+					return;
+				}
 				if (event.type === "message") {
 					iframeRef.current?.contentWindow?.postMessage(
 						{ type: "vscode-message", data: event.data },

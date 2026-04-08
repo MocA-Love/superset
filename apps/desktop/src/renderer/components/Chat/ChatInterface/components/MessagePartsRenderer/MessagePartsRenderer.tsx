@@ -11,6 +11,7 @@ import {
 import type React from "react";
 import { useCallback, useMemo } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { createShikiTheme } from "renderer/screens/main/components/WorkspaceView/utils/code-theme/shiki-theme";
 import { useTheme } from "renderer/stores";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { READ_ONLY_TOOLS } from "../../constants";
@@ -102,6 +103,14 @@ export function MessagePartsRenderer({
 		}),
 		[theme?.type],
 	);
+	const shikiTheme = useMemo(() => {
+		if (!theme) return undefined;
+		const currentTheme = createShikiTheme(theme);
+		return [currentTheme, currentTheme] as [
+			typeof currentTheme,
+			typeof currentTheme,
+		];
+	}, [theme]);
 
 	const renderParts = ({
 		parts,
@@ -124,6 +133,7 @@ export function MessagePartsRenderer({
 						isAnimating={isLastAssistant && isStreaming}
 						mermaid={mermaidConfig}
 						components={components}
+						shikiTheme={shikiTheme}
 					/>,
 				);
 				i++;

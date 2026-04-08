@@ -186,6 +186,10 @@ export function clearWebviewHtml(viewId: string): void {
 	htmlStore.delete(viewId);
 }
 
+export function hasWebviewHtml(viewId: string): boolean {
+	return htmlStore.has(viewId);
+}
+
 export function getWebviewUrl(viewId: string): string {
 	return `http://127.0.0.1:${serverPort}/webview/${encodeURIComponent(viewId)}`;
 }
