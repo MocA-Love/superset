@@ -1,0 +1,1 @@
+export { useVscodeExtensionLifecycle } from "./useVscodeExtensionLifecycle";

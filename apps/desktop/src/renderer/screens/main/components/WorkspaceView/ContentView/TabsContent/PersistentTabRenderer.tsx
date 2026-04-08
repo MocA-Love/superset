@@ -11,14 +11,12 @@ interface PersistentTabRendererProps {
 }
 
 /**
- * Renders workspace tabs, keeping only those that contain a browser (webview)
- * pane mounted when inactive. Tabs without webviews are unmounted normally.
+ * Renders workspace tabs, keeping tabs with persistent embedded views mounted
+ * when inactive. Regular tabs are unmounted normally.
  *
- * Electron's <webview> tag reloads its content whenever it is reparented in the
- * DOM. By keeping webview-containing tabs mounted (but off-screen), webview
- * elements stay in their original DOM parent and never reparent, eliminating
- * the reload. Non-webview tabs (terminals, chat, files) can safely unmount and
- * remount without data loss.
+ * Browser panes use Electron <webview>, and VS Code extension panes use iframes
+ * backed by persistent view IDs. Keeping these tabs mounted avoids dropping
+ * subscriptions or forcing unnecessary view resolution while the tab is hidden.
  */
 export function PersistentTabRenderer({
 	isWorkspaceActive,
@@ -27,11 +25,16 @@ export function PersistentTabRenderer({
 }: PersistentTabRendererProps) {
 	const panes = useTabsStore((s) => s.panes);
 
-	const tabsWithWebview = useMemo(() => {
+	const tabsWithPersistentViews = useMemo(() => {
 		const ids = new Set<string>();
 		for (const tab of tabs) {
 			const paneIds = extractPaneIdsFromLayout(tab.layout);
-			if (paneIds.some((id) => panes[id]?.type === "webview")) {
+			if (
+				paneIds.some((id) => {
+					const type = panes[id]?.type;
+					return type === "webview" || type === "vscode-extension";
+				})
+			) {
 				ids.add(tab.id);
 			}
 		}
@@ -42,10 +45,9 @@ export function PersistentTabRenderer({
 		<>
 			{tabs.map((tab) => {
 				const isActive = tab.id === activeTabId;
-				const hasWebview = tabsWithWebview.has(tab.id);
+				const hasPersistentView = tabsWithPersistentViews.has(tab.id);
 
-				// Tabs without webviews: only render when active (original behavior)
-				if (!hasWebview && !isActive) return null;
+				if (!hasPersistentView && !isActive) return null;
 
 				return (
 					<div
