@@ -410,8 +410,8 @@ export function CodeMirrorDiffViewer({
 					: [],
 			),
 		});
-	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
-	}, [inlineCompletionCompartmentB, Boolean(inlineCompletionRequest)]);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
+	}, [inlineCompletionCompartmentB, inlineCompletionRequest]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }

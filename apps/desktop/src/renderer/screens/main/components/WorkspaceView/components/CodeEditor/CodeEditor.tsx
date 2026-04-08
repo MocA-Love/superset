@@ -714,8 +714,8 @@ export function CodeEditor({
 					: [],
 			),
 		});
-	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
-	}, [inlineCompletionCompartment, Boolean(inlineCompletionRequest)]);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
+	}, [inlineCompletionCompartment, inlineCompletionRequest]);
 
 	useEffect(() => {
 		let cancelled = false;
