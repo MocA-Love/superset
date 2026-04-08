@@ -65,6 +65,7 @@ export function useTerminalSuggestion({
 	historySuggestionsRef.current = historySuggestions;
 	const selectedIndexRef = useRef(selectedIndex);
 	selectedIndexRef.current = selectedIndex;
+	const loadedOffsetRef = useRef(0);
 
 	const dismiss = useCallback(() => {
 		requestTokenRef.current += 1;
@@ -73,6 +74,7 @@ export function useTerminalSuggestion({
 		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
 		setSelectedIndex(0);
+		loadedOffsetRef.current = 0;
 		lastPrefixRef.current = commandBufferRef.current;
 		if (fetchTimerRef.current) {
 			clearTimeout(fetchTimerRef.current);
@@ -81,7 +83,7 @@ export function useTerminalSuggestion({
 	}, [commandBufferRef]);
 
 	const fetchSuggestions = useCallback(
-		async (prefix: string, offset = 0, append = false) => {
+		async (prefix: string) => {
 			const requestToken = requestTokenRef.current;
 			const promptBlocked =
 				hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
@@ -97,7 +99,7 @@ export function useTerminalSuggestion({
 			try {
 				const result = await electronTrpcClient.terminal.getSuggestions.query({
 					prefix,
-					offset,
+					offset: 0,
 				});
 				if (
 					requestToken !== requestTokenRef.current ||
@@ -107,14 +109,8 @@ export function useTerminalSuggestion({
 					return;
 				}
 
-				if (append) {
-					if (result.length > 0) {
-						setHistorySuggestions((prev) => [...prev, ...result]);
-					}
-					return;
-				}
-
 				setHistorySuggestions(result.length > 0 ? result : EMPTY);
+				loadedOffsetRef.current = result.length;
 				setSelectedIndex(0);
 			} catch {
 				// ignore
@@ -185,6 +181,7 @@ export function useTerminalSuggestion({
 				return;
 			}
 			lastPrefixRef.current = current;
+			loadedOffsetRef.current = 0;
 			setTrackedInput(current);
 
 			if (fetchTimerRef.current) {
@@ -234,6 +231,7 @@ export function useTerminalSuggestion({
 		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
 		setSelectedIndex(0);
+		loadedOffsetRef.current = 0;
 	}, [commandBufferRef]);
 
 	const execute = useCallback(() => {
@@ -253,6 +251,7 @@ export function useTerminalSuggestion({
 		setTrackedInput("");
 		setHistorySuggestions(EMPTY);
 		setSelectedIndex(0);
+		loadedOffsetRef.current = 0;
 		lastPrefixRef.current = "";
 	}, [commandBufferRef, dismiss]);
 
@@ -260,20 +259,48 @@ export function useTerminalSuggestion({
 
 	const loadMore = useCallback(async () => {
 		if (loadingMoreRef.current) return;
+		const promptBlocked =
+			hasReceivedPromptMarkerRef.current && !isAtPromptRef.current;
+		if (
+			!enabledRef.current ||
+			isAlternateScreenRef.current ||
+			promptBlocked ||
+			!isOpenRef.current
+		) {
+			return;
+		}
 		const prefix = lastPrefixRef.current;
-		const currentLen = historySuggestionsRef.current.length;
+		const offset = loadedOffsetRef.current;
+		const requestToken = requestTokenRef.current;
 		loadingMoreRef.current = true;
 		try {
-			await fetchSuggestions(prefix, currentLen, true);
+			const result = await electronTrpcClient.terminal.getSuggestions.query({
+				prefix,
+				offset,
+			});
+			if (
+				requestToken !== requestTokenRef.current ||
+				!isOpenRef.current ||
+				lastPrefixRef.current !== prefix
+			) {
+				return;
+			}
+			if (result.length > 0) {
+				loadedOffsetRef.current += result.length;
+				setHistorySuggestions((prev) => [...prev, ...result]);
+			}
 		} catch {
 			// ignore
 		} finally {
 			loadingMoreRef.current = false;
 		}
-	}, [fetchSuggestions]);
+	}, [hasReceivedPromptMarkerRef, isAlternateScreenRef, isAtPromptRef]);
+
+	const displaySuggestionsLenRef = useRef(displaySuggestions.length);
+	displaySuggestionsLenRef.current = displaySuggestions.length;
 
 	const selectNext = useCallback(() => {
-		const len = displaySuggestions.length;
+		const len = displaySuggestionsLenRef.current;
 		if (len <= 1) return;
 		setSelectedIndex((prev) => {
 			const next = prev + 1;
@@ -284,7 +311,7 @@ export function useTerminalSuggestion({
 			}
 			return next;
 		});
-	}, [displaySuggestions.length, loadMore]);
+	}, [loadMore]);
 
 	const selectPrev = useCallback(() => {
 		const len = displaySuggestions.length;
@@ -297,6 +324,7 @@ export function useTerminalSuggestion({
 		setHistorySuggestions((prev) =>
 			prev.filter((item) => item.command !== cmd),
 		);
+		loadedOffsetRef.current = 0;
 		setSelectedIndex(0);
 		// Delete from history file in background
 		void electronTrpcClient.terminal.deleteHistorySuggestion
