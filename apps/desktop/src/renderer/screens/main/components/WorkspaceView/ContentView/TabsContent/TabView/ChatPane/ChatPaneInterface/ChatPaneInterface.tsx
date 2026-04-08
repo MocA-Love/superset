@@ -21,6 +21,11 @@ import type {
 	ModelOption,
 	PermissionMode,
 } from "renderer/components/Chat/ChatInterface/types";
+import {
+	getEffectiveThinkingLevel,
+	getForcedThinkingDisabledLevels,
+	getForcedThinkingHint,
+} from "renderer/components/Chat/ChatInterface/utils/thinking-levels";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 import {
 	getDesktopChatModelOptions,
@@ -234,6 +239,18 @@ export function ChatPaneInterface({
 	const thinkingLevel = useChatPreferencesStore((state) => state.thinkingLevel);
 	const setThinkingLevel = useChatPreferencesStore(
 		(state) => state.setThinkingLevel,
+	);
+	const effectiveThinkingLevel = useMemo(
+		() => getEffectiveThinkingLevel(thinkingLevel, activeModel?.id),
+		[activeModel?.id, thinkingLevel],
+	);
+	const thinkingDisabledLevels = useMemo(
+		() => getForcedThinkingDisabledLevels(activeModel?.id),
+		[activeModel?.id],
+	);
+	const thinkingHint = useMemo(
+		() => getForcedThinkingHint(activeModel?.id),
+		[activeModel?.id],
 	);
 	const [permissionMode, setPermissionMode] =
 		useState<PermissionMode>("bypassPermissions");
@@ -622,7 +639,7 @@ export function ChatPaneInterface({
 					},
 					metadata: {
 						model: activeModel?.id,
-						thinkingLevel,
+						thinkingLevel: effectiveThinkingLevel,
 					},
 				};
 				immediateUserMessage =
@@ -703,7 +720,7 @@ export function ChatPaneInterface({
 			sendMessageToSession,
 			setRuntimeErrorMessage,
 			onUserMessageSubmitted,
-			thinkingLevel,
+			effectiveThinkingLevel,
 			clearDraftInStore,
 		],
 	);
@@ -752,6 +769,10 @@ export function ChatPaneInterface({
 			setSubmitStatus("submitted");
 
 			const modelId = initialLaunchConfig.metadata?.model ?? activeModel?.id;
+			const effectiveLaunchThinkingLevel = getEffectiveThinkingLevel(
+				thinkingLevel,
+				modelId,
+			);
 			const sendInput: ChatSendMessageInput = {
 				payload: {
 					content: prompt ?? "",
@@ -759,7 +780,7 @@ export function ChatPaneInterface({
 				},
 				metadata: {
 					model: modelId,
-					thinkingLevel,
+					thinkingLevel: effectiveLaunchThinkingLevel,
 				},
 			};
 
@@ -870,7 +891,7 @@ export function ChatPaneInterface({
 				payload: request.payload,
 				metadata: {
 					model: activeModel?.id,
-					thinkingLevel,
+					thinkingLevel: effectiveThinkingLevel,
 				},
 			});
 			if (optimisticMessage) {
@@ -890,7 +911,7 @@ export function ChatPaneInterface({
 						payload: request.payload,
 						metadata: {
 							model: activeModel?.id,
-							thinkingLevel,
+							thinkingLevel: effectiveThinkingLevel,
 						},
 					},
 				);
@@ -930,7 +951,7 @@ export function ChatPaneInterface({
 			onUserMessageSubmitted,
 			sessionId,
 			setRuntimeErrorMessage,
-			thinkingLevel,
+			effectiveThinkingLevel,
 			clearDraftInStore,
 		],
 	);
@@ -1023,6 +1044,7 @@ export function ChatPaneInterface({
 					isRunning={canAbort}
 					isConversationLoading={isConversationLoading}
 					isAwaitingAssistant={isAwaitingAssistant}
+					thinkingLevel={effectiveThinkingLevel}
 					currentMessage={currentMessage ?? null}
 					interruptedMessage={interruptedMessage}
 					workspaceId={workspaceId}
@@ -1062,8 +1084,10 @@ export function ChatPaneInterface({
 					setModelSelectorOpen={setModelSelectorOpen}
 					permissionMode={permissionMode}
 					setPermissionMode={setPermissionMode}
-					thinkingLevel={thinkingLevel}
+					thinkingLevel={effectiveThinkingLevel}
 					setThinkingLevel={setThinkingLevel}
+					thinkingDisabledLevels={thinkingDisabledLevels}
+					thinkingHint={thinkingHint}
 					slashCommands={slashCommands}
 					sessionId={sessionId}
 					onError={setRuntimeErrorMessage}

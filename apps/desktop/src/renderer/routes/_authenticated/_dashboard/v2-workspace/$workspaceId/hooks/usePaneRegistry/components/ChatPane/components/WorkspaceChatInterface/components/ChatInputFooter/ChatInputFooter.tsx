@@ -46,6 +46,8 @@ interface ChatInputFooterProps {
 	setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
 	thinkingLevel: ThinkingLevel;
 	setThinkingLevel: (level: ThinkingLevel) => void;
+	thinkingDisabledLevels?: Partial<Record<ThinkingLevel, string>>;
+	thinkingHint?: string;
 	slashCommands: SlashCommand[];
 	submitDisabled?: boolean;
 	renderAttachment?: (file: FileUIPart & { id: string }) => ReactNode;
@@ -73,6 +75,8 @@ export function ChatInputFooter({
 	setPermissionMode,
 	thinkingLevel,
 	setThinkingLevel,
+	thinkingDisabledLevels,
+	thinkingHint,
 	slashCommands,
 	submitDisabled,
 	renderAttachment,
@@ -199,6 +203,8 @@ export function ChatInputFooter({
 											setPermissionMode={setPermissionMode}
 											thinkingLevel={thinkingLevel}
 											setThinkingLevel={setThinkingLevel}
+											thinkingDisabledLevels={thinkingDisabledLevels}
+											thinkingHint={thinkingHint}
 											canAbort={canAbort}
 											submitStatus={submitStatus}
 											submitDisabled={submitDisabled}

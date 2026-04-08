@@ -29,6 +29,8 @@ interface ChatComposerControlsProps {
 	setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
 	thinkingLevel: ThinkingLevel;
 	setThinkingLevel: (level: ThinkingLevel) => void;
+	thinkingDisabledLevels?: Partial<Record<ThinkingLevel, string>>;
+	thinkingHint?: string;
 	canAbort: boolean;
 	submitStatus?: ChatStatus;
 	submitDisabled?: boolean;
@@ -46,6 +48,8 @@ export function ChatComposerControls({
 	setPermissionMode,
 	thinkingLevel,
 	setThinkingLevel,
+	thinkingDisabledLevels,
+	thinkingHint,
 	canAbort,
 	submitStatus,
 	submitDisabled,
@@ -69,6 +73,8 @@ export function ChatComposerControls({
 				<ThinkingToggle
 					level={thinkingLevel}
 					onLevelChange={setThinkingLevel}
+					disabledLevels={thinkingDisabledLevels}
+					hint={thinkingHint}
 					className={PILL_BUTTON_CLASS}
 				/>
 			</PromptInputTools>

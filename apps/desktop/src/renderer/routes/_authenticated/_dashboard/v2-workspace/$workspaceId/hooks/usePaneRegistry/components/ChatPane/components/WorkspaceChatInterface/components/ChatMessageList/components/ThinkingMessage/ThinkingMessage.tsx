@@ -1,12 +1,18 @@
 import { Message, MessageContent } from "@superset/ui/ai-elements/message";
 import { ShimmerLabel } from "@superset/ui/ai-elements/shimmer-label";
 
-export function ThinkingMessage() {
+interface ThinkingMessageProps {
+	label?: string;
+}
+
+export function ThinkingMessage({
+	label = "Thinking...",
+}: ThinkingMessageProps) {
 	return (
 		<Message from="assistant">
 			<MessageContent>
 				<ShimmerLabel className="text-sm text-muted-foreground">
-					Thinking...
+					{label}
 				</ShimmerLabel>
 			</MessageContent>
 		</Message>

@@ -7,6 +7,7 @@ import {
 } from "@superset/ui/ai-elements/conversation";
 import { useMemo, useRef } from "react";
 import { HiMiniChatBubbleLeftRight } from "react-icons/hi2";
+import { getThinkingIndicatorLabel } from "renderer/components/Chat/ChatInterface/utils/thinking-levels";
 import type {
 	ChatMessage,
 	ChatMessageListProps,
@@ -51,6 +52,7 @@ export function ChatMessageList({
 	isRunning,
 	isConversationLoading,
 	isAwaitingAssistant,
+	thinkingLevel = "off",
 	currentMessage,
 	interruptedMessage,
 	workspaceId,
@@ -277,6 +279,7 @@ export function ChatMessageList({
 		isPlanSubmitting,
 		onPlanRespond,
 	} as const;
+	const showReasoning = thinkingLevel !== "off";
 	const renderAssistantMessage = (message: ChatMessage) => (
 		<AssistantMessage
 			key={message.id}
@@ -288,6 +291,7 @@ export function ChatMessageList({
 			isStreaming={false}
 			previewToolParts={[]}
 			subagentEntries={inlineSubagentEntries}
+			showReasoning={showReasoning}
 			{...inlineToolStateProps}
 		/>
 	);
@@ -354,6 +358,7 @@ export function ChatMessageList({
 							isStreaming={false}
 							previewToolParts={[]}
 							subagentEntries={inlineSubagentEntries}
+							showReasoning={showReasoning}
 							{...inlineToolStateProps}
 							footer={<InterruptedFooter />}
 						/>
@@ -369,10 +374,13 @@ export function ChatMessageList({
 							isStreaming
 							previewToolParts={previewToolParts}
 							subagentEntries={inlineSubagentEntries}
+							showReasoning={showReasoning}
 							{...inlineToolStateProps}
 						/>
 					)}
-					{shouldShowThinking ? <ThinkingMessage /> : null}
+					{shouldShowThinking ? (
+						<ThinkingMessage label={getThinkingIndicatorLabel(thinkingLevel)} />
+					) : null}
 					{shouldShowToolPreview ? (
 						<ToolPreviewMessage
 							previewToolParts={previewToolParts}

@@ -35,6 +35,7 @@ interface AssistantMessageProps {
 	pendingPlanToolCallId?: string | null;
 	isPlanSubmitting?: boolean;
 	subagentEntries?: SubagentEntries;
+	showReasoning?: boolean;
 	onPlanRespond?: (response: {
 		action: "approved" | "rejected";
 		feedback?: string;
@@ -116,6 +117,7 @@ export function AssistantMessage({
 	pendingPlanToolCallId = null,
 	isPlanSubmitting = false,
 	subagentEntries = [],
+	showReasoning = true,
 	onPlanRespond,
 }: AssistantMessageProps) {
 	const addFileViewerPane = useTabsStore((store) => store.addFileViewerPane);
@@ -203,6 +205,9 @@ export function AssistantMessage({
 		}
 
 		if (part.type === "thinking") {
+			if (!showReasoning) {
+				continue;
+			}
 			nodes.push(
 				<ReasoningBlock
 					key={`${message.id}-${partIndex}`}
