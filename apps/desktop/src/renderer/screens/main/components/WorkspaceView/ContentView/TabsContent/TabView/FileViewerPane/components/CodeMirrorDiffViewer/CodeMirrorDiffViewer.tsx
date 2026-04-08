@@ -235,18 +235,9 @@ export function CodeMirrorDiffViewer({
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const editorTheme = getEditorTheme(activeTheme);
 
-	useEffect(() => {
-		onChangeRef.current = onChange;
-	}, [onChange]);
-
-	useEffect(() => {
-		onSaveRef.current = onSave;
-	}, [onSave]);
-
-	useEffect(() => {
-		inlineCompletionRequestRef.current = inlineCompletionRequest;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: coerce to boolean to avoid unnecessary ref updates on callback reference changes
-	}, [Boolean(inlineCompletionRequest)]);
+	onChangeRef.current = onChange;
+	onSaveRef.current = onSave;
+	inlineCompletionRequestRef.current = inlineCompletionRequest;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: MergeView is created once and destroyed on unmount
 	useEffect(() => {
