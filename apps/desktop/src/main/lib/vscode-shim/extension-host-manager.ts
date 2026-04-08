@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
+import { clearWebviewHtml } from "./api/webview-server";
 import type { MainToWorkerMessage, WorkerToMainMessage } from "./ipc-types";
 
 const BASE_RESTART_DELAY = 1000;
@@ -133,16 +134,18 @@ export class ExtensionHostManager extends EventEmitter {
 		instance.process = child;
 
 		// Pipe stdout/stderr with workspace prefix
-		child.stdout?.on("data", (data: Buffer) => {
+		const onStdout = (data: Buffer) => {
 			for (const line of data.toString().split("\n").filter(Boolean)) {
 				console.log(line);
 			}
-		});
-		child.stderr?.on("data", (data: Buffer) => {
+		};
+		const onStderr = (data: Buffer) => {
 			for (const line of data.toString().split("\n").filter(Boolean)) {
 				console.error(line);
 			}
-		});
+		};
+		child.stdout?.on("data", onStdout);
+		child.stderr?.on("data", onStderr);
 
 		// Handle IPC messages from worker
 		child.on("message", (msg: WorkerToMainMessage) => {
@@ -159,12 +162,12 @@ export class ExtensionHostManager extends EventEmitter {
 			instance.process = null;
 			instance.lastCrash = Date.now();
 
-			// Clean up viewId mappings
-			for (const [vid, wsId] of this.viewIdToWorkspace) {
-				if (wsId === workspaceId) {
-					this.viewIdToWorkspace.delete(vid);
-				}
-			}
+			// Release stdout/stderr listeners to prevent accumulation
+			child.stdout?.off("data", onStdout);
+			child.stderr?.off("data", onStderr);
+
+			// Clean up viewId mappings and htmlStore for this workspace
+			this.clearTrackedWebviewsForWorkspace(workspaceId);
 
 			// Schedule restart if not intentionally stopped
 			if (!wasStopped) {
@@ -174,7 +177,12 @@ export class ExtensionHostManager extends EventEmitter {
 
 		// Wait for ready message
 		await new Promise<void>((resolve, reject) => {
+			let settled = false;
+
 			const timer = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				child.off("message", onMessage);
 				reject(
 					new Error(
 						`Extension host worker ${workspaceId} failed to become ready within ${READY_TIMEOUT}ms`,
@@ -184,8 +192,10 @@ export class ExtensionHostManager extends EventEmitter {
 
 			const onMessage = (msg: WorkerToMainMessage) => {
 				if (msg.type === "ready") {
+					if (settled) return;
+					settled = true;
 					clearTimeout(timer);
-					child.removeListener("message", onMessage);
+					child.off("message", onMessage);
 					instance.status = "running";
 					instance.restartCount = 0;
 					resolve();
@@ -194,7 +204,10 @@ export class ExtensionHostManager extends EventEmitter {
 			child.on("message", onMessage);
 
 			child.on("error", (err) => {
+				if (settled) return;
+				settled = true;
 				clearTimeout(timer);
+				child.off("message", onMessage);
 				reject(err);
 			});
 		});
@@ -468,6 +481,14 @@ export class ExtensionHostManager extends EventEmitter {
 		return [...this.instances.entries()]
 			.filter(([, instance]) => instance.status === "running")
 			.map(([workspaceId]) => workspaceId);
+	}
+
+	private clearTrackedWebviewsForWorkspace(workspaceId: string): void {
+		for (const [viewId, wsId] of this.viewIdToWorkspace) {
+			if (wsId !== workspaceId) continue;
+			this.viewIdToWorkspace.delete(viewId);
+			clearWebviewHtml(viewId);
+		}
 	}
 
 	private sendToWorker(workspaceId: string, msg: MainToWorkerMessage): void {

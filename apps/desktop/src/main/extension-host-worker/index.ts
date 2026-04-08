@@ -161,23 +161,37 @@ async function main() {
 					// If HTML not yet set, wait up to 5s
 					if (!html) {
 						html = await new Promise<string | null>((resolve) => {
+							let settled = false;
+							let interval: ReturnType<typeof setInterval> | null = null;
+							let timeout: ReturnType<typeof setTimeout> | null = null;
+
+							const finish = (value: string | null) => {
+								if (settled) return;
+								settled = true;
+								if (interval !== null) {
+									clearInterval(interval);
+									interval = null;
+								}
+								if (timeout !== null) {
+									clearTimeout(timeout);
+									timeout = null;
+								}
+								resolve(value);
+							};
+
 							const checkHtml = () =>
 								(view.webview as { html?: string }).html ?? null;
 							const immediate = checkHtml();
 							if (immediate) {
-								resolve(immediate);
+								finish(immediate);
 								return;
 							}
-							const interval = setInterval(() => {
+							interval = setInterval(() => {
 								const h = checkHtml();
-								if (h) {
-									clearInterval(interval);
-									resolve(h);
-								}
+								if (h) finish(h);
 							}, 200);
-							setTimeout(() => {
-								clearInterval(interval);
-								resolve(checkHtml());
+							timeout = setTimeout(() => {
+								finish(checkHtml());
 							}, 5000);
 						});
 					}
