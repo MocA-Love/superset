@@ -235,17 +235,9 @@ export function CodeMirrorDiffViewer({
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const editorTheme = getEditorTheme(activeTheme);
 
-	useEffect(() => {
-		onChangeRef.current = onChange;
-	}, [onChange]);
-
-	useEffect(() => {
-		onSaveRef.current = onSave;
-	}, [onSave]);
-
-	useEffect(() => {
-		inlineCompletionRequestRef.current = inlineCompletionRequest;
-	}, [inlineCompletionRequest]);
+	onChangeRef.current = onChange;
+	onSaveRef.current = onSave;
+	inlineCompletionRequestRef.current = inlineCompletionRequest;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: MergeView is created once and destroyed on unmount
 	useEffect(() => {
@@ -418,7 +410,8 @@ export function CodeMirrorDiffViewer({
 					: [],
 			),
 		});
-	}, [inlineCompletionCompartmentB, inlineCompletionRequest]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
+	}, [inlineCompletionCompartmentB, Boolean(inlineCompletionRequest)]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }
