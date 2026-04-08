@@ -1,7 +1,10 @@
 import type { AppRouter } from "@superset/trpc";
 import type { createTRPCClient } from "@trpc/client";
 import type { createMastraCode } from "mastracode";
-import { generateTitleFromMessage } from "../../../desktop";
+import {
+	generateTitleFromMessageWithStreamingModel,
+	getDefaultSmallModelProviders,
+} from "../../../desktop";
 import type { ThinkingLevel } from "../../zod";
 
 export type RuntimeHarness = Awaited<
@@ -486,18 +489,25 @@ export async function generateAndSetTitle(
 		}
 		if (!text.trim()) return;
 
-		const mode = runtime.harness.getCurrentMode();
-		const agent =
-			typeof mode.agent === "function"
-				? // Upstream types the agent factory against the schema type, but the
-					// runtime implementation receives the current state values.
-					mode.agent(runtime.harness.getState() as never)
-				: mode.agent;
+		// Use a small model for title generation instead of the chat model,
+		// because the chat model may use OAuth auth that isn't accessible via
+		// process.env API keys (e.g. OpenAI Codex OAuth).
+		const providers = getDefaultSmallModelProviders();
+		let model: unknown = null;
+		for (const provider of providers) {
+			const creds = provider.resolveCredentials();
+			if (!creds) continue;
+			const { supported } = provider.isSupported(creds);
+			if (!supported) continue;
+			model = await provider.createModel(creds);
+			break;
+		}
 
-		const title = await generateTitleFromMessage({
-			agent,
+		if (!model) return;
+
+		const title = await generateTitleFromMessageWithStreamingModel({
 			message: text,
-			modelId: runtime.harness.getFullModelId(),
+			model: model as import("ai").LanguageModel,
 		});
 		if (!title?.trim()) return;
 

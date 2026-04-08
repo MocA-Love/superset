@@ -1,24 +1,29 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { RuntimeSession } from "./runtime";
 
-const generateTitleFromMessageMock = mock(
-	(async ({
-		agent,
-		message,
-	}: {
-		agent: {
-			generateTitleFromUserMessage?: (input: {
-				message: string;
-			}) => Promise<string>;
-		};
-		message: string;
-	}) => agent.generateTitleFromUserMessage?.({ message }) ?? "") as (
+let generateTitleFromMessageWithStreamingModelResult = "";
+
+const generateTitleFromMessageWithStreamingModelMock = mock(
+	(async (_params: { message: string; model: unknown }) =>
+		generateTitleFromMessageWithStreamingModelResult) as (
 		args: unknown,
 	) => Promise<string>,
 );
 
+const getDefaultSmallModelProvidersMock = mock(() => [
+	{
+		id: "mock",
+		name: "Mock",
+		resolveCredentials: () => ({ apiKey: "test", kind: "apiKey", source: "test" }),
+		isSupported: () => ({ supported: true }),
+		createModel: () => ({}),
+	},
+]);
+
 mock.module("../../../desktop", () => ({
-	generateTitleFromMessage: generateTitleFromMessageMock,
+	generateTitleFromMessageWithStreamingModel:
+		generateTitleFromMessageWithStreamingModelMock,
+	getDefaultSmallModelProviders: getDefaultSmallModelProvidersMock,
 }));
 
 const {
@@ -85,6 +90,9 @@ function createRuntimeForTitleTest(options?: {
 	const updateTitleInputs: Array<{ sessionId: string; title: string }> = [];
 	const messages = options?.messages ?? [];
 	const generatedTitle = options?.generatedTitle ?? "";
+
+	// Set the mock return value for this test
+	generateTitleFromMessageWithStreamingModelResult = generatedTitle;
 
 	const runtime: RuntimeSession = {
 		sessionId: "11111111-1111-1111-1111-111111111111",
