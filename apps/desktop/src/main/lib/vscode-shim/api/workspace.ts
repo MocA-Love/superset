@@ -220,10 +220,11 @@ export const workspace = {
 					const { start, end } = te.range;
 					if (start.line === end.line) {
 						const line = lines[start.line] ?? "";
-						lines[start.line] =
+						const merged =
 							line.slice(0, start.character) +
 							te.newText +
 							line.slice(end.character);
+						lines.splice(start.line, 1, ...merged.split("\n"));
 					} else {
 						const startLine = lines[start.line] ?? "";
 						const endLine = lines[end.line] ?? "";
