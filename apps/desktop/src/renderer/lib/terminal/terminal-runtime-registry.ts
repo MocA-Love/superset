@@ -61,9 +61,13 @@ class TerminalRuntimeRegistryImpl {
 			sendResize(transport, runtime.terminal.cols, runtime.terminal.rows);
 		});
 
-		// Reset backoff so the next unexpected disconnect starts from the minimum
-		// delay, not from wherever a previous reconnect cycle left off.
-		resetReconnectBackoff(transport);
+		// Reset backoff only when the connection is in a stable state (open or
+		// disconnected). If the transport is in "closed" state it may be mid-way
+		// through a reconnect cycle caused by a server failure; resetting there
+		// would defeat the exponential backoff protection.
+		if (transport.connectionState !== "closed") {
+			resetReconnectBackoff(transport);
+		}
 		connect(transport, runtime.terminal, wsUrl);
 	}
 
