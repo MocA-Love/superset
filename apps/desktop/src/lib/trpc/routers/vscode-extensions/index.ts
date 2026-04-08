@@ -10,6 +10,7 @@ import {
 	getActiveView,
 } from "main/lib/vscode-shim/api/webview";
 import {
+	clearWebviewHtml,
 	getWebviewUrl,
 	hasWebviewHtml,
 	setCustomThemeCss,
@@ -343,10 +344,12 @@ export const createVscodeExtensionsRouter = () => {
 			.mutation(({ input }) => {
 				const panel = getActivePanel(input.viewId);
 				if (!panel) {
+					clearWebviewHtml(input.viewId);
 					return { success: false };
 				}
 
 				panel.dispose();
+				clearWebviewHtml(input.viewId);
 				return { success: true };
 			}),
 

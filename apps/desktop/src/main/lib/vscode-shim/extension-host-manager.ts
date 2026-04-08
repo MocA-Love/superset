@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
+import { clearWebviewHtml } from "./api/webview-server";
 import type { MainToWorkerMessage, WorkerToMainMessage } from "./ipc-types";
 
 const BASE_RESTART_DELAY = 1000;
@@ -102,12 +103,14 @@ export class ExtensionHostManager extends EventEmitter {
 		workspaceId: string,
 		workspacePath: string,
 	): Promise<void> {
+		// Inherit restartCount from previous instance so MAX_RESTART_ATTEMPTS is respected
+		const prevRestartCount = this.instances.get(workspaceId)?.restartCount ?? 0;
 		const instance: ExtensionHostProcess = {
 			workspaceId,
 			workspacePath,
 			process: null,
 			status: "starting",
-			restartCount: 0,
+			restartCount: prevRestartCount,
 		};
 		this.instances.set(workspaceId, instance);
 
@@ -133,48 +136,55 @@ export class ExtensionHostManager extends EventEmitter {
 		instance.process = child;
 
 		// Pipe stdout/stderr with workspace prefix
-		child.stdout?.on("data", (data: Buffer) => {
+		const onStdout = (data: Buffer) => {
 			for (const line of data.toString().split("\n").filter(Boolean)) {
 				console.log(line);
 			}
-		});
-		child.stderr?.on("data", (data: Buffer) => {
+		};
+		const onStderr = (data: Buffer) => {
 			for (const line of data.toString().split("\n").filter(Boolean)) {
 				console.error(line);
 			}
-		});
+		};
+		child.stdout?.on("data", onStdout);
+		child.stderr?.on("data", onStderr);
 
 		// Handle IPC messages from worker
 		child.on("message", (msg: WorkerToMainMessage) => {
 			this.handleWorkerMessage(workspaceId, msg);
 		});
 
+		// Shared cleanup called from both exit and error handlers.
+		// Guards against double-execution via instance.process identity check.
+		const cleanupWorker = (intentional: boolean) => {
+			if (instance.process !== child) return;
+			child.stdout?.off("data", onStdout);
+			child.stderr?.off("data", onStderr);
+			this.clearTrackedWebviewsForWorkspace(workspaceId);
+			instance.status = "degraded";
+			instance.process = null;
+			instance.lastCrash = Date.now();
+			if (!intentional) {
+				this.scheduleRestart(workspaceId);
+			}
+		};
+
 		// Handle exit
 		child.on("exit", (code) => {
 			console.log(
 				`[ext-host-manager] Worker ${workspaceId} exited with code ${code}`,
 			);
-			const wasStopped = instance.status === "stopped";
-			instance.status = "degraded";
-			instance.process = null;
-			instance.lastCrash = Date.now();
-
-			// Clean up viewId mappings
-			for (const [vid, wsId] of this.viewIdToWorkspace) {
-				if (wsId === workspaceId) {
-					this.viewIdToWorkspace.delete(vid);
-				}
-			}
-
-			// Schedule restart if not intentionally stopped
-			if (!wasStopped) {
-				this.scheduleRestart(workspaceId);
-			}
+			cleanupWorker(instance.status === "stopped");
 		});
 
 		// Wait for ready message
 		await new Promise<void>((resolve, reject) => {
+			let settled = false;
+
 			const timer = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				child.off("message", onMessage);
 				reject(
 					new Error(
 						`Extension host worker ${workspaceId} failed to become ready within ${READY_TIMEOUT}ms`,
@@ -184,8 +194,10 @@ export class ExtensionHostManager extends EventEmitter {
 
 			const onMessage = (msg: WorkerToMainMessage) => {
 				if (msg.type === "ready") {
+					if (settled) return;
+					settled = true;
 					clearTimeout(timer);
-					child.removeListener("message", onMessage);
+					child.off("message", onMessage);
 					instance.status = "running";
 					instance.restartCount = 0;
 					resolve();
@@ -194,7 +206,12 @@ export class ExtensionHostManager extends EventEmitter {
 			child.on("message", onMessage);
 
 			child.on("error", (err) => {
+				if (settled) return;
+				settled = true;
 				clearTimeout(timer);
+				child.off("message", onMessage);
+				// error may not be followed by exit; run cleanup + restart here as well
+				cleanupWorker(false);
 				reject(err);
 			});
 		});
@@ -470,6 +487,14 @@ export class ExtensionHostManager extends EventEmitter {
 			.map(([workspaceId]) => workspaceId);
 	}
 
+	private clearTrackedWebviewsForWorkspace(workspaceId: string): void {
+		for (const [viewId, wsId] of this.viewIdToWorkspace) {
+			if (wsId !== workspaceId) continue;
+			this.viewIdToWorkspace.delete(viewId);
+			clearWebviewHtml(viewId);
+		}
+	}
+
 	private sendToWorker(workspaceId: string, msg: MainToWorkerMessage): void {
 		const instance = this.instances.get(workspaceId);
 		if (instance?.process?.connected) {
@@ -501,8 +526,10 @@ export class ExtensionHostManager extends EventEmitter {
 
 		const timer = setTimeout(() => {
 			this.scheduledRestarts.delete(workspaceId);
-			if (instance.status === "degraded") {
-				this.spawn(workspaceId, instance.workspacePath).catch((err) => {
+			// Use start() instead of spawn() directly so startPromises dedup is respected
+			const current = this.instances.get(workspaceId);
+			if (current?.status === "degraded") {
+				this.start(workspaceId, current.workspacePath).catch((err) => {
 					console.error(
 						`[ext-host-manager] Restart failed for ${workspaceId}:`,
 						err,
