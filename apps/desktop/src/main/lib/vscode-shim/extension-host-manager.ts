@@ -208,6 +208,12 @@ export class ExtensionHostManager extends EventEmitter {
 				settled = true;
 				clearTimeout(timer);
 				child.off("message", onMessage);
+				// error event may not be followed by exit; clean up here as well
+				child.stdout?.off("data", onStdout);
+				child.stderr?.off("data", onStderr);
+				this.clearTrackedWebviewsForWorkspace(workspaceId);
+				instance.status = "degraded";
+				instance.process = null;
 				reject(err);
 			});
 		});
