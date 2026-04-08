@@ -6,6 +6,8 @@ import { useTabsStore } from "renderer/stores/tabs/store";
 export function useBrowserLifecycle() {
 	const { mutate: unregisterBrowser } =
 		electronTrpc.browser.unregister.useMutation();
+	const unregisterBrowserRef = useRef(unregisterBrowser);
+	unregisterBrowserRef.current = unregisterBrowser;
 	const previousPaneIdsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
@@ -26,10 +28,10 @@ export function useBrowserLifecycle() {
 			for (const prevId of previousPaneIdsRef.current) {
 				if (!currentBrowserPaneIds.has(prevId)) {
 					destroyPersistentWebview(prevId);
-					unregisterBrowser({ paneId: prevId });
+					unregisterBrowserRef.current({ paneId: prevId });
 				}
 			}
 			previousPaneIdsRef.current = currentBrowserPaneIds;
 		});
-	}, [unregisterBrowser]);
+	}, []);
 }
