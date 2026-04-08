@@ -45,14 +45,27 @@ mock.module("./components/AssistantMessage", () => ({
 	AssistantMessage: ({
 		message,
 		footer,
+		subagentEntries,
 	}: {
 		message: {
 			id: string;
-			content: Array<{ type: string; text?: string }>;
+			content: Array<{ type: string; text?: string; id?: string }>;
 		};
 		footer?: React.ReactNode;
+		subagentEntries?: Array<[string, unknown]>;
 	}) => (
 		<div data-assistant-id={message.id}>
+			{message.content
+				.filter(
+					(part) => part.type === "tool_call" && typeof part.id === "string",
+				)
+				.map((part) =>
+					subagentEntries?.some(([toolCallId]) => toolCallId === part.id) ? (
+						<div key={`subagent-${part.id}`}>
+							INLINE_SUBAGENT_EXECUTION_MESSAGE
+						</div>
+					) : null,
+				)}
 			{message.content
 				.filter((part) => part.type === "text")
 				.map((part, index) => (
@@ -91,7 +104,13 @@ mock.module("./components/MessageScrollbackRail", () => ({
 }));
 
 mock.module("./components/SubagentExecutionMessage", () => ({
-	SubagentExecutionMessage: () => <div>SUBAGENT_EXECUTION_MESSAGE</div>,
+	SubagentExecutionMessage: ({ inline }: { inline?: boolean }) => (
+		<div>
+			{inline
+				? "INLINE_SUBAGENT_EXECUTION_MESSAGE"
+				: "SUBAGENT_EXECUTION_MESSAGE"}
+		</div>
+	),
 }));
 
 mock.module("./components/PendingApprovalMessage", () => ({
@@ -277,7 +296,7 @@ describe("ChatMessageList", () => {
 		expect(html).not.toContain("Response stopped");
 	});
 
-	it("renders subagent activity while keeping anchored pending plan inline", () => {
+	it("renders subagent activity inline with its tool call", () => {
 		const html = renderListHtml({
 			messages: [
 				{
@@ -310,8 +329,26 @@ describe("ChatMessageList", () => {
 			} as never,
 		});
 
-		expect(html).toContain("SUBAGENT_EXECUTION_MESSAGE");
+		expect(html).toContain("INLINE_SUBAGENT_EXECUTION_MESSAGE");
+		expect(html).not.toContain("SUBAGENT_EXECUTION_MESSAGE");
 		expect(html).not.toContain("PENDING_PLAN_APPROVAL_MESSAGE");
+	});
+
+	it("keeps standalone subagent activity when no matching tool call is visible", () => {
+		const html = renderListHtml({
+			activeSubagents: new Map([
+				[
+					"orphaned-tool-call",
+					{
+						status: "running",
+						task: "Run tests",
+					},
+				],
+			]) as never,
+		});
+
+		expect(html).toContain("SUBAGENT_EXECUTION_MESSAGE");
+		expect(html).not.toContain("INLINE_SUBAGENT_EXECUTION_MESSAGE");
 	});
 
 	it("shows tool preview while awaiting assistant when pending plan is anchored", () => {

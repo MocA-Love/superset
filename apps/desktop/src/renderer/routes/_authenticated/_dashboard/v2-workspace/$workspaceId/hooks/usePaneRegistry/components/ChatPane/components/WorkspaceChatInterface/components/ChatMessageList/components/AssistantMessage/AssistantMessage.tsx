@@ -11,6 +11,8 @@ import type { UseChatDisplayReturn } from "renderer/routes/_authenticated/_dashb
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { AttachmentChip } from "../AttachmentChip";
 import { PendingPlanApprovalMessage } from "../PendingPlanApprovalMessage";
+import { SubagentExecutionMessage } from "../SubagentExecutionMessage";
+import type { SubagentEntries } from "../SubagentExecutionMessage/utils/toSubagentViewModels";
 
 type ChatMessage = NonNullable<UseChatDisplayReturn["messages"]>[number];
 type ChatMessageContent = ChatMessage["content"][number];
@@ -30,6 +32,7 @@ interface AssistantMessageProps {
 	pendingPlanApproval?: ChatPendingPlanApproval;
 	pendingPlanToolCallId?: string | null;
 	isPlanSubmitting?: boolean;
+	subagentEntries?: SubagentEntries;
 	onPlanRespond?: (response: {
 		action: "approved" | "rejected";
 		feedback?: string;
@@ -110,11 +113,13 @@ export function AssistantMessage({
 	pendingPlanApproval,
 	pendingPlanToolCallId = null,
 	isPlanSubmitting = false,
+	subagentEntries = [],
 	onPlanRespond,
 }: AssistantMessageProps) {
 	const addFileViewerPane = useTabsStore((store) => store.addFileViewerPane);
 	const nodes: ReactNode[] = [];
 	const renderedToolCallIds = new Set<string>();
+	const renderedSubagentToolCallIds = new Set<string>();
 	let didRenderPendingPlanApproval = false;
 	const handleAttachmentClick = useCallback(
 		(url: string, filename?: string) => {
@@ -143,6 +148,23 @@ export function AssistantMessage({
 					planApproval={pendingPlanApproval}
 					isSubmitting={isPlanSubmitting}
 					onRespond={onPlanRespond}
+					inline
+				/>,
+			);
+		}
+
+		const matchedSubagents = subagentEntries.filter(
+			([id]) => id === toolCallId,
+		);
+		if (
+			matchedSubagents.length > 0 &&
+			!renderedSubagentToolCallIds.has(toolCallId)
+		) {
+			renderedSubagentToolCallIds.add(toolCallId);
+			inlineNodes.push(
+				<SubagentExecutionMessage
+					key={`${message.id}-subagent-${toolCallId}`}
+					subagents={matchedSubagents}
 					inline
 				/>,
 			);

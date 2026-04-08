@@ -109,6 +109,47 @@ export function ChatMessageList({
 		() => (activeSubagents ? [...activeSubagents.entries()] : []),
 		[activeSubagents],
 	);
+	const anchoredSubagentToolCallIds = useMemo(() => {
+		const toolCallIds = new Set<string>();
+		const collectFromMessage = (message: ChatMessage | null) => {
+			if (!message) return;
+			for (const part of message.content) {
+				if (
+					(part.type === "tool_call" || part.type === "tool_result") &&
+					typeof part.id === "string" &&
+					part.id.length > 0
+				) {
+					toolCallIds.add(part.id);
+				}
+			}
+		};
+
+		for (const message of renderedMessages) {
+			collectFromMessage(message);
+		}
+		collectFromMessage(interruptedPreview);
+		if (currentMessage?.role === "assistant") {
+			collectFromMessage(currentMessage);
+		}
+		for (const previewPart of previewToolParts) {
+			toolCallIds.add(previewPart.toolCallId);
+		}
+		return toolCallIds;
+	}, [currentMessage, interruptedPreview, previewToolParts, renderedMessages]);
+	const inlineSubagentEntries = useMemo(
+		() =>
+			activeSubagentEntries.filter(([toolCallId]) =>
+				anchoredSubagentToolCallIds.has(toolCallId),
+			),
+		[activeSubagentEntries, anchoredSubagentToolCallIds],
+	);
+	const orphanedSubagentEntries = useMemo(
+		() =>
+			activeSubagentEntries.filter(
+				([toolCallId]) => !anchoredSubagentToolCallIds.has(toolCallId),
+			),
+		[activeSubagentEntries, anchoredSubagentToolCallIds],
+	);
 	const hasSubagentActivity = activeSubagentEntries.length > 0;
 
 	const pendingPlanToolCallId = useMemo(() => {
@@ -213,6 +254,7 @@ export function ChatMessageList({
 									workspaceCwd={workspaceCwd}
 									isStreaming={false}
 									previewToolParts={[]}
+									subagentEntries={inlineSubagentEntries}
 									{...inlineToolStateProps}
 								/>
 							);
@@ -228,6 +270,7 @@ export function ChatMessageList({
 							workspaceCwd={workspaceCwd}
 							isStreaming={false}
 							previewToolParts={[]}
+							subagentEntries={inlineSubagentEntries}
 							{...inlineToolStateProps}
 							footer={<InterruptedFooter />}
 						/>
@@ -242,6 +285,7 @@ export function ChatMessageList({
 							workspaceCwd={workspaceCwd}
 							isStreaming
 							previewToolParts={previewToolParts}
+							subagentEntries={inlineSubagentEntries}
 							{...inlineToolStateProps}
 						/>
 					)}
@@ -259,8 +303,8 @@ export function ChatMessageList({
 							onPlanRespond={onPlanRespond}
 						/>
 					) : null}
-					{hasSubagentActivity ? (
-						<SubagentExecutionMessage subagents={activeSubagentEntries} />
+					{orphanedSubagentEntries.length > 0 ? (
+						<SubagentExecutionMessage subagents={orphanedSubagentEntries} />
 					) : null}
 					{pendingApproval && (
 						<PendingApprovalMessage
