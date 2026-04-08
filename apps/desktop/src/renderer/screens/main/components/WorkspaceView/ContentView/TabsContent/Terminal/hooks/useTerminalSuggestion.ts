@@ -324,7 +324,10 @@ export function useTerminalSuggestion({
 		setHistorySuggestions((prev) =>
 			prev.filter((item) => item.command !== cmd),
 		);
-		loadedOffsetRef.current = 0;
+		loadedOffsetRef.current = Math.max(
+			0,
+			historySuggestionsRef.current.length - 1,
+		);
 		setSelectedIndex(0);
 		// Delete from history file in background
 		void electronTrpcClient.terminal.deleteHistorySuggestion
