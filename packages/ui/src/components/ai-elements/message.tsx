@@ -1,5 +1,6 @@
 "use client";
 
+import { createCodePlugin } from "@streamdown/code";
 import { mermaid } from "@streamdown/mermaid";
 import type { FileUIPart, UIMessage } from "ai";
 import {
@@ -9,7 +10,14 @@ import {
 	XIcon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useState } from "react";
+import {
+	createContext,
+	memo,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import type { PluginConfig } from "streamdown";
 import { Streamdown } from "streamdown";
 import { cn } from "../../lib/utils";
@@ -22,9 +30,6 @@ import {
 	TooltipTrigger,
 } from "../ui/tooltip";
 
-const streamdownPlugins: PluginConfig = {
-	mermaid: mermaid as unknown as PluginConfig["mermaid"],
-};
 const defaultMessageAnimation = {
 	animation: "blurIn",
 	sep: "char",
@@ -316,24 +321,50 @@ export const MessageBranchPage = ({
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 export const MessageResponse = memo(
-	({ className, animated, isAnimating, ...props }: MessageResponseProps) => (
-		<Streamdown
-			animated={animated ?? defaultMessageAnimation}
-			className={cn(
-				"text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ol]:list-outside [&_ol]:pl-6 [&_ul]:list-outside [&_ul]:pl-6 [&_li]:break-words [&_li]:whitespace-pre-wrap [&_p]:break-words [&_p]:whitespace-pre-wrap [&_table]:min-w-full [&_table]:w-max [&_:not(pre)>code]:break-all",
-				className,
-			)}
-			isAnimating={isAnimating}
-			linkSafety={{ enabled: false }}
-			mode="streaming"
-			plugins={isAnimating ? undefined : streamdownPlugins}
-			{...props}
-		/>
-	),
+	({
+		className,
+		animated,
+		isAnimating,
+		shikiTheme,
+		...props
+	}: MessageResponseProps) => {
+		const codePluginOptions = shikiTheme
+			? ({
+					// @streamdown/code accepts custom Shiki theme registrations at runtime,
+					// but its published types only allow bundled theme names.
+					themes: shikiTheme,
+				} as Parameters<typeof createCodePlugin>[0])
+			: undefined;
+		const streamdownPlugins = useMemo(
+			() =>
+				({
+					mermaid: mermaid as unknown as PluginConfig["mermaid"],
+					code: createCodePlugin(codePluginOptions) as PluginConfig["code"],
+				}) satisfies PluginConfig,
+			[codePluginOptions],
+		);
+
+		return (
+			<Streamdown
+				animated={animated ?? defaultMessageAnimation}
+				className={cn(
+					"text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ol]:list-outside [&_ol]:pl-6 [&_ul]:list-outside [&_ul]:pl-6 [&_li]:break-words [&_li]:whitespace-pre-wrap [&_p]:break-words [&_p]:whitespace-pre-wrap [&_table]:min-w-full [&_table]:w-max [&_:not(pre)>code]:break-all",
+					className,
+				)}
+				isAnimating={isAnimating}
+				linkSafety={{ enabled: false }}
+				mode="streaming"
+				plugins={isAnimating ? undefined : streamdownPlugins}
+				shikiTheme={shikiTheme}
+				{...props}
+			/>
+		);
+	},
 	(prevProps, nextProps) =>
 		prevProps.children === nextProps.children &&
 		prevProps.isAnimating === nextProps.isAnimating &&
-		prevProps.mermaid?.config?.theme === nextProps.mermaid?.config?.theme,
+		prevProps.mermaid?.config?.theme === nextProps.mermaid?.config?.theme &&
+		prevProps.shikiTheme === nextProps.shikiTheme,
 );
 
 MessageResponse.displayName = "MessageResponse";
