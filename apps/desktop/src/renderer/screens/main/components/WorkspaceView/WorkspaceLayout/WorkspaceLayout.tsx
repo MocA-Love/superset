@@ -60,6 +60,7 @@ export function WorkspaceLayout({
 				) : (
 					<ContentView
 						workspaceId={workspaceId}
+						isActive={isActive}
 						defaultExternalApp={defaultExternalApp}
 						onOpenInApp={onOpenInApp}
 						onOpenQuickOpen={onOpenQuickOpen}

@@ -5,6 +5,7 @@ import { extractPaneIdsFromLayout } from "renderer/stores/tabs/utils";
 import { TabView } from "./TabView";
 
 interface PersistentTabRendererProps {
+	isWorkspaceActive: boolean;
 	tabs: Tab[];
 	activeTabId: string | null;
 }
@@ -20,6 +21,7 @@ interface PersistentTabRendererProps {
  * remount without data loss.
  */
 export function PersistentTabRenderer({
+	isWorkspaceActive,
 	tabs,
 	activeTabId,
 }: PersistentTabRendererProps) {
@@ -62,7 +64,7 @@ export function PersistentTabRenderer({
 									}
 						}
 					>
-						<TabView tab={tab} />
+						<TabView tab={tab} isWorkspaceActive={isWorkspaceActive} />
 					</div>
 				);
 			})}

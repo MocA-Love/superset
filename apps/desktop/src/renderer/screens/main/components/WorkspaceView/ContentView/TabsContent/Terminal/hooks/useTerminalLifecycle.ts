@@ -10,7 +10,7 @@ import { killTerminalForPane } from "renderer/stores/tabs/utils/terminal-cleanup
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { scheduleTerminalAttach } from "../attach-scheduler";
 import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
-import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
+import { FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
 import {
 	type ActiveSuggestionHandle,
 	createTerminalInstance,
@@ -94,6 +94,8 @@ export interface UseTerminalLifecycleOptions {
 	paneId: string;
 	tabIdRef: MutableRefObject<string>;
 	workspaceId: string;
+	workspaceIsActive: boolean;
+	workspaceIsActiveRef: MutableRefObject<boolean>;
 	terminalRef: RefObject<HTMLDivElement | null>;
 	xtermRef: MutableRefObject<XTerm | null>;
 	fitAddonRef: MutableRefObject<FitAddon | null>;
@@ -165,6 +167,8 @@ export function useTerminalLifecycle({
 	paneId,
 	tabIdRef,
 	workspaceId,
+	workspaceIsActive,
+	workspaceIsActiveRef,
 	terminalRef,
 	xtermRef,
 	fitAddonRef,
@@ -218,6 +222,11 @@ export function useTerminalLifecycle({
 	openHistorySuggestionsRef,
 }: UseTerminalLifecycleOptions): UseTerminalLifecycleReturn {
 	const [xtermInstance, setXtermInstance] = useState<XTerm | null>(null);
+	const scheduleReattachRecoveryRef = useRef<(forceResize: boolean) => void>(
+		() => {},
+	);
+	const cancelReattachRecoveryRef = useRef<() => void>(() => {});
+	const prevWorkspaceIsActiveRef = useRef(workspaceIsActive);
 	const restartTerminalRef = useRef<
 		(options?: { command?: string; forceRestart?: boolean }) => Promise<void>
 	>(() => Promise.resolve());
@@ -227,14 +236,25 @@ export function useTerminalLifecycle({
 		[],
 	);
 
+	useEffect(() => {
+		const wasActive = prevWorkspaceIsActiveRef.current;
+		prevWorkspaceIsActiveRef.current = workspaceIsActive;
+
+		if (!workspaceIsActive) {
+			cancelReattachRecoveryRef.current();
+			return;
+		}
+
+		if (!wasActive) {
+			scheduleReattachRecoveryRef.current(true);
+		}
+	}, [workspaceIsActive]);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refs used intentionally
 	useEffect(() => {
 		const container = terminalRef.current;
 		if (!container) return;
-
-		if (DEBUG_TERMINAL) {
-			console.log(`[Terminal] Mount: ${paneId}`);
-		}
+		const isWorkspaceCurrentlyActive = () => workspaceIsActiveRef.current;
 
 		// Cancel pending detach from previous unmount
 		const pendingDetach = pendingDetaches.get(paneId);
@@ -545,9 +565,10 @@ export function useTerminalLifecycle({
 						done();
 					};
 
-					if (DEBUG_TERMINAL) {
-						console.log(`[Terminal] createOrAttach start: ${paneId}`);
-					}
+					logTerminalEvent(
+						"create-or-attach-start",
+						`cols=${xterm.cols} rows=${xterm.rows} ${getContainerSize()}`,
+					);
 					createOrAttachRef.current(
 						{
 							paneId,
@@ -600,7 +621,9 @@ export function useTerminalLifecycle({
 								}
 
 								requestAnimationFrame(() => {
-									if (!isAttachActive()) return;
+									if (!isAttachActive() || !isWorkspaceCurrentlyActive()) {
+										return;
+									}
 									const prevCols = xterm.cols;
 									const prevRows = xterm.rows;
 									fitAddon.fit();
@@ -760,7 +783,10 @@ export function useTerminalLifecycle({
 			container,
 			xterm,
 			fitAddon,
-			(cols, rows) => resizeRef.current({ paneId, cols, rows }),
+			(cols, rows) => {
+				if (!isWorkspaceCurrentlyActive()) return;
+				resizeRef.current({ paneId, cols, rows });
+			},
 		);
 		const cleanupPaste = setupPasteHandler(xterm, {
 			onPaste: (text) => {
@@ -781,6 +807,7 @@ export function useTerminalLifecycle({
 
 		const isCurrentTerminalRenderable = () => {
 			if (isUnmounted || xtermRef.current !== xterm) return false;
+			if (!isWorkspaceCurrentlyActive()) return false;
 			if (!container.isConnected) return false;
 
 			const style = window.getComputedStyle(container);
@@ -822,11 +849,13 @@ export function useTerminalLifecycle({
 		};
 
 		const scheduleReattachRecovery = (forceResize: boolean) => {
+			if (!isWorkspaceCurrentlyActive()) return;
 			reattachRecovery.pendingForceResize ||= forceResize;
 			if (reattachRecovery.pendingFrame !== null) return;
 
 			reattachRecovery.pendingFrame = requestAnimationFrame(() => {
 				reattachRecovery.pendingFrame = null;
+				if (!isWorkspaceCurrentlyActive()) return;
 
 				const now = Date.now();
 				if (now - reattachRecovery.lastRunAt < reattachRecovery.throttleMs) {
@@ -835,7 +864,7 @@ export function useTerminalLifecycle({
 					const remaining =
 						reattachRecovery.throttleMs - (now - reattachRecovery.lastRunAt);
 					setTimeout(() => {
-						if (!isUnmounted)
+						if (!isUnmounted && isWorkspaceCurrentlyActive())
 							scheduleReattachRecovery(reattachRecovery.pendingForceResize);
 					}, remaining + 1);
 					return;
@@ -853,12 +882,15 @@ export function useTerminalLifecycle({
 			cancelAnimationFrame(reattachRecovery.pendingFrame);
 			reattachRecovery.pendingFrame = null;
 		};
+		scheduleReattachRecoveryRef.current = scheduleReattachRecovery;
+		cancelReattachRecoveryRef.current = cancelReattachRecovery;
 
 		const handleVisibilityChange = () => {
-			if (document.hidden) return;
+			if (document.hidden || !isWorkspaceCurrentlyActive()) return;
 			scheduleReattachRecovery(isFocusedRef.current);
 		};
 		const handleWindowFocus = () => {
+			if (!isWorkspaceCurrentlyActive()) return;
 			scheduleReattachRecovery(isFocusedRef.current);
 		};
 
@@ -869,9 +901,6 @@ export function useTerminalLifecycle({
 			isPaneDestroyed(useTabsStore.getState().panes, paneId);
 
 		return () => {
-			if (DEBUG_TERMINAL) {
-				console.log(`[Terminal] Unmount: ${paneId}`);
-			}
 			const paneDestroyed = isPaneDestroyedInStore();
 			const hasWorkspaceRun = hasPaneWorkspaceRun(paneId);
 			const keepAttachAlive = shouldKeepAttachAliveOnUnmount({
@@ -903,6 +932,8 @@ export function useTerminalLifecycle({
 			}
 			if (firstRenderFallback) clearTimeout(firstRenderFallback);
 			cancelReattachRecovery();
+			scheduleReattachRecoveryRef.current = () => {};
+			cancelReattachRecoveryRef.current = () => {};
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			window.removeEventListener("focus", handleWindowFocus);
 			inputDisposable.dispose();

@@ -43,7 +43,12 @@ const stripLeadingEmoji = (text: string) =>
 	text.trim().replace(/^[\p{Emoji}\p{Symbol}]\s*/u, "");
 const TYPING_PREVIEW_MAX_DURATION_MS = 200;
 
-export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
+export const Terminal = ({
+	paneId,
+	tabId,
+	workspaceId,
+	isWorkspaceActive,
+}: TerminalProps) => {
 	const pane = useTabsStore((s) => s.panes[paneId]);
 	const isWorkspaceRunPane = Boolean(pane?.workspaceRun?.workspaceId);
 	const paneInitialCwd = pane?.initialCwd;
@@ -105,6 +110,8 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 	const commandBufferRef = useRef("");
 	const tabIdRef = useRef(tabId);
 	tabIdRef.current = tabId;
+	const workspaceIsActiveRef = useRef(isWorkspaceActive);
+	workspaceIsActiveRef.current = isWorkspaceActive;
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
 	const setPaneName = useTabsStore((s) => s.setPaneName);
 	const focusedPaneId = useTabsStore((s) => s.focusedPaneIds[tabId]);
@@ -446,6 +453,8 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		paneId,
 		tabIdRef,
 		workspaceId,
+		workspaceIsActive: isWorkspaceActive,
+		workspaceIsActiveRef,
 		terminalRef,
 		xtermRef,
 		fitAddonRef,
