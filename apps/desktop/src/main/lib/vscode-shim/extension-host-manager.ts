@@ -152,27 +152,27 @@ export class ExtensionHostManager extends EventEmitter {
 			this.handleWorkerMessage(workspaceId, msg);
 		});
 
+		// Shared cleanup called from both exit and error handlers.
+		// Guards against double-execution via instance.process identity check.
+		const cleanupWorker = (intentional: boolean) => {
+			if (instance.process !== child) return;
+			child.stdout?.off("data", onStdout);
+			child.stderr?.off("data", onStderr);
+			this.clearTrackedWebviewsForWorkspace(workspaceId);
+			instance.status = "degraded";
+			instance.process = null;
+			instance.lastCrash = Date.now();
+			if (!intentional) {
+				this.scheduleRestart(workspaceId);
+			}
+		};
+
 		// Handle exit
 		child.on("exit", (code) => {
 			console.log(
 				`[ext-host-manager] Worker ${workspaceId} exited with code ${code}`,
 			);
-			const wasStopped = instance.status === "stopped";
-			instance.status = "degraded";
-			instance.process = null;
-			instance.lastCrash = Date.now();
-
-			// Release stdout/stderr listeners to prevent accumulation
-			child.stdout?.off("data", onStdout);
-			child.stderr?.off("data", onStderr);
-
-			// Clean up viewId mappings and htmlStore for this workspace
-			this.clearTrackedWebviewsForWorkspace(workspaceId);
-
-			// Schedule restart if not intentionally stopped
-			if (!wasStopped) {
-				this.scheduleRestart(workspaceId);
-			}
+			cleanupWorker(instance.status === "stopped");
 		});
 
 		// Wait for ready message
@@ -208,12 +208,8 @@ export class ExtensionHostManager extends EventEmitter {
 				settled = true;
 				clearTimeout(timer);
 				child.off("message", onMessage);
-				// error event may not be followed by exit; clean up here as well
-				child.stdout?.off("data", onStdout);
-				child.stderr?.off("data", onStderr);
-				this.clearTrackedWebviewsForWorkspace(workspaceId);
-				instance.status = "degraded";
-				instance.process = null;
+				// error may not be followed by exit; run cleanup + restart here as well
+				cleanupWorker(false);
 				reject(err);
 			});
 		});
