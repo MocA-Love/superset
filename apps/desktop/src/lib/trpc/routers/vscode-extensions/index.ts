@@ -438,6 +438,26 @@ export const createVscodeExtensionsRouter = () => {
 				});
 			}),
 
+		/** Subscribe to diff open requests from extensions (vscode.diff calls) */
+		subscribeDiff: publicProcedure
+			.input(z.object({ workspaceId: z.string().optional() }).optional())
+			.subscription(({ input }) => {
+				return observable<{ leftUri: string; rightUri: string; title?: string }>((emit) => {
+					const manager = getExtensionHostManager();
+					const handler = (
+						wsId: string,
+						data: { leftUri: string; rightUri: string; title?: string },
+					) => {
+						if (input?.workspaceId && wsId !== input.workspaceId) return;
+						emit.next(data);
+					};
+					manager.on("open-diff", handler);
+					return () => {
+						manager.off("open-diff", handler);
+					};
+				});
+			}),
+
 		/** Subscribe to webview events (HTML changes, messages from extension) */
 		subscribeWebview: publicProcedure
 			.input(z.object({ workspaceId: z.string().optional() }).optional())

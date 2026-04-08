@@ -34,6 +34,7 @@ export type WorkerToMainMessage =
 			html: string | null;
 	  }
 	| { type: "open-file"; filePath: string; line?: number }
+	| { type: "open-diff"; leftUri: string; rightUri: string; title?: string }
 	| {
 			type: "show-dialog";
 			requestId: string;

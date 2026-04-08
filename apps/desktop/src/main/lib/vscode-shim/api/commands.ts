@@ -4,6 +4,7 @@
 
 import { shimLog, shimWarn } from "./debug-log";
 import { Disposable } from "./event-emitter";
+import { fireOpenDiff } from "./window";
 
 const UNHANDLED = Symbol("unhandled");
 
@@ -16,15 +17,17 @@ function handleBuiltinCommand(
 	args: unknown[],
 ): unknown | typeof UNHANDLED {
 	switch (command) {
-		// Diff view (Claude Code uses this for file diffs)
+		// Diff view (Claude Code / Codex uses this for file diffs)
 		case "vscode.diff": {
-			shimLog(
-				`[vscode-shim] vscode.diff called with`,
-				args[0],
-				args[1],
-				args[2],
-			);
-			// TODO: could open diff in Superset's file viewer
+			const leftUri = args[0] as { fsPath?: string; toString?(): string } | undefined;
+			const rightUri = args[1] as { fsPath?: string; toString?(): string } | undefined;
+			const title = args[2] as string | undefined;
+			const left = leftUri?.fsPath ?? leftUri?.toString?.() ?? "";
+			const right = rightUri?.fsPath ?? rightUri?.toString?.() ?? "";
+			shimLog(`[vscode-shim] vscode.diff called: ${left} → ${right}`);
+			if (left && right) {
+				fireOpenDiff(left, right, title);
+			}
 			return undefined;
 		}
 

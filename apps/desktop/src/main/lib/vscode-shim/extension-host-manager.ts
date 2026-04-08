@@ -237,6 +237,10 @@ export class ExtensionHostManager extends EventEmitter {
 				this.emit("open-file", workspaceId, msg);
 				break;
 
+			case "open-diff":
+				this.emit("open-diff", workspaceId, msg);
+				break;
+
 			case "show-dialog":
 				// Proxy dialog calls to Electron main process
 				this.handleDialogRequest(msg);

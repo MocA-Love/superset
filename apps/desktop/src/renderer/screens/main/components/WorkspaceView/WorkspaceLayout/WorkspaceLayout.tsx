@@ -13,6 +13,7 @@ import { ContentView } from "../ContentView";
 import { useActiveEditorSync } from "../hooks/useActiveEditorSync";
 import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
 import { useVscodeExtensionPanelSync } from "../hooks/useVscodeExtensionPanelSync";
+import { useVscodeDiffSync } from "../hooks/useVscodeDiffSync";
 import { useVscodeOpenFileSync } from "../hooks/useVscodeOpenFileSync";
 import { useVscodeThemeSync } from "../hooks/useVscodeThemeSync";
 import { RightSidebar } from "../RightSidebar";
@@ -36,6 +37,7 @@ export function WorkspaceLayout({
 	useActiveEditorSync();
 	useVscodeExtensionPanelSync();
 	useVscodeOpenFileSync();
+	useVscodeDiffSync();
 	useVscodeThemeSync(
 		typeof localStorage !== "undefined"
 			? localStorage.getItem("vscode-use-superset-theme") === "true"

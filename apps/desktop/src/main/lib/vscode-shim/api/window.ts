@@ -74,6 +74,17 @@ const _openFileEmitter = new EventEmitter<{
 	line?: number;
 }>();
 export const onOpenFile = _openFileEmitter.event;
+
+// Emits when vscode.diff is called - renderer listens to open diff viewer
+const _openDiffEmitter = new EventEmitter<{
+	leftUri: string;
+	rightUri: string;
+	title?: string;
+}>();
+export const onOpenDiff = _openDiffEmitter.event;
+export function fireOpenDiff(leftUri: string, rightUri: string, title?: string): void {
+	_openDiffEmitter.fire({ leftUri, rightUri, title });
+}
 // Active text editor state — updated from renderer via tRPC
 let _activeTextEditor: TextEditor | undefined;
 const _visibleTextEditors: TextEditor[] = [];

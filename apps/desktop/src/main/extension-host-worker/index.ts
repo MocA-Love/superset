@@ -33,7 +33,7 @@ async function main() {
 
 	// Import shim modules (each process gets its own copy)
 	const { setWorkspacePath } = await import("../lib/vscode-shim/api/workspace");
-	const { setActiveTextEditor, onOpenFile } = await import(
+	const { setActiveTextEditor, onOpenFile, onOpenDiff } = await import(
 		"../lib/vscode-shim/api/window"
 	);
 	const { commands } = await import("../lib/vscode-shim/api/commands");
@@ -81,6 +81,11 @@ async function main() {
 	// Listen for file open requests
 	onOpenFile((data) => {
 		send({ type: "open-file", filePath: data.filePath, line: data.line });
+	});
+
+	// Listen for diff open requests
+	onOpenDiff((data) => {
+		send({ type: "open-diff", leftUri: data.leftUri, rightUri: data.rightUri, title: data.title });
 	});
 
 	// Supported extension IDs
