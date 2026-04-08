@@ -172,6 +172,16 @@ export function usePersistentWebview({
 	const { mutate: upsertHistory } =
 		electronTrpc.browserHistory.upsert.useMutation();
 
+	// Stabilize tRPC mutation references so they don't trigger the main
+	// lifecycle effect. useMutation() returns a new function identity on every
+	// render, which would cause the effect to cleanup (PARK) and re-run
+	// (RECLAIM) on every re-render — bouncing the webview wrapper between
+	// the hidden container and the visible container.
+	const registerBrowserRef = useRef(registerBrowser);
+	registerBrowserRef.current = registerBrowser;
+	const upsertHistoryRef = useRef(upsertHistory);
+	upsertHistoryRef.current = upsertHistory;
+
 	// New-window events (target="_blank", window.open) are handled globally
 	// by useBrowserNewWindowHandler in the dashboard layout, so webviews that
 	// are parked in the hidden container still get their events handled.
@@ -274,7 +284,7 @@ export function usePersistentWebview({
 			// Register on first load, or re-register if webContentsId changed
 			if (previousId !== webContentsId) {
 				setRegisteredWebContentsId(paneId, webContentsId);
-				registerBrowser({ paneId, webContentsId });
+				registerBrowserRef.current({ paneId, webContentsId });
 			}
 
 			const pendingUrl = getPendingPersistentWebviewNavigation(paneId);
@@ -494,7 +504,7 @@ export function usePersistentWebview({
 				);
 
 				if (url && url !== "about:blank") {
-					upsertHistory({
+					upsertHistoryRef.current({
 						url,
 						title: title ?? "",
 						faviconUrl: faviconUrlRef.current ?? null,
@@ -557,7 +567,7 @@ export function usePersistentWebview({
 					]?.title ?? "";
 				store.updateBrowserUrl(paneId, currentUrl, currentTitle, favicons[0]);
 				if (currentUrl && currentUrl !== "about:blank") {
-					upsertHistory({
+					upsertHistoryRef.current({
 						url: currentUrl,
 						title: currentTitle,
 						faviconUrl: favicons[0],
@@ -633,7 +643,9 @@ export function usePersistentWebview({
 			}
 		};
 		// paneId is stable for the lifetime of a pane; initialUrlRef only used on first create.
-	}, [paneId, registerBrowser, syncStoreFromWebview, upsertHistory]);
+		// tRPC mutation refs (registerBrowserRef, upsertHistoryRef) are accessed
+		// via refs so they don't trigger effect re-runs.
+	}, [paneId, syncStoreFromWebview]);
 
 	useEffect(() => {
 		navigatePersistentWebview(paneId, initialUrl);

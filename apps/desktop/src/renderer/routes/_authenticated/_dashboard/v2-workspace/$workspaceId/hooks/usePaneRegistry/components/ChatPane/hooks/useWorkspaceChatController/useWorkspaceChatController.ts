@@ -41,11 +41,16 @@ async function createSessionRecord(input: {
 	sessionId: string;
 	v2WorkspaceId: string;
 }): Promise<void> {
-	if (isDesktopChatDevMode()) return;
-	await apiTrpcClient.chat.createSession.mutate({
-		sessionId: input.sessionId,
-		v2WorkspaceId: input.v2WorkspaceId,
-	});
+	try {
+		await apiTrpcClient.chat.createSession.mutate({
+			sessionId: input.sessionId,
+			v2WorkspaceId: input.v2WorkspaceId,
+		});
+	} catch (error) {
+		// In dev mode, the API server may not be available — swallow the error
+		if (isDesktopChatDevMode()) return;
+		throw error;
+	}
 }
 
 async function deleteSessionRecord(sessionId: string): Promise<void> {

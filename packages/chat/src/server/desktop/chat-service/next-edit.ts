@@ -205,7 +205,10 @@ export function buildFimRequest(
 	);
 	const suffix = input.currentFileContent.slice(
 		cursorOffset,
-		Math.min(input.currentFileContent.length, cursorOffset + FIM_SUFFIX_MAX_CHARS),
+		Math.min(
+			input.currentFileContent.length,
+			cursorOffset + FIM_SUFFIX_MAX_CHARS,
+		),
 	);
 
 	const payload: Record<string, unknown> = {

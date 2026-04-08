@@ -73,7 +73,11 @@ const _openDiffEmitter = new EventEmitter<{
 	title?: string;
 }>();
 export const onOpenDiff = _openDiffEmitter.event;
-export function fireOpenDiff(leftUri: string, rightUri: string, title?: string): void {
+export function fireOpenDiff(
+	leftUri: string,
+	rightUri: string,
+	title?: string,
+): void {
 	_openDiffEmitter.fire({ leftUri, rightUri, title });
 }
 
@@ -85,11 +89,17 @@ export function setSendToMain(fn: (msg: WorkerToMainMessage) => void): void {
 
 // Pending dialog requests waiting for main-process response
 const _pendingDialogs = new Map<string, (result: unknown) => void>();
-export function resolveDialogResult(requestId: string, selectedIndex: number): void {
+export function resolveDialogResult(
+	requestId: string,
+	selectedIndex: number,
+): void {
 	_pendingDialogs.get(requestId)?.(selectedIndex);
 	_pendingDialogs.delete(requestId);
 }
-export function resolveOpenDialogResult(requestId: string, filePaths: string[] | null): void {
+export function resolveOpenDialogResult(
+	requestId: string,
+	filePaths: string[] | null,
+): void {
 	_pendingDialogs.get(requestId)?.(filePaths);
 	_pendingDialogs.delete(requestId);
 }
@@ -103,7 +113,7 @@ async function showMessageViaIpc(
 	const requestId = crypto.randomUUID();
 	const selectedIndex = await new Promise<number>((resolve) => {
 		_pendingDialogs.set(requestId, (v) => resolve(v as number));
-		_sendToMain!({ type: "show-dialog", requestId, method, message, items });
+		_sendToMain?.({ type: "show-dialog", requestId, method, message, items });
 	});
 	if (selectedIndex < 0) return undefined;
 	return items[selectedIndex];
@@ -283,7 +293,12 @@ export const window = {
 		const requestId = crypto.randomUUID();
 		const selectedIndex = await new Promise<number>((resolve) => {
 			_pendingDialogs.set(requestId, (v) => resolve(v as number));
-			_sendToMain!({ type: "show-quickpick", requestId, labels, placeHolder: options?.placeHolder });
+			_sendToMain?.({
+				type: "show-quickpick",
+				requestId,
+				labels,
+				placeHolder: options?.placeHolder,
+			});
 		});
 		if (selectedIndex < 0) return undefined;
 		return resolved[selectedIndex];
@@ -298,16 +313,14 @@ export const window = {
 		return undefined;
 	},
 
-	async showOpenDialog(
-		options?: {
-			canSelectFiles?: boolean;
-			canSelectFolders?: boolean;
-			canSelectMany?: boolean;
-			title?: string;
-			filters?: Record<string, string[]>;
-			defaultUri?: Uri;
-		},
-	): Promise<Uri[] | undefined> {
+	async showOpenDialog(options?: {
+		canSelectFiles?: boolean;
+		canSelectFolders?: boolean;
+		canSelectMany?: boolean;
+		title?: string;
+		filters?: Record<string, string[]>;
+		defaultUri?: Uri;
+	}): Promise<Uri[] | undefined> {
 		if (!_sendToMain) {
 			shimWarn("[vscode-shim] showOpenDialog: no IPC channel available");
 			return undefined;
@@ -321,7 +334,7 @@ export const window = {
 		const requestId = crypto.randomUUID();
 		const filePaths = await new Promise<string[] | null>((resolve) => {
 			_pendingDialogs.set(requestId, (v) => resolve(v as string[] | null));
-			_sendToMain!({
+			_sendToMain?.({
 				type: "show-open-dialog",
 				requestId,
 				canSelectFiles: options?.canSelectFiles,

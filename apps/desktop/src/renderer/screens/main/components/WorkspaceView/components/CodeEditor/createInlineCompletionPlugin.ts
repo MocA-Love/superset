@@ -193,11 +193,14 @@ export function createInlineCompletionPlugin(
 				const snapshotKey = `${snapshotCursor}:${snapshotText}`;
 
 				if (this.inFlightSnapshotKey === snapshotKey) {
-					logInlineCompletionDebug("schedule skipped: request already in flight", {
-						requestId: currentRequestId,
-						cursorOffset: snapshotCursor,
-						docLength: snapshotText.length,
-					});
+					logInlineCompletionDebug(
+						"schedule skipped: request already in flight",
+						{
+							requestId: currentRequestId,
+							cursorOffset: snapshotCursor,
+							docLength: snapshotText.length,
+						},
+					);
 					return;
 				}
 
@@ -243,8 +246,7 @@ export function createInlineCompletionPlugin(
 									selectionEmpty: latestSelection.empty,
 									currentCursorOffset: latestSelection.from,
 									expectedCursorOffset: snapshotCursor,
-									docChanged:
-										this.view.state.doc.toString() !== snapshotText,
+									docChanged: this.view.state.doc.toString() !== snapshotText,
 								});
 								return;
 							}

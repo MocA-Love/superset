@@ -85,7 +85,6 @@ async function createSessionRecord(input: {
 	organizationId: string;
 	workspaceId: string;
 }): Promise<void> {
-	if (isDesktopChatDevMode()) return;
 	const token = getAuthToken();
 	const response = await fetch(`${apiUrl}/api/chat/${input.sessionId}`, {
 		method: "PUT",
@@ -101,12 +100,14 @@ async function createSessionRecord(input: {
 
 	if (!response.ok) {
 		const detail = await getHttpErrorDetail(response);
-		console.warn("[chat-sessions] create session failed", {
-			sessionId: input.sessionId,
-			organizationId: input.organizationId,
-			workspaceId: input.workspaceId,
-			detail,
-		});
+		// In dev mode, the API server may not be available — swallow the error
+		if (isDesktopChatDevMode()) {
+			console.warn("[chat-sessions] create session failed (dev mode, ignoring)", {
+				sessionId: input.sessionId,
+				detail,
+			});
+			return;
+		}
 		throw new Error(`Failed to create session ${input.sessionId}: ${detail}`);
 	}
 }

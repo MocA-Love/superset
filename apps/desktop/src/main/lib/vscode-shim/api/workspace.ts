@@ -214,7 +214,9 @@ export const workspace = {
 				// 後ろから適用することでインデックスのずれを防ぐ
 				const sorted = [...textEdits].sort((a, b) => {
 					const dl = b.range.start.line - a.range.start.line;
-					return dl !== 0 ? dl : b.range.start.character - a.range.start.character;
+					return dl !== 0
+						? dl
+						: b.range.start.character - a.range.start.character;
 				});
 				for (const te of sorted) {
 					const { start, end } = te.range;
@@ -232,7 +234,11 @@ export const workspace = {
 							startLine.slice(0, start.character) +
 							te.newText +
 							endLine.slice(end.character);
-						lines.splice(start.line, end.line - start.line + 1, ...merged.split("\n"));
+						lines.splice(
+							start.line,
+							end.line - start.line + 1,
+							...merged.split("\n"),
+						);
 					}
 				}
 				fs.writeFileSync(uri.fsPath, lines.join("\n"), "utf-8");

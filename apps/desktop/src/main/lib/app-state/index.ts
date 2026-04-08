@@ -11,11 +11,7 @@ type AppStateDB = Awaited<ReturnType<typeof JSONFilePreset<AppState>>>;
 let _appState: AppStateDB | null = null;
 
 function isMissingPathError(error: unknown): boolean {
-	return (
-		error instanceof Error &&
-		"code" in error &&
-		error.code === "ENOENT"
-	);
+	return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 function withWriteRetry(appStateDb: AppStateDB): AppStateDB {

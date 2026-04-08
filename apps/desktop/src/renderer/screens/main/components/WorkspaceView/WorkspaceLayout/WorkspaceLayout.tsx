@@ -12,8 +12,8 @@ import { ChangesContent, ScrollProvider } from "../ChangesContent";
 import { ContentView } from "../ContentView";
 import { useActiveEditorSync } from "../hooks/useActiveEditorSync";
 import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
-import { useVscodeExtensionPanelSync } from "../hooks/useVscodeExtensionPanelSync";
 import { useVscodeDiffSync } from "../hooks/useVscodeDiffSync";
+import { useVscodeExtensionPanelSync } from "../hooks/useVscodeExtensionPanelSync";
 import { useVscodeOpenFileSync } from "../hooks/useVscodeOpenFileSync";
 import { useVscodeThemeSync } from "../hooks/useVscodeThemeSync";
 import { RightSidebar } from "../RightSidebar";
@@ -60,6 +60,7 @@ export function WorkspaceLayout({
 				) : (
 					<ContentView
 						workspaceId={workspaceId}
+						isActive={isActive}
 						defaultExternalApp={defaultExternalApp}
 						onOpenInApp={onOpenInApp}
 						onOpenQuickOpen={onOpenQuickOpen}

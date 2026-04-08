@@ -12,6 +12,7 @@ import { GroupStrip } from "./TabsContent/GroupStrip";
 
 interface ContentViewProps {
 	workspaceId: string;
+	isActive?: boolean;
 	defaultExternalApp?: ExternalApp | null;
 	onOpenInApp: () => void;
 	onOpenQuickOpen: () => void;
@@ -19,6 +20,7 @@ interface ContentViewProps {
 
 export function ContentView({
 	workspaceId,
+	isActive = true,
 	defaultExternalApp,
 	onOpenInApp,
 	onOpenQuickOpen,
@@ -47,6 +49,7 @@ export function ContentView({
 			{showPresetsBar && !isBrowserFullscreen && <PresetsBar />}
 			<TabsContent
 				workspaceId={workspaceId}
+				isActive={isActive}
 				defaultExternalApp={defaultExternalApp}
 				onOpenInApp={onOpenInApp}
 				onOpenQuickOpen={onOpenQuickOpen}

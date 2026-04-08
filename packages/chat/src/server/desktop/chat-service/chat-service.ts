@@ -46,8 +46,8 @@ import {
 import {
 	extractUsageEventFromResponse,
 	getNextEditUsageSummary,
-	recordNextEditUsageEvent,
 	type NextEditUsageSummary,
+	recordNextEditUsageEvent,
 } from "./next-edit-usage";
 import {
 	OAuthFlowController,

@@ -18,6 +18,7 @@ interface TabPaneProps {
 	path: MosaicBranch[];
 	tabId: string;
 	workspaceId: string;
+	isWorkspaceActive: boolean;
 	splitPaneAuto: (
 		tabId: string,
 		sourcePaneId: string,
@@ -49,6 +50,7 @@ export function TabPane({
 	path,
 	tabId,
 	workspaceId,
+	isWorkspaceActive,
 	splitPaneAuto,
 	splitPaneHorizontal,
 	splitPaneVertical,
@@ -154,7 +156,12 @@ export function TabPane({
 				closeLabel="Close Terminal"
 			>
 				<div ref={terminalContainerRef} className="w-full h-full">
-					<Terminal paneId={paneId} tabId={tabId} workspaceId={workspaceId} />
+					<Terminal
+						paneId={paneId}
+						tabId={tabId}
+						workspaceId={workspaceId}
+						isWorkspaceActive={isWorkspaceActive}
+					/>
 				</div>
 			</TabContentContextMenu>
 		</BasePaneWindow>
