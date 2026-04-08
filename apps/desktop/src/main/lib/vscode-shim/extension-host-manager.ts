@@ -299,10 +299,19 @@ export class ExtensionHostManager extends EventEmitter {
 				buttons: [...msg.labels, "Cancel"],
 				cancelId: msg.labels.length,
 			});
-			const selectedIndex = result.response === msg.labels.length ? -1 : result.response;
-			this.sendToWorker(workspaceId, { type: "dialog-result", requestId: msg.requestId, selectedIndex });
+			const selectedIndex =
+				result.response === msg.labels.length ? -1 : result.response;
+			this.sendToWorker(workspaceId, {
+				type: "dialog-result",
+				requestId: msg.requestId,
+				selectedIndex,
+			});
 		} catch {
-			this.sendToWorker(workspaceId, { type: "dialog-result", requestId: msg.requestId, selectedIndex: -1 });
+			this.sendToWorker(workspaceId, {
+				type: "dialog-result",
+				requestId: msg.requestId,
+				selectedIndex: -1,
+			});
 		}
 	}
 
@@ -312,7 +321,9 @@ export class ExtensionHostManager extends EventEmitter {
 	): Promise<void> {
 		try {
 			const { dialog } = require("electron");
-			const properties: Array<"openFile" | "openDirectory" | "multiSelections"> = [];
+			const properties: Array<
+				"openFile" | "openDirectory" | "multiSelections"
+			> = [];
 			if (msg.canSelectFolders) properties.push("openDirectory");
 			if (msg.canSelectFiles !== false) properties.push("openFile");
 			if (msg.canSelectMany) properties.push("multiSelections");
@@ -325,10 +336,17 @@ export class ExtensionHostManager extends EventEmitter {
 			this.sendToWorker(workspaceId, {
 				type: "open-dialog-result",
 				requestId: msg.requestId,
-				filePaths: result.canceled || result.filePaths.length === 0 ? null : result.filePaths,
+				filePaths:
+					result.canceled || result.filePaths.length === 0
+						? null
+						: result.filePaths,
 			});
 		} catch {
-			this.sendToWorker(workspaceId, { type: "open-dialog-result", requestId: msg.requestId, filePaths: null });
+			this.sendToWorker(workspaceId, {
+				type: "open-dialog-result",
+				requestId: msg.requestId,
+				filePaths: null,
+			});
 		}
 	}
 

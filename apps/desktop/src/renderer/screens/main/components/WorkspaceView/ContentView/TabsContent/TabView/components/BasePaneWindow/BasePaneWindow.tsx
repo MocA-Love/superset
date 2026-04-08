@@ -132,7 +132,11 @@ export function BasePaneWindow({
 			<div
 				ref={containerRef}
 				className={contentClassName}
-				style={isDragging || isTabDragging || isResizing ? { pointerEvents: "none" } : undefined}
+				style={
+					isDragging || isTabDragging || isResizing
+						? { pointerEvents: "none" }
+						: undefined
+				}
 				onClick={handleFocus}
 			>
 				{children}

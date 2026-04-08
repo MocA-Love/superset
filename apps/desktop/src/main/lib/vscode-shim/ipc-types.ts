@@ -16,7 +16,11 @@ export type MainToWorkerMessage =
 	| { type: "post-message"; viewId: string; message: unknown }
 	| { type: "shutdown" }
 	| { type: "dialog-result"; requestId: string; selectedIndex: number }
-	| { type: "open-dialog-result"; requestId: string; filePaths: string[] | null };
+	| {
+			type: "open-dialog-result";
+			requestId: string;
+			filePaths: string[] | null;
+	  };
 
 /** Messages sent FROM worker TO main process */
 export type WorkerToMainMessage =
@@ -47,7 +51,12 @@ export type WorkerToMainMessage =
 			message: string;
 			items: string[];
 	  }
-	| { type: "show-quickpick"; requestId: string; labels: string[]; placeHolder?: string }
+	| {
+			type: "show-quickpick";
+			requestId: string;
+			labels: string[];
+			placeHolder?: string;
+	  }
 	| {
 			type: "show-open-dialog";
 			requestId: string;

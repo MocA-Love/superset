@@ -63,9 +63,7 @@ export function CreatePullRequestBaseRepoDialog({
 		<AlertDialog open={open} onOpenChange={onOpenChange}>
 			<EnterEnabledAlertDialogContent className="max-w-[420px] gap-0 p-0">
 				<AlertDialogHeader className="px-4 pt-4 pb-2">
-					<AlertDialogTitle className="font-medium">
-						{title}
-					</AlertDialogTitle>
+					<AlertDialogTitle className="font-medium">{title}</AlertDialogTitle>
 					<AlertDialogDescription>{description}</AlertDialogDescription>
 				</AlertDialogHeader>
 				<div className="flex flex-col gap-2 px-4 pb-2">

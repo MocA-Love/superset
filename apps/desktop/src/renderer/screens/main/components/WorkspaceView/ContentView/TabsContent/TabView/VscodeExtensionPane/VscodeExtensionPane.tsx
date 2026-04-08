@@ -1,6 +1,6 @@
 import type { MosaicBranch } from "react-mosaic-component";
-import { useTabsStore } from "renderer/stores/tabs/store";
 import { VscodeExtensionView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/VscodeExtensionView";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import { BasePaneWindow, PaneTitle, PaneToolbarActions } from "../components";
 
 interface VscodeExtensionPaneProps {

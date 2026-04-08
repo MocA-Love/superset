@@ -41,11 +41,7 @@ function isMissingExternalAppError(error: unknown): boolean {
 }
 
 function isMissingPathError(error: unknown): boolean {
-	return (
-		error instanceof Error &&
-		"code" in error &&
-		error.code === "ENOENT"
-	);
+	return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 async function assertPathExists(filePath: string): Promise<void> {

@@ -33,9 +33,14 @@ async function main() {
 
 	// Import shim modules (each process gets its own copy)
 	const { setWorkspacePath } = await import("../lib/vscode-shim/api/workspace");
-	const { setActiveTextEditor, onOpenFile, onOpenDiff, setSendToMain, resolveDialogResult, resolveOpenDialogResult } = await import(
-		"../lib/vscode-shim/api/window"
-	);
+	const {
+		setActiveTextEditor,
+		onOpenFile,
+		onOpenDiff,
+		setSendToMain,
+		resolveDialogResult,
+		resolveOpenDialogResult,
+	} = await import("../lib/vscode-shim/api/window");
 	setSendToMain(send);
 	const { commands } = await import("../lib/vscode-shim/api/commands");
 	const { discoverExtensions, loadExtension, deactivateAll } = await import(
@@ -86,7 +91,12 @@ async function main() {
 
 	// Listen for diff open requests
 	onOpenDiff((data) => {
-		send({ type: "open-diff", leftUri: data.leftUri, rightUri: data.rightUri, title: data.title });
+		send({
+			type: "open-diff",
+			leftUri: data.leftUri,
+			rightUri: data.rightUri,
+			title: data.title,
+		});
 	});
 
 	// Supported extension IDs

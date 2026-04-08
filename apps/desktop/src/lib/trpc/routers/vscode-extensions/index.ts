@@ -236,7 +236,8 @@ export const createVscodeExtensionsRouter = () => {
 		/** Get all known extensions with their install/active status */
 		getKnownExtensions: publicProcedure.query(() => {
 			const manager = getExtensionHostManager();
-			const hasRunningExtensionHost = manager.getRunningWorkspaceIds().length > 0;
+			const hasRunningExtensionHost =
+				manager.getRunningWorkspaceIds().length > 0;
 			return KNOWN_EXTENSIONS.map((ext) => {
 				const installed = isExtensionInstalled(ext.id);
 				const enabled = isExtensionEnabled(ext.id);
@@ -442,7 +443,11 @@ export const createVscodeExtensionsRouter = () => {
 		subscribeDiff: publicProcedure
 			.input(z.object({ workspaceId: z.string().optional() }).optional())
 			.subscription(({ input }) => {
-				return observable<{ leftUri: string; rightUri: string; title?: string }>((emit) => {
+				return observable<{
+					leftUri: string;
+					rightUri: string;
+					title?: string;
+				}>((emit) => {
 					const manager = getExtensionHostManager();
 					const handler = (
 						wsId: string,

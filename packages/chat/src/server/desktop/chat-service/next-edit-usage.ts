@@ -233,7 +233,8 @@ export function getNextEditUsageSummary(
 			fim: createEmptyBucket(),
 			next_edit: createEmptyBucket(),
 		},
-		lastUsedAt: persisted.events[persisted.events.length - 1]?.timestamp ?? null,
+		lastUsedAt:
+			persisted.events[persisted.events.length - 1]?.timestamp ?? null,
 		pricing: {
 			inputCostPerMillionTokensUsd: INPUT_COST_PER_MILLION_TOKENS,
 			outputCostPerMillionTokensUsd: OUTPUT_COST_PER_MILLION_TOKENS,
@@ -272,11 +273,17 @@ export function extractUsageEventFromResponse(args: {
 	const promptTokens =
 		typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null;
 	const completionTokens =
-		typeof usage.completion_tokens === "number" ? usage.completion_tokens : null;
+		typeof usage.completion_tokens === "number"
+			? usage.completion_tokens
+			: null;
 	const totalTokens =
 		typeof usage.total_tokens === "number" ? usage.total_tokens : null;
 
-	if (promptTokens === null || completionTokens === null || totalTokens === null) {
+	if (
+		promptTokens === null ||
+		completionTokens === null ||
+		totalTokens === null
+	) {
 		return null;
 	}
 

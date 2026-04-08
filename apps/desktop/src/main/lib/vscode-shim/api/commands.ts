@@ -19,8 +19,12 @@ function handleBuiltinCommand(
 	switch (command) {
 		// Diff view (Claude Code / Codex uses this for file diffs)
 		case "vscode.diff": {
-			const leftUri = args[0] as { fsPath?: string; toString?(): string } | undefined;
-			const rightUri = args[1] as { fsPath?: string; toString?(): string } | undefined;
+			const leftUri = args[0] as
+				| { fsPath?: string; toString?(): string }
+				| undefined;
+			const rightUri = args[1] as
+				| { fsPath?: string; toString?(): string }
+				| undefined;
 			const title = args[2] as string | undefined;
 			const left = leftUri?.fsPath ?? leftUri?.toString?.() ?? "";
 			const right = rightUri?.fsPath ?? rightUri?.toString?.() ?? "";

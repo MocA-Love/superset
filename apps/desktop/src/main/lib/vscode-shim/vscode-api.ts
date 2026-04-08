@@ -283,7 +283,10 @@ class WorkspaceEdit {
 		this.replace(uri, range, "");
 	}
 	/** Set all edits for a given URI (replaces existing edits for that URI) */
-	set(uri: Uri, edits: Array<{ range: Range; newText: string } | unknown>): void {
+	set(
+		uri: Uri,
+		edits: Array<{ range: Range; newText: string } | unknown>,
+	): void {
 		const textEdits = (edits as Array<{ range?: Range; newText?: string }>)
 			.filter((e) => e && "range" in e && "newText" in e)
 			.map((e) => ({ range: e.range as Range, newText: e.newText as string }));
