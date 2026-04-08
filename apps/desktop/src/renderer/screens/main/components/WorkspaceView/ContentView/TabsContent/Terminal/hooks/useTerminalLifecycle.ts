@@ -565,10 +565,6 @@ export function useTerminalLifecycle({
 						done();
 					};
 
-					logTerminalEvent(
-						"create-or-attach-start",
-						`cols=${xterm.cols} rows=${xterm.rows} ${getContainerSize()}`,
-					);
 					createOrAttachRef.current(
 						{
 							paneId,
