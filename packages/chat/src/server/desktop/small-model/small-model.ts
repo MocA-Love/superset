@@ -38,7 +38,7 @@ export interface SmallModelProvider {
 
 const OPENAI_CODEX_API_ENDPOINT =
 	"https://chatgpt.com/backend-api/codex/responses";
-const OPENAI_CODEX_SMALL_MODEL_ID = "gpt-5.1-codex-mini";
+const OPENAI_CODEX_SMALL_MODEL_ID = "gpt-5.4-mini";
 const OPENAI_API_SMALL_MODEL_ID = "gpt-4o-mini";
 
 function createOpenAICodexOAuthModel(credentials: OpenAICredentials) {
