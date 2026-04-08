@@ -1,7 +1,16 @@
 import type { CheckItem, GitHubStatus } from "@superset/local-db";
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
-import { trackGitHubOperation } from "./github-metrics";
+import {
+	clearCachedNoPullRequestMatch,
+	hasCachedNoPullRequestMatch,
+	makeGitHubNoPullRequestCacheKey,
+	setCachedNoPullRequestMatch,
+} from "./cache";
+import {
+	trackGitHubOperation,
+	trackGitHubOperationEvent,
+} from "./github-metrics";
 import { getPullRequestRepoNamesForWorktree } from "./repo-context";
 import {
 	type GHPRResponse,
@@ -20,18 +29,33 @@ function getPullRequestRepoArgSets(repoNames: string[]): string[][] {
 	return repoNames.map((repoName) => ["--repo", repoName]);
 }
 
+interface PullRequestLookupResult {
+	pr: GitHubStatus["pr"];
+	hadLookupFailure: boolean;
+}
+
 export async function getPRForBranch(
 	worktreePath: string,
 	localBranch: string,
 	repoContext?: RepoContext,
 	headSha?: string,
 ): Promise<GitHubStatus["pr"]> {
+	const noPullRequestCacheKey = makeGitHubNoPullRequestCacheKey({
+		worktreePath,
+		localBranch,
+		headSha,
+	});
+	if (hasCachedNoPullRequestMatch(noPullRequestCacheKey)) {
+		return null;
+	}
+
 	const byTracking = await getPRByBranchTracking(
 		worktreePath,
 		localBranch,
 		headSha,
 	);
 	if (byTracking) {
+		clearCachedNoPullRequestMatch(noPullRequestCacheKey);
 		return byTracking;
 	}
 
@@ -46,11 +70,25 @@ export async function getPRForBranch(
 		repoNames,
 		headSha,
 	);
-	if (byHeadBranch) {
-		return byHeadBranch;
+	if (byHeadBranch.pr) {
+		clearCachedNoPullRequestMatch(noPullRequestCacheKey);
+		return byHeadBranch.pr;
 	}
 
-	return findPRByHeadCommit(worktreePath, repoNames, headSha);
+	const byHeadCommit = await findPRByHeadCommit(
+		worktreePath,
+		repoNames,
+		headSha,
+	);
+	if (byHeadCommit.pr) {
+		clearCachedNoPullRequestMatch(noPullRequestCacheKey);
+		return byHeadCommit.pr;
+	}
+
+	if (!byHeadBranch.hadLookupFailure && !byHeadCommit.hadLookupFailure) {
+		setCachedNoPullRequestMatch(noPullRequestCacheKey);
+	}
+	return null;
 }
 
 /**
@@ -183,15 +221,19 @@ async function getPRByBranchTracking(
 	localBranch: string,
 	headSha?: string,
 ): Promise<GitHubStatus["pr"]> {
+	const startedAt = Date.now();
 	try {
-		const { stdout } = await trackGitHubOperation({
+		const { stdout } = await execWithShellEnv(
+			"gh",
+			["pr", "view", "--json", PR_JSON_FIELDS],
+			{ cwd: worktreePath },
+		);
+		trackGitHubOperationEvent({
 			name: "gh_pr_view",
 			category: "gh",
 			worktreePath,
-			fn: () =>
-				execWithShellEnv("gh", ["pr", "view", "--json", PR_JSON_FIELDS], {
-					cwd: worktreePath,
-				}),
+			success: true,
+			durationMs: Date.now() - startedAt,
 		});
 
 		const data = parsePRResponse(stdout);
@@ -213,8 +255,23 @@ async function getPRByBranchTracking(
 			error instanceof Error &&
 			error.message.toLowerCase().includes("no pull requests found")
 		) {
+			trackGitHubOperationEvent({
+				name: "gh_pr_view_no_match",
+				category: "gh",
+				worktreePath,
+				success: true,
+				durationMs: Date.now() - startedAt,
+			});
 			return null;
 		}
+		trackGitHubOperationEvent({
+			name: "gh_pr_view",
+			category: "gh",
+			worktreePath,
+			success: false,
+			durationMs: Date.now() - startedAt,
+			error,
+		});
 		throw error;
 	}
 }
@@ -228,10 +285,11 @@ async function findPRByHeadBranch(
 	localBranch: string,
 	repoNames: string[],
 	headSha?: string,
-): Promise<GitHubStatus["pr"]> {
+): Promise<PullRequestLookupResult> {
 	try {
 		const matches = new Map<number, GHPRResponse>();
 		const repoArgSets = getPullRequestRepoArgSets(repoNames);
+		let hadLookupFailure = false;
 
 		for (const repoArgs of repoArgSets) {
 			for (const branchCandidate of getPRHeadBranchCandidates(localBranch)) {
@@ -261,6 +319,7 @@ async function findPRByHeadBranch(
 							),
 					}));
 				} catch (error) {
+					hadLookupFailure = true;
 					console.warn(
 						"[GitHub/findPRByHeadBranch] Failed repo-scoped PR lookup:",
 						{
@@ -282,9 +341,15 @@ async function findPRByHeadBranch(
 		}
 
 		const bestMatch = sortPRCandidates([...matches.values()], headSha)[0];
-		return bestMatch ? formatPRData(bestMatch) : null;
+		return {
+			pr: bestMatch ? formatPRData(bestMatch) : null,
+			hadLookupFailure,
+		};
 	} catch {
-		return null;
+		return {
+			pr: null,
+			hadLookupFailure: true,
+		};
 	}
 }
 
@@ -296,7 +361,7 @@ async function findPRByHeadCommit(
 	worktreePath: string,
 	repoNames: string[],
 	providedSha?: string,
-): Promise<GitHubStatus["pr"]> {
+): Promise<PullRequestLookupResult> {
 	try {
 		let headSha = providedSha;
 		if (!headSha) {
@@ -311,6 +376,7 @@ async function findPRByHeadCommit(
 		}
 
 		const exactHeadMatches: GHPRResponse[] = [];
+		let hadLookupFailure = false;
 		for (const repoArgs of getPullRequestRepoArgSets(repoNames)) {
 			let stdout: string;
 			try {
@@ -338,6 +404,7 @@ async function findPRByHeadCommit(
 						),
 				}));
 			} catch (error) {
+				hadLookupFailure = true;
 				console.warn(
 					"[GitHub/findPRByHeadCommit] Failed repo-scoped PR lookup:",
 					{
@@ -357,13 +424,15 @@ async function findPRByHeadCommit(
 		}
 
 		const bestMatch = sortPRCandidates(exactHeadMatches, headSha)[0];
-		if (bestMatch) {
-			return formatPRData(bestMatch);
-		}
-
-		return null;
+		return {
+			pr: bestMatch ? formatPRData(bestMatch) : null,
+			hadLookupFailure,
+		};
 	} catch {
-		return null;
+		return {
+			pr: null,
+			hadLookupFailure: true,
+		};
 	}
 }
 
