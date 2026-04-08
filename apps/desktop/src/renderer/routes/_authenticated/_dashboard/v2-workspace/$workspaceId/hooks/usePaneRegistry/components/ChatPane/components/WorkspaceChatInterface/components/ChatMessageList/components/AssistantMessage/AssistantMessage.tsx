@@ -1,7 +1,7 @@
 import { Message, MessageContent } from "@superset/ui/ai-elements/message";
 import { ShimmerLabel } from "@superset/ui/ai-elements/shimmer-label";
 import { FileSearchIcon } from "lucide-react";
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { StreamingMessageText } from "renderer/components/Chat/ChatInterface/components/MessagePartsRenderer/components/StreamingMessageText";
 import { ReasoningBlock } from "renderer/components/Chat/ChatInterface/components/ReasoningBlock";
 import { ToolCallBlock } from "renderer/components/Chat/ChatInterface/components/ToolCallBlock";
@@ -126,13 +126,13 @@ export function AssistantMessage({
 	const renderedToolCallIds = new Set<string>();
 	const renderedSubagentToolCallIds = new Set<string>();
 	let didRenderPendingPlanApproval = false;
-	const shikiTheme = (() => {
+	const shikiTheme = useMemo(() => {
 		const currentTheme = createShikiTheme(theme);
 		return [currentTheme, currentTheme] as [
 			typeof currentTheme,
 			typeof currentTheme,
 		];
-	})();
+	}, [theme]);
 	const handleAttachmentClick = useCallback(
 		(url: string, filename?: string) => {
 			addFileViewerPane(workspaceId, {

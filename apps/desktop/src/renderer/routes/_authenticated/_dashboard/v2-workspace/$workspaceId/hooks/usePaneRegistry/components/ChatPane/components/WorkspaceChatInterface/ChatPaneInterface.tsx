@@ -127,7 +127,9 @@ function ChatUploadFooter({
 			{...footerProps}
 			sessionId={sessionId}
 			workspaceId={workspaceId}
-			submitDisabled={sessionId ? isUploading : false}
+			submitDisabled={
+				Boolean(footerProps.submitDisabled) || (sessionId ? isUploading : false)
+			}
 			renderAttachment={renderAttachment}
 			onSend={handleSend}
 		/>
@@ -710,6 +712,15 @@ export function ChatPaneInterface({
 				initialLaunchConfig.retryCount ?? AUTO_LAUNCH_MAX_RETRIES;
 			if (previousAttempts >= retryLimit) return;
 
+			const modelId = initialLaunchConfig.metadata?.model ?? activeModel?.id;
+			if (!modelId) {
+				setSubmitStatus(undefined);
+				if (!authLoading) {
+					setRuntimeErrorMessage("No authenticated chat model is available.");
+				}
+				return;
+			}
+
 			autoLaunchAttemptsRef.current[launchConfigKey] = previousAttempts + 1;
 			autoLaunchInFlightRef.current = launchConfigKey;
 			if (autoLaunchRetryTimerRef.current) {
@@ -719,15 +730,6 @@ export function ChatPaneInterface({
 
 			clearRuntimeError();
 			setSubmitStatus("submitted");
-
-			const modelId = initialLaunchConfig.metadata?.model ?? activeModel?.id;
-			if (!modelId) {
-				setSubmitStatus(undefined);
-				if (!authLoading) {
-					setRuntimeErrorMessage("No authenticated chat model is available.");
-				}
-				return;
-			}
 			const effectiveLaunchThinkingLevel = getEffectiveThinkingLevel(
 				thinkingLevel,
 				modelId,
@@ -1035,6 +1037,7 @@ export function ChatPaneInterface({
 					setThinkingLevel={setThinkingLevel}
 					thinkingDisabledLevels={thinkingDisabledLevels}
 					thinkingHint={thinkingHint}
+					submitDisabled={!activeModel?.id}
 					slashCommands={slashCommands}
 					sessionId={sessionId}
 					workspaceId={workspaceId}

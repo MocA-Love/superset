@@ -18,8 +18,8 @@ import {
 	runSessionStartHook,
 	subscribeToSessionEvents,
 	syncRuntimeHookSessionId,
+	syncSubagentModelToCurrentSelection,
 } from "./utils/runtime";
-import { isModelUsableWithCurrentAuth } from "./utils/runtime/model-auth";
 import { getSupersetMcpTools } from "./utils/runtime/superset-mcp";
 import {
 	approvalRespondInput,
@@ -36,8 +36,6 @@ import {
 } from "./zod";
 
 const ENABLE_MASTRA_MCP_SERVERS = false;
-const SUBAGENT_AGENT_TYPES = ["explore", "plan", "execute"] as const;
-
 function resolveOmModelFromAuth(): string | undefined {
 	if (process.env.GOOGLE_GENERATIVE_AI_API_KEY)
 		return "google/gemini-2.5-flash";
@@ -55,35 +53,6 @@ function resolveOmModelFromAuth(): string | undefined {
 		return "openai/gpt-5.4-mini";
 	}
 	return undefined;
-}
-
-async function syncSubagentModelToCurrentSelection(
-	runtime: RuntimeSession,
-	modelId?: string,
-): Promise<void> {
-	const nextModelId = modelId?.trim();
-	if (!nextModelId) return;
-
-	await Promise.all(
-		SUBAGENT_AGENT_TYPES.map(async (agentType) => {
-			const currentModelId = await runtime.harness.getSubagentModelId({
-				agentType,
-			});
-
-			if (
-				currentModelId?.trim() &&
-				currentModelId !== nextModelId &&
-				isModelUsableWithCurrentAuth(currentModelId)
-			) {
-				return;
-			}
-
-			await runtime.harness.setSubagentModelId({
-				modelId: nextModelId,
-				agentType,
-			});
-		}),
-	);
 }
 
 export interface ChatRuntimeServiceOptions {

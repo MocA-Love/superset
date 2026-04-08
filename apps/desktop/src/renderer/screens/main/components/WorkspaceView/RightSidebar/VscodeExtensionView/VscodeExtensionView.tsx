@@ -244,6 +244,16 @@ export function VscodeExtensionView({
 			enabled: !!viewId && !!workspaceId,
 			onData: (event) => {
 				if (!viewId || event.viewId !== viewId) return;
+				if (event.type === "dispose") {
+					destroyPersistentVscodeExtensionHost(persistentHostId);
+					iframeRef.current = null;
+					setViewId(null);
+					setIframeAttached(false);
+					if (source === "panel") {
+						setError(`Extension panel "${viewType}" is no longer available`);
+					}
+					return;
+				}
 				if (event.type === "message") {
 					iframeRef.current?.contentWindow?.postMessage(
 						{ type: "vscode-message", data: event.data },

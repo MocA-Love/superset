@@ -24,6 +24,7 @@ import {
 import type {
 	AddFileViewerPaneOptions,
 	AddTabWithMultiplePanesOptions,
+	ClosedTabEntry,
 	TabsState,
 	TabsStore,
 } from "./types";
@@ -165,6 +166,27 @@ const sanitizePersistedPanes = (
 	});
 
 	return hasChanges ? Object.fromEntries(sanitizedEntries) : panes;
+};
+
+const sanitizeClosedTabsStack = (
+	closedTabsStack: ClosedTabEntry[],
+): ClosedTabEntry[] => {
+	let hasChanges = false;
+	const nextEntries = closedTabsStack.map((entry) => {
+		let entryChanged = false;
+		const nextPanes = entry.panes.map((pane) => {
+			const nextPane = sanitizePersistedVscodeExtensionPane(pane);
+			if (nextPane !== pane) {
+				hasChanges = true;
+				entryChanged = true;
+			}
+			return nextPane;
+		});
+
+		return entryChanged ? { ...entry, panes: nextPanes } : entry;
+	});
+
+	return hasChanges ? nextEntries : closedTabsStack;
 };
 
 const deriveTabName = (
@@ -421,7 +443,14 @@ export const useTabsStore = create<TabsStore>()(
 						.filter(Boolean);
 					const closedEntry = {
 						tab: tabToRemove,
-						panes: closedPanes,
+						panes:
+							sanitizeClosedTabsStack([
+								{
+									tab: tabToRemove,
+									panes: closedPanes,
+									closedAt: Date.now(),
+								},
+							])[0]?.panes ?? closedPanes,
 						closedAt: Date.now(),
 					};
 					const closedTabsStack = [closedEntry, ...state.closedTabsStack].slice(
@@ -2507,13 +2536,16 @@ export const useTabsStore = create<TabsStore>()(
 				storage: trpcTabsStorage,
 				partialize: (state) => {
 					const panes = sanitizePersistedPanes(state.panes);
+					const closedTabsStack = sanitizeClosedTabsStack(
+						state.closedTabsStack,
+					);
 					return {
 						tabs: state.tabs,
 						panes,
 						activeTabIds: state.activeTabIds,
 						focusedPaneIds: state.focusedPaneIds,
 						tabHistoryStacks: state.tabHistoryStacks,
-						closedTabsStack: state.closedTabsStack,
+						closedTabsStack,
 					};
 				},
 				migrate: (persistedState, version) => {
@@ -2582,6 +2614,11 @@ export const useTabsStore = create<TabsStore>()(
 								};
 							}
 						}
+					}
+					if (persisted.closedTabsStack) {
+						persisted.closedTabsStack = sanitizeClosedTabsStack(
+							persisted.closedTabsStack,
+						);
 					}
 
 					const mergedState = { ...currentState, ...persisted };

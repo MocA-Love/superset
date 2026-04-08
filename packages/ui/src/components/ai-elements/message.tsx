@@ -328,13 +328,17 @@ export const MessageResponse = memo(
 		shikiTheme,
 		...props
 	}: MessageResponseProps) => {
-		const codePluginOptions = shikiTheme
-			? ({
-					// @streamdown/code accepts custom Shiki theme registrations at runtime,
-					// but its published types only allow bundled theme names.
-					themes: shikiTheme,
-				} as Parameters<typeof createCodePlugin>[0])
-			: undefined;
+		const codePluginOptions = useMemo(
+			() =>
+				shikiTheme
+					? ({
+							// @streamdown/code accepts custom Shiki theme registrations at runtime,
+							// but its published types only allow bundled theme names.
+							themes: shikiTheme,
+						} as Parameters<typeof createCodePlugin>[0])
+					: undefined,
+			[shikiTheme],
+		);
 		const streamdownPlugins = useMemo(
 			() =>
 				({

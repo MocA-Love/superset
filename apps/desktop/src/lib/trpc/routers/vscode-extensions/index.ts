@@ -333,6 +333,23 @@ export const createVscodeExtensionsRouter = () => {
 				return { viewId: input.viewId, url: getWebviewUrl(input.viewId) };
 			}),
 
+		/** Dispose an existing panel-backed webview session */
+		disposeWebview: publicProcedure
+			.input(
+				z.object({
+					viewId: z.string(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const panel = getActivePanel(input.viewId);
+				if (!panel) {
+					return { success: false };
+				}
+
+				panel.dispose();
+				return { success: true };
+			}),
+
 		/** Get current webview HTML */
 		getWebviewHtml: publicProcedure
 			.input(z.object({ viewType: z.string() }))

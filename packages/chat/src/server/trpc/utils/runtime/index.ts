@@ -13,6 +13,7 @@ export {
 	runSessionStartHook,
 	subscribeToSessionEvents,
 	syncRuntimeHookSessionId,
+	syncSubagentModelToCurrentSelection,
 } from "./runtime";
 export {
 	authenticateRuntimeMcpServer,
