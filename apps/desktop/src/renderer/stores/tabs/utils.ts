@@ -1055,6 +1055,8 @@ export const createVscodeExtensionPane = (
 	extensionId: string,
 	viewType: string,
 	name: string,
+	source: "view" | "panel" = "view",
+	sessionId?: string,
 ): Pane => {
 	const id = generateId("pane");
 	return {
@@ -1062,7 +1064,7 @@ export const createVscodeExtensionPane = (
 		tabId,
 		type: "vscode-extension",
 		name,
-		vscodeExtension: { viewType, extensionId },
+		vscodeExtension: { viewType, extensionId, source, sessionId },
 	};
 };
 
@@ -1071,9 +1073,18 @@ export const createVscodeExtensionTabWithPane = (
 	extensionId: string,
 	viewType: string,
 	name: string,
+	source: "view" | "panel" = "view",
+	sessionId?: string,
 ): { tab: Tab; pane: Pane } => {
 	const tabId = generateId("tab");
-	const pane = createVscodeExtensionPane(tabId, extensionId, viewType, name);
+	const pane = createVscodeExtensionPane(
+		tabId,
+		extensionId,
+		viewType,
+		name,
+		source,
+		sessionId,
+	);
 
 	const tab: Tab = {
 		id: tabId,

@@ -46,9 +46,8 @@ async function main() {
 	const { discoverExtensions, loadExtension, deactivateAll } = await import(
 		"../lib/vscode-shim/loader"
 	);
-	const { getActiveView, onWebviewEvent, resolveWebviewView } = await import(
-		"../lib/vscode-shim/api/webview"
-	);
+	const { getActivePanel, getActiveView, onWebviewEvent, resolveWebviewView } =
+		await import("../lib/vscode-shim/api/webview");
 	const { registerExtensionDefaults } = await import(
 		"../lib/vscode-shim/api/configuration"
 	);
@@ -201,9 +200,9 @@ async function main() {
 			}
 
 			case "post-message": {
-				const view = getActiveView(msg.viewId);
-				if (view) {
-					const webview = view.webview as {
+				const target = getActiveView(msg.viewId) ?? getActivePanel(msg.viewId);
+				if (target) {
+					const webview = target.webview as {
 						_onDidReceiveMessage?: { fire(data: unknown): void };
 					};
 					webview._onDidReceiveMessage?.fire(msg.message);

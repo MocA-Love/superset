@@ -286,6 +286,17 @@ export const createVscodeExtensionsRouter = () => {
 				return { viewId: result.viewId, url };
 			}),
 
+		/** Attach to an existing webview session by viewId/panelId */
+		attachWebview: publicProcedure
+			.input(
+				z.object({
+					viewId: z.string(),
+				}),
+			)
+			.mutation(({ input }) => {
+				return { viewId: input.viewId, url: getWebviewUrl(input.viewId) };
+			}),
+
 		/** Get current webview HTML */
 		getWebviewHtml: publicProcedure
 			.input(z.object({ viewType: z.string() }))

@@ -149,7 +149,12 @@ export interface Pane {
 	gitGraph?: GitGraphPaneState; // For git-graph panes
 	databaseExplorer?: DatabaseExplorerPaneState; // For database explorer panes
 	actionLogs?: ActionLogsPaneState; // For GitHub Actions log panes
-	vscodeExtension?: { viewType: string; extensionId: string };
+	vscodeExtension?: {
+		viewType: string;
+		extensionId: string;
+		source?: "view" | "panel";
+		sessionId?: string;
+	};
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";

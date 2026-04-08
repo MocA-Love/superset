@@ -116,6 +116,8 @@ const paneSchema = z.object({
 		.object({
 			viewType: z.string(),
 			extensionId: z.string(),
+			source: z.enum(["view", "panel"]).optional(),
+			sessionId: z.string().optional(),
 		})
 		.optional(),
 	workspaceRun: z

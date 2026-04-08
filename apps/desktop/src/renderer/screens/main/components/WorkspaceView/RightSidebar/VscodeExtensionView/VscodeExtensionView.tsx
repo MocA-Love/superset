@@ -6,6 +6,8 @@ interface VscodeExtensionViewProps {
 	viewType: string;
 	extensionId: string;
 	isActive: boolean;
+	source?: "view" | "panel";
+	sessionId?: string;
 }
 
 /**
@@ -17,6 +19,8 @@ export function VscodeExtensionView({
 	viewType,
 	extensionId,
 	isActive,
+	source = "view",
+	sessionId,
 }: VscodeExtensionViewProps) {
 	const workspaceId = useWorkspaceId();
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
@@ -30,12 +34,36 @@ export function VscodeExtensionView({
 
 	const resolveMutation =
 		electronTrpc.vscodeExtensions.resolveWebview.useMutation();
+	const attachMutation =
+		electronTrpc.vscodeExtensions.attachWebview.useMutation();
 	const postMessageMutation =
 		electronTrpc.vscodeExtensions.postMessageToExtension.useMutation();
 
-	// Resolve the webview when first becoming active
+	// Attach panel sessions directly; only sidebar views need resolveWebview.
 	useEffect(() => {
-		if (!isActive || viewId || !workspaceId || !workspace?.worktreePath) return;
+		if (!isActive || viewId || !workspaceId) return;
+
+		if (source === "panel" && sessionId) {
+			attachMutation.mutate(
+				{ viewId: sessionId },
+				{
+					onSuccess: (result) => {
+						if (result.viewId && result.url) {
+							setViewId(result.viewId);
+							setIframeUrl(result.url);
+						} else {
+							setError(`Extension panel "${viewType}" not found`);
+						}
+					},
+					onError: (err) => {
+						setError(err.message);
+					},
+				},
+			);
+			return;
+		}
+
+		if (!workspace?.worktreePath) return;
 
 		resolveMutation.mutate(
 			{
@@ -61,9 +89,12 @@ export function VscodeExtensionView({
 	}, [
 		isActive,
 		viewId,
+		source,
+		sessionId,
 		viewType,
 		workspaceId,
 		workspace?.worktreePath,
+		attachMutation.mutate,
 		resolveMutation.mutate,
 	]);
 

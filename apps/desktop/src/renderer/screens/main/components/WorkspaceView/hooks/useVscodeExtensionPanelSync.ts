@@ -37,7 +37,7 @@ export function useVscodeExtensionPanelSync() {
 					typeof event.data === "object" &&
 					event.data !== null
 				) {
-					const { viewType, title, extensionPath } = event.data as {
+					const { viewType, title, panelId, extensionPath } = event.data as {
 						viewType: string;
 						title: string;
 						panelId: string;
@@ -54,7 +54,8 @@ export function useVscodeExtensionPanelSync() {
 					const alreadyExists = Object.values(panes).some(
 						(pane: Pane) =>
 							pane.type === "vscode-extension" &&
-							pane.vscodeExtension?.viewType === viewType,
+							pane.vscodeExtension?.source === "panel" &&
+							pane.vscodeExtension?.sessionId === panelId,
 					);
 					if (alreadyExists) {
 						return;
@@ -65,6 +66,8 @@ export function useVscodeExtensionPanelSync() {
 						extensionId,
 						viewType,
 						title || "Extension Panel",
+						"panel",
+						panelId,
 					);
 				}
 			},

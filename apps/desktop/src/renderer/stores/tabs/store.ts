@@ -1730,6 +1730,8 @@ export const useTabsStore = create<TabsStore>()(
 					extensionId: string,
 					viewType: string,
 					name: string,
+					source: "view" | "panel" = "view",
+					sessionId?: string,
 				) => {
 					const state = get();
 
@@ -1738,6 +1740,8 @@ export const useTabsStore = create<TabsStore>()(
 						extensionId,
 						viewType,
 						name,
+						source,
+						sessionId,
 					);
 
 					const currentActiveId = state.activeTabIds[workspaceId];
