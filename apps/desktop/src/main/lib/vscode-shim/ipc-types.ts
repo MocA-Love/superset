@@ -14,7 +14,9 @@ export type MainToWorkerMessage =
 			extensionPath: string;
 	  }
 	| { type: "post-message"; viewId: string; message: unknown }
-	| { type: "shutdown" };
+	| { type: "shutdown" }
+	| { type: "dialog-result"; requestId: string; selectedIndex: number }
+	| { type: "open-dialog-result"; requestId: string; filePaths: string[] | null };
 
 /** Messages sent FROM worker TO main process */
 export type WorkerToMainMessage =
@@ -44,4 +46,15 @@ export type WorkerToMainMessage =
 				| "showErrorMessage";
 			message: string;
 			items: string[];
+	  }
+	| { type: "show-quickpick"; requestId: string; labels: string[]; placeHolder?: string }
+	| {
+			type: "show-open-dialog";
+			requestId: string;
+			canSelectFiles?: boolean;
+			canSelectFolders?: boolean;
+			canSelectMany?: boolean;
+			title?: string;
+			filters?: Array<{ name: string; extensions: string[] }>;
+			defaultPath?: string;
 	  };

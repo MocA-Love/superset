@@ -33,9 +33,10 @@ async function main() {
 
 	// Import shim modules (each process gets its own copy)
 	const { setWorkspacePath } = await import("../lib/vscode-shim/api/workspace");
-	const { setActiveTextEditor, onOpenFile, onOpenDiff } = await import(
+	const { setActiveTextEditor, onOpenFile, onOpenDiff, setSendToMain, resolveDialogResult, resolveOpenDialogResult } = await import(
 		"../lib/vscode-shim/api/window"
 	);
+	setSendToMain(send);
 	const { commands } = await import("../lib/vscode-shim/api/commands");
 	const { discoverExtensions, loadExtension, deactivateAll } = await import(
 		"../lib/vscode-shim/loader"
@@ -203,6 +204,14 @@ async function main() {
 			case "shutdown":
 				await deactivateAll();
 				process.exit(0);
+				break;
+
+			case "dialog-result":
+				resolveDialogResult(msg.requestId, msg.selectedIndex);
+				break;
+
+			case "open-dialog-result":
+				resolveOpenDialogResult(msg.requestId, msg.filePaths);
 				break;
 		}
 	});
