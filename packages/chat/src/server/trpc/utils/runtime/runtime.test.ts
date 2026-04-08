@@ -14,7 +14,11 @@ const getDefaultSmallModelProvidersMock = mock(() => [
 	{
 		id: "mock",
 		name: "Mock",
-		resolveCredentials: () => ({ apiKey: "test", kind: "apiKey", source: "test" }),
+		resolveCredentials: () => ({
+			apiKey: "test",
+			kind: "apiKey",
+			source: "test",
+		}),
 		isSupported: () => ({ supported: true }),
 		createModel: () => ({}),
 	},
