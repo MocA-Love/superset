@@ -139,7 +139,22 @@ function useAvailableModels(): {
 		enabled: !isDesktopChatDevMode(),
 		staleTime: Number.POSITIVE_INFINITY,
 	});
-	const models = localModels.length > 0 ? localModels : (data?.models ?? []);
+	const { data: anthropicStatus } =
+		chatServiceTrpc.auth.getAnthropicStatus.useQuery();
+	const { data: openaiStatus } =
+		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
+
+	const allModels =
+		localModels.length > 0 ? localModels : (data?.models ?? []);
+
+	const models = allModels.filter((model) => {
+		if (model.id.startsWith("anthropic/"))
+			return anthropicStatus?.authenticated ?? false;
+		if (model.id.startsWith("openai/"))
+			return openaiStatus?.authenticated ?? false;
+		return true;
+	});
+
 	return { models, defaultModel: models[0] ?? null };
 }
 
