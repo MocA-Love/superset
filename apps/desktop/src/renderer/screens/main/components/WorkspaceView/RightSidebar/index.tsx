@@ -64,6 +64,7 @@ import { getSidebarHeaderTabButtonClassName } from "./headerTabStyles";
 import { ProblemsView } from "./ProblemsView";
 import { SearchView } from "./SearchView";
 import { VscodeExtensionView } from "./VscodeExtensionView";
+import { createVscodeExtensionSidebarPersistenceId } from "./VscodeExtensionView/runtime";
 
 interface SidebarTabDefinition {
 	id: RightSidebarTab;
@@ -798,6 +799,9 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 						viewType="claudeVSCodeSidebar"
 						extensionId="anthropic.claude-code"
 						isActive={rightSidebarTab === RightSidebarTab.ClaudeCode}
+						persistenceId={createVscodeExtensionSidebarPersistenceId(
+							"claudeVSCodeSidebar",
+						)}
 					/>
 				</div>
 			)}
@@ -813,6 +817,9 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 						viewType="chatgpt.sidebarView"
 						extensionId="openai.chatgpt"
 						isActive={rightSidebarTab === RightSidebarTab.Codex}
+						persistenceId={createVscodeExtensionSidebarPersistenceId(
+							"chatgpt.sidebarView",
+						)}
 					/>
 				</div>
 			)}

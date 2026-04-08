@@ -13,6 +13,7 @@ import { ContentView } from "../ContentView";
 import { useActiveEditorSync } from "../hooks/useActiveEditorSync";
 import { useBrowserLifecycle } from "../hooks/useBrowserLifecycle";
 import { useVscodeDiffSync } from "../hooks/useVscodeDiffSync";
+import { useVscodeExtensionLifecycle } from "../hooks/useVscodeExtensionLifecycle";
 import { useVscodeExtensionPanelSync } from "../hooks/useVscodeExtensionPanelSync";
 import { useVscodeOpenFileSync } from "../hooks/useVscodeOpenFileSync";
 import { useVscodeThemeSync } from "../hooks/useVscodeThemeSync";
@@ -34,6 +35,7 @@ export function WorkspaceLayout({
 	onOpenQuickOpen,
 }: WorkspaceLayoutProps) {
 	useBrowserLifecycle();
+	useVscodeExtensionLifecycle(workspaceId);
 	useActiveEditorSync();
 	useVscodeExtensionPanelSync();
 	useVscodeOpenFileSync();

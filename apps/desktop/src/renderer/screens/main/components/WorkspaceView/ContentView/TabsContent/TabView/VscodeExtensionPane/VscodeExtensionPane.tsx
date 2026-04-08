@@ -1,5 +1,6 @@
 import type { MosaicBranch } from "react-mosaic-component";
 import { VscodeExtensionView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/VscodeExtensionView";
+import { createVscodeExtensionPanePersistenceId } from "renderer/screens/main/components/WorkspaceView/RightSidebar/VscodeExtensionView/runtime";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { BasePaneWindow, PaneTitle, PaneToolbarActions } from "../components";
 
@@ -66,6 +67,7 @@ export function VscodeExtensionPane({
 					viewType={viewType}
 					extensionId={extensionId}
 					isActive={true}
+					persistenceId={createVscodeExtensionPanePersistenceId(paneId)}
 				/>
 			</div>
 		</BasePaneWindow>
