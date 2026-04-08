@@ -43,7 +43,12 @@ export function VscodeExtensionView({
 	useEffect(() => {
 		if (!isActive || viewId || !workspaceId) return;
 
-		if (source === "panel" && sessionId) {
+		if (source === "panel") {
+			if (!sessionId) {
+				setError(`Extension panel "${viewType}" is no longer available`);
+				return;
+			}
+
 			attachMutation.mutate(
 				{ viewId: sessionId },
 				{
@@ -52,7 +57,7 @@ export function VscodeExtensionView({
 							setViewId(result.viewId);
 							setIframeUrl(result.url);
 						} else {
-							setError(`Extension panel "${viewType}" not found`);
+							setError(`Extension panel "${viewType}" is no longer available`);
 						}
 					},
 					onError: (err) => {
