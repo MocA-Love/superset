@@ -8,7 +8,7 @@ type AttachTask = {
 	run: (done: () => void) => void;
 };
 
-const MAX_CONCURRENT_ATTACHES = 3;
+const MAX_CONCURRENT_ATTACHES = 8;
 
 // Debug logging (enable via localStorage.setItem('SUPERSET_TERMINAL_DEBUG', '1'))
 const DEBUG_SCHEDULER =

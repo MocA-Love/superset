@@ -2,7 +2,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import type { IDisposable, ITheme, Terminal as XTerm } from "@xterm/xterm";
 import type { MutableRefObject, RefObject } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { writeCommandInPane } from "renderer/lib/terminal/launch-command";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -236,7 +236,7 @@ export function useTerminalLifecycle({
 		[],
 	);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const wasActive = prevWorkspaceIsActiveRef.current;
 		prevWorkspaceIsActiveRef.current = workspaceIsActive;
 
