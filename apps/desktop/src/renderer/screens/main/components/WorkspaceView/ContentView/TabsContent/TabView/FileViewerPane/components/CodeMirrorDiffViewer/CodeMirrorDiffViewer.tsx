@@ -245,7 +245,8 @@ export function CodeMirrorDiffViewer({
 
 	useEffect(() => {
 		inlineCompletionRequestRef.current = inlineCompletionRequest;
-	}, [inlineCompletionRequest]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: coerce to boolean to avoid unnecessary ref updates on callback reference changes
+	}, [Boolean(inlineCompletionRequest)]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: MergeView is created once and destroyed on unmount
 	useEffect(() => {
@@ -418,7 +419,8 @@ export function CodeMirrorDiffViewer({
 					: [],
 			),
 		});
-	}, [inlineCompletionCompartmentB, inlineCompletionRequest]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
+	}, [inlineCompletionCompartmentB, Boolean(inlineCompletionRequest)]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }
