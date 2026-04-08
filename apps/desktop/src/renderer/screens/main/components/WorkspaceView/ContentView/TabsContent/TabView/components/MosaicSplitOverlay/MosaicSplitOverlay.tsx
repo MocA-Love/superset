@@ -164,6 +164,13 @@ function SplitHandle({ split, layout, onLayoutChange }: SplitHandleProps) {
 			isDragging.current = true;
 			setResizing(true);
 
+			// Immediately disable pointer events on all iframes to prevent them
+			// from swallowing mousemove/mouseup events during resize
+			const iframes = document.querySelectorAll<HTMLIFrameElement>("iframe");
+			for (const iframe of iframes) {
+				iframe.style.pointerEvents = "none";
+			}
+
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = isRow ? "col-resize" : "row-resize";
 
@@ -192,6 +199,12 @@ function SplitHandle({ split, layout, onLayoutChange }: SplitHandleProps) {
 			const onMouseUp = () => {
 				isDragging.current = false;
 				setResizing(false);
+
+				// Restore pointer events on all iframes
+				for (const iframe of iframes) {
+					iframe.style.pointerEvents = "";
+				}
+
 				document.body.style.userSelect = "";
 				document.body.style.cursor = "";
 				document.removeEventListener("mousemove", onMouseMove);

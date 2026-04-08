@@ -4,12 +4,14 @@ interface DragPaneState {
 	draggingPaneId: string | null;
 	draggingSourceTabId: string | null;
 	isResizing: boolean;
+	isTabDragging: boolean;
 }
 
 interface DragPaneActions {
 	setDragging: (paneId: string, tabId: string) => void;
 	clearDragging: () => void;
 	setResizing: (value: boolean) => void;
+	setTabDragging: (value: boolean) => void;
 }
 
 export const useDragPaneStore = create<DragPaneState & DragPaneActions>(
@@ -17,10 +19,12 @@ export const useDragPaneStore = create<DragPaneState & DragPaneActions>(
 		draggingPaneId: null,
 		draggingSourceTabId: null,
 		isResizing: false,
+		isTabDragging: false,
 		setDragging: (paneId, tabId) =>
 			set({ draggingPaneId: paneId, draggingSourceTabId: tabId }),
 		clearDragging: () =>
 			set({ draggingPaneId: null, draggingSourceTabId: null }),
 		setResizing: (value) => set({ isResizing: value }),
+		setTabDragging: (value) => set({ isTabDragging: value }),
 	}),
 );

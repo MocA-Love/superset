@@ -2,16 +2,7 @@
  * VS Code window API shim.
  */
 
-function getDialog(): typeof import("electron").dialog {
-	try {
-		return require("electron").dialog;
-	} catch {
-		return {
-			showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
-		} as unknown as typeof import("electron").dialog;
-	}
-}
-
+import type { WorkerToMainMessage } from "../ipc-types";
 import { shimLog, shimWarn } from "./debug-log";
 import { Disposable, type Event, EventEmitter } from "./event-emitter";
 import { createOutputChannel, type OutputChannel } from "./output-channel";
@@ -74,6 +65,50 @@ const _openFileEmitter = new EventEmitter<{
 	line?: number;
 }>();
 export const onOpenFile = _openFileEmitter.event;
+
+// Emits when vscode.diff is called - renderer listens to open diff viewer
+const _openDiffEmitter = new EventEmitter<{
+	leftUri: string;
+	rightUri: string;
+	title?: string;
+}>();
+export const onOpenDiff = _openDiffEmitter.event;
+export function fireOpenDiff(leftUri: string, rightUri: string, title?: string): void {
+	_openDiffEmitter.fire({ leftUri, rightUri, title });
+}
+
+// IPC send function — injected from worker process so dialog calls go via main
+let _sendToMain: ((msg: WorkerToMainMessage) => void) | null = null;
+export function setSendToMain(fn: (msg: WorkerToMainMessage) => void): void {
+	_sendToMain = fn;
+}
+
+// Pending dialog requests waiting for main-process response
+const _pendingDialogs = new Map<string, (result: unknown) => void>();
+export function resolveDialogResult(requestId: string, selectedIndex: number): void {
+	_pendingDialogs.get(requestId)?.(selectedIndex);
+	_pendingDialogs.delete(requestId);
+}
+export function resolveOpenDialogResult(requestId: string, filePaths: string[] | null): void {
+	_pendingDialogs.get(requestId)?.(filePaths);
+	_pendingDialogs.delete(requestId);
+}
+
+async function showMessageViaIpc(
+	method: "showInformationMessage" | "showWarningMessage" | "showErrorMessage",
+	message: string,
+	items: string[],
+): Promise<string | undefined> {
+	if (!_sendToMain) return undefined;
+	const requestId = crypto.randomUUID();
+	const selectedIndex = await new Promise<number>((resolve) => {
+		_pendingDialogs.set(requestId, (v) => resolve(v as number));
+		_sendToMain!({ type: "show-dialog", requestId, method, message, items });
+	});
+	if (selectedIndex < 0) return undefined;
+	return items[selectedIndex];
+}
+
 // Active text editor state — updated from renderer via tRPC
 let _activeTextEditor: TextEditor | undefined;
 const _visibleTextEditors: TextEditor[] = [];
@@ -192,7 +227,7 @@ export const window = {
 		},
 	},
 
-	// Messages
+	// Messages — sent via IPC to main process (Worker cannot access Electron dialog directly)
 	async showInformationMessage(
 		message: string,
 		...items: string[]
@@ -201,12 +236,7 @@ export const window = {
 			shimLog(`[vscode-shim] INFO: ${message}`);
 			return undefined;
 		}
-		const result = await getDialog().showMessageBox({
-			type: "info",
-			message,
-			buttons: items,
-		});
-		return items[result.response];
+		return showMessageViaIpc("showInformationMessage", message, items);
 	},
 
 	async showWarningMessage(
@@ -217,12 +247,7 @@ export const window = {
 			shimWarn(`[vscode-shim] WARN: ${message}`);
 			return undefined;
 		}
-		const result = await getDialog().showMessageBox({
-			type: "warning",
-			message,
-			buttons: items,
-		});
-		return items[result.response];
+		return showMessageViaIpc("showWarningMessage", message, items);
 	},
 
 	async showErrorMessage(
@@ -233,22 +258,35 @@ export const window = {
 			console.error(`[vscode-shim] ERROR: ${message}`);
 			return undefined;
 		}
-		const result = await getDialog().showMessageBox({
-			type: "error",
-			message,
-			buttons: items,
-		});
-		return items[result.response];
+		return showMessageViaIpc("showErrorMessage", message, items);
 	},
 
 	async showQuickPick(
-		items: string[] | Promise<string[]>,
-		_options?: { placeHolder?: string; canPickMany?: boolean },
-	): Promise<string | undefined> {
+		items:
+			| string[]
+			| Array<{ label: string; description?: string; detail?: string }>
+			| Promise<
+					| string[]
+					| Array<{ label: string; description?: string; detail?: string }>
+			  >,
+		options?: { placeHolder?: string; canPickMany?: boolean },
+	): Promise<string | { label: string } | undefined> {
 		const resolved = await items;
-		// For MVP, return first item. In Phase 3, render a proper picker in renderer
-		shimWarn("[vscode-shim] showQuickPick stub, returning first item");
-		return resolved[0];
+		if (!resolved || resolved.length === 0) return undefined;
+		const labels = resolved.map((item) =>
+			typeof item === "string" ? item : item.label,
+		);
+		if (!_sendToMain) {
+			shimWarn("[vscode-shim] showQuickPick: no IPC channel available");
+			return undefined;
+		}
+		const requestId = crypto.randomUUID();
+		const selectedIndex = await new Promise<number>((resolve) => {
+			_pendingDialogs.set(requestId, (v) => resolve(v as number));
+			_sendToMain!({ type: "show-quickpick", requestId, labels, placeHolder: options?.placeHolder });
+		});
+		if (selectedIndex < 0) return undefined;
+		return resolved[selectedIndex];
 	},
 
 	async showInputBox(_options?: {
@@ -260,9 +298,42 @@ export const window = {
 		return undefined;
 	},
 
-	async showOpenDialog(_options?: unknown): Promise<Uri[] | undefined> {
-		shimWarn("[vscode-shim] showOpenDialog stub");
-		return undefined;
+	async showOpenDialog(
+		options?: {
+			canSelectFiles?: boolean;
+			canSelectFolders?: boolean;
+			canSelectMany?: boolean;
+			title?: string;
+			filters?: Record<string, string[]>;
+			defaultUri?: Uri;
+		},
+	): Promise<Uri[] | undefined> {
+		if (!_sendToMain) {
+			shimWarn("[vscode-shim] showOpenDialog: no IPC channel available");
+			return undefined;
+		}
+		const filters = options?.filters
+			? Object.entries(options.filters).map(([name, extensions]) => ({
+					name,
+					extensions,
+				}))
+			: undefined;
+		const requestId = crypto.randomUUID();
+		const filePaths = await new Promise<string[] | null>((resolve) => {
+			_pendingDialogs.set(requestId, (v) => resolve(v as string[] | null));
+			_sendToMain!({
+				type: "show-open-dialog",
+				requestId,
+				canSelectFiles: options?.canSelectFiles,
+				canSelectFolders: options?.canSelectFolders,
+				canSelectMany: options?.canSelectMany,
+				title: options?.title,
+				filters,
+				defaultPath: options?.defaultUri?.fsPath,
+			});
+		});
+		if (!filePaths || filePaths.length === 0) return undefined;
+		return filePaths.map((p) => Uri.file(p));
 	},
 
 	async showTextDocument(

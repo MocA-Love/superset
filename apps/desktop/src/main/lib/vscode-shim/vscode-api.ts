@@ -282,6 +282,20 @@ class WorkspaceEdit {
 	delete(uri: Uri, range: Range): void {
 		this.replace(uri, range, "");
 	}
+	/** Set all edits for a given URI (replaces existing edits for that URI) */
+	set(uri: Uri, edits: Array<{ range: Range; newText: string } | unknown>): void {
+		const textEdits = (edits as Array<{ range?: Range; newText?: string }>)
+			.filter((e) => e && "range" in e && "newText" in e)
+			.map((e) => ({ range: e.range as Range, newText: e.newText as string }));
+		const existing = this._edits.find(
+			(e) => e.uri.toString() === uri.toString(),
+		);
+		if (existing) {
+			existing.edits = textEdits;
+		} else if (textEdits.length > 0) {
+			this._edits.push({ uri, edits: textEdits });
+		}
+	}
 	entries(): Array<[Uri, Array<{ range: Range; newText: string }>]> {
 		return this._edits.map((e) => [e.uri, e.edits]);
 	}
@@ -487,9 +501,19 @@ const env = {
 	language: "en",
 	clipboard: {
 		async readText(): Promise<string> {
-			return "";
+			try {
+				const { clipboard } = require("electron");
+				return clipboard.readText();
+			} catch {
+				return "";
+			}
 		},
-		async writeText(_text: string): Promise<void> {},
+		async writeText(text: string): Promise<void> {
+			try {
+				const { clipboard } = require("electron");
+				clipboard.writeText(text);
+			} catch {}
+		},
 	},
 	machineId: "superset-desktop",
 	sessionId: `session-${Date.now()}`,

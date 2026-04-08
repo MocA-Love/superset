@@ -84,6 +84,8 @@ export function GroupItem({
 		}),
 	);
 
+	const setTabDragging = useDragPaneStore((s) => s.setTabDragging);
+
 	// Use MosaicDragType.WINDOW so Mosaic's built-in drop targets (blue split indicators) activate
 	const [{ isDragging }, drag, preview] = useDrag<
 		TabDragItem,
@@ -94,16 +96,20 @@ export function GroupItem({
 		const canDropOntoActiveTab = activeTabId != null && activeTabId !== tab.id;
 		return {
 			type: MosaicDragType.WINDOW,
-			item: {
-				mosaicId: canDropOntoActiveTab
-					? `${MOSAIC_ID}-${activeTabId}`
-					: TAB_DRAG_NO_MATCH_ID,
-				hideTimer: 0,
-				tabId: tab.id,
-				index,
-				isTabDrag: true,
+			item: () => {
+				setTabDragging(true);
+				return {
+					mosaicId: canDropOntoActiveTab
+						? `${MOSAIC_ID}-${activeTabId}`
+						: TAB_DRAG_NO_MATCH_ID,
+					hideTimer: 0,
+					tabId: tab.id,
+					index,
+					isTabDrag: true,
+				};
 			},
 			end: (item, monitor) => {
+				setTabDragging(false);
 				const dropResult = monitor.getDropResult();
 				if (!dropResult?.position || !dropResult?.path) return;
 

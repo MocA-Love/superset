@@ -237,19 +237,32 @@ export class ExtensionHostManager extends EventEmitter {
 				this.emit("open-file", workspaceId, msg);
 				break;
 
+			case "open-diff":
+				this.emit("open-diff", workspaceId, msg);
+				break;
+
 			case "show-dialog":
-				// Proxy dialog calls to Electron main process
-				this.handleDialogRequest(msg);
+				// Proxy dialog calls to Electron main process and return result
+				this.handleDialogRequest(workspaceId, msg);
+				break;
+
+			case "show-quickpick":
+				this.handleQuickPickRequest(workspaceId, msg);
+				break;
+
+			case "show-open-dialog":
+				this.handleOpenDialogRequest(workspaceId, msg);
 				break;
 		}
 	}
 
 	private async handleDialogRequest(
+		workspaceId: string,
 		msg: Extract<WorkerToMainMessage, { type: "show-dialog" }>,
 	): Promise<void> {
 		try {
 			const { dialog } = require("electron");
-			const _result = await dialog.showMessageBox({
+			const result = await dialog.showMessageBox({
 				type:
 					msg.method === "showErrorMessage"
 						? "error"
@@ -259,8 +272,64 @@ export class ExtensionHostManager extends EventEmitter {
 				message: msg.message,
 				buttons: msg.items,
 			});
-			// Could send result back via IPC if needed
-		} catch {}
+			this.sendToWorker(workspaceId, {
+				type: "dialog-result",
+				requestId: msg.requestId,
+				selectedIndex: result.response,
+			});
+		} catch {
+			this.sendToWorker(workspaceId, {
+				type: "dialog-result",
+				requestId: msg.requestId,
+				selectedIndex: -1,
+			});
+		}
+	}
+
+	private async handleQuickPickRequest(
+		workspaceId: string,
+		msg: Extract<WorkerToMainMessage, { type: "show-quickpick" }>,
+	): Promise<void> {
+		try {
+			const { dialog } = require("electron");
+			const result = await dialog.showMessageBox({
+				type: "question",
+				title: msg.placeHolder ?? "Select",
+				message: msg.placeHolder ?? "Select an option",
+				buttons: [...msg.labels, "Cancel"],
+				cancelId: msg.labels.length,
+			});
+			const selectedIndex = result.response === msg.labels.length ? -1 : result.response;
+			this.sendToWorker(workspaceId, { type: "dialog-result", requestId: msg.requestId, selectedIndex });
+		} catch {
+			this.sendToWorker(workspaceId, { type: "dialog-result", requestId: msg.requestId, selectedIndex: -1 });
+		}
+	}
+
+	private async handleOpenDialogRequest(
+		workspaceId: string,
+		msg: Extract<WorkerToMainMessage, { type: "show-open-dialog" }>,
+	): Promise<void> {
+		try {
+			const { dialog } = require("electron");
+			const properties: Array<"openFile" | "openDirectory" | "multiSelections"> = [];
+			if (msg.canSelectFolders) properties.push("openDirectory");
+			if (msg.canSelectFiles !== false) properties.push("openFile");
+			if (msg.canSelectMany) properties.push("multiSelections");
+			const result = await dialog.showOpenDialog({
+				properties,
+				title: msg.title,
+				filters: msg.filters,
+				defaultPath: msg.defaultPath,
+			});
+			this.sendToWorker(workspaceId, {
+				type: "open-dialog-result",
+				requestId: msg.requestId,
+				filePaths: result.canceled || result.filePaths.length === 0 ? null : result.filePaths,
+			});
+		} catch {
+			this.sendToWorker(workspaceId, { type: "open-dialog-result", requestId: msg.requestId, filePaths: null });
+		}
 	}
 
 	async resolveWebview(
