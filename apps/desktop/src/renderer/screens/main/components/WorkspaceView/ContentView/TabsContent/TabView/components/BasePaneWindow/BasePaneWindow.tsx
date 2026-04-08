@@ -69,6 +69,7 @@ export function BasePaneWindow({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const splitOrientation = useSplitOrientation(containerRef);
 	const isDragging = useDragPaneStore((s) => s.draggingPaneId !== null);
+	const isTabDragging = useDragPaneStore((s) => s.isTabDragging);
 	const isResizing = useDragPaneStore((s) => s.isResizing);
 	const setDragging = useDragPaneStore((s) => s.setDragging);
 	const clearDragging = useDragPaneStore((s) => s.clearDragging);
@@ -131,7 +132,7 @@ export function BasePaneWindow({
 			<div
 				ref={containerRef}
 				className={contentClassName}
-				style={isDragging || isResizing ? { pointerEvents: "none" } : undefined}
+				style={isDragging || isTabDragging || isResizing ? { pointerEvents: "none" } : undefined}
 				onClick={handleFocus}
 			>
 				{children}
