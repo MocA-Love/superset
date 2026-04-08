@@ -32,6 +32,13 @@ export function createVscodeExtensionSidebarPersistenceId(
 	return `sidebar:${viewType}`;
 }
 
+export function createPersistentVscodeExtensionHostId(
+	workspaceId: string,
+	persistenceId: string,
+): string {
+	return `${workspaceId}:${persistenceId}`;
+}
+
 export function getPersistentVscodeExtensionHost(
 	hostId: string,
 ): PersistentVscodeExtensionHost | undefined {
@@ -56,4 +63,17 @@ export function destroyPersistentVscodeExtensionHost(hostId: string): void {
 	if (!host) return;
 	host.wrapper.remove();
 	hostRegistry.delete(hostId);
+}
+
+export function destroyPersistentVscodeExtensionHostsForWorkspace(
+	workspaceId: string,
+): void {
+	const workspacePrefix = `${workspaceId}:`;
+	const hostIds = [...hostRegistry.keys()].filter((hostId) =>
+		hostId.startsWith(workspacePrefix),
+	);
+
+	for (const hostId of hostIds) {
+		destroyPersistentVscodeExtensionHost(hostId);
+	}
 }

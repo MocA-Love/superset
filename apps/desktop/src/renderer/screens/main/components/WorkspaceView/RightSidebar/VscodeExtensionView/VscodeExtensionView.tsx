@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "../../WorkspaceIdContext";
 import {
+	createPersistentVscodeExtensionHostId,
 	getPersistentVscodeExtensionHost,
 	parkPersistentVscodeExtensionHost,
 	setPersistentVscodeExtensionHost,
@@ -33,7 +34,11 @@ export function VscodeExtensionView({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const persistentHostId = useMemo(
-		() => `${workspaceId ?? "no-workspace"}:${persistenceId}`,
+		() =>
+			createPersistentVscodeExtensionHostId(
+				workspaceId ?? "no-workspace",
+				persistenceId,
+			),
 		[workspaceId, persistenceId],
 	);
 	const [viewId, setViewId] = useState<string | null>(() => {

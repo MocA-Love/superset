@@ -35,7 +35,7 @@ export function WorkspaceLayout({
 	onOpenQuickOpen,
 }: WorkspaceLayoutProps) {
 	useBrowserLifecycle();
-	useVscodeExtensionLifecycle();
+	useVscodeExtensionLifecycle(workspaceId);
 	useActiveEditorSync();
 	useVscodeExtensionPanelSync();
 	useVscodeOpenFileSync();
