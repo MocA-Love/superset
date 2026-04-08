@@ -103,12 +103,14 @@ export class ExtensionHostManager extends EventEmitter {
 		workspaceId: string,
 		workspacePath: string,
 	): Promise<void> {
+		// Inherit restartCount from previous instance so MAX_RESTART_ATTEMPTS is respected
+		const prevRestartCount = this.instances.get(workspaceId)?.restartCount ?? 0;
 		const instance: ExtensionHostProcess = {
 			workspaceId,
 			workspacePath,
 			process: null,
 			status: "starting",
-			restartCount: 0,
+			restartCount: prevRestartCount,
 		};
 		this.instances.set(workspaceId, instance);
 
@@ -524,8 +526,10 @@ export class ExtensionHostManager extends EventEmitter {
 
 		const timer = setTimeout(() => {
 			this.scheduledRestarts.delete(workspaceId);
-			if (instance.status === "degraded") {
-				this.spawn(workspaceId, instance.workspacePath).catch((err) => {
+			// Use start() instead of spawn() directly so startPromises dedup is respected
+			const current = this.instances.get(workspaceId);
+			if (current?.status === "degraded") {
+				this.start(workspaceId, current.workspacePath).catch((err) => {
 					console.error(
 						`[ext-host-manager] Restart failed for ${workspaceId}:`,
 						err,
