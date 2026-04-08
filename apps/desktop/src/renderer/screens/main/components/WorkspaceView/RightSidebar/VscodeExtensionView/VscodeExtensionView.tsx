@@ -179,7 +179,6 @@ export function VscodeExtensionView({
 		if (!workspace?.worktreePath) {
 			return;
 		}
-
 		resolveWebviewRef.current(
 			{
 				workspaceId,
@@ -210,13 +209,13 @@ export function VscodeExtensionView({
 		};
 	}, [
 		isActive,
-		persistentHostId,
 		source,
 		sessionId,
 		viewType,
 		workspaceId,
 		workspace?.worktreePath,
 		extensionId,
+		persistentHostId,
 	]);
 
 	// Listen for messages from iframe -> forward to extension
