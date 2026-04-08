@@ -12,12 +12,14 @@ const GITHUB_PR_COMMENTS_CACHE_TTL_MS = 60_000;
 const GITHUB_PREVIEW_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 const GITHUB_REPO_CONTEXT_CACHE_TTL_MS = 300_000;
 const GITHUB_COMMIT_AUTHOR_CACHE_TTL_MS = 300_000;
+const GITHUB_NO_PR_MATCH_CACHE_TTL_MS = 120_000;
 
 const MAX_GITHUB_STATUS_CACHE_ENTRIES = 256;
 const MAX_GITHUB_PR_COMMENTS_CACHE_ENTRIES = 512;
 const MAX_GITHUB_PREVIEW_URL_CACHE_ENTRIES = 512;
 const MAX_GITHUB_REPO_CONTEXT_CACHE_ENTRIES = 256;
 const MAX_GITHUB_COMMIT_AUTHOR_CACHE_ENTRIES = 2048;
+const MAX_GITHUB_NO_PR_MATCH_CACHE_ENTRIES = 512;
 
 const githubStatusResource = createCachedResource<GitHubStatus | null>({
 	ttlMs: GITHUB_STATUS_CACHE_TTL_MS,
@@ -37,6 +39,11 @@ const previewUrlResource = createCachedResource<string | null>({
 const repoContextResource = createCachedResource<RepoContext | null>({
 	ttlMs: GITHUB_REPO_CONTEXT_CACHE_TTL_MS,
 	maxEntries: MAX_GITHUB_REPO_CONTEXT_CACHE_ENTRIES,
+});
+
+const noPullRequestMatchResource = createCachedResource<true>({
+	ttlMs: GITHUB_NO_PR_MATCH_CACHE_TTL_MS,
+	maxEntries: MAX_GITHUB_NO_PR_MATCH_CACHE_ENTRIES,
 });
 
 export interface GitHubCommitAuthor {
@@ -203,6 +210,36 @@ export function makeGitHubPreviewCachePrefix(worktreePath: string): string {
 	return `${worktreePath}::preview::`;
 }
 
+export function makeGitHubNoPullRequestCachePrefix(
+	worktreePath: string,
+): string {
+	return `${worktreePath}::no-pr::`;
+}
+
+export function makeGitHubNoPullRequestCacheKey({
+	worktreePath,
+	localBranch,
+	headSha,
+}: {
+	worktreePath: string;
+	localBranch: string;
+	headSha?: string;
+}): string {
+	return `${makeGitHubNoPullRequestCachePrefix(worktreePath)}${localBranch}::${headSha ?? "no-head"}`;
+}
+
+export function hasCachedNoPullRequestMatch(cacheKey: string): boolean {
+	return noPullRequestMatchResource.get(cacheKey) === true;
+}
+
+export function setCachedNoPullRequestMatch(cacheKey: string): void {
+	noPullRequestMatchResource.set(cacheKey, true);
+}
+
+export function clearCachedNoPullRequestMatch(cacheKey: string): void {
+	noPullRequestMatchResource.invalidate(cacheKey);
+}
+
 export function makeGitHubPreviewCacheKey({
 	worktreePath,
 	repoNameWithOwner,
@@ -329,6 +366,9 @@ export function clearGitHubCachesForWorktree(worktreePath: string): void {
 	});
 	pullRequestCommentsResource.invalidatePrefix(
 		makePullRequestCommentsCachePrefix(worktreePath),
+	);
+	noPullRequestMatchResource.invalidatePrefix(
+		makeGitHubNoPullRequestCachePrefix(worktreePath),
 	);
 	recordGitHubCacheMetric({
 		kind: "comments",
