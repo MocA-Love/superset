@@ -35,6 +35,7 @@ import {
 } from "./zod";
 
 const ENABLE_MASTRA_MCP_SERVERS = false;
+const SUBAGENT_AGENT_TYPES = ["explore", "plan", "execute"] as const;
 
 function resolveOmModelFromAuth(): string | undefined {
 	if (process.env.GOOGLE_GENERATIVE_AI_API_KEY)
@@ -53,6 +54,23 @@ function resolveOmModelFromAuth(): string | undefined {
 		return "openai/gpt-5.4-mini";
 	}
 	return undefined;
+}
+
+async function syncSubagentModelToCurrentSelection(
+	runtime: RuntimeSession,
+	modelId?: string,
+): Promise<void> {
+	const nextModelId = modelId?.trim();
+	if (!nextModelId) return;
+
+	await Promise.all(
+		SUBAGENT_AGENT_TYPES.map((agentType) =>
+			runtime.harness.setSubagentModelId({
+				modelId: nextModelId,
+				agentType,
+			}),
+		),
+	);
 }
 
 export interface ChatRuntimeServiceOptions {
@@ -271,6 +289,7 @@ export class ChatRuntimeService {
 								modelId: selectedModel,
 								scope: "thread",
 							});
+							await syncSubagentModelToCurrentSelection(runtime, selectedModel);
 						}
 						const thinkingLevel = input.metadata?.thinkingLevel;
 						if (thinkingLevel) {

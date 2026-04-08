@@ -151,18 +151,16 @@ function useAvailableModels(): {
 		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
 
 	const allModels = localModels.length > 0 ? localModels : (data?.models ?? []);
-
-	// ローディング中はフィルタをスキップして全モデルを表示する（フラッシュ防止）
 	const authLoading = anthropicLoading || openaiLoading;
-	const models = authLoading
-		? allModels
-		: allModels.filter((model) => {
-				if (model.id.startsWith("anthropic/"))
-					return anthropicStatus?.authenticated ?? false;
-				if (model.id.startsWith("openai/"))
-					return openaiStatus?.authenticated ?? false;
-				return true;
-			});
+	const models = allModels.filter((model) => {
+		if (model.id.startsWith("anthropic/")) {
+			return !authLoading && (anthropicStatus?.authenticated ?? false);
+		}
+		if (model.id.startsWith("openai/")) {
+			return !authLoading && (openaiStatus?.authenticated ?? false);
+		}
+		return true;
+	});
 
 	return { models, defaultModel: models[0] ?? null };
 }
