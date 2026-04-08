@@ -395,13 +395,14 @@ export function CodeMirrorDiffViewer({
 		});
 	}, [blameEntries, blameCompartmentB, worktreePath]);
 
+	const hasInlineCompletionRequest = Boolean(inlineCompletionRequest);
 	useEffect(() => {
 		const mv = mergeViewRef.current;
 		if (!mv) return;
 
 		mv.b.dispatch({
 			effects: inlineCompletionCompartmentB.reconfigure(
-				inlineCompletionRequest
+				hasInlineCompletionRequest
 					? createInlineCompletionPlugin(
 							(args) =>
 								inlineCompletionRequestRef.current?.(args) ??
@@ -410,8 +411,8 @@ export function CodeMirrorDiffViewer({
 					: [],
 			),
 		});
-		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
-	}, [inlineCompletionCompartmentB, inlineCompletionRequest]);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only track whether the request is available, not the callback reference itself, to avoid re-creating the plugin on every render
+	}, [inlineCompletionCompartmentB, hasInlineCompletionRequest]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }

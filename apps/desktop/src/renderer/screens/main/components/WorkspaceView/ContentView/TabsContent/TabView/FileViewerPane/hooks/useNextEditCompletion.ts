@@ -151,6 +151,8 @@ export function useNextEditCompletion({
 	const { data: inceptionStatus } =
 		chatServiceTrpc.auth.getInceptionStatus.useQuery();
 	const completeMutation = chatServiceTrpc.nextEdit.complete.useMutation();
+	const completeMutationRef = useRef(completeMutation);
+	completeMutationRef.current = completeMutation;
 	const recentSnippetsRef = useRef<RecentSnippet[]>([]);
 	const editHistoryRef = useRef<string[]>([]);
 	const committedContentRef = useRef("");
@@ -310,7 +312,7 @@ export function useNextEditCompletion({
 						.map((entry) => entry.slice(0, 160)),
 				});
 
-				const result = await completeMutation.mutateAsync({
+				const result = await completeMutationRef.current.mutateAsync({
 					filePath,
 					currentFileContent,
 					cursorOffset,
@@ -337,7 +339,6 @@ export function useNextEditCompletion({
 			}
 		},
 		[
-			completeMutation,
 			filePath,
 			flushPendingEditHistory,
 			inceptionStatus?.authenticated,

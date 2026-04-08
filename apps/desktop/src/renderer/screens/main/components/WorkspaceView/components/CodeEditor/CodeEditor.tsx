@@ -699,13 +699,14 @@ export function CodeEditor({
 		});
 	}, [blameEntries, blameCompartment, worktreePath]);
 
+	const hasInlineCompletionRequest = Boolean(inlineCompletionRequest);
 	useEffect(() => {
 		const view = viewRef.current;
 		if (!view) return;
 
 		view.dispatch({
 			effects: inlineCompletionCompartment.reconfigure(
-				inlineCompletionRequest
+				hasInlineCompletionRequest
 					? createInlineCompletionPlugin(
 							(args) =>
 								inlineCompletionRequestRef.current?.(args) ??
@@ -714,8 +715,8 @@ export function CodeEditor({
 					: [],
 			),
 		});
-		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally coerce to boolean to avoid re-creating the plugin on every render when the callback reference changes
-	}, [inlineCompletionCompartment, inlineCompletionRequest]);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only track whether the request is available, not the callback reference itself, to avoid re-creating the plugin on every render
+	}, [inlineCompletionCompartment, hasInlineCompletionRequest]);
 
 	useEffect(() => {
 		let cancelled = false;
