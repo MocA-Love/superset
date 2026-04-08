@@ -145,8 +145,7 @@ function useAvailableModels(): {
 	const { data: openaiStatus, isLoading: openaiLoading } =
 		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
 
-	const allModels =
-		localModels.length > 0 ? localModels : (data?.models ?? []);
+	const allModels = localModels.length > 0 ? localModels : (data?.models ?? []);
 
 	// ローディング中はフィルタをスキップして全モデルを表示する（フラッシュ防止）
 	const authLoading = anthropicLoading || openaiLoading;
