@@ -351,6 +351,42 @@ describe("ChatMessageList", () => {
 		expect(html).not.toContain("INLINE_SUBAGENT_EXECUTION_MESSAGE");
 	});
 
+	it("groups consecutive tool-only assistant messages into a compact stack", () => {
+		const html = renderListHtml({
+			messages: [
+				{
+					id: "assistant-tool-1",
+					role: "assistant",
+					content: [
+						{
+							type: "tool_call",
+							id: "tool-call-1",
+							name: "search_files",
+							args: {},
+						},
+					],
+					createdAt: new Date("2026-03-03T00:00:01.000Z"),
+				},
+				{
+					id: "assistant-tool-2",
+					role: "assistant",
+					content: [
+						{
+							type: "tool_result",
+							id: "tool-call-1",
+							name: "search_files",
+							result: {},
+							isError: false,
+						},
+					],
+					createdAt: new Date("2026-03-03T00:00:02.000Z"),
+				},
+			] as never,
+		});
+
+		expect(html).toContain('data-compact-assistant-group="2"');
+	});
+
 	it("shows tool preview while awaiting assistant when pending plan is anchored", () => {
 		const html = renderListHtml({
 			isAwaitingAssistant: true,

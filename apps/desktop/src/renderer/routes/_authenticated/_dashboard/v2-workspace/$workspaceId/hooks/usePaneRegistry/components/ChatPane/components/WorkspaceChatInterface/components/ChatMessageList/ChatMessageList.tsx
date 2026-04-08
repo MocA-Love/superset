@@ -32,6 +32,19 @@ import {
 	resolvePendingPlanToolCallId,
 } from "./utils/messageListHelpers";
 
+function isCompactAssistantMessage(message: ChatMessage): boolean {
+	if (message.role !== "assistant" || message.content.length === 0) {
+		return false;
+	}
+
+	return message.content.every(
+		(part) =>
+			part.type === "tool_call" ||
+			part.type === "tool_result" ||
+			part.type.startsWith("om_"),
+	);
+}
+
 export function ChatMessageList({
 	messages,
 	isFocused,
@@ -96,6 +109,60 @@ export function ChatMessageList({
 			}),
 		[interruptedMessage, interruptedPreview, visibleMessages],
 	);
+	const messageRenderGroups = useMemo(() => {
+		const groups: Array<
+			| {
+					kind: "single";
+					message: ChatMessage;
+					originalIndex: number;
+			  }
+			| {
+					kind: "compact-assistant-group";
+					messages: ChatMessage[];
+					startIndex: number;
+			  }
+		> = [];
+
+		for (let index = 0; index < renderedMessages.length; index++) {
+			const message = renderedMessages[index];
+			if (!isCompactAssistantMessage(message)) {
+				groups.push({
+					kind: "single",
+					message,
+					originalIndex: index,
+				});
+				continue;
+			}
+
+			const compactGroup = [message];
+			let nextIndex = index + 1;
+			while (
+				nextIndex < renderedMessages.length &&
+				isCompactAssistantMessage(renderedMessages[nextIndex] as ChatMessage)
+			) {
+				compactGroup.push(renderedMessages[nextIndex] as ChatMessage);
+				nextIndex++;
+			}
+
+			if (compactGroup.length === 1) {
+				groups.push({
+					kind: "single",
+					message,
+					originalIndex: index,
+				});
+				continue;
+			}
+
+			groups.push({
+				kind: "compact-assistant-group",
+				messages: compactGroup,
+				startIndex: index,
+			});
+			index = nextIndex - 1;
+		}
+
+		return groups;
+	}, [renderedMessages]);
 
 	const previewToolParts = useMemo(
 		() =>
@@ -210,6 +277,20 @@ export function ChatMessageList({
 		isPlanSubmitting,
 		onPlanRespond,
 	} as const;
+	const renderAssistantMessage = (message: ChatMessage) => (
+		<AssistantMessage
+			key={message.id}
+			message={message}
+			workspaceId={workspaceId}
+			sessionId={sessionId}
+			organizationId={organizationId}
+			workspaceCwd={workspaceCwd}
+			isStreaming={false}
+			previewToolParts={[]}
+			subagentEntries={inlineSubagentEntries}
+			{...inlineToolStateProps}
+		/>
+	);
 
 	return (
 		<Conversation className="flex-1">
@@ -224,13 +305,28 @@ export function ChatMessageList({
 							icon={<HiMiniChatBubbleLeftRight className="size-8" />}
 						/>
 					) : (
-						renderedMessages.map((message, messageIndex) => {
+						messageRenderGroups.map((group) => {
+							if (group.kind === "compact-assistant-group") {
+								return (
+									<div
+										key={`compact-group-${group.startIndex}`}
+										data-compact-assistant-group={group.messages.length}
+										className="flex flex-col gap-2"
+									>
+										{group.messages.map((message) =>
+											renderAssistantMessage(message),
+										)}
+									</div>
+								);
+							}
+
+							const { message, originalIndex } = group;
 							if (message.role === "user") {
 								return (
 									<UserMessage
 										key={message.id}
 										message={message}
-										prefixMessages={renderedMessages.slice(0, messageIndex)}
+										prefixMessages={renderedMessages.slice(0, originalIndex)}
 										workspaceId={workspaceId}
 										workspaceCwd={workspaceCwd}
 										isEditing={editingUserMessageId === message.id}
@@ -244,20 +340,7 @@ export function ChatMessageList({
 								);
 							}
 
-							return (
-								<AssistantMessage
-									key={message.id}
-									message={message}
-									workspaceId={workspaceId}
-									sessionId={sessionId}
-									organizationId={organizationId}
-									workspaceCwd={workspaceCwd}
-									isStreaming={false}
-									previewToolParts={[]}
-									subagentEntries={inlineSubagentEntries}
-									{...inlineToolStateProps}
-								/>
-							);
+							return renderAssistantMessage(message);
 						})
 					)}
 					{interruptedPreview && (
