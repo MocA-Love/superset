@@ -102,10 +102,13 @@ async function createSessionRecord(input: {
 		const detail = await getHttpErrorDetail(response);
 		// In dev mode, the API server may not be available — swallow the error
 		if (isDesktopChatDevMode()) {
-			console.warn("[chat-sessions] create session failed (dev mode, ignoring)", {
-				sessionId: input.sessionId,
-				detail,
-			});
+			console.warn(
+				"[chat-sessions] create session failed (dev mode, ignoring)",
+				{
+					sessionId: input.sessionId,
+					detail,
+				},
+			);
 			return;
 		}
 		throw new Error(`Failed to create session ${input.sessionId}: ${detail}`);
