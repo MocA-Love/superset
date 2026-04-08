@@ -136,6 +136,7 @@ function ChatUploadFooter({
 function useAvailableModels(): {
 	models: ModelOption[];
 	defaultModel: ModelOption | null;
+	authLoading: boolean;
 } {
 	const localModels = getDesktopChatModelOptions();
 	const { data } = useQuery({
@@ -161,7 +162,7 @@ function useAvailableModels(): {
 		return true;
 	});
 
-	return { models, defaultModel: models[0] ?? null };
+	return { models, defaultModel: models[0] ?? null, authLoading };
 }
 
 function toErrorMessage(error: unknown): string | null {
@@ -223,7 +224,11 @@ export function ChatPaneInterface({
 	onUserMessageSubmitted,
 	onRawSnapshotChange,
 }: ChatPaneInterfaceProps) {
-	const { models: availableModels, defaultModel } = useAvailableModels();
+	const {
+		models: availableModels,
+		defaultModel,
+		authLoading,
+	} = useAvailableModels();
 	const selectedModelId = useChatPreferencesStore(
 		(state) => state.selectedModelId,
 	);
@@ -578,6 +583,16 @@ export function ChatPaneInterface({
 			}
 			content = slashCommandResult.nextText.trim();
 
+			if (!activeModel?.id) {
+				setSubmitStatus(undefined);
+				setRuntimeErrorMessage(
+					authLoading
+						? "Models are still loading. Please wait a moment and try again."
+						: "No authenticated chat model is available.",
+				);
+				return;
+			}
+
 			if (!content && (!payload.files || payload.files.length === 0)) {
 				setSubmitStatus(undefined);
 				return;
@@ -706,6 +721,7 @@ export function ChatPaneInterface({
 		},
 		[
 			activeModel?.id,
+			authLoading,
 			captureChatEvent,
 			clearRuntimeError,
 			commands,
@@ -767,6 +783,13 @@ export function ChatPaneInterface({
 			setSubmitStatus("submitted");
 
 			const modelId = initialLaunchConfig.metadata?.model ?? activeModel?.id;
+			if (!modelId) {
+				setSubmitStatus(undefined);
+				if (!authLoading) {
+					setRuntimeErrorMessage("No authenticated chat model is available.");
+				}
+				return;
+			}
 			const effectiveLaunchThinkingLevel = getEffectiveThinkingLevel(
 				thinkingLevel,
 				modelId,
@@ -840,6 +863,7 @@ export function ChatPaneInterface({
 		};
 	}, [
 		activeModel?.id,
+		authLoading,
 		captureChatEvent,
 		clearRuntimeError,
 		commands,

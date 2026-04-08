@@ -6,6 +6,7 @@ import {
 	getDefaultSmallModelProviders,
 } from "../../../desktop";
 import type { ThinkingLevel } from "../../zod";
+import { isModelUsableWithCurrentAuth } from "./model-auth";
 
 const SUBAGENT_AGENT_TYPES = ["explore", "plan", "execute"] as const;
 
@@ -119,12 +120,24 @@ async function syncSubagentModelToCurrentSelection(
 	if (!nextModelId) return;
 
 	await Promise.all(
-		SUBAGENT_AGENT_TYPES.map((agentType) =>
-			runtime.harness.setSubagentModelId({
+		SUBAGENT_AGENT_TYPES.map(async (agentType) => {
+			const currentModelId = await runtime.harness.getSubagentModelId({
+				agentType,
+			});
+
+			if (
+				currentModelId?.trim() &&
+				currentModelId !== nextModelId &&
+				isModelUsableWithCurrentAuth(currentModelId)
+			) {
+				return;
+			}
+
+			await runtime.harness.setSubagentModelId({
 				modelId: nextModelId,
 				agentType,
-			}),
-		),
+			});
+		}),
 	);
 }
 

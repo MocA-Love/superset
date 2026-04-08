@@ -19,6 +19,7 @@ import {
 	subscribeToSessionEvents,
 	syncRuntimeHookSessionId,
 } from "./utils/runtime";
+import { isModelUsableWithCurrentAuth } from "./utils/runtime/model-auth";
 import { getSupersetMcpTools } from "./utils/runtime/superset-mcp";
 import {
 	approvalRespondInput,
@@ -64,12 +65,24 @@ async function syncSubagentModelToCurrentSelection(
 	if (!nextModelId) return;
 
 	await Promise.all(
-		SUBAGENT_AGENT_TYPES.map((agentType) =>
-			runtime.harness.setSubagentModelId({
+		SUBAGENT_AGENT_TYPES.map(async (agentType) => {
+			const currentModelId = await runtime.harness.getSubagentModelId({
+				agentType,
+			});
+
+			if (
+				currentModelId?.trim() &&
+				currentModelId !== nextModelId &&
+				isModelUsableWithCurrentAuth(currentModelId)
+			) {
+				return;
+			}
+
+			await runtime.harness.setSubagentModelId({
 				modelId: nextModelId,
 				agentType,
-			}),
-		),
+			});
+		}),
 	);
 }
 
