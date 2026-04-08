@@ -12,6 +12,7 @@ import {
 	connect,
 	createTransport,
 	disposeTransport,
+	resetReconnectBackoff,
 	sendDispose,
 	sendResize,
 	type TerminalTransport,
@@ -60,6 +61,9 @@ class TerminalRuntimeRegistryImpl {
 			sendResize(transport, runtime.terminal.cols, runtime.terminal.rows);
 		});
 
+		// Reset backoff so the next unexpected disconnect starts from the minimum
+		// delay, not from wherever a previous reconnect cycle left off.
+		resetReconnectBackoff(transport);
 		connect(transport, runtime.terminal, wsUrl);
 	}
 

@@ -164,6 +164,15 @@ export function connect(
 	});
 }
 
+/**
+ * Reset the reconnect backoff counter without touching the connection.
+ * Call this on intentional reconnects (e.g. workspace switch) so the next
+ * unexpected disconnect starts from the minimum delay again.
+ */
+export function resetReconnectBackoff(transport: TerminalTransport) {
+	transport._reconnectAttempt = 0;
+}
+
 export function disconnect(transport: TerminalTransport) {
 	cancelReconnect(transport);
 	if (transport.socket) {
