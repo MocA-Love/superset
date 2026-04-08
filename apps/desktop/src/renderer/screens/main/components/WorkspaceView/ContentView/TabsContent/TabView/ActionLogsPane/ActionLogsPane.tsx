@@ -14,6 +14,7 @@ import {
 	LuCheck,
 	LuChevronRight,
 	LuCircleSlash,
+	LuClipboard,
 	LuLoaderCircle,
 	LuMinus,
 	LuRefreshCw,
@@ -89,6 +90,15 @@ function AnsiLine({ html, className }: { html: string; className?: string }) {
 }
 
 // ── Job steps component ──
+
+function stripAnsi(str: string): string {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentionally stripping ANSI escape codes
+	return str.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+function stripTimestamp(line: string): string {
+	return line.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s/, "");
+}
 
 interface JobStepsProps {
 	workspaceId: string;
@@ -174,6 +184,23 @@ function JobSteps({
 		);
 	}
 
+	const copyAllLogs = () => {
+		const text = steps
+			.map((s) => {
+				const header = `=== ${s.name} ===`;
+				const lines = s.logs
+					? s.logs
+							.split("\n")
+							.map((l) => stripAnsi(stripTimestamp(l)))
+							.join("\n")
+					: "";
+				return `${header}\n${lines}`;
+			})
+			.join("\n\n");
+		void navigator.clipboard.writeText(text);
+		toast.success("Copied all logs");
+	};
+
 	const totalSeconds = steps.reduce(
 		(sum, s) => sum + (s.durationSeconds ?? 0),
 		0,
@@ -209,42 +236,54 @@ function JobSteps({
 						</p>
 					)}
 				</div>
-				{!hideRerun ? (
-					<div className="flex items-center gap-1">
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							className="h-6 px-2 text-[10px]"
-							disabled={rerunMutation.isPending}
-							onClick={() => void handleRerun("failed")}
-						>
-							<LuRefreshCw
-								className={cn(
-									"mr-1 size-3",
-									rerunMutation.isPending && "animate-spin",
-								)}
-							/>
-							Re-run failed
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							className="h-6 px-2 text-[10px]"
-							disabled={rerunMutation.isPending}
-							onClick={() => void handleRerun("all")}
-						>
-							<LuRefreshCw
-								className={cn(
-									"mr-1 size-3",
-									rerunMutation.isPending && "animate-spin",
-								)}
-							/>
-							Re-run all
-						</Button>
-					</div>
-				) : null}
+				<div className="flex items-center gap-1">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="h-6 px-2 text-[10px]"
+						onClick={copyAllLogs}
+					>
+						<LuClipboard className="mr-1 size-3" />
+						Copy all
+					</Button>
+					{!hideRerun ? (
+						<>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-6 px-2 text-[10px]"
+								disabled={rerunMutation.isPending}
+								onClick={() => void handleRerun("failed")}
+							>
+								<LuRefreshCw
+									className={cn(
+										"mr-1 size-3",
+										rerunMutation.isPending && "animate-spin",
+									)}
+								/>
+								Re-run failed
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-6 px-2 text-[10px]"
+								disabled={rerunMutation.isPending}
+								onClick={() => void handleRerun("all")}
+							>
+								<LuRefreshCw
+									className={cn(
+										"mr-1 size-3",
+										rerunMutation.isPending && "animate-spin",
+									)}
+								/>
+								Re-run all
+							</Button>
+						</>
+					) : null}
+				</div>
 			</div>
 
 			{/* Steps */}
@@ -269,8 +308,17 @@ function JobSteps({
 
 				if (!matchesSearch) return null;
 
+				const copyStepLogs = (e: React.MouseEvent) => {
+					e.stopPropagation();
+					const text = rawLines
+						.map((l) => stripAnsi(stripTimestamp(l)))
+						.join("\n");
+					void navigator.clipboard.writeText(text);
+					toast.success("Copied step logs");
+				};
+
 				return (
-					<div key={step.number}>
+					<div key={step.number} className="group/step">
 						<button
 							type="button"
 							className={cn(
@@ -291,6 +339,16 @@ function JobSteps({
 								<span className="shrink-0 text-xs text-muted-foreground">
 									{formatDuration(step.durationSeconds)}
 								</span>
+							)}
+							{rawLines.length > 0 && (
+								<button
+									type="button"
+									className="invisible shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground group-hover/step:visible"
+									title="Copy step logs"
+									onClick={copyStepLogs}
+								>
+									<LuClipboard className="size-3.5" />
+								</button>
 							)}
 						</button>
 						{isExpanded && filteredLines.length > 0 && (
