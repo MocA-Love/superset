@@ -372,7 +372,10 @@ async function findPRByHeadCommit(
 			headSha = headOutput.trim();
 		}
 		if (!headSha) {
-			return null;
+			return {
+				pr: null,
+				hadLookupFailure: false,
+			};
 		}
 
 		const exactHeadMatches: GHPRResponse[] = [];
