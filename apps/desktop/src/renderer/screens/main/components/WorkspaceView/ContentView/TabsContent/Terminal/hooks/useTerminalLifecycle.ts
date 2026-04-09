@@ -502,6 +502,9 @@ export function useTerminalLifecycle({
 			if (attachInFlightByPane.has(paneId)) return;
 
 			isStreamReadyRef.current = false;
+			// Workspace reattach can happen without focus/visibility recovery hooks,
+			// so clear any stale WebGL glyph cache before measuring and reattaching.
+			rendererRef.current?.current.clearTextureAtlas?.();
 			const measured = syncRenderableTerminalSize(
 				"workspace reattach pre-measure",
 			);
