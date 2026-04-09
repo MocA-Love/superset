@@ -276,8 +276,8 @@ export function CodeMirrorDiffViewer({
 			inlineCompletionCompartmentB.of(
 				inlineCompletionRequestRef.current
 					? createInlineCompletionPlugin(
-							(args) =>
-								inlineCompletionRequestRef.current?.(args) ??
+							(args, signal) =>
+								inlineCompletionRequestRef.current?.(args, signal) ??
 								Promise.resolve(null),
 						)
 					: [],
@@ -404,8 +404,8 @@ export function CodeMirrorDiffViewer({
 			effects: inlineCompletionCompartmentB.reconfigure(
 				hasInlineCompletionRequest
 					? createInlineCompletionPlugin(
-							(args) =>
-								inlineCompletionRequestRef.current?.(args) ??
+							(args, signal) =>
+								inlineCompletionRequestRef.current?.(args, signal) ??
 								Promise.resolve(null),
 						)
 					: [],

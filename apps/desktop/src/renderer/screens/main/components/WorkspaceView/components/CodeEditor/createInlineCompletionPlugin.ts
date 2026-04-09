@@ -20,6 +20,7 @@ export interface InlineCompletionRequestArgs {
 
 export type InlineCompletionRequest = (
 	args: InlineCompletionRequestArgs,
+	signal: AbortSignal,
 ) => Promise<string | null>;
 
 function logInlineCompletionDebug(
@@ -120,7 +121,7 @@ export function createInlineCompletionPlugin(
 	request: InlineCompletionRequest,
 	options?: { delayMs?: number },
 ) {
-	const delayMs = options?.delayMs ?? 350;
+	const delayMs = options?.delayMs ?? 600;
 
 	const plugin = ViewPlugin.fromClass(
 		class {
@@ -130,15 +131,44 @@ export function createInlineCompletionPlugin(
 			private lastSnapshotKey: string | null = null;
 			private lastSnapshotSuggestion: string | null = null;
 			private inFlightSnapshotKey: string | null = null;
+			private abortController: AbortController | null = null;
 
 			constructor(private readonly view: EditorView) {
 				this.schedule();
 			}
 
 			update(update: ViewUpdate) {
-				if (update.docChanged || update.selectionSet || update.focusChanged) {
-					this.schedule();
+				if (!update.docChanged) {
+					return;
 				}
+
+				const isUserInput = update.transactions.some(
+					(tr) => tr.isUserEvent("input") || tr.isUserEvent("delete"),
+				);
+				if (!isUserInput) {
+					return;
+				}
+
+				const hasNonWhitespaceChange = update.transactions.some((tr) => {
+					let found = false;
+					tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
+						if (found) return;
+						if (_toA > _fromA) {
+							found = true;
+							return;
+						}
+						const text = inserted.toString();
+						if (text.length > 0 && text.trim().length > 0) {
+							found = true;
+						}
+					});
+					return found;
+				});
+				if (!hasNonWhitespaceChange) {
+					return;
+				}
+
+				this.schedule();
 			}
 
 			destroy() {
@@ -147,6 +177,7 @@ export function createInlineCompletionPlugin(
 					window.clearTimeout(this.timeoutId);
 					this.timeoutId = null;
 				}
+				this.abortController?.abort();
 			}
 
 			private applySuggestionAfterUpdate(suggestion: string | null) {
@@ -171,6 +202,8 @@ export function createInlineCompletionPlugin(
 					window.clearTimeout(this.timeoutId);
 					this.timeoutId = null;
 				}
+				this.abortController?.abort();
+				this.abortController = null;
 
 				const selection = this.view.state.selection.main;
 				if (
@@ -222,11 +255,17 @@ export function createInlineCompletionPlugin(
 				});
 				this.timeoutId = window.setTimeout(() => {
 					this.timeoutId = null;
+					const controller = new AbortController();
+					this.abortController = controller;
+					const { signal } = controller;
 					this.inFlightSnapshotKey = snapshotKey;
-					void request({
-						currentFileContent: snapshotText,
-						cursorOffset: snapshotCursor,
-					})
+					void request(
+						{
+							currentFileContent: snapshotText,
+							cursorOffset: snapshotCursor,
+						},
+						signal,
+					)
 						.then((suggestion) => {
 							if (this.inFlightSnapshotKey === snapshotKey) {
 								this.inFlightSnapshotKey = null;
@@ -276,10 +315,13 @@ export function createInlineCompletionPlugin(
 							if (this.inFlightSnapshotKey === snapshotKey) {
 								this.inFlightSnapshotKey = null;
 							}
+							if (signal.aborted) {
+								return;
+							}
 							if (this.destroyed || currentRequestId !== this.requestId) {
 								return;
 							}
-							console.log("[InlineCompletion] request failed", {
+							console.error("[InlineCompletion] request failed", {
 								requestId: currentRequestId,
 								error,
 							});

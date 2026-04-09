@@ -528,8 +528,8 @@ export function CodeEditor({
 				inlineCompletionCompartment.of(
 					inlineCompletionRequestRef.current
 						? createInlineCompletionPlugin(
-								(args) =>
-									inlineCompletionRequestRef.current?.(args) ??
+								(args, signal) =>
+									inlineCompletionRequestRef.current?.(args, signal) ??
 									Promise.resolve(null),
 							)
 						: [],
@@ -708,8 +708,8 @@ export function CodeEditor({
 			effects: inlineCompletionCompartment.reconfigure(
 				hasInlineCompletionRequest
 					? createInlineCompletionPlugin(
-							(args) =>
-								inlineCompletionRequestRef.current?.(args) ??
+							(args, signal) =>
+								inlineCompletionRequestRef.current?.(args, signal) ??
 								Promise.resolve(null),
 						)
 					: [],
