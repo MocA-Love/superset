@@ -8,6 +8,13 @@ interface ChecksListProps {
 	checks: DashboardSidebarWorkspacePullRequestCheck[];
 }
 
+function getCheckKey(
+	check: DashboardSidebarWorkspacePullRequestCheck,
+	index: number,
+): string {
+	return `${check.name}:${check.url ?? "no-url"}:${index}`;
+}
+
 export function ChecksList({ checks }: ChecksListProps) {
 	const [expanded, setExpanded] = useState(false);
 
@@ -34,8 +41,8 @@ export function ChecksList({ checks }: ChecksListProps) {
 
 			{expanded && (
 				<div className="mt-1.5 space-y-1 pl-1">
-					{relevantChecks.map((check) => (
-						<CheckItemRow key={check.name} check={check} />
+					{relevantChecks.map((check, index) => (
+						<CheckItemRow key={getCheckKey(check, index)} check={check} />
 					))}
 				</div>
 			)}

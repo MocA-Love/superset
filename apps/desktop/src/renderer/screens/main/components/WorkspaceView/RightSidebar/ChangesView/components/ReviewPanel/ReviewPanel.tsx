@@ -108,6 +108,13 @@ function buildIdentitySummary(items: string[]): string {
 	return `${items.slice(0, 2).join(", ")} +${items.length - 2}`;
 }
 
+function getCheckKey(
+	check: NonNullable<GitHubStatus["pr"]>["checks"][number],
+	index: number,
+): string {
+	return `${check.name}:${check.url ?? "no-url"}:${index}`;
+}
+
 interface ReviewPanelProps {
 	pr: GitHubStatus["pr"] | null;
 	comments?: PullRequestComment[];
@@ -383,13 +390,13 @@ export function ReviewPanel({
 			});
 	};
 
-	const toggleCheckExpansion = (checkName: string) => {
+	const toggleCheckExpansion = (checkKey: string) => {
 		setExpandedChecks((prev) => {
 			const next = new Set(prev);
-			if (next.has(checkName)) {
-				next.delete(checkName);
+			if (next.has(checkKey)) {
+				next.delete(checkKey);
 			} else {
-				next.add(checkName);
+				next.add(checkKey);
 			}
 			return next;
 		});
@@ -1179,21 +1186,22 @@ export function ReviewPanel({
 							No checks reported.
 						</div>
 					) : (
-						relevantChecks.map((check) => {
+						relevantChecks.map((check, index) => {
 							const { icon: CheckIcon, className } =
 								checkIconConfig[check.status];
 							const checkUrl = resolveCheckDestinationUrl(check, pr.url);
-							const isCheckExpanded = expandedChecks.has(check.name);
+							const checkKey = getCheckKey(check, index);
+							const isCheckExpanded = expandedChecks.has(checkKey);
 							const canExpand = isActionsJobUrl(check.url);
 
 							return (
-								<div key={check.name}>
+								<div key={checkKey}>
 									<div className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-1 text-xs transition-colors hover:bg-accent/50">
 										{canExpand ? (
 											<button
 												type="button"
 												className="flex min-w-0 flex-1 items-center gap-1"
-												onClick={() => toggleCheckExpansion(check.name)}
+												onClick={() => toggleCheckExpansion(checkKey)}
 											>
 												<LuChevronDown
 													className={cn(
