@@ -236,6 +236,7 @@ export function useTerminalLifecycle({
 	const restartTerminalRef = useRef<
 		(options?: { command?: string; forceRestart?: boolean }) => Promise<void>
 	>(() => Promise.resolve());
+	const workspaceReattachRef = useRef<() => void>(() => {});
 	const restartTerminal = useCallback(
 		(options?: { command?: string; forceRestart?: boolean }) =>
 			restartTerminalRef.current(options),
@@ -253,6 +254,7 @@ export function useTerminalLifecycle({
 
 		if (!wasActive) {
 			scheduleReattachRecoveryRef.current(true);
+			workspaceReattachRef.current();
 		}
 	}, [workspaceIsActive]);
 
@@ -464,6 +466,66 @@ export function useTerminalLifecycle({
 			});
 
 		restartTerminalRef.current = restartTerminalSession;
+
+		const workspaceReattachSession = () => {
+			if (isExitedRef.current) return;
+			if (attachInFlightByPane.has(paneId)) return;
+
+			isStreamReadyRef.current = false;
+
+			const requestId = nextAttachRequestId();
+			cancelAttachRequest(activeAttachRequestId);
+			activeAttachRequestId = requestId;
+			activeAttachId = ++attachSequence;
+			const attachId = activeAttachId;
+			const isAttachActive = () =>
+				!isUnmounted && !attachCanceled && attachId === activeAttachId;
+
+			markAttachInFlight(paneId, attachId);
+
+			createOrAttachRef.current(
+				{
+					paneId,
+					requestId,
+					tabId: tabIdRef.current,
+					workspaceId,
+					cols: xterm.cols,
+					rows: xterm.rows,
+				},
+				{
+					onSuccess: (result) => {
+						if (!isAttachActive()) return;
+						if (activeAttachRequestId !== requestId) return;
+						setConnectionError(null);
+						clearAttachInFlight(paneId, attachId);
+						pendingInitialStateRef.current = result;
+						maybeApplyInitialState();
+					},
+					onError: (error) => {
+						if (!isAttachActive()) return;
+						clearAttachInFlight(paneId, attachId);
+						console.error("[Terminal] workspace reattach error:", {
+							paneId,
+							error: error instanceof Error ? error.message : String(error),
+						});
+						setConnectionError(
+							error instanceof Error
+								? error.message
+								: "Failed to reattach terminal",
+						);
+						isStreamReadyRef.current = true;
+						flushPendingEvents();
+					},
+					onSettled: () => {
+						if (activeAttachRequestId === requestId) {
+							activeAttachRequestId = null;
+						}
+					},
+				},
+			);
+		};
+
+		workspaceReattachRef.current = workspaceReattachSession;
 
 		const handleTerminalInput = (data: string) => {
 			if (isRestoredModeRef.current || connectionErrorRef.current) return;

@@ -308,7 +308,7 @@ export const Terminal = ({
 				error instanceof Error ? error.message : "Connection to terminal lost",
 			);
 		},
-		enabled: true,
+		enabled: isWorkspaceActive,
 	});
 
 	// Auto-retry when connection error is set
