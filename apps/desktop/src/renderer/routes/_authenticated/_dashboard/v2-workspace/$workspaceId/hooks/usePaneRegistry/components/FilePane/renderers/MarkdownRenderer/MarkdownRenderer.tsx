@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { TipTapMarkdownRenderer } from "renderer/components/MarkdownRenderer/components/TipTapMarkdownRenderer";
+import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import { ExternalChangeBar } from "../../components/ExternalChangeBar";
 
@@ -7,22 +8,27 @@ export type MarkdownViewMode = "rendered" | "raw";
 
 interface MarkdownRendererProps {
 	content: string;
+	filePath: string;
 	hasExternalChange: boolean;
 	onDirtyChange: (dirty: boolean) => void;
 	onReload: () => Promise<void>;
 	onSave: (content: string) => Promise<unknown>;
+	workspaceId: string;
 }
 
 export function MarkdownRenderer({
 	content,
+	filePath,
 	hasExternalChange,
 	onDirtyChange,
 	onReload,
 	onSave,
+	workspaceId,
 }: MarkdownRendererProps) {
 	const [viewMode, _setViewMode] = useState<MarkdownViewMode>("rendered");
 	const currentContentRef = useRef(content);
 	const [savedContent, setSavedContent] = useState(content);
+	const trustedImageRootPath = getTrustedMemoRootPath(filePath);
 
 	const handleChange = useCallback(
 		(value: string) => {
@@ -48,6 +54,9 @@ export function MarkdownRenderer({
 							editable
 							onChange={handleChange}
 							onSave={handleSave}
+							workspaceId={workspaceId}
+							filePath={filePath}
+							trustedImageRootPath={trustedImageRootPath}
 						/>
 					</div>
 				) : (

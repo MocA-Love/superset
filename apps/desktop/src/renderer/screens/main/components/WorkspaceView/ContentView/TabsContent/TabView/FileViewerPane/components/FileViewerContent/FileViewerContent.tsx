@@ -12,6 +12,7 @@ import {
 	TipTapMarkdownRenderer,
 } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
 import type { Tab } from "renderer/stores/tabs/types";
@@ -266,6 +267,10 @@ export function FileViewerContent({
 	const absoluteFilePath = useMemo(
 		() => (worktreePath ? toAbsoluteWorkspacePath(worktreePath, filePath) : ""),
 		[worktreePath, filePath],
+	);
+	const trustedImageRootPath = useMemo(
+		() => getTrustedMemoRootPath(absoluteFilePath),
+		[absoluteFilePath],
 	);
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },
@@ -717,6 +722,9 @@ export function FileViewerContent({
 						editorRef={markdownEditorRef}
 						onChange={onContentChange}
 						onSave={onSaveFile}
+						workspaceId={workspaceId}
+						filePath={absoluteFilePath}
+						trustedImageRootPath={trustedImageRootPath}
 					/>
 				</div>
 			</div>

@@ -1,12 +1,14 @@
 import type { ExternalApp } from "@superset/local-db";
+import { toast } from "@superset/ui/sonner";
 import { useCallback, useMemo } from "react";
 import type { IconType } from "react-icons";
 import { BsTerminalPlus } from "react-icons/bs";
-import { LuExternalLink, LuSearch, LuTrash2 } from "react-icons/lu";
+import { LuExternalLink, LuFileText, LuSearch, LuTrash2 } from "react-icons/lu";
 import { TbMessageCirclePlus, TbWorld } from "react-icons/tb";
 import { getAppOption } from "renderer/components/OpenInExternalDropdown";
 import { useHotkeyDisplay } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useWorkspaceDeleteHandler } from "renderer/react-query/workspaces";
 import { DeleteWorkspaceDialog } from "renderer/screens/main/components/WorkspaceSidebar/WorkspaceListItem/components/DeleteWorkspaceDialog/DeleteWorkspaceDialog";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -38,6 +40,7 @@ export function EmptyTabView({
 	const workspaceId = useWorkspaceId();
 	const addChatTab = useTabsStore((s) => s.addChatTab);
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
+	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 	const activeTheme = useTheme();
 
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery({
@@ -66,6 +69,21 @@ export function EmptyTabView({
 		addBrowserTab(workspaceId);
 	}, [addBrowserTab, workspaceId]);
 
+	const handleOpenMemo = useCallback(async () => {
+		try {
+			const memo = await createWorkspaceMemo(workspaceId);
+			addFileViewerPane(workspaceId, {
+				filePath: memo.memoFileAbsolutePath,
+				displayName: memo.fileName,
+				isPinned: true,
+			});
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to create memo";
+			toast.error(message);
+		}
+	}, [addFileViewerPane, workspaceId]);
+
 	const openInActionLabel = useMemo(() => {
 		const appOption = getAppOption(resolvedExternalApp);
 		const appName = appOption?.displayLabel ?? appOption?.label;
@@ -87,6 +105,13 @@ export function EmptyTabView({
 				display: newChatDisplay,
 				icon: TbMessageCirclePlus,
 				onClick: handleNewAgent,
+			},
+			{
+				id: "memo",
+				label: "Open Memo",
+				display: [],
+				icon: LuFileText,
+				onClick: handleOpenMemo,
 			},
 		];
 
@@ -119,6 +144,7 @@ export function EmptyTabView({
 		return baseActions;
 	}, [
 		handleNewAgent,
+		handleOpenMemo,
 		handleOpenBrowser,
 		handleShowTerminal,
 		newBrowserDisplay,

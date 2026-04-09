@@ -108,10 +108,12 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 		return (
 			<MarkdownRenderer
 				content={document.state.content}
+				filePath={filePath}
 				hasExternalChange={document.hasExternalChange}
 				onDirtyChange={handleDirtyChange}
 				onReload={document.reload}
 				onSave={handleSave}
+				workspaceId={workspaceId}
 			/>
 		);
 	}

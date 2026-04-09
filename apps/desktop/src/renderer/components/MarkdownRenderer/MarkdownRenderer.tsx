@@ -6,6 +6,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { useMarkdownStyle } from "renderer/stores";
 import { SelectionContextMenu } from "./components";
+import { TrustedImageProvider } from "./components/SafeImage";
 import { defaultConfig } from "./styles/default/config";
 import { tufteConfig } from "./styles/tufte/config";
 
@@ -19,6 +20,8 @@ interface MarkdownRendererProps {
 	style?: keyof typeof styleConfigs;
 	className?: string;
 	scrollable?: boolean;
+	workspaceId?: string;
+	trustedImageRootPath?: string | null;
 }
 
 export function MarkdownRenderer({
@@ -26,6 +29,8 @@ export function MarkdownRenderer({
 	style: styleProp,
 	className,
 	scrollable = true,
+	workspaceId,
+	trustedImageRootPath,
 }: MarkdownRendererProps) {
 	const globalStyle = useMarkdownStyle();
 	const style = styleProp ?? globalStyle;
@@ -34,24 +39,29 @@ export function MarkdownRenderer({
 
 	return (
 		<SelectionContextMenu selectAllContainerRef={articleRef}>
-			<div
-				className={cn(
-					"markdown-renderer select-text",
-					scrollable && "h-full overflow-y-auto",
-					config.wrapperClass,
-					className,
-				)}
+			<TrustedImageProvider
+				workspaceId={workspaceId}
+				trustedImageRootPath={trustedImageRootPath}
 			>
-				<article ref={articleRef} className={config.articleClass}>
-					<ReactMarkdown
-						remarkPlugins={[remarkGfm]}
-						rehypePlugins={[rehypeRaw, rehypeSanitize]}
-						components={config.components}
-					>
-						{content}
-					</ReactMarkdown>
-				</article>
-			</div>
+				<div
+					className={cn(
+						"markdown-renderer select-text",
+						scrollable && "h-full overflow-y-auto",
+						config.wrapperClass,
+						className,
+					)}
+				>
+					<article ref={articleRef} className={config.articleClass}>
+						<ReactMarkdown
+							remarkPlugins={[remarkGfm]}
+							rehypePlugins={[rehypeRaw, rehypeSanitize]}
+							components={config.components}
+						>
+							{content}
+						</ReactMarkdown>
+					</article>
+				</div>
+			</TrustedImageProvider>
 		</SelectionContextMenu>
 	);
 }

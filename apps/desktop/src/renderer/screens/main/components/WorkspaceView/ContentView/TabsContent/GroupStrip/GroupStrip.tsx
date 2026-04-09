@@ -1,4 +1,5 @@
 import type { TerminalPreset } from "@superset/local-db";
+import { toast } from "@superset/ui/sonner";
 import { eq, or } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { useNavigate } from "@tanstack/react-router";
@@ -12,6 +13,7 @@ import {
 } from "react";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { usePresets } from "renderer/react-query/presets";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -41,6 +43,7 @@ export function GroupStrip() {
 	const tabHistoryStacks = useTabsStore((s) => s.tabHistoryStacks);
 	const addChatTab = useTabsStore((s) => s.addChatTab);
 	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
+	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 	const renameTab = useTabsStore((s) => s.renameTab);
 	const setTabColor = useTabsStore((s) => s.setTabColor);
 	const setActiveTab = useTabsStore((s) => s.setActiveTab);
@@ -235,6 +238,23 @@ export function GroupStrip() {
 		addBrowserTab(activeWorkspaceId);
 	};
 
+	const handleAddMemo = useCallback(async () => {
+		if (!activeWorkspaceId) return;
+
+		try {
+			const memo = await createWorkspaceMemo(activeWorkspaceId);
+			addFileViewerPane(activeWorkspaceId, {
+				filePath: memo.memoFileAbsolutePath,
+				displayName: memo.fileName,
+				isPinned: true,
+			});
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to create memo";
+			toast.error(message);
+		}
+	}, [activeWorkspaceId, addFileViewerPane]);
+
 	const handleOpenPreset = useCallback(
 		(preset: TerminalPreset) => {
 			if (!activeWorkspaceId) return;
@@ -327,6 +347,7 @@ export function GroupStrip() {
 			onAddTerminal={handleAddGroup}
 			onAddChat={handleAddChat}
 			onAddBrowser={handleAddBrowser}
+			onAddMemo={handleAddMemo}
 			onOpenPreset={handleOpenPreset}
 			onConfigurePresets={handleOpenPresetsSettings}
 			onToggleShowPresetsBar={(enabled) =>

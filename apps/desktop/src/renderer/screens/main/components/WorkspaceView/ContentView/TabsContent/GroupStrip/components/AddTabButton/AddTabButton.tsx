@@ -10,7 +10,7 @@ import {
 } from "@superset/ui/dropdown-menu";
 import { BsTerminalPlus } from "react-icons/bs";
 import { HiMiniChevronDown } from "react-icons/hi2";
-import { LuPlus } from "react-icons/lu";
+import { LuFileText, LuPlus } from "react-icons/lu";
 import { TbMessageCirclePlus, TbWorld } from "react-icons/tb";
 import { HotkeyMenuShortcut } from "renderer/components/HotkeyMenuShortcut";
 import { NewTabDropZone } from "../../NewTabDropZone";
@@ -25,6 +25,7 @@ interface AddTabButtonProps {
 	onAddTerminal: () => void;
 	onAddChat: () => void;
 	onAddBrowser: () => void;
+	onAddMemo: () => void;
 	onOpenPreset: (preset: TerminalPreset) => void;
 	onConfigurePresets: () => void;
 	onToggleShowPresetsBar: (enabled: boolean) => void;
@@ -40,6 +41,7 @@ export function AddTabButton({
 	onAddTerminal,
 	onAddChat,
 	onAddBrowser,
+	onAddMemo,
 	onOpenPreset,
 	onConfigurePresets,
 	onToggleShowPresetsBar,
@@ -117,6 +119,19 @@ export function AddTabButton({
 								<TbWorld className="size-4" />
 								<span>Browser</span>
 								<HotkeyMenuShortcut hotkeyId="NEW_BROWSER" />
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={onAddMemo} className="gap-2">
+								<LuFileText className="size-4" />
+								<span>Memo</span>
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+						</>
+					)}
+					{showBigAddButton && (
+						<>
+							<DropdownMenuItem onClick={onAddMemo} className="gap-2">
+								<LuFileText className="size-4" />
+								<span>Memo</span>
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 						</>

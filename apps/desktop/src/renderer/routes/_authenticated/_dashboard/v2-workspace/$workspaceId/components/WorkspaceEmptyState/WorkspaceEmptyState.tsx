@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { IconType } from "react-icons";
 import { BsTerminalPlus } from "react-icons/bs";
-import { LuSearch } from "react-icons/lu";
+import { LuFileText, LuSearch } from "react-icons/lu";
 import { TbMessageCirclePlus, TbWorld } from "react-icons/tb";
 import { useHotkeyDisplay } from "renderer/hotkeys";
 import supersetEmptyStateWordmark from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/assets/superset-empty-state-wordmark.svg";
@@ -13,6 +13,7 @@ interface WorkspaceEmptyStateProps {
 	onOpenChat: () => void;
 	onOpenQuickOpen: () => void;
 	onOpenTerminal: () => void;
+	onOpenMemo: () => void;
 }
 
 interface WorkspaceEmptyStateAction {
@@ -28,6 +29,7 @@ export function WorkspaceEmptyState({
 	onOpenChat,
 	onOpenQuickOpen,
 	onOpenTerminal,
+	onOpenMemo,
 }: WorkspaceEmptyStateProps) {
 	const activeTheme = useTheme();
 	const { keys: newGroupDisplay } = useHotkeyDisplay("NEW_GROUP");
@@ -52,6 +54,13 @@ export function WorkspaceEmptyState({
 				onClick: onOpenChat,
 			},
 			{
+				id: "memo",
+				label: "Open Memo",
+				display: [],
+				icon: LuFileText,
+				onClick: onOpenMemo,
+			},
+			{
 				id: "browser",
 				label: "Open Browser",
 				display: newBrowserDisplay,
@@ -72,6 +81,7 @@ export function WorkspaceEmptyState({
 			newGroupDisplay,
 			onOpenBrowser,
 			onOpenChat,
+			onOpenMemo,
 			onOpenQuickOpen,
 			onOpenTerminal,
 			quickOpenDisplay,
