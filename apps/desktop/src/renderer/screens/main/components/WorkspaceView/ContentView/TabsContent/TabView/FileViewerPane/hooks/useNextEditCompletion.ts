@@ -267,13 +267,16 @@ export function useNextEditCompletion({
 	);
 
 	const requestInlineCompletion = useCallback(
-		async ({
-			currentFileContent,
-			cursorOffset,
-		}: {
-			currentFileContent: string;
-			cursorOffset: number;
-		}) => {
+		async (
+			{
+				currentFileContent,
+				cursorOffset,
+			}: {
+				currentFileContent: string;
+				cursorOffset: number;
+			},
+			signal: AbortSignal,
+		) => {
 			if (!isAvailable) {
 				logNextEditDebug("request skipped: unavailable", {
 					filePath,
@@ -283,8 +286,13 @@ export function useNextEditCompletion({
 				return null;
 			}
 
+			if (signal.aborted) return null;
+
 			try {
 				flushPendingEditHistory();
+
+				if (signal.aborted) return null;
+
 				const nextSnippet = extractSnippetAtCursor({
 					filePath,
 					content: currentFileContent,
@@ -312,6 +320,8 @@ export function useNextEditCompletion({
 						.map((entry) => entry.slice(0, 160)),
 				});
 
+				if (signal.aborted) return null;
+
 				const result = await completeMutationRef.current.mutateAsync({
 					filePath,
 					currentFileContent,
@@ -322,6 +332,9 @@ export function useNextEditCompletion({
 					})),
 					editHistory: editHistoryRef.current,
 				});
+
+				if (signal.aborted) return null;
+
 				logNextEditDebug("request completed", {
 					filePath,
 					hasInsertText: Boolean(result.insertText),
@@ -331,7 +344,10 @@ export function useNextEditCompletion({
 				});
 				return result.insertText;
 			} catch (error) {
-				console.log("[NextEdit] request failed", {
+				if (signal.aborted) {
+					return null;
+				}
+				console.error("[NextEdit] request failed", {
 					filePath,
 					error,
 				});
