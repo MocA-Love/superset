@@ -437,7 +437,7 @@ export function FileViewerPane({
 			}
 
 			if (isMemoFile) {
-				console.debug("[MemoPane] handleContentChange", {
+				console.log("[MemoPane] handleContentChange", {
 					filePath: absoluteFilePath,
 					documentKey,
 					valueLength: value.length,
@@ -446,7 +446,7 @@ export function FileViewerPane({
 
 			const dirty = updateDocumentDraft(documentKey, value);
 			if (isMemoFile) {
-				console.debug("[MemoPane] draftUpdated", {
+				console.log("[MemoPane] draftUpdated", {
 					filePath: absoluteFilePath,
 					documentKey,
 					dirty,
@@ -661,7 +661,7 @@ export function FileViewerPane({
 			return;
 		}
 
-		console.debug("[MemoPane] renderedContentChanged", {
+		console.log("[MemoPane] renderedContentChanged", {
 			filePath: absoluteFilePath,
 			documentKey,
 			renderedContentLength: renderedContent.length,

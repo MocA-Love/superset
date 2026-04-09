@@ -108,7 +108,7 @@ export function TipTapMarkdownRenderer({
 				return;
 			}
 
-			console.debug("[MemoEditor]", event, {
+			console.log("[MemoEditor]", event, {
 				filePath: activeFilePath,
 				...payload,
 			});
