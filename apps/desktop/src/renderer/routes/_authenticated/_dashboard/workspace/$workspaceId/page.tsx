@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
+import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { useHotkey } from "renderer/hotkeys";
 import {
 	addBrowserShortcutListener,
@@ -182,6 +183,7 @@ export function WorkspacePage({
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
+	useRightSidebarOpenViewWidth();
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 	const hasTabsHydrated = useTabsStore((s) => s.hasHydrated ?? false);

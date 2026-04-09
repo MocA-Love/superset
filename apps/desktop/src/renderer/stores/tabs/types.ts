@@ -92,6 +92,8 @@ export interface AddFileViewerPaneOptions {
 	openInNewTab?: boolean;
 	/** Controls whether file-viewer opens may reuse existing panes instead of always opening a fresh pane/tab */
 	reuseExisting?: FileViewerReuseScope;
+	/** If true, use the right sidebar initial split width setting for new split panes */
+	useRightSidebarOpenViewWidth?: boolean;
 }
 
 /**

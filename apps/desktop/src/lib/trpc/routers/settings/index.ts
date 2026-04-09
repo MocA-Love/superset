@@ -26,10 +26,13 @@ import {
 	DEFAULT_FILE_OPEN_MODE,
 	DEFAULT_OPEN_LINKS_IN_APP,
 	DEFAULT_PREVENT_AGENT_SLEEP,
+	DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
 	DEFAULT_SHOW_PRESETS_BAR,
 	DEFAULT_SHOW_RESOURCE_MONITOR,
 	DEFAULT_TERMINAL_LINK_BEHAVIOR,
 	DEFAULT_USE_COMPACT_TERMINAL_ADD_BUTTON,
+	MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
+	MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
 } from "shared/constants";
 import { normalizePresetProjectIds } from "shared/preset-project-targeting";
 import {
@@ -689,6 +692,36 @@ export const createSettingsRouter = () => {
 					.onConflictDoUpdate({
 						target: settings.id,
 						set: { fileOpenMode: input.mode },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getRightSidebarOpenViewWidth: publicProcedure.query(() => {
+			const row = getSettings();
+			return (
+				row.rightSidebarOpenViewWidth ?? DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH
+			);
+		}),
+
+		setRightSidebarOpenViewWidth: publicProcedure
+			.input(
+				z.object({
+					width: z
+						.number()
+						.int()
+						.min(MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH)
+						.max(MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH),
+				}),
+			)
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, rightSidebarOpenViewWidth: input.width })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { rightSidebarOpenViewWidth: input.width },
 					})
 					.run();
 

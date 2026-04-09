@@ -44,6 +44,9 @@ export const DEFAULT_TERMINAL_SCROLLBACK = 5000;
 export const DEFAULT_CONFIRM_ON_QUIT = true;
 export const DEFAULT_TERMINAL_LINK_BEHAVIOR = "file-viewer" as const;
 export const DEFAULT_FILE_OPEN_MODE = "split-pane" as const;
+export const DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH = 50;
+export const MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH = 20;
+export const MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH = 80;
 export const DEFAULT_AUTO_APPLY_DEFAULT_PRESET = true;
 export const DEFAULT_SHOW_PRESETS_BAR = true;
 export const DEFAULT_USE_COMPACT_TERMINAL_ADD_BUTTON = true;
@@ -53,6 +56,13 @@ export const DEFAULT_OPEN_LINKS_IN_APP = false;
 export const DEFAULT_PREVENT_AGENT_SLEEP = false;
 export const SUPPORTS_AGENT_SLEEP_PREVENTION =
 	PLATFORM.IS_MAC || PLATFORM.IS_LINUX;
+
+export function clampRightSidebarOpenViewWidth(width: number): number {
+	return Math.max(
+		MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
+		Math.min(MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH, width),
+	);
+}
 
 // External links (documentation, help resources, etc.)
 export const EXTERNAL_LINKS = {

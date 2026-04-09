@@ -1,6 +1,7 @@
 import type { MosaicNode } from "react-mosaic-component";
 import { updateTree } from "react-mosaic-component";
 import { getFileOpenMode } from "renderer/hooks/useFileOpenMode";
+import { getRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { posthog } from "renderer/lib/posthog";
 import { trpcTabsStorage } from "renderer/lib/trpc-storage";
 import { navigatePersistentWebview } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/BrowserPane/hooks/usePersistentWebview/runtime";
@@ -59,6 +60,8 @@ import {
 	resolveFileViewerMode,
 } from "./utils";
 import { killTerminalForPane } from "./utils/terminal-cleanup";
+
+const DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE = 50;
 
 /**
  * Finds the next best tab to activate when closing a tab.
@@ -1094,12 +1097,15 @@ export const useTabsStore = create<TabsStore>()(
 					}
 
 					const newPane = createFileViewerPane(activeTab.id, options);
+					const splitPercentage = options.useRightSidebarOpenViewWidth
+						? 100 - getRightSidebarOpenViewWidth()
+						: DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE;
 
 					const newLayout: MosaicNode<string> = {
 						direction: "row",
 						first: activeTab.layout,
 						second: newPane.id,
-						splitPercentage: 50,
+						splitPercentage,
 					};
 
 					const newPanes = { ...state.panes, [newPane.id]: newPane };

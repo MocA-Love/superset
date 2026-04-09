@@ -532,6 +532,7 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				oldPath: file.oldPath
 					? toAbsoluteWorkspacePath(worktreePath, file.oldPath)
 					: undefined,
+				useRightSidebarOpenViewWidth: true,
 			});
 			invalidateFileContent(absolutePath);
 		},
@@ -543,6 +544,21 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 			scrollToFile(file, category, commitHash, worktreePath);
 		},
 		[scrollToFile, worktreePath],
+	);
+
+	const handleChangesOpenFileAtLine = useCallback(
+		(path: string, line?: number, column?: number) => {
+			if (!workspaceId || !worktreePath) return;
+			const absolutePath = toAbsoluteWorkspacePath(worktreePath, path);
+			addFileViewerPane(workspaceId, {
+				filePath: absolutePath,
+				viewMode: "raw",
+				line,
+				column,
+				useRightSidebarOpenViewWidth: true,
+			});
+		},
+		[workspaceId, worktreePath, addFileViewerPane],
 	);
 
 	const handleOpenFileAtLine = useCallback(
@@ -730,7 +746,7 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				>
 					<ChangesView
 						onFileOpen={handleFileOpen}
-						onOpenFileAtLine={handleOpenFileAtLine}
+						onOpenFileAtLine={handleChangesOpenFileAtLine}
 						isExpandedView={isExpanded}
 						isActive={rightSidebarTab === RightSidebarTab.Changes}
 					/>
