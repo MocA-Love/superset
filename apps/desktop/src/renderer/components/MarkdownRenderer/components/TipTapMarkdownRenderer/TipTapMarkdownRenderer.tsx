@@ -107,7 +107,10 @@ export function TipTapMarkdownRenderer({
 		content: value,
 		editorProps: {
 			attributes: {
-				class: cn("focus:outline-none", editable && "min-h-[100px]"),
+				class: cn(
+					"focus:outline-none",
+					editable && "min-h-[100px] min-h-full cursor-text",
+				),
 			},
 			handlePaste: (view, event) => {
 				if (!editable) {
@@ -235,7 +238,13 @@ export function TipTapMarkdownRenderer({
 						<BubbleMenuToolbar editor={editor} />
 					</BubbleMenu>
 				)}
-				<article ref={articleRef} className={config.articleClass}>
+				<article
+					ref={articleRef}
+					className={cn(
+						config.articleClass,
+						editable && "min-h-full cursor-text",
+					)}
+				>
 					<EditorContent editor={editor} />
 				</article>
 			</div>
