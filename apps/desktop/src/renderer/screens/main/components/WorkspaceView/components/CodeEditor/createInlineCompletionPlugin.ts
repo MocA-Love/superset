@@ -149,16 +149,21 @@ export function createInlineCompletionPlugin(
 					return;
 				}
 
+				// "significant change" = any deletion (_toA > _fromA) OR non-whitespace insertion.
+				// Whitespace-only insertions (e.g. pressing Space/Enter alone) are skipped
+				// to avoid triggering completion on formatting keystrokes.
 				const hasNonWhitespaceChange = update.transactions.some((tr) => {
 					let found = false;
 					tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
 						if (found) return;
 						if (_toA > _fromA) {
+							// Any deletion counts as a significant change
 							found = true;
 							return;
 						}
 						const text = inserted.toString();
 						if (text.length > 0 && text.trim().length > 0) {
+							// Non-whitespace insertion
 							found = true;
 						}
 					});
