@@ -517,23 +517,6 @@ export function requestViewModeChange(
 		return true;
 	}
 
-	const session = useEditorSessionsStore.getState().sessions[paneId];
-	const document = session
-		? useEditorDocumentsStore.getState().documents[session.documentKey]
-		: null;
-
-	if (document?.dirty) {
-		focusPane(paneId);
-		useEditorSessionsStore
-			.getState()
-			.setPendingIntent(
-				paneId,
-				{ type: "change-view-mode", nextMode },
-				"unsaved",
-			);
-		return false;
-	}
-
 	executePendingIntent(paneId, { type: "change-view-mode", nextMode });
 	return true;
 }
