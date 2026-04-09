@@ -91,6 +91,7 @@ export function TipTapMarkdownRenderer({
 	const onSaveRef = useRef(onSave);
 	const workspaceIdRef = useRef(workspaceId);
 	const filePathRef = useRef(filePath);
+	const lastAppliedValueRef = useRef(value);
 
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
@@ -177,6 +178,12 @@ export function TipTapMarkdownRenderer({
 		if (!editor) {
 			return;
 		}
+
+		if (lastAppliedValueRef.current === value) {
+			return;
+		}
+
+		lastAppliedValueRef.current = value;
 
 		const currentValue = getEditorMarkdown(editor);
 		if (currentValue === value) {

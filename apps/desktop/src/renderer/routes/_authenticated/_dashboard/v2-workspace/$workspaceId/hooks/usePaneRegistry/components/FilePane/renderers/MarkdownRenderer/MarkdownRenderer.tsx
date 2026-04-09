@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TipTapMarkdownRenderer } from "renderer/components/MarkdownRenderer/components/TipTapMarkdownRenderer";
 import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
@@ -29,6 +29,11 @@ export function MarkdownRenderer({
 	const currentContentRef = useRef(content);
 	const [savedContent, setSavedContent] = useState(content);
 	const trustedImageRootPath = getTrustedMemoRootPath(filePath);
+
+	useEffect(() => {
+		setSavedContent(content);
+		onDirtyChange(currentContentRef.current !== content);
+	}, [content, onDirtyChange]);
 
 	const handleChange = useCallback(
 		(value: string) => {
