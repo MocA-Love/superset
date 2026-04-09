@@ -32,6 +32,7 @@
 	"scripts": {
 		"clean": "git clean -xdf .cache .turbo dist node_modules",
 		"dev": "bun run src/serve.ts",
+		"build:host": "bun run build.ts",
 		"generate": "drizzle-kit generate",
 		"typecheck": "tsc --noEmit --emitDeclarationOnly false"
 	},
