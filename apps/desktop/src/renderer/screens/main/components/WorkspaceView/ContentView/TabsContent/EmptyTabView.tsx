@@ -74,7 +74,7 @@ export function EmptyTabView({
 			const memo = await createWorkspaceMemo(workspaceId);
 			addFileViewerPane(workspaceId, {
 				filePath: memo.memoFileAbsolutePath,
-				displayName: memo.fileName,
+				displayName: memo.displayName,
 				isPinned: true,
 			});
 		} catch (error) {

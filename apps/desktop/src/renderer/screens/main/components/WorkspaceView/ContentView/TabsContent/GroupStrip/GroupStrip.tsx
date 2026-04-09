@@ -245,7 +245,7 @@ export function GroupStrip() {
 			const memo = await createWorkspaceMemo(activeWorkspaceId);
 			addFileViewerPane(activeWorkspaceId, {
 				filePath: memo.memoFileAbsolutePath,
-				displayName: memo.fileName,
+				displayName: memo.displayName,
 				isPinned: true,
 			});
 		} catch (error) {

@@ -6,7 +6,9 @@ import {
 import { getImageExtensionFromMimeType } from "shared/file-types";
 
 export const WORKSPACE_MEMOS_DIRECTORY = ".superset/memos";
-export const DEFAULT_MEMO_FILE_NAME = "Untitled Memo.md";
+export const WORKSPACE_MEMO_FILE_NAME = "memo.md";
+export const DEFAULT_MEMO_DISPLAY_NAME = "Untitled Memo";
+const MAX_MEMO_DISPLAY_NAME_LENGTH = 60;
 
 function getPathSeparator(path: string): string {
 	return path.includes("\\") ? "\\" : "/";
@@ -30,6 +32,7 @@ export interface WorkspaceMemoContext {
 	memoDirectoryAbsolutePath: string;
 	memoFileAbsolutePath: string;
 	assetsDirectoryAbsolutePath: string;
+	displayName: string;
 	fileName: string;
 }
 
@@ -50,7 +53,7 @@ export function createWorkspaceMemoId(now = new Date()): string {
 export function createWorkspaceMemoContext(
 	worktreePath: string,
 	memoId = createWorkspaceMemoId(),
-	fileName = DEFAULT_MEMO_FILE_NAME,
+	fileName = WORKSPACE_MEMO_FILE_NAME,
 ): WorkspaceMemoContext {
 	const memoDirectoryAbsolutePath = joinPath(
 		joinPath(worktreePath, WORKSPACE_MEMOS_DIRECTORY),
@@ -62,6 +65,7 @@ export function createWorkspaceMemoContext(
 		memoDirectoryAbsolutePath,
 		memoFileAbsolutePath: joinPath(memoDirectoryAbsolutePath, fileName),
 		assetsDirectoryAbsolutePath: joinPath(memoDirectoryAbsolutePath, "assets"),
+		displayName: DEFAULT_MEMO_DISPLAY_NAME,
 		fileName,
 	};
 }
@@ -87,15 +91,16 @@ export function getWorkspaceMemoContextFromFilePath(
 
 	const separator = getPathSeparator(filePath);
 	const memoDirectoryAbsolutePath = match[1].replace(/\//g, separator);
-	const relativePath = match[3] ?? DEFAULT_MEMO_FILE_NAME;
+	const relativePath = match[3] ?? WORKSPACE_MEMO_FILE_NAME;
 	const fileName =
-		splitRelativePath(relativePath).pop() ?? DEFAULT_MEMO_FILE_NAME;
+		splitRelativePath(relativePath).pop() ?? WORKSPACE_MEMO_FILE_NAME;
 
 	return {
 		memoId: match[2],
 		memoDirectoryAbsolutePath,
 		memoFileAbsolutePath: filePath,
 		assetsDirectoryAbsolutePath: joinPath(memoDirectoryAbsolutePath, "assets"),
+		displayName: DEFAULT_MEMO_DISPLAY_NAME,
 		fileName,
 	};
 }
@@ -159,4 +164,41 @@ export function createMemoImageFileName(mimeType: string): string {
 
 export function createMemoImageRelativePath(fileName: string): string {
 	return `./assets/${fileName}`;
+}
+
+function normalizeMemoDisplayCandidate(line: string): string {
+	const trimmed = line.trim();
+	if (trimmed.length === 0) {
+		return "";
+	}
+
+	const withoutPrefix = trimmed
+		.replace(/^#{1,6}\s+/, "")
+		.replace(/^[-*+]\s+/, "")
+		.replace(/^\d+\.\s+/, "")
+		.replace(/^\[[ xX]\]\s+/, "");
+	const withoutLinks = withoutPrefix
+		.replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+		.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+	const normalized = withoutLinks
+		.replace(/[`*_~]/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+
+	if (normalized.length <= MAX_MEMO_DISPLAY_NAME_LENGTH) {
+		return normalized;
+	}
+
+	return `${normalized.slice(0, MAX_MEMO_DISPLAY_NAME_LENGTH - 3).trimEnd()}...`;
+}
+
+export function deriveMemoDisplayName(content: string): string {
+	for (const line of content.split(/\r?\n/)) {
+		const candidate = normalizeMemoDisplayCandidate(line);
+		if (candidate.length > 0) {
+			return candidate;
+		}
+	}
+
+	return DEFAULT_MEMO_DISPLAY_NAME;
 }

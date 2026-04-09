@@ -2,6 +2,7 @@ export interface FilePaneData {
 	filePath: string;
 	mode: "editor" | "diff" | "preview";
 	hasChanges: boolean;
+	displayName?: string;
 	language?: string;
 }
 

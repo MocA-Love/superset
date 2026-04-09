@@ -126,13 +126,25 @@ function WorkspaceContent({
 	});
 
 	const openFilePane = useCallback(
-		(filePath: string) => {
+		(filePath: string, displayName?: string) => {
 			const state = store.getState();
 			const active = state.getActivePane();
 			if (
 				active?.pane.kind === "file" &&
 				(active.pane.data as FilePaneData).filePath === filePath
 			) {
+				if (
+					displayName &&
+					(active.pane.data as FilePaneData).displayName !== displayName
+				) {
+					state.setPaneData({
+						paneId: active.pane.id,
+						data: {
+							...(active.pane.data as FilePaneData),
+							displayName,
+						} as FilePaneData,
+					});
+				}
 				state.setPanePinned({ paneId: active.pane.id, pinned: true });
 				return;
 			}
@@ -143,6 +155,7 @@ function WorkspaceContent({
 						filePath,
 						mode: "editor",
 						hasChanges: false,
+						displayName,
 					} as FilePaneData,
 				},
 				tabTitle: "Files",
@@ -195,7 +208,7 @@ function WorkspaceContent({
 	const addMemoTab = useCallback(() => {
 		void createWorkspaceMemo(workspaceId)
 			.then((memo) => {
-				openFilePane(memo.memoFileAbsolutePath);
+				openFilePane(memo.memoFileAbsolutePath, memo.displayName);
 			})
 			.catch((error: Error) => {
 				toast.error(`Failed to create memo: ${error.message}`);
