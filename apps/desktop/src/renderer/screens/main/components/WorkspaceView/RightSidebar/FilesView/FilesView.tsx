@@ -432,6 +432,7 @@ export function FilesView() {
 			addFileViewerPane(workspaceId, {
 				filePath: entry.path,
 				openInNewTab,
+				useRightSidebarOpenViewWidth: true,
 			});
 		},
 		[workspaceId, worktreePath, addFileViewerPane],

@@ -42,6 +42,14 @@ describe("settings search - font settings", () => {
 		expect(ids).toContain(SETTING_ITEM_ID.APPEARANCE_EDITOR_FONT);
 	});
 
+	it('searching "sidebar split width" returns the right sidebar open view width setting', () => {
+		const results = searchSettings("sidebar split width");
+		const ids = getIds(results);
+		expect(ids).toContain(
+			SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
+		);
+	});
+
 	it("empty search returns all settings items", () => {
 		const results = searchSettings("");
 		expect(results.length).toBeGreaterThan(0);

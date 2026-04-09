@@ -26,6 +26,8 @@ export const SETTING_ITEM_ID = {
 	BEHAVIOR_TELEMETRY: "behavior-telemetry",
 	BEHAVIOR_PREVENT_AGENT_SLEEP: "behavior-prevent-agent-sleep",
 	BEHAVIOR_FILE_OPEN_MODE: "behavior-file-open-mode",
+	BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH:
+		"behavior-right-sidebar-open-view-width",
 	BEHAVIOR_RESOURCE_MONITOR: "behavior-resource-monitor",
 	BEHAVIOR_OPEN_LINKS_IN_APP: "behavior-open-links-in-app",
 	BEHAVIOR_LANGUAGE_DIAGNOSTICS: "behavior-language-diagnostics",
@@ -474,6 +476,25 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"split pane",
 			"viewer",
 			"behavior",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
+		section: "behavior",
+		title: "Right sidebar open view width",
+		description:
+			"Choose the initial width for new file and diff views opened from the Files or Git sidebar",
+		keywords: [
+			"right sidebar",
+			"files",
+			"git",
+			"diff",
+			"width",
+			"split",
+			"pane",
+			"initial",
+			"viewer",
+			"changes",
 		],
 	},
 	{

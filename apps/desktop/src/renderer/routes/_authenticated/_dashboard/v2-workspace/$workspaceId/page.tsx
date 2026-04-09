@@ -1,4 +1,9 @@
-import { type PaneActionConfig, Workspace } from "@superset/panes";
+import {
+	type LayoutNode,
+	type PaneActionConfig,
+	type SplitPath,
+	Workspace,
+} from "@superset/panes";
 import { alert } from "@superset/ui/atoms/Alert";
 import {
 	ResizableHandle,
@@ -11,6 +16,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
 import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
+import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { HotkeyLabel, useHotkey } from "renderer/hotkeys";
 import {
 	addBrowserShortcutListener,
@@ -45,6 +51,41 @@ export const Route = createFileRoute(
 )({
 	component: V2WorkspacePage,
 });
+
+function findPanePathInLayout(
+	node: LayoutNode,
+	paneId: string,
+	currentPath: SplitPath = [],
+): SplitPath | null {
+	if (node.type === "pane") {
+		return node.paneId === paneId ? currentPath : null;
+	}
+
+	const firstPath = findPanePathInLayout(node.first, paneId, [
+		...currentPath,
+		"first",
+	]);
+	if (firstPath) return firstPath;
+
+	const secondPath = findPanePathInLayout(node.second, paneId, [
+		...currentPath,
+		"second",
+	]);
+	if (secondPath) return secondPath;
+
+	return null;
+}
+
+function getNodeAtPathInLayout(
+	node: LayoutNode,
+	path: SplitPath,
+): LayoutNode | null {
+	if (path.length === 0) return node;
+	if (node.type === "pane") return null;
+
+	const [branch, ...rest] = path;
+	return getNodeAtPathInLayout(node[branch], rest);
+}
 
 function V2WorkspacePage() {
 	const { workspaceId } = Route.useParams();
@@ -92,6 +133,7 @@ function WorkspaceContent({
 	});
 	const paneRegistry = usePaneRegistry(workspaceId);
 	const defaultContextMenuActions = useDefaultContextMenuActions();
+	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
 
 	const utils = electronTrpc.useUtils();
 	const { data: showPresetsBar, isLoading: isLoadingPresetsBar } =
@@ -147,6 +189,64 @@ function WorkspaceContent({
 			});
 		},
 		[store],
+	);
+
+	const openSidebarFilePane = useCallback(
+		(filePath: string) => {
+			const state = store.getState();
+			const active = state.getActivePane();
+			const activeTab = active
+				? (state.tabs.find((tab) => tab.id === active.tabId) ?? null)
+				: null;
+			if (
+				active?.pane.kind === "file" &&
+				(active.pane.data as FilePaneData).filePath === filePath
+			) {
+				state.setPanePinned({ paneId: active.pane.id, pinned: true });
+				return;
+			}
+
+			const activeTabId = state.activeTabId;
+			const activePaneId = active?.pane.id ?? null;
+			const activePanePath =
+				activeTab?.layout && activePaneId
+					? findPanePathInLayout(activeTab.layout, activePaneId)
+					: null;
+
+			state.openPane({
+				pane: {
+					kind: "file",
+					data: {
+						filePath,
+						mode: "editor",
+						hasChanges: false,
+					} as FilePaneData,
+				},
+				tabTitle: "Files",
+			});
+
+			if (!activeTabId || !activePanePath) {
+				return;
+			}
+
+			const nextState = store.getState();
+			const nextTab = nextState.tabs.find((tab) => tab.id === activeTabId);
+			if (!nextTab) {
+				return;
+			}
+
+			const splitNode = getNodeAtPathInLayout(nextTab.layout, activePanePath);
+			if (splitNode?.type !== "split" || splitNode.direction !== "horizontal") {
+				return;
+			}
+
+			nextState.resizeSplit({
+				tabId: activeTabId,
+				path: activePanePath,
+				splitPercentage: 100 - rightSidebarOpenViewWidth,
+			});
+		},
+		[rightSidebarOpenViewWidth, store],
 	);
 
 	const addTerminalTab = useCallback(() => {
@@ -354,7 +454,7 @@ function WorkspaceContent({
 							<WorkspaceSidebar
 								workspaceId={workspaceId}
 								workspaceName={workspaceName}
-								onSelectFile={openFilePane}
+								onSelectFile={openSidebarFilePane}
 								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
 							/>
