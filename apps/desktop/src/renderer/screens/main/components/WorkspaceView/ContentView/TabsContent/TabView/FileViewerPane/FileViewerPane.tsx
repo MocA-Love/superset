@@ -6,6 +6,7 @@ import type { MosaicBranch } from "react-mosaic-component";
 import { createChatServiceIpcClient } from "renderer/components/Chat/utils/chat-service-client";
 import type { MarkdownEditorAdapter } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import { electronQueryClient } from "renderer/providers/ElectronTRPCProvider";
 import { FileSaveConflictDialog } from "renderer/screens/main/components/WorkspaceView/components/FileSaveConflictDialog";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
@@ -368,6 +369,7 @@ export function FileViewerPane({
 		() => toAbsoluteWorkspacePath(worktreePath, filePath),
 		[worktreePath, filePath],
 	);
+	const isMemoFile = Boolean(getTrustedMemoRootPath(absoluteFilePath));
 	const baselineContent = getEditorDocumentBaselineContent(documentKey);
 
 	useEffect(() => {
@@ -434,7 +436,22 @@ export function FileViewerPane({
 				return;
 			}
 
+			if (isMemoFile) {
+				console.debug("[MemoPane] handleContentChange", {
+					filePath: absoluteFilePath,
+					documentKey,
+					valueLength: value.length,
+				});
+			}
+
 			const dirty = updateDocumentDraft(documentKey, value);
+			if (isMemoFile) {
+				console.debug("[MemoPane] draftUpdated", {
+					filePath: absoluteFilePath,
+					documentKey,
+					dirty,
+				});
+			}
 			if (dirty && !isPinned) {
 				pinPane(paneId);
 				useEditorSessionsStore.getState().patchSession(paneId, {
@@ -442,7 +459,7 @@ export function FileViewerPane({
 				});
 			}
 		},
-		[documentKey, isPinned, paneId, pinPane],
+		[absoluteFilePath, documentKey, isMemoFile, isPinned, paneId, pinPane],
 	);
 
 	useEffect(() => {
@@ -638,6 +655,27 @@ export function FileViewerPane({
 
 		return "";
 	}, [currentDocumentContent, documentKey, rawFileData]);
+
+	useEffect(() => {
+		if (!isMemoFile) {
+			return;
+		}
+
+		console.debug("[MemoPane] renderedContentChanged", {
+			filePath: absoluteFilePath,
+			documentKey,
+			renderedContentLength: renderedContent.length,
+			isDirty,
+			viewMode,
+		});
+	}, [
+		absoluteFilePath,
+		documentKey,
+		isDirty,
+		isMemoFile,
+		renderedContent,
+		viewMode,
+	]);
 	const hasRenderedMode =
 		isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath);
 	const hasDiff = !!diffCategory;

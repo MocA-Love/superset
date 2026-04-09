@@ -4,7 +4,7 @@ import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { type MutableRefObject, useEffect, useRef } from "react";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import {
 	getWorkspaceMemoContextFromFilePath,
 	saveMemoImageFile,
@@ -98,6 +98,24 @@ export function TipTapMarkdownRenderer({
 	workspaceIdRef.current = workspaceId;
 	filePathRef.current = filePath;
 
+	const logMemoDebug = useCallback(
+		(event: string, payload?: Record<string, unknown>): void => {
+			const activeFilePath = filePathRef.current;
+			if (
+				!activeFilePath ||
+				!getWorkspaceMemoContextFromFilePath(activeFilePath)
+			) {
+				return;
+			}
+
+			console.debug("[MemoEditor]", event, {
+				filePath: activeFilePath,
+				...payload,
+			});
+		},
+		[],
+	);
+
 	const editor = useEditor({
 		immediatelyRender: false,
 		editable,
@@ -106,6 +124,18 @@ export function TipTapMarkdownRenderer({
 			onSaveRef,
 		}),
 		content: value,
+		onCreate: ({ editor: currentEditor }) => {
+			logMemoDebug("create", {
+				editable,
+				propValueLength: value.length,
+				editorValueLength: getEditorMarkdown(currentEditor).length,
+			});
+		},
+		onFocus: ({ editor: currentEditor }) => {
+			logMemoDebug("focus", {
+				editorValueLength: getEditorMarkdown(currentEditor).length,
+			});
+		},
 		editorProps: {
 			attributes: {
 				class: cn(
@@ -170,7 +200,13 @@ export function TipTapMarkdownRenderer({
 			},
 		},
 		onUpdate: ({ editor: currentEditor }) => {
-			onChangeRef.current?.(getEditorMarkdown(currentEditor));
+			const nextValue = getEditorMarkdown(currentEditor);
+			logMemoDebug("update", {
+				nextValueLength: nextValue.length,
+				selectionFrom: currentEditor.state.selection.from,
+				selectionTo: currentEditor.state.selection.to,
+			});
+			onChangeRef.current?.(nextValue);
 		},
 	});
 
@@ -180,6 +216,9 @@ export function TipTapMarkdownRenderer({
 		}
 
 		if (lastAppliedValueRef.current === value) {
+			logMemoDebug("sync-skip:same-prop", {
+				propValueLength: value.length,
+			});
 			return;
 		}
 
@@ -187,11 +226,19 @@ export function TipTapMarkdownRenderer({
 
 		const currentValue = getEditorMarkdown(editor);
 		if (currentValue === value) {
+			logMemoDebug("sync-skip:same-editor", {
+				propValueLength: value.length,
+				editorValueLength: currentValue.length,
+			});
 			return;
 		}
 
+		logMemoDebug("sync-apply", {
+			propValueLength: value.length,
+			editorValueLength: currentValue.length,
+		});
 		editor.commands.setContent(value, { emitUpdate: false });
-	}, [editor, value]);
+	}, [editor, logMemoDebug, value]);
 
 	useEffect(() => {
 		if (!editor) {
