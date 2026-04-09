@@ -2,13 +2,10 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { z } from "zod";
 
 const getMcpContextMock = mock(() => ({ organizationId: "org-1" }));
-const executeOnDeviceMock = mock(
-	async (input: Record<string, unknown>) => input,
-);
 
 let fetchedDevices = [
 	{
-		deviceId: "device-online",
+		deviceId: "device-a",
 		deviceName: "Ada's MacBook",
 		deviceType: "desktop",
 		lastSeenAt: new Date(Date.now() - 30_000),
@@ -17,7 +14,7 @@ let fetchedDevices = [
 		ownerEmail: "ada@example.com",
 	},
 	{
-		deviceId: "device-offline",
+		deviceId: "device-b",
 		deviceName: "Grace's iPhone",
 		deviceType: "mobile",
 		lastSeenAt: new Date(Date.now() - 120_000),
@@ -43,8 +40,12 @@ mock.module("@superset/db/client", () => ({
 	},
 }));
 
+// mock.module is process-global in bun test. Preserve every real export
+// (notably executeOnDevice, which start-agent-session.test.ts imports after
+// this file mounts its mocks) so sibling test files don't break.
+const realUtils = await import("../../utils");
 mock.module("../../utils", () => ({
-	executeOnDevice: executeOnDeviceMock,
+	...realUtils,
 	getMcpContext: getMcpContextMock,
 }));
 
@@ -65,7 +66,6 @@ type RegisteredToolHandler = (
 			ownerId: string;
 			ownerName: string | null;
 			ownerEmail: string;
-			isOnline: boolean;
 		}>;
 	};
 }>;
@@ -106,7 +106,7 @@ describe("list_devices MCP tool", () => {
 	beforeEach(() => {
 		fetchedDevices = [
 			{
-				deviceId: "device-online",
+				deviceId: "device-a",
 				deviceName: "Ada's MacBook",
 				deviceType: "desktop",
 				lastSeenAt: new Date(Date.now() - 30_000),
@@ -115,7 +115,7 @@ describe("list_devices MCP tool", () => {
 				ownerEmail: "ada@example.com",
 			},
 			{
-				deviceId: "device-offline",
+				deviceId: "device-b",
 				deviceName: "Grace's iPhone",
 				deviceType: "mobile",
 				lastSeenAt: new Date(Date.now() - 120_000),
@@ -124,27 +124,20 @@ describe("list_devices MCP tool", () => {
 				ownerEmail: "grace@example.com",
 			},
 		];
-		executeOnDeviceMock.mockClear();
 		getMcpContextMock.mockClear();
 		selectMock.mockClear();
 	});
 
-	it("registers input and output schemas that validate includeOffline and isOnline", async () => {
+	it("registers an output schema that validates the device list", async () => {
 		const { config, handler } = createTool();
-		const inputSchema = z.object(config.inputSchema);
 		const outputSchema = z.object(config.outputSchema);
 
-		expect(inputSchema.parse({})).toEqual({ includeOffline: false });
-		expect(inputSchema.parse({ includeOffline: true })).toEqual({
-			includeOffline: true,
-		});
-
-		const result = await handler({ includeOffline: true }, {});
+		const result = await handler({}, {});
 
 		expect(() => outputSchema.parse(result.structuredContent)).not.toThrow();
 	});
 
-	it("returns only online devices by default", async () => {
+	it("returns every registered device regardless of lastSeenAt", async () => {
 		const { handler } = createTool();
 
 		const result = await handler({}, {});
@@ -153,35 +146,23 @@ describe("list_devices MCP tool", () => {
 		expect(selectMock).toHaveBeenCalledTimes(1);
 		expect(result.structuredContent?.devices).toEqual([
 			{
-				deviceId: "device-online",
+				deviceId: "device-a",
 				deviceName: "Ada's MacBook",
 				deviceType: "desktop",
 				lastSeenAt: expect.any(String),
 				ownerId: "user-1",
 				ownerName: "Ada",
 				ownerEmail: "ada@example.com",
-				isOnline: true,
+			},
+			{
+				deviceId: "device-b",
+				deviceName: "Grace's iPhone",
+				deviceType: "mobile",
+				lastSeenAt: expect.any(String),
+				ownerId: "user-2",
+				ownerName: "Grace",
+				ownerEmail: "grace@example.com",
 			},
 		]);
-	});
-
-	it("includes offline devices when requested and marks them offline", async () => {
-		const { handler } = createTool();
-
-		const result = await handler({ includeOffline: true }, {});
-
-		expect(result.structuredContent?.devices).toHaveLength(2);
-		expect(result.structuredContent?.devices).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					deviceId: "device-online",
-					isOnline: true,
-				}),
-				expect.objectContaining({
-					deviceId: "device-offline",
-					isOnline: false,
-				}),
-			]),
-		);
 	});
 });
