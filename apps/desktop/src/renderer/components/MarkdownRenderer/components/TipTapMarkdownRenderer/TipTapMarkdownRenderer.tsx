@@ -295,10 +295,27 @@ export function TipTapMarkdownRenderer({
 				<article
 					ref={articleRef}
 					className={cn(
+						"relative",
 						config.articleClass,
 						editable && "min-h-full cursor-text",
 					)}
 				>
+					{editable && editor && value.length === 0 ? (
+						<button
+							type="button"
+							className="absolute inset-0 z-10 min-h-[100px] cursor-text rounded-md text-left"
+							aria-label="Focus memo editor"
+							onMouseDown={(event) => {
+								event.preventDefault();
+								logMemoDebug("empty-overlay:focus-request");
+								editor.commands.focus("start");
+							}}
+						>
+							<span className="pointer-events-none absolute left-0 top-0 px-1 py-0.5 text-sm text-muted-foreground/70">
+								Type to start writing...
+							</span>
+						</button>
+					) : null}
 					<EditorContent editor={editor} />
 				</article>
 			</div>
