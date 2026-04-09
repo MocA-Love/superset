@@ -20,6 +20,7 @@ import {
 	disposeTransport,
 	resetReconnectBackoff,
 	sendDispose,
+	sendInput,
 	sendResize,
 	type TerminalTransport,
 } from "./terminal-ws-transport";
@@ -152,6 +153,13 @@ class TerminalRuntimeRegistryImpl {
 	paste(terminalId: string, text: string): void {
 		const entry = this.entries.get(terminalId);
 		entry?.runtime?.terminal.paste(text);
+	}
+
+	/** Send raw input to the terminal via the WebSocket transport (bypasses xterm). */
+	writeInput(terminalId: string, data: string): void {
+		const entry = this.entries.get(terminalId);
+		if (!entry) return;
+		sendInput(entry.transport, data);
 	}
 
 	findNext(terminalId: string, query: string): boolean {
