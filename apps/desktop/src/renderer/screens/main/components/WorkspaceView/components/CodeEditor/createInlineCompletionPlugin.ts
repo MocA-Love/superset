@@ -22,11 +22,18 @@ export type InlineCompletionRequest = (
 	args: InlineCompletionRequestArgs,
 	signal: AbortSignal,
 ) => Promise<string | null>;
+const DEBUG_EDITOR_AI =
+	typeof localStorage !== "undefined" &&
+	localStorage.getItem("SUPERSET_EDITOR_AI_DEBUG") === "1";
 
 function logInlineCompletionDebug(
 	message: string,
 	details?: Record<string, unknown>,
 ): void {
+	if (!DEBUG_EDITOR_AI) {
+		return;
+	}
+
 	if (details) {
 		console.log(`[InlineCompletion] ${message}`, details);
 		return;

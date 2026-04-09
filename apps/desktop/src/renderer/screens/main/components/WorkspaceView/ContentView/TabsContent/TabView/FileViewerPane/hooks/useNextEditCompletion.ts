@@ -16,11 +16,18 @@ const EDIT_HISTORY_LIMIT = 5;
 const SNIPPET_CONTEXT_BEFORE_LINES = 10;
 const SNIPPET_CONTEXT_AFTER_LINES = 9;
 const EDIT_HISTORY_FLUSH_DELAY_MS = 900;
+const DEBUG_EDITOR_AI =
+	typeof localStorage !== "undefined" &&
+	localStorage.getItem("SUPERSET_EDITOR_AI_DEBUG") === "1";
 
 function logNextEditDebug(
 	message: string,
 	details?: Record<string, unknown>,
 ): void {
+	if (!DEBUG_EDITOR_AI) {
+		return;
+	}
+
 	if (details) {
 		console.log(`[NextEdit] ${message}`, details);
 		return;
