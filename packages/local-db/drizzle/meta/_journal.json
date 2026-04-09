@@ -302,6 +302,13 @@
       "when": 1775708839194,
       "tag": "0042_add_right_sidebar_open_view_width_setting",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1775765690176,
+      "tag": "0039_add_expose_host_service_via_relay_setting",
+      "breakpoints": true
     }
   ]
 }

@@ -63,6 +63,7 @@ export function clampRightSidebarOpenViewWidth(width: number): number {
 		Math.min(MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH, width),
 	);
 }
+export const DEFAULT_EXPOSE_HOST_SERVICE_VIA_RELAY = false;
 
 // External links (documentation, help resources, etc.)
 export const EXTERNAL_LINKS = {

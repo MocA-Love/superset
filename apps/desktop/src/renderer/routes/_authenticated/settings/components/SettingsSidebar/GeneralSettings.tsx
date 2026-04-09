@@ -9,6 +9,7 @@ import {
 	HiOutlineCreditCard,
 	HiOutlineExclamationCircle,
 	HiOutlineKey,
+	HiOutlineLockClosed,
 	HiOutlinePaintBrush,
 	HiOutlinePuzzlePiece,
 	HiOutlineShieldCheck,
@@ -42,6 +43,7 @@ type SettingsRoute =
 	| "/settings/billing"
 	| "/settings/api-keys"
 	| "/settings/metrics"
+	| "/settings/security"
 	| "/settings/permissions";
 
 interface SectionItem {
@@ -177,6 +179,10 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "metrics",
 				label: "Metrics",
 				icon: <HiOutlineChartBar className="h-4 w-4" />,
+				id: "/settings/security",
+				section: "security",
+				label: "Security",
+				icon: <HiOutlineLockClosed className="h-4 w-4" />,
 			},
 			{
 				id: "/settings/permissions",
