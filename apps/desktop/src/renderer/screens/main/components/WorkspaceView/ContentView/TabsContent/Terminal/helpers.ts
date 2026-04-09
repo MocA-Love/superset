@@ -797,6 +797,7 @@ export function setupResizeHandlers(
 		const buffer = xterm.buffer.active;
 		const wasAtBottom = buffer.viewportY >= buffer.baseY;
 		fitAddon.fit();
+		xterm.refresh(0, Math.max(0, xterm.rows - 1));
 		onResize(xterm.cols, xterm.rows);
 		if (wasAtBottom) {
 			requestAnimationFrame(() => scrollToBottom(xterm));
