@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `right_sidebar_open_view_width` integer;
