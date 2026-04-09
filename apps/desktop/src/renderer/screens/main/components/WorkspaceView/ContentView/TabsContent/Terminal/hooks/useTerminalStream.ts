@@ -1,6 +1,6 @@
 import { toast } from "@superset/ui/sonner";
 import type { Terminal as XTerm } from "@xterm/xterm";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { DEBUG_TERMINAL } from "../config";
@@ -47,6 +47,44 @@ export function useTerminalStream({
 	const setPaneStatus = useTabsStore((s) => s.setPaneStatus);
 	const removePane = useTabsStore((s) => s.removePane);
 	const firstStreamDataReceivedRef = useRef(false);
+
+	// 集計カウンタ
+	const statsRef = useRef({
+		dataCount: 0,
+		totalBytes: 0,
+		exitCount: 0,
+		errorCount: 0,
+		disconnectCount: 0,
+		pendingCount: 0,
+	});
+
+	// 1秒ごとの集計ログ
+	useEffect(() => {
+		const interval = setInterval(() => {
+			const s = statsRef.current;
+			if (s.dataCount > 0 || s.pendingCount > 0) {
+				console.log("[Terminal:debug] stream stats (1s)", {
+					paneId,
+					dataCount: s.dataCount,
+					totalBytes: s.totalBytes,
+					exitCount: s.exitCount,
+					errorCount: s.errorCount,
+					disconnectCount: s.disconnectCount,
+					pendingCount: s.pendingCount,
+					timestamp: new Date().toISOString(),
+				});
+			}
+			statsRef.current = {
+				dataCount: 0,
+				totalBytes: 0,
+				exitCount: 0,
+				errorCount: 0,
+				disconnectCount: 0,
+				pendingCount: 0,
+			};
+		}, 1000);
+		return () => clearInterval(interval);
+	}, [paneId]);
 
 	// Refs to use latest values in callbacks
 	const updateModesRef = useRef(updateModesFromData);
@@ -158,6 +196,7 @@ export function useTerminalStream({
 						`[Terminal] Queuing event (not ready): ${paneId}, type=${event.type}, bytes=${event.data.length}`,
 					);
 				}
+				statsRef.current.pendingCount++;
 				pendingEventsRef.current.push(event);
 				return;
 			}
@@ -171,16 +210,21 @@ export function useTerminalStream({
 					);
 				}
 
+				statsRef.current.dataCount++;
+				statsRef.current.totalBytes += event.data.length;
 				updateModesRef.current(event.data);
 				xterm.write(event.data);
 				updateCwdRef.current(event.data);
 			} else if (event.type === "exit") {
+				statsRef.current.exitCount++;
 				handleTerminalExit(event.exitCode, xterm, event.reason);
 			} else if (event.type === "disconnect") {
+				statsRef.current.disconnectCount++;
 				setConnectionError(
 					event.reason || "Connection to terminal daemon lost",
 				);
 			} else if (event.type === "error") {
+				statsRef.current.errorCount++;
 				handleStreamError(event, xterm);
 			}
 		},

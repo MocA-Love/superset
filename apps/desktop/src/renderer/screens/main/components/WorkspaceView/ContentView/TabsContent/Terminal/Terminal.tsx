@@ -290,6 +290,18 @@ export const Terminal = ({
 	handleTerminalExitRef.current = handleTerminalExit;
 	handleStreamErrorRef.current = handleStreamError;
 
+	// Debug: subscription state logging
+	useEffect(() => {
+		console.log("[Terminal:debug] subscription state", {
+			paneId,
+			tabId,
+			workspaceId,
+			isWorkspaceActive,
+			subscriptionEnabled: isWorkspaceActive,
+			timestamp: new Date().toISOString(),
+		});
+	}, [paneId, tabId, workspaceId, isWorkspaceActive]);
+
 	// Stream subscription
 	electronTrpc.terminal.stream.useSubscription(paneId, {
 		onData: (event) => {
@@ -308,7 +320,7 @@ export const Terminal = ({
 				error instanceof Error ? error.message : "Connection to terminal lost",
 			);
 		},
-		enabled: true,
+		enabled: isWorkspaceActive,
 	});
 
 	// Auto-retry when connection error is set

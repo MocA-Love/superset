@@ -236,6 +236,7 @@ export function useTerminalLifecycle({
 	const restartTerminalRef = useRef<
 		(options?: { command?: string; forceRestart?: boolean }) => Promise<void>
 	>(() => Promise.resolve());
+	const workspaceReattachRef = useRef<() => void>(() => {});
 	const restartTerminal = useCallback(
 		(options?: { command?: string; forceRestart?: boolean }) =>
 			restartTerminalRef.current(options),
@@ -247,14 +248,25 @@ export function useTerminalLifecycle({
 		prevWorkspaceIsActiveRef.current = workspaceIsActive;
 
 		if (!workspaceIsActive) {
+			if (wasActive) {
+				console.log("[Terminal:debug] workspace deactivated", {
+					paneId,
+					timestamp: new Date().toISOString(),
+				});
+			}
 			cancelReattachRecoveryRef.current();
 			return;
 		}
 
 		if (!wasActive) {
+			console.log("[Terminal:debug] workspace activated", {
+				paneId,
+				timestamp: new Date().toISOString(),
+			});
 			scheduleReattachRecoveryRef.current(true);
+			workspaceReattachRef.current();
 		}
-	}, [workspaceIsActive]);
+	}, [workspaceIsActive, paneId]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refs used intentionally
 	useEffect(() => {
@@ -465,6 +477,65 @@ export function useTerminalLifecycle({
 
 		restartTerminalRef.current = restartTerminalSession;
 
+		const workspaceReattachSession = () => {
+			if (isExitedRef.current) return;
+			if (attachInFlightByPane.has(paneId)) return;
+
+			isStreamReadyRef.current = false;
+
+			const requestId = nextAttachRequestId();
+			cancelAttachRequest(activeAttachRequestId);
+			activeAttachRequestId = requestId;
+			activeAttachId = ++attachSequence;
+			const attachId = activeAttachId;
+			const isAttachActive = () =>
+				!isUnmounted && !attachCanceled && attachId === activeAttachId;
+
+			markAttachInFlight(paneId, attachId);
+
+			console.log("[Terminal:debug] workspace reattach start", {
+				paneId,
+				timestamp: new Date().toISOString(),
+			});
+
+			createOrAttachRef.current(
+				{
+					paneId,
+					requestId,
+					tabId: tabIdRef.current,
+					workspaceId,
+					cols: xterm.cols,
+					rows: xterm.rows,
+				},
+				{
+					onSuccess: (result) => {
+						if (!isAttachActive()) return;
+						if (activeAttachRequestId !== requestId) return;
+						setConnectionError(null);
+						clearAttachInFlight(paneId, attachId);
+						console.log("[Terminal:debug] workspace reattach complete", {
+							paneId,
+							timestamp: new Date().toISOString(),
+						});
+						pendingInitialStateRef.current = result;
+						maybeApplyInitialState();
+					},
+					onError: (error) => {
+						if (!isAttachActive()) return;
+						clearAttachInFlight(paneId, attachId);
+						console.error("[Terminal] workspace reattach error:", {
+							paneId,
+							error: error instanceof Error ? error.message : String(error),
+						});
+						isStreamReadyRef.current = true;
+						flushPendingEvents();
+					},
+				},
+			);
+		};
+
+		workspaceReattachRef.current = workspaceReattachSession;
+
 		const handleTerminalInput = (data: string) => {
 			if (isRestoredModeRef.current || connectionErrorRef.current) return;
 			if (isExitedRef.current) {
@@ -571,6 +642,11 @@ export function useTerminalLifecycle({
 						done();
 					};
 
+					console.log("[Terminal:debug] attach start", {
+						paneId,
+						timestamp: new Date().toISOString(),
+					});
+
 					createOrAttachRef.current(
 						{
 							paneId,
@@ -589,6 +665,10 @@ export function useTerminalLifecycle({
 								if (!isAttachActive()) return;
 								if (activeAttachRequestId !== requestId) return;
 								setConnectionError(null);
+								console.log("[Terminal:debug] attach complete", {
+									paneId,
+									timestamp: new Date().toISOString(),
+								});
 								clearPaneInitialDataRef.current(paneId);
 
 								const storedColdRestore = coldRestoreState.get(paneId);
@@ -832,10 +912,23 @@ export function useTerminalLifecycle({
 			// Rebuild stale WebGL glyph cache after occlusion and force a paint pass.
 			rendererRef.current?.current.clearTextureAtlas?.();
 
+			console.log(
+				"[Terminal:debug] fitAddon.fit() called (runReattachRecovery)",
+				{
+					paneId,
+					timestamp: new Date().toISOString(),
+				},
+			);
 			fitAddon.fit();
 			xterm.refresh(0, Math.max(0, xterm.rows - 1));
 
 			if (forceResize || xterm.cols !== prevCols || xterm.rows !== prevRows) {
+				console.log("[Terminal:debug] resizeTerminal", {
+					paneId,
+					cols: xterm.cols,
+					rows: xterm.rows,
+					timestamp: new Date().toISOString(),
+				});
 				resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 			}
 
