@@ -683,8 +683,10 @@ export function WorkspacePage({
 			setSidebarOpen(true);
 		}
 		setSidebarMode(SidebarMode.Tabs);
-		setRightSidebarTab(RightSidebarTab.Search);
-	}, [isSidebarOpen, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
+		if (workspaceId) {
+			setRightSidebarTab(workspaceId, RightSidebarTab.Search);
+		}
+	}, [isSidebarOpen, workspaceId, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
 	useHotkey("SEARCH_IN_FILES", handleSearchInFiles, { enabled: isActive });
 
 	// Toggle changes sidebar (⌘L)

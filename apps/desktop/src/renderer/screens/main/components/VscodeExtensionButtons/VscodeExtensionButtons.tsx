@@ -36,11 +36,15 @@ function ExtensionButton({
 	viewType,
 	extensionId,
 }: ExtensionDef) {
-	const rightSidebarTab = useSidebarStore((s) => s.rightSidebarTab);
 	const isSidebarOpen = useSidebarStore((s) => s.isSidebarOpen);
 	const setRightSidebarTab = useSidebarStore((s) => s.setRightSidebarTab);
 	const setSidebarOpen = useSidebarStore((s) => s.setSidebarOpen);
 	const workspaceId = useWorkspaceId();
+	const rightSidebarTab = useSidebarStore((s) =>
+		workspaceId
+			? (s.rightSidebarTabByWorkspace[workspaceId] ?? RightSidebarTab.Changes)
+			: RightSidebarTab.Changes,
+	);
 	const addVscodeExtensionTab = useTabsStore((s) => s.addVscodeExtensionTab);
 
 	const isActive = isSidebarOpen && rightSidebarTab === tab;
@@ -49,7 +53,9 @@ function ExtensionButton({
 		if (isActive) {
 			setSidebarOpen(false);
 		} else {
-			setRightSidebarTab(tab);
+			if (workspaceId) {
+				setRightSidebarTab(workspaceId, tab);
+			}
 			if (!isSidebarOpen) {
 				setSidebarOpen(true);
 			}

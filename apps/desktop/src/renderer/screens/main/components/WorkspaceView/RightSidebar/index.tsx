@@ -243,9 +243,21 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 	);
 	const worktreePath = workspace?.worktreePath;
 	const currentMode = useSidebarStore((s) => s.currentMode);
-	const rightSidebarTab = useSidebarStore((s) => s.rightSidebarTab);
+	const rightSidebarTab = useSidebarStore((s) =>
+		workspaceId
+			? (s.rightSidebarTabByWorkspace[workspaceId] ?? RightSidebarTab.Changes)
+			: RightSidebarTab.Changes,
+	);
 	const rightSidebarTabOrder = useSidebarStore((s) => s.rightSidebarTabOrder);
-	const setRightSidebarTab = useSidebarStore((s) => s.setRightSidebarTab);
+	const setRightSidebarTabRaw = useSidebarStore((s) => s.setRightSidebarTab);
+	const setRightSidebarTab = useCallback(
+		(tab: RightSidebarTab) => {
+			if (workspaceId) {
+				setRightSidebarTabRaw(workspaceId, tab);
+			}
+		},
+		[workspaceId, setRightSidebarTabRaw],
+	);
 	const moveRightSidebarTab = useSidebarStore((s) => s.moveRightSidebarTab);
 	const toggleSidebar = useSidebarStore((s) => s.toggleSidebar);
 	const setMode = useSidebarStore((s) => s.setMode);

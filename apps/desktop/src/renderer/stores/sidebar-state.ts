@@ -70,14 +70,21 @@ function sanitizeSidebarState(
 				? sidebarWidth
 				: DEFAULT_SIDEBAR_WIDTH;
 
+	// Migrate legacy rightSidebarTab (single value) to per-workspace map
+	const rawMap = state.rightSidebarTabByWorkspace ?? {};
+	const sanitizedMap: Record<string, RightSidebarTab> = {};
+	for (const [workspaceId, tab] of Object.entries(rawMap)) {
+		if (isRightSidebarTab(tab)) {
+			sanitizedMap[workspaceId] = tab;
+		}
+	}
+
 	return {
 		...state,
 		sidebarWidth,
 		lastOpenSidebarWidth,
 		isResizing: false,
-		rightSidebarTab: isRightSidebarTab(state.rightSidebarTab)
-			? state.rightSidebarTab
-			: RightSidebarTab.Changes,
+		rightSidebarTabByWorkspace: sanitizedMap,
 		rightSidebarTabOrder: normalizeRightSidebarTabOrder(
 			state.rightSidebarTabOrder,
 		),
@@ -118,14 +125,15 @@ interface SidebarState {
 	currentMode: SidebarMode;
 	lastMode: SidebarMode;
 	isResizing: boolean;
-	rightSidebarTab: RightSidebarTab;
+	rightSidebarTabByWorkspace: Record<string, RightSidebarTab>;
 	rightSidebarTabOrder: RightSidebarTab[];
 	toggleSidebar: () => void;
 	setSidebarOpen: (open: boolean) => void;
 	setSidebarWidth: (width: number) => void;
 	setMode: (mode: SidebarMode) => void;
 	setIsResizing: (isResizing: boolean) => void;
-	setRightSidebarTab: (tab: RightSidebarTab) => void;
+	setRightSidebarTab: (workspaceId: string, tab: RightSidebarTab) => void;
+	getRightSidebarTab: (workspaceId: string) => RightSidebarTab;
 	setRightSidebarTabOrder: (order: RightSidebarTab[]) => void;
 	moveRightSidebarTab: (
 		activeTab: RightSidebarTab,
@@ -143,7 +151,7 @@ export const useSidebarStore = create<SidebarState>()(
 				currentMode: SidebarMode.Tabs,
 				lastMode: SidebarMode.Tabs,
 				isResizing: false,
-				rightSidebarTab: RightSidebarTab.Changes,
+				rightSidebarTabByWorkspace: {},
 				rightSidebarTabOrder: normalizeRightSidebarTabOrder(
 					DEFAULT_RIGHT_SIDEBAR_TAB_ORDER,
 				),
@@ -224,8 +232,20 @@ export const useSidebarStore = create<SidebarState>()(
 					set({ isResizing });
 				},
 
-				setRightSidebarTab: (tab) => {
-					set({ rightSidebarTab: tab });
+				setRightSidebarTab: (workspaceId, tab) => {
+					set((state) => ({
+						rightSidebarTabByWorkspace: {
+							...state.rightSidebarTabByWorkspace,
+							[workspaceId]: tab,
+						},
+					}));
+				},
+
+				getRightSidebarTab: (workspaceId) => {
+					return (
+						get().rightSidebarTabByWorkspace[workspaceId] ??
+						RightSidebarTab.Changes
+					);
 				},
 
 				setRightSidebarTabOrder: (order) => {
@@ -259,11 +279,17 @@ export const useSidebarStore = create<SidebarState>()(
 			{
 				name: "sidebar-store",
 				migrate: (persistedState: unknown, _version: number) => {
-					const state = persistedState as Partial<SidebarState>;
+					const state = persistedState as Partial<SidebarState> & {
+						rightSidebarTab?: RightSidebarTab;
+					};
 					// Convert legacy percentage-based widths before general sanitization.
 					if (state.sidebarWidth !== undefined && state.sidebarWidth < 100) {
 						state.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
 						state.lastOpenSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+					}
+					// v2 -> v3: migrate single rightSidebarTab to per-workspace map
+					if (state.rightSidebarTab !== undefined) {
+						delete state.rightSidebarTab;
 					}
 					return sanitizeSidebarState(state) as SidebarState;
 				},
@@ -277,7 +303,7 @@ export const useSidebarStore = create<SidebarState>()(
 						)?.state ?? (persistedState as Partial<SidebarState> | undefined),
 					),
 				}),
-				version: 2,
+				version: 3,
 			},
 		),
 		{ name: "SidebarStore" },
