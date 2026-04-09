@@ -1,7 +1,12 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { useEffect, useRef } from "react";
+import {
+	type MouseEvent as ReactMouseEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { HiChevronDown, HiChevronUp, HiMiniXMark } from "react-icons/hi2";
-import { PiTextAa } from "react-icons/pi";
 
 interface ChatSearchProps {
 	isOpen: boolean;
@@ -29,6 +34,35 @@ export function ChatSearch({
 	onClose,
 }: ChatSearchProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
+	const MIN_WIDTH = 320;
+	const [width, setWidth] = useState(360);
+	const dragStartX = useRef<number | null>(null);
+	const dragStartWidth = useRef<number>(360);
+
+	const handleResizeMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			dragStartX.current = event.clientX;
+			dragStartWidth.current = width;
+
+			const onMouseMove = (e: MouseEvent) => {
+				if (dragStartX.current === null) return;
+				const delta = dragStartX.current - e.clientX;
+				const newWidth = Math.max(MIN_WIDTH, Math.min(800, dragStartWidth.current + delta));
+				setWidth(newWidth);
+			};
+
+			const onMouseUp = () => {
+				dragStartX.current = null;
+				window.removeEventListener("mousemove", onMouseMove);
+				window.removeEventListener("mouseup", onMouseUp);
+			};
+
+			window.addEventListener("mousemove", onMouseMove);
+			window.addEventListener("mouseup", onMouseUp);
+		},
+		[width],
+	);
 
 	useEffect(() => {
 		if (isOpen && inputRef.current) {
@@ -55,83 +89,106 @@ export function ChatSearch({
 
 	if (!isOpen) return null;
 
+	const activeMatchLabel =
+		matchCount === 0
+			? "No results"
+			: `${activeMatchIndex + 1} of ${matchCount}`;
+
 	return (
-		<div className="absolute top-2 right-12 z-30 flex max-w-[calc(100%-4rem)] items-center rounded bg-popover/95 pl-2 pr-0.5 shadow-lg ring-1 ring-border/40 backdrop-blur">
-			<input
-				ref={inputRef}
-				type="text"
-				aria-label="Find in chat"
-				value={query}
-				onChange={(event) => onQueryChange(event.target.value)}
-				onKeyDown={handleKeyDown}
-				placeholder="Find in chat"
-				className="h-6 min-w-0 w-32 flex-shrink bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+		<div
+			className="absolute top-2 right-12 z-30 rounded bg-popover/95 shadow-lg ring-1 ring-border/40 backdrop-blur"
+			style={{ width: `min(${width}px, calc(100% - 4rem))` }}
+		>
+			{/* Left resize handle */}
+			<div
+				onMouseDown={handleResizeMouseDown}
+				className="absolute left-0 top-0 h-full w-1 cursor-ew-resize rounded-l opacity-0 transition-opacity hover:opacity-100 hover:bg-blue-500/40"
+				title="Drag to resize"
 			/>
-			{query && (
-				<span className="whitespace-nowrap px-1 text-xs text-muted-foreground">
-					{matchCount === 0
-						? "No results"
-						: `${activeMatchIndex + 1} of ${matchCount}`}
-				</span>
-			)}
-			<div className="flex shrink-0 items-center">
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							aria-label="Match case"
-							aria-pressed={caseSensitive}
-							onClick={() => onCaseSensitiveChange(!caseSensitive)}
-							className={`rounded p-1 transition-colors ${
-								caseSensitive
-									? "bg-primary/20 text-foreground"
-									: "text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
-							}`}
-						>
-							<PiTextAa className="size-3.5" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">Match case</TooltipContent>
-				</Tooltip>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							aria-label="Find previous match"
-							onClick={onFindPrevious}
-							className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted-foreground/20 hover:text-foreground"
-						>
-							<HiChevronUp className="size-3.5" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">Previous (Shift+Enter)</TooltipContent>
-				</Tooltip>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							aria-label="Find next match"
-							onClick={onFindNext}
-							className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted-foreground/20 hover:text-foreground"
-						>
-							<HiChevronDown className="size-3.5" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">Next (Enter)</TooltipContent>
-				</Tooltip>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							aria-label="Close find in chat"
-							onClick={onClose}
-							className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted-foreground/20 hover:text-foreground"
-						>
-							<HiMiniXMark className="size-3.5" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">Close (Esc)</TooltipContent>
-				</Tooltip>
+			<div className="px-2 py-1.5">
+				<div className="flex items-center gap-1">
+					{/* Input + option toggles */}
+					<div className="flex flex-1 items-center gap-0.5 rounded border border-border bg-background/80 px-1.5 py-0.5 focus-within:ring-1 focus-within:ring-blue-500/50">
+						<input
+							ref={inputRef}
+							type="text"
+							aria-label="Find in chat"
+							value={query}
+							onChange={(event) => onQueryChange(event.target.value)}
+							onKeyDown={handleKeyDown}
+							placeholder="Find in chat"
+							className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+						/>
+						<div className="flex items-center gap-0.5 pl-1">
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										type="button"
+										aria-label="Match case"
+										aria-pressed={caseSensitive}
+										onClick={() => onCaseSensitiveChange(!caseSensitive)}
+										className={`inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-medium leading-none transition-colors ${
+											caseSensitive
+												? "bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40"
+												: "text-muted-foreground hover:bg-accent hover:text-foreground"
+										}`}
+									>
+										Aa
+									</button>
+								</TooltipTrigger>
+								<TooltipContent side="bottom">Match Case (Alt+C)</TooltipContent>
+							</Tooltip>
+						</div>
+					</div>
+
+					{/* Match count */}
+					{query ? (
+						<span className="shrink-0 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+							{activeMatchLabel}
+						</span>
+					) : null}
+
+					{/* Navigation buttons */}
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								aria-label="Find previous match"
+								onClick={onFindPrevious}
+								className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+							>
+								<HiChevronUp className="size-3.5" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">Previous (Shift+Enter)</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								aria-label="Find next match"
+								onClick={onFindNext}
+								className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+							>
+								<HiChevronDown className="size-3.5" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">Next (Enter)</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								aria-label="Close find in chat"
+								onClick={onClose}
+								className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+							>
+								<HiMiniXMark className="size-4" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">Close (Esc)</TooltipContent>
+					</Tooltip>
+				</div>
 			</div>
 		</div>
 	);
