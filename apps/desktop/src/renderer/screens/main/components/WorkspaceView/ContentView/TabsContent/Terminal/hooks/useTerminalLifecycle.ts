@@ -508,8 +508,18 @@ export function useTerminalLifecycle({
 							paneId,
 							error: error instanceof Error ? error.message : String(error),
 						});
+						setConnectionError(
+							error instanceof Error
+								? error.message
+								: "Failed to reattach terminal",
+						);
 						isStreamReadyRef.current = true;
 						flushPendingEvents();
+					},
+					onSettled: () => {
+						if (activeAttachRequestId === requestId) {
+							activeAttachRequestId = null;
+						}
 					},
 				},
 			);
