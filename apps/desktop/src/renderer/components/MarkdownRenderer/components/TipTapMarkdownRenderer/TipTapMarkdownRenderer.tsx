@@ -1,12 +1,18 @@
 import "highlight.js/styles/github-dark.css";
 
+import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { type MutableRefObject, useEffect, useRef } from "react";
+import {
+	getWorkspaceMemoContextFromFilePath,
+	saveMemoImageFile,
+} from "renderer/lib/workspace-memos";
 import { useMarkdownStyle } from "renderer/stores";
 import { defaultConfig } from "../../styles/default/config";
 import { tufteConfig } from "../../styles/tufte/config";
+import { TrustedImageProvider } from "../SafeImage";
 import { SelectionContextMenu } from "../SelectionContextMenu";
 import { BubbleMenuToolbar } from "./components/BubbleMenuToolbar";
 import { createMarkdownExtensions } from "./createMarkdownExtensions";
@@ -31,6 +37,9 @@ interface TipTapMarkdownRendererProps {
 	editorRef?: MutableRefObject<MarkdownEditorAdapter | null>;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
+	workspaceId?: string;
+	filePath?: string;
+	trustedImageRootPath?: string | null;
 }
 
 function getEditorMarkdown(editor: Editor): string {
@@ -70,6 +79,9 @@ export function TipTapMarkdownRenderer({
 	editorRef,
 	onChange,
 	onSave,
+	workspaceId,
+	filePath,
+	trustedImageRootPath,
 }: TipTapMarkdownRendererProps) {
 	const globalStyle = useMarkdownStyle();
 	const style = styleProp ?? globalStyle;
@@ -77,9 +89,14 @@ export function TipTapMarkdownRenderer({
 	const articleRef = useRef<HTMLElement | null>(null);
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
+	const workspaceIdRef = useRef(workspaceId);
+	const filePathRef = useRef(filePath);
+	const lastAppliedValueRef = useRef(value);
 
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
+	workspaceIdRef.current = workspaceId;
+	filePathRef.current = filePath;
 
 	const editor = useEditor({
 		immediatelyRender: false,
@@ -91,7 +108,65 @@ export function TipTapMarkdownRenderer({
 		content: value,
 		editorProps: {
 			attributes: {
-				class: cn("focus:outline-none", editable && "min-h-[100px]"),
+				class: cn(
+					"focus:outline-none",
+					editable && "min-h-[100px] min-h-full cursor-text",
+				),
+			},
+			handlePaste: (view, event) => {
+				if (!editable) {
+					return false;
+				}
+
+				const activeWorkspaceId = workspaceIdRef.current;
+				const activeFilePath = filePathRef.current;
+				if (
+					!activeWorkspaceId ||
+					!activeFilePath ||
+					!getWorkspaceMemoContextFromFilePath(activeFilePath)
+				) {
+					return false;
+				}
+
+				const imageFile = Array.from(event.clipboardData?.items ?? [])
+					.find((item) => item.type.startsWith("image/"))
+					?.getAsFile();
+				if (!imageFile) {
+					return false;
+				}
+
+				event.preventDefault();
+				void saveMemoImageFile({
+					workspaceId: activeWorkspaceId,
+					memoFilePath: activeFilePath,
+					file: imageFile,
+				})
+					.then(({ relativePath }) => {
+						const imageNodeType = view.state.schema.nodes.image;
+						if (imageNodeType) {
+							const transaction = view.state.tr.replaceSelectionWith(
+								imageNodeType.create({
+									src: relativePath,
+									alt: imageFile.name || "pasted image",
+								}),
+							);
+							view.dispatch(transaction.scrollIntoView());
+							return;
+						}
+
+						view.dispatch(
+							view.state.tr
+								.insertText(
+									`![${imageFile.name || "pasted image"}](${relativePath})`,
+								)
+								.scrollIntoView(),
+						);
+					})
+					.catch((error: Error) => {
+						toast.error(`Failed to paste image: ${error.message}`);
+					});
+
+				return true;
 			},
 		},
 		onUpdate: ({ editor: currentEditor }) => {
@@ -103,6 +178,12 @@ export function TipTapMarkdownRenderer({
 		if (!editor) {
 			return;
 		}
+
+		if (lastAppliedValueRef.current === value) {
+			return;
+		}
+
+		lastAppliedValueRef.current = value;
 
 		const currentValue = getEditorMarkdown(editor);
 		if (currentValue === value) {
@@ -137,33 +218,60 @@ export function TipTapMarkdownRenderer({
 	}, [editor, editorRef]);
 
 	const content = (
-		<div
-			className={cn(
-				"markdown-renderer h-full overflow-y-auto select-text",
-				config.wrapperClass,
-				className,
-			)}
+		<TrustedImageProvider
+			workspaceId={workspaceId}
+			trustedImageRootPath={trustedImageRootPath}
 		>
-			{editable && editor && (
-				<BubbleMenu
-					editor={editor}
-					options={{
-						placement: "top",
-						offset: { mainAxis: 8 },
-					}}
-					shouldShow={({ editor: e, from, to }) => {
-						if (from === to) return false;
-						if (e.isActive("codeBlock")) return false;
-						return true;
-					}}
+			<div
+				className={cn(
+					"markdown-renderer h-full overflow-y-auto select-text",
+					config.wrapperClass,
+					className,
+				)}
+			>
+				{editable && editor && (
+					<BubbleMenu
+						editor={editor}
+						options={{
+							placement: "top",
+							offset: { mainAxis: 8 },
+						}}
+						shouldShow={({ editor: e, from, to }) => {
+							if (from === to) return false;
+							if (e.isActive("codeBlock")) return false;
+							return true;
+						}}
+					>
+						<BubbleMenuToolbar editor={editor} />
+					</BubbleMenu>
+				)}
+				<article
+					ref={articleRef}
+					className={cn(
+						"relative",
+						config.articleClass,
+						editable && "min-h-full cursor-text",
+					)}
 				>
-					<BubbleMenuToolbar editor={editor} />
-				</BubbleMenu>
-			)}
-			<article ref={articleRef} className={config.articleClass}>
-				<EditorContent editor={editor} />
-			</article>
-		</div>
+					{editable && editor && value.length === 0 ? (
+						<button
+							type="button"
+							className="absolute inset-0 z-10 min-h-[100px] cursor-text rounded-md text-left"
+							aria-label="Focus memo editor"
+							onMouseDown={(event) => {
+								event.preventDefault();
+								editor.commands.focus("start");
+							}}
+						>
+							<span className="pointer-events-none absolute left-0 top-0 px-1 py-0.5 text-sm text-muted-foreground/70">
+								Type to start writing...
+							</span>
+						</button>
+					) : null}
+					<EditorContent editor={editor} />
+				</article>
+			</div>
+		</TrustedImageProvider>
 	);
 
 	if (editable) {

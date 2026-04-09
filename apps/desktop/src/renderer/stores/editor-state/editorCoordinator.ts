@@ -1,5 +1,6 @@
 import { invalidateFileSaveQueries } from "renderer/lib/invalidate-file-save-queries";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
+import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { AddFileViewerPaneOptions } from "renderer/stores/tabs/types";
 import { resolveFileViewerMode } from "renderer/stores/tabs/utils";
@@ -521,8 +522,11 @@ export function requestViewModeChange(
 	const document = session
 		? useEditorDocumentsStore.getState().documents[session.documentKey]
 		: null;
+	const isMemoFile = Boolean(
+		document?.filePath && getTrustedMemoRootPath(document.filePath),
+	);
 
-	if (document?.dirty) {
+	if (document?.dirty && !isMemoFile) {
 		focusPane(paneId);
 		useEditorSessionsStore
 			.getState()

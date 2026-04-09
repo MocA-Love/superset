@@ -1,4 +1,5 @@
 import { LuImageOff } from "react-icons/lu";
+import { useResolvedImageSrc } from "./useResolvedImageSrc";
 
 /**
  * Check if an image source is safe to load.
@@ -48,7 +49,22 @@ interface SafeImageProps {
  * as blob: URLs.
  */
 export function SafeImage({ src, alt, className }: SafeImageProps) {
-	if (!isSafeImageSrc(src)) {
+	const resolvedImage = useResolvedImageSrc(src);
+
+	if (resolvedImage.isLoading) {
+		return (
+			<div
+				className={`inline-flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-muted-foreground text-sm ${className ?? ""}`}
+			>
+				<span className="truncate max-w-[300px]">Loading image...</span>
+			</div>
+		);
+	}
+
+	if (
+		(src && !isSafeImageSrc(src) && !resolvedImage.src) ||
+		resolvedImage.isBlocked
+	) {
 		return (
 			<div
 				className={`inline-flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-muted-foreground text-sm ${className ?? ""}`}
@@ -63,7 +79,7 @@ export function SafeImage({ src, alt, className }: SafeImageProps) {
 	// Safe to render - embedded data: URL
 	return (
 		<img
-			src={src}
+			src={resolvedImage.src ?? src}
 			alt={alt}
 			className={className ?? "max-w-full h-auto rounded-md my-4"}
 		/>

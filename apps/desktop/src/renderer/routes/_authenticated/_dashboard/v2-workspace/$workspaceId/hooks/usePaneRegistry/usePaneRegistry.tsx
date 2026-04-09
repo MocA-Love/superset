@@ -51,7 +51,7 @@ export function usePaneRegistry(
 				},
 				getTitle: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as FilePaneData;
-					const name = getFileName(data.filePath);
+					const name = data.displayName ?? getFileName(data.filePath);
 					return (
 						<div className="flex items-center space-x-2">
 							<span className={ctx.pane.pinned ? undefined : "italic"}>

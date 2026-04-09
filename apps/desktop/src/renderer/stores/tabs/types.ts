@@ -144,6 +144,7 @@ export interface TabsStore extends TabsState {
 	markPaneAsUsed: (paneId: string) => void;
 	setPaneStatus: (paneId: string, status: PaneStatus) => void;
 	setPaneName: (paneId: string, name: string) => void;
+	setFileViewerDisplayName: (paneId: string, displayName: string) => void;
 	setPaneWorkspaceRun: (
 		paneId: string,
 		workspaceRun: {

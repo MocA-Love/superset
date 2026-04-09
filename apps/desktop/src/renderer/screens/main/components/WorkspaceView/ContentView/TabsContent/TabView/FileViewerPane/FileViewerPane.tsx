@@ -6,6 +6,10 @@ import type { MosaicBranch } from "react-mosaic-component";
 import { createChatServiceIpcClient } from "renderer/components/Chat/utils/chat-service-client";
 import type { MarkdownEditorAdapter } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	deriveMemoDisplayName,
+	getTrustedMemoRootPath,
+} from "renderer/lib/workspace-memos";
 import { electronQueryClient } from "renderer/providers/ElectronTRPCProvider";
 import { FileSaveConflictDialog } from "renderer/screens/main/components/WorkspaceView/components/FileSaveConflictDialog";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
@@ -55,6 +59,7 @@ import { useMarkdownSearch } from "./hooks/useMarkdownSearch";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 
 const chatServiceIpcClient = createChatServiceIpcClient();
+const MEMO_AUTOSAVE_DELAY_MS = 1000;
 
 interface FileViewerPaneProps {
 	paneId: string;
@@ -141,6 +146,9 @@ export function FileViewerPane({
 	const isFocused = useTabsStore((s) => s.focusedPaneIds[tabId] === paneId);
 	const equalizePaneSplits = useTabsStore((s) => s.equalizePaneSplits);
 	const pinPane = useTabsStore((s) => s.pinPane);
+	const setFileViewerDisplayName = useTabsStore(
+		(s) => s.setFileViewerDisplayName,
+	);
 	const {
 		viewMode: diffViewMode,
 		setViewMode: setDiffViewMode,
@@ -368,6 +376,7 @@ export function FileViewerPane({
 		() => toAbsoluteWorkspacePath(worktreePath, filePath),
 		[worktreePath, filePath],
 	);
+	const isMemoFile = Boolean(getTrustedMemoRootPath(absoluteFilePath));
 	const baselineContent = getEditorDocumentBaselineContent(documentKey);
 
 	useEffect(() => {
@@ -435,6 +444,9 @@ export function FileViewerPane({
 			}
 
 			const dirty = updateDocumentDraft(documentKey, value);
+			if (isMemoFile) {
+				setFileViewerDisplayName(paneId, deriveMemoDisplayName(value));
+			}
 			if (dirty && !isPinned) {
 				pinPane(paneId);
 				useEditorSessionsStore.getState().patchSession(paneId, {
@@ -442,7 +454,14 @@ export function FileViewerPane({
 				});
 			}
 		},
-		[documentKey, isPinned, paneId, pinPane],
+		[
+			documentKey,
+			isMemoFile,
+			isPinned,
+			paneId,
+			pinPane,
+			setFileViewerDisplayName,
+		],
 	);
 
 	useEffect(() => {
@@ -638,12 +657,49 @@ export function FileViewerPane({
 
 		return "";
 	}, [currentDocumentContent, documentKey, rawFileData]);
+
+	useEffect(() => {
+		if (!isMemoFile) {
+			return;
+		}
+
+		setFileViewerDisplayName(paneId, deriveMemoDisplayName(renderedContent));
+	}, [isMemoFile, paneId, renderedContent, setFileViewerDisplayName]);
+
 	const hasRenderedMode =
 		isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath);
 	const hasDiff = !!diffCategory;
 	const unsavedDialogCopy = getUnsavedDialogCopy(
 		session?.pendingIntent ?? null,
 	);
+
+	useEffect(() => {
+		if (
+			!isMemoFile ||
+			!isDirty ||
+			isSaving ||
+			hasExternalDiskChange ||
+			viewMode === "diff" ||
+			viewMode === "conflict"
+		) {
+			return;
+		}
+
+		const timeoutId = window.setTimeout(() => {
+			void performFileSave();
+		}, MEMO_AUTOSAVE_DELAY_MS);
+
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
+	}, [
+		hasExternalDiskChange,
+		isDirty,
+		isMemoFile,
+		isSaving,
+		performFileSave,
+		viewMode,
+	]);
 
 	if (!fileViewer) {
 		return (

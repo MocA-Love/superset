@@ -1,6 +1,10 @@
 import type { RendererContext } from "@superset/panes";
 import { useFileDocument } from "@superset/workspace-client";
 import { useCallback } from "react";
+import {
+	deriveMemoDisplayName,
+	getTrustedMemoRootPath,
+} from "renderer/lib/workspace-memos";
 import { SpreadsheetViewer } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/FileViewerPane/components/SpreadsheetViewer";
 import {
 	isImageFile,
@@ -38,6 +42,7 @@ export function FilePane({ context, workspaceId }: FilePaneProps) {
 function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 	const data = context.pane.data as FilePaneData;
 	const { filePath } = data;
+	const isMemoFile = Boolean(getTrustedMemoRootPath(filePath));
 
 	const document = useFileDocument({
 		workspaceId,
@@ -69,6 +74,20 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 			return result;
 		},
 		[document, handleDirtyChange],
+	);
+
+	const handleDisplayNameChange = useCallback(
+		(displayName: string) => {
+			if (!isMemoFile || data.displayName === displayName) {
+				return;
+			}
+
+			context.actions.updateData({
+				...data,
+				displayName,
+			} as PaneViewerData);
+		},
+		[context.actions, data, isMemoFile],
 	);
 
 	if (document.state.kind === "loading") {
@@ -105,13 +124,21 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 	}
 
 	if (isMarkdownFile(filePath)) {
+		const displayName = isMemoFile
+			? (data.displayName ?? deriveMemoDisplayName(document.state.content))
+			: data.displayName;
 		return (
 			<MarkdownRenderer
 				content={document.state.content}
+				displayName={displayName}
+				filePath={filePath}
 				hasExternalChange={document.hasExternalChange}
+				isMemo={isMemoFile}
 				onDirtyChange={handleDirtyChange}
+				onDisplayNameChange={handleDisplayNameChange}
 				onReload={document.reload}
 				onSave={handleSave}
+				workspaceId={workspaceId}
 			/>
 		);
 	}

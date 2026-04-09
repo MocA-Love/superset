@@ -1273,6 +1273,40 @@ export const useTabsStore = create<TabsStore>()(
 						),
 					});
 				},
+				setFileViewerDisplayName: (paneId, displayName) => {
+					set((state) => {
+						const pane = state.panes[paneId];
+						if (
+							!pane?.fileViewer ||
+							pane.userTitle?.trim() ||
+							(pane.name === displayName &&
+								pane.fileViewer.displayName === displayName)
+						) {
+							return state;
+						}
+
+						const nextPanes = {
+							...state.panes,
+							[paneId]: {
+								...pane,
+								name: displayName,
+								fileViewer: {
+									...pane.fileViewer,
+									displayName,
+								},
+							},
+						};
+
+						return {
+							panes: nextPanes,
+							tabs: state.tabs.map((tab) =>
+								tab.id === pane.tabId
+									? { ...tab, name: deriveTabName(nextPanes, tab.id) }
+									: tab,
+							),
+						};
+					});
+				},
 				setPaneWorkspaceRun: (paneId, workspaceRun) => {
 					set((state) => {
 						const pane = state.panes[paneId];

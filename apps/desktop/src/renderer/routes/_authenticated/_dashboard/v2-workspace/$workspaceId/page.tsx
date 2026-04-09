@@ -10,6 +10,7 @@ import {
 	ResizablePanel,
 	ResizablePanelGroup,
 } from "@superset/ui/resizable";
+import { toast } from "@superset/ui/sonner";
 import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -23,6 +24,7 @@ import {
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
 	CommandPalette,
@@ -166,13 +168,25 @@ function WorkspaceContent({
 	});
 
 	const openFilePane = useCallback(
-		(filePath: string) => {
+		(filePath: string, displayName?: string) => {
 			const state = store.getState();
 			const active = state.getActivePane();
 			if (
 				active?.pane.kind === "file" &&
 				(active.pane.data as FilePaneData).filePath === filePath
 			) {
+				if (
+					displayName &&
+					(active.pane.data as FilePaneData).displayName !== displayName
+				) {
+					state.setPaneData({
+						paneId: active.pane.id,
+						data: {
+							...(active.pane.data as FilePaneData),
+							displayName,
+						} as FilePaneData,
+					});
+				}
 				state.setPanePinned({ paneId: active.pane.id, pinned: true });
 				return;
 			}
@@ -183,6 +197,7 @@ function WorkspaceContent({
 						filePath,
 						mode: "editor",
 						hasChanges: false,
+						displayName,
 					} as FilePaneData,
 				},
 				tabTitle: "Files",
@@ -290,6 +305,16 @@ function WorkspaceContent({
 		});
 	}, [store]);
 
+	const addMemoTab = useCallback(() => {
+		void createWorkspaceMemo(workspaceId)
+			.then((memo) => {
+				openFilePane(memo.memoFileAbsolutePath, memo.displayName);
+			})
+			.catch((error: Error) => {
+				toast.error(`Failed to create memo: ${error.message}`);
+			});
+	}, [openFilePane, workspaceId]);
+
 	const commandPalette = useCommandPalette({
 		workspaceId,
 		navigate,
@@ -394,6 +419,7 @@ function WorkspaceContent({
 									onAddTerminal={addTerminalTab}
 									onAddChat={addChatTab}
 									onAddBrowser={addBrowserTab}
+									onAddMemo={addMemoTab}
 									showPresetsBar={showPresetsBar ?? false}
 									onTogglePresetsBar={(enabled) =>
 										setShowPresetsBar.mutate({ enabled })
@@ -404,6 +430,7 @@ function WorkspaceContent({
 								<WorkspaceEmptyState
 									onOpenBrowser={addBrowserTab}
 									onOpenChat={addChatTab}
+									onOpenMemo={addMemoTab}
 									onOpenQuickOpen={handleQuickOpen}
 									onOpenTerminal={addTerminalTab}
 								/>
