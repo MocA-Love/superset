@@ -84,11 +84,6 @@ export function useTerminalRestore({
 
 	const flushPendingEvents = useCallback(() => {
 		const xterm = xtermRef.current;
-		console.log("[Terminal:debug] flushPendingEvents", {
-			paneId,
-			count: pendingEventsRef.current.length,
-			timestamp: new Date().toISOString(),
-		});
 		if (!xterm) return;
 		if (pendingEventsRef.current.length === 0) return;
 
@@ -109,7 +104,7 @@ export function useTerminalRestore({
 				onDisconnectEventRef.current(event.reason);
 			}
 		}
-	}, [xtermRef, pendingEventsRef, paneId]);
+	}, [xtermRef, pendingEventsRef]);
 
 	const maybeApplyInitialState = useCallback(() => {
 		if (!didFirstRenderRef.current) return;
@@ -119,11 +114,6 @@ export function useTerminalRestore({
 		const xterm = xtermRef.current;
 		const fitAddon = fitAddonRef.current;
 		if (!xterm || !fitAddon) return;
-
-		console.log("[Terminal:debug] applyInitialState start", {
-			paneId,
-			timestamp: new Date().toISOString(),
-		});
 
 		// Clear before applying to prevent double-apply on concurrent triggers
 		pendingInitialStateRef.current = null;

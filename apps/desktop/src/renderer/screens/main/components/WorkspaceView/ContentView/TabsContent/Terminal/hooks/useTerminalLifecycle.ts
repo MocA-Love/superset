@@ -248,25 +248,15 @@ export function useTerminalLifecycle({
 		prevWorkspaceIsActiveRef.current = workspaceIsActive;
 
 		if (!workspaceIsActive) {
-			if (wasActive) {
-				console.log("[Terminal:debug] workspace deactivated", {
-					paneId,
-					timestamp: new Date().toISOString(),
-				});
-			}
 			cancelReattachRecoveryRef.current();
 			return;
 		}
 
 		if (!wasActive) {
-			console.log("[Terminal:debug] workspace activated", {
-				paneId,
-				timestamp: new Date().toISOString(),
-			});
 			scheduleReattachRecoveryRef.current(true);
 			workspaceReattachRef.current();
 		}
-	}, [workspaceIsActive, paneId]);
+	}, [workspaceIsActive]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refs used intentionally
 	useEffect(() => {
@@ -493,11 +483,6 @@ export function useTerminalLifecycle({
 
 			markAttachInFlight(paneId, attachId);
 
-			console.log("[Terminal:debug] workspace reattach start", {
-				paneId,
-				timestamp: new Date().toISOString(),
-			});
-
 			createOrAttachRef.current(
 				{
 					paneId,
@@ -513,10 +498,6 @@ export function useTerminalLifecycle({
 						if (activeAttachRequestId !== requestId) return;
 						setConnectionError(null);
 						clearAttachInFlight(paneId, attachId);
-						console.log("[Terminal:debug] workspace reattach complete", {
-							paneId,
-							timestamp: new Date().toISOString(),
-						});
 						pendingInitialStateRef.current = result;
 						maybeApplyInitialState();
 					},
@@ -642,11 +623,6 @@ export function useTerminalLifecycle({
 						done();
 					};
 
-					console.log("[Terminal:debug] attach start", {
-						paneId,
-						timestamp: new Date().toISOString(),
-					});
-
 					createOrAttachRef.current(
 						{
 							paneId,
@@ -665,10 +641,6 @@ export function useTerminalLifecycle({
 								if (!isAttachActive()) return;
 								if (activeAttachRequestId !== requestId) return;
 								setConnectionError(null);
-								console.log("[Terminal:debug] attach complete", {
-									paneId,
-									timestamp: new Date().toISOString(),
-								});
 								clearPaneInitialDataRef.current(paneId);
 
 								const storedColdRestore = coldRestoreState.get(paneId);
@@ -912,23 +884,10 @@ export function useTerminalLifecycle({
 			// Rebuild stale WebGL glyph cache after occlusion and force a paint pass.
 			rendererRef.current?.current.clearTextureAtlas?.();
 
-			console.log(
-				"[Terminal:debug] fitAddon.fit() called (runReattachRecovery)",
-				{
-					paneId,
-					timestamp: new Date().toISOString(),
-				},
-			);
 			fitAddon.fit();
 			xterm.refresh(0, Math.max(0, xterm.rows - 1));
 
 			if (forceResize || xterm.cols !== prevCols || xterm.rows !== prevRows) {
-				console.log("[Terminal:debug] resizeTerminal", {
-					paneId,
-					cols: xterm.cols,
-					rows: xterm.rows,
-					timestamp: new Date().toISOString(),
-				});
 				resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 			}
 
