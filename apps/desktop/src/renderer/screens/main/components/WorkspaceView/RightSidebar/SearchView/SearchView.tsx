@@ -138,10 +138,10 @@ function buildSearchTree(groups: SearchResultGroup[]): SearchTreeNodeType[] {
 				}
 
 				const folderNode = node as SearchTreeFolderNodeInternal;
-				return {
+				return compressFolderNode({
 					...folderNode,
 					children: toArray(folderNode.children),
-				};
+				});
 			})
 			.sort((left, right) => {
 				if (left.type !== right.type) {
@@ -153,6 +153,29 @@ function buildSearchTree(groups: SearchResultGroup[]): SearchTreeNodeType[] {
 					right.type === "folder" ? right.name : right.group.name;
 				return leftName.localeCompare(rightName);
 			});
+	}
+
+	function compressFolderNode(
+		node: SearchTreeFolderNode,
+	): SearchTreeFolderNode {
+		let nextNode = node;
+
+		while (
+			nextNode.children.length === 1 &&
+			nextNode.children[0]?.type === "folder"
+		) {
+			const child = nextNode.children[0];
+			nextNode = {
+				...nextNode,
+				name: `${nextNode.name}/${child.name}`,
+				path: child.path,
+				id: child.id,
+				matchCount: child.matchCount,
+				children: child.children,
+			};
+		}
+
+		return nextNode;
 	}
 
 	return toArray(root);

@@ -56,12 +56,13 @@ export const SearchTreeNode = memo(function SearchTreeNode({
 	onReplaceMatch,
 	onIgnoreMatch,
 }: SearchTreeNodeProps) {
+	const indentPx = level * 8;
 	const folderPath = node.type === "folder" ? node.path : null;
 	const isOpen = folderPath ? (openFolders[folderPath] ?? true) : false;
 
 	if (node.type === "file") {
 		return (
-			<div style={{ marginLeft: `${level * 12}px` }}>
+			<div style={{ marginLeft: `${indentPx}px` }}>
 				<SearchFileGroup
 					group={node.group}
 					isOpen={openGroups[node.group.absolutePath] ?? true}
@@ -92,7 +93,7 @@ export const SearchTreeNode = memo(function SearchTreeNode({
 			open={isOpen}
 			onOpenChange={(nextOpen) => onOpenFolderChange(node.path, nextOpen)}
 		>
-			<div style={{ marginLeft: `${level * 12}px` }}>
+			<div style={{ marginLeft: `${indentPx}px` }}>
 				<CollapsibleTrigger asChild>
 					<button
 						type="button"
