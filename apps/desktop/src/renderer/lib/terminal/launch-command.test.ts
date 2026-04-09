@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
+import { TERMINAL_ATTACH_CANCELED_MESSAGE } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/attach-cancel";
 import {
 	buildTerminalCommand,
 	launchCommandInPane,
@@ -68,6 +69,34 @@ describe("launchCommandInPane", () => {
 			write,
 		});
 
+		expect(write).toHaveBeenCalledWith({
+			paneId: "pane-1",
+			data: "echo hello\n",
+			throwOnError: true,
+		});
+	});
+
+	it("retries once when helper attach is canceled by a later explicit-size attach", async () => {
+		let attempt = 0;
+		const createOrAttach = mock(async () => {
+			attempt += 1;
+			if (attempt === 1) {
+				throw new Error(TERMINAL_ATTACH_CANCELED_MESSAGE);
+			}
+			return {};
+		});
+		const write = mock(async () => ({}));
+
+		await launchCommandInPane({
+			paneId: "pane-1",
+			tabId: "tab-1",
+			workspaceId: "ws-1",
+			command: "echo hello",
+			createOrAttach,
+			write,
+		});
+
+		expect(createOrAttach).toHaveBeenCalledTimes(2);
 		expect(write).toHaveBeenCalledWith({
 			paneId: "pane-1",
 			data: "echo hello\n",

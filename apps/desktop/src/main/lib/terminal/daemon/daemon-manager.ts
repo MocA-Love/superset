@@ -30,6 +30,8 @@ import type { ColdRestoreInfo, SessionInfo } from "./types";
 interface PendingCreateOrAttach {
 	requestId: string;
 	joinPending: boolean;
+	cols?: number;
+	rows?: number;
 	abortController: AbortController;
 	promise: Promise<SessionResult>;
 }
@@ -300,16 +302,52 @@ export class DaemonTerminalManager extends EventEmitter {
 		const requestId = params.requestId ?? `${paneId}:${Date.now()}`;
 		const joinPending = params.joinPending ?? false;
 		const pending = this.pendingSessions.get(paneId);
+		const requestHasExplicitSize =
+			Number.isInteger(params.cols) &&
+			Number.isInteger(params.rows) &&
+			(params.cols ?? 0) > 0 &&
+			(params.rows ?? 0) > 0;
 		if (pending) {
-			if (
+			const pendingHasExplicitSize =
+				Number.isInteger(pending.cols) &&
+				Number.isInteger(pending.rows) &&
+				(pending.cols ?? 0) > 0 &&
+				(pending.rows ?? 0) > 0;
+			const pendingSizeMatchesRequest =
+				pending.cols === params.cols && pending.rows === params.rows;
+			const shouldSupersedePending =
+				requestHasExplicitSize &&
+				(!pendingHasExplicitSize || !pendingSizeMatchesRequest);
+
+			if (shouldSupersedePending) {
+				if (DEBUG_TERMINAL) {
+					console.log(
+						"[DaemonTerminalManager] Superseding pending createOrAttach with explicit size",
+						{
+							paneId,
+							requestId,
+							pendingRequestId: pending.requestId,
+							pendingCols: pending.cols ?? null,
+							pendingRows: pending.rows ?? null,
+							nextCols: params.cols ?? null,
+							nextRows: params.rows ?? null,
+							pendingJoinPending: pending.joinPending,
+							joinPending,
+						},
+					);
+				}
+				pending.abortController.abort();
+				this.pendingSessions.delete(paneId);
+			} else if (
 				pending.requestId === requestId ||
 				joinPending ||
 				pending.joinPending
 			) {
 				return pending.promise;
+			} else {
+				pending.abortController.abort();
+				this.pendingSessions.delete(paneId);
 			}
-			pending.abortController.abort();
-			this.pendingSessions.delete(paneId);
 		}
 
 		const abortController = new AbortController();
@@ -317,12 +355,14 @@ export class DaemonTerminalManager extends EventEmitter {
 			{ ...params, requestId },
 			abortController.signal,
 		);
-		const entry: PendingCreateOrAttach = {
-			requestId,
-			joinPending,
-			abortController,
-			promise,
-		};
+			const entry: PendingCreateOrAttach = {
+				requestId,
+				joinPending,
+				cols: params.cols,
+				rows: params.rows,
+				abortController,
+				promise,
+			};
 		this.pendingSessions.set(paneId, entry);
 
 		try {

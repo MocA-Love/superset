@@ -1,3 +1,5 @@
+import { isTerminalAttachCanceledMessage } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/attach-cancel";
+
 interface TerminalCreateOrAttachInput {
 	paneId: string;
 	tabId: string;
@@ -105,11 +107,27 @@ export async function ensureTerminalAttached({
 	cwd?: string;
 	createOrAttach: (input: TerminalCreateOrAttachInput) => Promise<unknown>;
 }): Promise<void> {
-	await createOrAttach({
+	const input = {
 		paneId,
 		tabId,
 		workspaceId,
 		cwd,
 		joinPending: true,
-	});
+	} satisfies TerminalCreateOrAttachInput;
+
+	try {
+		await createOrAttach(input);
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			isTerminalAttachCanceledMessage(error.message)
+		) {
+			// Preset launches often race with the pane lifecycle attach. If a helper
+			// attach gets superseded by the later explicit-size attach, retry once and
+			// join that in-flight request instead of dropping the preset command.
+			await createOrAttach(input);
+			return;
+		}
+		throw error;
+	}
 }

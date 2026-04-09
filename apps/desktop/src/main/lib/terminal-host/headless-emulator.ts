@@ -124,14 +124,18 @@ export class HeadlessEmulator {
 	 * Data is buffered and will be processed asynchronously.
 	 * Use writeSync() if you need to wait for the write to complete.
 	 */
-	write(data: string): void {
+	write(data: string, onProcessed?: () => void): void {
 		if (this.disposed) return;
 
 		if (!DEBUG_EMULATOR_TIMING) {
 			// Parse escape sequences with chunk-safe buffering
 			this.parseEscapeSequences(data);
 			// Write to headless terminal (buffered/async)
-			this.terminal.write(data);
+			if (onProcessed) {
+				this.terminal.write(data, onProcessed);
+			} else {
+				this.terminal.write(data);
+			}
 			return;
 		}
 
@@ -140,7 +144,11 @@ export class HeadlessEmulator {
 		const parseTime = performance.now() - parseStart;
 
 		const terminalStart = performance.now();
-		this.terminal.write(data);
+		if (onProcessed) {
+			this.terminal.write(data, onProcessed);
+		} else {
+			this.terminal.write(data);
+		}
 		const terminalTime = performance.now() - terminalStart;
 
 		if (parseTime > 2 || terminalTime > 2) {

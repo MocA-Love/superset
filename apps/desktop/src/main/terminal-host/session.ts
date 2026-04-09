@@ -46,6 +46,8 @@ import {
  * Prevents indefinite hang when continuous output (e.g., tail -f) keeps the queue non-empty.
  */
 const ATTACH_FLUSH_TIMEOUT_MS = 500;
+const RESIZE_SETTLE_MS = 75;
+const DEBUG_TERMINAL = process.env.SUPERSET_TERMINAL_DEBUG === "1";
 
 /**
  * Maximum bytes allowed in subprocess stdin queue.
@@ -122,6 +124,11 @@ export interface AttachedClient {
 	attachToken: symbol;
 }
 
+type EmulatorWriteQueueEntry = {
+	data: string;
+	onProcessed?: () => void;
+};
+
 // =============================================================================
 // Session Class
 // =============================================================================
@@ -170,19 +177,13 @@ export class Session {
 	private markerMatchPos = 0;
 	private markerHeldBytes = "";
 
-	private emulatorWriteQueue: string[] = [];
+	private emulatorWriteQueue: EmulatorWriteQueueEntry[] = [];
 	private emulatorWriteQueuedBytes = 0;
 	private emulatorWriteScheduled = false;
 	private emulatorFlushWaiters: Array<() => void> = [];
-
-	// Snapshot boundary tracking for concurrent attaches.
-	private emulatorWriteProcessedItems = 0;
-	private nextSnapshotBoundaryWaiterId = 1;
-	private snapshotBoundaryWaiters: Array<{
-		id: number;
-		targetProcessedItems: number;
-		resolve: () => void;
-	}> = [];
+	private resizeSettleTimer: ReturnType<typeof setTimeout> | null = null;
+	private resizeSettlePromise: Promise<void> | null = null;
+	private resizeSettleResolve: (() => void) | null = null;
 
 	// Callbacks
 	private onSessionExit?: (
@@ -599,11 +600,17 @@ export class Session {
 		return this.sendFrameToSubprocess(PtySubprocessIpcType.Dispose);
 	}
 
-	private enqueueEmulatorWrite(data: string): void {
-		this.emulatorWriteQueue.push(data);
-		this.emulatorWriteQueuedBytes += Buffer.byteLength(data, "utf8");
-		this.maybePauseSubprocessStdoutForEmulatorBackpressure();
+	private enqueueEmulatorWriteEntry(entry: EmulatorWriteQueueEntry): void {
+		this.emulatorWriteQueue.push(entry);
+		if (entry.data.length > 0) {
+			this.emulatorWriteQueuedBytes += Buffer.byteLength(entry.data, "utf8");
+			this.maybePauseSubprocessStdoutForEmulatorBackpressure();
+		}
 		this.scheduleEmulatorWrite();
+	}
+
+	private enqueueEmulatorWrite(data: string): void {
+		this.enqueueEmulatorWriteEntry({ data });
 	}
 
 	private scheduleEmulatorWrite(): void {
@@ -618,10 +625,7 @@ export class Session {
 		if (this.disposed) {
 			this.emulatorWriteQueue = [];
 			this.emulatorWriteQueuedBytes = 0;
-			this.emulatorWriteProcessedItems = 0;
-			this.nextSnapshotBoundaryWaiterId = 1;
 			this.emulatorWriteScheduled = false;
-			this.resolveAllSnapshotBoundaryWaiters();
 			const waiters = this.emulatorFlushWaiters;
 			this.emulatorFlushWaiters = [];
 			for (const resolve of waiters) resolve();
@@ -637,11 +641,14 @@ export class Session {
 		const budgetMs =
 			backlogBytes > 1024 * 1024 ? Math.max(baseBudgetMs, 25) : baseBudgetMs;
 		const MAX_CHUNK_CHARS = 8192;
+		let yieldedForProcessedCallback = false;
 
 		while (this.emulatorWriteQueue.length > 0) {
 			if (performance.now() - start > budgetMs) break;
 
-			let chunk = this.emulatorWriteQueue[0];
+			const entry = this.emulatorWriteQueue[0];
+			let chunk = entry.data;
+			let onProcessed = entry.onProcessed;
 			if (chunk.length > MAX_CHUNK_CHARS) {
 				let splitAt = MAX_CHUNK_CHARS;
 				const prev = chunk.charCodeAt(splitAt - 1);
@@ -654,19 +661,43 @@ export class Session {
 				) {
 					splitAt--;
 				}
-				this.emulatorWriteQueue[0] = chunk.slice(splitAt);
+				this.emulatorWriteQueue[0] = {
+					...entry,
+					data: chunk.slice(splitAt),
+				};
 				chunk = chunk.slice(0, splitAt);
+				onProcessed = undefined;
 			} else {
 				this.emulatorWriteQueue.shift();
-				this.emulatorWriteProcessedItems++;
-				this.resolveReachedSnapshotBoundaryWaiters();
 			}
 
 			this.emulatorWriteQueuedBytes -= Buffer.byteLength(chunk, "utf8");
+			if (onProcessed) {
+				yieldedForProcessedCallback = true;
+				// Snapshot boundary markers rely on xterm's write callback ordering:
+				// once this callback fires, every earlier chunk has been applied to
+				// the headless emulator and later chunks must wait for the next tick.
+				this.emulator.write(chunk, () => {
+					onProcessed();
+					if (
+						!this.disposed &&
+						this.emulatorWriteQueue.length > 0 &&
+						!this.emulatorWriteScheduled
+					) {
+						this.scheduleEmulatorWrite();
+					}
+				});
+				break;
+			}
 			this.emulator.write(chunk);
 		}
 
 		this.maybeResumeSubprocessStdoutForEmulatorBackpressure();
+
+		if (yieldedForProcessedCallback) {
+			this.emulatorWriteScheduled = false;
+			return;
+		}
 
 		if (this.emulatorWriteQueue.length > 0) {
 			setImmediate(() => {
@@ -676,32 +707,60 @@ export class Session {
 		}
 
 		this.emulatorWriteScheduled = false;
-		this.resolveReachedSnapshotBoundaryWaiters();
 
 		const waiters = this.emulatorFlushWaiters;
 		this.emulatorFlushWaiters = [];
 		for (const resolve of waiters) resolve();
 	}
 
-	private resolveReachedSnapshotBoundaryWaiters(): void {
-		if (this.snapshotBoundaryWaiters.length === 0) return;
-
-		const remainingWaiters: typeof this.snapshotBoundaryWaiters = [];
-		for (const waiter of this.snapshotBoundaryWaiters) {
-			if (this.emulatorWriteProcessedItems >= waiter.targetProcessedItems) {
-				waiter.resolve();
-			} else {
-				remainingWaiters.push(waiter);
-			}
+	private scheduleResizeSettle(): void {
+		if (DEBUG_TERMINAL) {
+			const dims = this.emulator.getDimensions();
+			console.log("[terminal-session] scheduleResizeSettle", {
+				sessionId: this.sessionId,
+				paneId: this.paneId,
+				currentCols: dims.cols,
+				currentRows: dims.rows,
+				settleMs: RESIZE_SETTLE_MS,
+			});
 		}
-		this.snapshotBoundaryWaiters = remainingWaiters;
+		if (!this.resizeSettlePromise) {
+			this.resizeSettlePromise = new Promise<void>((resolve) => {
+				this.resizeSettleResolve = resolve;
+			});
+		}
+
+		if (this.resizeSettleTimer) {
+			clearTimeout(this.resizeSettleTimer);
+		}
+
+		this.resizeSettleTimer = setTimeout(() => {
+			this.resizeSettleTimer = null;
+			const resolve = this.resizeSettleResolve;
+			this.resizeSettleResolve = null;
+			this.resizeSettlePromise = null;
+			if (DEBUG_TERMINAL) {
+				const dims = this.emulator.getDimensions();
+				console.log("[terminal-session] resize settled", {
+					sessionId: this.sessionId,
+					paneId: this.paneId,
+					cols: dims.cols,
+					rows: dims.rows,
+				});
+			}
+			resolve?.();
+		}, RESIZE_SETTLE_MS);
 	}
 
-	private resolveAllSnapshotBoundaryWaiters(): void {
-		if (this.snapshotBoundaryWaiters.length === 0) return;
-		const waiters = this.snapshotBoundaryWaiters;
-		this.snapshotBoundaryWaiters = [];
-		for (const waiter of waiters) waiter.resolve();
+	private async waitForResizeSettle(signal?: AbortSignal): Promise<void> {
+		if (!this.resizeSettlePromise) return;
+		if (DEBUG_TERMINAL) {
+			console.log("[terminal-session] waitForResizeSettle", {
+				sessionId: this.sessionId,
+				paneId: this.paneId,
+			});
+		}
+		await raceWithAbort(this.resizeSettlePromise, signal);
 	}
 
 	/**
@@ -710,42 +769,28 @@ export class Session {
 	 * even with continuous output - we only wait for data received BEFORE this call.
 	 */
 	private async flushToSnapshotBoundary(timeoutMs: number): Promise<boolean> {
-		if (this.emulatorWriteQueue.length === 0) {
-			return true; // Already flushed
+		if (this.disposed) {
+			return false;
 		}
 
-		const targetProcessedItems =
-			this.emulatorWriteProcessedItems + this.emulatorWriteQueue.length;
+		return await new Promise<boolean>((resolve) => {
+			let settled = false;
+			const finish = (value: boolean) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeoutId);
+				resolve(value);
+			};
 
-		const waiterId = this.nextSnapshotBoundaryWaiterId++;
-		let reachedBoundary = false;
+			const timeoutId = setTimeout(() => finish(false), timeoutMs);
 
-		const boundaryPromise = new Promise<void>((resolve) => {
-			this.snapshotBoundaryWaiters.push({
-				id: waiterId,
-				targetProcessedItems,
-				resolve: () => {
-					reachedBoundary = true;
-					resolve();
-				},
+			this.enqueueEmulatorWriteEntry({
+				data: "",
+				// Empty write callbacks are ordered after all earlier writes, so
+				// this gives us a true point-in-time boundary for attach snapshots.
+				onProcessed: () => finish(true),
 			});
-			this.scheduleEmulatorWrite();
-			this.resolveReachedSnapshotBoundaryWaiters();
 		});
-
-		const timeoutPromise = new Promise<void>((resolve) =>
-			setTimeout(resolve, timeoutMs),
-		);
-
-		await Promise.race([boundaryPromise, timeoutPromise]);
-
-		if (!reachedBoundary) {
-			this.snapshotBoundaryWaiters = this.snapshotBoundaryWaiters.filter(
-				(waiter) => waiter.id !== waiterId,
-			);
-		}
-
-		return reachedBoundary;
 	}
 
 	/**
@@ -820,6 +865,22 @@ export class Session {
 		// This ensures we capture all data received BEFORE attach was called,
 		// even if new data continues to arrive during the flush.
 		try {
+			if (DEBUG_TERMINAL) {
+				const dims = this.emulator.getDimensions();
+				console.log("[terminal-session] attach start", {
+					sessionId: this.sessionId,
+					paneId: this.paneId,
+					cols: dims.cols,
+					rows: dims.rows,
+					queueLength: this.emulatorWriteQueue.length,
+					queuedBytes: this.emulatorWriteQueuedBytes,
+				});
+			}
+			// PTY resize triggers SIGWINCH-driven redraws asynchronously. When we
+			// reattach immediately after a workspace restore, give that redraw a
+			// short quiet window so the snapshot reflects the new geometry.
+			await this.waitForResizeSettle(signal);
+
 			const reachedBoundary = await raceWithAbort(
 				this.flushToSnapshotBoundary(ATTACH_FLUSH_TIMEOUT_MS),
 				signal,
@@ -831,9 +892,21 @@ export class Session {
 				);
 			}
 
-			await raceWithAbort(this.emulator.flush(), signal);
 			throwIfAborted(signal);
-			return this.emulator.getSnapshot();
+			const snapshot = this.emulator.getSnapshot();
+			if (DEBUG_TERMINAL) {
+				console.log("[terminal-session] attach snapshot", {
+					sessionId: this.sessionId,
+					paneId: this.paneId,
+					snapshotCols: snapshot.cols,
+					snapshotRows: snapshot.rows,
+					alternateScreen: snapshot.modes.alternateScreen,
+					scrollbackLines: snapshot.scrollbackLines,
+					queueLengthAfterBoundary: this.emulatorWriteQueue.length,
+					queuedBytesAfterBoundary: this.emulatorWriteQueuedBytes,
+				});
+			}
+			return snapshot;
 		} catch (error) {
 			if (isTerminalAttachCanceledError(error)) {
 				this.detachAttachedClient(socket, attachedClient);
@@ -890,10 +963,33 @@ export class Session {
 	 * Resize PTY and emulator
 	 */
 	resize(cols: number, rows: number): void {
+		const dims = this.emulator.getDimensions();
+		if (dims.cols === cols && dims.rows === rows) {
+			if (DEBUG_TERMINAL) {
+				console.log("[terminal-session] resize skipped", {
+					sessionId: this.sessionId,
+					paneId: this.paneId,
+					cols,
+					rows,
+				});
+			}
+			return;
+		}
+		if (DEBUG_TERMINAL) {
+			console.log("[terminal-session] resize", {
+				sessionId: this.sessionId,
+				paneId: this.paneId,
+				prevCols: dims.cols,
+				prevRows: dims.rows,
+				nextCols: cols,
+				nextRows: rows,
+			});
+		}
 		if (this.subprocess && this.subprocessReady) {
 			this.sendResizeToSubprocess(cols, rows);
 		}
 		this.emulator.resize(cols, rows);
+		this.scheduleResizeSettle();
 	}
 
 	/**
@@ -1025,10 +1121,7 @@ export class Session {
 
 		this.emulatorWriteQueue = [];
 		this.emulatorWriteQueuedBytes = 0;
-		this.emulatorWriteProcessedItems = 0;
-		this.nextSnapshotBoundaryWaiterId = 1;
 		this.emulatorWriteScheduled = false;
-		this.resolveAllSnapshotBoundaryWaiters();
 		const waiters = this.emulatorFlushWaiters;
 		this.emulatorFlushWaiters = [];
 		for (const resolve of waiters) resolve();

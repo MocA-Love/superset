@@ -16,7 +16,7 @@ import {
 	DEFAULT_THEME_ID,
 	getTerminalColors,
 } from "shared/themes";
-import { RESIZE_DEBOUNCE_MS, TERMINAL_OPTIONS } from "./config";
+import { DEBUG_TERMINAL, RESIZE_DEBOUNCE_MS, TERMINAL_OPTIONS } from "./config";
 import { FilePathLinkProvider, UrlLinkProvider } from "./link-providers";
 import { suppressQueryResponses } from "./suppressQueryResponses";
 import { scrollToBottom } from "./utils";
@@ -791,14 +791,51 @@ export function setupResizeHandlers(
 	container: HTMLDivElement,
 	xterm: XTerm,
 	fitAddon: FitAddon,
-	onResize: (cols: number, rows: number) => void,
+	onResize: (
+		cols: number,
+		rows: number,
+		meta: { prevCols: number; prevRows: number; changed: boolean },
+	) => void,
+	options?: {
+		paneId?: string;
+		shouldHandleResize?: () => boolean;
+	},
 ): () => void {
 	const debouncedHandleResize = debounce(() => {
+		if (options?.shouldHandleResize && !options.shouldHandleResize()) {
+			if (DEBUG_TERMINAL) {
+				console.log("[legacy-terminal] skip resize observer", {
+					paneId: options.paneId,
+					reason: "workspace-inactive",
+				});
+			}
+			return;
+		}
+
 		const buffer = xterm.buffer.active;
 		const wasAtBottom = buffer.viewportY >= buffer.baseY;
+		const prevCols = xterm.cols;
+		const prevRows = xterm.rows;
+		const rect = container.getBoundingClientRect();
 		fitAddon.fit();
 		xterm.refresh(0, Math.max(0, xterm.rows - 1));
-		onResize(xterm.cols, xterm.rows);
+		if (DEBUG_TERMINAL) {
+			console.log("[legacy-terminal] resize observer", {
+				paneId: options?.paneId,
+				containerWidth: rect.width,
+				containerHeight: rect.height,
+				prevCols,
+				prevRows,
+				nextCols: xterm.cols,
+				nextRows: xterm.rows,
+				wasAtBottom,
+			});
+		}
+		onResize(xterm.cols, xterm.rows, {
+			prevCols,
+			prevRows,
+			changed: xterm.cols !== prevCols || xterm.rows !== prevRows,
+		});
 		if (wasAtBottom) {
 			requestAnimationFrame(() => scrollToBottom(xterm));
 		}

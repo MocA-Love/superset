@@ -16,7 +16,7 @@ import { killTerminalForPane } from "renderer/stores/tabs/utils/terminal-cleanup
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { scheduleTerminalAttach } from "../attach-scheduler";
 import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
-import { FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
+import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
 import {
 	type ActiveSuggestionHandle,
 	createTerminalInstance,
@@ -228,6 +228,13 @@ export function useTerminalLifecycle({
 	openHistorySuggestionsRef,
 }: UseTerminalLifecycleOptions): UseTerminalLifecycleReturn {
 	const [xtermInstance, setXtermInstance] = useState<XTerm | null>(null);
+	const logDebug = useCallback(
+		(event: string, payload?: Record<string, unknown>) => {
+			if (!DEBUG_TERMINAL) return;
+			console.log(`[legacy-terminal] ${event}`, { paneId, ...payload });
+		},
+		[paneId],
+	);
 	const scheduleReattachRecoveryRef = useRef<(forceResize: boolean) => void>(
 		() => {},
 	);
@@ -248,15 +255,16 @@ export function useTerminalLifecycle({
 		prevWorkspaceIsActiveRef.current = workspaceIsActive;
 
 		if (!workspaceIsActive) {
+			logDebug("workspace inactive");
 			cancelReattachRecoveryRef.current();
 			return;
 		}
 
 		if (!wasActive) {
-			scheduleReattachRecoveryRef.current(true);
+			logDebug("workspace reactivated");
 			workspaceReattachRef.current();
 		}
-	}, [workspaceIsActive]);
+	}, [logDebug, workspaceIsActive]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refs used intentionally
 	useEffect(() => {
@@ -289,6 +297,11 @@ export function useTerminalLifecycle({
 			onFileLinkClick: (path, line, column) =>
 				handleFileLinkClickRef.current(path, line, column),
 			onUrlClickRef: handleUrlClickRef,
+		});
+		logDebug("xterm instance created", {
+			cols: xterm.cols,
+			rows: xterm.rows,
+			workspaceId,
 		});
 
 		const scheduleScrollToBottom = () => {
@@ -380,6 +393,12 @@ export function useTerminalLifecycle({
 					const requestId = nextAttachRequestId();
 					cancelAttachRequest(activeAttachRequestId);
 					activeAttachRequestId = requestId;
+					logDebug("restart attach start", {
+						requestId,
+						cols: xterm.cols,
+						rows: xterm.rows,
+						hasCommand: Boolean(command),
+					});
 					createOrAttachRef.current(
 						{
 							paneId,
@@ -397,6 +416,13 @@ export function useTerminalLifecycle({
 									resolve();
 									return;
 								}
+								logDebug("restart attach success", {
+									requestId,
+									isNew: result.isNew,
+									hasSnapshot: Boolean(result.snapshot),
+									snapshotCols: result.snapshot?.cols ?? null,
+									snapshotRows: result.snapshot?.rows ?? null,
+								});
 								setConnectionError(null);
 								pendingInitialStateRef.current = result;
 								maybeApplyInitialState();
@@ -429,6 +455,10 @@ export function useTerminalLifecycle({
 									resolve();
 									return;
 								}
+								logDebug("restart attach error", {
+									requestId,
+									message: error.message || "unknown",
+								});
 								if (isTerminalAttachCanceledMessage(error.message)) {
 									resolve();
 									return;
@@ -472,6 +502,11 @@ export function useTerminalLifecycle({
 			if (attachInFlightByPane.has(paneId)) return;
 
 			isStreamReadyRef.current = false;
+			const measured = syncRenderableTerminalSize(
+				"workspace reattach pre-measure",
+			);
+			const cols = measured?.nextCols ?? xterm.cols;
+			const rows = measured?.nextRows ?? xterm.rows;
 
 			const requestId = nextAttachRequestId();
 			cancelAttachRequest(activeAttachRequestId);
@@ -482,6 +517,11 @@ export function useTerminalLifecycle({
 				!isUnmounted && !attachCanceled && attachId === activeAttachId;
 
 			markAttachInFlight(paneId, attachId);
+			logDebug("workspace reattach start", {
+				requestId,
+				cols,
+				rows,
+			});
 
 			createOrAttachRef.current(
 				{
@@ -489,13 +529,20 @@ export function useTerminalLifecycle({
 					requestId,
 					tabId: tabIdRef.current,
 					workspaceId,
-					cols: xterm.cols,
-					rows: xterm.rows,
+					cols,
+					rows,
 				},
 				{
 					onSuccess: (result) => {
 						if (!isAttachActive()) return;
 						if (activeAttachRequestId !== requestId) return;
+						logDebug("workspace reattach success", {
+							requestId,
+							isNew: result.isNew,
+							hasSnapshot: Boolean(result.snapshot),
+							snapshotCols: result.snapshot?.cols ?? null,
+							snapshotRows: result.snapshot?.rows ?? null,
+						});
 						setConnectionError(null);
 						clearAttachInFlight(paneId, attachId);
 						pendingInitialStateRef.current = result;
@@ -504,6 +551,10 @@ export function useTerminalLifecycle({
 					onError: (error) => {
 						if (!isAttachActive()) return;
 						clearAttachInFlight(paneId, attachId);
+						logDebug("workspace reattach error", {
+							requestId,
+							message: error instanceof Error ? error.message : String(error),
+						});
 						console.error("[Terminal] workspace reattach error:", {
 							paneId,
 							error: error instanceof Error ? error.message : String(error),
@@ -632,6 +683,13 @@ export function useTerminalLifecycle({
 						clearAttachInFlight(paneId, attachId);
 						done();
 					};
+					logDebug("initial attach start", {
+						requestId,
+						cols: xterm.cols,
+						rows: xterm.rows,
+						initialCwd,
+						commandToRunAfterAttach: commandToRunAfterAttach ?? null,
+					});
 
 					createOrAttachRef.current(
 						{
@@ -650,6 +708,14 @@ export function useTerminalLifecycle({
 							onSuccess: (result) => {
 								if (!isAttachActive()) return;
 								if (activeAttachRequestId !== requestId) return;
+								logDebug("initial attach success", {
+									requestId,
+									isNew: result.isNew,
+									isColdRestore: Boolean(result.isColdRestore),
+									hasSnapshot: Boolean(result.snapshot),
+									snapshotCols: result.snapshot?.cols ?? null,
+									snapshotRows: result.snapshot?.rows ?? null,
+								});
 								setConnectionError(null);
 								clearPaneInitialDataRef.current(paneId);
 
@@ -691,6 +757,7 @@ export function useTerminalLifecycle({
 									const prevCols = xterm.cols;
 									const prevRows = xterm.rows;
 									fitAddon.fit();
+									xterm.refresh(0, Math.max(0, xterm.rows - 1));
 									if (xterm.cols !== prevCols || xterm.rows !== prevRows) {
 										resizeRef.current({
 											paneId,
@@ -729,6 +796,10 @@ export function useTerminalLifecycle({
 							onError: (error) => {
 								if (!isAttachActive()) return;
 								if (activeAttachRequestId !== requestId) return;
+								logDebug("initial attach error", {
+									requestId,
+									message: error.message || "unknown",
+								});
 								if (isTerminalAttachCanceledMessage(error.message)) {
 									return;
 								}
@@ -847,9 +918,21 @@ export function useTerminalLifecycle({
 			container,
 			xterm,
 			fitAddon,
-			(cols, rows) => {
+			(cols, rows, meta) => {
 				if (!isWorkspaceCurrentlyActive()) return;
+				logDebug("resizeRef.current", {
+					cols,
+					rows,
+					source: "resize-observer",
+					prevCols: meta.prevCols,
+					prevRows: meta.prevRows,
+					changed: meta.changed,
+				});
 				resizeRef.current({ paneId, cols, rows });
+			},
+			{
+				paneId,
+				shouldHandleResize: isWorkspaceCurrentlyActive,
 			},
 		);
 		const cleanupPaste = setupPasteHandler(xterm, {
@@ -883,6 +966,28 @@ export function useTerminalLifecycle({
 			return rect.width > 1 && rect.height > 1;
 		};
 
+		const syncRenderableTerminalSize = (reason: string) => {
+			if (!isCurrentTerminalRenderable()) return null;
+
+			const prevCols = xterm.cols;
+			const prevRows = xterm.rows;
+			fitAddon.fit();
+			xterm.refresh(0, Math.max(0, xterm.rows - 1));
+			logDebug(reason, {
+				prevCols,
+				prevRows,
+				nextCols: xterm.cols,
+				nextRows: xterm.rows,
+			});
+
+			return {
+				prevCols,
+				prevRows,
+				nextCols: xterm.cols,
+				nextRows: xterm.rows,
+			};
+		};
+
 		const runReattachRecovery = (forceResize: boolean) => {
 			if (!isCurrentTerminalRenderable()) return;
 
@@ -894,10 +999,33 @@ export function useTerminalLifecycle({
 			// Rebuild stale WebGL glyph cache after occlusion and force a paint pass.
 			rendererRef.current?.current.clearTextureAtlas?.();
 
-			fitAddon.fit();
-			xterm.refresh(0, Math.max(0, xterm.rows - 1));
+			const measured =
+				syncRenderableTerminalSize("runReattachRecovery") ?? {
+					prevCols,
+					prevRows,
+					nextCols: xterm.cols,
+					nextRows: xterm.rows,
+				};
+			logDebug("runReattachRecovery detail", {
+				forceResize,
+				prevCols: measured.prevCols,
+				prevRows: measured.prevRows,
+				nextCols: measured.nextCols,
+				nextRows: measured.nextRows,
+			});
 
-			if (forceResize || xterm.cols !== prevCols || xterm.rows !== prevRows) {
+			const didTerminalSizeChange =
+				xterm.cols !== prevCols || xterm.rows !== prevRows;
+			if (didTerminalSizeChange) {
+				// Keep the occlusion recovery paint path, but do not emit a second
+				// no-op resize. Those redundant PTY resizes were the main source of
+				// duplicate redraws during workspace reattach in the forked legacy flow.
+				logDebug("resizeRef.current", {
+					cols: xterm.cols,
+					rows: xterm.rows,
+					source: "reattach-recovery",
+					forceResize,
+				});
 				resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 			}
 
@@ -951,11 +1079,11 @@ export function useTerminalLifecycle({
 
 		const handleVisibilityChange = () => {
 			if (document.hidden || !isWorkspaceCurrentlyActive()) return;
-			scheduleReattachRecovery(isFocusedRef.current);
+			scheduleReattachRecovery(false);
 		};
 		const handleWindowFocus = () => {
 			if (!isWorkspaceCurrentlyActive()) return;
-			scheduleReattachRecovery(isFocusedRef.current);
+			scheduleReattachRecovery(false);
 		};
 
 		document.addEventListener("visibilitychange", handleVisibilityChange);
