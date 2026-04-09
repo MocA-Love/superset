@@ -129,6 +129,7 @@ export function MarkdownRenderer({
 						onChange={handleChange}
 						onSave={handleSave}
 						fillHeight
+						searchMode="overlay"
 					/>
 				)}
 			</div>

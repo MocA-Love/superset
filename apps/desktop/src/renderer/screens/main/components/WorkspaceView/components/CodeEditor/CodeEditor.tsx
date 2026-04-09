@@ -7,9 +7,19 @@ import {
 } from "@codemirror/commands";
 import { bracketMatching, indentOnInput } from "@codemirror/language";
 import {
+	closeSearchPanel,
+	getSearchQuery,
 	highlightSelectionMatches,
 	openSearchPanel,
+	findNext as runFindNext,
+	findPrevious as runFindPrevious,
+	replaceAll as runReplaceAll,
+	replaceNext as runReplaceNext,
+	selectMatches as runSelectMatches,
+	SearchQuery,
+	search,
 	searchKeymap,
+	setSearchQuery,
 } from "@codemirror/search";
 import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import {
@@ -24,12 +34,13 @@ import {
 	lineNumbers,
 } from "@codemirror/view";
 import { cn } from "@superset/ui/utils";
-import { type MutableRefObject, useEffect, useRef } from "react";
+import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
 import { getEditorTheme } from "shared/themes";
+import { CodeEditorSearchOverlay } from "./components/CodeEditorSearchOverlay";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
 import { createIndentRainbowPlugin } from "./createIndentRainbowPlugin";
@@ -47,6 +58,7 @@ interface CodeEditorProps {
 	readOnly?: boolean;
 	fillHeight?: boolean;
 	className?: string;
+	searchMode?: "native-panel" | "overlay";
 	editorRef?: MutableRefObject<CodeEditorAdapter | null>;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
@@ -65,6 +77,50 @@ const HIGHLIGHT_CLEAR_DELAY_MS = 1800;
 const HIGHLIGHT_RETRY_DELAY_MS = 80;
 const HIGHLIGHT_MAX_RETRIES = 8;
 const SCROLL_STABILIZE_DELAY_MS = 120;
+const SEARCH_MATCH_LIMIT = 10_000;
+
+function createHiddenSearchPanel() {
+	const dom = document.createElement("div");
+	dom.className = "cm-search cm-hidden-search-panel";
+
+	return {
+		dom,
+		mount() {
+			const panelContainer = dom.parentElement;
+			if (panelContainer instanceof HTMLElement) {
+				panelContainer.style.display = "none";
+			}
+		},
+	};
+}
+
+function getActiveSearchMatchIndex(
+	matches: Array<{ from: number; to: number }>,
+	selection: EditorSelection["main"],
+) {
+	if (matches.length === 0) {
+		return -1;
+	}
+
+	const exactMatchIndex = matches.findIndex(
+		(match) => match.from === selection.from && match.to === selection.to,
+	);
+	if (exactMatchIndex >= 0) {
+		return exactMatchIndex;
+	}
+
+	const containingMatchIndex = matches.findIndex(
+		(match) => selection.from >= match.from && selection.from <= match.to,
+	);
+	if (containingMatchIndex >= 0) {
+		return containingMatchIndex;
+	}
+
+	const nextMatchIndex = matches.findIndex(
+		(match) => match.from >= selection.from,
+	);
+	return nextMatchIndex >= 0 ? nextMatchIndex : 0;
+}
 
 function createDiagnosticsTheme(theme: ReturnType<typeof getEditorTheme>) {
 	return EditorView.theme({
@@ -133,6 +189,9 @@ function createCodeMirrorAdapter(
 		backgroundColor: string;
 		boxShadow: string;
 	},
+	searchControlsRef: MutableRefObject<{
+		openFind: () => void;
+	} | null>,
 ): CodeEditorAdapter {
 	let disposed = false;
 	let highlightResetTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -401,7 +460,7 @@ function createCodeMirrorAdapter(
 				});
 		},
 		openFind() {
-			openSearchPanel(view);
+			searchControlsRef.current?.openFind();
 		},
 		dispose() {
 			if (disposed) return;
@@ -428,6 +487,7 @@ export function CodeEditor({
 	readOnly = false,
 	fillHeight = true,
 	className,
+	searchMode = "native-panel",
 	editorRef,
 	onChange,
 	onSave,
@@ -435,6 +495,15 @@ export function CodeEditor({
 	diagnostics = [],
 	inlineCompletionRequest = null,
 }: CodeEditorProps) {
+	const [isSearchOpen, setIsSearchOpen] = useState(false);
+	const [searchQuery, setSearchQueryState] = useState("");
+	const [replaceQuery, setReplaceQueryState] = useState("");
+	const [isCaseSensitive, setIsCaseSensitiveState] = useState(false);
+	const [isRegexp, setIsRegexpState] = useState(false);
+	const [isWholeWord, setIsWholeWordState] = useState(false);
+	const [searchMatchCount, setSearchMatchCount] = useState(0);
+	const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
+	const isSearchOpenRef = useRef(false);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
 	const languageCompartment = useRef(new Compartment()).current;
@@ -444,8 +513,13 @@ export function CodeEditor({
 	const indentRainbowCompartment = useRef(new Compartment()).current;
 	const trailingSpacesCompartment = useRef(new Compartment()).current;
 	const diagnosticsCompartment = useRef(new Compartment()).current;
+	const searchModeRef = useRef(searchMode);
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
+	const searchControlsRef = useRef<{
+		openFind: () => void;
+	} | null>(null);
+	const syncSearchOverlayStateRef = useRef<(() => void) | null>(null);
 	const inlineCompletionRequestRef = useRef<InlineCompletionRequest | null>(
 		inlineCompletionRequest,
 	);
@@ -474,6 +548,127 @@ export function CodeEditor({
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
 	inlineCompletionRequestRef.current = inlineCompletionRequest;
+	searchModeRef.current = searchMode;
+	isSearchOpenRef.current = isSearchOpen;
+
+	const syncSearchOverlayState = () => {
+		const view = viewRef.current;
+		if (!view || searchModeRef.current !== "overlay") {
+			return;
+		}
+
+		const query = getSearchQuery(view.state);
+		const matches: Array<{ from: number; to: number }> = [];
+		if (query.valid) {
+			const cursor = query.getCursor(view.state);
+			let nextMatch = cursor.next();
+			while (!nextMatch.done) {
+				if (matches.length >= SEARCH_MATCH_LIMIT) {
+					break;
+				}
+				matches.push(nextMatch.value);
+				nextMatch = cursor.next();
+			}
+		}
+
+		setSearchQueryState(query.search);
+		setReplaceQueryState(query.replace);
+		setIsCaseSensitiveState(query.caseSensitive);
+		setIsRegexpState(query.regexp);
+		setIsWholeWordState(query.wholeWord);
+		setSearchMatchCount(matches.length);
+		setActiveSearchMatchIndex(
+			getActiveSearchMatchIndex(matches, view.state.selection.main),
+		);
+	};
+
+	syncSearchOverlayStateRef.current = syncSearchOverlayState;
+
+	const ensureOverlaySearchOpen = () => {
+		const view = viewRef.current;
+		if (!view) {
+			return;
+		}
+
+		if (searchModeRef.current === "overlay") {
+			openSearchPanel(view);
+			setIsSearchOpen(true);
+			syncSearchOverlayState();
+			return;
+		}
+
+		openSearchPanel(view);
+	};
+
+	const updateOverlaySearchQuery = (
+		overrides: Partial<{
+			search: string;
+			replace: string;
+			caseSensitive: boolean;
+			regexp: boolean;
+			wholeWord: boolean;
+		}>,
+	) => {
+		const view = viewRef.current;
+		if (!view) {
+			return;
+		}
+
+		openSearchPanel(view);
+		const currentQuery = getSearchQuery(view.state);
+		const nextQuery = new SearchQuery({
+			search: overrides.search ?? currentQuery.search,
+			replace: overrides.replace ?? currentQuery.replace,
+			caseSensitive: overrides.caseSensitive ?? currentQuery.caseSensitive,
+			regexp: overrides.regexp ?? currentQuery.regexp,
+			wholeWord: overrides.wholeWord ?? currentQuery.wholeWord,
+			literal: currentQuery.literal,
+		});
+		view.dispatch({
+			effects: setSearchQuery.of(nextQuery),
+		});
+		syncSearchOverlayState();
+	};
+
+	const handleOverlaySearchClose = () => {
+		const view = viewRef.current;
+		if (view) {
+			closeSearchPanel(view);
+		}
+		setIsSearchOpen(false);
+	};
+
+	const handleOverlayFindNext = () => {
+		const view = viewRef.current;
+		if (!view) {
+			return;
+		}
+
+		if (!getSearchQuery(view.state).search) {
+			ensureOverlaySearchOpen();
+			return;
+		}
+
+		runFindNext(view);
+	};
+
+	const handleOverlayFindPrevious = () => {
+		const view = viewRef.current;
+		if (!view) {
+			return;
+		}
+
+		if (!getSearchQuery(view.state).search) {
+			ensureOverlaySearchOpen();
+			return;
+		}
+
+		runFindPrevious(view);
+	};
+
+	searchControlsRef.current = {
+		openFind: ensureOverlaySearchOpen,
+	};
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: Editor instance is created once and reconfigured via dedicated effects below
 	useEffect(() => {
@@ -484,6 +679,25 @@ export function CodeEditor({
 			if (isExternalUpdateRef.current) return;
 			onChangeRef.current?.(update.state.doc.toString());
 		});
+
+		const overlaySearchUpdateListener = EditorView.updateListener.of(
+			(update) => {
+				if (
+					searchModeRef.current !== "overlay" ||
+					!(
+						update.docChanged ||
+						update.selectionSet ||
+						update.transactions.some((transaction) =>
+							transaction.effects.some((effect) => effect.is(setSearchQuery)),
+						)
+					)
+				) {
+					return;
+				}
+
+				syncSearchOverlayStateRef.current?.();
+			},
+		);
 
 		const saveKeymap = keymap.of([
 			{
@@ -509,6 +723,11 @@ export function CodeEditor({
 				bracketMatching(),
 				highlightActiveLine(),
 				highlightSelectionMatches(),
+				search(
+					searchMode === "overlay"
+						? { createPanel: createHiddenSearchPanel }
+						: undefined,
+				),
 				EditorView.lineWrapping,
 				editableCompartment.of([
 					EditorState.readOnly.of(readOnly),
@@ -519,6 +738,51 @@ export function CodeEditor({
 					spellcheck: "false",
 				}),
 				keymap.of([
+					...(searchMode === "overlay"
+						? [
+								{
+									key: "Mod-f",
+									run: () => {
+										ensureOverlaySearchOpen();
+										return true;
+									},
+								},
+								{
+									key: "F3",
+									run: () => {
+										handleOverlayFindNext();
+										return true;
+									},
+									shift: () => {
+										handleOverlayFindPrevious();
+										return true;
+									},
+									preventDefault: true,
+								},
+								{
+									key: "Mod-g",
+									run: () => {
+										handleOverlayFindNext();
+										return true;
+									},
+									shift: () => {
+										handleOverlayFindPrevious();
+										return true;
+									},
+									preventDefault: true,
+								},
+								{
+									key: "Escape",
+									run: () => {
+										if (!isSearchOpenRef.current) {
+											return false;
+										}
+										handleOverlaySearchClose();
+										return true;
+									},
+								},
+							]
+						: []),
 					indentWithTab,
 					...defaultKeymap,
 					...historyKeymap,
@@ -559,6 +823,7 @@ export function CodeEditor({
 					),
 				]),
 				updateListener,
+				overlaySearchUpdateListener,
 			],
 		});
 
@@ -566,10 +831,14 @@ export function CodeEditor({
 			state,
 			parent: containerRef.current,
 		});
-		const adapter = createCodeMirrorAdapter(view, {
-			backgroundColor: editorTheme.colors.search,
-			boxShadow: `inset 2px 0 0 ${editorTheme.colors.searchActive}`,
-		});
+		const adapter = createCodeMirrorAdapter(
+			view,
+			{
+				backgroundColor: editorTheme.colors.search,
+				boxShadow: `inset 2px 0 0 ${editorTheme.colors.searchActive}`,
+			},
+			searchControlsRef,
+		);
 
 		viewRef.current = view;
 		if (editorRef) {
@@ -715,7 +984,6 @@ export function CodeEditor({
 					: [],
 			),
 		});
-		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only track whether the request is available, not the callback reference itself, to avoid re-creating the plugin on every render
 	}, [inlineCompletionCompartment, hasInlineCompletionRequest]);
 
 	useEffect(() => {
@@ -750,14 +1018,97 @@ export function CodeEditor({
 		};
 	}, [language, languageCompartment]);
 
+	useEffect(() => {
+		if (searchMode !== "overlay") {
+			setIsSearchOpen(false);
+			return;
+		}
+
+		syncSearchOverlayStateRef.current?.();
+	}, [searchMode]);
+
 	return (
 		<div
-			ref={containerRef}
 			className={cn(
-				"min-w-0",
+				"relative min-w-0",
 				fillHeight ? "h-full w-full" : "w-full",
 				className,
 			)}
-		/>
+		>
+			<div
+				ref={containerRef}
+				className={cn(fillHeight ? "h-full w-full" : "w-full")}
+			/>
+			{searchMode === "overlay" ? (
+				<CodeEditorSearchOverlay
+					isOpen={isSearchOpen}
+					query={searchQuery}
+					replaceText={replaceQuery}
+					caseSensitive={isCaseSensitive}
+					regexp={isRegexp}
+					wholeWord={isWholeWord}
+					matchCount={searchMatchCount}
+					activeMatchIndex={activeSearchMatchIndex}
+					readOnly={readOnly}
+					onQueryChange={(nextQuery) => {
+						updateOverlaySearchQuery({ search: nextQuery });
+					}}
+					onReplaceTextChange={(nextReplaceText) => {
+						updateOverlaySearchQuery({ replace: nextReplaceText });
+					}}
+					onCaseSensitiveChange={(nextCaseSensitive) => {
+						updateOverlaySearchQuery({ caseSensitive: nextCaseSensitive });
+					}}
+					onRegexpChange={(nextRegexp) => {
+						updateOverlaySearchQuery({ regexp: nextRegexp });
+					}}
+					onWholeWordChange={(nextWholeWord) => {
+						updateOverlaySearchQuery({ wholeWord: nextWholeWord });
+					}}
+					onFindNext={handleOverlayFindNext}
+					onFindPrevious={handleOverlayFindPrevious}
+					onSelectAllMatches={() => {
+						const view = viewRef.current;
+						if (!view) {
+							return;
+						}
+
+						if (!getSearchQuery(view.state).search) {
+							ensureOverlaySearchOpen();
+							return;
+						}
+
+						runSelectMatches(view);
+					}}
+					onReplaceNext={() => {
+						const view = viewRef.current;
+						if (!view || readOnly) {
+							return;
+						}
+
+						if (!getSearchQuery(view.state).search) {
+							ensureOverlaySearchOpen();
+							return;
+						}
+
+						runReplaceNext(view);
+					}}
+					onReplaceAll={() => {
+						const view = viewRef.current;
+						if (!view || readOnly) {
+							return;
+						}
+
+						if (!getSearchQuery(view.state).search) {
+							ensureOverlaySearchOpen();
+							return;
+						}
+
+						runReplaceAll(view);
+					}}
+					onClose={handleOverlaySearchClose}
+				/>
+			) : null}
+		</div>
 	);
 }

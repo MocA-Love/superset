@@ -759,6 +759,7 @@ export function FileViewerContent({
 					onSave={onSaveFile}
 					editorRef={editorRef}
 					fillHeight
+					searchMode="overlay"
 					blameEntries={blameData?.entries}
 					diagnostics={fileDiagnostics}
 					inlineCompletionRequest={

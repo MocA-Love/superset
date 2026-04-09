@@ -53,6 +53,7 @@ export function CodeRenderer({
 					onChange={handleChange}
 					onSave={handleSave}
 					fillHeight
+					searchMode="overlay"
 				/>
 			</div>
 		</div>
