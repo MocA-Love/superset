@@ -49,7 +49,10 @@ import { isHtmlFile, isImageFile, isMarkdownFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import type { CodeEditorAdapter } from "../../../components";
 import { BasePaneWindow } from "../components";
-import { FileViewerContent } from "./components/FileViewerContent";
+import {
+	FileViewerContent,
+	type HtmlPreviewHandle,
+} from "./components/FileViewerContent";
 import { FileViewerToolbar } from "./components/FileViewerToolbar";
 import { ExternalChangeDialog } from "./ExternalChangeDialog";
 import { useDiffSearch } from "./hooks/useDiffSearch";
@@ -165,6 +168,7 @@ export function FileViewerPane({
 	const [isResolvingIntent, setIsResolvingIntent] = useState(false);
 
 	const [htmlZoomLevel, setHtmlZoomLevel] = useState(0);
+	const htmlPreviewRef = useRef<HtmlPreviewHandle | null>(null);
 
 	const filePath = fileViewer?.filePath ?? "";
 	const viewMode = fileViewer?.viewMode ?? "raw";
@@ -505,6 +509,7 @@ export function FileViewerPane({
 			}
 
 			invalidateCurrentFile();
+			htmlPreviewRef.current?.reload();
 		},
 		Boolean(workspaceId && worktreePath && absoluteFilePath),
 	);
@@ -755,6 +760,7 @@ export function FileViewerPane({
 							onPopOut={handlers.onPopOut}
 							htmlZoomLevel={htmlZoomLevel}
 							onHtmlZoomChange={setHtmlZoomLevel}
+							onHtmlRefresh={() => htmlPreviewRef.current?.reload()}
 						/>
 					</div>
 				)}
@@ -837,6 +843,7 @@ export function FileViewerPane({
 							markdownContainerRef={markdownContainerRef}
 							markdownSearch={markdownSearch}
 							htmlZoomLevel={htmlZoomLevel}
+							htmlPreviewRef={htmlPreviewRef}
 						/>
 					</div>
 				</div>
