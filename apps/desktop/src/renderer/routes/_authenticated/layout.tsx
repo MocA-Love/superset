@@ -50,8 +50,7 @@ function AuthenticatedLayout() {
 		isRefetching,
 		refetch,
 	} = authClient.useSession();
-	const hasLocalToken =
-		!!getAuthToken() || !!window.App?.tearoffAuthToken?.token;
+	const hasLocalToken = !!getAuthToken();
 	const isOnline = useOnlineStatus();
 	const navigate = useNavigate();
 	const location = useLocation();
