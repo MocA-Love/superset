@@ -16,6 +16,11 @@ interface TearoffTabData {
 	workspaceId: string;
 }
 
+interface PendingAuthToken {
+	token: string;
+	expiresAt: string;
+}
+
 type IpcHandler = {
 	attachWindow: (window: BrowserWindow) => void;
 	detachWindow: (window: BrowserWindow) => void;
@@ -26,6 +31,7 @@ export class WindowManager {
 	private ipcHandler: IpcHandler | null = null;
 	private ipcRegistered = false;
 	private pendingTearoffData = new Map<string, TearoffTabData>();
+	private pendingAuthTokens = new Map<string, PendingAuthToken | null>();
 
 	setIpcHandler(handler: IpcHandler): void {
 		this.ipcHandler = handler;
@@ -41,6 +47,13 @@ export class WindowManager {
 			const data = this.pendingTearoffData.get(windowId);
 			if (data) this.pendingTearoffData.delete(windowId);
 			event.returnValue = data ?? null;
+		});
+
+		// Synchronous IPC: preload fetches auth token for tearoff windows
+		ipcMain.on("get-tearoff-auth-token", (event, windowId: string) => {
+			const token = this.pendingAuthTokens.get(windowId);
+			if (token !== undefined) this.pendingAuthTokens.delete(windowId);
+			event.returnValue = token ?? null;
 		});
 
 		// Tearoff window closing: return all tabs to main window (single message)
@@ -66,6 +79,14 @@ export class WindowManager {
 	setPendingTearoffData(windowId: string, data: TearoffTabData): void {
 		this.pendingTearoffData.set(windowId, data);
 		setTimeout(() => this.pendingTearoffData.delete(windowId), 30_000);
+	}
+
+	setPendingAuthToken(
+		windowId: string,
+		token: PendingAuthToken | null,
+	): void {
+		this.pendingAuthTokens.set(windowId, token);
+		setTimeout(() => this.pendingAuthTokens.delete(windowId), 30_000);
 	}
 
 	register(windowId: string, window: BrowserWindow): void {

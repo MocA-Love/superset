@@ -1,6 +1,7 @@
 import type { WindowManager } from "main/lib/window-manager";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
+import { loadToken } from "./auth/utils/auth-functions";
 
 export const createTabTearoffRouter = (wm: WindowManager) => {
 	return router({
@@ -14,7 +15,7 @@ export const createTabTearoffRouter = (wm: WindowManager) => {
 					screenY: z.number(),
 				}),
 			)
-			.mutation(({ input }) => {
+			.mutation(async ({ input }) => {
 				const windowId = `tearoff-${Date.now()}`;
 
 				// Store data FIRST so it's available when preload requests it
@@ -23,6 +24,13 @@ export const createTabTearoffRouter = (wm: WindowManager) => {
 					panes: input.panes,
 					workspaceId: input.workspaceId,
 				});
+
+				// Pre-load auth token so tearoff window can skip async auth hydration
+				const { token, expiresAt } = await loadToken();
+				wm.setPendingAuthToken(
+					windowId,
+					token && expiresAt ? { token, expiresAt } : null,
+				);
 
 				wm.createTearoffWindow({
 					windowId,
