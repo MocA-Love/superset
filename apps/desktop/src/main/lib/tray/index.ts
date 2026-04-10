@@ -8,11 +8,12 @@ import {
 	Tray,
 } from "electron";
 import { focusMainWindow, requestQuit } from "main/index";
+// FORK NOTE: upstream renamed host-service-manager → host-service-coordinator (#3250)
 import {
-	getHostServiceManager,
+	getHostServiceCoordinator as getHostServiceManager,
 	type HostServiceStatus,
 	type HostServiceStatusEvent,
-} from "main/lib/host-service-manager";
+} from "main/lib/host-service-coordinator";
 import { menuEmitter } from "main/lib/menu-events";
 
 const POLL_INTERVAL_MS = 5000;

@@ -34,7 +34,9 @@ import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
 import { createExtensionIconProtocolHandler } from "./lib/extensions/extension-icon-protocol";
 import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
-import { getHostServiceManager } from "./lib/host-service-manager";
+// FORK NOTE: upstream renamed host-service-manager → host-service-coordinator (#3250 relay)
+// Aliased as getHostServiceManager to minimize diff with fork's quit lifecycle code
+import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-service-coordinator";
 import { closeLocalDb, localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";

@@ -18,7 +18,7 @@ import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
 import { createGitHubMetricsRouter } from "./github-metrics";
-import { createHostServiceManagerRouter } from "./host-service-manager";
+import { createHostServiceCoordinatorRouter } from "./host-service-coordinator";
 import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
 import { createModelProvidersRouter } from "./model-providers";
@@ -71,7 +71,7 @@ export const createAppRouter = (
 		docker: createDockerRouter(),
 		uiState: createUiStateRouter(),
 		ringtone: createRingtoneRouter(getWindow),
-		hostServiceManager: createHostServiceManagerRouter(),
+		hostServiceCoordinator: createHostServiceCoordinatorRouter(),
 		tabTearoff: createTabTearoffRouter(wm),
 		extensions: createExtensionsRouter(getWindow),
 		vscodeExtensions: createVscodeExtensionsRouter(),

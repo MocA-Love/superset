@@ -37,7 +37,7 @@ import { AgentHooks } from "./components/AgentHooks";
 import { GlobalTerminalLifecycle } from "./components/GlobalTerminalLifecycle";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
-import { HostServiceProvider } from "./providers/HostServiceProvider";
+import { LocalHostServiceProvider } from "./providers/LocalHostServiceProvider";
 
 export const Route = createFileRoute("/_authenticated")({
 	component: AuthenticatedLayout,
@@ -206,7 +206,7 @@ function AuthenticatedLayout() {
 		<DndProvider manager={dragDropManager}>
 			<CollectionsProvider>
 				<GlobalTerminalLifecycle />
-				<HostServiceProvider>
+				<LocalHostServiceProvider>
 					<LanguageServicesProvider />
 					<AgentHooks />
 					<Outlet />
@@ -219,7 +219,7 @@ function AuthenticatedLayout() {
 					<InitGitDialog />
 					<TeardownLogsDialog />
 					<Paywall />
-				</HostServiceProvider>
+				</LocalHostServiceProvider>
 			</CollectionsProvider>
 		</DndProvider>
 	);
