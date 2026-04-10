@@ -1,9 +1,7 @@
-import {
-	useFileTree,
-	useWorkspaceFsEventBridge,
-	useWorkspaceFsEvents,
-	workspaceTrpc,
-} from "@superset/workspace-client";
+import { workspaceTrpc } from "@superset/workspace-client";
+// FORK NOTE: hooks moved from @superset/workspace-client to local paths (upstream #3224)
+import { useFileTree } from "renderer/hooks/host-service/useFileTree";
+import { useWorkspaceEvent } from "renderer/hooks/host-service/useWorkspaceEvent";
 import { useCallback, useMemo, useState } from "react";
 import {
 	ROW_HEIGHT,
@@ -34,10 +32,8 @@ export function FilesPane({
 	});
 	const rootPath = workspaceQuery.data?.worktreePath ?? "";
 
-	useWorkspaceFsEventBridge(
-		workspaceId,
-		Boolean(workspaceId && workspaceQuery.data?.worktreePath),
-	);
+	// FORK NOTE: useWorkspaceFsEventBridge removed — event bus now managed
+	// by WorkspaceClientProvider (upstream #3224)
 
 	const fileTree = useFileTree({
 		workspaceId,
@@ -52,16 +48,16 @@ export function FilesPane({
 		workspaceId,
 	});
 
-	useWorkspaceFsEvents(
+	// FORK NOTE: useWorkspaceFsEvents → useWorkspaceEvent (upstream #3224)
+	useWorkspaceEvent(
+		"fs:events",
 		workspaceId,
 		() => {
 			if (searchTerm.trim().length === 0) {
 				return;
 			}
-
 			void utils.filesystem.searchFiles.invalidate();
 		},
-		Boolean(workspaceId && searchTerm.trim().length > 0),
 	);
 
 	const flattenedTreeEntries = useMemo(() => {

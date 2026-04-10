@@ -686,7 +686,13 @@ export function WorkspacePage({
 		if (workspaceId) {
 			setRightSidebarTab(workspaceId, RightSidebarTab.Search);
 		}
-	}, [isSidebarOpen, workspaceId, setRightSidebarTab, setSidebarMode, setSidebarOpen]);
+	}, [
+		isSidebarOpen,
+		workspaceId,
+		setRightSidebarTab,
+		setSidebarMode,
+		setSidebarOpen,
+	]);
 	useHotkey("SEARCH_IN_FILES", handleSearchInFiles, { enabled: isActive });
 
 	// Toggle changes sidebar (⌘L)

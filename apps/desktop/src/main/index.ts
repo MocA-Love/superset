@@ -600,7 +600,7 @@ if (!gotTheLock) {
 
 		// Discover and adopt host-services that survived a previous quit
 		// before the tray initializes, so it shows accurate status immediately.
-		await getHostServiceManager().discoverAndAdoptAll();
+		await getHostServiceManager().discoverAll();
 
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();

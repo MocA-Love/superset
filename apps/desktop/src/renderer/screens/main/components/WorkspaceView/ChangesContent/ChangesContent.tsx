@@ -12,9 +12,8 @@ export function ChangesContent() {
 	const isChangesSidebarVisible = useSidebarStore(
 		(s) =>
 			s.isSidebarOpen &&
-			(workspaceId
-				? s.rightSidebarTabByWorkspace[workspaceId]
-				: undefined) === RightSidebarTab.Changes,
+			(workspaceId ? s.rightSidebarTabByWorkspace[workspaceId] : undefined) ===
+				RightSidebarTab.Changes,
 	);
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },

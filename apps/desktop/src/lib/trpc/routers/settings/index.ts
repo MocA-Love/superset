@@ -617,6 +617,8 @@ export const createSettingsRouter = () => {
 					.run();
 
 				return { success: true };
+			}),
+
 		getExposeHostServiceViaRelay: publicProcedure.query(() => {
 			const row = getSettings();
 			return (

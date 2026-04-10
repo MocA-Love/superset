@@ -1,4 +1,4 @@
-import { useFileDocument } from "@superset/workspace-client";
+import { useFileDocument } from "renderer/hooks/host-service/useFileDocument";
 import { SpreadsheetViewer } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/FileViewerPane/components/SpreadsheetViewer";
 import { isSpreadsheetFile } from "shared/file-types";
 
