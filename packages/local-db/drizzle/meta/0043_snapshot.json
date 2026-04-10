@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7c9e72d5-9be6-4be5-b6f1-4a32591d30cb",
-  "prevId": "f5a46ce1-7feb-41e5-ac95-e413720a1534",
+  "id": "5a8d1776-f90b-4bf8-b6a0-c6142deecfc2",
+  "prevId": "1cf43ce9-9e0f-44c4-b4cf-5cafe80bf78d",
   "tables": {
     "browser_history": {
       "name": "browser_history",
@@ -530,13 +530,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "prevent_agent_sleep": {
-          "name": "prevent_agent_sleep",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "delete_local_branch": {
           "name": "delete_local_branch",
           "type": "integer",
@@ -617,6 +610,13 @@
         "default_editor": {
           "name": "default_editor",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expose_host_service_via_relay": {
+          "name": "expose_host_service_via_relay",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
