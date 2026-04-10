@@ -198,6 +198,7 @@ export function FileViewerToolbar({
 							<button
 								type="button"
 								onClick={onHtmlRefresh}
+								aria-label="Refresh Preview"
 								className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
 							>
 								<LuRefreshCw className="size-3.5" />
