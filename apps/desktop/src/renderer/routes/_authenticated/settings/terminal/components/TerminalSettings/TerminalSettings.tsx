@@ -1,3 +1,5 @@
+import { FEATURE_FLAGS } from "@superset/shared/constants";
+import { useFeatureFlagEnabled } from "posthog-js/react";
 import type { ReactNode } from "react";
 import {
 	isItemVisible,
@@ -8,6 +10,7 @@ import { LinkBehaviorSetting } from "./components/LinkBehaviorSetting";
 import { PresetsSection } from "./components/PresetsSection";
 import { SessionsSection } from "./components/SessionsSection";
 import { SuggestionsSetting } from "./components/SuggestionsSetting";
+import { V2PresetsSection } from "./components/V2PresetsSection";
 
 interface TerminalSettingsProps {
 	visibleItems?: SettingItemId[] | null;
@@ -45,6 +48,8 @@ export function TerminalSettings({
 	pendingCreateProjectId,
 	onPendingCreateProjectIdChange,
 }: TerminalSettingsProps) {
+	const isV2CloudEnabled =
+		useFeatureFlagEnabled(FEATURE_FLAGS.V2_CLOUD) ?? false;
 	const showPresets = isItemVisible(
 		SETTING_ITEM_ID.TERMINAL_PRESETS,
 		visibleItems,
@@ -88,6 +93,28 @@ export function TerminalSettings({
 					/>
 				)}
 				{showSuggestions && <SuggestionsSetting key="suggestions" />}
+				{(showPresets || showQuickAdd) &&
+					(isV2CloudEnabled ? (
+						<V2PresetsSection
+							key="presets"
+							showPresets={showPresets}
+							showQuickAdd={showQuickAdd}
+							editingPresetId={editingPresetId}
+							onEditingPresetIdChange={onEditingPresetIdChange}
+							pendingCreateProjectId={pendingCreateProjectId}
+							onPendingCreateProjectIdChange={onPendingCreateProjectIdChange}
+						/>
+					) : (
+						<PresetsSection
+							key="presets"
+							showPresets={showPresets}
+							showQuickAdd={showQuickAdd}
+							editingPresetId={editingPresetId}
+							onEditingPresetIdChange={onEditingPresetIdChange}
+							pendingCreateProjectId={pendingCreateProjectId}
+							onPendingCreateProjectIdChange={onPendingCreateProjectIdChange}
+						/>
+					))}
 				{showLinkBehavior && <LinkBehaviorSetting key="link-behavior" />}
 				{showSessions && <SessionsSection key="sessions" />}
 			</SectionList>
