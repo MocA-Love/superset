@@ -120,6 +120,11 @@ const paneSchema = z.object({
 			sessionId: z.string().optional(),
 		})
 		.optional(),
+	gitGraph: z
+		.object({
+			worktreePath: z.string(),
+		})
+		.optional(),
 	workspaceRun: z
 		.object({
 			workspaceId: z.string(),
