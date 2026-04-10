@@ -25,12 +25,19 @@ const tearoffData: any = tearoffWindowId
 	? ipcRenderer.sendSync("get-tearoff-data", tearoffWindowId)
 	: null;
 
+// Synchronously fetch auth token for tearoff windows (skips async hydration)
+const tearoffAuthToken: { token: string; expiresAt: string } | null =
+	tearoffWindowId
+		? ipcRenderer.sendSync("get-tearoff-auth-token", tearoffWindowId)
+		: null;
+
 const API = {
 	sayHelloFromBridge: () => console.log("\nHello from bridgeAPI! 👋\n\n"),
 	username: process.env.USER,
 	appVersion: __APP_VERSION__,
 	tearoffWindowId,
 	tearoffData,
+	tearoffAuthToken,
 };
 
 // Store mapping of user listeners to wrapped listeners for proper cleanup
