@@ -1,1 +1,1 @@
-export { FileViewerContent } from "./FileViewerContent";
+export { FileViewerContent, type HtmlPreviewHandle } from "./FileViewerContent";

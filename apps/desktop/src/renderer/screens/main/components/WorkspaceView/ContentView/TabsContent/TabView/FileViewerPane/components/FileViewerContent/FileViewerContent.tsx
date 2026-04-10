@@ -36,17 +36,24 @@ import {
 	mapDiffLocationToRawPosition,
 } from "./utils/diff-location";
 
+export interface HtmlPreviewHandle {
+	reload: () => void;
+}
+
 function HtmlPreviewWebview({
 	absolutePath,
 	zoomLevel,
+	handleRef,
 }: {
 	absolutePath: string;
 	zoomLevel: number;
+	handleRef?: MutableRefObject<HtmlPreviewHandle | null>;
 }) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const webviewRef = useRef<Electron.WebviewTag | null>(null);
 	const zoomLevelRef = useRef(zoomLevel);
 	zoomLevelRef.current = zoomLevel;
+	const pendingReloadRef = useRef(false);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -66,14 +73,34 @@ function HtmlPreviewWebview({
 			e.preventDefault();
 		});
 
+		if (handleRef) {
+			handleRef.current = {
+				reload: () => {
+					if (webviewRef.current) {
+						webviewRef.current.reload();
+					} else {
+						pendingReloadRef.current = true;
+					}
+				},
+			};
+		}
+
 		webview.addEventListener("dom-ready", () => {
 			webviewRef.current = webview;
 			webview.setZoomLevel(zoomLevelRef.current);
+			if (pendingReloadRef.current) {
+				pendingReloadRef.current = false;
+				webview.reload();
+			}
 		});
 
 		container.appendChild(webview);
 
 		return () => {
+			if (handleRef) {
+				handleRef.current = null;
+			}
+			pendingReloadRef.current = false;
 			webviewRef.current = null;
 			try {
 				if (webview.isConnected) {
@@ -84,7 +111,7 @@ function HtmlPreviewWebview({
 				// already removed
 			}
 		};
-	}, [absolutePath]);
+	}, [absolutePath, handleRef]);
 
 	useEffect(() => {
 		if (webviewRef.current) {
@@ -204,6 +231,7 @@ interface FileViewerContentProps {
 	markdownContainerRef: RefObject<HTMLDivElement | null>;
 	markdownSearch: TextSearchState;
 	htmlZoomLevel?: number;
+	htmlPreviewRef?: MutableRefObject<HtmlPreviewHandle | null>;
 }
 
 export function FileViewerContent({
@@ -245,6 +273,7 @@ export function FileViewerContent({
 	markdownContainerRef,
 	markdownSearch,
 	htmlZoomLevel = 0,
+	htmlPreviewRef,
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 	const isHtml = isHtmlFile(filePath);
@@ -617,6 +646,7 @@ export function FileViewerContent({
 				key={filePath}
 				absolutePath={absoluteFilePath}
 				zoomLevel={htmlZoomLevel}
+				handleRef={htmlPreviewRef}
 			/>
 		);
 	}

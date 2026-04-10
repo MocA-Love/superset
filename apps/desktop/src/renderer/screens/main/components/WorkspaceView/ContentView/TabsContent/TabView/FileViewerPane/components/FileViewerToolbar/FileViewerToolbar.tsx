@@ -2,7 +2,7 @@ import { ToggleGroup, ToggleGroupItem } from "@superset/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { useCallback, useMemo } from "react";
-import { LuMinus, LuPlus } from "react-icons/lu";
+import { LuMinus, LuPlus, LuRefreshCw } from "react-icons/lu";
 import {
 	TbFold,
 	TbLayoutSidebarRightFilled,
@@ -40,6 +40,7 @@ interface FileViewerToolbarProps {
 	onPopOut?: (e: React.MouseEvent) => void;
 	htmlZoomLevel?: number;
 	onHtmlZoomChange?: (level: number) => void;
+	onHtmlRefresh?: () => void;
 }
 
 export function FileViewerToolbar({
@@ -62,6 +63,7 @@ export function FileViewerToolbar({
 	onPopOut,
 	htmlZoomLevel = 0,
 	onHtmlZoomChange,
+	onHtmlRefresh,
 }: FileViewerToolbarProps) {
 	const { copyToClipboard, copied } = useCopyToClipboard(1500);
 
@@ -189,6 +191,23 @@ export function FileViewerToolbar({
 							</TooltipContent>
 						</Tooltip>
 					</>
+				)}
+				{showHtmlZoom && onHtmlRefresh && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								onClick={onHtmlRefresh}
+								aria-label="Refresh Preview"
+								className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+							>
+								<LuRefreshCw className="size-3.5" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom" showArrow={false}>
+							Refresh Preview
+						</TooltipContent>
+					</Tooltip>
 				)}
 				{showHtmlZoom && (
 					<div className="flex items-center gap-0.5">
