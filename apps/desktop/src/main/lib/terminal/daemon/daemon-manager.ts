@@ -355,14 +355,14 @@ export class DaemonTerminalManager extends EventEmitter {
 			{ ...params, requestId },
 			abortController.signal,
 		);
-			const entry: PendingCreateOrAttach = {
-				requestId,
-				joinPending,
-				cols: params.cols,
-				rows: params.rows,
-				abortController,
-				promise,
-			};
+		const entry: PendingCreateOrAttach = {
+			requestId,
+			joinPending,
+			cols: params.cols,
+			rows: params.rows,
+			abortController,
+			promise,
+		};
 		this.pendingSessions.set(paneId, entry);
 
 		try {

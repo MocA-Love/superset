@@ -240,6 +240,9 @@ export const settings = sqliteTable("settings", {
 		mode: "boolean",
 	}),
 	trailingSpacesColor: text("trailing_spaces_color"),
+	exposeHostServiceViaRelay: integer("expose_host_service_via_relay", {
+		mode: "boolean",
+	}),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;

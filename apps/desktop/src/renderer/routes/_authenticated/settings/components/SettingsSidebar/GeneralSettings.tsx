@@ -3,12 +3,12 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
 	HiOutlineBell,
 	HiOutlineBuildingOffice2,
-	HiOutlineChartBar,
 	HiOutlineCommandLine,
 	HiOutlineCpuChip,
 	HiOutlineCreditCard,
 	HiOutlineExclamationCircle,
 	HiOutlineKey,
+	HiOutlineLockClosed,
 	HiOutlinePaintBrush,
 	HiOutlinePuzzlePiece,
 	HiOutlineShieldCheck,
@@ -42,6 +42,7 @@ type SettingsRoute =
 	| "/settings/billing"
 	| "/settings/api-keys"
 	| "/settings/metrics"
+	| "/settings/security"
 	| "/settings/permissions";
 
 interface SectionItem {
@@ -173,10 +174,10 @@ const SECTION_GROUPS: SectionGroup[] = [
 		label: "System",
 		items: [
 			{
-				id: "/settings/metrics",
-				section: "metrics",
-				label: "Metrics",
-				icon: <HiOutlineChartBar className="h-4 w-4" />,
+				id: "/settings/security",
+				section: "security",
+				label: "Security",
+				icon: <HiOutlineLockClosed className="h-4 w-4" />,
 			},
 			{
 				id: "/settings/permissions",

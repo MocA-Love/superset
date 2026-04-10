@@ -4,10 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { env } from "renderer/env.renderer";
 import { authClient } from "renderer/lib/auth-client";
-import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
-import { useHostService } from "renderer/routes/_authenticated/providers/HostServiceProvider";
+import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { usePendingWorkspace } from "renderer/stores/new-workspace-modal";
 import { MOCK_ORG_ID } from "shared/constants";
 import type {
@@ -23,17 +23,15 @@ const PENDING_WORKSPACE_TAB_ORDER = Number.MAX_SAFE_INTEGER;
 export function useDashboardSidebarData() {
 	const { data: session } = authClient.useSession();
 	const collections = useCollections();
-	const { services } = useHostService();
+	const { machineId, activeHostUrl } = useLocalHostService();
 	const { toggleProjectCollapsed } = useDashboardSidebarState();
-	const { data: deviceInfo } = electronTrpc.auth.getDeviceInfo.useQuery();
 	const pendingWorkspace = usePendingWorkspace();
 	const activeOrganizationId = env.SKIP_ENV_VALIDATION
 		? MOCK_ORG_ID
 		: (session?.session?.activeOrganizationId ?? null);
-	const activeHostService =
-		activeOrganizationId !== null
-			? (services.get(activeOrganizationId) ?? null)
-			: null;
+	const activeHostClient = activeHostUrl
+		? getHostServiceClientByUrl(activeHostUrl)
+		: null;
 
 	const { data: rawSidebarProjects = [] } = useLiveQuery(
 		(q) =>
@@ -99,20 +97,18 @@ export function useDashboardSidebarData() {
 					({ sidebarWorkspaces, workspaces }) =>
 						eq(sidebarWorkspaces.workspaceId, workspaces.id),
 				)
-				.leftJoin(
-					{ devices: collections.v2Devices },
-					({ workspaces, devices }) => eq(workspaces.deviceId, devices.id),
+				.leftJoin({ hosts: collections.v2Hosts }, ({ workspaces, hosts }) =>
+					eq(workspaces.hostId, hosts.id),
 				)
 				.orderBy(
 					({ sidebarWorkspaces }) => sidebarWorkspaces.sidebarState.tabOrder,
 					"asc",
 				)
-				.select(({ sidebarWorkspaces, workspaces, devices }) => ({
+				.select(({ sidebarWorkspaces, workspaces, hosts }) => ({
 					id: workspaces.id,
 					projectId: sidebarWorkspaces.sidebarState.projectId,
-					deviceId: workspaces.deviceId,
-					deviceType: devices?.type ?? null,
-					deviceClientId: devices?.clientId ?? null,
+					hostId: workspaces.hostId,
+					hostMachineId: hosts?.machineId ?? null,
 					name: workspaces.name,
 					branch: workspaces.branch,
 					createdAt: workspaces.createdAt,
@@ -128,12 +124,12 @@ export function useDashboardSidebarData() {
 			sidebarWorkspaces
 				.filter(
 					(workspace) =>
-						workspace.deviceType !== "cloud" &&
-						workspace.deviceClientId === deviceInfo?.deviceId,
+						workspace.hostMachineId != null &&
+						workspace.hostMachineId === machineId,
 				)
 				.map((workspace) => workspace.id)
 				.sort(),
-		[deviceInfo?.deviceId, sidebarWorkspaces],
+		[machineId, sidebarWorkspaces],
 	);
 
 	const { data: pullRequestData, refetch: refetchPullRequests } = useQuery({
@@ -143,28 +139,26 @@ export function useDashboardSidebarData() {
 			activeOrganizationId,
 			localWorkspaceIds,
 		],
-		enabled: activeHostService !== null && localWorkspaceIds.length > 0,
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-		refetchOnWindowFocus: false,
+		enabled: activeHostClient !== null && localWorkspaceIds.length > 0,
+		refetchInterval: 10_000,
 		queryFn: () =>
-			activeHostService?.client.pullRequests.getByWorkspaces.query({
+			activeHostClient?.pullRequests.getByWorkspaces.query({
 				workspaceIds: localWorkspaceIds,
 			}) ?? Promise.resolve({ workspaces: [] }),
 	});
 
 	const refreshWorkspacePullRequest = useCallback(
 		async (workspaceId: string) => {
-			if (!activeHostService || !localWorkspaceIds.includes(workspaceId)) {
+			if (!activeHostClient || !localWorkspaceIds.includes(workspaceId)) {
 				return;
 			}
 
-			await activeHostService.client.pullRequests.refreshByWorkspaces.mutate({
+			await activeHostClient.pullRequests.refreshByWorkspaces.mutate({
 				workspaceIds: [workspaceId],
 			});
 			await refetchPullRequests();
 		},
-		[activeHostService, localWorkspaceIds, refetchPullRequests],
+		[activeHostClient, localWorkspaceIds, refetchPullRequests],
 	);
 
 	const localPullRequestsByWorkspaceId = useMemo(
@@ -223,16 +217,16 @@ export function useDashboardSidebarData() {
 			if (!project) continue;
 
 			const hostType: DashboardSidebarWorkspace["hostType"] =
-				workspace.deviceType === "cloud"
+				workspace.hostMachineId == null
 					? "cloud"
-					: workspace.deviceClientId === deviceInfo?.deviceId
+					: workspace.hostMachineId === machineId
 						? "local-device"
 						: "remote-device";
 
 			const sidebarWorkspace: DashboardSidebarWorkspace = {
 				id: workspace.id,
 				projectId: workspace.projectId,
-				deviceId: workspace.deviceId,
+				hostId: workspace.hostId,
 				hostType,
 				accentColor: null,
 				name: workspace.name,
@@ -275,7 +269,7 @@ export function useDashboardSidebarData() {
 		}
 
 		// Inject pending workspace if it exists
-		if (pendingWorkspace && deviceInfo?.deviceId) {
+		if (pendingWorkspace && machineId) {
 			const project = projectsById.get(pendingWorkspace.projectId);
 			if (!project) {
 				// Log warning if pending workspace references non-existent project
@@ -286,7 +280,7 @@ export function useDashboardSidebarData() {
 				const pendingItem: DashboardSidebarWorkspace = {
 					id: pendingWorkspace.id,
 					projectId: pendingWorkspace.projectId,
-					deviceId: deviceInfo.deviceId,
+					hostId: "",
 					hostType: "local-device",
 					accentColor: null,
 					name: pendingWorkspace.name,
@@ -329,7 +323,7 @@ export function useDashboardSidebarData() {
 			return [sidebarProject];
 		});
 	}, [
-		deviceInfo?.deviceId,
+		machineId,
 		localPullRequestsByWorkspaceId,
 		pendingWorkspace,
 		sidebarProjects,

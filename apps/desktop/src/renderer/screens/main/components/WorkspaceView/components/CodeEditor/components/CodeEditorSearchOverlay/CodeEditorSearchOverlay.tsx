@@ -95,7 +95,10 @@ export function CodeEditorSearchOverlay({
 			const onMouseMove = (e: MouseEvent) => {
 				if (dragStartX.current === null) return;
 				const delta = dragStartX.current - e.clientX;
-				const newWidth = Math.max(MIN_WIDTH, Math.min(800, dragStartWidth.current + delta));
+				const newWidth = Math.max(
+					MIN_WIDTH,
+					Math.min(800, dragStartWidth.current + delta),
+				);
 				setWidth(newWidth);
 			};
 
@@ -175,116 +178,116 @@ export function CodeEditorSearchOverlay({
 				title="Drag to resize"
 			/>
 			<div className="px-2 py-1.5">
-			{/* Search row */}
-			<div className="flex items-center gap-1">
-				{/* Input + option toggles */}
-				<div className="flex flex-1 items-center gap-0.5 rounded border border-border bg-background/80 px-1.5 py-0.5 focus-within:ring-1 focus-within:ring-blue-500/50">
-					<input
-						ref={searchInputRef}
-						type="text"
-						value={query}
-						onChange={(event) => onQueryChange(event.target.value)}
-						onKeyDown={handleSearchInputKeyDown}
-						placeholder="Find"
-						className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-					/>
-					<div className="flex items-center gap-0.5 pl-1">
-						<OptionToggle
-							active={caseSensitive}
-							onClick={() => onCaseSensitiveChange(!caseSensitive)}
-							title="Match Case (Alt+C)"
-						>
-							Aa
-						</OptionToggle>
-						<OptionToggle
-							active={wholeWord}
-							onClick={() => onWholeWordChange(!wholeWord)}
-							title="Match Whole Word (Alt+W)"
-						>
-							ab|
-						</OptionToggle>
-						<OptionToggle
-							active={regexp}
-							onClick={() => onRegexpChange(!regexp)}
-							title="Use Regular Expression (Alt+R)"
-						>
-							.*
-						</OptionToggle>
-					</div>
-				</div>
-
-				{/* Match count */}
-				{query ? (
-					<span className="shrink-0 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-						{activeMatchLabel}
-					</span>
-				) : null}
-
-				{/* Navigation buttons */}
-				<button
-					type="button"
-					onClick={onFindPrevious}
-					title="Previous Match (Shift+Enter)"
-					className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-				>
-					<HiChevronUp className="size-3.5" />
-				</button>
-				<button
-					type="button"
-					onClick={onFindNext}
-					title="Next Match (Enter)"
-					className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-				>
-					<HiChevronDown className="size-3.5" />
-				</button>
-				<button
-					type="button"
-					onClick={onSelectAllMatches}
-					title="Select All Matches"
-					className="h-6 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-				>
-					All
-				</button>
-				<button
-					type="button"
-					onClick={onClose}
-					title="Close (Escape)"
-					className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					aria-label="Close search"
-				>
-					<HiMiniXMark className="size-4" />
-				</button>
-			</div>
-
-			{/* Replace row */}
-			{readOnly ? null : (
-				<div className="mt-1 flex items-center gap-1">
-					<div className="flex flex-1 items-center rounded border border-border bg-background/80 px-1.5 py-0.5 focus-within:ring-1 focus-within:ring-blue-500/50">
+				{/* Search row */}
+				<div className="flex items-center gap-1">
+					{/* Input + option toggles */}
+					<div className="flex flex-1 items-center gap-0.5 rounded border border-border bg-background/80 px-1.5 py-0.5 focus-within:ring-1 focus-within:ring-blue-500/50">
 						<input
+							ref={searchInputRef}
 							type="text"
-							value={replaceText}
-							onChange={(event) => onReplaceTextChange(event.target.value)}
-							onKeyDown={handleReplaceInputKeyDown}
-							placeholder="Replace"
+							value={query}
+							onChange={(event) => onQueryChange(event.target.value)}
+							onKeyDown={handleSearchInputKeyDown}
+							placeholder="Find"
 							className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
 						/>
+						<div className="flex items-center gap-0.5 pl-1">
+							<OptionToggle
+								active={caseSensitive}
+								onClick={() => onCaseSensitiveChange(!caseSensitive)}
+								title="Match Case (Alt+C)"
+							>
+								Aa
+							</OptionToggle>
+							<OptionToggle
+								active={wholeWord}
+								onClick={() => onWholeWordChange(!wholeWord)}
+								title="Match Whole Word (Alt+W)"
+							>
+								ab|
+							</OptionToggle>
+							<OptionToggle
+								active={regexp}
+								onClick={() => onRegexpChange(!regexp)}
+								title="Use Regular Expression (Alt+R)"
+							>
+								.*
+							</OptionToggle>
+						</div>
 					</div>
+
+					{/* Match count */}
+					{query ? (
+						<span className="shrink-0 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+							{activeMatchLabel}
+						</span>
+					) : null}
+
+					{/* Navigation buttons */}
 					<button
 						type="button"
-						onClick={onReplaceNext}
-						className="h-6 rounded border border-border px-2 text-xs text-foreground transition-colors hover:bg-accent"
+						onClick={onFindPrevious}
+						title="Previous Match (Shift+Enter)"
+						className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 					>
-						Replace
+						<HiChevronUp className="size-3.5" />
 					</button>
 					<button
 						type="button"
-						onClick={onReplaceAll}
-						className="h-6 rounded border border-border px-2 text-xs text-foreground transition-colors hover:bg-accent"
+						onClick={onFindNext}
+						title="Next Match (Enter)"
+						className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 					>
-						Replace All
+						<HiChevronDown className="size-3.5" />
+					</button>
+					<button
+						type="button"
+						onClick={onSelectAllMatches}
+						title="Select All Matches"
+						className="h-6 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+					>
+						All
+					</button>
+					<button
+						type="button"
+						onClick={onClose}
+						title="Close (Escape)"
+						className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+						aria-label="Close search"
+					>
+						<HiMiniXMark className="size-4" />
 					</button>
 				</div>
-			)}
+
+				{/* Replace row */}
+				{readOnly ? null : (
+					<div className="mt-1 flex items-center gap-1">
+						<div className="flex flex-1 items-center rounded border border-border bg-background/80 px-1.5 py-0.5 focus-within:ring-1 focus-within:ring-blue-500/50">
+							<input
+								type="text"
+								value={replaceText}
+								onChange={(event) => onReplaceTextChange(event.target.value)}
+								onKeyDown={handleReplaceInputKeyDown}
+								placeholder="Replace"
+								className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+							/>
+						</div>
+						<button
+							type="button"
+							onClick={onReplaceNext}
+							className="h-6 rounded border border-border px-2 text-xs text-foreground transition-colors hover:bg-accent"
+						>
+							Replace
+						</button>
+						<button
+							type="button"
+							onClick={onReplaceAll}
+							className="h-6 rounded border border-border px-2 text-xs text-foreground transition-colors hover:bg-accent"
+						>
+							Replace All
+						</button>
+					</div>
+				)}
 			</div>
 		</div>
 	);

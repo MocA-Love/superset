@@ -48,7 +48,10 @@ export function MarkdownSearch({
 			const onMouseMove = (e: MouseEvent) => {
 				if (dragStartX.current === null) return;
 				const delta = dragStartX.current - e.clientX;
-				const newWidth = Math.max(MIN_WIDTH, Math.min(800, dragStartWidth.current + delta));
+				const newWidth = Math.max(
+					MIN_WIDTH,
+					Math.min(800, dragStartWidth.current + delta),
+				);
 				setWidth(newWidth);
 			};
 
@@ -131,7 +134,9 @@ export function MarkdownSearch({
 										Aa
 									</button>
 								</TooltipTrigger>
-								<TooltipContent side="bottom">Match Case (Alt+C)</TooltipContent>
+								<TooltipContent side="bottom">
+									Match Case (Alt+C)
+								</TooltipContent>
 							</Tooltip>
 						</div>
 					</div>
@@ -154,7 +159,9 @@ export function MarkdownSearch({
 								<HiChevronUp className="size-3.5" />
 							</button>
 						</TooltipTrigger>
-						<TooltipContent side="bottom">Previous (Shift+Enter)</TooltipContent>
+						<TooltipContent side="bottom">
+							Previous (Shift+Enter)
+						</TooltipContent>
 					</Tooltip>
 					<Tooltip>
 						<TooltipTrigger asChild>

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
@@ -47,6 +48,7 @@ export const workspaceRouter = router({
 
 			if (!localProject) {
 				const cloudProject = await ctx.api.v2Project.get.query({
+					organizationId: ctx.organizationId,
 					id: input.projectId,
 				});
 
@@ -79,12 +81,8 @@ export const workspaceRouter = router({
 				".worktrees",
 				input.branch,
 			);
-			if (!ctx.deviceClientId || !ctx.deviceName) {
-				throw new TRPCError({
-					code: "PRECONDITION_FAILED",
-					message: "Host device metadata not configured",
-				});
-			}
+			const deviceClientId = getHashedDeviceId();
+			const deviceName = getDeviceName();
 
 			const git = await ctx.git(localProject.repoPath);
 			try {
@@ -93,17 +91,19 @@ export const workspaceRouter = router({
 				await git.raw(["worktree", "add", "-b", input.branch, worktreePath]);
 			}
 
-			const device = await ctx.api.device.ensureV2Host.mutate({
-				clientId: ctx.deviceClientId,
-				name: ctx.deviceName,
+			const host = await ctx.api.device.ensureV2Host.mutate({
+				organizationId: ctx.organizationId,
+				machineId: deviceClientId,
+				name: deviceName,
 			});
 
 			const cloudRow = await ctx.api.v2Workspace.create
 				.mutate({
+					organizationId: ctx.organizationId,
 					projectId: input.projectId,
 					name: input.name,
 					branch: input.branch,
-					deviceId: device.id,
+					hostId: host.id,
 				})
 				.catch(async (err) => {
 					try {

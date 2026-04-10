@@ -8,11 +8,12 @@ import {
 	Tray,
 } from "electron";
 import { focusMainWindow, requestQuit } from "main/index";
+// FORK NOTE: upstream renamed host-service-manager → host-service-coordinator (#3250)
 import {
-	getHostServiceManager,
+	getHostServiceCoordinator as getHostServiceManager,
 	type HostServiceStatus,
 	type HostServiceStatusEvent,
-} from "main/lib/host-service-manager";
+} from "main/lib/host-service-coordinator";
 import { menuEmitter } from "main/lib/menu-events";
 
 const POLL_INTERVAL_MS = 5000;
@@ -85,16 +86,14 @@ function openSettings(): void {
 	menuEmitter.emit("open-settings");
 }
 
+// FORK NOTE: upstream coordinator simplified API — removed getServiceInfo,
+// HostServiceStatus now only "starting" | "running" | "stopped"
 function formatStatusLabel(status: HostServiceStatus): string {
 	switch (status) {
 		case "running":
 			return "Running";
 		case "starting":
 			return "Starting...";
-		case "degraded":
-			return "Degraded";
-		case "restarting":
-			return "Restarting...";
 		case "stopped":
 			return "Stopped";
 	}
@@ -115,13 +114,10 @@ function buildHostServiceSubmenu(): MenuItemConstructorOptions[] {
 			}
 			isFirst = false;
 
-			const info = manager.getServiceInfo(orgId);
-			const orgName = info.organizationName ?? orgId.slice(0, 8);
-			const statusLabel = formatStatusLabel(info.status);
-			const versionSuffix = info.serviceVersion
-				? ` (v${info.serviceVersion})`
-				: "";
-			const isRunning = info.status === "running";
+			const status = manager.getProcessStatus(orgId);
+			const orgName = orgId.slice(0, 8);
+			const statusLabel = formatStatusLabel(status);
+			const isRunning = status === "running";
 
 			menuItems.push({
 				label: orgName,
@@ -129,54 +125,13 @@ function buildHostServiceSubmenu(): MenuItemConstructorOptions[] {
 			});
 
 			menuItems.push({
-				label: `  ${statusLabel}${versionSuffix}`,
+				label: `  ${statusLabel}`,
 				enabled: false,
 			});
 
-			if (info.uptime !== null) {
-				const uptimeStr = formatUptime(info.uptime);
-				menuItems.push({
-					label: `  Uptime: ${uptimeStr}`,
-					enabled: false,
-				});
-			}
-
-			if (info.restartCount > 0) {
-				menuItems.push({
-					label: `  Restarts: ${info.restartCount}`,
-					enabled: false,
-				});
-			}
-
-			if (info.pendingRestart) {
-				menuItems.push({
-					label: "  Update required — restart to apply",
-					enabled: false,
-				});
-			} else if (
-				info.compatibility &&
-				"updateAvailable" in info.compatibility &&
-				info.compatibility.updateAvailable
-			) {
-				menuItems.push({
-					label: "  Update available",
-					enabled: false,
-				});
-			}
-
-			menuItems.push({
-				label: "  Restart",
-				enabled: isRunning,
-				click: () => {
-					manager.restart(orgId).catch((err) => {
-						console.error(
-							`[Tray] Failed to restart host-service for ${orgId}:`,
-							err,
-						);
-					});
-					updateTrayMenu();
-				},
-			});
+			// FORK NOTE: restart removed — coordinator.restart() now requires
+			// SpawnConfig (authToken + cloudApiUrl) which is not available in tray.
+			// Restart can be done from Settings UI instead.
 
 			menuItems.push({
 				label: "  Stop",

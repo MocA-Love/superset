@@ -1,6 +1,8 @@
 import type { RendererContext } from "@superset/panes";
-import { useFileDocument } from "@superset/workspace-client";
 import { useCallback } from "react";
+// FORK NOTE: useFileDocument import path changed from @superset/workspace-client
+// to renderer/hooks/host-service/useFileDocument (upstream #3224)
+import { useFileDocument } from "renderer/hooks/host-service/useFileDocument";
 import {
 	deriveMemoDisplayName,
 	getTrustedMemoRootPath,

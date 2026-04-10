@@ -1002,13 +1002,12 @@ export function useTerminalLifecycle({
 			// Rebuild stale WebGL glyph cache after occlusion and force a paint pass.
 			rendererRef.current?.current.clearTextureAtlas?.();
 
-			const measured =
-				syncRenderableTerminalSize("runReattachRecovery") ?? {
-					prevCols,
-					prevRows,
-					nextCols: xterm.cols,
-					nextRows: xterm.rows,
-				};
+			const measured = syncRenderableTerminalSize("runReattachRecovery") ?? {
+				prevCols,
+				prevRows,
+				nextCols: xterm.cols,
+				nextRows: xterm.rows,
+			};
 			logDebug("runReattachRecovery detail", {
 				forceResize,
 				prevCols: measured.prevCols,

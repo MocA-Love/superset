@@ -2,20 +2,80 @@ import { db, dbWs } from "@superset/db/client";
 import {
 	devicePresence,
 	deviceTypeValues,
-	v2DevicePresence,
-	v2Devices,
-	v2UsersDevices,
+	v2Clients,
+	v2ClientTypeValues,
+	v2Hosts,
+	v2UsersHosts,
 } from "@superset/db/schema";
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { protectedProcedure } from "../../trpc";
+import { jwtProcedure, protectedProcedure } from "../../trpc";
 
 export const deviceRouter = {
-	ensureV2Host: protectedProcedure
+	ensureV2Host: jwtProcedure
 		.input(
 			z.object({
-				clientId: z.string().min(1),
+				organizationId: z.string().uuid(),
+				machineId: z.string().min(1),
 				name: z.string().min(1),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			if (!ctx.organizationIds.includes(input.organizationId)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Not a member of this organization",
+				});
+			}
+
+			const [host] = await dbWs
+				.insert(v2Hosts)
+				.values({
+					organizationId: input.organizationId,
+					machineId: input.machineId,
+					name: input.name,
+					createdByUserId: ctx.userId,
+				})
+				.onConflictDoUpdate({
+					target: [v2Hosts.organizationId, v2Hosts.machineId],
+					set: {
+						name: input.name,
+					},
+				})
+				.returning();
+
+			if (!host) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to ensure host",
+				});
+			}
+
+			await dbWs
+				.insert(v2UsersHosts)
+				.values({
+					organizationId: input.organizationId,
+					userId: ctx.userId,
+					hostId: host.id,
+					role: "owner",
+				})
+				.onConflictDoNothing({
+					target: [
+						v2UsersHosts.organizationId,
+						v2UsersHosts.userId,
+						v2UsersHosts.hostId,
+					],
+				});
+
+			return host;
+		}),
+
+	ensureV2Client: protectedProcedure
+		.input(
+			z.object({
+				machineId: z.string().min(1),
+				type: z.enum(v2ClientTypeValues),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -28,61 +88,35 @@ export const deviceRouter = {
 			}
 
 			const userId = ctx.session.user.id;
-			const now = new Date();
 
-			const [device] = await dbWs
-				.insert(v2Devices)
+			const [client] = await dbWs
+				.insert(v2Clients)
 				.values({
 					organizationId,
-					clientId: input.clientId,
-					name: input.name,
-					type: "host",
-					createdByUserId: userId,
+					userId,
+					machineId: input.machineId,
+					type: input.type,
 				})
 				.onConflictDoUpdate({
-					target: [v2Devices.organizationId, v2Devices.clientId],
+					target: [
+						v2Clients.organizationId,
+						v2Clients.userId,
+						v2Clients.machineId,
+					],
 					set: {
-						name: input.name,
-						type: "host",
+						type: input.type,
 					},
 				})
 				.returning();
 
-			if (!device) {
+			if (!client) {
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
-					message: "Failed to ensure device",
+					message: "Failed to ensure client",
 				});
 			}
 
-			await dbWs
-				.insert(v2UsersDevices)
-				.values({
-					organizationId,
-					userId,
-					deviceId: device.id,
-					role: "owner",
-				})
-				.onConflictDoNothing({
-					target: [v2UsersDevices.userId, v2UsersDevices.deviceId],
-				});
-
-			await dbWs
-				.insert(v2DevicePresence)
-				.values({
-					deviceId: device.id,
-					organizationId,
-					lastSeenAt: now,
-				})
-				.onConflictDoUpdate({
-					target: [v2DevicePresence.deviceId],
-					set: {
-						organizationId,
-						lastSeenAt: now,
-					},
-				});
-
-			return device;
+			return client;
 		}),
 
 	/**
@@ -180,5 +214,40 @@ export const deviceRouter = {
 				.returning();
 
 			return { device, timestamp: now };
+		}),
+	checkHostAccess: jwtProcedure
+		.input(z.object({ hostId: z.string().uuid() }))
+		.query(async ({ ctx, input }) => {
+			const row = await db.query.v2UsersHosts.findFirst({
+				where: and(
+					eq(v2UsersHosts.userId, ctx.userId),
+					eq(v2UsersHosts.hostId, input.hostId),
+				),
+				columns: { id: true },
+			});
+			return { allowed: !!row };
+		}),
+
+	setHostOnline: jwtProcedure
+		.input(z.object({ hostId: z.string().uuid(), isOnline: z.boolean() }))
+		.mutation(async ({ ctx, input }) => {
+			const access = await db.query.v2UsersHosts.findFirst({
+				where: and(
+					eq(v2UsersHosts.userId, ctx.userId),
+					eq(v2UsersHosts.hostId, input.hostId),
+				),
+				columns: { id: true },
+			});
+			if (!access) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "No access to this host",
+				});
+			}
+			await db
+				.update(v2Hosts)
+				.set({ isOnline: input.isOnline })
+				.where(eq(v2Hosts.id, input.hostId));
+			return { success: true };
 		}),
 } satisfies TRPCRouterRecord;

@@ -110,7 +110,7 @@ export function useTerminalRestore({
 				onDisconnectEventRef.current(event.reason);
 			}
 		}
-	}, [xtermRef, pendingEventsRef]);
+	}, [xtermRef, pendingEventsRef, paneId]);
 
 	const maybeApplyInitialState = useCallback(() => {
 		if (!didFirstRenderRef.current) return;
@@ -248,9 +248,7 @@ export function useTerminalRestore({
 					console.log("[legacy-terminal] skip snapshot for new session", {
 						paneId,
 						hasSnapshotAnsi: Boolean(initialAnsi),
-						hasRehydrateSequences: Boolean(
-							result.snapshot?.rehydrateSequences,
-						),
+						hasRehydrateSequences: Boolean(result.snapshot?.rehydrateSequences),
 					});
 				}
 				finalizeRestore();
