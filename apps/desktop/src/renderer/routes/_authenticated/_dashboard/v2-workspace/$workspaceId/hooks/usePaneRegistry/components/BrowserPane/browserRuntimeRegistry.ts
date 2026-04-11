@@ -149,6 +149,7 @@ class BrowserRuntimeRegistryImpl {
 		const webview = document.createElement("webview") as Electron.WebviewTag;
 		webview.setAttribute("partition", "persist:superset");
 		webview.setAttribute("allowpopups", "");
+		webview.setAttribute("webpreferences", "transparent=no");
 		webview.style.position = "fixed";
 		webview.style.top = "0";
 		webview.style.left = "0";
