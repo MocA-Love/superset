@@ -1,7 +1,10 @@
 import {
 	Background,
+	BackgroundVariant,
 	Controls,
 	type Edge,
+	getNodesBounds,
+	getViewportForBounds,
 	type Node,
 	ReactFlow,
 	ReactFlowProvider,
@@ -11,12 +14,16 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
+import { toPng } from "html-to-image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { useTheme } from "renderer/stores/theme";
+import { createShikiTheme } from "../../../../utils/code-theme/shiki-theme";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { ReferenceNode } from "./ReferenceNode";
+import "./reference-graph.css";
 
 const elk = new ELK();
 
@@ -36,10 +43,34 @@ interface ReferenceGraphPaneProps {
 	onPopOut?: () => void;
 }
 
-const NODE_WIDTH = 350;
-const NODE_HEIGHT = 200;
+const NODE_MIN_WIDTH = 280;
+const NODE_MAX_WIDTH = 500;
+const NODE_HEIGHT = 180;
+const CHAR_WIDTH = 7.5;
+const NODE_PADDING = 40;
+
+const ELK_OPTIONS = {
+	"elk.algorithm": "layered",
+	"elk.direction": "DOWN",
+	"elk.layered.cycleBreaking.strategy": "DEPTH_FIRST",
+	"elk.spacing.nodeNode": "60",
+	"elk.layered.spacing.nodeNodeBetweenLayers": "100",
+	"elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+	"elk.layered.nodePlacement.favorStraightEdges": "true",
+	"elk.edgeRouting": "ORTHOGONAL",
+	"elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+	"elk.separateConnectedComponents": "true",
+	"elk.spacing.componentComponent": "80",
+};
 
 const nodeTypes = { referenceNode: ReferenceNode };
+
+function estimateNodeWidth(codeSnippet: string): number {
+	const lines = codeSnippet.split("\n");
+	const maxLineLength = Math.max(...lines.map((line) => line.length));
+	const estimatedWidth = maxLineLength * CHAR_WIDTH + NODE_PADDING;
+	return Math.min(NODE_MAX_WIDTH, Math.max(NODE_MIN_WIDTH, estimatedWidth));
+}
 
 async function layoutGraph(
 	nodes: Node[],
@@ -47,16 +78,12 @@ async function layoutGraph(
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
 	const graph = {
 		id: "root",
-		layoutOptions: {
-			"elk.algorithm": "layered",
-			"elk.direction": "DOWN",
-			"elk.layered.spacing.nodeNodeBetweenLayers": "80",
-			"elk.spacing.nodeNode": "40",
-			"elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-		},
+		layoutOptions: ELK_OPTIONS,
 		children: nodes.map((n) => ({
 			id: n.id,
-			width: NODE_WIDTH,
+			width: estimateNodeWidth(
+				(n.data as { codeSnippet?: string })?.codeSnippet ?? "",
+			),
 			height: NODE_HEIGHT,
 		})),
 		edges: edges.map((e) => ({
@@ -95,6 +122,11 @@ function ReferenceGraphInner({
 	const pane = useTabsStore((s) => s.panes[paneId]);
 	const refGraphState = pane?.referenceGraph;
 	const { fitView } = useReactFlow();
+	const activeTheme = useTheme();
+	const shikiTheme = useMemo(
+		() => (activeTheme ? createShikiTheme(activeTheme) : undefined),
+		[activeTheme],
+	);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -107,6 +139,9 @@ function ReferenceGraphInner({
 	const mutateAsyncRef = useRef(buildGraphMutation.mutateAsync);
 	mutateAsyncRef.current = buildGraphMutation.mutateAsync;
 	const requestGenerationRef = useRef(0);
+	const [isExporting, setIsExporting] = useState(false);
+	const { getNodes } = useReactFlow();
+	const graphContainerRef = useRef<HTMLDivElement>(null);
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
@@ -148,6 +183,7 @@ function ReferenceGraphInner({
 				data: {
 					...n,
 					onDoubleClick: handleNodeDoubleClick,
+					shikiTheme,
 				},
 			}));
 
@@ -155,8 +191,8 @@ function ReferenceGraphInner({
 				id: e.id,
 				source: e.source,
 				target: e.target,
-				animated: true,
-				style: { stroke: "var(--muted-foreground)", strokeWidth: 1.5 },
+				type: "smoothstep",
+				animated: false,
 			}));
 
 			if (flowNodes.length > 0) {
@@ -185,6 +221,7 @@ function ReferenceGraphInner({
 		workspaceId,
 		maxDepth,
 		handleNodeDoubleClick,
+		shikiTheme,
 		setNodes,
 		setEdges,
 		fitView,
@@ -194,6 +231,66 @@ function ReferenceGraphInner({
 	useEffect(() => {
 		void loadGraph();
 	}, [loadGraph]);
+
+	const handleExportPng = useCallback(async () => {
+		if (isExporting || nodes.length === 0) return;
+		setIsExporting(true);
+
+		const container = graphContainerRef.current;
+		const controls = container?.querySelector(
+			".react-flow__controls",
+		) as HTMLElement | null;
+		const background = container?.querySelector(
+			".react-flow__background",
+		) as HTMLElement | null;
+
+		try {
+			const nodesList = getNodes();
+			const nodesBounds = getNodesBounds(nodesList);
+			const padding = 100;
+			const imageWidth = nodesBounds.width + padding * 2;
+			const imageHeight = nodesBounds.height + padding * 2;
+			const viewport = getViewportForBounds(
+				nodesBounds,
+				imageWidth,
+				imageHeight,
+				0.5,
+				2,
+				0,
+			);
+
+			const viewportEl = container?.querySelector(
+				".react-flow__viewport",
+			) as HTMLElement | null;
+			if (!viewportEl) return;
+
+			if (controls) controls.style.display = "none";
+			if (background) background.style.display = "none";
+
+			const dataUrl = await toPng(viewportEl, {
+				backgroundColor: "transparent",
+				width: imageWidth,
+				height: imageHeight,
+				style: {
+					width: `${imageWidth}px`,
+					height: `${imageHeight}px`,
+					transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+				},
+			});
+
+			// Trigger download
+			const link = document.createElement("a");
+			link.download = `reference-graph-${Date.now()}.png`;
+			link.href = dataUrl;
+			link.click();
+		} catch (err) {
+			console.error("[reference-graph] Export PNG failed:", err);
+		} finally {
+			if (controls) controls.style.display = "";
+			if (background) background.style.display = "";
+			setIsExporting(false);
+		}
+	}, [isExporting, nodes.length, getNodes]);
 
 	const depthOptions = useMemo(
 		() => [1, 2, 3, 4, 5].map((d) => ({ value: d, label: `Depth: ${d}` })),
@@ -240,6 +337,14 @@ function ReferenceGraphInner({
 						>
 							{isLoading ? "Loading..." : "Refresh"}
 						</button>
+						<button
+							type="button"
+							onClick={() => void handleExportPng()}
+							disabled={isExporting || nodes.length === 0}
+							className="h-6 rounded border border-border bg-background px-2 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+						>
+							{isExporting ? "Exporting..." : "Export PNG"}
+						</button>
 					</div>
 					<PaneToolbarActions
 						splitOrientation={handlers.splitOrientation}
@@ -250,7 +355,7 @@ function ReferenceGraphInner({
 				</div>
 			)}
 		>
-			<div className="w-full h-full relative">
+			<div ref={graphContainerRef} className="w-full h-full relative">
 				{isLoading && nodes.length === 0 && (
 					<div className="absolute inset-0 flex items-center justify-center z-10">
 						<div className="text-sm text-muted-foreground">
@@ -278,7 +383,12 @@ function ReferenceGraphInner({
 					maxZoom={2}
 					proOptions={{ hideAttribution: true }}
 				>
-					<Background bgColor="var(--sidebar)" color="var(--border)" gap={20} />
+					<Background
+						variant={BackgroundVariant.Dots}
+						gap={20}
+						size={1}
+						bgColor="var(--sidebar)"
+					/>
 					<Controls
 						showInteractive={false}
 						className="[&>button]:!bg-background [&>button]:!border-border [&>button]:!fill-foreground"

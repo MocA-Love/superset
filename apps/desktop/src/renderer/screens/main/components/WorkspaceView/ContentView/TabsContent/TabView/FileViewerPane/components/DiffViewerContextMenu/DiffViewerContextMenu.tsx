@@ -87,6 +87,10 @@ export function DiffViewerContextMenu({
 			setValue(_value: string) {},
 			revealPosition(_line: number, _column?: number) {},
 			getSelectionLines,
+			getCursorPosition() {
+				const sel = getSelectionLines();
+				return sel ? { line: sel.startLine, column: 1 } : null;
+			},
 			selectAll() {
 				const selection = window.getSelection();
 				if (!selection) return;

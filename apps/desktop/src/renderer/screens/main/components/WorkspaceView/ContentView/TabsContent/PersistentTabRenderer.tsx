@@ -32,7 +32,11 @@ export function PersistentTabRenderer({
 			if (
 				paneIds.some((id) => {
 					const type = panes[id]?.type;
-					return type === "webview" || type === "vscode-extension";
+					return (
+						type === "webview" ||
+						type === "vscode-extension" ||
+						type === "reference-graph"
+					);
 				})
 			) {
 				ids.add(tab.id);

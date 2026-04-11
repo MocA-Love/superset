@@ -54,10 +54,11 @@ function getTerminalManager() {
 	try {
 		// Use dynamic import path that the bundler can resolve
 		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		// biome-ignore lint: dynamic require for bundler compat
 		const mod = require("../../terminal") as {
+			// biome-ignore lint/suspicious/noExplicitAny: dynamic require for bundler compat
 			getDaemonTerminalManager: () => any;
 		};
+		// biome-ignore lint/suspicious/noExplicitAny: dynamic require for bundler compat
 		return mod.getDaemonTerminalManager() as any;
 	} catch {
 		return null;

@@ -103,6 +103,7 @@ export function ChatSearch({
 			style={{ width: `min(${width}px, calc(100% - 4rem))` }}
 		>
 			{/* Left resize handle */}
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: resize handle */}
 			<div
 				onMouseDown={handleResizeMouseDown}
 				className="absolute left-0 top-0 h-full w-1 cursor-ew-resize rounded-l opacity-0 transition-opacity hover:opacity-100 hover:bg-blue-500/40"

@@ -1,0 +1,133 @@
+/* Reference Graph node styles — matching reference-graph extension */
+
+.ref-graph-node {
+	background: var(--sidebar, #1e1e1e);
+	border: 1px solid var(--border, #3c3c3c);
+	border-radius: 4px;
+	min-width: 280px;
+	max-width: 400px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	overflow: hidden;
+	cursor: pointer;
+}
+
+.ref-graph-node:hover {
+	border-color: var(--primary, #007fd4);
+}
+
+.ref-graph-node.root {
+	border-color: var(--primary, #3794ff);
+	border-width: 2px;
+}
+
+.ref-graph-node-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--muted, #252526);
+	border-bottom: 1px solid var(--border, #3c3c3c);
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.ref-graph-node-icon {
+	font-size: 14px;
+	flex-shrink: 0;
+}
+
+.ref-graph-node-name {
+	color: var(--foreground, #cccccc);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ref-graph-node-location {
+	padding: 4px 12px;
+	font-size: 11px;
+	color: var(--muted-foreground, #8b8b8b);
+	background: var(--muted, #252526);
+	border-bottom: 1px solid var(--border, #3c3c3c);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Code preview */
+.ref-graph-code-preview {
+	padding: 8px 0;
+	font-family: var(--font-mono, "Consolas", "Courier New", monospace);
+	font-size: 12px;
+	line-height: 1.4;
+	overflow-x: auto;
+	max-height: 150px;
+}
+
+.ref-graph-code-preview pre {
+	margin: 0;
+	padding: 0;
+}
+
+.ref-graph-code-preview code {
+	display: block;
+}
+
+/* Shiki output styling */
+.ref-graph-code-preview .shiki {
+	margin: 0;
+	padding: 4px 0;
+	background-color: transparent;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.ref-graph-code-preview .shiki code {
+	display: block;
+	font-family: var(--font-mono, "Consolas", "Courier New", monospace);
+}
+
+.ref-graph-code-preview .shiki code .line {
+	padding: 0 8px;
+	display: block;
+}
+
+/* Fallback plain text line styling */
+.ref-graph-code-line {
+	display: flex;
+	padding: 0 8px;
+}
+
+.ref-graph-code-line-number {
+	width: 32px;
+	text-align: right;
+	padding-right: 12px;
+	color: var(--muted-foreground, #5a5a5a);
+	user-select: none;
+	flex-shrink: 0;
+	opacity: 0.5;
+}
+
+.ref-graph-code-line-content {
+	white-space: pre;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ReactFlow handles */
+.ref-graph-node .react-flow__handle {
+	width: 8px;
+	height: 8px;
+	background: var(--primary, #3794ff);
+	border: none;
+}
+
+/* Edge styling */
+.react-flow__edge-path {
+	stroke: var(--muted-foreground, #8b8b8b);
+	stroke-width: 2;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+	stroke: var(--primary, #3794ff);
+}
