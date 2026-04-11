@@ -74,6 +74,7 @@ export const SETTING_ITEM_ID = {
 	VSCODE_EXTENSIONS_MANAGE: "vscode-extensions-manage",
 	VSCODE_EXTENSIONS_INDENT_RAINBOW: "vscode-extensions-indent-rainbow",
 	VSCODE_EXTENSIONS_TRAILING_SPACES: "vscode-extensions-trailing-spaces",
+	VSCODE_EXTENSIONS_REFERENCE_GRAPH: "vscode-extensions-reference-graph",
 
 	METRICS_GITHUB_OVERVIEW: "metrics-github-overview",
 	METRICS_GITHUB_TRAFFIC: "metrics-github-traffic",
@@ -1081,6 +1082,22 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"trim",
 			"editor",
 			"highlight",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_REFERENCE_GRAPH,
+		section: "vscodeExtensions",
+		title: "Reference Graph",
+		description:
+			"Visualize code symbol references and call hierarchies as interactive graphs",
+		keywords: [
+			"reference",
+			"graph",
+			"call",
+			"hierarchy",
+			"symbol",
+			"visualization",
+			"editor",
 		],
 	},
 	{

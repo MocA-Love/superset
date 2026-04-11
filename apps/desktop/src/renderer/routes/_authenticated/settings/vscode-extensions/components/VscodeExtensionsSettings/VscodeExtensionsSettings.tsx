@@ -240,8 +240,13 @@ export function VscodeExtensionsSettings({
 		SETTING_ITEM_ID.VSCODE_EXTENSIONS_TRAILING_SPACES,
 		visibleItems,
 	);
+	const showReferenceGraph = isItemVisible(
+		SETTING_ITEM_ID.VSCODE_EXTENSIONS_REFERENCE_GRAPH,
+		visibleItems,
+	);
 
-	const showEditorFeatures = showIndentRainbow || showTrailingSpaces;
+	const showEditorFeatures =
+		showIndentRainbow || showTrailingSpaces || showReferenceGraph;
 
 	if (!showManage && !showEditorFeatures) return null;
 
@@ -353,6 +358,7 @@ export function VscodeExtensionsSettings({
 					<div className="space-y-4">
 						{showIndentRainbow && <IndentRainbowSettings />}
 						{showTrailingSpaces && <TrailingSpacesSettings />}
+						{showReferenceGraph && <ReferenceGraphSettings />}
 					</div>
 				</div>
 			)}
@@ -706,6 +712,60 @@ function TrailingSpacesSettings() {
 					</div>
 				</div>
 			)}
+		</div>
+	);
+}
+
+function ReferenceGraphSettings() {
+	const { data } = electronTrpc.settings.getReferenceGraph.useQuery(undefined, {
+		staleTime: 30_000,
+	});
+	const utils = electronTrpc.useUtils();
+	const mutation = electronTrpc.settings.setReferenceGraph.useMutation({
+		onSuccess: () => {
+			utils.settings.getReferenceGraph.invalidate();
+		},
+	});
+
+	const enabled = data?.enabled ?? true;
+
+	const handleToggle = useCallback(
+		(checked: boolean) => {
+			mutation.mutate({ enabled: checked });
+		},
+		[mutation],
+	);
+
+	return (
+		<div className="border rounded-lg p-4">
+			<div className="flex items-start gap-4">
+				<div className="flex-shrink-0 mt-0.5">
+					<div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+						<LuSparkles className="size-5 text-muted-foreground" />
+					</div>
+				</div>
+				<div className="flex-1 min-w-0">
+					<div className="flex items-center gap-2">
+						<h3 className="font-medium text-sm">Reference Graph</h3>
+						{enabled && (
+							<span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded">
+								Active
+							</span>
+						)}
+					</div>
+					<p className="text-xs text-muted-foreground mt-1">
+						Visualize code symbol references and call hierarchies as interactive
+						graphs. Available via right-click context menu in the code editor.
+					</p>
+				</div>
+				<div className="flex-shrink-0">
+					<Switch
+						checked={enabled}
+						onCheckedChange={handleToggle}
+						aria-label="Toggle Reference Graph"
+					/>
+				</div>
+			</div>
 		</div>
 	);
 }

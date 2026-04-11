@@ -240,6 +240,9 @@ export const settings = sqliteTable("settings", {
 		mode: "boolean",
 	}),
 	trailingSpacesColor: text("trailing_spaces_color"),
+	referenceGraphEnabled: integer("reference_graph_enabled", {
+		mode: "boolean",
+	}),
 	exposeHostServiceViaRelay: integer("expose_host_service_via_relay", {
 		mode: "boolean",
 	}),
