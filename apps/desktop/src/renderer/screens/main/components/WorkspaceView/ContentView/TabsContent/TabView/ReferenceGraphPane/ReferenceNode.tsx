@@ -14,6 +14,12 @@ interface ReferenceNodeData {
 	isRoot: boolean;
 	depth: number;
 	onDoubleClick: (absolutePath: string, line: number) => void;
+	shikiTheme?: {
+		name: string;
+		type: string;
+		colors: object;
+		tokenColors: object[];
+	};
 }
 
 const SYMBOL_ICONS: Record<string, string> = {
@@ -73,6 +79,7 @@ function ReferenceNodeComponent({ data }: { data: ReferenceNodeData }) {
 				code={data.codeSnippet}
 				language={data.languageId}
 				startLine={data.snippetStartLine}
+				shikiTheme={data.shikiTheme}
 			/>
 
 			<Handle type="source" position={Position.Bottom} isConnectable={false} />

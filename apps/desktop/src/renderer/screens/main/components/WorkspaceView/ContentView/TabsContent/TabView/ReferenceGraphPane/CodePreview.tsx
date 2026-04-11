@@ -5,12 +5,19 @@ interface CodePreviewProps {
 	code: string;
 	language: string;
 	startLine: number;
+	shikiTheme?: {
+		name: string;
+		type: string;
+		colors: object;
+		tokenColors: object[];
+	};
 }
 
 export const CodePreview = memo(function CodePreview({
 	code,
 	language,
 	startLine,
+	shikiTheme,
 }: CodePreviewProps) {
 	const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
 
@@ -19,7 +26,11 @@ export const CodePreview = memo(function CodePreview({
 
 		async function highlight() {
 			try {
-				const html = await highlightCode(code, language || "typescript");
+				const html = await highlightCode(
+					code,
+					language || "typescript",
+					shikiTheme,
+				);
 				if (!cancelled) {
 					setHighlightedHtml(html);
 				}
@@ -35,7 +46,7 @@ export const CodePreview = memo(function CodePreview({
 		return () => {
 			cancelled = true;
 		};
-	}, [code, language]);
+	}, [code, language, shikiTheme]);
 
 	const lines = code.split("\n");
 

@@ -30,7 +30,7 @@ const SUPPORTED_LANGUAGES: BundledLanguage[] = [
 	"markdown",
 ];
 
-export async function getHighlighter(): Promise<Highlighter> {
+async function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = createHighlighter({
 			themes: ["dark-plus"],
@@ -40,9 +40,21 @@ export async function getHighlighter(): Promise<Highlighter> {
 	return highlighterPromise;
 }
 
+/**
+ * Highlight code using the app's active theme.
+ * @param shikiTheme - The theme object from createShikiTheme(). If provided,
+ *   the theme is registered dynamically and used for highlighting.
+ *   Falls back to "dark-plus" if not provided.
+ */
 export async function highlightCode(
 	code: string,
 	language: string,
+	shikiTheme?: {
+		name: string;
+		type: string;
+		colors: object;
+		tokenColors: object[];
+	},
 ): Promise<string> {
 	const highlighter = await getHighlighter();
 
@@ -50,8 +62,20 @@ export async function highlightCode(
 		? (language as BundledLanguage)
 		: "typescript";
 
+	let themeName = "dark-plus";
+
+	if (shikiTheme) {
+		// Register the app theme dynamically if not already loaded
+		const loadedThemes = highlighter.getLoadedThemes();
+		if (!loadedThemes.includes(shikiTheme.name)) {
+			// biome-ignore lint/suspicious/noExplicitAny: shiki theme registration accepts dynamic shapes
+			await highlighter.loadTheme(shikiTheme as any);
+		}
+		themeName = shikiTheme.name;
+	}
+
 	return highlighter.codeToHtml(code, {
 		lang: safeLanguage,
-		theme: "dark-plus",
+		theme: themeName,
 	});
 }

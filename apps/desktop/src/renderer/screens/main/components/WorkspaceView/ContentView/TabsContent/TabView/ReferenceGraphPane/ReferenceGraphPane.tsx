@@ -16,6 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { useTheme } from "renderer/stores/theme";
+import { createShikiTheme } from "../../../../utils/code-theme/shiki-theme";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { ReferenceNode } from "./ReferenceNode";
 import "./reference-graph.css";
@@ -117,6 +119,11 @@ function ReferenceGraphInner({
 	const pane = useTabsStore((s) => s.panes[paneId]);
 	const refGraphState = pane?.referenceGraph;
 	const { fitView } = useReactFlow();
+	const activeTheme = useTheme();
+	const shikiTheme = useMemo(
+		() => (activeTheme ? createShikiTheme(activeTheme) : undefined),
+		[activeTheme],
+	);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -170,6 +177,7 @@ function ReferenceGraphInner({
 				data: {
 					...n,
 					onDoubleClick: handleNodeDoubleClick,
+					shikiTheme,
 				},
 			}));
 
@@ -207,6 +215,7 @@ function ReferenceGraphInner({
 		workspaceId,
 		maxDepth,
 		handleNodeDoubleClick,
+		shikiTheme,
 		setNodes,
 		setEdges,
 		fitView,
