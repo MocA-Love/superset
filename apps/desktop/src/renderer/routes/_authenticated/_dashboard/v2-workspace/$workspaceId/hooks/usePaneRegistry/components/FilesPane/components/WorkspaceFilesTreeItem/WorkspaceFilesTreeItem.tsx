@@ -1,6 +1,6 @@
 import { cn } from "@superset/ui/utils";
-import type { FileTreeNode } from "renderer/hooks/host-service/useFileTree/useFileTree";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
+import type { FileTreeNode } from "renderer/hooks/host-service/useFileTree/useFileTree";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 
 interface WorkspaceFilesTreeItemProps {

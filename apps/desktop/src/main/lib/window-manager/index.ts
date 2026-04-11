@@ -81,10 +81,7 @@ export class WindowManager {
 		setTimeout(() => this.pendingTearoffData.delete(windowId), 30_000);
 	}
 
-	setPendingAuthToken(
-		windowId: string,
-		token: PendingAuthToken | null,
-	): void {
+	setPendingAuthToken(windowId: string, token: PendingAuthToken | null): void {
 		this.pendingAuthTokens.set(windowId, token);
 		setTimeout(() => this.pendingAuthTokens.delete(windowId), 30_000);
 	}

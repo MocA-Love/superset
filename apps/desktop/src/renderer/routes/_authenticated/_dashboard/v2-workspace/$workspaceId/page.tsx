@@ -23,14 +23,12 @@ import {
 	addBrowserShortcutListener,
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
-import { electronTrpc } from "renderer/lib/electron-trpc";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
 	CommandPalette,
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
-import { PresetsBar } from "renderer/screens/main/components/WorkspaceView/ContentView/components/PresetsBar";
 import { useStore } from "zustand";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2PresetsBar } from "./components/V2PresetsBar";
