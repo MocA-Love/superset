@@ -4,8 +4,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { languageDiagnosticsStore } from "../../diagnostics-store";
 import type {
+	LanguageServiceCallHierarchyItem,
 	LanguageServiceDiagnostic,
 	LanguageServiceDocument,
+	LanguageServiceIncomingCall,
+	LanguageServiceLocation,
 	LanguageServiceProvider,
 	LanguageServiceProviderSummary,
 	LanguageServiceRelatedInformation,
@@ -391,6 +394,168 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		}
 
 		this.sessions.delete(args.workspaceId);
+	}
+
+	async findReferences(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null> {
+		const session = this.sessions.get(args.workspaceId);
+		if (!session) return null;
+
+		try {
+			const response = await this.sendRequest(session, "references", {
+				file: args.absolutePath,
+				line: args.line,
+				offset: args.column,
+			});
+
+			const refs = response.body as
+				| {
+						refs?: Array<{
+							file: string;
+							start: { line: number; offset: number };
+							end: { line: number; offset: number };
+						}>;
+				  }
+				| undefined;
+
+			if (!refs?.refs) return null;
+
+			return refs.refs.map((ref) => ({
+				absolutePath: ref.file,
+				line: ref.start.line,
+				column: ref.start.offset,
+				endLine: ref.end.line,
+				endColumn: ref.end.offset,
+			}));
+		} catch {
+			return null;
+		}
+	}
+
+	async prepareCallHierarchy(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceCallHierarchyItem[] | null> {
+		const session = this.sessions.get(args.workspaceId);
+		if (!session) return null;
+
+		try {
+			const response = await this.sendRequest(session, "prepareCallHierarchy", {
+				file: args.absolutePath,
+				line: args.line,
+				offset: args.column,
+			});
+
+			const items = response.body as
+				| Array<{
+						name: string;
+						kind: string;
+						file: string;
+						span: {
+							start: { line: number; offset: number };
+							end: { line: number; offset: number };
+						};
+						selectionSpan: {
+							start: { line: number; offset: number };
+							end: { line: number; offset: number };
+						};
+				  }>
+				| undefined;
+
+			if (!items) return null;
+
+			return items.map((item) => ({
+				name: item.name,
+				kind: item.kind,
+				absolutePath: item.file,
+				line: item.span.start.line,
+				column: item.span.start.offset,
+				endLine: item.span.end.line,
+				endColumn: item.span.end.offset,
+				selectionLine: item.selectionSpan.start.line,
+				selectionColumn: item.selectionSpan.start.offset,
+				selectionEndLine: item.selectionSpan.end.line,
+				selectionEndColumn: item.selectionSpan.end.offset,
+			}));
+		} catch {
+			return null;
+		}
+	}
+
+	async getIncomingCalls(args: {
+		workspaceId: string;
+		item: LanguageServiceCallHierarchyItem;
+	}): Promise<LanguageServiceIncomingCall[] | null> {
+		const session = this.sessions.get(args.workspaceId);
+		if (!session) return null;
+
+		try {
+			const response = await this.sendRequest(
+				session,
+				"provideCallHierarchyIncomingCalls",
+				{
+					file: args.item.absolutePath,
+					line: args.item.selectionLine,
+					offset: args.item.selectionColumn,
+				},
+			);
+
+			const calls = response.body as
+				| Array<{
+						from: {
+							name: string;
+							kind: string;
+							file: string;
+							span: {
+								start: { line: number; offset: number };
+								end: { line: number; offset: number };
+							};
+							selectionSpan: {
+								start: { line: number; offset: number };
+								end: { line: number; offset: number };
+							};
+						};
+						fromSpans: Array<{
+							start: { line: number; offset: number };
+							end: { line: number; offset: number };
+						}>;
+				  }>
+				| undefined;
+
+			if (!calls) return null;
+
+			return calls.map((call) => ({
+				from: {
+					name: call.from.name,
+					kind: call.from.kind,
+					absolutePath: call.from.file,
+					line: call.from.span.start.line,
+					column: call.from.span.start.offset,
+					endLine: call.from.span.end.line,
+					endColumn: call.from.span.end.offset,
+					selectionLine: call.from.selectionSpan.start.line,
+					selectionColumn: call.from.selectionSpan.start.offset,
+					selectionEndLine: call.from.selectionSpan.end.line,
+					selectionEndColumn: call.from.selectionSpan.end.offset,
+				},
+				fromRanges: call.fromSpans.map((span) => ({
+					line: span.start.line,
+					column: span.start.offset,
+					endLine: span.end.line,
+					endColumn: span.end.offset,
+				})),
+			}));
+		} catch {
+			return null;
+		}
 	}
 
 	private async ensureSession(
