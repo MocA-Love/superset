@@ -23,6 +23,11 @@ import type {
 	PaneViewerData,
 	TerminalPaneData,
 } from "../../types";
+import {
+	BrowserPane,
+	BrowserPaneToolbar,
+	browserRuntimeRegistry,
+} from "./components/BrowserPane";
 import { ChatPane } from "./components/ChatPane";
 import { FilePane } from "./components/FilePane";
 import { TerminalPane } from "./components/TerminalPane";
@@ -175,6 +180,7 @@ export function usePaneRegistry(
 				getIcon: () => <Globe className="size-4" />,
 				getTitle: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as BrowserPaneData;
+<<<<<<< HEAD
 					return data.url;
 				},
 				renderPane: (ctx: RendererContext<PaneViewerData>) => {
@@ -191,7 +197,17 @@ export function usePaneRegistry(
 							title={ctx.pane.titleOverride ?? "Browser"}
 						/>
 					);
+=======
+					return data.pageTitle || data.url;
+>>>>>>> 2c6736416 (feat(desktop): port browser pane to v2 workspaces with global persistence (#3346))
 				},
+				renderPane: (ctx: RendererContext<PaneViewerData>) => (
+					<BrowserPane ctx={ctx} />
+				),
+				renderToolbar: (ctx: RendererContext<PaneViewerData>) => (
+					<BrowserPaneToolbar ctx={ctx} />
+				),
+				onRemoved: (pane) => browserRuntimeRegistry.destroy(pane.id),
 				contextMenuActions: (_ctx, defaults) =>
 					defaults.map((d) =>
 						d.key === "close-pane" ? { ...d, label: "Close Browser" } : d,

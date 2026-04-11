@@ -21,6 +21,8 @@ export interface BrowserPaneData {
 	reloadToken?: string;
 	/** FORK NOTE: Set on hard reload to force cache-busting via query param */
 	hardReloadToken?: string;
+	pageTitle?: string;
+	faviconUrl?: string | null;
 }
 
 export interface DevtoolsPaneData {
