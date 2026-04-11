@@ -183,6 +183,7 @@
 		"graphql": "^16.13.2",
 		"graphql-language-service-cli": "^3.5.0",
 		"highlight.js": "^11.11.1",
+		"html-to-image": "^1.11.13",
 		"http-proxy": "^1.18.1",
 		"idb": "^8.0.3",
 		"idb-keyval": "^6.2.2",

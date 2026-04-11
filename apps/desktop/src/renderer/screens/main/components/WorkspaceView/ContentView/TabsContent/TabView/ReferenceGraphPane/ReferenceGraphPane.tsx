@@ -3,6 +3,8 @@ import {
 	BackgroundVariant,
 	Controls,
 	type Edge,
+	getNodesBounds,
+	getViewportForBounds,
 	type Node,
 	ReactFlow,
 	ReactFlowProvider,
@@ -12,6 +14,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
+import { toPng } from "html-to-image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -136,6 +139,8 @@ function ReferenceGraphInner({
 	const mutateAsyncRef = useRef(buildGraphMutation.mutateAsync);
 	mutateAsyncRef.current = buildGraphMutation.mutateAsync;
 	const requestGenerationRef = useRef(0);
+	const [isExporting, setIsExporting] = useState(false);
+	const { getNodes } = useReactFlow();
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
@@ -226,6 +231,65 @@ function ReferenceGraphInner({
 		void loadGraph();
 	}, [loadGraph]);
 
+	const handleExportPng = useCallback(async () => {
+		if (isExporting || nodes.length === 0) return;
+		setIsExporting(true);
+
+		try {
+			const nodesList = getNodes();
+			const nodesBounds = getNodesBounds(nodesList);
+			const padding = 100;
+			const imageWidth = nodesBounds.width + padding * 2;
+			const imageHeight = nodesBounds.height + padding * 2;
+			const viewport = getViewportForBounds(
+				nodesBounds,
+				imageWidth,
+				imageHeight,
+				0.5,
+				2,
+				0,
+			);
+
+			const viewportEl = document.querySelector(
+				".react-flow__viewport",
+			) as HTMLElement;
+			if (!viewportEl) return;
+
+			const controls = document.querySelector(
+				".react-flow__controls",
+			) as HTMLElement;
+			const background = document.querySelector(
+				".react-flow__background",
+			) as HTMLElement;
+			if (controls) controls.style.display = "none";
+			if (background) background.style.display = "none";
+
+			const dataUrl = await toPng(viewportEl, {
+				backgroundColor: "transparent",
+				width: imageWidth,
+				height: imageHeight,
+				style: {
+					width: `${imageWidth}px`,
+					height: `${imageHeight}px`,
+					transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+				},
+			});
+
+			if (controls) controls.style.display = "";
+			if (background) background.style.display = "";
+
+			// Trigger download
+			const link = document.createElement("a");
+			link.download = `reference-graph-${Date.now()}.png`;
+			link.href = dataUrl;
+			link.click();
+		} catch (err) {
+			console.error("[reference-graph] Export PNG failed:", err);
+		} finally {
+			setIsExporting(false);
+		}
+	}, [isExporting, nodes.length, getNodes]);
+
 	const depthOptions = useMemo(
 		() => [1, 2, 3, 4, 5].map((d) => ({ value: d, label: `Depth: ${d}` })),
 		[],
@@ -270,6 +334,14 @@ function ReferenceGraphInner({
 							className="h-6 rounded border border-border bg-background px-2 text-xs text-foreground hover:bg-accent disabled:opacity-50"
 						>
 							{isLoading ? "Loading..." : "Refresh"}
+						</button>
+						<button
+							type="button"
+							onClick={() => void handleExportPng()}
+							disabled={isExporting || nodes.length === 0}
+							className="h-6 rounded border border-border bg-background px-2 text-xs text-foreground hover:bg-accent disabled:opacity-50"
+						>
+							{isExporting ? "Exporting..." : "Export PNG"}
 						</button>
 					</div>
 					<PaneToolbarActions
