@@ -330,7 +330,8 @@ describe("ChatMessageList", () => {
 		});
 
 		expect(html).toContain("INLINE_SUBAGENT_EXECUTION_MESSAGE");
-		expect(html).not.toContain("SUBAGENT_EXECUTION_MESSAGE");
+		// Ensure non-inline variant is not rendered (INLINE_ prefix distinguishes them)
+		expect(html).not.toMatch(/(?<!INLINE_)SUBAGENT_EXECUTION_MESSAGE/);
 		expect(html).not.toContain("PENDING_PLAN_APPROVAL_MESSAGE");
 	});
 

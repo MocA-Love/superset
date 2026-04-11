@@ -1284,13 +1284,20 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 export function searchSettings(query: string): SettingsItem[] {
 	if (!query.trim()) return SETTINGS_ITEMS;
 
-	const q = query.toLowerCase();
-	return SETTINGS_ITEMS.filter(
-		(item) =>
-			item.title.toLowerCase().includes(q) ||
-			item.description.toLowerCase().includes(q) ||
-			item.keywords.some((kw) => kw.toLowerCase().includes(q)),
-	);
+	const words = query
+		.toLowerCase()
+		.split(/\s+/)
+		.filter((w) => w.length > 0);
+	if (words.length === 0) return SETTINGS_ITEMS;
+
+	return SETTINGS_ITEMS.filter((item) => {
+		const haystack = [
+			item.title.toLowerCase(),
+			item.description.toLowerCase(),
+			...item.keywords.map((kw) => kw.toLowerCase()),
+		].join(" ");
+		return words.every((word) => haystack.includes(word));
+	});
 }
 
 export function getMatchCountBySection(

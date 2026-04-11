@@ -1113,7 +1113,7 @@ export async function searchFiles({
 	excludePattern = "",
 	limit = 20,
 }: SearchFilesOptions): Promise<FsSearchMatch[]> {
-	const trimmedQuery = query.trim();
+	const trimmedQuery = query.trim().replace(/^\.\//, "");
 	if (!trimmedQuery) {
 		return [];
 	}

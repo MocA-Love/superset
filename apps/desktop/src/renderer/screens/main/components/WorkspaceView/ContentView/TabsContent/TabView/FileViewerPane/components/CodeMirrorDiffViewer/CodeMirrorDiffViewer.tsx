@@ -411,7 +411,6 @@ export function CodeMirrorDiffViewer({
 					: [],
 			),
 		});
-		// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only track whether the request is available, not the callback reference itself, to avoid re-creating the plugin on every render
 	}, [inlineCompletionCompartmentB, hasInlineCompletionRequest]);
 
 	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
