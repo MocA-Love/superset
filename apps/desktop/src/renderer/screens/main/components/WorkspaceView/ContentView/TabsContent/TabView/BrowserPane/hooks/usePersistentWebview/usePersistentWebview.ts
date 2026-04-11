@@ -281,20 +281,20 @@ export function usePersistentWebview({
 		const handleDomReady = () => {
 			markPersistentWebviewDomReady(paneId);
 
-			if (!wv.isConnected) {
-				return;
-			}
-
-			try {
-				const webContentsId = wv.getWebContentsId();
-				const previousId = getRegisteredWebContentsId(paneId);
-				// Register on first load, or re-register if webContentsId changed
-				if (previousId !== webContentsId) {
-					setRegisteredWebContentsId(paneId, webContentsId);
-					registerBrowserRef.current({ paneId, webContentsId });
+			if (wv.isConnected) {
+				try {
+					const webContentsId = wv.getWebContentsId();
+					const previousId = getRegisteredWebContentsId(paneId);
+					// Register on first load, or re-register if webContentsId changed
+					if (previousId !== webContentsId) {
+						setRegisteredWebContentsId(paneId, webContentsId);
+						registerBrowserRef.current({ paneId, webContentsId });
+					}
+				} catch {
+					// WebView was detached between the isConnected check and
+					// getWebContentsId call — skip registration but still
+					// attempt to drain the pending navigation below.
 				}
-			} catch {
-				return;
 			}
 
 			const pendingUrl = getPendingPersistentWebviewNavigation(paneId);
