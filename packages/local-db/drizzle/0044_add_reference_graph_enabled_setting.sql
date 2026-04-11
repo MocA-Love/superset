@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `reference_graph_enabled` integer;

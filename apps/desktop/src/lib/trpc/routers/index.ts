@@ -26,6 +26,7 @@ import { createNotificationsRouter } from "./notifications";
 import { createPermissionsRouter } from "./permissions";
 import { createPortsRouter } from "./ports";
 import { createProjectsRouter } from "./projects";
+import { createReferenceGraphRouter } from "./reference-graph";
 import { createResourceMetricsRouter } from "./resource-metrics";
 import { createRingtoneRouter } from "./ringtone";
 import { createSettingsRouter } from "./settings";
@@ -63,6 +64,7 @@ export const createAppRouter = (
 		resourceMetrics: createResourceMetricsRouter(),
 		menu: createMenuRouter(),
 		languageServices: createLanguageServicesRouter(),
+		referenceGraph: createReferenceGraphRouter(),
 		external: createExternalRouter(),
 		settings: createSettingsRouter(),
 		config: createConfigRouter(),

@@ -44,6 +44,7 @@ import {
 	createFileViewerPane,
 	createGitGraphTabWithPane,
 	createPane,
+	createReferenceGraphTabWithPane,
 	createTabWithPane,
 	createVscodeExtensionTabWithPane,
 	equalizeSplitPercentages,
@@ -1889,6 +1890,52 @@ export const useTabsStore = create<TabsStore>()(
 					const { tab, pane } = createGitGraphTabWithPane(
 						workspaceId,
 						worktreePath,
+					);
+
+					const currentActiveId = state.activeTabIds[workspaceId];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
+					const newHistoryStack = currentActiveId
+						? [
+								currentActiveId,
+								...historyStack.filter((id) => id !== currentActiveId),
+							]
+						: historyStack;
+
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, [pane.id]: pane },
+						activeTabIds: {
+							...state.activeTabIds,
+							[workspaceId]: tab.id,
+						},
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: pane.id,
+						},
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: newHistoryStack,
+						},
+					});
+
+					return { tabId: tab.id, paneId: pane.id };
+				},
+
+				addReferenceGraphTab: (
+					workspaceId: string,
+					absolutePath: string,
+					languageId: string,
+					line: number,
+					column: number,
+				) => {
+					const state = get();
+
+					const { tab, pane } = createReferenceGraphTabWithPane(
+						workspaceId,
+						absolutePath,
+						languageId,
+						line,
+						column,
 					);
 
 					const currentActiveId = state.activeTabIds[workspaceId];

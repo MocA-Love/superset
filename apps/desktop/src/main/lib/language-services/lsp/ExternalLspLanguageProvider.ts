@@ -1,7 +1,10 @@
 import { languageDiagnosticsStore } from "../diagnostics-store";
 import type {
+	LanguageServiceCallHierarchyItem,
 	LanguageServiceDiagnostic,
 	LanguageServiceDocument,
+	LanguageServiceIncomingCall,
+	LanguageServiceLocation,
 	LanguageServiceProvider,
 	LanguageServiceProviderSummary,
 	LanguageServiceRelatedInformation,
@@ -335,6 +338,218 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 		this.workspaceErrors.delete(args.workspaceId);
 	}
 
+	async findReferences(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null> {
+		const session = this.sessions.get(args.workspaceId);
+		if (!session) return null;
+
+		try {
+			const result = (await session.client.request("textDocument/references", {
+				textDocument: {
+					uri: absolutePathToFileUri(args.absolutePath),
+				},
+				position: {
+					line: args.line - 1,
+					character: args.column - 1,
+				},
+				context: { includeDeclaration: true },
+			})) as Array<{
+				uri: string;
+				range: {
+					start: { line: number; character: number };
+					end: { line: number; character: number };
+				};
+			}> | null;
+
+			if (!result) return null;
+
+			return result
+				.map((loc) => {
+					const absPath = fileUriToAbsolutePath(loc.uri);
+					if (!absPath) return null;
+					return {
+						absolutePath: absPath,
+						line: loc.range.start.line + 1,
+						column: loc.range.start.character + 1,
+						endLine: loc.range.end.line + 1,
+						endColumn: loc.range.end.character + 1,
+					};
+				})
+				.filter((loc): loc is LanguageServiceLocation => loc !== null);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			session.lastError = message;
+			this.workspaceErrors.set(args.workspaceId, message);
+			return null;
+		}
+	}
+
+	async prepareCallHierarchy(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceCallHierarchyItem[] | null> {
+		const session = this.sessions.get(args.workspaceId);
+		if (!session) return null;
+
+		try {
+			const result = (await session.client.request(
+				"textDocument/prepareCallHierarchy",
+				{
+					textDocument: {
+						uri: absolutePathToFileUri(args.absolutePath),
+					},
+					position: {
+						line: args.line - 1,
+						character: args.column - 1,
+					},
+				},
+			)) as Array<{
+				name: string;
+				kind: number;
+				uri: string;
+				range: {
+					start: { line: number; character: number };
+					end: { line: number; character: number };
+				};
+				selectionRange: {
+					start: { line: number; character: number };
+					end: { line: number; character: number };
+				};
+			}> | null;
+
+			if (!result) return null;
+
+			return result
+				.map((item) => {
+					const absPath = fileUriToAbsolutePath(item.uri);
+					if (!absPath) return null;
+					return {
+						name: item.name,
+						kind: String(item.kind),
+						absolutePath: absPath,
+						line: item.range.start.line + 1,
+						column: item.range.start.character + 1,
+						endLine: item.range.end.line + 1,
+						endColumn: item.range.end.character + 1,
+						selectionLine: item.selectionRange.start.line + 1,
+						selectionColumn: item.selectionRange.start.character + 1,
+						selectionEndLine: item.selectionRange.end.line + 1,
+						selectionEndColumn: item.selectionRange.end.character + 1,
+					};
+				})
+				.filter(
+					(item): item is LanguageServiceCallHierarchyItem => item !== null,
+				);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			session.lastError = message;
+			this.workspaceErrors.set(args.workspaceId, message);
+			return null;
+		}
+	}
+
+	async getIncomingCalls(args: {
+		workspaceId: string;
+		item: LanguageServiceCallHierarchyItem;
+	}): Promise<LanguageServiceIncomingCall[] | null> {
+		const session = this.sessions.get(args.workspaceId);
+		if (!session) return null;
+
+		try {
+			const lspItem = {
+				name: args.item.name,
+				kind: Number(args.item.kind),
+				uri: absolutePathToFileUri(args.item.absolutePath),
+				range: {
+					start: {
+						line: args.item.line - 1,
+						character: args.item.column - 1,
+					},
+					end: {
+						line: args.item.endLine - 1,
+						character: args.item.endColumn - 1,
+					},
+				},
+				selectionRange: {
+					start: {
+						line: args.item.selectionLine - 1,
+						character: args.item.selectionColumn - 1,
+					},
+					end: {
+						line: args.item.selectionEndLine - 1,
+						character: args.item.selectionEndColumn - 1,
+					},
+				},
+			};
+
+			const result = (await session.client.request(
+				"callHierarchy/incomingCalls",
+				{ item: lspItem },
+			)) as Array<{
+				from: {
+					name: string;
+					kind: number;
+					uri: string;
+					range: {
+						start: { line: number; character: number };
+						end: { line: number; character: number };
+					};
+					selectionRange: {
+						start: { line: number; character: number };
+						end: { line: number; character: number };
+					};
+				};
+				fromRanges: Array<{
+					start: { line: number; character: number };
+					end: { line: number; character: number };
+				}>;
+			}> | null;
+
+			if (!result) return null;
+
+			return result
+				.map((call) => {
+					const fromPath = fileUriToAbsolutePath(call.from.uri);
+					if (!fromPath) return null;
+					return {
+						from: {
+							name: call.from.name,
+							kind: String(call.from.kind),
+							absolutePath: fromPath,
+							line: call.from.range.start.line + 1,
+							column: call.from.range.start.character + 1,
+							endLine: call.from.range.end.line + 1,
+							endColumn: call.from.range.end.character + 1,
+							selectionLine: call.from.selectionRange.start.line + 1,
+							selectionColumn: call.from.selectionRange.start.character + 1,
+							selectionEndLine: call.from.selectionRange.end.line + 1,
+							selectionEndColumn: call.from.selectionRange.end.character + 1,
+						},
+						fromRanges: call.fromRanges.map((r) => ({
+							line: r.start.line + 1,
+							column: r.start.character + 1,
+							endLine: r.end.line + 1,
+							endColumn: r.end.character + 1,
+						})),
+					};
+				})
+				.filter((call): call is LanguageServiceIncomingCall => call !== null);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			session.lastError = message;
+			this.workspaceErrors.set(args.workspaceId, message);
+			return null;
+		}
+	}
+
 	private async ensureSession(
 		workspaceId: string,
 		workspacePath: string,
@@ -433,6 +648,15 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 					textDocument: {
 						publishDiagnostics: {
 							relatedInformation: true,
+						},
+						references: {
+							dynamicRegistration: false,
+						},
+						callHierarchy: {
+							dynamicRegistration: false,
+						},
+						documentSymbol: {
+							dynamicRegistration: false,
 						},
 					},
 				},

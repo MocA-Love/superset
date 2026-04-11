@@ -66,6 +66,47 @@ export interface LanguageServiceWorkspaceSnapshot {
 	};
 }
 
+/**
+ * Location of a symbol reference returned by findReferences / call hierarchy.
+ */
+export interface LanguageServiceLocation {
+	absolutePath: string;
+	line: number;
+	column: number;
+	endLine: number;
+	endColumn: number;
+}
+
+/**
+ * A call hierarchy item returned by prepareCallHierarchy.
+ */
+export interface LanguageServiceCallHierarchyItem {
+	name: string;
+	kind: string;
+	absolutePath: string;
+	line: number;
+	column: number;
+	endLine: number;
+	endColumn: number;
+	selectionLine: number;
+	selectionColumn: number;
+	selectionEndLine: number;
+	selectionEndColumn: number;
+}
+
+/**
+ * An incoming call hierarchy entry.
+ */
+export interface LanguageServiceIncomingCall {
+	from: LanguageServiceCallHierarchyItem;
+	fromRanges: Array<{
+		line: number;
+		column: number;
+		endLine: number;
+		endColumn: number;
+	}>;
+}
+
 export interface LanguageServiceProvider {
 	readonly id: string;
 	readonly label: string;
@@ -93,4 +134,36 @@ export interface LanguageServiceProvider {
 		workspaceId: string;
 		workspacePath: string;
 	}): Promise<void>;
+
+	/**
+	 * Find all references to a symbol at the given position.
+	 * Returns null if the provider does not support this operation.
+	 */
+	findReferences?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null>;
+
+	/**
+	 * Prepare call hierarchy at the given position.
+	 * Returns null if the provider does not support this operation.
+	 */
+	prepareCallHierarchy?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceCallHierarchyItem[] | null>;
+
+	/**
+	 * Get incoming calls for a call hierarchy item.
+	 */
+	getIncomingCalls?(args: {
+		workspaceId: string;
+		item: LanguageServiceCallHierarchyItem;
+	}): Promise<LanguageServiceIncomingCall[] | null>;
 }

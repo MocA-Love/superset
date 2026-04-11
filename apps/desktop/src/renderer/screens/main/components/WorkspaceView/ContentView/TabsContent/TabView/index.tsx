@@ -28,6 +28,7 @@ import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
 import { FileViewerPane } from "./FileViewerPane";
 import { GitGraphPane } from "./GitGraphPane";
+import { ReferenceGraphPane } from "./ReferenceGraphPane";
 import { TabPane } from "./TabPane";
 import { VscodeExtensionPane } from "./VscodeExtensionPane";
 
@@ -161,6 +162,12 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 					source?: "view" | "panel";
 					sessionId?: string;
 				};
+				referenceGraph?: {
+					absolutePath: string;
+					languageId: string;
+					line: number;
+					column: number;
+				};
 			}
 		> = {};
 		for (const paneId of layoutPaneIds) {
@@ -171,6 +178,7 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 					type: pane.type,
 					devtools: pane.devtools,
 					vscodeExtension: pane.vscodeExtension,
+					referenceGraph: pane.referenceGraph,
 				};
 			}
 		}
@@ -387,6 +395,22 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 						availableTabs={workspaceTabs}
 						onMoveToTab={(targetTabId) => movePaneToTab(paneId, targetTabId)}
 						onMoveToNewTab={() => movePaneToNewTab(paneId)}
+						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			// Route reference-graph panes
+			if (paneInfo.type === "reference-graph" && paneInfo.referenceGraph) {
+				return (
+					<ReferenceGraphPane
+						paneId={paneId}
+						path={path}
+						tabId={tab.id}
+						workspaceId={tab.workspaceId}
+						splitPaneAuto={splitPaneAuto}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
 						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
 					/>
 				);
