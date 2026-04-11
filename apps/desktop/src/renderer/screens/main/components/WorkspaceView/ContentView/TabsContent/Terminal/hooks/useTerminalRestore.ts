@@ -86,12 +86,6 @@ export function useTerminalRestore({
 		const xterm = xtermRef.current;
 		if (!xterm) return;
 		if (pendingEventsRef.current.length === 0) return;
-		if (DEBUG_TERMINAL) {
-			console.log("[legacy-terminal] flushPendingEvents", {
-				paneId,
-				count: pendingEventsRef.current.length,
-			});
-		}
 
 		const events = pendingEventsRef.current.splice(
 			0,
@@ -110,7 +104,7 @@ export function useTerminalRestore({
 				onDisconnectEventRef.current(event.reason);
 			}
 		}
-	}, [xtermRef, pendingEventsRef, paneId]);
+	}, [xtermRef, pendingEventsRef]);
 
 	const maybeApplyInitialState = useCallback(() => {
 		if (!didFirstRenderRef.current) return;
@@ -120,40 +114,16 @@ export function useTerminalRestore({
 		const xterm = xtermRef.current;
 		const fitAddon = fitAddonRef.current;
 		if (!xterm || !fitAddon) return;
-		if (DEBUG_TERMINAL) {
-			console.log("[legacy-terminal] maybeApplyInitialState", {
-				paneId,
-				isNew: result.isNew,
-				isColdRestore: Boolean(result.isColdRestore),
-				hasSnapshot: Boolean(result.snapshot),
-				snapshotCols: result.snapshot?.cols ?? null,
-				snapshotRows: result.snapshot?.rows ?? null,
-				pendingEvents: pendingEventsRef.current.length,
-			});
-		}
 
 		// Clear before applying to prevent double-apply on concurrent triggers
 		pendingInitialStateRef.current = null;
 		++restoreSequenceRef.current;
 		const restoreSequence = restoreSequenceRef.current;
 		try {
-			const scheduleFitAndScroll = () => {
+			const scheduleScrollToBottom = () => {
 				requestAnimationFrame(() => {
 					if (xtermRef.current !== xterm) return;
 					if (restoreSequenceRef.current !== restoreSequence) return;
-					const prevCols = xterm.cols;
-					const prevRows = xterm.rows;
-					fitAddon.fit();
-					xterm.refresh(0, Math.max(0, xterm.rows - 1));
-					if (DEBUG_TERMINAL) {
-						console.log("[legacy-terminal] scheduleFitAndScroll", {
-							paneId,
-							prevCols,
-							prevRows,
-							nextCols: xterm.cols,
-							nextRows: xterm.rows,
-						});
-					}
 					scrollToBottom(xterm);
 				});
 			};
@@ -214,7 +184,7 @@ export function useTerminalRestore({
 					}
 					flushPendingEvents();
 
-					scheduleFitAndScroll();
+					scheduleScrollToBottom();
 				});
 
 				if (result.snapshot?.cwd) {
@@ -229,7 +199,7 @@ export function useTerminalRestore({
 
 			const finalizeRestore = () => {
 				isStreamReadyRef.current = true;
-				scheduleFitAndScroll();
+				scheduleScrollToBottom();
 				if (DEBUG_TERMINAL) {
 					console.log(
 						`[Terminal] isStreamReady=true (finalizeRestore): ${paneId}, pendingEvents=${pendingEventsRef.current.length}`,
@@ -237,26 +207,6 @@ export function useTerminalRestore({
 				}
 				flushPendingEvents();
 			};
-
-			const shouldSkipSnapshotForNewSession =
-				result.isNew && !result.isColdRestore;
-			if (shouldSkipSnapshotForNewSession) {
-				// Fresh sessions already have a live stream attached. Replaying the
-				// attach snapshot here reintroduces the initial prompt twice because
-				// the same bytes arrive again from the daemon stream moments later.
-				if (DEBUG_TERMINAL) {
-					console.log("[legacy-terminal] skip snapshot for new session", {
-						paneId,
-						hasSnapshotAnsi: Boolean(initialAnsi),
-						hasRehydrateSequences: Boolean(result.snapshot?.rehydrateSequences),
-					});
-				}
-				finalizeRestore();
-				if (result.snapshot?.cwd) {
-					updateCwdRef.current(result.snapshot.cwd);
-				}
-				return;
-			}
 
 			const writeSnapshot = () => {
 				if (!initialAnsi) {
