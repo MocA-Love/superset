@@ -256,6 +256,7 @@ export function usePersistentWebview({
 			clearPersistentWebviewDomReady(paneId);
 			webview.setAttribute("partition", "persist:superset");
 			webview.setAttribute("allowpopups", "");
+			webview.setAttribute("webpreferences", "transparent=no");
 			webview.setAttribute("useragent", chromeLikeUserAgent);
 			webview.style.display = "flex";
 			webview.style.flex = "1";
