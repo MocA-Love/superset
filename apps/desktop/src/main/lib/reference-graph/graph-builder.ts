@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { languageServiceManager } from "../language-services/manager";
 import type {
@@ -55,13 +55,13 @@ function getLanguageIdFromPath(filePath: string): string {
 	return map[ext] ?? "plaintext";
 }
 
-function getCodeSnippet(
+async function getCodeSnippet(
 	absolutePath: string,
 	line: number,
 	endLine: number,
-): { snippet: string; startLine: number } | null {
+): Promise<{ snippet: string; startLine: number } | null> {
 	try {
-		const content = fs.readFileSync(absolutePath, "utf8");
+		const content = await fs.readFile(absolutePath, "utf8");
 		const lines = content.split("\n");
 		const startLine = Math.max(0, line - 1 - CONTEXT_LINES);
 		const finalLine = Math.min(lines.length, endLine + CONTEXT_LINES);
@@ -72,21 +72,22 @@ function getCodeSnippet(
 	}
 }
 
+/**
+ * Check if a file path should be excluded from the graph.
+ * Patterns are matched against path segments — e.g. "node_modules"
+ * matches any path containing a "node_modules" directory segment.
+ */
 function shouldExclude(
 	absolutePath: string,
 	workspacePath: string,
 	excludePatterns: string[],
 ): boolean {
 	const relative = path.relative(workspacePath, absolutePath);
+	const segments = relative.split(path.sep);
 	for (const pattern of excludePatterns) {
-		// Simple glob check — support ** / node_modules patterns
-		if (pattern.includes("node_modules") && relative.includes("node_modules")) {
-			return true;
-		}
-		if (pattern.includes("dist") && relative.includes("/dist/")) {
-			return true;
-		}
-		if (pattern.includes(".git") && relative.includes("/.git/")) {
+		// Extract the directory name from glob patterns like "**/node_modules/**"
+		const dirName = pattern.replace(/\*\*\//g, "").replace(/\/\*\*/g, "");
+		if (segments.includes(dirName)) {
 			return true;
 		}
 	}
@@ -125,7 +126,7 @@ export async function buildReferenceGraph(
 			rootItem.line,
 			rootItem.column,
 		);
-		addNodeFromCallHierarchyItem(
+		await addNodeFromCallHierarchyItem(
 			nodes,
 			rootItem,
 			rootNodeId,
@@ -152,7 +153,7 @@ export async function buildReferenceGraph(
 			request.line,
 			request.column,
 		);
-		const snippet = getCodeSnippet(
+		const snippet = await getCodeSnippet(
 			request.absolutePath,
 			request.line,
 			request.line,
@@ -239,7 +240,7 @@ async function buildCallHierarchyGraph(
 		);
 
 		if (!nodes.has(callerNodeId)) {
-			addNodeFromCallHierarchyItem(
+			await addNodeFromCallHierarchyItem(
 				nodes,
 				call.from,
 				callerNodeId,
@@ -315,7 +316,7 @@ async function buildReferencesGraph(
 		if (refNodeId === rootNodeId) continue;
 
 		if (!nodes.has(refNodeId)) {
-			addNodeFromLocation(
+			await addNodeFromLocation(
 				nodes,
 				ref,
 				refNodeId,
@@ -335,15 +336,19 @@ async function buildReferencesGraph(
 	}
 }
 
-function addNodeFromCallHierarchyItem(
+async function addNodeFromCallHierarchyItem(
 	nodes: Map<string, ReferenceGraphNode>,
 	item: LanguageServiceCallHierarchyItem,
 	nodeId: string,
 	workspacePath: string,
 	isRoot: boolean,
 	depth: number,
-): void {
-	const snippet = getCodeSnippet(item.absolutePath, item.line, item.endLine);
+): Promise<void> {
+	const snippet = await getCodeSnippet(
+		item.absolutePath,
+		item.line,
+		item.endLine,
+	);
 	nodes.set(nodeId, {
 		id: nodeId,
 		name: item.name,
@@ -362,14 +367,14 @@ function addNodeFromCallHierarchyItem(
 	});
 }
 
-function addNodeFromLocation(
+async function addNodeFromLocation(
 	nodes: Map<string, ReferenceGraphNode>,
 	location: LanguageServiceLocation,
 	nodeId: string,
 	workspacePath: string,
 	depth: number,
-): void {
-	const snippet = getCodeSnippet(
+): Promise<void> {
+	const snippet = await getCodeSnippet(
 		location.absolutePath,
 		location.line,
 		location.endLine,

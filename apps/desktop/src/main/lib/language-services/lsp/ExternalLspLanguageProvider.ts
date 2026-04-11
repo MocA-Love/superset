@@ -640,6 +640,15 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 						publishDiagnostics: {
 							relatedInformation: true,
 						},
+						references: {
+							dynamicRegistration: false,
+						},
+						callHierarchy: {
+							dynamicRegistration: false,
+						},
+						documentSymbol: {
+							dynamicRegistration: false,
+						},
 					},
 				},
 				initializationOptions: this.resolveInitializationOptions({

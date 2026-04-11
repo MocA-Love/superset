@@ -45,6 +45,7 @@ import {
 	retargetAbsolutePath,
 	toAbsoluteWorkspacePath,
 } from "shared/absolute-paths";
+import { detectLanguage } from "shared/detect-language";
 import { isHtmlFile, isImageFile, isMarkdownFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import type { CodeEditorAdapter } from "../../../components";
@@ -170,6 +171,13 @@ export function FileViewerPane({
 	const [htmlZoomLevel, setHtmlZoomLevel] = useState(0);
 	const htmlPreviewRef = useRef<HtmlPreviewHandle | null>(null);
 
+	const addReferenceGraphTab = useTabsStore((s) => s.addReferenceGraphTab);
+	const { data: referenceGraphSetting } =
+		electronTrpc.settings.getReferenceGraph.useQuery(undefined, {
+			staleTime: 30_000,
+		});
+	const referenceGraphEnabled = referenceGraphSetting?.enabled ?? true;
+
 	const filePath = fileViewer?.filePath ?? "";
 	const viewMode = fileViewer?.viewMode ?? "raw";
 	const isPinned = fileViewer?.isPinned ?? false;
@@ -178,6 +186,15 @@ export function FileViewerPane({
 	const oldPath = fileViewer?.oldPath;
 	const initialLine = fileViewer?.initialLine;
 	const initialColumn = fileViewer?.initialColumn;
+
+	const handleShowReferenceGraph = useCallback(() => {
+		if (!normalizedWorkspaceId || !filePath) return;
+		const editor = editorRef.current;
+		const selection = editor?.getSelectionLines();
+		const line = selection?.startLine ?? 1;
+		const languageId = detectLanguage(filePath) ?? "typescript";
+		addReferenceGraphTab(normalizedWorkspaceId, filePath, languageId, line, 1);
+	}, [normalizedWorkspaceId, filePath, addReferenceGraphTab]);
 
 	const documentKey = useMemo(
 		() =>
@@ -844,6 +861,9 @@ export function FileViewerPane({
 							markdownSearch={markdownSearch}
 							htmlZoomLevel={htmlZoomLevel}
 							htmlPreviewRef={htmlPreviewRef}
+							onShowReferenceGraph={
+								referenceGraphEnabled ? handleShowReferenceGraph : undefined
+							}
 						/>
 					</div>
 				</div>

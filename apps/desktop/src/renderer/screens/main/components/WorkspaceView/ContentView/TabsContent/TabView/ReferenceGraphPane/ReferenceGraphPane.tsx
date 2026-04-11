@@ -11,7 +11,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -104,6 +104,8 @@ function ReferenceGraphInner({
 
 	const buildGraphMutation =
 		electronTrpc.referenceGraph.buildGraph.useMutation();
+	const mutateAsyncRef = useRef(buildGraphMutation.mutateAsync);
+	mutateAsyncRef.current = buildGraphMutation.mutateAsync;
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
@@ -125,7 +127,7 @@ function ReferenceGraphInner({
 		setError(null);
 
 		try {
-			const graph = await buildGraphMutation.mutateAsync({
+			const graph = await mutateAsyncRef.current({
 				workspaceId,
 				absolutePath: refGraphState.absolutePath,
 				languageId: refGraphState.languageId,
@@ -173,7 +175,6 @@ function ReferenceGraphInner({
 		refGraphState,
 		workspaceId,
 		maxDepth,
-		buildGraphMutation,
 		handleNodeDoubleClick,
 		setNodes,
 		setEdges,
@@ -183,7 +184,6 @@ function ReferenceGraphInner({
 	// Load graph on mount or when params change
 	useEffect(() => {
 		void loadGraph();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [loadGraph]);
 
 	const depthOptions = useMemo(
