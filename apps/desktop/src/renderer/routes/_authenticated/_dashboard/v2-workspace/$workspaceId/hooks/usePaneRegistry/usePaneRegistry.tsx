@@ -180,26 +180,7 @@ export function usePaneRegistry(
 				getIcon: () => <Globe className="size-4" />,
 				getTitle: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as BrowserPaneData;
-<<<<<<< HEAD
-					return data.url;
-				},
-				renderPane: (ctx: RendererContext<PaneViewerData>) => {
-					const data = ctx.pane.data as BrowserPaneData;
-					// FORK NOTE: hard reload appends cache-bust param to force full re-fetch
-					const src = data.hardReloadToken
-						? `${data.url}${data.url.includes("?") ? "&" : "?"}__cb=${data.hardReloadToken}`
-						: data.url;
-					return (
-						<iframe
-							className="h-full w-full border-0 bg-background"
-							key={`${ctx.pane.id}:${data.reloadToken ?? "0"}`}
-							src={src}
-							title={ctx.pane.titleOverride ?? "Browser"}
-						/>
-					);
-=======
 					return data.pageTitle || data.url;
->>>>>>> 2c6736416 (feat(desktop): port browser pane to v2 workspaces with global persistence (#3346))
 				},
 				renderPane: (ctx: RendererContext<PaneViewerData>) => (
 					<BrowserPane ctx={ctx} />
