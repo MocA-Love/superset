@@ -48,6 +48,11 @@ export interface ReferenceGraphRequest {
 	maxDepth?: number;
 	/** Max total nodes (default 100) */
 	maxNodes?: number;
-	/** Glob patterns to exclude */
+	/**
+	 * Directory name segments to exclude from the graph.
+	 * Glob-style patterns like "** /node_modules/**" are supported — the
+	 * directory name is extracted and matched against path segments.
+	 * Default: ["node_modules", "dist", ".git"]
+	 */
 	excludePatterns?: string[];
 }

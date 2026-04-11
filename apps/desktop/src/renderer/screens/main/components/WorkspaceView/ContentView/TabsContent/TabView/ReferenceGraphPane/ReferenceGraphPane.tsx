@@ -106,6 +106,7 @@ function ReferenceGraphInner({
 		electronTrpc.referenceGraph.buildGraph.useMutation();
 	const mutateAsyncRef = useRef(buildGraphMutation.mutateAsync);
 	mutateAsyncRef.current = buildGraphMutation.mutateAsync;
+	const requestGenerationRef = useRef(0);
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
@@ -123,6 +124,7 @@ function ReferenceGraphInner({
 	const loadGraph = useCallback(async () => {
 		if (!refGraphState) return;
 
+		const generation = ++requestGenerationRef.current;
 		setIsLoading(true);
 		setError(null);
 
@@ -135,6 +137,9 @@ function ReferenceGraphInner({
 				column: refGraphState.column,
 				maxDepth,
 			});
+
+			// Discard stale responses from earlier requests
+			if (generation !== requestGenerationRef.current) return;
 
 			const flowNodes: Node[] = graph.nodes.map((n) => ({
 				id: n.id,
@@ -156,6 +161,7 @@ function ReferenceGraphInner({
 
 			if (flowNodes.length > 0) {
 				const layouted = await layoutGraph(flowNodes, flowEdges);
+				if (generation !== requestGenerationRef.current) return;
 				setNodes(layouted.nodes);
 				setEdges(layouted.edges);
 				setTimeout(() => fitView({ padding: 0.2 }), 50);
@@ -165,11 +171,14 @@ function ReferenceGraphInner({
 				setError("No references found for this symbol.");
 			}
 		} catch (err) {
+			if (generation !== requestGenerationRef.current) return;
 			setError(
 				err instanceof Error ? err.message : "Failed to build reference graph",
 			);
 		} finally {
-			setIsLoading(false);
+			if (generation === requestGenerationRef.current) {
+				setIsLoading(false);
+			}
 		}
 	}, [
 		refGraphState,
@@ -207,7 +216,8 @@ function ReferenceGraphInner({
 					</span>
 					{refGraphState && (
 						<span className="truncate text-xs text-muted-foreground/60">
-							{refGraphState.absolutePath.split("/").pop()}:{refGraphState.line}
+							{refGraphState.absolutePath.split(/[\\/]/).pop()}:
+							{refGraphState.line}
 						</span>
 					)}
 					<div className="flex items-center gap-1 ml-auto">

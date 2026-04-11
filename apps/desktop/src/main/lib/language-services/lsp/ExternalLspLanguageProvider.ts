@@ -381,7 +381,10 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 					};
 				})
 				.filter((loc): loc is LanguageServiceLocation => loc !== null);
-		} catch {
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			session.lastError = message;
+			this.workspaceErrors.set(args.workspaceId, message);
 			return null;
 		}
 	}
@@ -445,7 +448,10 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 				.filter(
 					(item): item is LanguageServiceCallHierarchyItem => item !== null,
 				);
-		} catch {
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			session.lastError = message;
+			this.workspaceErrors.set(args.workspaceId, message);
 			return null;
 		}
 	}
@@ -536,7 +542,10 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 					};
 				})
 				.filter((call): call is LanguageServiceIncomingCall => call !== null);
-		} catch {
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			session.lastError = message;
+			this.workspaceErrors.set(args.workspaceId, message);
 			return null;
 		}
 	}

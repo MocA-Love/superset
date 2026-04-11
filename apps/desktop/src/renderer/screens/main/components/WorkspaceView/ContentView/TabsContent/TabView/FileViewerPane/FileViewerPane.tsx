@@ -190,10 +190,17 @@ export function FileViewerPane({
 	const handleShowReferenceGraph = useCallback(() => {
 		if (!normalizedWorkspaceId || !filePath) return;
 		const editor = editorRef.current;
-		const selection = editor?.getSelectionLines();
-		const line = selection?.startLine ?? 1;
+		const cursor = editor?.getCursorPosition();
+		const line = cursor?.line ?? 1;
+		const column = cursor?.column ?? 1;
 		const languageId = detectLanguage(filePath) ?? "typescript";
-		addReferenceGraphTab(normalizedWorkspaceId, filePath, languageId, line, 1);
+		addReferenceGraphTab(
+			normalizedWorkspaceId,
+			filePath,
+			languageId,
+			line,
+			column,
+		);
 	}, [normalizedWorkspaceId, filePath, addReferenceGraphTab]);
 
 	const documentKey = useMemo(

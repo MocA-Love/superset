@@ -1,3 +1,4 @@
+import path from "node:path";
 import { TRPCError } from "@trpc/server";
 import { buildReferenceGraph } from "main/lib/reference-graph";
 import { z } from "zod";
@@ -42,6 +43,18 @@ export const createReferenceGraphRouter = () => {
 			)
 			.mutation(async ({ input }) => {
 				const workspacePath = resolveWorkspacePath(input.workspaceId);
+
+				// Ensure absolutePath is within the workspace (prevent path traversal)
+				const resolved = path.resolve(input.absolutePath);
+				if (
+					!resolved.startsWith(workspacePath + path.sep) &&
+					resolved !== workspacePath
+				) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "absolutePath must be within the workspace",
+					});
+				}
 
 				const graph = await buildReferenceGraph({
 					workspaceId: input.workspaceId,

@@ -261,22 +261,21 @@ async function buildCallHierarchyGraph(
 		}
 	}
 
-	// Recurse into callers
-	await Promise.all(
-		pendingItems.map(({ item, nodeId: callerId }) =>
-			buildCallHierarchyGraph(
-				request,
-				item,
-				callerId,
-				nodes,
-				edges,
-				currentDepth + 1,
-				maxDepth,
-				maxNodes,
-				excludePatterns,
-			),
-		),
-	);
+	// Recurse into callers sequentially to respect maxNodes budget
+	for (const { item, nodeId: callerId } of pendingItems) {
+		if (nodes.size >= maxNodes) break;
+		await buildCallHierarchyGraph(
+			request,
+			item,
+			callerId,
+			nodes,
+			edges,
+			currentDepth + 1,
+			maxDepth,
+			maxNodes,
+			excludePatterns,
+		);
+	}
 }
 
 async function buildReferencesGraph(

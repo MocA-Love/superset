@@ -1106,7 +1106,7 @@ export const createReferenceGraphPane = (
 	column: number,
 ): Pane => {
 	const id = generateId("pane");
-	const fileName = absolutePath.split("/").pop() ?? absolutePath;
+	const fileName = getPathBaseName(absolutePath);
 	const referenceGraph: ReferenceGraphPaneState = {
 		absolutePath,
 		languageId,
@@ -1137,7 +1137,7 @@ export const createReferenceGraphTabWithPane = (
 		line,
 		column,
 	);
-	const fileName = absolutePath.split("/").pop() ?? absolutePath;
+	const fileName = getPathBaseName(absolutePath);
 
 	const tab: Tab = {
 		id: tabId,
