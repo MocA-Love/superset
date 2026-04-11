@@ -141,6 +141,7 @@ function ReferenceGraphInner({
 	const requestGenerationRef = useRef(0);
 	const [isExporting, setIsExporting] = useState(false);
 	const { getNodes } = useReactFlow();
+	const graphContainerRef = useRef<HTMLDivElement>(null);
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
 
@@ -235,6 +236,14 @@ function ReferenceGraphInner({
 		if (isExporting || nodes.length === 0) return;
 		setIsExporting(true);
 
+		const container = graphContainerRef.current;
+		const controls = container?.querySelector(
+			".react-flow__controls",
+		) as HTMLElement | null;
+		const background = container?.querySelector(
+			".react-flow__background",
+		) as HTMLElement | null;
+
 		try {
 			const nodesList = getNodes();
 			const nodesBounds = getNodesBounds(nodesList);
@@ -250,17 +259,11 @@ function ReferenceGraphInner({
 				0,
 			);
 
-			const viewportEl = document.querySelector(
+			const viewportEl = container?.querySelector(
 				".react-flow__viewport",
-			) as HTMLElement;
+			) as HTMLElement | null;
 			if (!viewportEl) return;
 
-			const controls = document.querySelector(
-				".react-flow__controls",
-			) as HTMLElement;
-			const background = document.querySelector(
-				".react-flow__background",
-			) as HTMLElement;
 			if (controls) controls.style.display = "none";
 			if (background) background.style.display = "none";
 
@@ -275,9 +278,6 @@ function ReferenceGraphInner({
 				},
 			});
 
-			if (controls) controls.style.display = "";
-			if (background) background.style.display = "";
-
 			// Trigger download
 			const link = document.createElement("a");
 			link.download = `reference-graph-${Date.now()}.png`;
@@ -286,6 +286,8 @@ function ReferenceGraphInner({
 		} catch (err) {
 			console.error("[reference-graph] Export PNG failed:", err);
 		} finally {
+			if (controls) controls.style.display = "";
+			if (background) background.style.display = "";
 			setIsExporting(false);
 		}
 	}, [isExporting, nodes.length, getNodes]);
@@ -353,7 +355,7 @@ function ReferenceGraphInner({
 				</div>
 			)}
 		>
-			<div className="w-full h-full relative">
+			<div ref={graphContainerRef} className="w-full h-full relative">
 				{isLoading && nodes.length === 0 && (
 					<div className="absolute inset-0 flex items-center justify-center z-10">
 						<div className="text-sm text-muted-foreground">
