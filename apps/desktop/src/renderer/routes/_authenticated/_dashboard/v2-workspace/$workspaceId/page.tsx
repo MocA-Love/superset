@@ -41,6 +41,7 @@ import {
 	getBrowserTabTitle,
 	renderBrowserTabIcon,
 } from "./hooks/usePaneRegistry/components/BrowserPane";
+import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import type {
@@ -135,6 +136,10 @@ function WorkspaceContent({
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
 		projectId,
 		workspaceId,
+	});
+	const { matchedPresets, executePreset } = useV2PresetExecution({
+		store,
+		projectId,
 	});
 	const paneRegistry = usePaneRegistry(workspaceId);
 	const defaultContextMenuActions = useDefaultContextMenuActions();
@@ -349,7 +354,7 @@ function WorkspaceContent({
 
 	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
 
-	useWorkspaceHotkeys({ store, workspaceId });
+	useWorkspaceHotkeys({ store, workspaceId, matchedPresets, executePreset });
 	useHotkey("QUICK_OPEN", handleQuickOpen);
 	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
 	useHotkey("SEARCH_IN_FILES", handleQuickOpen);
@@ -397,9 +402,8 @@ function WorkspaceContent({
 							renderTabIcon={renderBrowserTabIcon}
 							renderBelowTabBar={() => (
 								<V2PresetsBar
-									workspaceId={workspaceId}
-									projectId={projectId}
-									store={store}
+									matchedPresets={matchedPresets}
+									executePreset={executePreset}
 								/>
 							)}
 							renderAddTabMenu={() => (
