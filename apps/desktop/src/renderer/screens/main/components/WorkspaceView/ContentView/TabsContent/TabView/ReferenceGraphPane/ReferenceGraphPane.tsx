@@ -1,5 +1,6 @@
 import {
 	Background,
+	BackgroundVariant,
 	Controls,
 	type Edge,
 	type Node,
@@ -17,6 +18,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { ReferenceNode } from "./ReferenceNode";
+import "./reference-graph.css";
 
 const elk = new ELK();
 
@@ -36,10 +38,34 @@ interface ReferenceGraphPaneProps {
 	onPopOut?: () => void;
 }
 
-const NODE_WIDTH = 350;
-const NODE_HEIGHT = 200;
+const NODE_MIN_WIDTH = 280;
+const NODE_MAX_WIDTH = 500;
+const NODE_HEIGHT = 180;
+const CHAR_WIDTH = 7.5;
+const NODE_PADDING = 40;
+
+const ELK_OPTIONS = {
+	"elk.algorithm": "layered",
+	"elk.direction": "DOWN",
+	"elk.layered.cycleBreaking.strategy": "DEPTH_FIRST",
+	"elk.spacing.nodeNode": "60",
+	"elk.layered.spacing.nodeNodeBetweenLayers": "100",
+	"elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+	"elk.layered.nodePlacement.favorStraightEdges": "true",
+	"elk.edgeRouting": "ORTHOGONAL",
+	"elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+	"elk.separateConnectedComponents": "true",
+	"elk.spacing.componentComponent": "80",
+};
 
 const nodeTypes = { referenceNode: ReferenceNode };
+
+function estimateNodeWidth(codeSnippet: string): number {
+	const lines = codeSnippet.split("\n");
+	const maxLineLength = Math.max(...lines.map((line) => line.length));
+	const estimatedWidth = maxLineLength * CHAR_WIDTH + NODE_PADDING;
+	return Math.min(NODE_MAX_WIDTH, Math.max(NODE_MIN_WIDTH, estimatedWidth));
+}
 
 async function layoutGraph(
 	nodes: Node[],
@@ -47,16 +73,12 @@ async function layoutGraph(
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
 	const graph = {
 		id: "root",
-		layoutOptions: {
-			"elk.algorithm": "layered",
-			"elk.direction": "DOWN",
-			"elk.layered.spacing.nodeNodeBetweenLayers": "80",
-			"elk.spacing.nodeNode": "40",
-			"elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-		},
+		layoutOptions: ELK_OPTIONS,
 		children: nodes.map((n) => ({
 			id: n.id,
-			width: NODE_WIDTH,
+			width: estimateNodeWidth(
+				(n.data as { codeSnippet?: string })?.codeSnippet ?? "",
+			),
 			height: NODE_HEIGHT,
 		})),
 		edges: edges.map((e) => ({
@@ -155,8 +177,8 @@ function ReferenceGraphInner({
 				id: e.id,
 				source: e.source,
 				target: e.target,
-				animated: true,
-				style: { stroke: "var(--muted-foreground)", strokeWidth: 1.5 },
+				type: "smoothstep",
+				animated: false,
 			}));
 
 			if (flowNodes.length > 0) {
@@ -278,7 +300,12 @@ function ReferenceGraphInner({
 					maxZoom={2}
 					proOptions={{ hideAttribution: true }}
 				>
-					<Background bgColor="var(--sidebar)" color="var(--border)" gap={20} />
+					<Background
+						variant={BackgroundVariant.Dots}
+						gap={20}
+						size={1}
+						bgColor="var(--sidebar)"
+					/>
 					<Controls
 						showInteractive={false}
 						className="[&>button]:!bg-background [&>button]:!border-border [&>button]:!fill-foreground"

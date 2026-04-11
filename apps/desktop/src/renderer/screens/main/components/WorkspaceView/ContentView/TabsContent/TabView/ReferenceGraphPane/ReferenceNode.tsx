@@ -1,5 +1,6 @@
 import { Handle, Position } from "@xyflow/react";
 import { memo, useCallback } from "react";
+import { CodePreview } from "./CodePreview";
 
 interface ReferenceNodeData {
 	name: string;
@@ -16,90 +17,65 @@ interface ReferenceNodeData {
 }
 
 const SYMBOL_ICONS: Record<string, string> = {
-	function: "ƒ",
-	method: "m",
-	constructor: "C",
-	class: "◆",
-	interface: "I",
-	enum: "E",
-	variable: "v",
-	property: "p",
-	module: "M",
-	namespace: "N",
-	type: "T",
-	constant: "c",
-	reference: "→",
-	unknown: "?",
-	// tsserver symbol kinds (numeric)
-	"12": "ƒ", // function
-	"11": "m", // method
-	"5": "◆", // class
-	"8": "I", // interface
-	"10": "E", // enum
-	"13": "v", // variable
-	"6": "M", // module
+	function: "\u{0192}",
+	method: "\u{1F527}",
+	constructor: "\u{1F3D7}",
+	class: "\u{1F3DB}",
+	interface: "\u{26A1}",
+	enum: "\u{1F522}",
+	variable: "\u{1F3B2}",
+	property: "\u{1F4DD}",
+	module: "\u{1F4E6}",
+	namespace: "\u{1F4E6}",
+	type: "\u{1F4D0}",
+	constant: "\u{1F511}",
+	reference: "\u{1F517}",
+	unknown: "\u{1F4D6}",
+	// tsserver symbol kinds (string numbers)
+	"12": "\u{0192}", // function
+	"11": "\u{1F527}", // method
+	"5": "\u{1F3DB}", // class
+	"8": "\u{26A1}", // interface
+	"10": "\u{1F522}", // enum
+	"6": "\u{1F4E6}", // module
+	"13": "\u{1F3B2}", // variable
 };
 
 function ReferenceNodeComponent({ data }: { data: ReferenceNodeData }) {
-	const handleDoubleClick = useCallback(() => {
+	const handleClick = useCallback(() => {
 		data.onDoubleClick(data.absolutePath, data.line);
 	}, [data]);
 
 	const icon =
-		SYMBOL_ICONS[data.kind.toLowerCase()] ?? SYMBOL_ICONS[data.kind] ?? "·";
+		SYMBOL_ICONS[data.kind.toLowerCase()] ??
+		SYMBOL_ICONS[data.kind] ??
+		"\u{1F4D6}";
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: ReactFlow node wrapper
+		// biome-ignore lint/a11y/useKeyWithClickEvents: ReactFlow handles keyboard nav
 		<div
-			className={`rounded-lg border shadow-sm overflow-hidden w-[350px] ${
-				data.isRoot ? "border-primary/50 bg-primary/5" : "border-border bg-card"
-			}`}
-			onDoubleClick={handleDoubleClick}
+			className={`ref-graph-node ${data.isRoot ? "root" : ""}`}
+			onClick={handleClick}
 		>
-			<Handle
-				type="target"
-				position={Position.Top}
-				className="!bg-muted-foreground !w-2 !h-2"
+			<Handle type="target" position={Position.Top} isConnectable={false} />
+
+			<div className="ref-graph-node-header">
+				<span className="ref-graph-node-icon">{icon}</span>
+				<span className="ref-graph-node-name">{data.name}</span>
+			</div>
+
+			<div className="ref-graph-node-location">
+				{data.relativePath ?? data.absolutePath}:{data.line}
+			</div>
+
+			<CodePreview
+				code={data.codeSnippet}
+				language={data.languageId}
+				startLine={data.snippetStartLine}
 			/>
-			<div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/30">
-				<span className="text-xs font-mono text-muted-foreground">{icon}</span>
-				<span className="text-xs font-semibold text-foreground truncate">
-					{data.name}
-				</span>
-				{data.isRoot && (
-					<span className="ml-auto text-[10px] text-primary font-medium">
-						ROOT
-					</span>
-				)}
-			</div>
-			<div className="px-3 py-1 border-b border-border">
-				<span className="text-[10px] text-muted-foreground truncate block">
-					{data.relativePath ?? data.absolutePath}:{data.line}
-				</span>
-			</div>
-			<div className="max-h-[140px] overflow-hidden">
-				<pre className="text-[11px] leading-[1.4] p-2 overflow-x-auto font-mono text-foreground/80 whitespace-pre">
-					{data.codeSnippet
-						.split("\n")
-						.slice(0, 8)
-						.map((codeLine, i) => {
-							const lineNum = data.snippetStartLine + i;
-							return (
-								<div key={`${lineNum}:${codeLine}`} className="flex">
-									<span className="text-muted-foreground/40 select-none w-8 text-right mr-2 shrink-0">
-										{lineNum}
-									</span>
-									<span>{codeLine}</span>
-								</div>
-							);
-						})}
-				</pre>
-			</div>
-			<Handle
-				type="source"
-				position={Position.Bottom}
-				className="!bg-muted-foreground !w-2 !h-2"
-			/>
+
+			<Handle type="source" position={Position.Bottom} isConnectable={false} />
 		</div>
 	);
 }
