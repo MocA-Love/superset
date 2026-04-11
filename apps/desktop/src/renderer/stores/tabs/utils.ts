@@ -21,7 +21,6 @@ import {
 	type FileViewerMode,
 	type FileViewerState,
 	type GitGraphPaneState,
-	type ReferenceGraphPaneState,
 } from "shared/tabs-types";
 import type {
 	AddChatTabOptions,
@@ -1090,58 +1089,6 @@ export const createVscodeExtensionTabWithPane = (
 	const tab: Tab = {
 		id: tabId,
 		name,
-		workspaceId,
-		layout: pane.id,
-		createdAt: Date.now(),
-	};
-
-	return { tab, pane };
-};
-
-export const createReferenceGraphPane = (
-	tabId: string,
-	absolutePath: string,
-	languageId: string,
-	line: number,
-	column: number,
-): Pane => {
-	const id = generateId("pane");
-	const fileName = getPathBaseName(absolutePath);
-	const referenceGraph: ReferenceGraphPaneState = {
-		absolutePath,
-		languageId,
-		line,
-		column,
-	};
-	return {
-		id,
-		tabId,
-		type: "reference-graph",
-		name: `References: ${fileName}:${line}`,
-		referenceGraph,
-	};
-};
-
-export const createReferenceGraphTabWithPane = (
-	workspaceId: string,
-	absolutePath: string,
-	languageId: string,
-	line: number,
-	column: number,
-): { tab: Tab; pane: Pane } => {
-	const tabId = generateId("tab");
-	const pane = createReferenceGraphPane(
-		tabId,
-		absolutePath,
-		languageId,
-		line,
-		column,
-	);
-	const fileName = getPathBaseName(absolutePath);
-
-	const tab: Tab = {
-		id: tabId,
-		name: `References: ${fileName}:${line}`,
 		workspaceId,
 		layout: pane.id,
 		createdAt: Date.now(),

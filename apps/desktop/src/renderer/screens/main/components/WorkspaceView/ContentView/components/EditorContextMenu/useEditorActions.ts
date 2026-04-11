@@ -16,8 +16,6 @@ interface UseEditorActionsProps {
 	supersetLinkProject?: SupersetLinkProject | null;
 	/** If true, includes cut/paste actions (for editable editors) */
 	editable?: boolean;
-	/** Optional handler for "Show Reference Graph" context menu action */
-	onShowReferenceGraph?: () => void;
 }
 
 /**
@@ -31,7 +29,6 @@ export function useEditorActions({
 	worktreePath,
 	supersetLinkProject,
 	editable = true,
-	onShowReferenceGraph,
 }: UseEditorActionsProps): EditorActions {
 	const { copyToClipboard } = useCopyToClipboard();
 
@@ -188,6 +185,5 @@ export function useEditorActions({
 				? handleCopySupersetLinkWithLine
 				: undefined,
 		onFind: handleFind,
-		onShowReferenceGraph,
 	};
 }

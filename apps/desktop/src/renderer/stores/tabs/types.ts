@@ -226,13 +226,6 @@ export interface TabsStore extends TabsState {
 		workspaceId: string,
 		worktreePath: string,
 	) => { tabId: string; paneId: string };
-	addReferenceGraphTab: (
-		workspaceId: string,
-		absolutePath: string,
-		languageId: string,
-		line: number,
-		column: number,
-	) => { tabId: string; paneId: string };
 	addActionLogsTab: (
 		workspaceId: string,
 		jobs: Array<{

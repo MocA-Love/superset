@@ -389,11 +389,6 @@ function createCodeMirrorAdapter(
 			const endLine = view.state.doc.lineAt(selection.to).number;
 			return { startLine, endLine };
 		},
-		getCursorPosition() {
-			const cursor = view.state.selection.main.head;
-			const line = view.state.doc.lineAt(cursor);
-			return { line: line.number, column: cursor - line.from + 1 };
-		},
 		selectAll() {
 			selectAll(view);
 		},

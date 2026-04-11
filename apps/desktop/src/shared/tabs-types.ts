@@ -17,8 +17,7 @@ export type PaneType =
 	| "git-graph"
 	| "database-explorer"
 	| "action-logs"
-	| "vscode-extension"
-	| "reference-graph";
+	| "vscode-extension";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -156,7 +155,6 @@ export interface Pane {
 		source?: "view" | "panel";
 		sessionId?: string;
 	};
-	referenceGraph?: ReferenceGraphPaneState;
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";
@@ -264,20 +262,6 @@ export interface ActionLogsPaneState {
 	initialJobIndex?: number;
 	/** Workflow run ID — when set, jobs are polled from the GitHub API */
 	runId?: number;
-}
-
-/**
- * Reference graph pane-specific properties
- */
-export interface ReferenceGraphPaneState {
-	/** Absolute path of the file containing the symbol */
-	absolutePath: string;
-	/** Language ID for the file */
-	languageId: string;
-	/** Line of the symbol */
-	line: number;
-	/** Column of the symbol */
-	column: number;
 }
 
 /**

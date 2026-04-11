@@ -232,7 +232,6 @@ interface FileViewerContentProps {
 	markdownSearch: TextSearchState;
 	htmlZoomLevel?: number;
 	htmlPreviewRef?: MutableRefObject<HtmlPreviewHandle | null>;
-	onShowReferenceGraph?: () => void;
 }
 
 export function FileViewerContent({
@@ -275,7 +274,6 @@ export function FileViewerContent({
 	markdownSearch,
 	htmlZoomLevel = 0,
 	htmlPreviewRef,
-	onShowReferenceGraph,
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 	const isHtml = isHtmlFile(filePath);
@@ -780,7 +778,6 @@ export function FileViewerContent({
 			availableTabs={availableTabs}
 			onMoveToTab={onMoveToTab}
 			onMoveToNewTab={onMoveToNewTab}
-			onShowReferenceGraph={onShowReferenceGraph}
 		>
 			<div className="h-full w-full">
 				<CodeEditor

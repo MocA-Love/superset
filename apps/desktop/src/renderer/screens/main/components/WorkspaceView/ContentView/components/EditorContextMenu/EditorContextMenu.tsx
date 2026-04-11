@@ -11,7 +11,6 @@ import {
 	LuClipboard,
 	LuClipboardCopy,
 	LuFile,
-	LuGitBranch,
 	LuLink,
 	LuMousePointerClick,
 	LuScissors,
@@ -33,7 +32,6 @@ export interface EditorActions {
 	onCopySupersetLink?: () => void;
 	onCopySupersetLinkWithLine?: () => void;
 	onFind?: () => void;
-	onShowReferenceGraph?: () => void;
 }
 
 export type PaneActions = PaneContextMenuActions;
@@ -65,7 +63,6 @@ export function EditorContextMenu({
 		onCopySupersetLink,
 		onCopySupersetLinkWithLine,
 		onFind,
-		onShowReferenceGraph,
 	} = editorActions;
 	const showCutPaste = !!onCut && !!onPaste;
 
@@ -140,16 +137,6 @@ export function EditorContextMenu({
 						Find
 						<ContextMenuShortcut>{cmdKey}+F</ContextMenuShortcut>
 					</ContextMenuItem>
-				)}
-
-				{onShowReferenceGraph && (
-					<>
-						<ContextMenuSeparator />
-						<ContextMenuItem onSelect={onShowReferenceGraph}>
-							<LuGitBranch className="size-4" />
-							Show Reference Graph
-						</ContextMenuItem>
-					</>
 				)}
 
 				<ContextMenuSeparator />

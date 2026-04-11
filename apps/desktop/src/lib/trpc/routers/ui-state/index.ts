@@ -46,7 +46,6 @@ const paneSchema = z.object({
 		"database-explorer",
 		"action-logs",
 		"vscode-extension",
-		"reference-graph",
 	]),
 	name: z.string(),
 	isNew: z.boolean().optional(),
@@ -124,14 +123,6 @@ const paneSchema = z.object({
 	gitGraph: z
 		.object({
 			worktreePath: z.string(),
-		})
-		.optional(),
-	referenceGraph: z
-		.object({
-			absolutePath: z.string(),
-			languageId: z.string(),
-			line: z.number(),
-			column: z.number(),
 		})
 		.optional(),
 	workspaceRun: z

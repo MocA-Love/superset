@@ -12,10 +12,7 @@ import { TomlLanguageProvider } from "./providers/toml/TomlLanguageProvider";
 import { TypeScriptLanguageProvider } from "./providers/typescript/TypeScriptLanguageProvider";
 import { YamlLanguageProvider } from "./providers/yaml/YamlLanguageProvider";
 import type {
-	LanguageServiceCallHierarchyItem,
 	LanguageServiceDocument,
-	LanguageServiceIncomingCall,
-	LanguageServiceLocation,
 	LanguageServiceProvider,
 	LanguageServiceProviderDescriptor,
 	LanguageServiceWorkspaceSnapshot,
@@ -180,47 +177,6 @@ export class LanguageServiceManager {
 		listener: (payload: { version: number }) => void,
 	) {
 		return languageDiagnosticsStore.subscribe(workspaceId, listener);
-	}
-
-	async findReferences(args: {
-		workspaceId: string;
-		workspacePath: string;
-		absolutePath: string;
-		languageId: string;
-		line: number;
-		column: number;
-	}): Promise<LanguageServiceLocation[] | null> {
-		const provider = this.resolveProvider(args.languageId);
-		if (!provider || !this.isProviderEnabled(provider.id)) return null;
-		return (await provider.findReferences?.(args)) ?? null;
-	}
-
-	async prepareCallHierarchy(args: {
-		workspaceId: string;
-		workspacePath: string;
-		absolutePath: string;
-		languageId: string;
-		line: number;
-		column: number;
-	}): Promise<LanguageServiceCallHierarchyItem[] | null> {
-		const provider = this.resolveProvider(args.languageId);
-		if (!provider || !this.isProviderEnabled(provider.id)) return null;
-		return (await provider.prepareCallHierarchy?.(args)) ?? null;
-	}
-
-	async getIncomingCalls(args: {
-		workspaceId: string;
-		languageId: string;
-		item: LanguageServiceCallHierarchyItem;
-	}): Promise<LanguageServiceIncomingCall[] | null> {
-		const provider = this.resolveProvider(args.languageId);
-		if (!provider || !this.isProviderEnabled(provider.id)) return null;
-		return (
-			(await provider.getIncomingCalls?.({
-				workspaceId: args.workspaceId,
-				item: args.item,
-			})) ?? null
-		);
 	}
 
 	private isProviderEnabled(providerId: string): boolean {

@@ -1104,32 +1104,6 @@ export const createSettingsRouter = () => {
 				return { success: true };
 			}),
 
-		getReferenceGraph: publicProcedure.query(() => {
-			const row = getSettings();
-			return {
-				enabled: row.referenceGraphEnabled ?? true,
-			};
-		}),
-
-		setReferenceGraph: publicProcedure
-			.input(
-				z.object({
-					enabled: z.boolean(),
-				}),
-			)
-			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, referenceGraphEnabled: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { referenceGraphEnabled: input.enabled },
-					})
-					.run();
-
-				return { success: true };
-			}),
-
 		// TODO: remove telemetry procedures once telemetry_enabled column is dropped
 		getTelemetryEnabled: publicProcedure.query(() => {
 			return true;
