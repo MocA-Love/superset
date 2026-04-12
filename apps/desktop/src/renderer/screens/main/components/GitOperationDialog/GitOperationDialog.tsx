@@ -3,8 +3,8 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-	AlertDialog as GitAlertDialog,
 	EnterEnabledAlertDialogContent,
+	AlertDialog as GitAlertDialog,
 } from "@superset/ui/alert-dialog";
 import { Button } from "@superset/ui/button";
 import { HiExclamationTriangle } from "react-icons/hi2";

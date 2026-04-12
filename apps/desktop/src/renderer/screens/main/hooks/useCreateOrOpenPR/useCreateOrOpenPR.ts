@@ -51,6 +51,29 @@ export function useCreateOrOpenPR({
 		(baseRepoUrl?: string, allowOutOfDate = false) => {
 			if (!worktreePath || isCreatePRPending) return;
 
+			const openResult = (result: { url: string; isExisting: boolean }) => {
+				if (result.isExisting) {
+					showGitConfirmDialog({
+						kind: "create-pr-open-existing",
+						tone: "info",
+						title: "このブランチには既に Pull Request があります",
+						description: "新規作成せず既存の PR を開きますか?",
+						details: result.url,
+						confirmLabel: "既存 PR を開く",
+						confirmVariant: "primary",
+						onConfirm: () => {
+							window.open(result.url, "_blank", "noopener,noreferrer");
+							toast.success("Opening GitHub...");
+							onSuccess?.();
+						},
+					});
+					return;
+				}
+				window.open(result.url, "_blank", "noopener,noreferrer");
+				toast.success("Opening GitHub...");
+				onSuccess?.();
+			};
+
 			const retryWithAllow = () => {
 				void (async () => {
 					try {
@@ -59,9 +82,7 @@ export function useCreateOrOpenPR({
 							allowOutOfDate: true,
 							baseRepoUrl,
 						});
-						window.open(result.url, "_blank", "noopener,noreferrer");
-						toast.success("Opening GitHub...");
-						onSuccess?.();
+						openResult(result);
 					} catch (retryError) {
 						showGitErrorDialog(retryError, "create-pr");
 					}
@@ -75,9 +96,8 @@ export function useCreateOrOpenPR({
 						allowOutOfDate,
 						baseRepoUrl,
 					});
-					window.open(result.url, "_blank", "noopener,noreferrer");
-					toast.success("Opening GitHub...");
-					onSuccess?.();
+					openResult(result);
+					return;
 				} catch (error) {
 					const message =
 						error instanceof Error ? error.message : String(error);

@@ -94,11 +94,11 @@ function normalizeMessage(error: unknown): string {
 	}
 }
 
-function includes(haystack: string, needle: string): boolean {
+function _includes(haystack: string, needle: string): boolean {
 	return haystack.toLowerCase().includes(needle.toLowerCase());
 }
 
-function includesAny(haystack: string, needles: string[]): boolean {
+function _includesAny(haystack: string, needles: string[]): boolean {
 	const lower = haystack.toLowerCase();
 	return needles.some((n) => lower.includes(n.toLowerCase()));
 }
@@ -199,7 +199,9 @@ function classifyPullError(message: string): GitErrorKind | null {
 	}
 
 	if (
-		lower.includes("local changes to the following files would be overwritten") ||
+		lower.includes(
+			"local changes to the following files would be overwritten",
+		) ||
 		lower.includes("would be overwritten by merge") ||
 		lower.includes("would be overwritten by checkout") ||
 		lower.includes("please commit your changes or stash")
@@ -274,7 +276,7 @@ function classifyAuthOrNetwork(message: string): GitErrorKind | null {
 		lower.includes("http 401") ||
 		lower.includes("http 403") ||
 		lower.includes("http basic: access denied") ||
-		lower.includes("token ") && lower.includes("expired")
+		(lower.includes("token ") && lower.includes("expired"))
 	) {
 		return "auth-failed";
 	}
@@ -301,13 +303,18 @@ function classifyStashError(
 ): GitErrorKind | null {
 	const lower = message.toLowerCase();
 
-	if (lower.includes("no stash entries") || lower.includes("no local changes to save")) {
+	if (
+		lower.includes("no stash entries") ||
+		lower.includes("no local changes to save")
+	) {
 		return context === "stash" ? "nothing-to-stash" : null;
 	}
 
 	if (
 		context === "stash-pop" &&
-		(lower.includes("conflict") || lower.includes("could not apply") || lower.includes("needs merge"))
+		(lower.includes("conflict") ||
+			lower.includes("could not apply") ||
+			lower.includes("needs merge"))
 	) {
 		return "stash-pop-conflict";
 	}
@@ -347,7 +354,10 @@ export function classifyGitError(
 	const lower = rawMessage.toLowerCase();
 
 	// State issues come first — they apply regardless of context.
-	if (lower.includes("index.lock") || lower.includes("unable to create '.git/index.lock'")) {
+	if (
+		lower.includes("index.lock") ||
+		lower.includes("unable to create '.git/index.lock'")
+	) {
 		return {
 			kind: "index-lock",
 			rawMessage,
@@ -410,12 +420,20 @@ export function classifyGitError(
 	}
 
 	// No remote configured
-	if (!kind && (lower.includes("does not appear to be a git repository") || lower.includes("no such remote"))) {
+	if (
+		!kind &&
+		(lower.includes("does not appear to be a git repository") ||
+			lower.includes("no such remote"))
+	) {
 		kind = "no-remote";
 	}
 
 	// Branch collision (create-branch)
-	if (!kind && context === "create-branch" && lower.includes("already exists")) {
+	if (
+		!kind &&
+		context === "create-branch" &&
+		lower.includes("already exists")
+	) {
 		kind = "branch-name-collision";
 	}
 
@@ -431,7 +449,9 @@ export function classifyGitError(
 					? extractConflictFiles(rawMessage)
 					: undefined,
 			overwriteFiles:
-				kind === "pull-overwrite" ? extractOverwriteFiles(rawMessage) : undefined,
+				kind === "pull-overwrite"
+					? extractOverwriteFiles(rawMessage)
+					: undefined,
 			hookName:
 				kind === "commit-hook-failed" ? extractHookName(rawMessage) : undefined,
 		},

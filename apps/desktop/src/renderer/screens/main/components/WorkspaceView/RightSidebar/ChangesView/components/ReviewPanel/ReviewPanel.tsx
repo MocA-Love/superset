@@ -39,6 +39,7 @@ import remarkGfm from "remark-gfm";
 import { remarkAlert } from "remark-github-blockquote-alert";
 import { CodeBlock } from "renderer/components/MarkdownRenderer/components/CodeBlock";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs";
@@ -289,7 +290,7 @@ export function ReviewPanel({
 		await onRefreshReview(scope);
 	};
 
-	const handleToggleDraftState = () => {
+	const runToggleDraftState = () => {
 		if (!resolvedWorkspaceId || !pr) {
 			return;
 		}
@@ -340,6 +341,25 @@ export function ReviewPanel({
 			.finally(() => {
 				setIsDraftTogglePending(false);
 			});
+	};
+
+	const handleToggleDraftState = () => {
+		if (!pr) return;
+		const isConvertingToDraft = pr.state !== "draft";
+		if (!isConvertingToDraft) {
+			runToggleDraftState();
+			return;
+		}
+		showGitConfirmDialog({
+			kind: "pr-draft-state-confirm",
+			tone: "warn",
+			title: "この PR を draft に戻しますか?",
+			description:
+				"レビュアーのレビュー要求が解除され、reviewer workflow が巻き戻ります。",
+			confirmLabel: "draft に戻す",
+			confirmVariant: "primary",
+			onConfirm: runToggleDraftState,
+		});
 	};
 
 	const handleToggleThreadResolution = (comment: PullRequestComment) => {
@@ -543,7 +563,7 @@ export function ReviewPanel({
 		});
 	};
 
-	const handleRerunChecks = async (mode: "all" | "failed") => {
+	const runRerunChecks = async (mode: "all" | "failed") => {
 		if (!resolvedWorkspaceId || pendingRerunMode) {
 			return;
 		}
@@ -567,6 +587,29 @@ export function ReviewPanel({
 		} finally {
 			setPendingRerunMode((current) => (current === mode ? null : current));
 		}
+	};
+
+	const handleRerunChecks = async (mode: "all" | "failed") => {
+		if (mode === "failed") {
+			await runRerunChecks(mode);
+			return;
+		}
+		showGitConfirmDialog({
+			kind: "rerun-all-checks-confirm",
+			tone: "warn",
+			title: "すべての CI jobs を再実行しますか?",
+			description:
+				"成功済み・実行中のものも含めて全ジョブが再キューされます。コストとノイズが大きい操作です。",
+			confirmLabel: "全て再実行",
+			confirmVariant: "warn",
+			secondaryLabel: "失敗分だけ再実行",
+			onSecondary: () => {
+				void runRerunChecks("failed");
+			},
+			onConfirm: () => {
+				void runRerunChecks("all");
+			},
+		});
 	};
 
 	const updateReviewers = async ({

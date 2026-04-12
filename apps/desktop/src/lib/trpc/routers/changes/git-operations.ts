@@ -13,6 +13,10 @@ import {
 import { getCurrentBranch } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import {
+	type GitOperationWarning,
+	GitSyncStageError,
+} from "./git-operation-types";
+import {
 	isNoPullRequestFoundMessage,
 	isUpstreamMissingError,
 } from "./git-utils";
@@ -68,6 +72,8 @@ export const createGitOperationsRouter = () => {
 				z.object({
 					worktreePath: z.string(),
 					message: z.string(),
+					/** Pass --no-verify to bypass pre-commit / commit-msg hooks. */
+					skipHooks: z.boolean().optional(),
 				}),
 			)
 			.mutation(
@@ -75,7 +81,8 @@ export const createGitOperationsRouter = () => {
 					assertRegisteredWorktree(input.worktreePath);
 
 					const git = await getGitWithShellPath(input.worktreePath);
-					const result = await git.commit(input.message);
+					const options = input.skipHooks ? ["--no-verify"] : undefined;
+					const result = await git.commit(input.message, options);
 					clearStatusCacheForWorktree(input.worktreePath);
 					return { success: true, hash: result.commit };
 				},
@@ -88,34 +95,59 @@ export const createGitOperationsRouter = () => {
 					setUpstream: z.boolean().optional(),
 				}),
 			)
-			.mutation(async ({ input }): Promise<{ success: boolean }> => {
-				assertRegisteredWorktree(input.worktreePath);
+			.mutation(
+				async ({
+					input,
+				}): Promise<{
+					success: boolean;
+					warnings: GitOperationWarning[];
+				}> => {
+					assertRegisteredWorktree(input.worktreePath);
 
-				const git = await getGitWithShellPath(input.worktreePath);
-				const hasUpstream = await hasUpstreamBranch(git);
-				const localBranch = await getLocalBranchOrThrow({
-					worktreePath: input.worktreePath,
-					action: "push",
-				});
-
-				if (input.setUpstream && !hasUpstream) {
-					await pushWithResolvedUpstream({
-						git,
+					const git = await getGitWithShellPath(input.worktreePath);
+					const hasUpstream = await hasUpstreamBranch(git);
+					const localBranch = await getLocalBranchOrThrow({
 						worktreePath: input.worktreePath,
-						localBranch,
+						action: "push",
 					});
-				} else {
-					await pushCurrentBranch({
-						git,
-						worktreePath: input.worktreePath,
-						localBranch,
-					});
-				}
+					const warnings: GitOperationWarning[] = [];
 
-				await fetchCurrentBranch(git, input.worktreePath);
-				clearStatusCacheForWorktree(input.worktreePath);
-				return { success: true };
-			}),
+					if (input.setUpstream && !hasUpstream) {
+						await pushWithResolvedUpstream({
+							git,
+							worktreePath: input.worktreePath,
+							localBranch,
+						});
+						warnings.push({
+							kind: "auto-published-upstream",
+							branch: localBranch,
+						});
+					} else {
+						await pushCurrentBranch({
+							git,
+							worktreePath: input.worktreePath,
+							localBranch,
+						});
+					}
+
+					try {
+						await fetchCurrentBranch(git, input.worktreePath);
+					} catch (fetchError) {
+						const message =
+							fetchError instanceof Error
+								? fetchError.message
+								: String(fetchError);
+						console.warn(
+							"[git/push] post-push fetch failed (non-fatal):",
+							message,
+						);
+						warnings.push({ kind: "post-push-fetch-failed", message });
+					}
+
+					clearStatusCacheForWorktree(input.worktreePath);
+					return { success: true, warnings };
+				},
+			),
 
 		pull: publicProcedure
 			.input(
@@ -149,45 +181,84 @@ export const createGitOperationsRouter = () => {
 					worktreePath: z.string(),
 				}),
 			)
-			.mutation(async ({ input }): Promise<{ success: boolean }> => {
-				assertRegisteredWorktree(input.worktreePath);
+			.mutation(
+				async ({
+					input,
+				}): Promise<{
+					success: boolean;
+					warnings: GitOperationWarning[];
+				}> => {
+					assertRegisteredWorktree(input.worktreePath);
 
-				const git = await getGitWithShellPath(input.worktreePath);
-				try {
-					await git.pull(["--rebase"]);
-				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : String(error);
-					if (isUpstreamMissingError(message)) {
-						const localBranch = await getLocalBranchOrThrow({
-							worktreePath: input.worktreePath,
-							action: "push",
-						});
-						await pushWithResolvedUpstream({
+					const git = await getGitWithShellPath(input.worktreePath);
+					const warnings: GitOperationWarning[] = [];
+
+					try {
+						await git.pull(["--rebase"]);
+					} catch (error) {
+						const message =
+							error instanceof Error ? error.message : String(error);
+						if (isUpstreamMissingError(message)) {
+							const localBranch = await getLocalBranchOrThrow({
+								worktreePath: input.worktreePath,
+								action: "push",
+							});
+							await pushWithResolvedUpstream({
+								git,
+								worktreePath: input.worktreePath,
+								localBranch,
+							});
+							warnings.push({
+								kind: "auto-published-upstream",
+								branch: localBranch,
+							});
+							try {
+								await fetchCurrentBranch(git, input.worktreePath);
+							} catch (fetchError) {
+								const fetchMessage =
+									fetchError instanceof Error
+										? fetchError.message
+										: String(fetchError);
+								warnings.push({
+									kind: "post-push-fetch-failed",
+									message: fetchMessage,
+								});
+							}
+							clearStatusCacheForWorktree(input.worktreePath);
+							return { success: true, warnings };
+						}
+						throw new GitSyncStageError("pull", error);
+					}
+
+					const localBranch = await getLocalBranchOrThrow({
+						worktreePath: input.worktreePath,
+						action: "push",
+					});
+					try {
+						await pushCurrentBranch({
 							git,
 							worktreePath: input.worktreePath,
 							localBranch,
 						});
-						await fetchCurrentBranch(git, input.worktreePath);
-						clearStatusCacheForWorktree(input.worktreePath);
-						return { success: true };
+					} catch (pushError) {
+						throw new GitSyncStageError("push", pushError);
 					}
-					throw error;
-				}
-
-				const localBranch = await getLocalBranchOrThrow({
-					worktreePath: input.worktreePath,
-					action: "push",
-				});
-				await pushCurrentBranch({
-					git,
-					worktreePath: input.worktreePath,
-					localBranch,
-				});
-				await fetchCurrentBranch(git, input.worktreePath);
-				clearStatusCacheForWorktree(input.worktreePath);
-				return { success: true };
-			}),
+					try {
+						await fetchCurrentBranch(git, input.worktreePath);
+					} catch (fetchError) {
+						const fetchMessage =
+							fetchError instanceof Error
+								? fetchError.message
+								: String(fetchError);
+						warnings.push({
+							kind: "post-push-fetch-failed",
+							message: fetchMessage,
+						});
+					}
+					clearStatusCacheForWorktree(input.worktreePath);
+					return { success: true, warnings };
+				},
+			),
 
 		fetch: publicProcedure
 			.input(z.object({ worktreePath: z.string() }))
@@ -208,7 +279,9 @@ export const createGitOperationsRouter = () => {
 				}),
 			)
 			.mutation(
-				async ({ input }): Promise<{ success: boolean; url: string }> => {
+				async ({
+					input,
+				}): Promise<{ success: boolean; url: string; isExisting: boolean }> => {
 					assertRegisteredWorktree(input.worktreePath);
 
 					const git = await getGitWithShellPath(input.worktreePath);
@@ -287,7 +360,7 @@ export const createGitOperationsRouter = () => {
 					if (existingPRUrl) {
 						await fetchCurrentBranch(git, input.worktreePath);
 						clearWorktreeStatusCaches(input.worktreePath);
-						return { success: true, url: existingPRUrl };
+						return { success: true, url: existingPRUrl, isExisting: true };
 					}
 
 					try {
@@ -300,7 +373,7 @@ export const createGitOperationsRouter = () => {
 						await fetchCurrentBranch(git, input.worktreePath);
 						clearWorktreeStatusCaches(input.worktreePath);
 
-						return { success: true, url };
+						return { success: true, url, isExisting: false };
 					} catch (error) {
 						// If creation reports branch/tracking mismatch but an open PR exists,
 						// recover by opening that existing PR instead of failing.
@@ -310,7 +383,11 @@ export const createGitOperationsRouter = () => {
 						if (recoveredPRUrl) {
 							await fetchCurrentBranch(git, input.worktreePath);
 							clearWorktreeStatusCaches(input.worktreePath);
-							return { success: true, url: recoveredPRUrl };
+							return {
+								success: true,
+								url: recoveredPRUrl,
+								isExisting: true,
+							};
 						}
 						throw error;
 					}
@@ -663,5 +740,34 @@ export const createGitOperationsRouter = () => {
 
 				return { message: result };
 			}),
+
+		forceUnlockIndex: publicProcedure
+			.input(z.object({ worktreePath: z.string() }))
+			.mutation(
+				async ({
+					input,
+				}): Promise<{ removed: boolean; path: string | null }> => {
+					assertRegisteredWorktree(input.worktreePath);
+					const { join } = await import("node:path");
+					const { stat, unlink } = await import("node:fs/promises");
+
+					const candidates = [
+						join(input.worktreePath, ".git", "index.lock"),
+						join(input.worktreePath, ".git", "HEAD.lock"),
+						join(input.worktreePath, ".git", "shallow.lock"),
+					];
+					for (const candidate of candidates) {
+						try {
+							await stat(candidate);
+							await unlink(candidate);
+							clearStatusCacheForWorktree(input.worktreePath);
+							return { removed: true, path: candidate };
+						} catch {
+							// file not present; try next
+						}
+					}
+					return { removed: false, path: null };
+				},
+			),
 	});
 };

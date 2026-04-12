@@ -46,6 +46,7 @@ import {
 	LuX,
 } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs/store";
 
@@ -611,37 +612,51 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 			filteredInputs = Object.keys(cleaned).length > 0 ? cleaned : undefined;
 		}
 
-		setPendingWorkflowId(workflowId);
-		try {
-			const result = await dispatchWorkflowMutation.mutateAsync({
-				workspaceId,
-				workflowId,
-				ref: workflowRef.trim() || undefined,
-				inputs: filteredInputs,
-			});
-			setTrackedWorkflowRuns((current) =>
-				[
-					{
-						workflowId,
-						workflowName,
-						ref: result.ref,
-						dispatchedAt: result.dispatchedAt,
-					},
-					...current.filter((item) => item.workflowId !== workflowId),
-				].slice(0, 4),
-			);
-			toast.success(`Triggered ${workflowName} on ${result.ref}`);
-		} catch (mutationError) {
-			const message =
-				mutationError instanceof Error
-					? mutationError.message
-					: "Unknown error";
-			toast.error(`Failed to run workflow: ${message}`);
-		} finally {
-			setPendingWorkflowId((current) =>
-				current === workflowId ? null : current,
-			);
-		}
+		const runDispatch = async () => {
+			setPendingWorkflowId(workflowId);
+			try {
+				const result = await dispatchWorkflowMutation.mutateAsync({
+					workspaceId,
+					workflowId,
+					ref: workflowRef.trim() || undefined,
+					inputs: filteredInputs,
+				});
+				setTrackedWorkflowRuns((current) =>
+					[
+						{
+							workflowId,
+							workflowName,
+							ref: result.ref,
+							dispatchedAt: result.dispatchedAt,
+						},
+						...current.filter((item) => item.workflowId !== workflowId),
+					].slice(0, 4),
+				);
+				toast.success(`Triggered ${workflowName} on ${result.ref}`);
+			} catch (mutationError) {
+				const message =
+					mutationError instanceof Error
+						? mutationError.message
+						: "Unknown error";
+				toast.error(`Failed to run workflow: ${message}`);
+			} finally {
+				setPendingWorkflowId((current) =>
+					current === workflowId ? null : current,
+				);
+			}
+		};
+
+		showGitConfirmDialog({
+			kind: "workflow-dispatch-confirm",
+			tone: "warn",
+			title: `GitHub Actions ワークフローを実行しますか?`,
+			description: `${workflowName} を ${workflowRef.trim() || "デフォルトブランチ"} で手動起動します。remote 副作用のあるワークフローは特に注意してください。`,
+			confirmLabel: "実行",
+			confirmVariant: "primary",
+			onConfirm: () => {
+				void runDispatch();
+			},
+		});
 	};
 
 	const handleViewWorkflowLogs = async (runId: number) => {

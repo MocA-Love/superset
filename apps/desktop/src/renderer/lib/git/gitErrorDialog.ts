@@ -10,9 +10,9 @@ import {
 } from "renderer/stores/git-operation-dialog";
 import {
 	type ClassifiedGitError,
+	classifyGitError,
 	type GitErrorKind,
 	type GitOperationContext,
-	classifyGitError,
 } from "./classifyGitError";
 
 export interface GitErrorHandlers {
@@ -61,13 +61,19 @@ interface BuildSpecArgs {
 
 function renderConflictFilesContent(files: string[] | undefined) {
 	if (!files || files.length === 0) return undefined;
-	return files
-		.slice(0, 10)
-		.map((f) => `• ${f}`)
-		.join("\n") + (files.length > 10 ? `\n… ほか ${files.length - 10} 件` : "");
+	return (
+		files
+			.slice(0, 10)
+			.map((f) => `• ${f}`)
+			.join("\n") +
+		(files.length > 10 ? `\n… ほか ${files.length - 10} 件` : "")
+	);
 }
 
-function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogSpec {
+function buildSpec({
+	classified,
+	handlers,
+}: BuildSpecArgs): GitOperationDialogSpec {
 	const { kind, rawMessage, data } = classified;
 
 	switch (kind) {
@@ -135,11 +141,14 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 					"rebase を一時停止しています。競合を解決してから続行するか、rebase を中断してください。",
 				details: list ?? rawMessage,
 				primaryAction:
-					handlers.openConflictFiles && data.conflictFiles && data.conflictFiles.length > 0
+					handlers.openConflictFiles &&
+					data.conflictFiles &&
+					data.conflictFiles.length > 0
 						? {
 								label: "競合ファイルを開く",
 								variant: "accent",
-								onClick: () => handlers.openConflictFiles?.(data.conflictFiles ?? []),
+								onClick: () =>
+									handlers.openConflictFiles?.(data.conflictFiles ?? []),
 							}
 						: undefined,
 				secondaryAction: handlers.abortOperation
@@ -159,8 +168,7 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 				title: "未コミットの変更があるため pull できません",
 				description:
 					"次のファイルはリモートの更新と重なっており、このまま pull すると失われます。",
-				details:
-					renderConflictFilesContent(data.overwriteFiles) ?? rawMessage,
+				details: renderConflictFilesContent(data.overwriteFiles) ?? rawMessage,
 				primaryAction: handlers.stashAndRetry
 					? {
 							label: "stash してから pull",
@@ -205,7 +213,11 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 					"フックがエラーを返したため、コミットは作成されていません。内容を確認して修正するか、フックを一時的に無視して commit を進めることができます。",
 				details: rawMessage,
 				primaryAction: handlers.retry
-					? { label: "修正して再 commit", variant: "primary", onClick: handlers.retry }
+					? {
+							label: "修正して再 commit",
+							variant: "primary",
+							onClick: handlers.retry,
+						}
 					: undefined,
 				secondaryAction: handlers.retryWithoutHooks
 					? {
@@ -249,7 +261,11 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 					"Git の user.name / user.email が設定されていないためコミットできません。ターミナルで以下を実行してください。",
 				details: `git config user.name "Your Name"\ngit config user.email "you@example.com"`,
 				primaryAction: handlers.retry
-					? { label: "設定後に再試行", variant: "primary", onClick: handlers.retry }
+					? {
+							label: "設定後に再試行",
+							variant: "primary",
+							onClick: handlers.retry,
+						}
 					: undefined,
 			};
 
@@ -258,9 +274,14 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 				kind,
 				tone: "info",
 				title: "コミットする変更がありません",
-				description: "staged エリアが空です。ファイルを stage してから再度お試しください。",
+				description:
+					"staged エリアが空です。ファイルを stage してから再度お試しください。",
 				primaryAction: handlers.retry
-					? { label: "最新状態に更新", variant: "primary", onClick: handlers.retry }
+					? {
+							label: "最新状態に更新",
+							variant: "primary",
+							onClick: handlers.retry,
+						}
 					: undefined,
 			};
 
@@ -293,7 +314,11 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 					"GitHub に到達できませんでした。ネットワーク / プロキシ / VPN / DNS を確認してください。",
 				details: rawMessage,
 				primaryAction: handlers.retry
-					? { label: "もう一度試す", variant: "primary", onClick: handlers.retry }
+					? {
+							label: "もう一度試す",
+							variant: "primary",
+							onClick: handlers.retry,
+						}
 					: undefined,
 			};
 
@@ -317,11 +342,14 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 					"stash の内容と現在の作業ツリーが競合しています。stash 自体はまだ残っているので、解決してから drop できます。",
 				details: list ?? rawMessage,
 				primaryAction:
-					handlers.openConflictFiles && data.conflictFiles && data.conflictFiles.length > 0
+					handlers.openConflictFiles &&
+					data.conflictFiles &&
+					data.conflictFiles.length > 0
 						? {
 								label: "競合ファイルを開く",
 								variant: "accent",
-								onClick: () => handlers.openConflictFiles?.(data.conflictFiles ?? []),
+								onClick: () =>
+									handlers.openConflictFiles?.(data.conflictFiles ?? []),
 							}
 						: undefined,
 			};
@@ -351,7 +379,11 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 						}
 					: undefined,
 				secondaryAction: handlers.retry
-					? { label: "状態を再取得", variant: "outline", onClick: handlers.retry }
+					? {
+							label: "状態を再取得",
+							variant: "outline",
+							onClick: handlers.retry,
+						}
 					: undefined,
 			};
 
@@ -380,8 +412,7 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 				kind,
 				tone: "info",
 				title: "このブランチに対応する Pull Request が見つかりません",
-				description:
-					"先に PR を作成してからマージしてください。",
+				description: "先に PR を作成してからマージしてください。",
 				details: rawMessage,
 			};
 
@@ -394,7 +425,11 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 					".git/index.lock が残っています。他のエディタ / CLI が編集中か、前回の操作が異常終了した可能性があります。",
 				details: rawMessage,
 				primaryAction: handlers.retry
-					? { label: "もう一度試す", variant: "primary", onClick: handlers.retry }
+					? {
+							label: "もう一度試す",
+							variant: "primary",
+							onClick: handlers.retry,
+						}
 					: undefined,
 				secondaryAction: handlers.forceUnlockIndex
 					? {
@@ -476,8 +511,6 @@ function buildSpec({ classified, handlers }: BuildSpecArgs): GitOperationDialogS
 						}
 					: undefined,
 			};
-
-		case "generic-error":
 		default:
 			return {
 				kind: "generic-error",

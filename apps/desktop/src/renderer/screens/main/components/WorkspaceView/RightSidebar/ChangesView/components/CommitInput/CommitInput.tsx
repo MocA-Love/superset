@@ -23,6 +23,7 @@ import {
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
+import { showGitWarningDialog } from "renderer/lib/git/gitWarningDialog";
 import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { useCreateOrOpenPR } from "renderer/screens/main/hooks";
 import { getPrimaryAction } from "./utils/getPrimaryAction";
@@ -87,14 +88,22 @@ export function CommitInput({
 	});
 
 	const pushMutation = electronTrpc.changes.push.useMutation({
-		onSuccess: () => {
+		onSuccess: (result) => {
 			toast.success("Pushed");
 			onRefresh();
+			showGitWarningDialog(result?.warnings, {
+				fetchOnlyRetry: () => fetchMutation.mutate({ worktreePath }),
+				createPullRequest: () => createOrOpenPR(),
+				openPullRequestUrl: () => {
+					if (pullRequest?.url) {
+						window.open(pullRequest.url, "_blank", "noopener,noreferrer");
+					}
+				},
+			});
 		},
 		onError: (error) => {
 			showGitErrorDialog(error, "push", {
-				retry: () =>
-					pushMutation.mutate({ worktreePath, setUpstream: true }),
+				retry: () => pushMutation.mutate({ worktreePath, setUpstream: true }),
 				pullRebaseAndRetryPush: () => {
 					pullMutation.mutate(
 						{ worktreePath },
@@ -121,8 +130,7 @@ export function CommitInput({
 						{ worktreePath },
 						{
 							onSuccess: () => pullMutation.mutate({ worktreePath }),
-							onError: (stashError) =>
-								showGitErrorDialog(stashError, "stash"),
+							onError: (stashError) => showGitErrorDialog(stashError, "stash"),
 						},
 					);
 				},
@@ -131,9 +139,18 @@ export function CommitInput({
 	});
 
 	const syncMutation = electronTrpc.changes.sync.useMutation({
-		onSuccess: () => {
+		onSuccess: (result) => {
 			toast.success("Synced");
 			onRefresh();
+			showGitWarningDialog(result?.warnings, {
+				fetchOnlyRetry: () => fetchMutation.mutate({ worktreePath }),
+				createPullRequest: () => createOrOpenPR(),
+				openPullRequestUrl: () => {
+					if (pullRequest?.url) {
+						window.open(pullRequest.url, "_blank", "noopener,noreferrer");
+					}
+				},
+			});
 		},
 		onError: (error) => {
 			showGitErrorDialog(error, "sync", {
