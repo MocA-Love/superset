@@ -8,8 +8,10 @@ import type {
 	ChangedFile,
 	CommitInfo,
 } from "shared/changes-types";
+import { BulkActionBar } from "../../components/BulkActionBar";
 import { CommitListVirtualized } from "../../components/CommitListVirtualized";
 import { FileList } from "../../components/FileList";
+import { MultiSelectProvider } from "../../components/MultiSelectContext";
 import type { ChangesViewMode } from "../../types";
 
 export interface OrderedSection {
@@ -209,20 +211,26 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.staged ? (
-				<FileList
-					files={stagedFiles}
-					viewMode={fileListViewMode}
-					selectedFile={selectedFile}
-					selectedCommitHash={selectedCommitHash}
-					onFileSelect={onStagedFileSelect}
-					onUnstage={onUnstageFile}
-					onUnstageFiles={onUnstageFiles}
-					isActioning={isStagedActioning}
-					worktreePath={worktreePath}
-					projectId={projectId}
-					category="staged"
-					isExpandedView={isExpandedView}
-				/>
+				<MultiSelectProvider files={stagedFiles}>
+					<BulkActionBar
+						onUnstageSelected={onUnstageFiles}
+						isActioning={isStagedActioning}
+					/>
+					<FileList
+						files={stagedFiles}
+						viewMode={fileListViewMode}
+						selectedFile={selectedFile}
+						selectedCommitHash={selectedCommitHash}
+						onFileSelect={onStagedFileSelect}
+						onUnstage={onUnstageFile}
+						onUnstageFiles={onUnstageFiles}
+						isActioning={isStagedActioning}
+						worktreePath={worktreePath}
+						projectId={projectId}
+						category="staged"
+						isExpandedView={isExpandedView}
+					/>
+				</MultiSelectProvider>
 			) : null,
 		},
 		unstaged: {
@@ -264,21 +272,27 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.unstaged ? (
-				<FileList
-					files={unstagedFiles}
-					viewMode={fileListViewMode}
-					selectedFile={selectedFile}
-					selectedCommitHash={selectedCommitHash}
-					onFileSelect={onUnstagedFileSelect}
-					onStage={onStageFile}
-					onStageFiles={onStageFiles}
-					isActioning={isUnstagedActioning}
-					worktreePath={worktreePath}
-					projectId={projectId}
-					onDiscard={onDiscardFile}
-					category="unstaged"
-					isExpandedView={isExpandedView}
-				/>
+				<MultiSelectProvider files={unstagedFiles}>
+					<BulkActionBar
+						onStageSelected={onStageFiles}
+						isActioning={isUnstagedActioning}
+					/>
+					<FileList
+						files={unstagedFiles}
+						viewMode={fileListViewMode}
+						selectedFile={selectedFile}
+						selectedCommitHash={selectedCommitHash}
+						onFileSelect={onUnstagedFileSelect}
+						onStage={onStageFile}
+						onStageFiles={onStageFiles}
+						isActioning={isUnstagedActioning}
+						worktreePath={worktreePath}
+						projectId={projectId}
+						onDiscard={onDiscardFile}
+						category="unstaged"
+						isExpandedView={isExpandedView}
+					/>
+				</MultiSelectProvider>
 			) : null,
 		},
 	};

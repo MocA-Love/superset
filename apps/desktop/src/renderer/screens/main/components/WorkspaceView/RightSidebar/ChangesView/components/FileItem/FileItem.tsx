@@ -24,6 +24,7 @@ import { createFileKey, useScrollContext } from "../../../../ChangesContent";
 import { useFileDrag, usePathActions } from "../../hooks";
 import { getStatusColor, getStatusIndicator } from "../../utils";
 import { DiscardConfirmDialog } from "../DiscardConfirmDialog";
+import { useMultiSelect } from "../MultiSelectContext";
 import type { RowHoverAction } from "../RowHoverActions";
 import { RowHoverActions } from "../RowHoverActions";
 
@@ -85,6 +86,8 @@ export function FileItem({
 	const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 	const { activeFileKey } = useScrollContext();
 	const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const multiSelect = useMultiSelect();
+	const isMultiSelected = multiSelect?.isSelected(file.path) ?? false;
 
 	const fileName = getFileName(file.path);
 	const statusBadgeColor = getStatusColor(file.status);
@@ -100,7 +103,9 @@ export function FileItem({
 	const isScrollSyncActive =
 		category &&
 		activeFileKey === createFileKey(file, category, commitHash, worktreePath);
-	const isHighlighted = isExpandedView ? isScrollSyncActive : isSelected;
+	const isHighlighted = isExpandedView
+		? isScrollSyncActive || isMultiSelected
+		: isSelected || isMultiSelected;
 
 	const { copyPath, copyRelativePath, revealInFinder, openInEditor } =
 		usePathActions({
@@ -115,10 +120,22 @@ export function FileItem({
 
 	const handleClick = useCallback(
 		(e: React.MouseEvent) => {
-			if (e.metaKey || e.ctrlKey) {
-				openInEditor();
-				return;
+			// Multi-select (Shift / Cmd / Ctrl + click). Must run before any
+			// navigation logic so modifier clicks never fire onClick. If there's
+			// no surrounding MultiSelectProvider we fall through to the default.
+			if (multiSelect && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+				const result = multiSelect.handleClick(file.path, e);
+				if (result === "multi") {
+					if (clickTimeoutRef.current) {
+						clearTimeout(clickTimeoutRef.current);
+						clickTimeoutRef.current = null;
+					}
+					return;
+				}
 			}
+
+			// Normal click also clears any lingering multi-selection via the ctx.
+			multiSelect?.handleClick(file.path, e);
 
 			if (clickTimeoutRef.current) {
 				clearTimeout(clickTimeoutRef.current);
@@ -130,7 +147,7 @@ export function FileItem({
 				onClick();
 			}, 300);
 		},
-		[onClick, openInEditor],
+		[file.path, multiSelect, onClick],
 	);
 
 	const handleDoubleClick = useCallback(

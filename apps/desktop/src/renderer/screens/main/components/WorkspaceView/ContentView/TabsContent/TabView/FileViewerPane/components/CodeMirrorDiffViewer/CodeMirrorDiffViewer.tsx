@@ -1,7 +1,22 @@
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { getChunks, MergeView } from "@codemirror/merge";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
+import {
+	closeSearchPanel,
+	getSearchQuery,
+	highlightSelectionMatches,
+	openSearchPanel,
+	findNext as runFindNext,
+	findPrevious as runFindPrevious,
+	SearchQuery,
+	search,
+	searchKeymap,
+	setSearchQuery,
+} from "@codemirror/search";
+import {
+	Compartment,
+	type EditorSelection,
+	EditorState,
+} from "@codemirror/state";
 import {
 	Decoration,
 	type DecorationSet,
@@ -13,8 +28,9 @@ import {
 	ViewPlugin,
 	type ViewUpdate,
 } from "@codemirror/view";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { CodeEditorSearchOverlay } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/components/CodeEditorSearchOverlay";
 import {
 	type BlameEntry,
 	createBlamePlugin,
@@ -29,6 +45,45 @@ import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/Work
 import { useResolvedTheme } from "renderer/stores/theme";
 import type { DiffViewMode } from "shared/changes-types";
 import { getEditorTheme } from "shared/themes";
+
+const SEARCH_MATCH_LIMIT = 10_000;
+
+function createHiddenSearchPanel() {
+	const dom = document.createElement("div");
+	dom.className = "cm-search cm-hidden-search-panel";
+
+	return {
+		dom,
+		mount() {
+			const panelContainer = dom.parentElement;
+			if (panelContainer instanceof HTMLElement) {
+				panelContainer.style.display = "none";
+			}
+		},
+	};
+}
+
+function getActiveSearchMatchIndex(
+	matches: Array<{ from: number; to: number }>,
+	selection: EditorSelection["main"],
+) {
+	if (matches.length === 0) return -1;
+
+	const exactMatchIndex = matches.findIndex(
+		(match) => match.from === selection.from && match.to === selection.to,
+	);
+	if (exactMatchIndex >= 0) return exactMatchIndex;
+
+	const containingMatchIndex = matches.findIndex(
+		(match) => selection.from >= match.from && selection.from <= match.to,
+	);
+	if (containingMatchIndex >= 0) return containingMatchIndex;
+
+	const nextMatchIndex = matches.findIndex(
+		(match) => match.from >= selection.from,
+	);
+	return nextMatchIndex >= 0 ? nextMatchIndex : 0;
+}
 
 // Line decoration that suppresses inline cm-changedText highlights
 const suppressLineDeco = Decoration.line({ class: "cm-suppress-inline-diff" });
@@ -216,6 +271,17 @@ export function CodeMirrorDiffViewer({
 }: CodeMirrorDiffViewerProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const mergeViewRef = useRef<MergeView | null>(null);
+	const activeEditorRef = useRef<EditorView | null>(null);
+	const [isSearchOpen, setIsSearchOpen] = useState(false);
+	const [searchQueryText, setSearchQueryText] = useState("");
+	const [isCaseSensitive, setIsCaseSensitive] = useState(false);
+	const [isRegexp, setIsRegexp] = useState(false);
+	const [isWholeWord, setIsWholeWord] = useState(false);
+	const [searchMatchCount, setSearchMatchCount] = useState(0);
+	const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
+	const isSearchOpenRef = useRef(false);
+	const syncSearchOverlayStateRef = useRef<(() => void) | null>(null);
+	isSearchOpenRef.current = isSearchOpen;
 	const langCompartmentA = useRef(new Compartment()).current;
 	const langCompartmentB = useRef(new Compartment()).current;
 	const themeCompartmentA = useRef(new Compartment()).current;
@@ -239,9 +305,189 @@ export function CodeMirrorDiffViewer({
 	onSaveRef.current = onSave;
 	inlineCompletionRequestRef.current = inlineCompletionRequest;
 
+	const getActiveEditor = (): EditorView | null => {
+		const mv = mergeViewRef.current;
+		if (!mv) return null;
+		return activeEditorRef.current ?? mv.b;
+	};
+
+	const forEachEditor = (fn: (view: EditorView) => void) => {
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+		fn(mv.a);
+		fn(mv.b);
+	};
+
+	const syncSearchOverlayState = () => {
+		const view = getActiveEditor();
+		if (!view) return;
+		const query = getSearchQuery(view.state);
+		const matches: Array<{ from: number; to: number }> = [];
+		if (query.valid) {
+			const cursor = query.getCursor(view.state);
+			let nextMatch = cursor.next();
+			while (!nextMatch.done) {
+				if (matches.length >= SEARCH_MATCH_LIMIT) break;
+				matches.push(nextMatch.value);
+				nextMatch = cursor.next();
+			}
+		}
+		setSearchQueryText(query.search);
+		setIsCaseSensitive(query.caseSensitive);
+		setIsRegexp(query.regexp);
+		setIsWholeWord(query.wholeWord);
+		setSearchMatchCount(matches.length);
+		setActiveSearchMatchIndex(
+			getActiveSearchMatchIndex(matches, view.state.selection.main),
+		);
+	};
+	syncSearchOverlayStateRef.current = syncSearchOverlayState;
+
+	const ensureOverlaySearchOpen = () => {
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+		// Open hidden panel on both editors so setSearchQuery effects are accepted.
+		openSearchPanel(mv.a);
+		openSearchPanel(mv.b);
+		setIsSearchOpen(true);
+		syncSearchOverlayState();
+	};
+
+	const updateOverlaySearchQuery = (
+		overrides: Partial<{
+			search: string;
+			caseSensitive: boolean;
+			regexp: boolean;
+			wholeWord: boolean;
+		}>,
+	) => {
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+		openSearchPanel(mv.a);
+		openSearchPanel(mv.b);
+		const current = getSearchQuery((activeEditorRef.current ?? mv.b).state);
+		const next = new SearchQuery({
+			search: overrides.search ?? current.search,
+			replace: current.replace,
+			caseSensitive: overrides.caseSensitive ?? current.caseSensitive,
+			regexp: overrides.regexp ?? current.regexp,
+			wholeWord: overrides.wholeWord ?? current.wholeWord,
+			literal: current.literal,
+		});
+		forEachEditor((view) => {
+			view.dispatch({ effects: setSearchQuery.of(next) });
+		});
+		syncSearchOverlayState();
+	};
+
+	const scrollActiveSelectionToCenter = (view: EditorView) => {
+		view.dispatch({
+			effects: EditorView.scrollIntoView(view.state.selection.main.head, {
+				y: "center",
+				yMargin: 48,
+			}),
+		});
+	};
+
+	const handleOverlayFindNext = () => {
+		const view = getActiveEditor();
+		if (!view) return;
+		if (!getSearchQuery(view.state).search) {
+			ensureOverlaySearchOpen();
+			return;
+		}
+		runFindNext(view);
+		scrollActiveSelectionToCenter(view);
+	};
+
+	const handleOverlayFindPrevious = () => {
+		const view = getActiveEditor();
+		if (!view) return;
+		if (!getSearchQuery(view.state).search) {
+			ensureOverlaySearchOpen();
+			return;
+		}
+		runFindPrevious(view);
+		scrollActiveSelectionToCenter(view);
+	};
+
+	const handleOverlaySearchClose = () => {
+		forEachEditor((view) => {
+			closeSearchPanel(view);
+		});
+		setIsSearchOpen(false);
+	};
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: MergeView is created once and destroyed on unmount
 	useEffect(() => {
 		if (!containerRef.current) return;
+
+		const overlaySearchKeymap = keymap.of([
+			{
+				key: "Mod-f",
+				run: () => {
+					ensureOverlaySearchOpen();
+					return true;
+				},
+			},
+			{
+				key: "F3",
+				run: () => {
+					handleOverlayFindNext();
+					return true;
+				},
+				shift: () => {
+					handleOverlayFindPrevious();
+					return true;
+				},
+				preventDefault: true,
+			},
+			{
+				key: "Mod-g",
+				run: () => {
+					handleOverlayFindNext();
+					return true;
+				},
+				shift: () => {
+					handleOverlayFindPrevious();
+					return true;
+				},
+				preventDefault: true,
+			},
+			{
+				key: "Escape",
+				run: () => {
+					if (!isSearchOpenRef.current) return false;
+					handleOverlaySearchClose();
+					return true;
+				},
+			},
+		]);
+
+		const focusTracker = EditorView.domEventHandlers({
+			focus: (_event, view) => {
+				activeEditorRef.current = view;
+			},
+		});
+
+		const overlaySearchUpdateListener = EditorView.updateListener.of(
+			(update) => {
+				if (
+					!(
+						update.docChanged ||
+						update.selectionSet ||
+						update.transactions.some((tr) =>
+							tr.effects.some((effect) => effect.is(setSearchQuery)),
+						)
+					)
+				) {
+					return;
+				}
+				syncSearchOverlayStateRef.current?.();
+			},
+		);
+
+		const searchExtension = search({ createPanel: createHiddenSearchPanel });
 
 		const readOnlyExtensions = [
 			lineNumbers(),
@@ -251,6 +497,10 @@ export function CodeMirrorDiffViewer({
 			EditorState.readOnly.of(true),
 			EditorView.editable.of(false),
 			EditorView.lineWrapping,
+			searchExtension,
+			focusTracker,
+			overlaySearchUpdateListener,
+			overlaySearchKeymap,
 			keymap.of([indentWithTab, ...defaultKeymap, ...searchKeymap]),
 			suppressDeletions,
 		];
@@ -261,6 +511,10 @@ export function CodeMirrorDiffViewer({
 			drawSelection(),
 			highlightSelectionMatches(),
 			EditorView.lineWrapping,
+			searchExtension,
+			focusTracker,
+			overlaySearchUpdateListener,
+			overlaySearchKeymap,
 			keymap.of([
 				indentWithTab,
 				...defaultKeymap,
@@ -413,5 +667,39 @@ export function CodeMirrorDiffViewer({
 		});
 	}, [inlineCompletionCompartmentB, hasInlineCompletionRequest]);
 
-	return <div ref={containerRef} className="h-full w-full overflow-auto" />;
+	return (
+		<div className="relative h-full w-full">
+			<div ref={containerRef} className="h-full w-full overflow-auto" />
+			<CodeEditorSearchOverlay
+				isOpen={isSearchOpen}
+				query={searchQueryText}
+				replaceText=""
+				caseSensitive={isCaseSensitive}
+				regexp={isRegexp}
+				wholeWord={isWholeWord}
+				matchCount={searchMatchCount}
+				activeMatchIndex={activeSearchMatchIndex}
+				readOnly
+				onQueryChange={(nextQuery) => {
+					updateOverlaySearchQuery({ search: nextQuery });
+				}}
+				onReplaceTextChange={() => {}}
+				onCaseSensitiveChange={(next) => {
+					updateOverlaySearchQuery({ caseSensitive: next });
+				}}
+				onRegexpChange={(next) => {
+					updateOverlaySearchQuery({ regexp: next });
+				}}
+				onWholeWordChange={(next) => {
+					updateOverlaySearchQuery({ wholeWord: next });
+				}}
+				onFindNext={handleOverlayFindNext}
+				onFindPrevious={handleOverlayFindPrevious}
+				onSelectAllMatches={() => {}}
+				onReplaceNext={() => {}}
+				onReplaceAll={() => {}}
+				onClose={handleOverlaySearchClose}
+			/>
+		</div>
+	);
 }

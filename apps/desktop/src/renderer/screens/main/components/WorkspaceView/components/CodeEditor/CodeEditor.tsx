@@ -79,6 +79,84 @@ const HIGHLIGHT_MAX_RETRIES = 8;
 const SCROLL_STABILIZE_DELAY_MS = 120;
 const SEARCH_MATCH_LIMIT = 10_000;
 
+/**
+ * Diagnostic: replicate CM6's scrollableParents(view.contentDOM) walk and log
+ * what the drag-autoscroll subsystem will use as its edge-bound reference.
+ * See node_modules/@codemirror/view/.../index.js scrollableParents + MouseSelection.move
+ * for the original logic (walk from contentDOM.parentNode up, first ancestor where
+ * scrollHeight > clientHeight wins; else fall back to window inner size).
+ */
+function logDragAutoscrollDiagnostics(view: EditorView, event: MouseEvent) {
+	const content = view.contentDOM;
+	const scroller = view.scrollDOM;
+	const chain: Array<{
+		tag: string;
+		cls: string;
+		scrollHeight: number;
+		clientHeight: number;
+		overflowY: string;
+		rectTop: number;
+		rectBottom: number;
+		isCandidate: boolean;
+	}> = [];
+	let picked: Element | null = null;
+	for (
+		let cur: Node | null = content.parentNode;
+		cur && cur !== document.body;
+
+	) {
+		if (cur.nodeType === 1) {
+			const el = cur as HTMLElement;
+			const style = getComputedStyle(el);
+			const isCandidate = el.scrollHeight > el.clientHeight;
+			const rect = el.getBoundingClientRect();
+			chain.push({
+				tag: el.tagName.toLowerCase(),
+				cls: el.className?.toString().slice(0, 60) ?? "",
+				scrollHeight: el.scrollHeight,
+				clientHeight: el.clientHeight,
+				overflowY: style.overflowY,
+				rectTop: Math.round(rect.top),
+				rectBottom: Math.round(rect.bottom),
+				isCandidate,
+			});
+			if (!picked && isCandidate) picked = el;
+		}
+		cur = (cur as HTMLElement).parentNode;
+	}
+
+	const pickedRect = picked
+		? picked.getBoundingClientRect()
+		: { top: 0, bottom: window.innerHeight };
+	const distTop = event.clientY - pickedRect.top;
+	const distBottom = pickedRect.bottom - event.clientY;
+	// 6 = dragScrollMargin in @codemirror/view
+	const nearEdge = distTop <= 6 || distBottom <= 6;
+
+	console.log("[CodeEditor drag-diagnostic] mousedown", {
+		pointerY: event.clientY,
+		scrollerRect: {
+			top: Math.round(scroller.getBoundingClientRect().top),
+			bottom: Math.round(scroller.getBoundingClientRect().bottom),
+			scrollHeight: scroller.scrollHeight,
+			clientHeight: scroller.clientHeight,
+		},
+		pickedElement: picked
+			? {
+					tag: picked.tagName.toLowerCase(),
+					cls: picked.className?.toString().slice(0, 80) ?? "",
+					rect: {
+						top: Math.round(pickedRect.top),
+						bottom: Math.round(pickedRect.bottom),
+					},
+				}
+			: "NONE (falls back to window bounds)",
+		distToEdge: { top: Math.round(distTop), bottom: Math.round(distBottom) },
+		nearEdgeAtStart: nearEdge,
+		parentChain: chain,
+	});
+}
+
 function createHiddenSearchPanel() {
 	const dom = document.createElement("div");
 	dom.className = "cm-search cm-hidden-search-panel";
@@ -714,9 +792,18 @@ export function CodeEditor({
 			},
 		]);
 
+		const dragDiagnosticHandler = EditorView.domEventHandlers({
+			mousedown: (event, view) => {
+				if (event.button !== 0) return false;
+				logDragAutoscrollDiagnostics(view, event);
+				return false;
+			},
+		});
+
 		const state = EditorState.create({
 			doc: value,
 			extensions: [
+				dragDiagnosticHandler,
 				lineNumbers(),
 				highlightActiveLineGutter(),
 				highlightSpecialChars(),

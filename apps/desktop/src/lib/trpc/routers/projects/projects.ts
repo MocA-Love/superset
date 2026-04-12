@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { existsSync, statSync } from "node:fs";
 import { access, mkdir, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -12,6 +13,7 @@ import {
 	worktrees,
 } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import { and, desc, eq, inArray, isNotNull, isNull, not } from "drizzle-orm";
 import type { BrowserWindow } from "electron";
 import { dialog } from "electron";
@@ -23,6 +25,7 @@ import {
 } from "main/lib/project-icons";
 import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import { PROJECT_COLOR_VALUES } from "shared/constants/project-colors";
+import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { resolveDefaultEditor } from "../external";
@@ -43,7 +46,10 @@ import {
 	sanitizeAuthorPrefix,
 } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
-import { execWithShellEnv } from "../workspaces/utils/shell-env";
+import {
+	execWithShellEnv,
+	getProcessEnvWithShellPath,
+} from "../workspaces/utils/shell-env";
 import { getDefaultProjectColor } from "./utils/colors";
 import { discoverAndSaveProjectIcon } from "./utils/favicon-discovery";
 import { fetchGitHubOwner, getGitHubAvatarUrl } from "./utils/github";
@@ -321,6 +327,49 @@ function extractRepoName(urlInput: string): string | null {
 	}
 
 	return repoSegment;
+}
+
+export type CloneProgressEvent =
+	| {
+			type: "log";
+			cloneId: string;
+			message: string;
+			level: "info" | "warn" | "error";
+			time: number;
+	  }
+	| {
+			type: "progress";
+			cloneId: string;
+			stage: string;
+			progress: number;
+			processed: number;
+			total: number;
+			time: number;
+	  }
+	| { type: "done"; cloneId: string; time: number }
+	| { type: "error"; cloneId: string; message: string; time: number }
+	| { type: "canceled"; cloneId: string; time: number };
+
+const cloneEventBus = new EventEmitter();
+cloneEventBus.setMaxListeners(0);
+const cloneAbortControllers = new Map<string, AbortController>();
+
+function emitCloneEvent(event: CloneProgressEvent) {
+	cloneEventBus.emit(event.cloneId, event);
+}
+
+function emitCloneLog(
+	cloneId: string,
+	message: string,
+	level: "info" | "warn" | "error" = "info",
+) {
+	emitCloneEvent({
+		type: "log",
+		cloneId,
+		message,
+		level,
+		time: Date.now(),
+	});
 }
 
 /** Create the tRPC router for project CRUD, branch listing, and git operations. */
@@ -1200,6 +1249,38 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 				return { project };
 			}),
 
+		cloneProgress: publicProcedure
+			.input(z.object({ cloneId: z.string().min(1) }))
+			.subscription(({ input }) => {
+				return observable<CloneProgressEvent>((emit) => {
+					const handler = (event: CloneProgressEvent) => {
+						emit.next(event);
+					};
+					cloneEventBus.on(input.cloneId, handler);
+					return () => {
+						cloneEventBus.off(input.cloneId, handler);
+					};
+				});
+			}),
+
+		cancelClone: publicProcedure
+			.input(z.object({ cloneId: z.string().min(1) }))
+			.mutation(({ input }) => {
+				const controller = cloneAbortControllers.get(input.cloneId);
+				if (!controller) {
+					return { canceled: false as const };
+				}
+				controller.abort();
+				cloneAbortControllers.delete(input.cloneId);
+				emitCloneLog(input.cloneId, "Clone canceled by user", "warn");
+				emitCloneEvent({
+					type: "canceled",
+					cloneId: input.cloneId,
+					time: Date.now(),
+				});
+				return { canceled: true as const };
+			}),
+
 		cloneRepo: publicProcedure
 			.input(
 				z.object({
@@ -1223,6 +1304,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						.trim()
 						.optional()
 						.transform((v) => (v && v.length > 0 ? v : undefined)),
+					cloneId: z.string().min(1).optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -1316,9 +1398,59 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						};
 					}
 
-					// Clone the repository
-					const git = await getSimpleGitWithShellPath();
-					await git.clone(input.url, clonePath);
+					// Clone the repository (with streaming progress when cloneId given)
+					const cloneId = input.cloneId;
+					if (cloneId) {
+						const abortController = new AbortController();
+						cloneAbortControllers.set(cloneId, abortController);
+						emitCloneLog(
+							cloneId,
+							`Preparing clone into ${basename(clonePath)}`,
+						);
+						try {
+							const gitWithProgress = simpleGit({
+								abort: abortController.signal,
+								progress: (event: SimpleGitProgressEvent) => {
+									emitCloneEvent({
+										type: "progress",
+										cloneId,
+										stage: event.stage,
+										progress: event.progress,
+										processed: event.processed,
+										total: event.total,
+										time: Date.now(),
+									});
+								},
+							});
+							gitWithProgress.env(await getProcessEnvWithShellPath());
+							emitCloneLog(cloneId, `Cloning ${input.url}`);
+							await gitWithProgress.clone(input.url, clonePath);
+							emitCloneEvent({
+								type: "done",
+								cloneId,
+								time: Date.now(),
+							});
+						} catch (cloneError) {
+							const message =
+								cloneError instanceof Error
+									? cloneError.message
+									: String(cloneError);
+							if (!abortController.signal.aborted) {
+								emitCloneEvent({
+									type: "error",
+									cloneId,
+									message,
+									time: Date.now(),
+								});
+							}
+							throw cloneError;
+						} finally {
+							cloneAbortControllers.delete(cloneId);
+						}
+					} else {
+						const git = await getSimpleGitWithShellPath();
+						await git.clone(input.url, clonePath);
+					}
 
 					// Create new project
 					const name = basename(clonePath);

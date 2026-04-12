@@ -420,4 +420,16 @@
 	.review-comment-body .markdown-alert-caution .markdown-alert-title {
 		color: #f85149;
 	}
+
+	@keyframes clone-indeterminate {
+		0% {
+			left: -40%;
+		}
+		100% {
+			left: 100%;
+		}
+	}
+	.animate-clone-indeterminate {
+		animation: clone-indeterminate 1.4s ease-in-out infinite;
+	}
 }
