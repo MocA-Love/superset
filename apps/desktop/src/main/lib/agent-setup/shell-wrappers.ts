@@ -218,15 +218,10 @@ ${SUPERSET_ENV_RESTORE}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
 ${buildPathPrependFunction(paths.BIN_DIR)}
 rehash 2>/dev/null || true
-# Shell readiness markers. Emitting both keeps us compatible across daemon
-# versions: the legacy v1 daemon scans for OSC 777, the current scanner (v1
-# post-refactor + v2 host-service) scans for OSC 133;A (FinalTerm standard).
-# Wrappers are rewritten on every app launch, so main always ships the
-# superset of markers; daemons that only get restarted on protocol bumps
-# still match against their own scanner.
+# OSC 133;A prompt marker (FinalTerm standard) — signals shell readiness.
 # Protocol ref: https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md
 __superset_prompt_mark() {
-  printf "\\033]777;superset-shell-ready\\007\\033]133;A\\007"
+  printf "\\033]133;A\\007"
 }
 # Keep our hook LAST so it fires after direnv and other precmd hooks complete.
 precmd_functions=(\${precmd_functions[@]} __superset_prompt_mark)
@@ -273,10 +268,10 @@ ${buildPathPrependFunction(paths.BIN_DIR)}
 hash -r 2>/dev/null || true
 # Minimal prompt (path/env shown in toolbar) - emerald to match app theme
 export PS1=$'\\[\\e[1;38;2;52;211;153m\\]❯\\[\\e[0m\\] '
-# Shell readiness markers — see zsh wrapper for rationale on emitting both.
+# OSC 133;A prompt marker (FinalTerm standard) — signals shell readiness.
 # Protocol ref: https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md
 __superset_prompt_mark() {
-  printf "\\033]777;superset-shell-ready\\007\\033]133;A\\007"
+  printf "\\033]133;A\\007"
 }
 # Hook via PROMPT_COMMAND. Supports both scalar and array forms (Bash 5.1+).
 if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
@@ -320,8 +315,7 @@ export function getShellArgs(
 	if (shellName === "fish") {
 		// Use --init-command to prepend BIN_DIR to PATH after config is loaded.
 		// Use fish list-aware checks to avoid duplicate PATH entries across nested shells.
-		// Emit both OSC 777 (legacy v1 daemon) and OSC 133;A (current scanner)
-		// on fish_prompt. See zsh wrapper for rationale.
+		// OSC 133;A emitted on fish_prompt — signals shell readiness.
 		const escapedBinDir = escapeFishDoubleQuoted(paths.BIN_DIR);
 		return [
 			"-l",
@@ -331,7 +325,7 @@ export function getShellArgs(
 				`contains -- "$_superset_bin" $PATH`,
 				`or set -gx PATH "$_superset_bin" $PATH`,
 				`function _superset_prompt_mark --on-event fish_prompt`,
-				`printf '\\033]777;superset-shell-ready\\007\\033]133;A\\007'`,
+				`printf '\\033]133;A\\007'`,
 				`end`,
 			].join("; "),
 		];
