@@ -115,8 +115,13 @@ function extractConflictFiles(message: string): string[] {
 	for (const re of patterns) {
 		let match = re.exec(message);
 		while (match) {
+			// Keep filenames with spaces — git emits them literally in merge
+			// conflict messages (see `CONFLICT (content): Merge conflict in file
+			// with spaces.ts`). The previous `!file.includes(" ")` guard was
+			// inconsistent with extractOverwriteFiles and silently dropped valid
+			// paths.
 			const file = match[1]?.trim();
-			if (file && !file.includes(" ")) {
+			if (file) {
 				files.add(file);
 			}
 			match = re.exec(message);

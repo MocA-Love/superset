@@ -748,13 +748,28 @@ export const createGitOperationsRouter = () => {
 					input,
 				}): Promise<{ removed: boolean; path: string | null }> => {
 					assertRegisteredWorktree(input.worktreePath);
-					const { join } = await import("node:path");
+					const { isAbsolute, resolve } = await import("node:path");
 					const { stat, unlink } = await import("node:fs/promises");
 
+					// Resolve the *real* git-dir. For linked worktrees ".git" is a
+					// file that points at ".git/worktrees/<name>", where the actual
+					// index.lock lives. Falling back to "<worktree>/.git" is fine for
+					// the non-linked case.
+					const git = await getGitWithShellPath(input.worktreePath);
+					let gitDir: string;
+					try {
+						const raw = (
+							await git.raw(["rev-parse", "--git-dir"])
+						).trim();
+						gitDir = isAbsolute(raw) ? raw : resolve(input.worktreePath, raw);
+					} catch {
+						gitDir = resolve(input.worktreePath, ".git");
+					}
+
 					const candidates = [
-						join(input.worktreePath, ".git", "index.lock"),
-						join(input.worktreePath, ".git", "HEAD.lock"),
-						join(input.worktreePath, ".git", "shallow.lock"),
+						resolve(gitDir, "index.lock"),
+						resolve(gitDir, "HEAD.lock"),
+						resolve(gitDir, "shallow.lock"),
 					];
 					for (const candidate of candidates) {
 						try {

@@ -481,14 +481,17 @@ function CurrentBranchSelector({
 					retry: () =>
 						switchBranch.mutate({ worktreePath, branch: variables.branch }),
 					forceUnlockIndex: () => {
-						void forceUnlockIndexMutation
+						forceUnlockIndexMutation
 							.mutateAsync({ worktreePath })
 							.then(() =>
 								switchBranch.mutate({
 									worktreePath,
 									branch: variables.branch,
 								}),
-							);
+							)
+							.catch((unlockError) => {
+								showGitErrorDialog(unlockError, "generic");
+							});
 					},
 				});
 				return;

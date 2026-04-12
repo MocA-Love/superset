@@ -3,16 +3,13 @@
  * user-visible auto-repair notifications in the unified GitOperationDialog.
  */
 
+import type { GitOperationWarning } from "lib/trpc/routers/changes/git-operation-types";
 import {
 	type GitOperationDialogSpec,
 	openGitOperationDialog,
 } from "renderer/stores/git-operation-dialog";
 
-export type GitOperationWarning =
-	| { kind: "auto-published-upstream"; branch: string }
-	| { kind: "post-push-fetch-failed"; message: string }
-	| { kind: "push-retargeted"; remote: string; targetBranch: string }
-	| { kind: "post-checkout-hook-failed"; message: string };
+export type { GitOperationWarning };
 
 export interface GitWarningHandlers {
 	/** Only for post-push-fetch-failed: retry the follow-up fetch. */

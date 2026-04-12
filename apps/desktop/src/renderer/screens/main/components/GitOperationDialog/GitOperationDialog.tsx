@@ -60,11 +60,11 @@ function variantClass(
 function ActionButton({
 	action,
 	isPending,
-	close,
+	dialogId,
 }: {
 	action: GitOperationDialogAction;
 	isPending: boolean;
-	close: () => void;
+	dialogId: number;
 }) {
 	const onClick = async () => {
 		try {
@@ -73,9 +73,14 @@ function ActionButton({
 				useGitOperationDialogStore.getState().setPending(true);
 				await result;
 			}
+		} catch (err) {
+			// Actions normally delegate error reporting to their own mutation
+			// onError handlers. Anything reaching here is an unexpected throw —
+			// surface it to the console instead of silently eating it.
+			console.error("[GitOperationDialog] action threw", err);
 		} finally {
 			useGitOperationDialogStore.getState().setPending(false);
-			close();
+			useGitOperationDialogStore.getState().close(dialogId);
 		}
 	};
 
@@ -97,6 +102,7 @@ function ActionButton({
 
 export function GitOperationDialog() {
 	const spec = useGitOperationDialogStore((s) => s.spec);
+	const dialogId = useGitOperationDialogStore((s) => s.dialogId);
 	const isPending = useGitOperationDialogStore((s) => s.isPending);
 	const close = useGitOperationDialogStore((s) => s.close);
 
@@ -107,7 +113,7 @@ export function GitOperationDialog() {
 		<GitAlertDialog
 			open={open}
 			onOpenChange={(nextOpen) => {
-				if (!nextOpen && !isPending) close();
+				if (!nextOpen && !isPending) close(dialogId);
 			}}
 		>
 			<EnterEnabledAlertDialogContent className="max-w-[420px] gap-0 p-0">
@@ -144,7 +150,7 @@ export function GitOperationDialog() {
 									size="sm"
 									className="h-7 px-3 text-xs"
 									disabled={isPending}
-									onClick={() => close()}
+									onClick={() => close(dialogId)}
 								>
 									{spec.dismissLabel ?? "閉じる"}
 								</Button>
@@ -153,21 +159,21 @@ export function GitOperationDialog() {
 								<ActionButton
 									action={spec.tertiaryAction}
 									isPending={isPending}
-									close={close}
+									dialogId={dialogId}
 								/>
 							) : null}
 							{spec.secondaryAction ? (
 								<ActionButton
 									action={spec.secondaryAction}
 									isPending={isPending}
-									close={close}
+									dialogId={dialogId}
 								/>
 							) : null}
 							{spec.primaryAction ? (
 								<ActionButton
 									action={spec.primaryAction}
 									isPending={isPending}
-									close={close}
+									dialogId={dialogId}
 								/>
 							) : null}
 						</AlertDialogFooter>

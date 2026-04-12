@@ -50,30 +50,52 @@ export interface GitOperationDialogSpec {
 
 interface GitOperationDialogState {
 	spec: GitOperationDialogSpec | null;
+	/**
+	 * Monotonic token identifying the currently-rendered dialog. Incremented on
+	 * every `open()` so that a late-running action's `finally` can only clear
+	 * the dialog it originally opened (not a subsequent one the user opened in
+	 * the meantime).
+	 */
+	dialogId: number;
 	isPending: boolean;
-	open: (spec: GitOperationDialogSpec) => void;
+	/** @returns the id of the dialog that was just opened. */
+	open: (spec: GitOperationDialogSpec) => number;
 	setPending: (pending: boolean) => void;
-	close: () => void;
+	/** If `id` is given, only closes when it matches the current dialogId. */
+	close: (id?: number) => void;
 }
 
 export const useGitOperationDialogStore = create<GitOperationDialogState>()(
 	devtools(
 		(set) => ({
 			spec: null,
+			dialogId: 0,
 			isPending: false,
-			open: (spec) => set({ spec, isPending: false }),
+			open: (spec) => {
+				let nextId = 0;
+				set((state) => {
+					nextId = state.dialogId + 1;
+					return { spec, dialogId: nextId, isPending: false };
+				});
+				return nextId;
+			},
 			setPending: (isPending) => set({ isPending }),
-			close: () => set({ spec: null, isPending: false }),
+			close: (id) =>
+				set((state) =>
+					id === undefined || id === state.dialogId
+						? { spec: null, isPending: false }
+						: state,
+				),
 		}),
 		{ name: "GitOperationDialogStore" },
 	),
 );
 
-/** Convenience helper for call sites. */
-export function openGitOperationDialog(spec: GitOperationDialogSpec): void {
-	useGitOperationDialogStore.getState().open(spec);
+/** Convenience helper for call sites. Returns the opened dialog id. */
+export function openGitOperationDialog(spec: GitOperationDialogSpec): number {
+	return useGitOperationDialogStore.getState().open(spec);
 }
 
-export function closeGitOperationDialog(): void {
-	useGitOperationDialogStore.getState().close();
+export function closeGitOperationDialog(id?: number): void {
+	useGitOperationDialogStore.getState().close(id);
 }

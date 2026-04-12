@@ -70,12 +70,19 @@ export function CommitInput({
 			onRefresh();
 		},
 		onError: (error) => {
+			const trimmed = commitMessage.trim();
 			showGitErrorDialog(error, "commit", {
 				retry: () => {
-					if (commitMessage.trim()) {
+					if (trimmed) {
+						commitMutation.mutate({ worktreePath, message: trimmed });
+					}
+				},
+				retryWithoutHooks: () => {
+					if (trimmed) {
 						commitMutation.mutate({
 							worktreePath,
-							message: commitMessage.trim(),
+							message: trimmed,
+							skipHooks: true,
 						});
 					}
 				},

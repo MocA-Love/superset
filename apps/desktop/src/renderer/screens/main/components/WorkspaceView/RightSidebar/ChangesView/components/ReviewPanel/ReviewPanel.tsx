@@ -594,19 +594,23 @@ export function ReviewPanel({
 			await runRerunChecks(mode);
 			return;
 		}
+		// Primary (safer) action runs only the failed jobs. Re-running every
+		// job — including ones that already succeeded or are still in flight —
+		// is the destructive side and is moved to the secondary action so it
+		// can't be triggered by a stray Enter keypress.
 		showGitConfirmDialog({
 			kind: "rerun-all-checks-confirm",
 			tone: "warn",
 			title: "すべての CI jobs を再実行しますか?",
 			description:
 				"成功済み・実行中のものも含めて全ジョブが再キューされます。コストとノイズが大きい操作です。",
-			confirmLabel: "全て再実行",
+			confirmLabel: "失敗分だけ再実行",
 			confirmVariant: "primary",
-			secondaryLabel: "失敗分だけ再実行",
-			onSecondary: () => {
+			onConfirm: () => {
 				void runRerunChecks("failed");
 			},
-			onConfirm: () => {
+			secondaryLabel: "全て再実行",
+			onSecondary: () => {
 				void runRerunChecks("all");
 			},
 		});
