@@ -60,7 +60,8 @@ interface GitOperationDialogState {
 	isPending: boolean;
 	/** @returns the id of the dialog that was just opened. */
 	open: (spec: GitOperationDialogSpec) => number;
-	setPending: (pending: boolean) => void;
+	/** If `id` is given, only updates when it matches the current dialogId. */
+	setPending: (pending: boolean, id?: number) => void;
 	/** If `id` is given, only closes when it matches the current dialogId. */
 	close: (id?: number) => void;
 }
@@ -79,7 +80,10 @@ export const useGitOperationDialogStore = create<GitOperationDialogState>()(
 				});
 				return nextId;
 			},
-			setPending: (isPending) => set({ isPending }),
+			setPending: (isPending, id) =>
+				set((state) =>
+					id === undefined || id === state.dialogId ? { isPending } : state,
+				),
 			close: (id) =>
 				set((state) =>
 					id === undefined || id === state.dialogId

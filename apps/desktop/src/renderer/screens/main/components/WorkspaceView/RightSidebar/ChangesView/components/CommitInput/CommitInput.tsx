@@ -69,22 +69,24 @@ export function CommitInput({
 			setCommitMessage("");
 			onRefresh();
 		},
-		onError: (error) => {
-			const trimmed = commitMessage.trim();
+		onError: (error, variables) => {
+			// Retry must use the message that was actually submitted — not the
+			// current textarea value. Otherwise editing the input after a failed
+			// commit would silently change what gets retried.
+			const submittedMessage = variables.message;
 			showGitErrorDialog(error, "commit", {
 				retry: () => {
-					if (trimmed) {
-						commitMutation.mutate({ worktreePath, message: trimmed });
-					}
+					commitMutation.mutate({
+						worktreePath,
+						message: submittedMessage,
+					});
 				},
 				retryWithoutHooks: () => {
-					if (trimmed) {
-						commitMutation.mutate({
-							worktreePath,
-							message: trimmed,
-							skipHooks: true,
-						});
-					}
+					commitMutation.mutate({
+						worktreePath,
+						message: submittedMessage,
+						skipHooks: true,
+					});
 				},
 			});
 		},

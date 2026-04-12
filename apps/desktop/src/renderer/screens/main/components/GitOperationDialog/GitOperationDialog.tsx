@@ -67,10 +67,11 @@ function ActionButton({
 	dialogId: number;
 }) {
 	const onClick = async () => {
+		const store = useGitOperationDialogStore.getState();
 		try {
 			const result = action.onClick();
 			if (result instanceof Promise) {
-				useGitOperationDialogStore.getState().setPending(true);
+				store.setPending(true, dialogId);
 				await result;
 			}
 		} catch (err) {
@@ -79,7 +80,10 @@ function ActionButton({
 			// surface it to the console instead of silently eating it.
 			console.error("[GitOperationDialog] action threw", err);
 		} finally {
-			useGitOperationDialogStore.getState().setPending(false);
+			// Both setPending and close are scoped to this button's dialogId so
+			// that a late-running action cannot clobber a dialog the user has
+			// opened in the meantime (e.g. if the action opens another dialog).
+			useGitOperationDialogStore.getState().setPending(false, dialogId);
 			useGitOperationDialogStore.getState().close(dialogId);
 		}
 	};
