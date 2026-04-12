@@ -25,6 +25,7 @@ import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showW
 import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
+import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
 import { useSettingsStore } from "renderer/stores/settings-state";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -215,6 +216,10 @@ function AuthenticatedLayout() {
 						<NewWorkspaceModal />
 					)}
 					<InitGitDialog />
+					{/* Rendered at the authenticated layout level so that
+					    useCreateOrOpenPR / showGitErrorDialog prompts remain
+					    visible even when the Changes sidebar is closed. */}
+					<GitOperationDialog />
 					<TeardownLogsDialog />
 					<Paywall />
 				</LocalHostServiceProvider>

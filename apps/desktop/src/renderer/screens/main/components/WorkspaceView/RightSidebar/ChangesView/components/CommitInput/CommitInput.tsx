@@ -22,6 +22,8 @@ import {
 	VscSync,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
+import { showGitWarningDialog } from "renderer/lib/git/gitWarningDialog";
 import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { useCreateOrOpenPR } from "renderer/screens/main/hooks";
 import { getPrimaryAction } from "./utils/getPrimaryAction";
@@ -58,21 +60,67 @@ export function CommitInput({
 }: CommitInputProps) {
 	const [isOpen, setIsOpen] = useState(false);
 
+	const stashIncludeUntrackedMutation =
+		electronTrpc.changes.stashIncludeUntracked.useMutation();
+	const stashPopMutation = electronTrpc.changes.stashPop.useMutation();
+
 	const commitMutation = electronTrpc.changes.commit.useMutation({
 		onSuccess: () => {
 			toast.success("Committed");
 			setCommitMessage("");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Commit failed: ${error.message}`),
+		onError: (error, variables) => {
+			// Retry must use the message that was actually submitted — not the
+			// current textarea value. Otherwise editing the input after a failed
+			// commit would silently change what gets retried.
+			const submittedMessage = variables.message;
+			showGitErrorDialog(error, "commit", {
+				retry: () => {
+					commitMutation.mutate({
+						worktreePath,
+						message: submittedMessage,
+					});
+				},
+				retryWithoutHooks: () => {
+					commitMutation.mutate({
+						worktreePath,
+						message: submittedMessage,
+						skipHooks: true,
+					});
+				},
+			});
+		},
 	});
 
 	const pushMutation = electronTrpc.changes.push.useMutation({
-		onSuccess: () => {
+		onSuccess: (result) => {
 			toast.success("Pushed");
 			onRefresh();
+			showGitWarningDialog(result?.warnings, {
+				fetchOnlyRetry: () => fetchMutation.mutate({ worktreePath }),
+				createPullRequest: () => createOrOpenPR(),
+				openPullRequestUrl: () => {
+					if (pullRequest?.url) {
+						window.open(pullRequest.url, "_blank", "noopener,noreferrer");
+					}
+				},
+			});
 		},
-		onError: (error) => toast.error(`Push failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "push", {
+				retry: () => pushMutation.mutate({ worktreePath, setUpstream: true }),
+				pullRebaseAndRetryPush: () => {
+					pullMutation.mutate(
+						{ worktreePath },
+						{
+							onSuccess: () =>
+								pushMutation.mutate({ worktreePath, setUpstream: true }),
+						},
+					);
+				},
+			});
+		},
 	});
 
 	const pullMutation = electronTrpc.changes.pull.useMutation({
@@ -80,15 +128,69 @@ export function CommitInput({
 			toast.success("Pulled");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Pull failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "pull", {
+				retry: () => pullMutation.mutate({ worktreePath }),
+				stashAndRetry: () => {
+					// stash → pull → stash pop. Skipping the pop would silently
+					// leave the user's local changes on the stash stack after a
+					// successful pull, which is almost never what the user
+					// expected when they chose "stash してから pull".
+					stashIncludeUntrackedMutation.mutate(
+						{ worktreePath },
+						{
+							onSuccess: () => {
+								pullMutation.mutate(
+									{ worktreePath },
+									{
+										onSuccess: () => {
+											stashPopMutation.mutate(
+												{ worktreePath },
+												{
+													onError: (popError) =>
+														showGitErrorDialog(popError, "stash-pop"),
+												},
+											);
+										},
+									},
+								);
+							},
+							onError: (stashError) => showGitErrorDialog(stashError, "stash"),
+						},
+					);
+				},
+			});
+		},
 	});
 
 	const syncMutation = electronTrpc.changes.sync.useMutation({
-		onSuccess: () => {
+		onSuccess: (result) => {
 			toast.success("Synced");
 			onRefresh();
+			showGitWarningDialog(result?.warnings, {
+				fetchOnlyRetry: () => fetchMutation.mutate({ worktreePath }),
+				createPullRequest: () => createOrOpenPR(),
+				openPullRequestUrl: () => {
+					if (pullRequest?.url) {
+						window.open(pullRequest.url, "_blank", "noopener,noreferrer");
+					}
+				},
+			});
 		},
-		onError: (error) => toast.error(`Sync failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "sync", {
+				retry: () => syncMutation.mutate({ worktreePath }),
+				pullRebaseAndRetryPush: () => {
+					pullMutation.mutate(
+						{ worktreePath },
+						{
+							onSuccess: () =>
+								pushMutation.mutate({ worktreePath, setUpstream: true }),
+						},
+					);
+				},
+			});
+		},
 	});
 
 	const {
@@ -105,7 +207,11 @@ export function CommitInput({
 			toast.success("Fetched");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Fetch failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "fetch", {
+				retry: () => fetchMutation.mutate({ worktreePath }),
+			});
+		},
 	});
 
 	const isPending =

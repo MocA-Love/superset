@@ -25,7 +25,7 @@ export function DiscardConfirmDialog({
 	title,
 	description,
 	onConfirm,
-	confirmLabel = "Discard",
+	confirmLabel = "破棄",
 	confirmDisabled = false,
 }: DiscardConfirmDialogProps) {
 	return (
@@ -42,7 +42,7 @@ export function DiscardConfirmDialog({
 						className="h-7 px-3 text-xs"
 						onClick={() => onOpenChange(false)}
 					>
-						Cancel
+						キャンセル
 					</Button>
 					<AlertDialogAction
 						variant="destructive"

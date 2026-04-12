@@ -24,7 +24,7 @@ export function InitGitDialog() {
 		>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Initialize Git Repository?</AlertDialogTitle>
+					<AlertDialogTitle>Git リポジトリを初期化しますか?</AlertDialogTitle>
 					<AlertDialogDescription asChild>
 						<div className="space-y-2">
 							{isSingle ? (
@@ -32,13 +32,13 @@ export function InitGitDialog() {
 									<span className="font-medium text-foreground">
 										{paths[0]?.split("/").pop()}
 									</span>{" "}
-									is not a git repository. Would you like to initialize one?
+									は Git リポジトリではありません。初期化しますか?
 								</p>
 							) : (
 								<>
 									<p>
-										The following folders are not git repositories. Would you
-										like to initialize them?
+										以下のフォルダは Git
+										リポジトリではありません。初期化しますか?
 									</p>
 									<ul className="list-disc pl-4 space-y-1">
 										{paths.map((p) => (
@@ -63,10 +63,10 @@ export function InitGitDialog() {
 						disabled={isPending}
 						onClick={() => onCancel?.()}
 					>
-						Cancel
+						キャンセル
 					</Button>
 					<Button disabled={isPending} onClick={() => onConfirm?.()}>
-						{isPending ? "Initializing..." : "Initialize Git"}
+						{isPending ? "初期化中..." : "Git を初期化"}
 					</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>

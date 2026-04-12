@@ -16,7 +16,6 @@ import {
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
-import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import {
@@ -40,6 +39,7 @@ import {
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
+import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
 import type { ChangesViewMode } from "../../types";
 import { ViewModeToggle } from "../ViewModeToggle";
 import {
@@ -476,6 +476,26 @@ function CurrentBranchSelector({
 				});
 				return;
 			}
+			if (msg.toLowerCase().includes("index.lock")) {
+				showGitErrorDialog(error, "switch-branch", {
+					retry: () =>
+						switchBranch.mutate({ worktreePath, branch: variables.branch }),
+					forceUnlockIndex: () => {
+						forceUnlockIndexMutation
+							.mutateAsync({ worktreePath })
+							.then(() =>
+								switchBranch.mutate({
+									worktreePath,
+									branch: variables.branch,
+								}),
+							)
+							.catch((unlockError) => {
+								showGitErrorDialog(unlockError, "generic");
+							});
+					},
+				});
+				return;
+			}
 			if (isGitBusyMessage(msg)) {
 				setDialogState({
 					kind: "git-busy",
@@ -498,9 +518,12 @@ function CurrentBranchSelector({
 				});
 				return;
 			}
-			toast.error(`Failed to switch branch: ${msg}`);
+			showGitErrorDialog(error, "switch-branch");
 		},
 	});
+	const forceUnlockIndexMutation =
+		electronTrpc.changes.forceUnlockIndex.useMutation();
+
 	const createBranch = electronTrpc.changes.createBranch.useMutation({
 		onSuccess: () => {
 			invalidateBranchQueries();
@@ -531,7 +554,7 @@ function CurrentBranchSelector({
 				});
 				return;
 			}
-			toast.error(`Failed to create branch: ${message}`);
+			showGitErrorDialog(error, "create-branch");
 		},
 	});
 	const updateBaseBranch = electronTrpc.changes.updateBaseBranch.useMutation({
@@ -543,9 +566,7 @@ function CurrentBranchSelector({
 				setDialogState({ kind: "compare-detached-head" });
 				return;
 			}
-			toast.error(
-				`Failed to update compare branch: ${error.message ?? "Unknown error"}`,
-			);
+			showGitErrorDialog(error, "generic");
 		},
 	});
 
@@ -1171,8 +1192,8 @@ function FetchRemoteButton({
 			onRefresh();
 		},
 		onError: (error) => {
-			toast.error("Fetch failed", {
-				description: error.message,
+			showGitErrorDialog(error, "fetch", {
+				retry: () => fetchMutation.mutate({ worktreePath }),
 			});
 		},
 		onSettled: () => {

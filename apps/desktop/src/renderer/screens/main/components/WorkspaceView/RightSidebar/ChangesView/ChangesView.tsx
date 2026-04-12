@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { VscRefresh } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import {
 	getGitHubPRCommentsQueryPolicy,
 	getGitHubStatusQueryPolicy,
@@ -21,6 +22,7 @@ import {
 	DEFAULT_DIFFS_PANE_PERCENTAGE,
 	useChangesStore,
 } from "renderer/stores/changes";
+import { useEditorDocumentsStore } from "renderer/stores/editor-state/useEditorDocumentsStore";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import {
 	pathsMatch,
@@ -33,6 +35,21 @@ import { CategorySection } from "./components/CategorySection";
 import { ChangesHeader } from "./components/ChangesHeader";
 import { CommitInput } from "./components/CommitInput";
 import { DiscardConfirmDialog } from "./components/DiscardConfirmDialog";
+
+const BULK_STAGE_CONFIRM_THRESHOLD = 10;
+
+function countDirtyDocumentsForWorkspace(
+	workspaceId: string | undefined,
+): number {
+	if (!workspaceId) return 0;
+	const documents = useEditorDocumentsStore.getState().documents;
+	let count = 0;
+	for (const doc of Object.values(documents)) {
+		if (doc.dirty && doc.workspaceId === workspaceId) count++;
+	}
+	return count;
+}
+
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { VerticalResizablePanels } from "./components/VerticalResizablePanels";
@@ -764,11 +781,43 @@ export function ChangesView({
 				worktreePath: worktreePath || "",
 				filePaths: files.map((f) => f.path),
 			}),
-		onShowDiscardStagedDialog: () => setShowDiscardStagedDialog(true),
-		onUnstageAll: () =>
-			unstageAllMutation.mutate({
-				worktreePath: worktreePath || "",
-			}),
+		onShowDiscardStagedDialog: () => {
+			const dirtyCount = countDirtyDocumentsForWorkspace(workspaceId);
+			if (dirtyCount > 0) {
+				showGitConfirmDialog({
+					kind: "discard-unsaved-editor",
+					tone: "warn",
+					title: "エディタに保存していない変更があります",
+					description: `${dirtyCount} 件のファイルがエディタで未保存です。discard を続行すると保存前の編集内容が失われます。`,
+					confirmLabel: "続行して discard",
+					confirmVariant: "destructive",
+					onConfirm: () => setShowDiscardStagedDialog(true),
+				});
+				return;
+			}
+			setShowDiscardStagedDialog(true);
+		},
+		onUnstageAll: () => {
+			const count = stagedFiles.length;
+			const run = () =>
+				unstageAllMutation.mutate({
+					worktreePath: worktreePath || "",
+				});
+			if (count < BULK_STAGE_CONFIRM_THRESHOLD) {
+				run();
+				return;
+			}
+			showGitConfirmDialog({
+				kind: "bulk-unstage-all-confirm",
+				tone: "warn",
+				title: `${count} 件のファイルをまとめて unstage しますか?`,
+				description:
+					"staged を全て解除します。ファイルの内容は変更されません。",
+				confirmLabel: "全て unstage",
+				confirmVariant: "primary",
+				onConfirm: run,
+			});
+		},
 		isDiscardAllStagedPending: discardAllStagedMutation.isPending,
 		isUnstageAllPending: unstageAllMutation.isPending,
 		isStagedActioning:
@@ -789,11 +838,43 @@ export function ChangesView({
 				filePaths: files.map((f) => f.path),
 			}),
 		onDiscardFile: handleDiscard,
-		onShowDiscardUnstagedDialog: () => setShowDiscardUnstagedDialog(true),
-		onStageAll: () =>
-			stageAllMutation.mutate({
-				worktreePath: worktreePath || "",
-			}),
+		onShowDiscardUnstagedDialog: () => {
+			const dirtyCount = countDirtyDocumentsForWorkspace(workspaceId);
+			if (dirtyCount > 0) {
+				showGitConfirmDialog({
+					kind: "discard-unsaved-editor",
+					tone: "warn",
+					title: "エディタに保存していない変更があります",
+					description: `${dirtyCount} 件のファイルがエディタで未保存です。discard を続行すると保存前の編集内容が失われます。`,
+					confirmLabel: "続行して discard",
+					confirmVariant: "destructive",
+					onConfirm: () => setShowDiscardUnstagedDialog(true),
+				});
+				return;
+			}
+			setShowDiscardUnstagedDialog(true);
+		},
+		onStageAll: () => {
+			const count = combinedUnstaged.length;
+			const run = () =>
+				stageAllMutation.mutate({
+					worktreePath: worktreePath || "",
+				});
+			if (count < BULK_STAGE_CONFIRM_THRESHOLD) {
+				run();
+				return;
+			}
+			showGitConfirmDialog({
+				kind: "bulk-stage-all-confirm",
+				tone: "warn",
+				title: `${count} 件のファイルをまとめて stage しますか?`,
+				description:
+					"意図しない生成ファイルや設定ファイルが混ざっていないか確認してください。",
+				confirmLabel: "全て stage",
+				confirmVariant: "primary",
+				onConfirm: run,
+			});
+		},
 		isDiscardAllUnstagedPending: discardAllUnstagedMutation.isPending,
 		isStageAllPending: stageAllMutation.isPending,
 		isUnstagedActioning:
@@ -1029,27 +1110,27 @@ export function ChangesView({
 			<DiscardConfirmDialog
 				open={showDiscardUnstagedDialog}
 				onOpenChange={setShowDiscardUnstagedDialog}
-				title="Discard all unstaged changes?"
-				description="This will revert all unstaged modifications and delete untracked files. This action cannot be undone."
+				title="unstaged の変更を全て破棄しますか?"
+				description="unstaged の変更を元に戻し、未追跡ファイルも削除します。この操作は取り消せません。"
 				onConfirm={() =>
 					discardAllUnstagedMutation.mutate({
 						worktreePath: worktreePath || "",
 					})
 				}
-				confirmLabel="Discard All"
+				confirmLabel="全て破棄"
 			/>
 
 			<DiscardConfirmDialog
 				open={showDiscardStagedDialog}
 				onOpenChange={setShowDiscardStagedDialog}
-				title="Discard all staged changes?"
-				description="This will unstage and revert all staged changes. Staged new files will be deleted. This action cannot be undone."
+				title="staged の変更を全て破棄しますか?"
+				description="staged の変更を unstage して元に戻します。staged された新規ファイルは削除されます。この操作は取り消せません。"
 				onConfirm={() =>
 					discardAllStagedMutation.mutate({
 						worktreePath: worktreePath || "",
 					})
 				}
-				confirmLabel="Discard All"
+				confirmLabel="全て破棄"
 			/>
 		</div>
 	);

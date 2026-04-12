@@ -16,6 +16,8 @@ import {
 	VscLoading,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
+import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
 import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useCreateOrOpenPR } from "renderer/screens/main/hooks";
@@ -46,10 +48,19 @@ export function PRButton({
 			toast.success("PR merged successfully", { id: context?.toastId });
 			onRefresh();
 		},
-		onError: (error, _variables, context) =>
-			toast.error(`Merge failed: ${error.message}`, {
-				id: context?.toastId,
-			}),
+		onError: (error, variables, context) => {
+			toast.dismiss(context?.toastId);
+			showGitErrorDialog(error, "merge-pr", {
+				retry: () =>
+					mergePRMutation.mutate({
+						worktreePath: variables.worktreePath,
+						strategy: variables.strategy,
+					}),
+				openPullRequestUrl: () => {
+					if (pr?.url) window.open(pr.url, "_blank", "noopener,noreferrer");
+				},
+			});
+		},
 	});
 
 	const {
@@ -67,8 +78,31 @@ export function PRButton({
 
 	const handleCreatePR = () => createOrOpenPR();
 
-	const handleMergePR = (strategy: "merge" | "squash" | "rebase") =>
-		mergePRMutation.mutate({ worktreePath, strategy });
+	const handleMergePR = (strategy: "merge" | "squash" | "rebase") => {
+		if (!pr) return;
+		const strategyLabel =
+			strategy === "squash"
+				? "squash して"
+				: strategy === "rebase"
+					? "rebase して"
+					: "merge commit を作って";
+		showGitConfirmDialog({
+			kind: "merge-pr-confirm",
+			tone: "warn",
+			title: `#${pr.number} を ${strategyLabel}マージしますか?`,
+			description:
+				"この操作は GitHub 上で即座に実行され、取り消しには別途 revert PR が必要です。",
+			details: pr.title ? `${pr.title}\n${pr.url}` : pr.url,
+			confirmLabel:
+				strategy === "squash"
+					? "Squash and merge"
+					: strategy === "rebase"
+						? "Rebase and merge"
+						: "Create merge commit",
+			confirmVariant: "primary",
+			onConfirm: () => mergePRMutation.mutate({ worktreePath, strategy }),
+		});
+	};
 
 	if (isLoading) {
 		return (
@@ -152,8 +186,8 @@ export function PRButton({
 					open={baseRepoDialog.open}
 					options={baseRepoDialog.options}
 					isPending={isCreatePending}
-					title="Choose pull request base repository"
-					description="Choose which repository new pull requests from this branch should target. The selection will be remembered for this branch."
+					title="Pull Request の base リポジトリを選択"
+					description="このブランチから作成する Pull Request の送り先リポジトリを選んでください。選択はこのブランチに記憶されます。"
 					onOpenChange={baseRepoDialog.onOpenChange}
 					onConfirm={baseRepoDialog.onConfirm}
 				/>
@@ -266,9 +300,9 @@ export function PRButton({
 				open={baseRepoDialog.open}
 				options={baseRepoDialog.options}
 				isPending={isCreatePending}
-				title="Update pull request base repository"
-				description="Choose which repository new pull requests from this branch should target. This updates the saved preference for the current branch."
-				confirmLabel="Save"
+				title="PR base リポジトリを変更"
+				description="このブランチから作成する Pull Request の送り先リポジトリを選んでください。保存するとこのブランチの既定を更新します。"
+				confirmLabel="保存"
 				onOpenChange={baseRepoDialog.onOpenChange}
 				onConfirm={baseRepoDialog.onConfirm}
 			/>
