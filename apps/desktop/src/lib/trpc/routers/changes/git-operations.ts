@@ -772,14 +772,39 @@ export const createGitOperationsRouter = () => {
 						resolve(gitDir, "shallow.lock"),
 					];
 					for (const candidate of candidates) {
+						// stat: only swallow ENOENT (file not present). Other stat
+						// errors (EACCES, EPERM, EIO) are real failures and should
+						// surface so the user learns why the unlock did not run.
 						try {
 							await stat(candidate);
-							await unlink(candidate);
-							clearStatusCacheForWorktree(input.worktreePath);
-							return { removed: true, path: candidate };
-						} catch {
-							// file not present; try next
+						} catch (statError) {
+							const code = (statError as NodeJS.ErrnoException).code;
+							if (code === "ENOENT") continue;
+							throw new TRPCError({
+								code: "INTERNAL_SERVER_ERROR",
+								message: `Failed to inspect lock file ${candidate}: ${
+									statError instanceof Error
+										? statError.message
+										: String(statError)
+								}`,
+							});
 						}
+						// unlink failures (EACCES/EPERM when the file exists but can
+						// not be removed) are propagated verbatim — never swallowed.
+						try {
+							await unlink(candidate);
+						} catch (unlinkError) {
+							throw new TRPCError({
+								code: "INTERNAL_SERVER_ERROR",
+								message: `Failed to remove lock file ${candidate}: ${
+									unlinkError instanceof Error
+										? unlinkError.message
+										: String(unlinkError)
+								}`,
+							});
+						}
+						clearStatusCacheForWorktree(input.worktreePath);
+						return { removed: true, path: candidate };
 					}
 					return { removed: false, path: null };
 				},

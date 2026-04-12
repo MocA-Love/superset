@@ -10,7 +10,6 @@ import {
 	getGitHubPRCommentsQueryPolicy,
 	getGitHubStatusQueryPolicy,
 } from "renderer/lib/githubQueryPolicy";
-import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import {
 	checkSummaryIconConfig,
@@ -1134,7 +1133,6 @@ export function ChangesView({
 				confirmLabel="全て破棄"
 			/>
 
-			<GitOperationDialog />
 		</div>
 	);
 }

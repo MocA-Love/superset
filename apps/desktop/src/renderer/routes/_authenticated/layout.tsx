@@ -24,6 +24,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showWorkspaceAutoNameWarningToast";
 import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
+import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
 import { useSettingsStore } from "renderer/stores/settings-state";
@@ -215,6 +216,10 @@ function AuthenticatedLayout() {
 						<NewWorkspaceModal />
 					)}
 					<InitGitDialog />
+					{/* Rendered at the authenticated layout level so that
+					    useCreateOrOpenPR / showGitErrorDialog prompts remain
+					    visible even when the Changes sidebar is closed. */}
+					<GitOperationDialog />
 					<TeardownLogsDialog />
 					<Paywall />
 				</LocalHostServiceProvider>
