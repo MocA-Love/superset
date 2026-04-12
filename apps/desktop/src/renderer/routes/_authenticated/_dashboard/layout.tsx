@@ -6,12 +6,12 @@ import {
 import { useState } from "react";
 import { useBrowserFullscreenHandler } from "renderer/hooks/useBrowserFullscreenHandler";
 import { useBrowserNewWindowHandler } from "renderer/hooks/useBrowserNewWindowHandler";
+import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import {
 	isTearoffWindow,
 	useReturnedTabListener,
 	useTearoffInit,
 } from "renderer/hooks/useTearoffInit";
-import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";

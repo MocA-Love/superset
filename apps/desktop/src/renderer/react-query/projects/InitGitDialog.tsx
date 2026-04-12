@@ -37,7 +37,8 @@ export function InitGitDialog() {
 							) : (
 								<>
 									<p>
-										以下のフォルダは Git リポジトリではありません。初期化しますか?
+										以下のフォルダは Git
+										リポジトリではありません。初期化しますか?
 									</p>
 									<ul className="list-disc pl-4 space-y-1">
 										{paths.map((p) => (

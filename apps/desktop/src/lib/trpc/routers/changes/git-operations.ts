@@ -758,9 +758,7 @@ export const createGitOperationsRouter = () => {
 					const git = await getGitWithShellPath(input.worktreePath);
 					let gitDir: string;
 					try {
-						const raw = (
-							await git.raw(["rev-parse", "--git-dir"])
-						).trim();
+						const raw = (await git.raw(["rev-parse", "--git-dir"])).trim();
 						gitDir = isAbsolute(raw) ? raw : resolve(input.worktreePath, raw);
 					} catch {
 						gitDir = resolve(input.worktreePath, ".git");

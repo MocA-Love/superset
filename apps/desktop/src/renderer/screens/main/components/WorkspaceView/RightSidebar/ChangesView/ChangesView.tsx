@@ -1132,7 +1132,6 @@ export function ChangesView({
 				}
 				confirmLabel="全て破棄"
 			/>
-
 		</div>
 	);
 }
