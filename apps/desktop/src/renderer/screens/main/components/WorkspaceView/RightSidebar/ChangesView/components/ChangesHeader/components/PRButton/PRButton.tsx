@@ -186,8 +186,8 @@ export function PRButton({
 					open={baseRepoDialog.open}
 					options={baseRepoDialog.options}
 					isPending={isCreatePending}
-					title="Choose pull request base repository"
-					description="Choose which repository new pull requests from this branch should target. The selection will be remembered for this branch."
+					title="Pull Request の base リポジトリを選択"
+					description="このブランチから作成する Pull Request の送り先リポジトリを選んでください。選択はこのブランチに記憶されます。"
 					onOpenChange={baseRepoDialog.onOpenChange}
 					onConfirm={baseRepoDialog.onConfirm}
 				/>
@@ -300,9 +300,9 @@ export function PRButton({
 				open={baseRepoDialog.open}
 				options={baseRepoDialog.options}
 				isPending={isCreatePending}
-				title="Update pull request base repository"
-				description="Choose which repository new pull requests from this branch should target. This updates the saved preference for the current branch."
-				confirmLabel="Save"
+				title="PR base リポジトリを変更"
+				description="このブランチから作成する Pull Request の送り先リポジトリを選んでください。保存するとこのブランチの既定を更新します。"
+				confirmLabel="保存"
 				onOpenChange={baseRepoDialog.onOpenChange}
 				onConfirm={baseRepoDialog.onConfirm}
 			/>

@@ -601,7 +601,7 @@ export function ReviewPanel({
 			description:
 				"成功済み・実行中のものも含めて全ジョブが再キューされます。コストとノイズが大きい操作です。",
 			confirmLabel: "全て再実行",
-			confirmVariant: "warn",
+			confirmVariant: "primary",
 			secondaryLabel: "失敗分だけ再実行",
 			onSecondary: () => {
 				void runRerunChecks("failed");

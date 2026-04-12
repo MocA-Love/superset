@@ -9,14 +9,17 @@ export type GitOperationDialogTone =
 	| "danger"
 	| "neutral";
 
+/**
+ * Subset of shadcn Button variants available to GitOperationDialog actions.
+ * Deliberately narrow to keep the dialog surface monochrome — no amber/emerald
+ * /sky custom colors. Destructive is the only chromatic variant, reserved for
+ * truly irreversible actions (force push, force unlock, discard).
+ */
 export type GitOperationDialogActionVariant =
 	| "primary"
 	| "outline"
 	| "ghost"
-	| "danger"
-	| "warn"
-	| "ok"
-	| "accent";
+	| "destructive";
 
 export interface GitOperationDialogAction {
 	label: string;

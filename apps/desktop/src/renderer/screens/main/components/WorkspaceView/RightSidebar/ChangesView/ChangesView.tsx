@@ -791,7 +791,7 @@ export function ChangesView({
 					title: "エディタに保存していない変更があります",
 					description: `${dirtyCount} 件のファイルがエディタで未保存です。discard を続行すると保存前の編集内容が失われます。`,
 					confirmLabel: "続行して discard",
-					confirmVariant: "danger",
+					confirmVariant: "destructive",
 					onConfirm: () => setShowDiscardStagedDialog(true),
 				});
 				return;
@@ -848,7 +848,7 @@ export function ChangesView({
 					title: "エディタに保存していない変更があります",
 					description: `${dirtyCount} 件のファイルがエディタで未保存です。discard を続行すると保存前の編集内容が失われます。`,
 					confirmLabel: "続行して discard",
-					confirmVariant: "danger",
+					confirmVariant: "destructive",
 					onConfirm: () => setShowDiscardUnstagedDialog(true),
 				});
 				return;

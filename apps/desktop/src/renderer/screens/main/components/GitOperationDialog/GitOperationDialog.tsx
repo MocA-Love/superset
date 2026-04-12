@@ -21,48 +21,33 @@ import {
 	useGitOperationDialogStore,
 } from "renderer/stores/git-operation-dialog";
 
+// Icons stay monochrome (bg-muted / text-muted-foreground) to match the
+// existing BranchActionDialog. Tone still drives the icon glyph so callers can
+// signal intent, but the color palette is uniform across kinds.
 function toneToIcon(tone: GitOperationDialogTone | undefined) {
 	switch (tone) {
 		case "danger":
-			return {
-				node: <HiExclamationTriangle className="size-4" />,
-				bg: "bg-destructive/20 text-destructive",
-			};
+			return <HiExclamationTriangle className="size-4" />;
 		case "warn":
-			return {
-				node: <LuCircleAlert className="size-4" />,
-				bg: "bg-amber-500/20 text-amber-500",
-			};
+			return <LuCircleAlert className="size-4" />;
 		case "ok":
-			return {
-				node: <LuCircleCheck className="size-4" />,
-				bg: "bg-emerald-500/20 text-emerald-500",
-			};
+			return <LuCircleCheck className="size-4" />;
 		case "info":
-			return {
-				node: <LuInfo className="size-4" />,
-				bg: "bg-sky-500/20 text-sky-500",
-			};
+			return <LuInfo className="size-4" />;
 		default:
-			return {
-				node: <LuShieldAlert className="size-4" />,
-				bg: "bg-muted text-muted-foreground",
-			};
+			return <LuShieldAlert className="size-4" />;
 	}
 }
 
+// Only shadcn's base variants are used. "destructive" stays available for
+// truly destructive actions (force push, force unlock, discard). All other
+// action variants collapse to default/outline/ghost — no custom colors.
 function variantClass(
 	variant: GitOperationDialogActionVariant | undefined,
 ): string {
 	switch (variant) {
-		case "danger":
+		case "destructive":
 			return "h-7 px-3 text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90";
-		case "warn":
-			return "h-7 px-3 text-xs bg-amber-500/90 text-white hover:bg-amber-500";
-		case "ok":
-			return "h-7 px-3 text-xs bg-emerald-600 text-white hover:bg-emerald-600/90";
-		case "accent":
-			return "h-7 px-3 text-xs bg-sky-600 text-white hover:bg-sky-600/90";
 		case "outline":
 			return "h-7 px-3 text-xs border border-border bg-transparent hover:bg-accent";
 		case "ghost":
@@ -116,7 +101,7 @@ export function GitOperationDialog() {
 	const close = useGitOperationDialogStore((s) => s.close);
 
 	const open = spec !== null;
-	const icon = toneToIcon(spec?.tone);
+	const iconNode = toneToIcon(spec?.tone);
 
 	return (
 		<GitAlertDialog
@@ -129,10 +114,8 @@ export function GitOperationDialog() {
 				{spec ? (
 					<>
 						<AlertDialogHeader className="px-4 pt-4 pb-2">
-							<div
-								className={`mb-3 flex size-8 items-center justify-center rounded-md ${icon.bg}`}
-							>
-								{spec.icon ?? icon.node}
+							<div className="mb-3 flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+								{spec.icon ?? iconNode}
 							</div>
 							<AlertDialogTitle className="font-medium">
 								{spec.title}
@@ -153,7 +136,7 @@ export function GitOperationDialog() {
 								</pre>
 							</div>
 						) : null}
-						<AlertDialogFooter className="flex-row flex-wrap justify-end gap-2 px-4 pb-4 pt-2">
+						<AlertDialogFooter className="flex-row justify-end gap-2 px-4 pb-4 pt-2">
 							{spec.hideDismiss ? null : (
 								<Button
 									type="button"

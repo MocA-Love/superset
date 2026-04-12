@@ -33,11 +33,11 @@ function getSourceDescription(
 ): string {
 	switch (source) {
 		case "tracking":
-			return "Current branch tracking remote";
+			return "現在のブランチの追跡先リモート";
 		case "upstream":
-			return "Upstream repository";
+			return "Upstream リポジトリ";
 		default:
-			return "Current repository";
+			return "このリポジトリ";
 	}
 }
 
@@ -45,9 +45,9 @@ export function CreatePullRequestBaseRepoDialog({
 	open,
 	options,
 	isPending = false,
-	title = "Choose pull request base repository",
-	description = "This branch can open a pull request against more than one GitHub repository. Choose where the PR should target. The selection will be remembered for this branch.",
-	confirmLabel = "Continue",
+	title = "Pull Request の base リポジトリを選択",
+	description = "このブランチは複数の GitHub リポジトリに対して Pull Request を作成できます。どこに向けて PR を作るか選んでください。選択はこのブランチに記憶されます。",
+	confirmLabel = "続行",
 	onOpenChange,
 	onConfirm,
 }: CreatePullRequestBaseRepoDialogProps) {
@@ -97,7 +97,7 @@ export function CreatePullRequestBaseRepoDialog({
 						className="h-7 px-3 text-xs"
 						onClick={() => onOpenChange(false)}
 					>
-						Cancel
+						キャンセル
 					</Button>
 					<AlertDialogAction
 						size="sm"

@@ -110,7 +110,7 @@ export function useCreateOrOpenPR({
 								"リモートに新しいコミットがあります。このまま Pull Request を作成/更新しますか?",
 							details: message,
 							confirmLabel: "そのまま作成",
-							confirmVariant: "warn",
+							confirmVariant: "primary",
 							onConfirm: retryWithAllow,
 						});
 						return;

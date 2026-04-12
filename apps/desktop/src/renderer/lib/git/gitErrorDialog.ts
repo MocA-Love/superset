@@ -38,8 +38,6 @@ export interface GitErrorHandlers {
 	commitWithoutSigning?: () => void;
 	/** For commit-hook-failed: bypass hooks and retry. */
 	retryWithoutHooks?: () => void;
-	/** For commit-hook-failed: copy the stderr to clipboard. */
-	copyDetails?: () => void;
 	/** For push-partial-success: retry just the post-push fetch. */
 	fetchOnlyRetry?: () => void;
 	/** For pr-not-mergeable / pr-already-done: open the PR page. */
@@ -88,14 +86,14 @@ function buildSpec({
 				primaryAction: handlers.pullRebaseAndRetryPush
 					? {
 							label: "pull --rebase して再push",
-							variant: "ok",
+							variant: "primary",
 							onClick: handlers.pullRebaseAndRetryPush,
 						}
 					: undefined,
 				secondaryAction: handlers.forcePushWithLease
 					? {
-							label: "force push (lease)",
-							variant: "danger",
+							label: "force push",
+							variant: "destructive",
 							onClick: handlers.forcePushWithLease,
 						}
 					: undefined,
@@ -112,7 +110,7 @@ function buildSpec({
 				primaryAction: handlers.createBranchAndMoveCommits
 					? {
 							label: "新ブランチを作って移す",
-							variant: "ok",
+							variant: "primary",
 							onClick: handlers.createBranchAndMoveCommits,
 						}
 					: undefined,
@@ -146,7 +144,7 @@ function buildSpec({
 					data.conflictFiles.length > 0
 						? {
 								label: "競合ファイルを開く",
-								variant: "accent",
+								variant: "primary",
 								onClick: () =>
 									handlers.openConflictFiles?.(data.conflictFiles ?? []),
 							}
@@ -154,7 +152,7 @@ function buildSpec({
 				secondaryAction: handlers.abortOperation
 					? {
 							label: "rebase を中断",
-							variant: "warn",
+							variant: "destructive",
 							onClick: handlers.abortOperation,
 						}
 					: undefined,
@@ -172,14 +170,14 @@ function buildSpec({
 				primaryAction: handlers.stashAndRetry
 					? {
 							label: "stash してから pull",
-							variant: "ok",
+							variant: "primary",
 							onClick: handlers.stashAndRetry,
 						}
 					: undefined,
 				secondaryAction: handlers.discardAndRetry
 					? {
 							label: "変更を破棄して pull",
-							variant: "danger",
+							variant: "destructive",
 							onClick: handlers.discardAndRetry,
 						}
 					: undefined,
@@ -214,23 +212,16 @@ function buildSpec({
 				details: rawMessage,
 				primaryAction: handlers.retry
 					? {
-							label: "修正して再 commit",
+							label: "再試行",
 							variant: "primary",
 							onClick: handlers.retry,
 						}
 					: undefined,
 				secondaryAction: handlers.retryWithoutHooks
 					? {
-							label: "フックを無視して commit",
-							variant: "warn",
-							onClick: handlers.retryWithoutHooks,
-						}
-					: undefined,
-				tertiaryAction: handlers.copyDetails
-					? {
-							label: "出力をコピー",
+							label: "フック無視で commit",
 							variant: "outline",
-							onClick: handlers.copyDetails,
+							onClick: handlers.retryWithoutHooks,
 						}
 					: undefined,
 			};
@@ -245,7 +236,7 @@ function buildSpec({
 				details: rawMessage,
 				primaryAction: handlers.commitWithoutSigning
 					? {
-							label: "署名なしでこの commit を作る",
+							label: "署名なしで commit",
 							variant: "primary",
 							onClick: handlers.commitWithoutSigning,
 						}
@@ -347,7 +338,7 @@ function buildSpec({
 					data.conflictFiles.length > 0
 						? {
 								label: "競合ファイルを開く",
-								variant: "accent",
+								variant: "primary",
 								onClick: () =>
 									handlers.openConflictFiles?.(data.conflictFiles ?? []),
 							}
@@ -433,8 +424,8 @@ function buildSpec({
 					: undefined,
 				secondaryAction: handlers.forceUnlockIndex
 					? {
-							label: "強制的に解除",
-							variant: "danger",
+							label: "強制解除",
+							variant: "destructive",
 							onClick: handlers.forceUnlockIndex,
 						}
 					: undefined,
@@ -505,7 +496,7 @@ function buildSpec({
 					"Git を初期化すると Changes タブで履歴管理ができるようになります。",
 				primaryAction: handlers.openInitGitDialog
 					? {
-							label: "Initialize Git",
+							label: "Git を初期化",
 							variant: "primary",
 							onClick: handlers.openInitGitDialog,
 						}

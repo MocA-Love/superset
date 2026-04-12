@@ -30,7 +30,7 @@ export interface GitConfirmDialogOptions {
 export function showGitConfirmDialog(options: GitConfirmDialogOptions): void {
 	openGitOperationDialog({
 		kind: options.kind,
-		tone: options.tone ?? "warn",
+		tone: options.tone ?? "neutral",
 		title: options.title,
 		description: options.description,
 		details: options.details,

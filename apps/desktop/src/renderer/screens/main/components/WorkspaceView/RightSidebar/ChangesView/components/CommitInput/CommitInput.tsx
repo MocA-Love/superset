@@ -79,10 +79,6 @@ export function CommitInput({
 						});
 					}
 				},
-				copyDetails: () => {
-					void navigator.clipboard.writeText(error.message);
-					toast.success("Copied");
-				},
 			});
 		},
 	});
