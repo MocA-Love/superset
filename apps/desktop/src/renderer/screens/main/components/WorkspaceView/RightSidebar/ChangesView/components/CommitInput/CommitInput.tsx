@@ -62,6 +62,7 @@ export function CommitInput({
 
 	const stashIncludeUntrackedMutation =
 		electronTrpc.changes.stashIncludeUntracked.useMutation();
+	const stashPopMutation = electronTrpc.changes.stashPop.useMutation();
 
 	const commitMutation = electronTrpc.changes.commit.useMutation({
 		onSuccess: () => {
@@ -131,10 +132,29 @@ export function CommitInput({
 			showGitErrorDialog(error, "pull", {
 				retry: () => pullMutation.mutate({ worktreePath }),
 				stashAndRetry: () => {
+					// stash → pull → stash pop. Skipping the pop would silently
+					// leave the user's local changes on the stash stack after a
+					// successful pull, which is almost never what the user
+					// expected when they chose "stash してから pull".
 					stashIncludeUntrackedMutation.mutate(
 						{ worktreePath },
 						{
-							onSuccess: () => pullMutation.mutate({ worktreePath }),
+							onSuccess: () => {
+								pullMutation.mutate(
+									{ worktreePath },
+									{
+										onSuccess: () => {
+											stashPopMutation.mutate(
+												{ worktreePath },
+												{
+													onError: (popError) =>
+														showGitErrorDialog(popError, "stash-pop"),
+												},
+											);
+										},
+									},
+								);
+							},
 							onError: (stashError) => showGitErrorDialog(stashError, "stash"),
 						},
 					);

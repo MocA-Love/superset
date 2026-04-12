@@ -154,10 +154,7 @@ function extractHookName(message: string): string | undefined {
 	return match?.[1]?.toLowerCase();
 }
 
-function classifyPushError(
-	message: string,
-	context: GitOperationContext,
-): GitErrorKind | null {
+function classifyPushError(message: string): GitErrorKind | null {
 	const lower = message.toLowerCase();
 
 	// Protected branch (GitHub returns this through push stderr)
@@ -189,7 +186,7 @@ function classifyPushError(
 		return "push-no-remote-for-pr";
 	}
 
-	return context === "push" || context === "sync" ? null : null;
+	return null;
 }
 
 function classifyPullError(message: string): GitErrorKind | null {
@@ -400,13 +397,24 @@ export function classifyGitError(
 		return { kind: "branch-behind-upstream", rawMessage, context, data: {} };
 	}
 
-	// Context-specific dispatching.
+	// Context-specific dispatching. For sync, use the [sync:pull] /
+	// [sync:push] prefix planted by GitSyncStageError to pick the matching
+	// classifier directly; fall back to trying both for messages that do not
+	// carry the prefix (e.g. errors thrown from outside the sync flow).
 	let kind: GitErrorKind | null = null;
-
-	if (context === "push" || context === "sync") {
-		kind = classifyPushError(rawMessage, context);
+	let syncStage: "pull" | "push" | null = null;
+	if (context === "sync") {
+		if (rawMessage.startsWith("[sync:pull]")) syncStage = "pull";
+		else if (rawMessage.startsWith("[sync:push]")) syncStage = "push";
 	}
-	if (!kind && (context === "pull" || context === "sync")) {
+
+	if (context === "push" || (context === "sync" && syncStage !== "pull")) {
+		kind = classifyPushError(rawMessage);
+	}
+	if (
+		!kind &&
+		(context === "pull" || (context === "sync" && syncStage !== "push"))
+	) {
 		kind = classifyPullError(rawMessage);
 	}
 	if (!kind && context === "commit") {

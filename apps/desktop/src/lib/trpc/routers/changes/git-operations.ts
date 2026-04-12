@@ -771,6 +771,12 @@ export const createGitOperationsRouter = () => {
 						resolve(gitDir, "HEAD.lock"),
 						resolve(gitDir, "shallow.lock"),
 					];
+					// Walk every candidate so that index.lock and HEAD.lock
+					// co-existing (e.g. after a crash during a branch switch) can
+					// both be cleared in a single call. `path` in the response
+					// is the first lock removed so the UI has something concrete
+					// to show; `removed` is true if at least one file was deleted.
+					let firstRemoved: string | null = null;
 					for (const candidate of candidates) {
 						// stat: only swallow ENOENT (file not present). Other stat
 						// errors (EACCES, EPERM, EIO) are real failures and should
@@ -803,8 +809,11 @@ export const createGitOperationsRouter = () => {
 								}`,
 							});
 						}
+						if (firstRemoved === null) firstRemoved = candidate;
+					}
+					if (firstRemoved !== null) {
 						clearStatusCacheForWorktree(input.worktreePath);
-						return { removed: true, path: candidate };
+						return { removed: true, path: firstRemoved };
 					}
 					return { removed: false, path: null };
 				},

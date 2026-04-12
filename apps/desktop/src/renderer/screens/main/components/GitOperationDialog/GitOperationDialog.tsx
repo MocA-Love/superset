@@ -39,21 +39,26 @@ function toneToIcon(tone: GitOperationDialogTone | undefined) {
 	}
 }
 
-// Only shadcn's base variants are used. "destructive" stays available for
-// truly destructive actions (force push, force unlock, discard). All other
-// action variants collapse to default/outline/ghost — no custom colors.
-function variantClass(
+// Map our palette to shadcn Button's native variant prop so we don't need to
+// override classes (which previously left the outline borders from the
+// hardcoded variant="outline" bleeding into primary/destructive buttons).
+// "destructive" stays available for truly destructive actions (force push,
+// force unlock, discard). All other action variants collapse to
+// default/outline/ghost — no custom colors.
+type ShadcnButtonVariant = "default" | "destructive" | "outline" | "ghost";
+
+function toShadcnVariant(
 	variant: GitOperationDialogActionVariant | undefined,
-): string {
+): ShadcnButtonVariant {
 	switch (variant) {
 		case "destructive":
-			return "h-7 px-3 text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90";
+			return "destructive";
 		case "outline":
-			return "h-7 px-3 text-xs border border-border bg-transparent hover:bg-accent";
+			return "outline";
 		case "ghost":
-			return "h-7 px-3 text-xs text-muted-foreground hover:bg-accent";
+			return "ghost";
 		default:
-			return "h-7 px-3 text-xs";
+			return "default";
 	}
 }
 
@@ -91,9 +96,9 @@ function ActionButton({
 	return (
 		<Button
 			type="button"
-			variant="outline"
+			variant={toShadcnVariant(action.variant)}
 			size="sm"
-			className={variantClass(action.variant)}
+			className="h-7 px-3 text-xs"
 			disabled={isPending || action.disabled}
 			onClick={() => {
 				void onClick();
