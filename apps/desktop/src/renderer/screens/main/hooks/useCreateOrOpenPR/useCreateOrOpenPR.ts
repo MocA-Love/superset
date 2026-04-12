@@ -1,6 +1,8 @@
 import { toast } from "@superset/ui/sonner";
 import { useCallback, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
+import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
 import type { CreatePullRequestBaseRepoOption } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 
 interface UseCreateOrOpenPROptions {
@@ -49,6 +51,23 @@ export function useCreateOrOpenPR({
 		(baseRepoUrl?: string, allowOutOfDate = false) => {
 			if (!worktreePath || isCreatePRPending) return;
 
+			const retryWithAllow = () => {
+				void (async () => {
+					try {
+						const result = await mutateAsync({
+							worktreePath,
+							allowOutOfDate: true,
+							baseRepoUrl,
+						});
+						window.open(result.url, "_blank", "noopener,noreferrer");
+						toast.success("Opening GitHub...");
+						onSuccess?.();
+					} catch (retryError) {
+						showGitErrorDialog(retryError, "create-pr");
+					}
+				})();
+			};
+
 			void (async () => {
 				try {
 					const result = await mutateAsync({
@@ -59,39 +78,24 @@ export function useCreateOrOpenPR({
 					window.open(result.url, "_blank", "noopener,noreferrer");
 					toast.success("Opening GitHub...");
 					onSuccess?.();
-					return;
 				} catch (error) {
 					const message =
 						error instanceof Error ? error.message : String(error);
-					const isBehindUpstreamError = message.includes("behind upstream");
-					if (!isBehindUpstreamError) {
-						toast.error(`Failed: ${message}`);
+					if (message.toLowerCase().includes("behind upstream")) {
+						showGitConfirmDialog({
+							kind: "create-pr-behind-upstream",
+							tone: "warn",
+							title: "ブランチが upstream より遅れています",
+							description:
+								"リモートに新しいコミットがあります。このまま Pull Request を作成/更新しますか?",
+							details: message,
+							confirmLabel: "そのまま作成",
+							confirmVariant: "warn",
+							onConfirm: retryWithAllow,
+						});
 						return;
 					}
-
-					const shouldContinue = window.confirm(
-						`${message}\n\nCreate/open the pull request anyway?`,
-					);
-					if (!shouldContinue) {
-						return;
-					}
-				}
-
-				try {
-					const result = await mutateAsync({
-						worktreePath,
-						allowOutOfDate: true,
-						baseRepoUrl,
-					});
-					window.open(result.url, "_blank", "noopener,noreferrer");
-					toast.success("Opening GitHub...");
-					onSuccess?.();
-				} catch (retryError) {
-					const retryMessage =
-						retryError instanceof Error
-							? retryError.message
-							: String(retryError);
-					toast.error(`Failed: ${retryMessage}`);
+					showGitErrorDialog(error, "create-pr");
 				}
 			})();
 		},
@@ -117,8 +121,7 @@ export function useCreateOrOpenPR({
 
 				runCreateOrOpenPR(result.selectedBaseRepoUrl ?? undefined);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				toast.error(`Failed: ${message}`);
+				showGitErrorDialog(error, "create-pr");
 			}
 		})();
 	}, [
@@ -148,8 +151,7 @@ export function useCreateOrOpenPR({
 					mode: "configure",
 				});
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				toast.error(`Failed: ${message}`);
+				showGitErrorDialog(error, "create-pr");
 			}
 		})();
 	}, [
@@ -171,8 +173,7 @@ export function useCreateOrOpenPR({
 				toast.success("Pull request base repository reset");
 				onSuccess?.();
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				toast.error(`Failed: ${message}`);
+				showGitErrorDialog(error, "create-pr");
 			}
 		})();
 	}, [isUpdatingBaseRepo, onSuccess, updatePullRequestBaseRepo, worktreePath]);

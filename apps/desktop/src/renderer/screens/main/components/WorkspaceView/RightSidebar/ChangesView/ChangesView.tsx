@@ -32,7 +32,11 @@ import type { FileSystemChangeEvent } from "shared/file-tree-types";
 import { CategorySection } from "./components/CategorySection";
 import { ChangesHeader } from "./components/ChangesHeader";
 import { CommitInput } from "./components/CommitInput";
+import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
+import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { DiscardConfirmDialog } from "./components/DiscardConfirmDialog";
+
+const BULK_STAGE_CONFIRM_THRESHOLD = 10;
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { VerticalResizablePanels } from "./components/VerticalResizablePanels";
@@ -765,10 +769,27 @@ export function ChangesView({
 				filePaths: files.map((f) => f.path),
 			}),
 		onShowDiscardStagedDialog: () => setShowDiscardStagedDialog(true),
-		onUnstageAll: () =>
-			unstageAllMutation.mutate({
-				worktreePath: worktreePath || "",
-			}),
+		onUnstageAll: () => {
+			const count = stagedFiles.length;
+			const run = () =>
+				unstageAllMutation.mutate({
+					worktreePath: worktreePath || "",
+				});
+			if (count < BULK_STAGE_CONFIRM_THRESHOLD) {
+				run();
+				return;
+			}
+			showGitConfirmDialog({
+				kind: "bulk-unstage-all-confirm",
+				tone: "warn",
+				title: `${count} 件のファイルをまとめて unstage しますか?`,
+				description:
+					"staged を全て解除します。ファイルの内容は変更されません。",
+				confirmLabel: "全て unstage",
+				confirmVariant: "primary",
+				onConfirm: run,
+			});
+		},
 		isDiscardAllStagedPending: discardAllStagedMutation.isPending,
 		isUnstageAllPending: unstageAllMutation.isPending,
 		isStagedActioning:
@@ -790,10 +811,27 @@ export function ChangesView({
 			}),
 		onDiscardFile: handleDiscard,
 		onShowDiscardUnstagedDialog: () => setShowDiscardUnstagedDialog(true),
-		onStageAll: () =>
-			stageAllMutation.mutate({
-				worktreePath: worktreePath || "",
-			}),
+		onStageAll: () => {
+			const count = combinedUnstaged.length;
+			const run = () =>
+				stageAllMutation.mutate({
+					worktreePath: worktreePath || "",
+				});
+			if (count < BULK_STAGE_CONFIRM_THRESHOLD) {
+				run();
+				return;
+			}
+			showGitConfirmDialog({
+				kind: "bulk-stage-all-confirm",
+				tone: "warn",
+				title: `${count} 件のファイルをまとめて stage しますか?`,
+				description:
+					"意図しない生成ファイルや設定ファイルが混ざっていないか確認してください。",
+				confirmLabel: "全て stage",
+				confirmVariant: "primary",
+				onConfirm: run,
+			});
+		},
 		isDiscardAllUnstagedPending: discardAllUnstagedMutation.isPending,
 		isStageAllPending: stageAllMutation.isPending,
 		isUnstagedActioning:
@@ -1051,6 +1089,8 @@ export function ChangesView({
 				}
 				confirmLabel="Discard All"
 			/>
+
+			<GitOperationDialog />
 		</div>
 	);
 }

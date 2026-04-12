@@ -22,6 +22,7 @@ import {
 	VscSync,
 } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
 import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { useCreateOrOpenPR } from "renderer/screens/main/hooks";
 import { getPrimaryAction } from "./utils/getPrimaryAction";
@@ -58,13 +59,31 @@ export function CommitInput({
 }: CommitInputProps) {
 	const [isOpen, setIsOpen] = useState(false);
 
+	const stashIncludeUntrackedMutation =
+		electronTrpc.changes.stashIncludeUntracked.useMutation();
+
 	const commitMutation = electronTrpc.changes.commit.useMutation({
 		onSuccess: () => {
 			toast.success("Committed");
 			setCommitMessage("");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Commit failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "commit", {
+				retry: () => {
+					if (commitMessage.trim()) {
+						commitMutation.mutate({
+							worktreePath,
+							message: commitMessage.trim(),
+						});
+					}
+				},
+				copyDetails: () => {
+					void navigator.clipboard.writeText(error.message);
+					toast.success("Copied");
+				},
+			});
+		},
 	});
 
 	const pushMutation = electronTrpc.changes.push.useMutation({
@@ -72,7 +91,21 @@ export function CommitInput({
 			toast.success("Pushed");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Push failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "push", {
+				retry: () =>
+					pushMutation.mutate({ worktreePath, setUpstream: true }),
+				pullRebaseAndRetryPush: () => {
+					pullMutation.mutate(
+						{ worktreePath },
+						{
+							onSuccess: () =>
+								pushMutation.mutate({ worktreePath, setUpstream: true }),
+						},
+					);
+				},
+			});
+		},
 	});
 
 	const pullMutation = electronTrpc.changes.pull.useMutation({
@@ -80,7 +113,21 @@ export function CommitInput({
 			toast.success("Pulled");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Pull failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "pull", {
+				retry: () => pullMutation.mutate({ worktreePath }),
+				stashAndRetry: () => {
+					stashIncludeUntrackedMutation.mutate(
+						{ worktreePath },
+						{
+							onSuccess: () => pullMutation.mutate({ worktreePath }),
+							onError: (stashError) =>
+								showGitErrorDialog(stashError, "stash"),
+						},
+					);
+				},
+			});
+		},
 	});
 
 	const syncMutation = electronTrpc.changes.sync.useMutation({
@@ -88,7 +135,20 @@ export function CommitInput({
 			toast.success("Synced");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Sync failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "sync", {
+				retry: () => syncMutation.mutate({ worktreePath }),
+				pullRebaseAndRetryPush: () => {
+					pullMutation.mutate(
+						{ worktreePath },
+						{
+							onSuccess: () =>
+								pushMutation.mutate({ worktreePath, setUpstream: true }),
+						},
+					);
+				},
+			});
+		},
 	});
 
 	const {
@@ -105,7 +165,11 @@ export function CommitInput({
 			toast.success("Fetched");
 			onRefresh();
 		},
-		onError: (error) => toast.error(`Fetch failed: ${error.message}`),
+		onError: (error) => {
+			showGitErrorDialog(error, "fetch", {
+				retry: () => fetchMutation.mutate({ worktreePath }),
+			});
+		},
 	});
 
 	const isPending =
