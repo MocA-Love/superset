@@ -1,10 +1,41 @@
 import { describe, expect, test } from "bun:test";
+import React from "react";
 import type {
 	ChangeCategory,
 	ChangedFile,
 	CommitInfo,
 } from "shared/changes-types";
 import { useOrderedSections } from "./useOrderedSections";
+
+// biome-ignore lint/suspicious/noExplicitAny: accessing React internals for test dispatcher setup
+type ReactInternalsType = { H: unknown };
+// biome-ignore lint/suspicious/noExplicitAny: accessing React internals for test dispatcher setup
+const ReactInternals = (React as any)
+	.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE as ReactInternalsType;
+
+/** Minimal fake dispatcher so useMemo/useCallback work outside a component. */
+const fakeDispatcher: Record<string, (...args: unknown[]) => unknown> = {
+	useMemo: (fn) => (fn as () => unknown)(),
+	useCallback: (fn) => fn,
+	useRef: (init) => ({ current: init }),
+	useEffect: () => undefined,
+	useState: (init) => [init, () => undefined],
+	useLayoutEffect: () => undefined,
+	useContext: () => undefined,
+	useReducer: (_reducer, init) => [init, () => undefined],
+};
+
+function renderHook(fn: () => unknown) {
+	const prev = ReactInternals.H;
+	ReactInternals.H = fakeDispatcher;
+	let value: unknown;
+	try {
+		value = fn();
+	} finally {
+		ReactInternals.H = prev;
+	}
+	return { result: { current: value } };
+}
 
 const emptyFile = (): ChangedFile => ({
 	path: "src/example.ts",
@@ -67,19 +98,22 @@ const emptyArgs = {
 
 describe("useOrderedSections", () => {
 	test("keeps the commits section visible when commit files are lazy-loaded", () => {
-		const sections = useOrderedSections({
-			...emptyArgs,
-			commitsWithFiles: [
-				{
-					hash: "abc123",
-					shortHash: "abc123",
-					message: "feat: lazy commit files",
-					author: "Test User",
-					date: new Date("2026-03-06T12:00:00.000Z"),
-					files: [],
-				},
-			],
-		});
+		const { result } = renderHook(() =>
+			useOrderedSections({
+				...emptyArgs,
+				commitsWithFiles: [
+					{
+						hash: "abc123",
+						shortHash: "abc123",
+						message: "feat: lazy commit files",
+						author: "Test User",
+						date: new Date("2026-03-06T12:00:00.000Z"),
+						files: [],
+					},
+				],
+			}),
+		);
+		const sections = result.current;
 
 		const committedSection = sections.find(
 			(section) => section.id === "committed",
@@ -90,12 +124,15 @@ describe("useOrderedSections", () => {
 	});
 
 	test("does not change other section counts", () => {
-		const sections = useOrderedSections({
-			...emptyArgs,
-			againstBaseFiles: [emptyFile()],
-			stagedFiles: [emptyFile(), emptyFile()],
-			unstagedFiles: [emptyFile(), emptyFile(), emptyFile()],
-		});
+		const { result } = renderHook(() =>
+			useOrderedSections({
+				...emptyArgs,
+				againstBaseFiles: [emptyFile()],
+				stagedFiles: [emptyFile(), emptyFile()],
+				unstagedFiles: [emptyFile(), emptyFile(), emptyFile()],
+			}),
+		);
+		const sections = result.current;
 
 		expect(
 			sections.find((section) => section.id === "against-base")?.count,

@@ -201,7 +201,7 @@ describe("mergePullRequest", () => {
 
 		expect(execWithShellEnvMock).toHaveBeenCalledWith(
 			"gh",
-			["pr", "merge", "42", "--rebase"],
+			["pr", "merge", "42", "--rebase", "--repo", "superset-sh/superset"],
 			{ cwd: "/tmp/unborn-worktree" },
 		);
 		expect(getPRForBranchMock).toHaveBeenCalledWith(
