@@ -337,6 +337,13 @@
       "when": 1776067576503,
       "tag": "0047_branch_sort_order_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1776068037113,
+      "tag": "0048_post_commit_command",
+      "breakpoints": true
     }
   ]
 }

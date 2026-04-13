@@ -74,6 +74,14 @@ export function CommitInput({
 		electronTrpc.settings.getAutoStash.useQuery(undefined, {
 			staleTime: 10_000,
 		});
+	const { data: postCommitCommand = "none" } =
+		electronTrpc.settings.getPostCommitCommand.useQuery(undefined, {
+			staleTime: 10_000,
+		});
+	// Read the latest setting inside mutation callbacks without recreating
+	// the mutation when the value changes.
+	const postCommitCommandRef = useRef(postCommitCommand);
+	postCommitCommandRef.current = postCommitCommand;
 	// When auto-stash is orchestrating a pull/sync, we want the custom
 	// Japanese dialogs (pull-failed-with-stash / pop-conflict) to own the
 	// error UX. This ref is used by the default onError handlers below to
@@ -279,9 +287,31 @@ export function CommitInput({
 			: `Stage ${unstagedChangeCount} changes (including untracked), then commit`
 		: undefined;
 
+	// Kicks off the configured post-commit command once the commit itself
+	// has succeeded. Uses a ref so the value reflects the latest setting
+	// without recreating the commit mutation on every setting change, and
+	// chains into the existing push / sync mutations so their own
+	// onSuccess (toast / warnings / PR flow) and onError (retry dialogs)
+	// handlers still run untouched.
+	const runPostCommitCommand = () => {
+		const command = postCommitCommandRef.current;
+		if (command === "push") {
+			pushMutation.mutate({ worktreePath, setUpstream: true });
+		} else if (command === "sync") {
+			// handleSync routes through the auto-stash orchestrator so it
+			// also stays compatible with git.autoStash.
+			handleSync();
+		}
+	};
+
 	const handleCommit = () => {
 		if (!canCommit) return;
 		const message = commitMessage.trim();
+		const commitOptions = {
+			onSuccess: () => {
+				runPostCommitCommand();
+			},
+		};
 		// Smart commit path: stage first, then commit. We run the stage
 		// mutation imperatively so any failure shows the normal error
 		// dialog (no commit is attempted if staging fails).
@@ -292,7 +322,7 @@ export function CommitInput({
 				{ worktreePath },
 				{
 					onSuccess: () => {
-						commitMutation.mutate({ worktreePath, message });
+						commitMutation.mutate({ worktreePath, message }, commitOptions);
 					},
 					onError: (error) => {
 						showGitErrorDialog(error, "stage");
@@ -301,7 +331,7 @@ export function CommitInput({
 			);
 			return;
 		}
-		commitMutation.mutate({ worktreePath, message });
+		commitMutation.mutate({ worktreePath, message }, commitOptions);
 	};
 
 	const handlePush = () => {

@@ -259,6 +259,10 @@ export const BRANCH_SORT_ORDERS = ["committerdate", "alphabetical"] as const;
 
 export type BranchSortOrder = (typeof BRANCH_SORT_ORDERS)[number];
 
+export const POST_COMMIT_COMMANDS = ["none", "push", "sync"] as const;
+
+export type PostCommitCommand = (typeof POST_COMMIT_COMMANDS)[number];
+
 export const SITE_PERMISSION_KINDS = ["microphone", "camera"] as const;
 
 export type SitePermissionKind = (typeof SITE_PERMISSION_KINDS)[number];

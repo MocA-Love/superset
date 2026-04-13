@@ -38,6 +38,7 @@ export const SETTING_ITEM_ID = {
 	GIT_SMART_COMMIT: "git-smart-commit",
 	GIT_AUTO_STASH: "git-auto-stash",
 	GIT_BRANCH_SORT_ORDER: "git-branch-sort-order",
+	GIT_POST_COMMIT_COMMAND: "git-post-commit-command",
 
 	AGENTS_ENABLED: "agents-enabled",
 	AGENTS_COMMANDS: "agents-commands",
@@ -465,6 +466,14 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"pin",
 			"default",
 		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND,
+		section: "git",
+		title: "Post Commit Command",
+		description:
+			"Run push or sync automatically after a successful commit (VS Code style)",
+		keywords: ["git", "commit", "post", "push", "sync", "auto", "after"],
 	},
 	{
 		id: SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,

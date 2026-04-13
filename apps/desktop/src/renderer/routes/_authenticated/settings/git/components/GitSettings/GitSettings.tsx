@@ -1,6 +1,7 @@
 import type {
 	BranchPrefixMode,
 	BranchSortOrder,
+	PostCommitCommand,
 	SmartCommitChangesMode,
 } from "@superset/local-db";
 import { Input } from "@superset/ui/input";
@@ -54,6 +55,10 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 	);
 	const showBranchSortOrder = isItemVisible(
 		SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER,
+		visibleItems,
+	);
+	const showPostCommitCommand = isItemVisible(
+		SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND,
 		visibleItems,
 	);
 
@@ -211,6 +216,32 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 			sortOrder: branchSortOrder,
 			pinDefault: enabled,
 		});
+	};
+
+	const { data: postCommitCommand, isLoading: isPostCommitCommandLoading } =
+		electronTrpc.settings.getPostCommitCommand.useQuery();
+	const setPostCommitCommandMutation =
+		electronTrpc.settings.setPostCommitCommand.useMutation({
+			onMutate: async ({ command }) => {
+				await utils.settings.getPostCommitCommand.cancel();
+				const previous = utils.settings.getPostCommitCommand.getData();
+				utils.settings.getPostCommitCommand.setData(undefined, command);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getPostCommitCommand.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getPostCommitCommand.invalidate();
+			},
+		});
+	const handlePostCommitCommandChange = (value: PostCommitCommand) => {
+		setPostCommitCommandMutation.mutate({ command: value });
 	};
 
 	const { data: worktreeBaseDir, isLoading: isWorktreeBaseDirLoading } =
@@ -464,6 +495,38 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 								}
 							/>
 						</div>
+					</div>
+				)}
+
+				{showPostCommitCommand && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label className="text-sm font-medium">Post Commit Command</Label>
+							<p className="text-xs text-muted-foreground">
+								Run <code>push</code> or <code>sync</code> automatically after a
+								successful commit (matches VS Code's{" "}
+								<code>git.postCommitCommand</code>).
+							</p>
+						</div>
+						<Select
+							value={postCommitCommand ?? "none"}
+							onValueChange={(value) =>
+								handlePostCommitCommandChange(value as PostCommitCommand)
+							}
+							disabled={
+								isPostCommitCommandLoading ||
+								setPostCommitCommandMutation.isPending
+							}
+						>
+							<SelectTrigger className="w-[140px]">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="none">None</SelectItem>
+								<SelectItem value="push">Push</SelectItem>
+								<SelectItem value="sync">Sync</SelectItem>
+							</SelectContent>
+						</Select>
 					</div>
 				)}
 

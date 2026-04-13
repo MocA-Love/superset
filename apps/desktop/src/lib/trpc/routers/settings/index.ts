@@ -7,6 +7,7 @@ import {
 	EXTERNAL_APPS,
 	FILE_OPEN_MODES,
 	NON_EDITOR_APPS,
+	POST_COMMIT_COMMANDS,
 	SMART_COMMIT_CHANGES_MODES,
 	settings,
 	TERMINAL_LINK_BEHAVIORS,
@@ -945,6 +946,26 @@ export const createSettingsRouter = () => {
 							branchSortOrder: input.sortOrder,
 							pinDefaultBranch: input.pinDefault,
 						},
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getPostCommitCommand: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.postCommitCommand ?? "none";
+		}),
+
+		setPostCommitCommand: publicProcedure
+			.input(z.object({ command: z.enum(POST_COMMIT_COMMANDS) }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, postCommitCommand: input.command })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { postCommitCommand: input.command },
 					})
 					.run();
 

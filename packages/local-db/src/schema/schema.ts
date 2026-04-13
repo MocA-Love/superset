@@ -16,6 +16,7 @@ import type {
 	FileOpenMode,
 	GitHubStatus,
 	GitStatus,
+	PostCommitCommand,
 	SitePermissionKind,
 	SitePermissionValue,
 	SmartCommitChangesMode,
@@ -255,6 +256,7 @@ export const settings = sqliteTable("settings", {
 	autoStash: integer("auto_stash", { mode: "boolean" }),
 	branchSortOrder: text("branch_sort_order").$type<BranchSortOrder>(),
 	pinDefaultBranch: integer("pin_default_branch", { mode: "boolean" }),
+	postCommitCommand: text("post_commit_command").$type<PostCommitCommand>(),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;

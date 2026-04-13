@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `post_commit_command` text;
