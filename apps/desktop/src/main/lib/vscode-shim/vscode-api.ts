@@ -186,6 +186,7 @@ class Range {
 	) {
 		if (typeof startLine === "number") {
 			this.start = new Position(startLine, startChar as number);
+			// biome-ignore lint/style/noNonNullAssertion: endLine/endChar are defined when startLine is a number
 			this.end = new Position(endLine!, endChar!);
 		} else {
 			this.start = startLine;
@@ -213,8 +214,10 @@ class Selection extends Range {
 		activeChar?: number,
 	) {
 		if (typeof anchorLine === "number") {
+			// biome-ignore lint/style/noNonNullAssertion: activeLine/activeChar are defined when anchorLine is a number
 			super(anchorLine, anchorChar as number, activeLine!, activeChar!);
 			this.anchor = new Position(anchorLine, anchorChar as number);
+			// biome-ignore lint/style/noNonNullAssertion: activeLine/activeChar are defined when anchorLine is a number
 			this.active = new Position(activeLine!, activeChar!);
 		} else {
 			super(anchorLine, anchorChar as Position);
@@ -381,11 +384,13 @@ class NotebookCellOutput {
 	}
 }
 
+// biome-ignore lint/complexity/noStaticOnlyClass: vscode API shim requires class shape
 class NotebookCellKind {
 	static readonly Markup = 1;
 	static readonly Code = 2;
 }
 
+// biome-ignore lint/complexity/noStaticOnlyClass: vscode API shim requires class shape
 class NotebookEdit {
 	static replaceCells(_range: unknown, _cells: unknown[]): NotebookEdit {
 		return new NotebookEdit();

@@ -43,10 +43,12 @@ function installRequireIntercept(): void {
 		isPreloading: false,
 	} as unknown as NodeModule;
 
+	// biome-ignore lint/complexity/noBannedTypes: Module internals require Function type
+	type ResolveFn = Function;
 	const originalResolveFilename = (
-		Module as unknown as { _resolveFilename: Function }
+		Module as unknown as { _resolveFilename: ResolveFn }
 	)._resolveFilename;
-	(Module as unknown as { _resolveFilename: Function })._resolveFilename =
+	(Module as unknown as { _resolveFilename: ResolveFn })._resolveFilename =
 		function (
 			request: string,
 			parent: unknown,
@@ -112,6 +114,7 @@ export async function loadExtension(
 	info: ExtensionInfo,
 ): Promise<LoadedExtension> {
 	if (loadedExtensions.has(info.id)) {
+		// biome-ignore lint/style/noNonNullAssertion: has() check guarantees presence
 		return loadedExtensions.get(info.id)!;
 	}
 
@@ -128,6 +131,7 @@ export async function loadExtension(
 	);
 
 	// Load the extension's main module
+	// biome-ignore lint/style/noNonNullAssertion: manifest.main is checked before calling loadExtension
 	const mainPath = path.resolve(info.extensionPath, info.manifest.main!);
 	shimLog(`[vscode-shim] Loading extension: ${info.id} from ${mainPath}`);
 

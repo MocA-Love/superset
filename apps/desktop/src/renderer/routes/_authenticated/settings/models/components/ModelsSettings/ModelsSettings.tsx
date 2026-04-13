@@ -819,11 +819,21 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 									</div>
 								</div>
 								<div className="mt-4 grid gap-3 md:grid-cols-3">
-									{[
-										["Today", nextEditUsageSummary?.today],
-										["This month", nextEditUsageSummary?.month],
-										["All time", nextEditUsageSummary?.allTime],
-									].map(([label, bucket]) => (
+									{(
+										[
+											["Today", nextEditUsageSummary?.today],
+											["This month", nextEditUsageSummary?.month],
+											["All time", nextEditUsageSummary?.allTime],
+										] as Array<
+											[
+												string,
+												(
+													| NonNullable<typeof nextEditUsageSummary>["today"]
+													| undefined
+												),
+											]
+										>
+									).map(([label, bucket]) => (
 										<div
 											key={label}
 											className="rounded-md border bg-background p-3"
@@ -851,10 +861,20 @@ export function ModelsSettings({ visibleItems }: ModelsSettingsProps) {
 									))}
 								</div>
 								<div className="mt-4 grid gap-3 md:grid-cols-2">
-									{[
-										["FIM", nextEditUsageSummary?.byEndpoint.fim],
-										["Next Edit", nextEditUsageSummary?.byEndpoint.next_edit],
-									].map(([label, bucket]) => (
+									{(
+										[
+											["FIM", nextEditUsageSummary?.byEndpoint.fim],
+											["Next Edit", nextEditUsageSummary?.byEndpoint.next_edit],
+										] as Array<
+											[
+												string,
+												(
+													| NonNullable<typeof nextEditUsageSummary>["today"]
+													| undefined
+												),
+											]
+										>
+									).map(([label, bucket]) => (
 										<div
 											key={label}
 											className="rounded-md border bg-background p-3"

@@ -92,7 +92,10 @@ export function PaneToolbarActions({
 						</button>
 					</TooltipTrigger>
 					<TooltipContent side="bottom" showArrow={false}>
-						<HotkeyLabel label={splitOppositeLabel} id={splitOppositeHotkeyId} />
+						<HotkeyLabel
+							label={splitOppositeLabel}
+							id={splitOppositeHotkeyId}
+						/>
 					</TooltipContent>
 				</Tooltip>
 			)}

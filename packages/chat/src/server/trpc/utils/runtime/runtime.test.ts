@@ -340,6 +340,7 @@ describe("runtime message restart", () => {
 				sendMessage: async (input: Record<string, unknown>) => {
 					sendMessageInputs.push(input);
 				},
+				setSubagentModelId: async () => {},
 				config: {
 					storage: {
 						getStore: async () => memoryStore,

@@ -23,6 +23,7 @@ import {
 	addBrowserShortcutListener,
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
@@ -350,6 +351,11 @@ function WorkspaceContent({
 				toast.error(`Failed to create memo: ${error.message}`);
 			});
 	}, [openFilePane, workspaceId]);
+
+	const { data: showPresetsBar } =
+		electronTrpc.settings.getShowPresetsBar.useQuery();
+	const setShowPresetsBar =
+		electronTrpc.settings.setShowPresetsBar.useMutation();
 
 	const commandPalette = useCommandPalette({
 		workspaceId,
