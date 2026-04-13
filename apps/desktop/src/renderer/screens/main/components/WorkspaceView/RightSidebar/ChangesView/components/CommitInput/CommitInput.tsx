@@ -34,6 +34,7 @@ type CommitInputPullRequest = NonNullable<GitHubStatus["pr"]>;
 interface CommitInputProps {
 	worktreePath: string;
 	hasStagedChanges: boolean;
+	unstagedChangeCount: number;
 	pushCount: number;
 	pullCount: number;
 	hasUpstream: boolean;
@@ -48,6 +49,7 @@ interface CommitInputProps {
 export function CommitInput({
 	worktreePath,
 	hasStagedChanges,
+	unstagedChangeCount,
 	pushCount,
 	pullCount,
 	hasUpstream,
@@ -60,9 +62,18 @@ export function CommitInput({
 }: CommitInputProps) {
 	const [isOpen, setIsOpen] = useState(false);
 
+	const { data: smartCommit } = electronTrpc.settings.getSmartCommit.useQuery(
+		undefined,
+		{ staleTime: 10_000 },
+	);
+	const smartCommitEnabled = smartCommit?.enabled ?? false;
+	const smartCommitMode = smartCommit?.changes ?? "all";
+
 	const stashIncludeUntrackedMutation =
 		electronTrpc.changes.stashIncludeUntracked.useMutation();
 	const stashPopMutation = electronTrpc.changes.stashPop.useMutation();
+	const stageAllMutation = electronTrpc.changes.stageAll.useMutation();
+	const stageTrackedMutation = electronTrpc.changes.stageTracked.useMutation();
 
 	const commitMutation = electronTrpc.changes.commit.useMutation({
 		onSuccess: () => {
@@ -220,9 +231,17 @@ export function CommitInput({
 		pullMutation.isPending ||
 		syncMutation.isPending ||
 		isCreateOrOpenPRPending ||
-		fetchMutation.isPending;
+		fetchMutation.isPending ||
+		stageAllMutation.isPending ||
+		stageTrackedMutation.isPending;
 
-	const canCommit = hasStagedChanges && commitMessage.trim();
+	// Smart commit lets the user commit with an empty index as long as
+	// there is at least one unstaged change to auto-stage.
+	const smartCommitAvailable =
+		smartCommitEnabled && !hasStagedChanges && unstagedChangeCount > 0;
+	const willSmartCommit = smartCommitAvailable;
+	const canCommit =
+		(hasStagedChanges || smartCommitAvailable) && commitMessage.trim();
 	const hasExistingPR = Boolean(pullRequest);
 	const prUrl = pullRequest?.url;
 	const pushActionCopy = getPushActionCopy({
@@ -231,9 +250,38 @@ export function CommitInput({
 		pullRequest,
 	});
 
+	const commitLabel = willSmartCommit
+		? `Commit All (${unstagedChangeCount})`
+		: "Commit";
+	const commitTooltip = willSmartCommit
+		? smartCommitMode === "tracked"
+			? `Stage ${unstagedChangeCount} tracked changes, then commit`
+			: `Stage ${unstagedChangeCount} changes (including untracked), then commit`
+		: undefined;
+
 	const handleCommit = () => {
 		if (!canCommit) return;
-		commitMutation.mutate({ worktreePath, message: commitMessage.trim() });
+		const message = commitMessage.trim();
+		// Smart commit path: stage first, then commit. We run the stage
+		// mutation imperatively so any failure shows the normal error
+		// dialog (no commit is attempted if staging fails).
+		if (willSmartCommit) {
+			const stageMutation =
+				smartCommitMode === "tracked" ? stageTrackedMutation : stageAllMutation;
+			stageMutation.mutate(
+				{ worktreePath },
+				{
+					onSuccess: () => {
+						commitMutation.mutate({ worktreePath, message });
+					},
+					onError: (error) => {
+						showGitErrorDialog(error, "stage");
+					},
+				},
+			);
+			return;
+		}
+		commitMutation.mutate({ worktreePath, message });
 	};
 
 	const handlePush = () => {
@@ -303,6 +351,16 @@ export function CommitInput({
 
 	const primary = {
 		...primaryAction,
+		label:
+			primaryAction.action === "commit" && willSmartCommit
+				? commitLabel
+				: primaryAction.action === "commit" && !hasStagedChanges
+					? primaryAction.label
+					: primaryAction.label,
+		tooltip:
+			primaryAction.action === "commit" && willSmartCommit && commitTooltip
+				? commitTooltip
+				: primaryAction.tooltip,
 		icon:
 			primaryAction.action === "commit" ? (
 				<VscCheck className="size-4" />

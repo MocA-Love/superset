@@ -6,6 +6,7 @@ import {
 	EXTERNAL_APPS,
 	FILE_OPEN_MODES,
 	NON_EDITOR_APPS,
+	SMART_COMMIT_CHANGES_MODES,
 	settings,
 	TERMINAL_LINK_BEHAVIORS,
 	type TerminalPreset,
@@ -853,6 +854,41 @@ export const createSettingsRouter = () => {
 					.onConflictDoUpdate({
 						target: settings.id,
 						set: { deleteLocalBranch: input.enabled },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getSmartCommit: publicProcedure.query(() => {
+			const row = getSettings();
+			return {
+				enabled: row.enableSmartCommit ?? false,
+				changes: row.smartCommitChanges ?? "all",
+			};
+		}),
+
+		setSmartCommit: publicProcedure
+			.input(
+				z.object({
+					enabled: z.boolean(),
+					changes: z.enum(SMART_COMMIT_CHANGES_MODES),
+				}),
+			)
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({
+						id: 1,
+						enableSmartCommit: input.enabled,
+						smartCommitChanges: input.changes,
+					})
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: {
+							enableSmartCommit: input.enabled,
+							smartCommitChanges: input.changes,
+						},
 					})
 					.run();
 

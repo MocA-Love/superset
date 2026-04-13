@@ -250,6 +250,11 @@ export const FILE_OPEN_MODES = ["split-pane", "new-tab"] as const;
 
 export type FileOpenMode = (typeof FILE_OPEN_MODES)[number];
 
+export const SMART_COMMIT_CHANGES_MODES = ["all", "tracked"] as const;
+
+export type SmartCommitChangesMode =
+	(typeof SMART_COMMIT_CHANGES_MODES)[number];
+
 export const SITE_PERMISSION_KINDS = ["microphone", "camera"] as const;
 
 export type SitePermissionKind = (typeof SITE_PERMISSION_KINDS)[number];

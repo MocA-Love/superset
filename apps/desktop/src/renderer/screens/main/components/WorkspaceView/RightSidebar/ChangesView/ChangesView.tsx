@@ -1008,6 +1008,7 @@ export function ChangesView({
 								<CommitInput
 									worktreePath={worktreePath}
 									hasStagedChanges={hasStagedChanges}
+									unstagedChangeCount={combinedUnstaged.length}
 									pushCount={status.pushCount}
 									pullCount={status.pullCount}
 									hasUpstream={status.hasUpstream}

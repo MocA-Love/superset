@@ -1,4 +1,7 @@
-import type { BranchPrefixMode } from "@superset/local-db";
+import type {
+	BranchPrefixMode,
+	SmartCommitChangesMode,
+} from "@superset/local-db";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import {
@@ -38,6 +41,10 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 	);
 	const showWorktreeLocation = isItemVisible(
 		SETTING_ITEM_ID.GIT_WORKTREE_LOCATION,
+		visibleItems,
+	);
+	const showSmartCommit = isItemVisible(
+		SETTING_ITEM_ID.GIT_SMART_COMMIT,
 		visibleItems,
 	);
 
@@ -105,6 +112,36 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 			mode: "custom",
 			customPrefix: sanitized || null,
 		});
+	};
+
+	const { data: smartCommit, isLoading: isSmartCommitLoading } =
+		electronTrpc.settings.getSmartCommit.useQuery();
+	const setSmartCommit = electronTrpc.settings.setSmartCommit.useMutation({
+		onMutate: async (next) => {
+			await utils.settings.getSmartCommit.cancel();
+			const previous = utils.settings.getSmartCommit.getData();
+			utils.settings.getSmartCommit.setData(undefined, next);
+			return { previous };
+		},
+		onError: (_err, _vars, context) => {
+			if (context?.previous !== undefined) {
+				utils.settings.getSmartCommit.setData(undefined, context.previous);
+			}
+		},
+		onSettled: () => {
+			utils.settings.getSmartCommit.invalidate();
+		},
+	});
+
+	const smartCommitEnabled = smartCommit?.enabled ?? false;
+	const smartCommitChanges: SmartCommitChangesMode =
+		smartCommit?.changes ?? "all";
+
+	const handleSmartCommitToggle = (enabled: boolean) => {
+		setSmartCommit.mutate({ enabled, changes: smartCommitChanges });
+	};
+	const handleSmartCommitChangesChange = (value: SmartCommitChangesMode) => {
+		setSmartCommit.mutate({ enabled: smartCommitEnabled, changes: value });
 	};
 
 	const { data: worktreeBaseDir, isLoading: isWorktreeBaseDirLoading } =
@@ -225,6 +262,62 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 								/>
 							)}
 						</div>
+					</div>
+				)}
+
+				{showSmartCommit && (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label
+									htmlFor="git-smart-commit"
+									className="text-sm font-medium"
+								>
+									Smart Commit
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									When no files are staged, commit all changes in a single step
+									(matches VS Code's <code>git.enableSmartCommit</code>)
+								</p>
+							</div>
+							<Switch
+								id="git-smart-commit"
+								checked={smartCommitEnabled}
+								onCheckedChange={handleSmartCommitToggle}
+								disabled={isSmartCommitLoading || setSmartCommit.isPending}
+							/>
+						</div>
+						{smartCommitEnabled && (
+							<div className="flex items-center justify-between pl-4">
+								<div className="space-y-0.5">
+									<Label className="text-xs font-medium">
+										Changes to auto-stage
+									</Label>
+									<p className="text-[11px] text-muted-foreground">
+										<code>all</code>: include untracked (<code>git add -A</code>
+										). <code>tracked</code>: tracked files only (
+										<code>git add -u</code>).
+									</p>
+								</div>
+								<Select
+									value={smartCommitChanges}
+									onValueChange={(value) =>
+										handleSmartCommitChangesChange(
+											value as SmartCommitChangesMode,
+										)
+									}
+									disabled={isSmartCommitLoading || setSmartCommit.isPending}
+								>
+									<SelectTrigger className="w-[140px]">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">All changes</SelectItem>
+										<SelectItem value="tracked">Tracked only</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
+						)}
 					</div>
 				)}
 

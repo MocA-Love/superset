@@ -17,6 +17,7 @@ import type {
 	GitStatus,
 	SitePermissionKind,
 	SitePermissionValue,
+	SmartCommitChangesMode,
 	TerminalLinkBehavior,
 	TerminalPreset,
 	WorkspaceType,
@@ -246,6 +247,10 @@ export const settings = sqliteTable("settings", {
 	exposeHostServiceViaRelay: integer("expose_host_service_via_relay", {
 		mode: "boolean",
 	}),
+	enableSmartCommit: integer("enable_smart_commit", { mode: "boolean" }),
+	smartCommitChanges: text(
+		"smart_commit_changes",
+	).$type<SmartCommitChangesMode>(),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;
