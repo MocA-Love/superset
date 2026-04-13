@@ -70,17 +70,25 @@ export const gitRouter = router({
 						"--format=%(refname:short)",
 						...extraArgs,
 					]);
-					return raw
-						.trim()
-						.split("\n")
-						.map((line) => line.trim())
-						.filter(Boolean)
-						.filter((line) => !line.includes("->"))
-						.map((line) =>
-							stripPrefix && line.startsWith(stripPrefix)
-								? line.slice(stripPrefix.length)
-								: line,
-						);
+					return (
+						raw
+							.trim()
+							.split("\n")
+							.map((line) => line.trim())
+							.filter(Boolean)
+							.filter((line) => !line.includes("->"))
+							// When a prefix filter is given (e.g. "origin/") only keep
+							// entries that start with that prefix. Lines from non-origin
+							// remotes (e.g. "upstream/main") would survive the map step
+							// unchanged and then cause buildBranch to construct invalid
+							// refs like "origin/upstream/main".
+							.filter((line) => !stripPrefix || line.startsWith(stripPrefix))
+							.map((line) =>
+								stripPrefix && line.startsWith(stripPrefix)
+									? line.slice(stripPrefix.length)
+									: line,
+							)
+					);
 				} catch {
 					return [];
 				}

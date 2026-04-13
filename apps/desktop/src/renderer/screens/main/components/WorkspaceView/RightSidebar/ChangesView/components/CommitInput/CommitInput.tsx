@@ -36,6 +36,13 @@ interface CommitInputProps {
 	worktreePath: string;
 	hasStagedChanges: boolean;
 	unstagedChangeCount: number;
+	/**
+	 * Number of unstaged changes to **tracked** files only (excludes
+	 * untracked). Used to guard the `tracked` smart-commit mode: with only
+	 * new/untracked files `git add -u` stages nothing and the commit would
+	 * fail with "nothing to commit".
+	 */
+	unstagedTrackedCount: number;
 	pushCount: number;
 	pullCount: number;
 	hasUpstream: boolean;
@@ -51,6 +58,7 @@ export function CommitInput({
 	worktreePath,
 	hasStagedChanges,
 	unstagedChangeCount,
+	unstagedTrackedCount,
 	pushCount,
 	pullCount,
 	hasUpstream,
@@ -264,9 +272,16 @@ export function CommitInput({
 		stashPopMutation.isPending;
 
 	// Smart commit lets the user commit with an empty index as long as
-	// there is at least one unstaged change to auto-stage.
+	// there is at least one change that the chosen mode will actually stage.
+	// "tracked" mode uses `git add -u` which ignores untracked files, so
+	// it needs at least one tracked unstaged change; otherwise the button
+	// would be enabled but the commit would fail with "nothing to commit".
 	const smartCommitAvailable =
-		smartCommitEnabled && !hasStagedChanges && unstagedChangeCount > 0;
+		smartCommitEnabled &&
+		!hasStagedChanges &&
+		(smartCommitMode === "tracked"
+			? unstagedTrackedCount > 0
+			: unstagedChangeCount > 0);
 	const willSmartCommit = smartCommitAvailable;
 	const canCommit =
 		(hasStagedChanges || smartCommitAvailable) && commitMessage.trim();
