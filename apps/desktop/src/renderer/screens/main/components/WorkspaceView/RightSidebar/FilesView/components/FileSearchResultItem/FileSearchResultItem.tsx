@@ -99,7 +99,9 @@ export function FileSearchResultItem({
 
 	const handleClick = (e: React.MouseEvent) => {
 		if (!entry.isDirectory) {
-			if (e.metaKey || e.ctrlKey) {
+			if (e.shiftKey) {
+				onActivate(entry, true);
+			} else if (e.metaKey || e.ctrlKey) {
 				onOpenInEditor(entry);
 			} else {
 				onActivate(entry);

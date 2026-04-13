@@ -195,8 +195,24 @@ function WorkspaceContent({
 	);
 
 	const openSidebarFilePane = useCallback(
-		(filePath: string) => {
+		(filePath: string, openInNewTab?: boolean) => {
 			const state = store.getState();
+			if (openInNewTab) {
+				state.addTab({
+					titleOverride: filePath.split(/[/\\]/).pop(),
+					panes: [
+						{
+							kind: "file",
+							data: {
+								filePath,
+								mode: "editor",
+								hasChanges: false,
+							} as FilePaneData,
+						},
+					],
+				});
+				return;
+			}
 			const active = state.getActivePane();
 			const activeTab = active
 				? (state.tabs.find((tab) => tab.id === active.tabId) ?? null)
