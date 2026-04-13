@@ -467,6 +467,8 @@ export function CodeMirrorDiffViewer({
 		const focusTracker = EditorView.domEventHandlers({
 			focus: (_event, view) => {
 				activeEditorRef.current = view;
+				// Re-sync overlay counts/ordinal against the newly focused editor.
+				syncSearchOverlayStateRef.current?.();
 			},
 		});
 
@@ -598,6 +600,14 @@ export function CodeMirrorDiffViewer({
 		return () => {
 			mergeView.destroy();
 			mergeViewRef.current = null;
+			// Reset search state so the overlay does not keep pointing at the
+			// destroyed EditorView once the next MergeView instance is built.
+			activeEditorRef.current = null;
+			isSearchOpenRef.current = false;
+			setIsSearchOpen(false);
+			setSearchQueryText("");
+			setSearchMatchCount(0);
+			setActiveSearchMatchIndex(-1);
 		};
 	}, [original, modified, language, viewMode]);
 

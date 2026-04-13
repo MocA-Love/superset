@@ -329,33 +329,87 @@ function extractRepoName(urlInput: string): string | null {
 	return repoSegment;
 }
 
+interface CloneEventBase {
+	cloneId: string;
+	/** Monotonic sequence number per cloneId, used by subscribers to dedupe. */
+	seq: number;
+	time: number;
+}
+
 export type CloneProgressEvent =
-	| {
+	| (CloneEventBase & {
 			type: "log";
-			cloneId: string;
 			message: string;
 			level: "info" | "warn" | "error";
-			time: number;
-	  }
-	| {
+	  })
+	| (CloneEventBase & {
 			type: "progress";
-			cloneId: string;
 			stage: string;
 			progress: number;
 			processed: number;
 			total: number;
-			time: number;
-	  }
-	| { type: "done"; cloneId: string; time: number }
-	| { type: "error"; cloneId: string; message: string; time: number }
-	| { type: "canceled"; cloneId: string; time: number };
+	  })
+	| (CloneEventBase & { type: "done" })
+	| (CloneEventBase & { type: "error"; message: string })
+	| (CloneEventBase & { type: "canceled" });
 
 const cloneEventBus = new EventEmitter();
 cloneEventBus.setMaxListeners(0);
 const cloneAbortControllers = new Map<string, AbortController>();
 
-function emitCloneEvent(event: CloneProgressEvent) {
+/**
+ * Per-cloneId replay buffer. The tRPC subscription is established after the
+ * mutation is fired from the client, so events emitted in the window between
+ * `cloneRepo` starting and the subscription connecting would otherwise be
+ * lost. The buffer is flushed to the first subscriber and trimmed on a short
+ * timeout after any terminal event (done / error / canceled).
+ */
+const cloneEventBuffers = new Map<string, CloneProgressEvent[]>();
+const cloneBufferEvictTimers = new Map<string, NodeJS.Timeout>();
+const cloneSeqCounters = new Map<string, number>();
+const MAX_BUFFERED_EVENTS = 1000;
+const TERMINAL_BUFFER_EVICT_MS = 30_000;
+
+function isTerminalCloneEvent(event: CloneProgressEvent): boolean {
+	return (
+		event.type === "done" || event.type === "error" || event.type === "canceled"
+	);
+}
+
+function nextCloneSeq(cloneId: string): number {
+	const next = (cloneSeqCounters.get(cloneId) ?? 0) + 1;
+	cloneSeqCounters.set(cloneId, next);
+	return next;
+}
+
+type CloneEventInput = Omit<CloneProgressEvent, "seq">;
+
+function emitCloneEvent(input: CloneEventInput) {
+	const event = {
+		...input,
+		seq: nextCloneSeq(input.cloneId),
+	} as CloneProgressEvent;
+	let buffer = cloneEventBuffers.get(event.cloneId);
+	if (!buffer) {
+		buffer = [];
+		cloneEventBuffers.set(event.cloneId, buffer);
+	}
+	buffer.push(event);
+	if (buffer.length > MAX_BUFFERED_EVENTS) {
+		buffer.splice(0, buffer.length - MAX_BUFFERED_EVENTS);
+	}
 	cloneEventBus.emit(event.cloneId, event);
+
+	if (isTerminalCloneEvent(event)) {
+		const existing = cloneBufferEvictTimers.get(event.cloneId);
+		if (existing) clearTimeout(existing);
+		const timer = setTimeout(() => {
+			cloneEventBuffers.delete(event.cloneId);
+			cloneBufferEvictTimers.delete(event.cloneId);
+			cloneSeqCounters.delete(event.cloneId);
+		}, TERMINAL_BUFFER_EVICT_MS);
+		cloneBufferEvictTimers.set(event.cloneId, timer);
+	}
 }
 
 function emitCloneLog(
@@ -1253,10 +1307,25 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 			.input(z.object({ cloneId: z.string().min(1) }))
 			.subscription(({ input }) => {
 				return observable<CloneProgressEvent>((emit) => {
-					const handler = (event: CloneProgressEvent) => {
+					// Dedupe by monotonic seq so that we can safely attach the live
+					// listener first and then replay the buffer: any event that
+					// reaches both paths only passes the `> lastSeq` guard once.
+					let lastSeq = 0;
+					const deliver = (event: CloneProgressEvent) => {
+						if (event.seq <= lastSeq) return;
+						lastSeq = event.seq;
 						emit.next(event);
 					};
+					const handler = (event: CloneProgressEvent) => {
+						deliver(event);
+					};
 					cloneEventBus.on(input.cloneId, handler);
+					const buffered = cloneEventBuffers.get(input.cloneId);
+					if (buffered) {
+						for (const event of buffered) {
+							deliver(event);
+						}
+					}
 					return () => {
 						cloneEventBus.off(input.cloneId, handler);
 					};
@@ -1435,6 +1504,12 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 								cloneError instanceof Error
 									? cloneError.message
 									: String(cloneError);
+							// `git clone` creates the destination directory eagerly;
+							// leaving a partial checkout behind would block every retry
+							// against the same path via the existing-folder guard above.
+							await rm(clonePath, { recursive: true, force: true }).catch(
+								() => undefined,
+							);
 							if (!abortController.signal.aborted) {
 								emitCloneEvent({
 									type: "error",
@@ -1449,7 +1524,14 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						}
 					} else {
 						const git = await getSimpleGitWithShellPath();
-						await git.clone(input.url, clonePath);
+						try {
+							await git.clone(input.url, clonePath);
+						} catch (cloneError) {
+							await rm(clonePath, { recursive: true, force: true }).catch(
+								() => undefined,
+							);
+							throw cloneError;
+						}
 					}
 
 					// Create new project

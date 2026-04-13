@@ -211,9 +211,23 @@ export function CloneRepoTab({ onError, parentDir }: CloneRepoTabProps) {
 
 	const handleCancel = () => {
 		if (!cloneId) return;
-		wasCanceledRef.current = true;
-		cancelClone.mutate({ cloneId });
-		setStatus("canceled");
+		cancelClone.mutate(
+			{ cloneId },
+			{
+				onSuccess: (result) => {
+					if (!result.canceled) {
+						// Backend had already finished or no controller remains —
+						// leave the onSuccess/onError path from cloneRepo handle it.
+						return;
+					}
+					wasCanceledRef.current = true;
+					setStatus("canceled");
+				},
+				onError: (err) => {
+					handleError(err);
+				},
+			},
+		);
 	};
 
 	const handleReset = () => {

@@ -1,6 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
@@ -15,7 +15,10 @@ import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { BookmarkBar } from "./components/BookmarkBar";
 import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
-import { BrowserFindOverlay } from "./components/BrowserFindOverlay";
+import {
+	BrowserFindOverlay,
+	type BrowserFindOverlayHandle,
+} from "./components/BrowserFindOverlay";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
 import { ExtensionToolbar } from "./components/ExtensionToolbar";
@@ -86,9 +89,12 @@ export function BrowserPane({
 	const [findMatchCase, setFindMatchCase] = useState(false);
 	const [findMatches, setFindMatches] = useState(0);
 	const [findActiveOrdinal, setFindActiveOrdinal] = useState(0);
+	const findOverlayRef = useRef<BrowserFindOverlayHandle | null>(null);
 
 	const openFindOverlay = useCallback(() => {
 		setIsFindOpen(true);
+		// Refocus + select even if already open (repeat Cmd+F).
+		findOverlayRef.current?.focusInput();
 	}, []);
 
 	const closeFindOverlay = useCallback(() => {
@@ -357,34 +363,35 @@ export function BrowserPane({
 				</div>
 			)}
 		>
-			<div className="flex h-full flex-1 flex-col">
+			<div
+				className="flex h-full flex-1 flex-col"
+				onKeyDownCapture={(event) => {
+					if (
+						(event.metaKey || event.ctrlKey) &&
+						!event.altKey &&
+						!event.shiftKey &&
+						event.key.toLowerCase() === "f"
+					) {
+						event.preventDefault();
+						event.stopPropagation();
+						openFindOverlay();
+					} else if (event.key === "Escape" && isFindOpen) {
+						event.preventDefault();
+						closeFindOverlay();
+					}
+				}}
+			>
 				{!isFullscreen && (
 					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
 				)}
-				<div
-					className="relative flex flex-1 min-h-0"
-					onKeyDownCapture={(event) => {
-						if (
-							(event.metaKey || event.ctrlKey) &&
-							!event.altKey &&
-							!event.shiftKey &&
-							event.key.toLowerCase() === "f"
-						) {
-							event.preventDefault();
-							event.stopPropagation();
-							openFindOverlay();
-						} else if (event.key === "Escape" && isFindOpen) {
-							event.preventDefault();
-							closeFindOverlay();
-						}
-					}}
-				>
+				<div className="relative flex flex-1 min-h-0">
 					<div
 						ref={containerRef}
 						className="h-full w-full"
 						style={{ flex: 1 }}
 					/>
 					<BrowserFindOverlay
+						ref={findOverlayRef}
 						isOpen={isFindOpen}
 						query={findQuery}
 						matchCount={findMatches}

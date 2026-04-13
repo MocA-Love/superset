@@ -1,1 +1,4 @@
-export { BrowserFindOverlay } from "./BrowserFindOverlay";
+export {
+	BrowserFindOverlay,
+	type BrowserFindOverlayHandle,
+} from "./BrowserFindOverlay";

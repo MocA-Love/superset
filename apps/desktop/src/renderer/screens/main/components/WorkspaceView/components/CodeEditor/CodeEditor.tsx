@@ -103,7 +103,6 @@ function logDragAutoscrollDiagnostics(view: EditorView, event: MouseEvent) {
 	for (
 		let cur: Node | null = content.parentNode;
 		cur && cur !== document.body;
-
 	) {
 		if (cur.nodeType === 1) {
 			const el = cur as HTMLElement;
@@ -792,18 +791,26 @@ export function CodeEditor({
 			},
 		]);
 
-		const dragDiagnosticHandler = EditorView.domEventHandlers({
-			mousedown: (event, view) => {
-				if (event.button !== 0) return false;
-				logDragAutoscrollDiagnostics(view, event);
-				return false;
-			},
-		});
+		// Drag-autoscroll diagnostics — opt in via
+		// `localStorage.setItem("debug:code-editor-drag", "1")` in DevTools.
+		const dragDiagnosticsEnabled =
+			typeof window !== "undefined" &&
+			window.localStorage?.getItem("debug:code-editor-drag") === "1";
+
+		const dragDiagnosticHandler = dragDiagnosticsEnabled
+			? EditorView.domEventHandlers({
+					mousedown: (event, view) => {
+						if (event.button !== 0) return false;
+						logDragAutoscrollDiagnostics(view, event);
+						return false;
+					},
+				})
+			: null;
 
 		const state = EditorState.create({
 			doc: value,
 			extensions: [
-				dragDiagnosticHandler,
+				...(dragDiagnosticHandler ? [dragDiagnosticHandler] : []),
 				lineNumbers(),
 				highlightActiveLineGutter(),
 				highlightSpecialChars(),

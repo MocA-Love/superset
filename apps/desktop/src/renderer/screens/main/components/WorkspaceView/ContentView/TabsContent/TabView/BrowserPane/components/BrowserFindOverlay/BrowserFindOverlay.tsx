@@ -1,5 +1,9 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { HiChevronDown, HiChevronUp, HiMiniXMark } from "react-icons/hi2";
+
+export interface BrowserFindOverlayHandle {
+	focusInput: () => void;
+}
 
 interface BrowserFindOverlayProps {
 	isOpen: boolean;
@@ -41,19 +45,36 @@ function OptionToggle({
 	);
 }
 
-export function BrowserFindOverlay({
-	isOpen,
-	query,
-	matchCount,
-	activeMatchOrdinal,
-	matchCase,
-	onQueryChange,
-	onMatchCaseChange,
-	onFindNext,
-	onFindPrevious,
-	onClose,
-}: BrowserFindOverlayProps) {
+export const BrowserFindOverlay = forwardRef<
+	BrowserFindOverlayHandle,
+	BrowserFindOverlayProps
+>(function BrowserFindOverlay(
+	{
+		isOpen,
+		query,
+		matchCount,
+		activeMatchOrdinal,
+		matchCase,
+		onQueryChange,
+		onMatchCaseChange,
+		onFindNext,
+		onFindPrevious,
+		onClose,
+	},
+	ref,
+) {
 	const inputRef = useRef<HTMLInputElement>(null);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			focusInput: () => {
+				inputRef.current?.focus();
+				inputRef.current?.select();
+			},
+		}),
+		[],
+	);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -143,4 +164,4 @@ export function BrowserFindOverlay({
 			</div>
 		</div>
 	);
-}
+});
