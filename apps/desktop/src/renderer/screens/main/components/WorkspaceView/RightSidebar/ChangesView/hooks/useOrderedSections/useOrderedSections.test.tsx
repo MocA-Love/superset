@@ -5,11 +5,10 @@ import type {
 	ChangedFile,
 	CommitInfo,
 } from "shared/changes-types";
-import { useOrderedSections } from "./useOrderedSections";
+import { type OrderedSection, useOrderedSections } from "./useOrderedSections";
 
-// biome-ignore lint/suspicious/noExplicitAny: accessing React internals for test dispatcher setup
 type ReactInternalsType = { H: unknown };
-// biome-ignore lint/suspicious/noExplicitAny: accessing React internals for test dispatcher setup
+// biome-ignore lint/suspicious/noExplicitAny: accessing React 19 internal dispatcher for hook context in tests
 const ReactInternals = (React as any)
 	.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE as ReactInternalsType;
 
@@ -113,7 +112,7 @@ describe("useOrderedSections", () => {
 				],
 			}),
 		);
-		const sections = result.current;
+		const sections = result.current as OrderedSection[];
 
 		const committedSection = sections.find(
 			(section) => section.id === "committed",
@@ -132,7 +131,7 @@ describe("useOrderedSections", () => {
 				unstagedFiles: [emptyFile(), emptyFile(), emptyFile()],
 			}),
 		);
-		const sections = result.current;
+		const sections = result.current as OrderedSection[];
 
 		expect(
 			sections.find((section) => section.id === "against-base")?.count,
