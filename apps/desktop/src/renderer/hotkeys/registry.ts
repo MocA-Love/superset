@@ -354,27 +354,45 @@ export const HOTKEYS_REGISTRY = {
 		category: "Terminal",
 		description: "Focus the next tab in the active workspace",
 	},
-	// FORK NOTE: upstream renamed PREV_PANE → FOCUS_PANE_LEFT in #3403 (PR#3).
-	// Keep PREV_PANE until that cherry-pick is applied.
-	PREV_PANE: {
+	FOCUS_PANE_LEFT: {
 		key: {
-			mac: "meta+shift+left",
+			mac: "meta+alt+left",
 			windows: "ctrl+shift+alt+left",
 			linux: "ctrl+shift+alt+left",
 		},
-		label: "Previous Pane",
+		label: "Focus Pane Left",
 		category: "Terminal",
-		description: "Focus the previous pane in the current tab",
+		description: "Focus the pane to the left of the active pane",
 	},
-	NEXT_PANE: {
+	FOCUS_PANE_RIGHT: {
 		key: {
-			mac: "meta+shift+right",
+			mac: "meta+alt+right",
 			windows: "ctrl+shift+alt+right",
 			linux: "ctrl+shift+alt+right",
 		},
-		label: "Next Pane",
+		label: "Focus Pane Right",
 		category: "Terminal",
-		description: "Focus the next pane in the current tab",
+		description: "Focus the pane to the right of the active pane",
+	},
+	FOCUS_PANE_UP: {
+		key: {
+			mac: "meta+alt+up",
+			windows: "ctrl+shift+alt+up",
+			linux: "ctrl+shift+alt+up",
+		},
+		label: "Focus Pane Up",
+		category: "Terminal",
+		description: "Focus the pane above the active pane",
+	},
+	FOCUS_PANE_DOWN: {
+		key: {
+			mac: "meta+alt+down",
+			windows: "ctrl+shift+alt+down",
+			linux: "ctrl+shift+alt+down",
+		},
+		label: "Focus Pane Down",
+		category: "Terminal",
+		description: "Focus the pane below the active pane",
 	},
 	JUMP_TO_TAB_1: {
 		key: {

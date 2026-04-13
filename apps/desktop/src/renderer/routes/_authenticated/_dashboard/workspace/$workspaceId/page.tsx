@@ -20,7 +20,6 @@ import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { usePresets } from "renderer/react-query/presets";
 import type { WorkspaceSearchParams } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
-import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { usePresetHotkeys } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
 import { useWorkspaceRunCommand } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/useWorkspaceRunCommand";
 import { NotFound } from "renderer/routes/not-found";
@@ -58,8 +57,6 @@ import {
 	extractPaneIdsFromLayout,
 	findPanePath,
 	getFirstPaneId,
-	getNextPaneId,
-	getPreviousPaneId,
 	resolveActiveTabIdForWorkspace,
 } from "renderer/stores/tabs/utils";
 import {
@@ -514,30 +511,6 @@ export function WorkspacePage({
 	useHotkey("JUMP_TO_TAB_8", () => switchToTab(7), { enabled: isActive });
 	useHotkey("JUMP_TO_TAB_9", () => switchToTab(8), { enabled: isActive });
 
-	useHotkey(
-		"PREV_PANE",
-		() => {
-			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-			const prevPaneId = getPreviousPaneId(activeTab.layout, focusedPaneId);
-			if (prevPaneId) {
-				setFocusedPane(activeTabId, prevPaneId);
-			}
-		},
-		{ enabled: isActive },
-	);
-
-	useHotkey(
-		"NEXT_PANE",
-		() => {
-			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-			const nextPaneId = getNextPaneId(activeTab.layout, focusedPaneId);
-			if (nextPaneId) {
-				setFocusedPane(activeTabId, nextPaneId);
-			}
-		},
-		{ enabled: isActive },
-	);
-
 	// Open in last used app shortcut
 	const projectId = workspace?.projectId;
 	const { data: defaultApp } = electronTrpc.projects.getDefaultApp.useQuery(
@@ -826,7 +799,9 @@ export function WorkspacePage({
 		{ enabled: isActive },
 	);
 
-	// Navigate to previous workspace (⌘↑)
+	// FORK NOTE: v1 workspace uses tRPC-based prev/next workspace navigation.
+	// Upstream removed these handlers in #3403 (they use DashboardSidebar's
+	// flattenedWorkspaces instead). Fork keeps tRPC approach for v1.
 	const getPreviousWorkspace =
 		electronTrpc.workspaces.getPreviousWorkspace.useQuery(
 			{ id: workspaceId },
@@ -843,7 +818,6 @@ export function WorkspacePage({
 		{ enabled: isActive },
 	);
 
-	// Navigate to next workspace (⌘↓)
 	const getNextWorkspace = electronTrpc.workspaces.getNextWorkspace.useQuery(
 		{ id: workspaceId },
 		{ enabled: !!workspaceId },
@@ -858,6 +832,7 @@ export function WorkspacePage({
 		},
 		{ enabled: isActive },
 	);
+
 
 	return (
 		<WorkspaceIdProvider value={workspaceId}>
