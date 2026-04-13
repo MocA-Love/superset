@@ -380,12 +380,39 @@ export function CodeMirrorDiffViewer({
 		syncSearchOverlayState();
 	};
 
-	const scrollActiveSelectionToCenter = (view: EditorView) => {
+	const scrollActiveSelectionToCenter = (
+		view: EditorView,
+		label: "findNext" | "findPrevious",
+	) => {
+		const head = view.state.selection.main.head;
+		const scroller = view.scrollDOM;
+		const scrollTopBefore = scroller.scrollTop;
+		const coords = view.coordsAtPos(head);
+		const viewportRect = scroller.getBoundingClientRect();
+		console.log("[DiffViewer search] before scrollIntoView", {
+			label,
+			side: view === mergeViewRef.current?.a ? "a" : "b",
+			head,
+			scrollTop: scrollTopBefore,
+			clientHeight: scroller.clientHeight,
+			scrollHeight: scroller.scrollHeight,
+			matchCoordsY: coords?.top ?? null,
+			scrollerTop: Math.round(viewportRect.top),
+			scrollerBottom: Math.round(viewportRect.bottom),
+		});
 		view.dispatch({
-			effects: EditorView.scrollIntoView(view.state.selection.main.head, {
+			effects: EditorView.scrollIntoView(head, {
 				y: "center",
 				yMargin: 48,
 			}),
+		});
+		queueMicrotask(() => {
+			console.log("[DiffViewer search] after scrollIntoView", {
+				label,
+				scrollTopBefore,
+				scrollTopAfter: view.scrollDOM.scrollTop,
+				delta: view.scrollDOM.scrollTop - scrollTopBefore,
+			});
 		});
 	};
 
@@ -397,7 +424,7 @@ export function CodeMirrorDiffViewer({
 			return;
 		}
 		runFindNext(view);
-		scrollActiveSelectionToCenter(view);
+		scrollActiveSelectionToCenter(view, "findNext");
 	};
 
 	const handleOverlayFindPrevious = () => {
@@ -408,7 +435,7 @@ export function CodeMirrorDiffViewer({
 			return;
 		}
 		runFindPrevious(view);
-		scrollActiveSelectionToCenter(view);
+		scrollActiveSelectionToCenter(view, "findPrevious");
 	};
 
 	const handleOverlaySearchClose = () => {

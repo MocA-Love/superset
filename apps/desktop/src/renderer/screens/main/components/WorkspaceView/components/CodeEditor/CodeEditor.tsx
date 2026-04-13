@@ -720,6 +720,41 @@ export function CodeEditor({
 		setIsSearchOpen(false);
 	};
 
+	const scrollSearchMatchToCenter = (
+		view: EditorView,
+		label: "findNext" | "findPrevious",
+	) => {
+		const head = view.state.selection.main.head;
+		const scroller = view.scrollDOM;
+		const scrollTopBefore = scroller.scrollTop;
+		const coords = view.coordsAtPos(head);
+		const viewportRect = scroller.getBoundingClientRect();
+		console.log("[CodeEditor search] before scrollIntoView", {
+			label,
+			head,
+			scrollTop: scrollTopBefore,
+			clientHeight: scroller.clientHeight,
+			scrollHeight: scroller.scrollHeight,
+			matchCoordsY: coords?.top ?? null,
+			scrollerTop: Math.round(viewportRect.top),
+			scrollerBottom: Math.round(viewportRect.bottom),
+		});
+		view.dispatch({
+			effects: EditorView.scrollIntoView(head, {
+				y: "center",
+				yMargin: 48,
+			}),
+		});
+		queueMicrotask(() => {
+			console.log("[CodeEditor search] after scrollIntoView", {
+				label,
+				scrollTopBefore,
+				scrollTopAfter: view.scrollDOM.scrollTop,
+				delta: view.scrollDOM.scrollTop - scrollTopBefore,
+			});
+		});
+	};
+
 	const handleOverlayFindNext = () => {
 		const view = viewRef.current;
 		if (!view) {
@@ -732,6 +767,7 @@ export function CodeEditor({
 		}
 
 		runFindNext(view);
+		scrollSearchMatchToCenter(view, "findNext");
 	};
 
 	const handleOverlayFindPrevious = () => {
@@ -746,6 +782,7 @@ export function CodeEditor({
 		}
 
 		runFindPrevious(view);
+		scrollSearchMatchToCenter(view, "findPrevious");
 	};
 
 	searchControlsRef.current = {
@@ -791,26 +828,22 @@ export function CodeEditor({
 			},
 		]);
 
-		// Drag-autoscroll diagnostics — opt in via
-		// `localStorage.setItem("debug:code-editor-drag", "1")` in DevTools.
-		const dragDiagnosticsEnabled =
-			typeof window !== "undefined" &&
-			window.localStorage?.getItem("debug:code-editor-drag") === "1";
-
-		const dragDiagnosticHandler = dragDiagnosticsEnabled
-			? EditorView.domEventHandlers({
-					mousedown: (event, view) => {
-						if (event.button !== 0) return false;
-						logDragAutoscrollDiagnostics(view, event);
-						return false;
-					},
-				})
-			: null;
+		// Drag-autoscroll diagnostics — always enabled while we are
+		// investigating spurious vertical scroll during text selection. Logs
+		// `.cm-scroller` geometry and the CM6 `scrollableParents` walk to the
+		// devtools console on every left-button mousedown.
+		const dragDiagnosticHandler = EditorView.domEventHandlers({
+			mousedown: (event, view) => {
+				if (event.button !== 0) return false;
+				logDragAutoscrollDiagnostics(view, event);
+				return false;
+			},
+		});
 
 		const state = EditorState.create({
 			doc: value,
 			extensions: [
-				...(dragDiagnosticHandler ? [dragDiagnosticHandler] : []),
+				dragDiagnosticHandler,
 				lineNumbers(),
 				highlightActiveLineGutter(),
 				highlightSpecialChars(),
