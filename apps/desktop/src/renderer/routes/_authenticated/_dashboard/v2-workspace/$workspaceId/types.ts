@@ -29,9 +29,15 @@ export interface DevtoolsPaneData {
 	targetTitle: string;
 }
 
+export interface DiffPaneData {
+	path: string;
+	collapsedFiles: string[];
+}
+
 export type PaneViewerData =
 	| FilePaneData
 	| TerminalPaneData
 	| ChatPaneData
 	| BrowserPaneData
-	| DevtoolsPaneData;
+	| DevtoolsPaneData
+	| DiffPaneData;

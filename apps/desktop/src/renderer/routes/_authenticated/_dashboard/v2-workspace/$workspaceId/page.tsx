@@ -47,6 +47,7 @@ import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
+	DiffPaneData,
 	FilePaneData,
 	PaneViewerData,
 	TerminalPaneData,
@@ -249,6 +250,39 @@ function WorkspaceContent({
 			});
 		},
 		[rightSidebarOpenViewWidth, store],
+	);
+
+	const openDiffPane = useCallback(
+		(filePath: string) => {
+			const state = store.getState();
+			const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+			if (activeTab) {
+				for (const pane of Object.values(activeTab.panes)) {
+					if (pane.kind !== "diff") continue;
+					const prev = pane.data as DiffPaneData;
+					state.setPaneData({
+						paneId: pane.id,
+						data: {
+							...prev,
+							path: filePath,
+						} as PaneViewerData,
+					});
+					state.setActivePane({ tabId: activeTab.id, paneId: pane.id });
+					return;
+				}
+			}
+			state.openPane({
+				pane: {
+					kind: "diff",
+					data: {
+						path: filePath,
+						collapsedFiles: [],
+					} as DiffPaneData,
+				},
+				tabTitle: "Changes",
+			});
+		},
+		[store],
 	);
 
 	const addTerminalTab = useCallback(() => {
@@ -475,6 +509,7 @@ function WorkspaceContent({
 								workspaceId={workspaceId}
 								workspaceName={workspaceName}
 								onSelectFile={openSidebarFilePane}
+								onSelectDiffFile={openDiffPane}
 								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
 							/>
