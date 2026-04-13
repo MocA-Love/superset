@@ -426,6 +426,16 @@ function emitCloneLog(
 	});
 }
 
+/**
+ * Strip `userinfo` (credentials embedded in URLs such as
+ * `https://token@host/...` or `https://user:pass@host/...`) so that PATs and
+ * basic-auth tokens never reach the renderer via progress logs or error
+ * messages. Applied to every string emitted through the clone event bus.
+ */
+function redactGitCredentials(value: string): string {
+	return value.replace(/\/\/([^/\s@]+)(?::[^/\s@]*)?@/g, "//***@");
+}
+
 /** Create the tRPC router for project CRUD, branch listing, and git operations. */
 export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 	return router({
@@ -1492,7 +1502,10 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 								},
 							});
 							gitWithProgress.env(await getProcessEnvWithShellPath());
-							emitCloneLog(cloneId, `Cloning ${input.url}`);
+							emitCloneLog(
+								cloneId,
+								`Cloning ${redactGitCredentials(input.url)}`,
+							);
 							await gitWithProgress.clone(input.url, clonePath);
 							emitCloneEvent({
 								type: "done",
@@ -1500,10 +1513,11 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 								time: Date.now(),
 							});
 						} catch (cloneError) {
-							const message =
+							const message = redactGitCredentials(
 								cloneError instanceof Error
 									? cloneError.message
-									: String(cloneError);
+									: String(cloneError),
+							);
 							// `git clone` creates the destination directory eagerly;
 							// leaving a partial checkout behind would block every retry
 							// against the same path via the existing-folder guard above.
@@ -1564,8 +1578,9 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						project,
 					};
 				} catch (error) {
-					const errorMessage =
-						error instanceof Error ? error.message : String(error);
+					const errorMessage = redactGitCredentials(
+						error instanceof Error ? error.message : String(error),
+					);
 					return {
 						canceled: false as const,
 						success: false as const,

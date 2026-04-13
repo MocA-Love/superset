@@ -61,11 +61,13 @@ export function CloneRepoTab({ onError, parentDir }: CloneRepoTabProps) {
 	const { handleResult, handleError } = useProjectCreationHandler(onError);
 
 	const isActive = status === "cloning";
-
+	// Keep the subscription open as long as a cloneId exists so terminal
+	// events (done/error/canceled) are delivered even after `status` flips
+	// in the cloneRepo / cancelClone callbacks.
 	electronTrpc.projects.cloneProgress.useSubscription(
 		cloneId ? { cloneId } : (undefined as unknown as { cloneId: string }),
 		{
-			enabled: isActive && cloneId !== null,
+			enabled: cloneId !== null,
 			onData: (event) => {
 				const t = startedAt
 					? formatTime(event.time - startedAt)
