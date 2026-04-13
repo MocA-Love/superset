@@ -148,6 +148,8 @@ export function ChatPane({
 					path={path}
 					tabId={tabId}
 					splitPaneAuto={splitPaneAuto}
+					splitPaneHorizontal={splitPaneHorizontal}
+					splitPaneVertical={splitPaneVertical}
 					removePane={removePane}
 					setFocusedPane={setFocusedPane}
 					onPopOut={onPopOut}
@@ -167,6 +169,7 @@ export function ChatPane({
 							<PaneToolbarActions
 								splitOrientation={handlers.splitOrientation}
 								onSplitPane={handlers.onSplitPane}
+								onSplitPaneOpposite={handlers.onSplitPaneOpposite}
 								onClosePane={handlers.onClosePane}
 								onPopOut={handlers.onPopOut}
 								leadingActions={

@@ -9,6 +9,7 @@ import type { SplitOrientation } from "../../hooks";
 interface PaneToolbarActionsProps {
 	splitOrientation: SplitOrientation;
 	onSplitPane: (e: React.MouseEvent) => void;
+	onSplitPaneOpposite?: (e: React.MouseEvent) => void;
 	onClosePane: (e: React.MouseEvent) => void;
 	onPopOut?: (e: React.MouseEvent) => void;
 	leadingActions?: React.ReactNode;
@@ -19,6 +20,7 @@ interface PaneToolbarActionsProps {
 export function PaneToolbarActions({
 	splitOrientation,
 	onSplitPane,
+	onSplitPaneOpposite,
 	onClosePane,
 	onPopOut,
 	leadingActions,
@@ -30,6 +32,19 @@ export function PaneToolbarActions({
 		) : (
 			<TbLayoutRows className="size-3.5" />
 		);
+
+	const splitOppositeIcon =
+		splitOrientation === "vertical" ? (
+			<TbLayoutRows className="size-3.5" />
+		) : (
+			<TbLayoutColumns className="size-3.5" />
+		);
+
+	const splitOppositeHotkeyId: HotkeyId =
+		splitOrientation === "vertical" ? "SPLIT_DOWN" : "SPLIT_RIGHT";
+
+	const splitOppositeLabel =
+		splitOrientation === "vertical" ? "Split pane down" : "Split pane right";
 
 	return (
 		<div className="flex items-center gap-0.5">
@@ -65,6 +80,22 @@ export function PaneToolbarActions({
 					<HotkeyLabel label="Split pane" id="SPLIT_AUTO" />
 				</TooltipContent>
 			</Tooltip>
+			{onSplitPaneOpposite && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<button
+							type="button"
+							onClick={onSplitPaneOpposite}
+							className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+						>
+							{splitOppositeIcon}
+						</button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" showArrow={false}>
+						<HotkeyLabel label={splitOppositeLabel} id={splitOppositeHotkeyId} />
+					</TooltipContent>
+				</Tooltip>
+			)}
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<button

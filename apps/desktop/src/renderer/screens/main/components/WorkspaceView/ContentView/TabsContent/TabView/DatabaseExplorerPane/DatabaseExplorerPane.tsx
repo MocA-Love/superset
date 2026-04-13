@@ -81,6 +81,8 @@ export function DatabaseExplorerPane({
 			path={path}
 			tabId={tabId}
 			splitPaneAuto={splitPaneAuto}
+			splitPaneHorizontal={splitPaneHorizontal}
+			splitPaneVertical={splitPaneVertical}
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
 			onPopOut={onPopOut}
@@ -101,6 +103,7 @@ export function DatabaseExplorerPane({
 					<PaneToolbarActions
 						splitOrientation={handlers.splitOrientation}
 						onSplitPane={handlers.onSplitPane}
+						onSplitPaneOpposite={handlers.onSplitPaneOpposite}
 						onClosePane={handlers.onClosePane}
 						onPopOut={handlers.onPopOut}
 					/>

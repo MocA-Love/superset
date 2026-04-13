@@ -209,7 +209,7 @@ export function useTerminalRestore({
 			};
 
 			const writeSnapshot = () => {
-				if (!initialAnsi) {
+				if (!initialAnsi || (result.isNew && !result.isColdRestore)) {
 					finalizeRestore();
 					return;
 				}
