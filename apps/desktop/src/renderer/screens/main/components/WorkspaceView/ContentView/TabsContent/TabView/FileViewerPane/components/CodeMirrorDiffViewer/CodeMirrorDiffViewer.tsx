@@ -48,16 +48,39 @@ import { getEditorTheme } from "shared/themes";
 
 const SEARCH_MATCH_LIMIT = 10_000;
 
+/**
+ * See comment in CodeEditor.tsx — `display: none` on the panel DOM causes
+ * `PanelGroup.scrollMargin()` to return a value equal to the full scroller
+ * height, which in turn breaks CM's drag-select autoscroll (it fires
+ * unconditionally because the computed bottom edge is at 0). Keep the
+ * panel in flow but collapsed to zero height.
+ */
+function hideHiddenSearchPanelContainer(container: HTMLElement) {
+	container.style.height = "0px";
+	container.style.minHeight = "0px";
+	container.style.maxHeight = "0px";
+	container.style.margin = "0";
+	container.style.padding = "0";
+	container.style.border = "0";
+	container.style.overflow = "hidden";
+	container.style.visibility = "hidden";
+	container.style.pointerEvents = "none";
+}
+
 function createHiddenSearchPanel() {
 	const dom = document.createElement("div");
 	dom.className = "cm-search cm-hidden-search-panel";
+	dom.style.height = "0px";
+	dom.style.overflow = "hidden";
+	dom.style.visibility = "hidden";
+	dom.style.pointerEvents = "none";
 
 	return {
 		dom,
 		mount() {
 			const panelContainer = dom.parentElement;
 			if (panelContainer instanceof HTMLElement) {
-				panelContainer.style.display = "none";
+				hideHiddenSearchPanelContainer(panelContainer);
 			}
 		},
 	};
@@ -384,10 +407,9 @@ export function CodeMirrorDiffViewer({
 		view: EditorView,
 		label: "findNext" | "findPrevious",
 	) => {
-		// Defer to the next frame so CM's own `y: "nearest"` scroll from
-		// runFindNext has been applied, then dispatch our `y: "center"`
-		// effect. Dispatching both in the same tick causes CM to coalesce
-		// them and the nearest scroll wins.
+		// Manual center scroll using CM's line-block cache — see CodeEditor.tsx
+		// comment for the rationale (CM's y: "center" effect is unreliable
+		// on virtualized content after a find dispatch).
 		const initialHead = view.state.selection.main.head;
 		const scrollTopInitial = view.scrollDOM.scrollTop;
 		const side = view === mergeViewRef.current?.a ? "a" : "b";
@@ -398,35 +420,33 @@ export function CodeMirrorDiffViewer({
 			scrollTopInitial,
 		});
 		requestAnimationFrame(() => {
-			const head = view.state.selection.main.head;
 			const scroller = view.scrollDOM;
+			const head = view.state.selection.main.head;
+			const block = view.lineBlockAt(head);
 			const scrollTopBefore = scroller.scrollTop;
-			const coords = view.coordsAtPos(head);
-			const viewportRect = scroller.getBoundingClientRect();
-			console.log("[DiffViewer search] before scrollIntoView (rAF)", {
+			const clientHeight = scroller.clientHeight;
+			const targetScrollTop = Math.max(
+				0,
+				Math.round(block.top + block.height / 2 - clientHeight / 2),
+			);
+			console.log("[DiffViewer search] before manual scroll", {
 				label,
 				side,
 				head,
 				headChanged: head !== initialHead,
 				scrollTopBefore,
-				scrollTopDeltaFromNearest: scrollTopBefore - scrollTopInitial,
-				matchCoordsY: coords?.top ?? null,
-				scrollerTop: Math.round(viewportRect.top),
-				scrollerBottom: Math.round(viewportRect.bottom),
+				blockTop: block.top,
+				blockHeight: block.height,
+				targetScrollTop,
+				clientHeight,
 			});
-			view.dispatch({
-				effects: EditorView.scrollIntoView(head, {
-					y: "center",
-					yMargin: 48,
-				}),
-			});
+			scroller.scrollTop = targetScrollTop;
 			requestAnimationFrame(() => {
-				console.log("[DiffViewer search] after scrollIntoView (rAF)", {
+				console.log("[DiffViewer search] after manual scroll", {
 					label,
 					side,
-					scrollTopBefore,
-					scrollTopAfter: view.scrollDOM.scrollTop,
-					delta: view.scrollDOM.scrollTop - scrollTopBefore,
+					targetScrollTop,
+					scrollTopActual: scroller.scrollTop,
 				});
 			});
 		});

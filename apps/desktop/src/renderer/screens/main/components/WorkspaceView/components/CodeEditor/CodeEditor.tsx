@@ -156,16 +156,42 @@ function logDragAutoscrollDiagnostics(view: EditorView, event: MouseEvent) {
 	});
 }
 
+/**
+ * Hidden search panel used when `searchMode === "overlay"`. The panel must
+ * stay part of the CM layout — setting `display: none` on the panel DOM
+ * makes `getBoundingClientRect()` return all-zeros, which breaks CM's
+ * `PanelGroup.scrollMargin()` calculation (it ends up equal to the full
+ * scroller height) and causes the drag-select autoscroll to fire
+ * continuously anywhere inside the editor. Collapsing the panel to zero
+ * height while keeping it in flow makes `top ≈ scroller.bottom` so
+ * scrollMargin resolves to 0 as intended.
+ */
+function hideHiddenSearchPanelContainer(container: HTMLElement) {
+	container.style.height = "0px";
+	container.style.minHeight = "0px";
+	container.style.maxHeight = "0px";
+	container.style.margin = "0";
+	container.style.padding = "0";
+	container.style.border = "0";
+	container.style.overflow = "hidden";
+	container.style.visibility = "hidden";
+	container.style.pointerEvents = "none";
+}
+
 function createHiddenSearchPanel() {
 	const dom = document.createElement("div");
 	dom.className = "cm-search cm-hidden-search-panel";
+	dom.style.height = "0px";
+	dom.style.overflow = "hidden";
+	dom.style.visibility = "hidden";
+	dom.style.pointerEvents = "none";
 
 	return {
 		dom,
 		mount() {
 			const panelContainer = dom.parentElement;
 			if (panelContainer instanceof HTMLElement) {
-				panelContainer.style.display = "none";
+				hideHiddenSearchPanelContainer(panelContainer);
 			}
 		},
 	};
@@ -725,11 +751,13 @@ export function CodeEditor({
 		label: "findNext" | "findPrevious",
 	) => {
 		// CM's find commands dispatch `scrollIntoView: true` (→ y: "nearest")
-		// synchronously. If we dispatch a second `y: "center"` effect in the
-		// same tick, CM's measure cycle coalesces the two and the "nearest"
-		// scroll wins. Wait one frame so CM has applied the nearest scroll
-		// and the document view is measured, then dispatch the center scroll
-		// from the up-to-date head position.
+		// synchronously. On huge virtualized files the follow-up `y: "center"`
+		// effect is unreliable because `coordsAtPos` for an un-rendered line
+		// returns estimated coords and CM's internal scroll math ends up way
+		// off (diagnostic logs showed delta=43 instead of ~40000). Instead,
+		// after CM has applied the nearest scroll we read the line block
+		// (which uses CM's own doc-relative line-height cache, kept accurate
+		// by the measure cycle) and set `scrollTop` directly.
 		const initialHead = view.state.selection.main.head;
 		const scrollTopInitial = view.scrollDOM.scrollTop;
 		console.log("[CodeEditor search] scheduled center scroll", {
@@ -738,38 +766,34 @@ export function CodeEditor({
 			scrollTopInitial,
 		});
 		requestAnimationFrame(() => {
-			const head = view.state.selection.main.head;
 			const scroller = view.scrollDOM;
+			const head = view.state.selection.main.head;
+			const block = view.lineBlockAt(head);
 			const scrollTopBefore = scroller.scrollTop;
-			const coords = view.coordsAtPos(head);
-			const viewportRect = scroller.getBoundingClientRect();
-			console.log("[CodeEditor search] before scrollIntoView (rAF)", {
+			const clientHeight = scroller.clientHeight;
+			// block.top / block.height are doc-relative pixel coordinates
+			// (same space as scrollDOM.scrollTop).
+			const targetScrollTop = Math.max(
+				0,
+				Math.round(block.top + block.height / 2 - clientHeight / 2),
+			);
+			console.log("[CodeEditor search] before manual scroll", {
 				label,
 				head,
 				headChanged: head !== initialHead,
 				scrollTopBefore,
-				scrollTopDeltaFromNearest: scrollTopBefore - scrollTopInitial,
-				clientHeight: scroller.clientHeight,
-				matchCoordsY: coords?.top ?? null,
-				scrollerTop: Math.round(viewportRect.top),
-				scrollerBottom: Math.round(viewportRect.bottom),
-				targetCenterY: Math.round(viewportRect.top + scroller.clientHeight / 2),
+				blockTop: block.top,
+				blockHeight: block.height,
+				targetScrollTop,
+				clientHeight,
+				scrollHeight: scroller.scrollHeight,
 			});
-			view.dispatch({
-				effects: EditorView.scrollIntoView(head, {
-					y: "center",
-					yMargin: 48,
-				}),
-			});
+			scroller.scrollTop = targetScrollTop;
 			requestAnimationFrame(() => {
-				const scrollTopAfter = view.scrollDOM.scrollTop;
-				const newCoords = view.coordsAtPos(head);
-				console.log("[CodeEditor search] after scrollIntoView (rAF)", {
+				console.log("[CodeEditor search] after manual scroll", {
 					label,
-					scrollTopBefore,
-					scrollTopAfter,
-					delta: scrollTopAfter - scrollTopBefore,
-					matchCoordsYAfter: newCoords?.top ?? null,
+					targetScrollTop,
+					scrollTopActual: scroller.scrollTop,
 				});
 			});
 		});
