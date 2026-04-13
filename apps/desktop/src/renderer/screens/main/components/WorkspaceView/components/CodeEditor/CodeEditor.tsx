@@ -80,83 +80,6 @@ const SCROLL_STABILIZE_DELAY_MS = 120;
 const SEARCH_MATCH_LIMIT = 10_000;
 
 /**
- * Diagnostic: replicate CM6's scrollableParents(view.contentDOM) walk and log
- * what the drag-autoscroll subsystem will use as its edge-bound reference.
- * See node_modules/@codemirror/view/.../index.js scrollableParents + MouseSelection.move
- * for the original logic (walk from contentDOM.parentNode up, first ancestor where
- * scrollHeight > clientHeight wins; else fall back to window inner size).
- */
-function logDragAutoscrollDiagnostics(view: EditorView, event: MouseEvent) {
-	const content = view.contentDOM;
-	const scroller = view.scrollDOM;
-	const chain: Array<{
-		tag: string;
-		cls: string;
-		scrollHeight: number;
-		clientHeight: number;
-		overflowY: string;
-		rectTop: number;
-		rectBottom: number;
-		isCandidate: boolean;
-	}> = [];
-	let picked: Element | null = null;
-	for (
-		let cur: Node | null = content.parentNode;
-		cur && cur !== document.body;
-	) {
-		if (cur.nodeType === 1) {
-			const el = cur as HTMLElement;
-			const style = getComputedStyle(el);
-			const isCandidate = el.scrollHeight > el.clientHeight;
-			const rect = el.getBoundingClientRect();
-			chain.push({
-				tag: el.tagName.toLowerCase(),
-				cls: el.className?.toString().slice(0, 60) ?? "",
-				scrollHeight: el.scrollHeight,
-				clientHeight: el.clientHeight,
-				overflowY: style.overflowY,
-				rectTop: Math.round(rect.top),
-				rectBottom: Math.round(rect.bottom),
-				isCandidate,
-			});
-			if (!picked && isCandidate) picked = el;
-		}
-		cur = (cur as HTMLElement).parentNode;
-	}
-
-	const pickedRect = picked
-		? picked.getBoundingClientRect()
-		: { top: 0, bottom: window.innerHeight };
-	const distTop = event.clientY - pickedRect.top;
-	const distBottom = pickedRect.bottom - event.clientY;
-	// 6 = dragScrollMargin in @codemirror/view
-	const nearEdge = distTop <= 6 || distBottom <= 6;
-
-	console.log("[CodeEditor drag-diagnostic] mousedown", {
-		pointerY: event.clientY,
-		scrollerRect: {
-			top: Math.round(scroller.getBoundingClientRect().top),
-			bottom: Math.round(scroller.getBoundingClientRect().bottom),
-			scrollHeight: scroller.scrollHeight,
-			clientHeight: scroller.clientHeight,
-		},
-		pickedElement: picked
-			? {
-					tag: picked.tagName.toLowerCase(),
-					cls: picked.className?.toString().slice(0, 80) ?? "",
-					rect: {
-						top: Math.round(pickedRect.top),
-						bottom: Math.round(pickedRect.bottom),
-					},
-				}
-			: "NONE (falls back to window bounds)",
-		distToEdge: { top: Math.round(distTop), bottom: Math.round(distBottom) },
-		nearEdgeAtStart: nearEdge,
-		parentChain: chain,
-	});
-}
-
-/**
  * Hidden search panel used when `searchMode === "overlay"`. The panel must
  * stay part of the CM layout — setting `display: none` on the panel DOM
  * makes `getBoundingClientRect()` return all-zeros, which breaks CM's
@@ -746,56 +669,24 @@ export function CodeEditor({
 		setIsSearchOpen(false);
 	};
 
-	const scrollSearchMatchToCenter = (
-		view: EditorView,
-		label: "findNext" | "findPrevious",
-	) => {
-		// CM's find commands dispatch `scrollIntoView: true` (→ y: "nearest")
-		// synchronously. On huge virtualized files the follow-up `y: "center"`
-		// effect is unreliable because `coordsAtPos` for an un-rendered line
-		// returns estimated coords and CM's internal scroll math ends up way
-		// off (diagnostic logs showed delta=43 instead of ~40000). Instead,
-		// after CM has applied the nearest scroll we read the line block
-		// (which uses CM's own doc-relative line-height cache, kept accurate
-		// by the measure cycle) and set `scrollTop` directly.
-		const initialHead = view.state.selection.main.head;
-		const scrollTopInitial = view.scrollDOM.scrollTop;
-		console.log("[CodeEditor search] scheduled center scroll", {
-			label,
-			initialHead,
-			scrollTopInitial,
-		});
+	// CM's find commands dispatch `scrollIntoView: true` (→ y: "nearest")
+	// synchronously. Following that up with a `y: "center"` effect is
+	// unreliable on huge virtualized files because `coordsAtPos` for an
+	// un-rendered line returns estimated coords and CM's internal scroll
+	// math ends up a near-noop. Instead, wait one frame for CM to apply
+	// its nearest scroll, then read the line block (which uses CM's own
+	// doc-relative line-height cache kept accurate by the measure cycle)
+	// and set `scrollTop` directly.
+	const scrollSearchMatchToCenter = (view: EditorView) => {
 		requestAnimationFrame(() => {
 			const scroller = view.scrollDOM;
 			const head = view.state.selection.main.head;
 			const block = view.lineBlockAt(head);
-			const scrollTopBefore = scroller.scrollTop;
-			const clientHeight = scroller.clientHeight;
-			// block.top / block.height are doc-relative pixel coordinates
-			// (same space as scrollDOM.scrollTop).
 			const targetScrollTop = Math.max(
 				0,
-				Math.round(block.top + block.height / 2 - clientHeight / 2),
+				Math.round(block.top + block.height / 2 - scroller.clientHeight / 2),
 			);
-			console.log("[CodeEditor search] before manual scroll", {
-				label,
-				head,
-				headChanged: head !== initialHead,
-				scrollTopBefore,
-				blockTop: block.top,
-				blockHeight: block.height,
-				targetScrollTop,
-				clientHeight,
-				scrollHeight: scroller.scrollHeight,
-			});
 			scroller.scrollTop = targetScrollTop;
-			requestAnimationFrame(() => {
-				console.log("[CodeEditor search] after manual scroll", {
-					label,
-					targetScrollTop,
-					scrollTopActual: scroller.scrollTop,
-				});
-			});
 		});
 	};
 
@@ -811,7 +702,7 @@ export function CodeEditor({
 		}
 
 		runFindNext(view);
-		scrollSearchMatchToCenter(view, "findNext");
+		scrollSearchMatchToCenter(view);
 	};
 
 	const handleOverlayFindPrevious = () => {
@@ -826,7 +717,7 @@ export function CodeEditor({
 		}
 
 		runFindPrevious(view);
-		scrollSearchMatchToCenter(view, "findPrevious");
+		scrollSearchMatchToCenter(view);
 	};
 
 	searchControlsRef.current = {
@@ -872,75 +763,9 @@ export function CodeEditor({
 			},
 		]);
 
-		// Drag-autoscroll diagnostics — always enabled while we are
-		// investigating spurious vertical scroll during text selection.
-		// mousedown: log the scrollableParents walk + initial edge distance.
-		// Then attach a scoped mousemove listener + .cm-scroller scroll
-		// listener until mouseup so any scroll that fires during the drag
-		// (and the pointer position that triggered it) is captured.
-		const dragDiagnosticHandler = EditorView.domEventHandlers({
-			mousedown: (event, view) => {
-				if (event.button !== 0) return false;
-				logDragAutoscrollDiagnostics(view, event);
-
-				const scroller = view.scrollDOM;
-				const startScrollTop = scroller.scrollTop;
-				let lastPointerY = event.clientY;
-				let moveCount = 0;
-				let scrollCount = 0;
-
-				const onMove = (ev: MouseEvent) => {
-					lastPointerY = ev.clientY;
-					moveCount += 1;
-					const rect = scroller.getBoundingClientRect();
-					const distTop = ev.clientY - rect.top;
-					const distBottom = rect.bottom - ev.clientY;
-					if (distTop <= 20 || distBottom <= 20) {
-						console.log("[CodeEditor drag-move] near edge", {
-							pointerY: ev.clientY,
-							distTop: Math.round(distTop),
-							distBottom: Math.round(distBottom),
-							scrollTop: scroller.scrollTop,
-						});
-					}
-				};
-				const onScroll = () => {
-					scrollCount += 1;
-					const rect = scroller.getBoundingClientRect();
-					console.log("[CodeEditor drag-scroll] scrollDOM scrolled", {
-						scrollTop: scroller.scrollTop,
-						deltaFromStart: scroller.scrollTop - startScrollTop,
-						moveCount,
-						scrollCount,
-						lastPointerY,
-						distTopAtLastPointer: Math.round(lastPointerY - rect.top),
-						distBottomAtLastPointer: Math.round(rect.bottom - lastPointerY),
-					});
-				};
-				const onUp = () => {
-					window.removeEventListener("mousemove", onMove, true);
-					scroller.removeEventListener("scroll", onScroll);
-					window.removeEventListener("mouseup", onUp, true);
-					if (scrollCount > 0 || moveCount > 0) {
-						console.log("[CodeEditor drag-end] session summary", {
-							moveCount,
-							scrollCount,
-							totalScrollDelta: scroller.scrollTop - startScrollTop,
-						});
-					}
-				};
-				window.addEventListener("mousemove", onMove, true);
-				scroller.addEventListener("scroll", onScroll, { passive: true });
-				window.addEventListener("mouseup", onUp, true);
-
-				return false;
-			},
-		});
-
 		const state = EditorState.create({
 			doc: value,
 			extensions: [
-				dragDiagnosticHandler,
 				lineNumbers(),
 				highlightActiveLineGutter(),
 				highlightSpecialChars(),

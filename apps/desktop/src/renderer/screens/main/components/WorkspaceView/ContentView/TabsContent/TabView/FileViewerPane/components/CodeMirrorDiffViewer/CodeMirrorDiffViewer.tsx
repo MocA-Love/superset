@@ -403,52 +403,19 @@ export function CodeMirrorDiffViewer({
 		syncSearchOverlayState();
 	};
 
-	const scrollActiveSelectionToCenter = (
-		view: EditorView,
-		label: "findNext" | "findPrevious",
-	) => {
-		// Manual center scroll using CM's line-block cache — see CodeEditor.tsx
-		// comment for the rationale (CM's y: "center" effect is unreliable
-		// on virtualized content after a find dispatch).
-		const initialHead = view.state.selection.main.head;
-		const scrollTopInitial = view.scrollDOM.scrollTop;
-		const side = view === mergeViewRef.current?.a ? "a" : "b";
-		console.log("[DiffViewer search] scheduled center scroll", {
-			label,
-			side,
-			initialHead,
-			scrollTopInitial,
-		});
+	// Manual center scroll using CM's line-block cache — see CodeEditor.tsx
+	// comment for the rationale (CM's y: "center" effect is unreliable on
+	// virtualized content after a find dispatch).
+	const scrollActiveSelectionToCenter = (view: EditorView) => {
 		requestAnimationFrame(() => {
 			const scroller = view.scrollDOM;
 			const head = view.state.selection.main.head;
 			const block = view.lineBlockAt(head);
-			const scrollTopBefore = scroller.scrollTop;
-			const clientHeight = scroller.clientHeight;
 			const targetScrollTop = Math.max(
 				0,
-				Math.round(block.top + block.height / 2 - clientHeight / 2),
+				Math.round(block.top + block.height / 2 - scroller.clientHeight / 2),
 			);
-			console.log("[DiffViewer search] before manual scroll", {
-				label,
-				side,
-				head,
-				headChanged: head !== initialHead,
-				scrollTopBefore,
-				blockTop: block.top,
-				blockHeight: block.height,
-				targetScrollTop,
-				clientHeight,
-			});
 			scroller.scrollTop = targetScrollTop;
-			requestAnimationFrame(() => {
-				console.log("[DiffViewer search] after manual scroll", {
-					label,
-					side,
-					targetScrollTop,
-					scrollTopActual: scroller.scrollTop,
-				});
-			});
 		});
 	};
 
@@ -460,7 +427,7 @@ export function CodeMirrorDiffViewer({
 			return;
 		}
 		runFindNext(view);
-		scrollActiveSelectionToCenter(view, "findNext");
+		scrollActiveSelectionToCenter(view);
 	};
 
 	const handleOverlayFindPrevious = () => {
@@ -471,7 +438,7 @@ export function CodeMirrorDiffViewer({
 			return;
 		}
 		runFindPrevious(view);
-		scrollActiveSelectionToCenter(view, "findPrevious");
+		scrollActiveSelectionToCenter(view);
 	};
 
 	const handleOverlaySearchClose = () => {
