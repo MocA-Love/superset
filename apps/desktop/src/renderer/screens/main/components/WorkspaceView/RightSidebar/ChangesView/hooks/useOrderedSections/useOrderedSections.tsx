@@ -1,6 +1,6 @@
 import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { VscAdd, VscDiscard, VscRemove, VscWarning } from "react-icons/vsc";
 import { getOrderedChangeSectionIds } from "renderer/stores/changes/section-order";
 import type {
@@ -11,6 +11,7 @@ import type {
 import { BulkActionBar } from "../../components/BulkActionBar";
 import { CommitListVirtualized } from "../../components/CommitListVirtualized";
 import { FileList } from "../../components/FileList";
+import { orderFilesForViewMode } from "../../components/FileList/fileListOrdering";
 import { MultiSelectProvider } from "../../components/MultiSelectContext";
 import type { ChangesViewMode } from "../../types";
 
@@ -104,6 +105,17 @@ export function useOrderedSections({
 	isUnstagedActioning,
 }: UseOrderedSectionsInput) {
 	const commitCount = commitsWithFiles.length;
+	// Mirror each FileList variant's visual sort so that shift-click range
+	// selection in MultiSelectProvider picks a contiguous run matching the
+	// order the user actually sees.
+	const orderedUnstagedFiles = useMemo(
+		() => orderFilesForViewMode(unstagedFiles, fileListViewMode),
+		[unstagedFiles, fileListViewMode],
+	);
+	const orderedStagedFiles = useMemo(
+		() => orderFilesForViewMode(stagedFiles, fileListViewMode),
+		[stagedFiles, fileListViewMode],
+	);
 
 	const sectionDefinitions: Record<ChangeCategory, OrderedSection> = {
 		conflicted: {
@@ -211,7 +223,7 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.staged ? (
-				<MultiSelectProvider files={stagedFiles}>
+				<MultiSelectProvider files={orderedStagedFiles}>
 					<BulkActionBar
 						onUnstageSelected={onUnstageFiles}
 						isActioning={isStagedActioning}
@@ -272,7 +284,7 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.unstaged ? (
-				<MultiSelectProvider files={unstagedFiles}>
+				<MultiSelectProvider files={orderedUnstagedFiles}>
 					<BulkActionBar
 						onStageSelected={onStageFiles}
 						isActioning={isUnstagedActioning}
