@@ -724,33 +724,53 @@ export function CodeEditor({
 		view: EditorView,
 		label: "findNext" | "findPrevious",
 	) => {
-		const head = view.state.selection.main.head;
-		const scroller = view.scrollDOM;
-		const scrollTopBefore = scroller.scrollTop;
-		const coords = view.coordsAtPos(head);
-		const viewportRect = scroller.getBoundingClientRect();
-		console.log("[CodeEditor search] before scrollIntoView", {
+		// CM's find commands dispatch `scrollIntoView: true` (→ y: "nearest")
+		// synchronously. If we dispatch a second `y: "center"` effect in the
+		// same tick, CM's measure cycle coalesces the two and the "nearest"
+		// scroll wins. Wait one frame so CM has applied the nearest scroll
+		// and the document view is measured, then dispatch the center scroll
+		// from the up-to-date head position.
+		const initialHead = view.state.selection.main.head;
+		const scrollTopInitial = view.scrollDOM.scrollTop;
+		console.log("[CodeEditor search] scheduled center scroll", {
 			label,
-			head,
-			scrollTop: scrollTopBefore,
-			clientHeight: scroller.clientHeight,
-			scrollHeight: scroller.scrollHeight,
-			matchCoordsY: coords?.top ?? null,
-			scrollerTop: Math.round(viewportRect.top),
-			scrollerBottom: Math.round(viewportRect.bottom),
+			initialHead,
+			scrollTopInitial,
 		});
-		view.dispatch({
-			effects: EditorView.scrollIntoView(head, {
-				y: "center",
-				yMargin: 48,
-			}),
-		});
-		queueMicrotask(() => {
-			console.log("[CodeEditor search] after scrollIntoView", {
+		requestAnimationFrame(() => {
+			const head = view.state.selection.main.head;
+			const scroller = view.scrollDOM;
+			const scrollTopBefore = scroller.scrollTop;
+			const coords = view.coordsAtPos(head);
+			const viewportRect = scroller.getBoundingClientRect();
+			console.log("[CodeEditor search] before scrollIntoView (rAF)", {
 				label,
+				head,
+				headChanged: head !== initialHead,
 				scrollTopBefore,
-				scrollTopAfter: view.scrollDOM.scrollTop,
-				delta: view.scrollDOM.scrollTop - scrollTopBefore,
+				scrollTopDeltaFromNearest: scrollTopBefore - scrollTopInitial,
+				clientHeight: scroller.clientHeight,
+				matchCoordsY: coords?.top ?? null,
+				scrollerTop: Math.round(viewportRect.top),
+				scrollerBottom: Math.round(viewportRect.bottom),
+				targetCenterY: Math.round(viewportRect.top + scroller.clientHeight / 2),
+			});
+			view.dispatch({
+				effects: EditorView.scrollIntoView(head, {
+					y: "center",
+					yMargin: 48,
+				}),
+			});
+			requestAnimationFrame(() => {
+				const scrollTopAfter = view.scrollDOM.scrollTop;
+				const newCoords = view.coordsAtPos(head);
+				console.log("[CodeEditor search] after scrollIntoView (rAF)", {
+					label,
+					scrollTopBefore,
+					scrollTopAfter,
+					delta: scrollTopAfter - scrollTopBefore,
+					matchCoordsYAfter: newCoords?.top ?? null,
+				});
 			});
 		});
 	};
@@ -829,13 +849,66 @@ export function CodeEditor({
 		]);
 
 		// Drag-autoscroll diagnostics — always enabled while we are
-		// investigating spurious vertical scroll during text selection. Logs
-		// `.cm-scroller` geometry and the CM6 `scrollableParents` walk to the
-		// devtools console on every left-button mousedown.
+		// investigating spurious vertical scroll during text selection.
+		// mousedown: log the scrollableParents walk + initial edge distance.
+		// Then attach a scoped mousemove listener + .cm-scroller scroll
+		// listener until mouseup so any scroll that fires during the drag
+		// (and the pointer position that triggered it) is captured.
 		const dragDiagnosticHandler = EditorView.domEventHandlers({
 			mousedown: (event, view) => {
 				if (event.button !== 0) return false;
 				logDragAutoscrollDiagnostics(view, event);
+
+				const scroller = view.scrollDOM;
+				const startScrollTop = scroller.scrollTop;
+				let lastPointerY = event.clientY;
+				let moveCount = 0;
+				let scrollCount = 0;
+
+				const onMove = (ev: MouseEvent) => {
+					lastPointerY = ev.clientY;
+					moveCount += 1;
+					const rect = scroller.getBoundingClientRect();
+					const distTop = ev.clientY - rect.top;
+					const distBottom = rect.bottom - ev.clientY;
+					if (distTop <= 20 || distBottom <= 20) {
+						console.log("[CodeEditor drag-move] near edge", {
+							pointerY: ev.clientY,
+							distTop: Math.round(distTop),
+							distBottom: Math.round(distBottom),
+							scrollTop: scroller.scrollTop,
+						});
+					}
+				};
+				const onScroll = () => {
+					scrollCount += 1;
+					const rect = scroller.getBoundingClientRect();
+					console.log("[CodeEditor drag-scroll] scrollDOM scrolled", {
+						scrollTop: scroller.scrollTop,
+						deltaFromStart: scroller.scrollTop - startScrollTop,
+						moveCount,
+						scrollCount,
+						lastPointerY,
+						distTopAtLastPointer: Math.round(lastPointerY - rect.top),
+						distBottomAtLastPointer: Math.round(rect.bottom - lastPointerY),
+					});
+				};
+				const onUp = () => {
+					window.removeEventListener("mousemove", onMove, true);
+					scroller.removeEventListener("scroll", onScroll);
+					window.removeEventListener("mouseup", onUp, true);
+					if (scrollCount > 0 || moveCount > 0) {
+						console.log("[CodeEditor drag-end] session summary", {
+							moveCount,
+							scrollCount,
+							totalScrollDelta: scroller.scrollTop - startScrollTop,
+						});
+					}
+				};
+				window.addEventListener("mousemove", onMove, true);
+				scroller.addEventListener("scroll", onScroll, { passive: true });
+				window.addEventListener("mouseup", onUp, true);
+
 				return false;
 			},
 		});

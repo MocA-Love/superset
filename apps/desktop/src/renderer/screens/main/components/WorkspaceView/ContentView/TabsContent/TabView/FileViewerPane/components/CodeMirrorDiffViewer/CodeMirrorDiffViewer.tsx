@@ -384,34 +384,50 @@ export function CodeMirrorDiffViewer({
 		view: EditorView,
 		label: "findNext" | "findPrevious",
 	) => {
-		const head = view.state.selection.main.head;
-		const scroller = view.scrollDOM;
-		const scrollTopBefore = scroller.scrollTop;
-		const coords = view.coordsAtPos(head);
-		const viewportRect = scroller.getBoundingClientRect();
-		console.log("[DiffViewer search] before scrollIntoView", {
+		// Defer to the next frame so CM's own `y: "nearest"` scroll from
+		// runFindNext has been applied, then dispatch our `y: "center"`
+		// effect. Dispatching both in the same tick causes CM to coalesce
+		// them and the nearest scroll wins.
+		const initialHead = view.state.selection.main.head;
+		const scrollTopInitial = view.scrollDOM.scrollTop;
+		const side = view === mergeViewRef.current?.a ? "a" : "b";
+		console.log("[DiffViewer search] scheduled center scroll", {
 			label,
-			side: view === mergeViewRef.current?.a ? "a" : "b",
-			head,
-			scrollTop: scrollTopBefore,
-			clientHeight: scroller.clientHeight,
-			scrollHeight: scroller.scrollHeight,
-			matchCoordsY: coords?.top ?? null,
-			scrollerTop: Math.round(viewportRect.top),
-			scrollerBottom: Math.round(viewportRect.bottom),
+			side,
+			initialHead,
+			scrollTopInitial,
 		});
-		view.dispatch({
-			effects: EditorView.scrollIntoView(head, {
-				y: "center",
-				yMargin: 48,
-			}),
-		});
-		queueMicrotask(() => {
-			console.log("[DiffViewer search] after scrollIntoView", {
+		requestAnimationFrame(() => {
+			const head = view.state.selection.main.head;
+			const scroller = view.scrollDOM;
+			const scrollTopBefore = scroller.scrollTop;
+			const coords = view.coordsAtPos(head);
+			const viewportRect = scroller.getBoundingClientRect();
+			console.log("[DiffViewer search] before scrollIntoView (rAF)", {
 				label,
+				side,
+				head,
+				headChanged: head !== initialHead,
 				scrollTopBefore,
-				scrollTopAfter: view.scrollDOM.scrollTop,
-				delta: view.scrollDOM.scrollTop - scrollTopBefore,
+				scrollTopDeltaFromNearest: scrollTopBefore - scrollTopInitial,
+				matchCoordsY: coords?.top ?? null,
+				scrollerTop: Math.round(viewportRect.top),
+				scrollerBottom: Math.round(viewportRect.bottom),
+			});
+			view.dispatch({
+				effects: EditorView.scrollIntoView(head, {
+					y: "center",
+					yMargin: 48,
+				}),
+			});
+			requestAnimationFrame(() => {
+				console.log("[DiffViewer search] after scrollIntoView (rAF)", {
+					label,
+					side,
+					scrollTopBefore,
+					scrollTopAfter: view.scrollDOM.scrollTop,
+					delta: view.scrollDOM.scrollTop - scrollTopBefore,
+				});
 			});
 		});
 	};
