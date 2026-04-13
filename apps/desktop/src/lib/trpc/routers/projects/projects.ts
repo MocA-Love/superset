@@ -1507,11 +1507,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 								`Cloning ${redactGitCredentials(input.url)}`,
 							);
 							await gitWithProgress.clone(input.url, clonePath);
-							emitCloneEvent({
-								type: "done",
-								cloneId,
-								time: Date.now(),
-							});
+							emitCloneLog(cloneId, "Clone finished, preparing project");
 						} catch (cloneError) {
 							const message = redactGitCredentials(
 								cloneError instanceof Error
@@ -1572,6 +1568,14 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						method: "clone",
 					});
 
+					if (input.cloneId) {
+						emitCloneEvent({
+							type: "done",
+							cloneId: input.cloneId,
+							time: Date.now(),
+						});
+					}
+
 					return {
 						canceled: false as const,
 						success: true as const,
@@ -1581,6 +1585,26 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 					const errorMessage = redactGitCredentials(
 						error instanceof Error ? error.message : String(error),
 					);
+					// Surface post-clone failures (getDefaultBranch / DB insert /
+					// ensureMainWorkspace / etc) to any streaming subscriber, unless
+					// the git clone step itself already emitted an error event.
+					if (input.cloneId) {
+						const buffered = cloneEventBuffers.get(input.cloneId);
+						const hasTerminal = buffered?.some(
+							(event) =>
+								event.type === "error" ||
+								event.type === "canceled" ||
+								event.type === "done",
+						);
+						if (!hasTerminal) {
+							emitCloneEvent({
+								type: "error",
+								cloneId: input.cloneId,
+								message: errorMessage,
+								time: Date.now(),
+							});
+						}
+					}
 					return {
 						canceled: false as const,
 						success: false as const,
