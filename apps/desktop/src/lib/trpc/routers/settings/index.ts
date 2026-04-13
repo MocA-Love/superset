@@ -62,7 +62,12 @@ import {
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { loadToken } from "../auth/utils/auth-functions";
-import { getGitAuthorName, getGitHubUsername } from "../workspaces/utils/git";
+import {
+	getGitAuthorEmail,
+	getGitAuthorName,
+	getGitHubUsername,
+} from "../workspaces/utils/git";
+import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import {
 	createCustomAgentInputSchema,
 	normalizeAgentPresetPatch,
@@ -835,12 +840,35 @@ export const createSettingsRouter = () => {
 		getGitInfo: publicProcedure.query(async () => {
 			const githubUsername = await getGitHubUsername();
 			const authorName = await getGitAuthorName();
+			const authorEmail = await getGitAuthorEmail();
 			return {
 				githubUsername,
 				authorName,
+				authorEmail,
 				authorPrefix: authorName?.toLowerCase().replace(/\s+/g, "-") ?? null,
 			};
 		}),
+
+		setGlobalGitUserConfig: publicProcedure
+			.input(
+				z.object({
+					name: z.string().trim().min(1, "Name is required"),
+					email: z
+						.string()
+						.trim()
+						.min(1, "Email is required")
+						.email("Must be a valid email"),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				// Write to the user's global git config so the identity is
+				// picked up by every future repository. `simple-git` resolves
+				// the same path as `git config --global`.
+				const git = await getSimpleGitWithShellPath();
+				await git.addConfig("user.name", input.name, false, "global");
+				await git.addConfig("user.email", input.email, false, "global");
+				return { success: true };
+			}),
 
 		getDeleteLocalBranch: publicProcedure.query(() => {
 			const row = getSettings();
