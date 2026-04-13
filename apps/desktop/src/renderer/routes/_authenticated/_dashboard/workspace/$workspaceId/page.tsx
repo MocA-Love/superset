@@ -859,6 +859,29 @@ export function WorkspacePage({
 		{ enabled: isActive },
 	);
 
+	const getPreviousWorkspace =
+		electronTrpc.workspaces.getPreviousWorkspace.useQuery(
+			{ id: workspaceId },
+			{ enabled: !!workspaceId },
+		);
+	useHotkey("PREV_WORKSPACE", () => {
+		const prevWorkspaceId = getPreviousWorkspace.data;
+		if (prevWorkspaceId) {
+			navigateToWorkspace(prevWorkspaceId, navigate);
+		}
+	});
+
+	const getNextWorkspace = electronTrpc.workspaces.getNextWorkspace.useQuery(
+		{ id: workspaceId },
+		{ enabled: !!workspaceId },
+	);
+	useHotkey("NEXT_WORKSPACE", () => {
+		const nextWorkspaceId = getNextWorkspace.data;
+		if (nextWorkspaceId) {
+			navigateToWorkspace(nextWorkspaceId, navigate);
+		}
+	});
+
 	return (
 		<WorkspaceIdProvider value={workspaceId}>
 			<div className="flex-1 h-full flex flex-col overflow-hidden">
