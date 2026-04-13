@@ -251,6 +251,7 @@ export const settings = sqliteTable("settings", {
 	smartCommitChanges: text(
 		"smart_commit_changes",
 	).$type<SmartCommitChangesMode>(),
+	autoStash: integer("auto_stash", { mode: "boolean" }),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;

@@ -36,6 +36,7 @@ export const SETTING_ITEM_ID = {
 	GIT_DELETE_LOCAL_BRANCH: "git-delete-local-branch",
 	GIT_WORKTREE_LOCATION: "git-worktree-location",
 	GIT_SMART_COMMIT: "git-smart-commit",
+	GIT_AUTO_STASH: "git-auto-stash",
 
 	AGENTS_ENABLED: "agents-enabled",
 	AGENTS_COMMANDS: "agents-commands",
@@ -436,6 +437,14 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"auto",
 			"all",
 		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_AUTO_STASH,
+		section: "git",
+		title: "Auto Stash",
+		description:
+			"Stash local changes before pull/sync and restore after (VS Code style)",
+		keywords: ["git", "stash", "pull", "sync", "auto", "restore", "pop"],
 	},
 	{
 		id: SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,

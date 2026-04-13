@@ -11,7 +11,7 @@ import {
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
 	VscArrowDown,
 	VscArrowUp,
@@ -26,6 +26,7 @@ import { showGitErrorDialog } from "renderer/lib/git/gitErrorDialog";
 import { showGitWarningDialog } from "renderer/lib/git/gitWarningDialog";
 import { CreatePullRequestBaseRepoDialog } from "renderer/screens/main/components/CreatePullRequestBaseRepoDialog";
 import { useCreateOrOpenPR } from "renderer/screens/main/hooks";
+import { openGitOperationDialog } from "renderer/stores/git-operation-dialog";
 import { getPrimaryAction } from "./utils/getPrimaryAction";
 import { getPushActionCopy } from "./utils/getPushActionCopy";
 
@@ -68,6 +69,17 @@ export function CommitInput({
 	);
 	const smartCommitEnabled = smartCommit?.enabled ?? false;
 	const smartCommitMode = smartCommit?.changes ?? "all";
+
+	const { data: autoStashEnabled = false } =
+		electronTrpc.settings.getAutoStash.useQuery(undefined, {
+			staleTime: 10_000,
+		});
+	// When auto-stash is orchestrating a pull/sync, we want the custom
+	// Japanese dialogs (pull-failed-with-stash / pop-conflict) to own the
+	// error UX. This ref is used by the default onError handlers below to
+	// opt out — otherwise both the built-in pull-error dialog and our
+	// dialog would fire for the same failure.
+	const autoStashInFlightRef = useRef(false);
 
 	const stashIncludeUntrackedMutation =
 		electronTrpc.changes.stashIncludeUntracked.useMutation();
@@ -140,6 +152,9 @@ export function CommitInput({
 			onRefresh();
 		},
 		onError: (error) => {
+			if (autoStashInFlightRef.current) {
+				return;
+			}
 			showGitErrorDialog(error, "pull", {
 				retry: () => pullMutation.mutate({ worktreePath }),
 				stashAndRetry: () => {
@@ -189,6 +204,9 @@ export function CommitInput({
 			});
 		},
 		onError: (error) => {
+			if (autoStashInFlightRef.current) {
+				return;
+			}
 			showGitErrorDialog(error, "sync", {
 				retry: () => syncMutation.mutate({ worktreePath }),
 				pullRebaseAndRetryPush: () => {
@@ -233,7 +251,9 @@ export function CommitInput({
 		isCreateOrOpenPRPending ||
 		fetchMutation.isPending ||
 		stageAllMutation.isPending ||
-		stageTrackedMutation.isPending;
+		stageTrackedMutation.isPending ||
+		stashIncludeUntrackedMutation.isPending ||
+		stashPopMutation.isPending;
 
 	// Smart commit lets the user commit with an empty index as long as
 	// there is at least one unstaged change to auto-stage.
@@ -301,8 +321,104 @@ export function CommitInput({
 			},
 		);
 	};
-	const handlePull = () => pullMutation.mutate({ worktreePath });
-	const handleSync = () => syncMutation.mutate({ worktreePath });
+	const hasLocalChanges = hasStagedChanges || unstagedChangeCount > 0;
+
+	/**
+	 * Auto-stash orchestration for pull / sync. When the user has enabled
+	 * `git.autoStash` and their working tree has local changes, we:
+	 *   1. stash (include untracked)
+	 *   2. run the network op
+	 *   3. on success: stash pop (restore local changes)
+	 *   4. on network failure: leave the stash intact and show a Japanese
+	 *      dialog telling the user their changes are safe on the stack
+	 *   5. on pop failure (usually a conflict): show a different Japanese
+	 *      dialog and do not auto-retry — the user will resolve manually
+	 *
+	 * When auto-stash is disabled, or the working tree is already clean,
+	 * fall through to the plain mutation (no extra steps).
+	 */
+	const showAutoStashPullFailedDialog = (errorMessage: string) => {
+		openGitOperationDialog({
+			kind: "auto-stash-pull-failed",
+			tone: "warn",
+			title: "Pull に失敗しました",
+			description:
+				"ローカルの変更は stash に退避されたままです。Git の状態を確認してから、手動で `git stash pop` で変更を復元してください。",
+			details: errorMessage,
+		});
+	};
+	const showAutoStashPopConflictDialog = (errorMessage: string) => {
+		openGitOperationDialog({
+			kind: "auto-stash-pop-conflict",
+			tone: "warn",
+			title: "Stash の復元で競合が発生しました",
+			description:
+				"Pull は成功しましたが、stash の pop でコンフリクトが起きました。stash stack に変更が残っているので、手動で `git stash pop` を実行してコンフリクトを解決してください。",
+			details: errorMessage,
+		});
+	};
+
+	const runPullOrSyncWithAutoStash = (operation: "pull" | "sync") => {
+		const runNetworkOp = (onDone: () => void) => {
+			const mutation = operation === "pull" ? pullMutation : syncMutation;
+			mutation.mutate(
+				{ worktreePath },
+				{
+					onSuccess: () => onDone(),
+					onError: (error) => {
+						// Only fires when autoStashInFlightRef is true (see guard in
+						// the mutation definition above). Clear the flag and show the
+						// auto-stash specific Japanese dialog instead of the default
+						// pull/sync error flow.
+						autoStashInFlightRef.current = false;
+						const message =
+							error instanceof Error ? error.message : String(error);
+						showAutoStashPullFailedDialog(message);
+					},
+				},
+			);
+		};
+
+		if (!autoStashEnabled || !hasLocalChanges) {
+			const mutation = operation === "pull" ? pullMutation : syncMutation;
+			mutation.mutate({ worktreePath });
+			return;
+		}
+
+		autoStashInFlightRef.current = true;
+		stashIncludeUntrackedMutation.mutate(
+			{ worktreePath },
+			{
+				onSuccess: () => {
+					runNetworkOp(() => {
+						stashPopMutation.mutate(
+							{ worktreePath },
+							{
+								onSuccess: () => {
+									autoStashInFlightRef.current = false;
+								},
+								onError: (popError) => {
+									autoStashInFlightRef.current = false;
+									const message =
+										popError instanceof Error
+											? popError.message
+											: String(popError);
+									showAutoStashPopConflictDialog(message);
+								},
+							},
+						);
+					});
+				},
+				onError: (stashError) => {
+					autoStashInFlightRef.current = false;
+					showGitErrorDialog(stashError, "stash");
+				},
+			},
+		);
+	};
+
+	const handlePull = () => runPullOrSyncWithAutoStash("pull");
+	const handleSync = () => runPullOrSyncWithAutoStash("sync");
 	const handleFetch = () => fetchMutation.mutate({ worktreePath });
 	const handleFetchAndPull = () => {
 		fetchMutation.mutate(

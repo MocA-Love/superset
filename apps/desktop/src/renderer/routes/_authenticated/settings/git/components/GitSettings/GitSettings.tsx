@@ -47,6 +47,10 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 		SETTING_ITEM_ID.GIT_SMART_COMMIT,
 		visibleItems,
 	);
+	const showAutoStash = isItemVisible(
+		SETTING_ITEM_ID.GIT_AUTO_STASH,
+		visibleItems,
+	);
 
 	const utils = electronTrpc.useUtils();
 
@@ -142,6 +146,28 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 	};
 	const handleSmartCommitChangesChange = (value: SmartCommitChangesMode) => {
 		setSmartCommit.mutate({ enabled: smartCommitEnabled, changes: value });
+	};
+
+	const { data: autoStash, isLoading: isAutoStashLoading } =
+		electronTrpc.settings.getAutoStash.useQuery();
+	const setAutoStash = electronTrpc.settings.setAutoStash.useMutation({
+		onMutate: async ({ enabled }) => {
+			await utils.settings.getAutoStash.cancel();
+			const previous = utils.settings.getAutoStash.getData();
+			utils.settings.getAutoStash.setData(undefined, enabled);
+			return { previous };
+		},
+		onError: (_err, _vars, context) => {
+			if (context?.previous !== undefined) {
+				utils.settings.getAutoStash.setData(undefined, context.previous);
+			}
+		},
+		onSettled: () => {
+			utils.settings.getAutoStash.invalidate();
+		},
+	});
+	const handleAutoStashToggle = (enabled: boolean) => {
+		setAutoStash.mutate({ enabled });
 	};
 
 	const { data: worktreeBaseDir, isLoading: isWorktreeBaseDirLoading } =
@@ -318,6 +344,28 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 								</Select>
 							</div>
 						)}
+					</div>
+				)}
+
+				{showAutoStash && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label htmlFor="git-auto-stash" className="text-sm font-medium">
+								Auto Stash
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Stash local changes before pull / sync and restore them after it
+								finishes (matches VS Code's <code>git.autoStash</code>).
+								Untracked files are included. If the operation fails the stash
+								is kept on the stack.
+							</p>
+						</div>
+						<Switch
+							id="git-auto-stash"
+							checked={autoStash ?? false}
+							onCheckedChange={handleAutoStashToggle}
+							disabled={isAutoStashLoading || setAutoStash.isPending}
+						/>
 					</div>
 				)}
 

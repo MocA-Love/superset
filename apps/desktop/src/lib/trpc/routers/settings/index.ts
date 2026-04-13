@@ -895,6 +895,26 @@ export const createSettingsRouter = () => {
 				return { success: true };
 			}),
 
+		getAutoStash: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.autoStash ?? false;
+		}),
+
+		setAutoStash: publicProcedure
+			.input(z.object({ enabled: z.boolean() }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, autoStash: input.enabled })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { autoStash: input.enabled },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
 		getNotificationSoundsMuted: publicProcedure.query(() => {
 			const row = getSettings();
 			return row.notificationSoundsMuted ?? false;
