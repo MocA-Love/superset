@@ -2,10 +2,13 @@ import {
 	type AgentCustomDefinition,
 	type AgentPresetOverrideEnvelope,
 	BRANCH_PREFIX_MODES,
+	BRANCH_SORT_ORDERS,
 	EXECUTION_MODES,
 	EXTERNAL_APPS,
 	FILE_OPEN_MODES,
 	NON_EDITOR_APPS,
+	POST_COMMIT_COMMANDS,
+	SMART_COMMIT_CHANGES_MODES,
 	settings,
 	TERMINAL_LINK_BEHAVIORS,
 	type TerminalPreset,
@@ -59,7 +62,12 @@ import {
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { loadToken } from "../auth/utils/auth-functions";
-import { getGitAuthorName, getGitHubUsername } from "../workspaces/utils/git";
+import {
+	getGitAuthorEmail,
+	getGitAuthorName,
+	getGitHubUsername,
+} from "../workspaces/utils/git";
+import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import {
 	createCustomAgentInputSchema,
 	normalizeAgentPresetPatch,
@@ -832,12 +840,35 @@ export const createSettingsRouter = () => {
 		getGitInfo: publicProcedure.query(async () => {
 			const githubUsername = await getGitHubUsername();
 			const authorName = await getGitAuthorName();
+			const authorEmail = await getGitAuthorEmail();
 			return {
 				githubUsername,
 				authorName,
+				authorEmail,
 				authorPrefix: authorName?.toLowerCase().replace(/\s+/g, "-") ?? null,
 			};
 		}),
+
+		setGlobalGitUserConfig: publicProcedure
+			.input(
+				z.object({
+					name: z.string().trim().min(1, "Name is required"),
+					email: z
+						.string()
+						.trim()
+						.min(1, "Email is required")
+						.email("Must be a valid email"),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				// Write to the user's global git config so the identity is
+				// picked up by every future repository. `simple-git` resolves
+				// the same path as `git config --global`.
+				const git = await getSimpleGitWithShellPath();
+				await git.addConfig("user.name", input.name, false, "global");
+				await git.addConfig("user.email", input.email, false, "global");
+				return { success: true };
+			}),
 
 		getDeleteLocalBranch: publicProcedure.query(() => {
 			const row = getSettings();
@@ -853,6 +884,116 @@ export const createSettingsRouter = () => {
 					.onConflictDoUpdate({
 						target: settings.id,
 						set: { deleteLocalBranch: input.enabled },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getSmartCommit: publicProcedure.query(() => {
+			const row = getSettings();
+			return {
+				enabled: row.enableSmartCommit ?? false,
+				changes: row.smartCommitChanges ?? "all",
+			};
+		}),
+
+		setSmartCommit: publicProcedure
+			.input(
+				z.object({
+					enabled: z.boolean(),
+					changes: z.enum(SMART_COMMIT_CHANGES_MODES),
+				}),
+			)
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({
+						id: 1,
+						enableSmartCommit: input.enabled,
+						smartCommitChanges: input.changes,
+					})
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: {
+							enableSmartCommit: input.enabled,
+							smartCommitChanges: input.changes,
+						},
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getAutoStash: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.autoStash ?? false;
+		}),
+
+		setAutoStash: publicProcedure
+			.input(z.object({ enabled: z.boolean() }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, autoStash: input.enabled })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { autoStash: input.enabled },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getBranchSortOrder: publicProcedure.query(() => {
+			const row = getSettings();
+			return {
+				sortOrder: row.branchSortOrder ?? "committerdate",
+				pinDefault: row.pinDefaultBranch ?? true,
+			};
+		}),
+
+		setBranchSortOrder: publicProcedure
+			.input(
+				z.object({
+					sortOrder: z.enum(BRANCH_SORT_ORDERS),
+					pinDefault: z.boolean(),
+				}),
+			)
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({
+						id: 1,
+						branchSortOrder: input.sortOrder,
+						pinDefaultBranch: input.pinDefault,
+					})
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: {
+							branchSortOrder: input.sortOrder,
+							pinDefaultBranch: input.pinDefault,
+						},
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getPostCommitCommand: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.postCommitCommand ?? "none";
+		}),
+
+		setPostCommitCommand: publicProcedure
+			.input(z.object({ command: z.enum(POST_COMMIT_COMMANDS) }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, postCommitCommand: input.command })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { postCommitCommand: input.command },
 					})
 					.run();
 

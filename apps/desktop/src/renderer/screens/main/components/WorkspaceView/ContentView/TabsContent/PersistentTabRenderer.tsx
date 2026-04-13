@@ -11,12 +11,10 @@ interface PersistentTabRendererProps {
 }
 
 /**
- * Renders workspace tabs, keeping tabs with persistent embedded views mounted
- * when inactive. Regular tabs are unmounted normally.
- *
- * Browser panes use Electron <webview>, and VS Code extension panes use iframes
- * backed by persistent view IDs. Keeping these tabs mounted avoids dropping
- * subscriptions or forcing unnecessary view resolution while the tab is hidden.
+ * Renders workspace tabs, keeping tabs with embedded views mounted when inactive.
+ * Keeping these tabs mounted preserves scroll position, search state, cursor,
+ * subscriptions, and avoids forcing view re-resolution when the tab returns to
+ * focus.
  */
 export function PersistentTabRenderer({
 	isWorkspaceActive,
@@ -35,7 +33,8 @@ export function PersistentTabRenderer({
 					return (
 						type === "webview" ||
 						type === "vscode-extension" ||
-						type === "reference-graph"
+						type === "reference-graph" ||
+						type === "file-viewer"
 					);
 				})
 			) {

@@ -409,6 +409,22 @@ export async function getGitAuthorName(
 	}
 }
 
+export async function getGitAuthorEmail(
+	repoPath?: string,
+): Promise<string | null> {
+	try {
+		const git = await getSimpleGitWithShellPath(repoPath);
+		const email = await git.getConfig("user.email");
+		return email.value?.trim() || null;
+	} catch (error) {
+		console.warn(
+			"[git/getGitAuthorEmail] Failed to read git user.email:",
+			error,
+		);
+		return null;
+	}
+}
+
 let cachedGitHubUsername: { value: string | null; timestamp: number } | null =
 	null;
 const GITHUB_USERNAME_CACHE_TTL = 5 * 60 * 1000; // 5 minutes

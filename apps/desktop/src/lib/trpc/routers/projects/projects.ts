@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { existsSync, statSync } from "node:fs";
 import { access, mkdir, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -12,6 +13,7 @@ import {
 	worktrees,
 } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import { and, desc, eq, inArray, isNotNull, isNull, not } from "drizzle-orm";
 import type { BrowserWindow } from "electron";
 import { dialog } from "electron";
@@ -23,6 +25,7 @@ import {
 } from "main/lib/project-icons";
 import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import { PROJECT_COLOR_VALUES } from "shared/constants/project-colors";
+import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { resolveDefaultEditor } from "../external";
@@ -43,7 +46,10 @@ import {
 	sanitizeAuthorPrefix,
 } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
-import { execWithShellEnv } from "../workspaces/utils/shell-env";
+import {
+	execWithShellEnv,
+	getProcessEnvWithShellPath,
+} from "../workspaces/utils/shell-env";
 import { getDefaultProjectColor } from "./utils/colors";
 import { discoverAndSaveProjectIcon } from "./utils/favicon-discovery";
 import { fetchGitHubOwner, getGitHubAvatarUrl } from "./utils/github";
@@ -321,6 +327,119 @@ function extractRepoName(urlInput: string): string | null {
 	}
 
 	return repoSegment;
+}
+
+interface CloneEventBase {
+	cloneId: string;
+	/** Monotonic sequence number per cloneId, used by subscribers to dedupe. */
+	seq: number;
+	time: number;
+}
+
+export type CloneProgressEvent =
+	| (CloneEventBase & {
+			type: "log";
+			message: string;
+			level: "info" | "warn" | "error";
+	  })
+	| (CloneEventBase & {
+			type: "progress";
+			stage: string;
+			progress: number;
+			processed: number;
+			total: number;
+	  })
+	| (CloneEventBase & { type: "done" })
+	| (CloneEventBase & { type: "error"; message: string })
+	| (CloneEventBase & { type: "canceled" });
+
+const cloneEventBus = new EventEmitter();
+cloneEventBus.setMaxListeners(0);
+const cloneAbortControllers = new Map<string, AbortController>();
+
+/**
+ * Per-cloneId replay buffer. The tRPC subscription is established after the
+ * mutation is fired from the client, so events emitted in the window between
+ * `cloneRepo` starting and the subscription connecting would otherwise be
+ * lost. The buffer is flushed to the first subscriber and trimmed on a short
+ * timeout after any terminal event (done / error / canceled).
+ */
+const cloneEventBuffers = new Map<string, CloneProgressEvent[]>();
+const cloneBufferEvictTimers = new Map<string, NodeJS.Timeout>();
+const cloneSeqCounters = new Map<string, number>();
+const MAX_BUFFERED_EVENTS = 1000;
+const TERMINAL_BUFFER_EVICT_MS = 30_000;
+
+function isTerminalCloneEvent(event: CloneProgressEvent): boolean {
+	return (
+		event.type === "done" || event.type === "error" || event.type === "canceled"
+	);
+}
+
+function nextCloneSeq(cloneId: string): number {
+	const next = (cloneSeqCounters.get(cloneId) ?? 0) + 1;
+	cloneSeqCounters.set(cloneId, next);
+	return next;
+}
+
+// Distributive omit preserves the discriminated-union shape so callers can
+// still pass type-specific fields (`message`, `stage`, …) without TS
+// collapsing everything to the common intersection.
+type DistributiveOmit<T, K extends keyof CloneProgressEvent> = T extends unknown
+	? Omit<T, K>
+	: never;
+type CloneEventInput = DistributiveOmit<CloneProgressEvent, "seq">;
+
+function emitCloneEvent(input: CloneEventInput) {
+	const event = {
+		...input,
+		seq: nextCloneSeq(input.cloneId),
+	} as CloneProgressEvent;
+	let buffer = cloneEventBuffers.get(event.cloneId);
+	if (!buffer) {
+		buffer = [];
+		cloneEventBuffers.set(event.cloneId, buffer);
+	}
+	buffer.push(event);
+	if (buffer.length > MAX_BUFFERED_EVENTS) {
+		buffer.splice(0, buffer.length - MAX_BUFFERED_EVENTS);
+	}
+	cloneEventBus.emit(event.cloneId, event);
+
+	if (isTerminalCloneEvent(event)) {
+		const existing = cloneBufferEvictTimers.get(event.cloneId);
+		if (existing) clearTimeout(existing);
+		const timer = setTimeout(() => {
+			cloneEventBuffers.delete(event.cloneId);
+			cloneBufferEvictTimers.delete(event.cloneId);
+			cloneSeqCounters.delete(event.cloneId);
+		}, TERMINAL_BUFFER_EVICT_MS);
+		cloneBufferEvictTimers.set(event.cloneId, timer);
+	}
+}
+
+function emitCloneLog(
+	cloneId: string,
+	message: string,
+	level: "info" | "warn" | "error" = "info",
+) {
+	emitCloneEvent({
+		type: "log",
+		cloneId,
+		message,
+		level,
+		time: Date.now(),
+	});
+}
+
+/**
+ * Strip `userinfo` (credentials embedded in URLs such as
+ * `https://token@host/...` or `https://user:pass@host/...`) so that PATs and
+ * basic-auth tokens never reach the renderer via progress logs or error
+ * messages. Applied to every string emitted through the clone event bus.
+ */
+function redactGitCredentials(value: string): string {
+	return value.replace(/\/\/([^/\s@]+)(?::[^/\s@]*)?@/g, "//***@");
 }
 
 /** Create the tRPC router for project CRUD, branch listing, and git operations. */
@@ -1200,6 +1319,53 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 				return { project };
 			}),
 
+		cloneProgress: publicProcedure
+			.input(z.object({ cloneId: z.string().min(1) }))
+			.subscription(({ input }) => {
+				return observable<CloneProgressEvent>((emit) => {
+					// Dedupe by monotonic seq so that we can safely attach the live
+					// listener first and then replay the buffer: any event that
+					// reaches both paths only passes the `> lastSeq` guard once.
+					let lastSeq = 0;
+					const deliver = (event: CloneProgressEvent) => {
+						if (event.seq <= lastSeq) return;
+						lastSeq = event.seq;
+						emit.next(event);
+					};
+					const handler = (event: CloneProgressEvent) => {
+						deliver(event);
+					};
+					cloneEventBus.on(input.cloneId, handler);
+					const buffered = cloneEventBuffers.get(input.cloneId);
+					if (buffered) {
+						for (const event of buffered) {
+							deliver(event);
+						}
+					}
+					return () => {
+						cloneEventBus.off(input.cloneId, handler);
+					};
+				});
+			}),
+
+		cancelClone: publicProcedure
+			.input(z.object({ cloneId: z.string().min(1) }))
+			.mutation(({ input }) => {
+				const controller = cloneAbortControllers.get(input.cloneId);
+				if (!controller) {
+					return { canceled: false as const };
+				}
+				controller.abort();
+				cloneAbortControllers.delete(input.cloneId);
+				emitCloneLog(input.cloneId, "Clone canceled by user", "warn");
+				emitCloneEvent({
+					type: "canceled",
+					cloneId: input.cloneId,
+					time: Date.now(),
+				});
+				return { canceled: true as const };
+			}),
+
 		cloneRepo: publicProcedure
 			.input(
 				z.object({
@@ -1223,6 +1389,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						.trim()
 						.optional()
 						.transform((v) => (v && v.length > 0 ? v : undefined)),
+					cloneId: z.string().min(1).optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -1316,9 +1483,72 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						};
 					}
 
-					// Clone the repository
-					const git = await getSimpleGitWithShellPath();
-					await git.clone(input.url, clonePath);
+					// Clone the repository (with streaming progress when cloneId given)
+					const cloneId = input.cloneId;
+					if (cloneId) {
+						const abortController = new AbortController();
+						cloneAbortControllers.set(cloneId, abortController);
+						emitCloneLog(
+							cloneId,
+							`Preparing clone into ${basename(clonePath)}`,
+						);
+						try {
+							const gitWithProgress = simpleGit({
+								abort: abortController.signal,
+								progress: (event: SimpleGitProgressEvent) => {
+									emitCloneEvent({
+										type: "progress",
+										cloneId,
+										stage: event.stage,
+										progress: event.progress,
+										processed: event.processed,
+										total: event.total,
+										time: Date.now(),
+									});
+								},
+							});
+							gitWithProgress.env(await getProcessEnvWithShellPath());
+							emitCloneLog(
+								cloneId,
+								`Cloning ${redactGitCredentials(input.url)}`,
+							);
+							await gitWithProgress.clone(input.url, clonePath);
+							emitCloneLog(cloneId, "Clone finished, preparing project");
+						} catch (cloneError) {
+							const message = redactGitCredentials(
+								cloneError instanceof Error
+									? cloneError.message
+									: String(cloneError),
+							);
+							// `git clone` creates the destination directory eagerly;
+							// leaving a partial checkout behind would block every retry
+							// against the same path via the existing-folder guard above.
+							await rm(clonePath, { recursive: true, force: true }).catch(
+								() => undefined,
+							);
+							if (!abortController.signal.aborted) {
+								emitCloneEvent({
+									type: "error",
+									cloneId,
+									message,
+									time: Date.now(),
+								});
+							}
+							throw cloneError;
+						} finally {
+							cloneAbortControllers.delete(cloneId);
+						}
+					} else {
+						const git = await getSimpleGitWithShellPath();
+						try {
+							await git.clone(input.url, clonePath);
+						} catch (cloneError) {
+							await rm(clonePath, { recursive: true, force: true }).catch(
+								() => undefined,
+							);
+							throw cloneError;
+						}
+					}
 
 					// Create new project
 					const name = basename(clonePath);
@@ -1344,14 +1574,43 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						method: "clone",
 					});
 
+					if (input.cloneId) {
+						emitCloneEvent({
+							type: "done",
+							cloneId: input.cloneId,
+							time: Date.now(),
+						});
+					}
+
 					return {
 						canceled: false as const,
 						success: true as const,
 						project,
 					};
 				} catch (error) {
-					const errorMessage =
-						error instanceof Error ? error.message : String(error);
+					const errorMessage = redactGitCredentials(
+						error instanceof Error ? error.message : String(error),
+					);
+					// Surface post-clone failures (getDefaultBranch / DB insert /
+					// ensureMainWorkspace / etc) to any streaming subscriber, unless
+					// the git clone step itself already emitted an error event.
+					if (input.cloneId) {
+						const buffered = cloneEventBuffers.get(input.cloneId);
+						const hasTerminal = buffered?.some(
+							(event) =>
+								event.type === "error" ||
+								event.type === "canceled" ||
+								event.type === "done",
+						);
+						if (!hasTerminal) {
+							emitCloneEvent({
+								type: "error",
+								cloneId: input.cloneId,
+								message: errorMessage,
+								time: Date.now(),
+							});
+						}
+					}
 					return {
 						canceled: false as const,
 						success: false as const,

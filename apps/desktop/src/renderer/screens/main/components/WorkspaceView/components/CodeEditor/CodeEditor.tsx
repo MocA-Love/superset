@@ -79,16 +79,42 @@ const HIGHLIGHT_MAX_RETRIES = 8;
 const SCROLL_STABILIZE_DELAY_MS = 120;
 const SEARCH_MATCH_LIMIT = 10_000;
 
+/**
+ * Hidden search panel used when `searchMode === "overlay"`. The panel must
+ * stay part of the CM layout — setting `display: none` on the panel DOM
+ * makes `getBoundingClientRect()` return all-zeros, which breaks CM's
+ * `PanelGroup.scrollMargin()` calculation (it ends up equal to the full
+ * scroller height) and causes the drag-select autoscroll to fire
+ * continuously anywhere inside the editor. Collapsing the panel to zero
+ * height while keeping it in flow makes `top ≈ scroller.bottom` so
+ * scrollMargin resolves to 0 as intended.
+ */
+function hideHiddenSearchPanelContainer(container: HTMLElement) {
+	container.style.height = "0px";
+	container.style.minHeight = "0px";
+	container.style.maxHeight = "0px";
+	container.style.margin = "0";
+	container.style.padding = "0";
+	container.style.border = "0";
+	container.style.overflow = "hidden";
+	container.style.visibility = "hidden";
+	container.style.pointerEvents = "none";
+}
+
 function createHiddenSearchPanel() {
 	const dom = document.createElement("div");
 	dom.className = "cm-search cm-hidden-search-panel";
+	dom.style.height = "0px";
+	dom.style.overflow = "hidden";
+	dom.style.visibility = "hidden";
+	dom.style.pointerEvents = "none";
 
 	return {
 		dom,
 		mount() {
 			const panelContainer = dom.parentElement;
 			if (panelContainer instanceof HTMLElement) {
-				panelContainer.style.display = "none";
+				hideHiddenSearchPanelContainer(panelContainer);
 			}
 		},
 	};
@@ -643,6 +669,27 @@ export function CodeEditor({
 		setIsSearchOpen(false);
 	};
 
+	// CM's find commands dispatch `scrollIntoView: true` (→ y: "nearest")
+	// synchronously. Following that up with a `y: "center"` effect is
+	// unreliable on huge virtualized files because `coordsAtPos` for an
+	// un-rendered line returns estimated coords and CM's internal scroll
+	// math ends up a near-noop. Instead, wait one frame for CM to apply
+	// its nearest scroll, then read the line block (which uses CM's own
+	// doc-relative line-height cache kept accurate by the measure cycle)
+	// and set `scrollTop` directly.
+	const scrollSearchMatchToCenter = (view: EditorView) => {
+		requestAnimationFrame(() => {
+			const scroller = view.scrollDOM;
+			const head = view.state.selection.main.head;
+			const block = view.lineBlockAt(head);
+			const targetScrollTop = Math.max(
+				0,
+				Math.round(block.top + block.height / 2 - scroller.clientHeight / 2),
+			);
+			scroller.scrollTop = targetScrollTop;
+		});
+	};
+
 	const handleOverlayFindNext = () => {
 		const view = viewRef.current;
 		if (!view) {
@@ -655,6 +702,7 @@ export function CodeEditor({
 		}
 
 		runFindNext(view);
+		scrollSearchMatchToCenter(view);
 	};
 
 	const handleOverlayFindPrevious = () => {
@@ -669,6 +717,7 @@ export function CodeEditor({
 		}
 
 		runFindPrevious(view);
+		scrollSearchMatchToCenter(view);
 	};
 
 	searchControlsRef.current = {

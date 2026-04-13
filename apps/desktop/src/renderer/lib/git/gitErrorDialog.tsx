@@ -4,7 +4,9 @@
  * their operation — the builder picks which to show per kind.
  */
 
+import { MissingGitUserConfigForm } from "renderer/screens/main/components/GitOperationDialog/MissingGitUserConfigForm";
 import {
+	closeGitOperationDialog,
 	type GitOperationDialogSpec,
 	openGitOperationDialog,
 } from "renderer/stores/git-operation-dialog";
@@ -249,15 +251,23 @@ function buildSpec({
 				tone: "info",
 				title: "コミット作者情報が未設定です",
 				description:
-					"Git の user.name / user.email が設定されていないためコミットできません。ターミナルで以下を実行してください。",
-				details: `git config user.name "Your Name"\ngit config user.email "you@example.com"`,
-				primaryAction: handlers.retry
-					? {
-							label: "設定後に再試行",
-							variant: "primary",
-							onClick: handlers.retry,
-						}
-					: undefined,
+					"Git の user.name / user.email が未設定のためコミットできません。以下のフォームから保存すると `git config --global` に書き込まれます。",
+				extraContent: (
+					<MissingGitUserConfigForm
+						onSaved={() => {
+							// Close the dialog before firing the retry so the
+							// retry's own onError (a fresh classifyGitError call)
+							// can open a new dialog if something still fails.
+							closeGitOperationDialog();
+							handlers.retry?.();
+						}}
+					/>
+				),
+				// No primaryAction: the form's own "保存して再試行" button
+				// drives the flow. A stale "設定後に再試行" button would let
+				// the user retry without saving, which almost always fails
+				// with the same error.
+				dismissLabel: "キャンセル",
 			};
 
 		case "nothing-to-commit":

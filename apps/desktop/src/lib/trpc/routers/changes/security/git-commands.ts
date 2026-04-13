@@ -295,6 +295,20 @@ export async function gitStageAll(worktreePath: string): Promise<void> {
 }
 
 /**
+ * Stage all changes to tracked files only.
+ *
+ * Uses `git add -u` so modifications and deletions of tracked files
+ * are staged, but untracked files are left alone. Matches the
+ * VS Code `git.smartCommitChanges: "tracked"` behavior.
+ */
+export async function gitStageTracked(worktreePath: string): Promise<void> {
+	assertRegisteredWorktree(worktreePath);
+
+	const git = await getGitWithShellPath(worktreePath);
+	await git.add(["-u"]);
+}
+
+/**
  * Unstage a file (remove from staging area).
  *
  * Uses `git reset HEAD -- <path>` to unstage without

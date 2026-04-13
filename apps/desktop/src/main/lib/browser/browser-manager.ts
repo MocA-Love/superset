@@ -40,6 +40,7 @@ class BrowserManager extends EventEmitter {
 	private contextMenuListeners = new Map<string, () => void>();
 	private fullscreenListeners = new Map<string, () => void>();
 	private popupListeners = new Map<string, () => void>();
+	private findListeners = new Map<string, () => void>();
 	/** Track which pane is currently in HTML fullscreen */
 	private fullscreenPaneId: string | null = null;
 
@@ -56,6 +57,7 @@ class BrowserManager extends EventEmitter {
 				this.contextMenuListeners,
 				this.fullscreenListeners,
 				this.popupListeners,
+				this.findListeners,
 			]) {
 				const cleanup = map.get(paneId);
 				if (cleanup) {
@@ -103,6 +105,7 @@ class BrowserManager extends EventEmitter {
 			this.setupFullscreenHandler(paneId, wc);
 			this.setupConsoleCapture(paneId, wc);
 			this.setupContextMenu(paneId, wc);
+			this.setupFindInPage(paneId, wc);
 		}
 	}
 
@@ -112,6 +115,7 @@ class BrowserManager extends EventEmitter {
 			this.contextMenuListeners,
 			this.fullscreenListeners,
 			this.popupListeners,
+			this.findListeners,
 		]) {
 			const cleanup = map.get(paneId);
 			if (cleanup) {
@@ -182,6 +186,71 @@ class BrowserManager extends EventEmitter {
 		const wc = this.getWebContents(paneId);
 		if (!wc) return;
 		wc.openDevTools({ mode: "detach" });
+	}
+
+	findInPage(
+		paneId: string,
+		text: string,
+		options?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
+	): number | null {
+		const wc = this.getWebContents(paneId);
+		if (!wc || !text) return null;
+		return wc.findInPage(text, options);
+	}
+
+	stopFindInPage(
+		paneId: string,
+		action: "clearSelection" | "keepSelection" | "activateSelection",
+	): void {
+		const wc = this.getWebContents(paneId);
+		if (!wc) return;
+		wc.stopFindInPage(action);
+	}
+
+	/**
+	 * Listen for native `found-in-page` results and for Cmd/Ctrl+F keypresses
+	 * happening inside the webview. The renderer cannot see keydown events
+	 * dispatched to the guest page, so we intercept them here via
+	 * `before-input-event` and emit a request to open the find overlay.
+	 */
+	private setupFindInPage(paneId: string, wc: Electron.WebContents): void {
+		const foundHandler = (_event: Electron.Event, result: Electron.Result) => {
+			this.emit(`found-in-page:${paneId}`, {
+				requestId: result.requestId,
+				activeMatchOrdinal: result.activeMatchOrdinal,
+				matches: result.matches,
+				finalUpdate: result.finalUpdate,
+			});
+		};
+
+		const inputHandler = (event: Electron.Event, input: Electron.Input) => {
+			if (input.type !== "keyDown") return;
+			const isFindKey =
+				(input.meta || input.control) &&
+				input.key.toLowerCase() === "f" &&
+				!input.alt &&
+				!input.shift;
+			if (isFindKey) {
+				event.preventDefault();
+				this.emit(`find-requested:${paneId}`);
+				return;
+			}
+			if (input.key === "Escape") {
+				this.emit(`find-escape:${paneId}`);
+			}
+		};
+
+		wc.on("found-in-page", foundHandler);
+		wc.on("before-input-event", inputHandler);
+
+		this.findListeners.set(paneId, () => {
+			try {
+				wc.off("found-in-page", foundHandler);
+				wc.off("before-input-event", inputHandler);
+			} catch {
+				// webContents may be destroyed
+			}
+		});
 	}
 
 	/**

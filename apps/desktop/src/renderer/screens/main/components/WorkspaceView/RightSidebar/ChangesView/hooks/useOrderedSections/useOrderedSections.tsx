@@ -1,6 +1,6 @@
 import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { VscAdd, VscDiscard, VscRemove, VscWarning } from "react-icons/vsc";
 import { getOrderedChangeSectionIds } from "renderer/stores/changes/section-order";
 import type {
@@ -10,6 +10,8 @@ import type {
 } from "shared/changes-types";
 import { CommitListVirtualized } from "../../components/CommitListVirtualized";
 import { FileList } from "../../components/FileList";
+import { orderFilesForViewMode } from "../../components/FileList/fileListOrdering";
+import { MultiSelectProvider } from "../../components/MultiSelectContext";
 import type { ChangesViewMode } from "../../types";
 
 export interface OrderedSection {
@@ -102,6 +104,17 @@ export function useOrderedSections({
 	isUnstagedActioning,
 }: UseOrderedSectionsInput) {
 	const commitCount = commitsWithFiles.length;
+	// Mirror each FileList variant's visual sort so that shift-click range
+	// selection in MultiSelectProvider picks a contiguous run matching the
+	// order the user actually sees.
+	const orderedUnstagedFiles = useMemo(
+		() => orderFilesForViewMode(unstagedFiles, fileListViewMode),
+		[unstagedFiles, fileListViewMode],
+	);
+	const orderedStagedFiles = useMemo(
+		() => orderFilesForViewMode(stagedFiles, fileListViewMode),
+		[stagedFiles, fileListViewMode],
+	);
 
 	const sectionDefinitions: Record<ChangeCategory, OrderedSection> = {
 		conflicted: {
@@ -209,20 +222,25 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.staged ? (
-				<FileList
-					files={stagedFiles}
-					viewMode={fileListViewMode}
-					selectedFile={selectedFile}
-					selectedCommitHash={selectedCommitHash}
-					onFileSelect={onStagedFileSelect}
-					onUnstage={onUnstageFile}
-					onUnstageFiles={onUnstageFiles}
-					isActioning={isStagedActioning}
-					worktreePath={worktreePath}
-					projectId={projectId}
-					category="staged"
-					isExpandedView={isExpandedView}
-				/>
+				<MultiSelectProvider
+					files={orderedStagedFiles}
+					onUnstageSelected={onUnstageFiles}
+				>
+					<FileList
+						files={stagedFiles}
+						viewMode={fileListViewMode}
+						selectedFile={selectedFile}
+						selectedCommitHash={selectedCommitHash}
+						onFileSelect={onStagedFileSelect}
+						onUnstage={onUnstageFile}
+						onUnstageFiles={onUnstageFiles}
+						isActioning={isStagedActioning}
+						worktreePath={worktreePath}
+						projectId={projectId}
+						category="staged"
+						isExpandedView={isExpandedView}
+					/>
+				</MultiSelectProvider>
 			) : null,
 		},
 		unstaged: {
@@ -264,21 +282,31 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.unstaged ? (
-				<FileList
-					files={unstagedFiles}
-					viewMode={fileListViewMode}
-					selectedFile={selectedFile}
-					selectedCommitHash={selectedCommitHash}
-					onFileSelect={onUnstagedFileSelect}
-					onStage={onStageFile}
-					onStageFiles={onStageFiles}
-					isActioning={isUnstagedActioning}
-					worktreePath={worktreePath}
-					projectId={projectId}
-					onDiscard={onDiscardFile}
-					category="unstaged"
-					isExpandedView={isExpandedView}
-				/>
+				<MultiSelectProvider
+					files={orderedUnstagedFiles}
+					onStageSelected={onStageFiles}
+					onDiscardSelected={(files) => {
+						for (const file of files) {
+							onDiscardFile(file);
+						}
+					}}
+				>
+					<FileList
+						files={unstagedFiles}
+						viewMode={fileListViewMode}
+						selectedFile={selectedFile}
+						selectedCommitHash={selectedCommitHash}
+						onFileSelect={onUnstagedFileSelect}
+						onStage={onStageFile}
+						onStageFiles={onStageFiles}
+						isActioning={isUnstagedActioning}
+						worktreePath={worktreePath}
+						projectId={projectId}
+						onDiscard={onDiscardFile}
+						category="unstaged"
+						isExpandedView={isExpandedView}
+					/>
+				</MultiSelectProvider>
 			) : null,
 		},
 	};

@@ -32,7 +32,13 @@ import { resolveWorktreePath } from "./utils/resolve-worktree";
 
 export const gitRouter = router({
 	listBranches: protectedProcedure
-		.input(z.object({ workspaceId: z.string() }))
+		.input(
+			z.object({
+				workspaceId: z.string(),
+				sortOrder: z.enum(["committerdate", "alphabetical"]).optional(),
+				pinDefault: z.boolean().optional(),
+			}),
+		)
 		.query(async ({ ctx, input }) => {
 			const worktreePath = resolveWorktreePath(ctx, input.workspaceId);
 			const git = await ctx.git(worktreePath);
@@ -42,26 +48,107 @@ export const gitRouter = router({
 			).trim();
 			const defaultBranchName = await getDefaultBranchName(git);
 
-			let branchNames: string[] = [];
-			try {
-				const raw = await git.raw([
-					"branch",
-					"--list",
-					"--format=%(refname:short)",
-				]);
-				branchNames = raw.trim().split("\n").filter(Boolean);
-			} catch {}
+			const sortOrder = input.sortOrder ?? "committerdate";
+			const pinDefault = input.pinDefault ?? true;
+			// `git branch` supports `--sort` directly (falls back to git default
+			// if the flag is rejected by a very old git). committerdate is
+			// descending via a leading `-`; alphabetical uses refname.
+			const sortArg =
+				sortOrder === "committerdate"
+					? "--sort=-committerdate"
+					: "--sort=refname";
 
-			const branches = await Promise.all(
-				branchNames.map((name) =>
-					buildBranch(
-						git,
-						name,
-						name === currentBranchName,
-						defaultBranchName ? `origin/${defaultBranchName}` : undefined,
-					),
+			const readRefs = async (
+				extraArgs: string[],
+				stripPrefix?: string,
+			): Promise<string[]> => {
+				try {
+					const raw = await git.raw([
+						"branch",
+						"--list",
+						sortArg,
+						"--format=%(refname:short)",
+						...extraArgs,
+					]);
+					return (
+						raw
+							.trim()
+							.split("\n")
+							.map((line) => line.trim())
+							.filter(Boolean)
+							.filter((line) => !line.includes("->"))
+							// When a prefix filter is given (e.g. "origin/") only keep
+							// entries that start with that prefix. Lines from non-origin
+							// remotes (e.g. "upstream/main") would survive the map step
+							// unchanged and then cause buildBranch to construct invalid
+							// refs like "origin/upstream/main".
+							.filter((line) => !stripPrefix || line.startsWith(stripPrefix))
+							.map((line) =>
+								stripPrefix && line.startsWith(stripPrefix)
+									? line.slice(stripPrefix.length)
+									: line,
+							)
+					);
+				} catch {
+					return [];
+				}
+			};
+
+			const localNames = await readRefs([]);
+			const remoteNames = await readRefs(["-r"], "origin/");
+
+			const localSet = new Set(localNames);
+			// Deduplicate: a remote-only branch is one that has no local
+			// counterpart. Local branches always win.
+			const remoteOnlyNames = remoteNames.filter(
+				(name) => !localSet.has(name) && name !== "HEAD",
+			);
+
+			// For alphabetical sort we re-sort in JS with case-insensitive
+			// comparison so that `Feat-a` and `feat-b` interleave the way
+			// users expect. committerdate already comes back ordered by git.
+			const sortAlphabetical = (names: string[]): string[] =>
+				sortOrder === "alphabetical"
+					? [...names].sort((a, b) =>
+							a.localeCompare(b, undefined, { sensitivity: "base" }),
+						)
+					: names;
+
+			const sortedLocal = sortAlphabetical(localNames);
+			const sortedRemoteOnly = sortAlphabetical(remoteOnlyNames);
+
+			const compareRef = defaultBranchName
+				? `origin/${defaultBranchName}`
+				: undefined;
+
+			const localBranches = await Promise.all(
+				sortedLocal.map((name) =>
+					buildBranch(git, name, name === currentBranchName, compareRef),
 				),
 			);
+			const remoteBranches = await Promise.all(
+				sortedRemoteOnly.map((name) =>
+					buildBranch(git, name, false, compareRef, { isRemote: true }),
+				),
+			);
+
+			let branches = [...localBranches, ...remoteBranches];
+
+			// Optionally pin the default branch (main / master / trunk / etc)
+			// at the top of the list regardless of sort order. Only looks at
+			// local branches — if the default exists only remotely we leave
+			// it where the sort put it.
+			if (pinDefault && defaultBranchName) {
+				const defaultIdx = branches.findIndex(
+					(b) => !b.isRemote && b.name === defaultBranchName,
+				);
+				if (defaultIdx > 0) {
+					const [defaultBranch] = branches.splice(defaultIdx, 1);
+					if (defaultBranch) {
+						branches = [defaultBranch, ...branches];
+					}
+				}
+			}
 
 			return { branches };
 		}),

@@ -10,6 +10,7 @@ import {
 	gitStageAll,
 	gitStageFile,
 	gitStageFiles,
+	gitStageTracked,
 	gitStash,
 	gitStashIncludeUntracked,
 	gitStashPop,
@@ -123,6 +124,14 @@ export const createStagingRouter = () => {
 			.input(z.object({ worktreePath: z.string() }))
 			.mutation(async ({ input }): Promise<{ success: boolean }> => {
 				await gitStageAll(input.worktreePath);
+				clearStatusCacheForWorktree(input.worktreePath);
+				return { success: true };
+			}),
+
+		stageTracked: publicProcedure
+			.input(z.object({ worktreePath: z.string() }))
+			.mutation(async ({ input }): Promise<{ success: boolean }> => {
+				await gitStageTracked(input.worktreePath);
 				clearStatusCacheForWorktree(input.worktreePath);
 				return { success: true };
 			}),

@@ -35,6 +35,10 @@ export const SETTING_ITEM_ID = {
 	GIT_BRANCH_PREFIX: "git-branch-prefix",
 	GIT_DELETE_LOCAL_BRANCH: "git-delete-local-branch",
 	GIT_WORKTREE_LOCATION: "git-worktree-location",
+	GIT_SMART_COMMIT: "git-smart-commit",
+	GIT_AUTO_STASH: "git-auto-stash",
+	GIT_BRANCH_SORT_ORDER: "git-branch-sort-order",
+	GIT_POST_COMMIT_COMMAND: "git-post-commit-command",
 
 	AGENTS_ENABLED: "agents-enabled",
 	AGENTS_COMMANDS: "agents-commands",
@@ -417,6 +421,59 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"feat",
 			"custom",
 		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_SMART_COMMIT,
+		section: "git",
+		title: "Smart Commit",
+		description:
+			"Commit all changes when there are no staged changes (VS Code style)",
+		keywords: [
+			"git",
+			"commit",
+			"smart",
+			"stage",
+			"staged",
+			"unstaged",
+			"tracked",
+			"auto",
+			"all",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_AUTO_STASH,
+		section: "git",
+		title: "Auto Stash",
+		description:
+			"Stash local changes before pull/sync and restore after (VS Code style)",
+		keywords: ["git", "stash", "pull", "sync", "auto", "restore", "pop"],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER,
+		section: "git",
+		title: "Branch Sort Order",
+		description:
+			"Order used in the base branch picker (committer date or alphabetical)",
+		keywords: [
+			"git",
+			"branch",
+			"sort",
+			"order",
+			"committer",
+			"date",
+			"alphabetical",
+			"picker",
+			"pin",
+			"default",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND,
+		section: "git",
+		title: "Post Commit Command",
+		description:
+			"Run push or sync automatically after a successful commit (VS Code style)",
+		keywords: ["git", "commit", "post", "push", "sync", "auto", "after"],
 	},
 	{
 		id: SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,

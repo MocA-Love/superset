@@ -11,12 +11,15 @@ import type {
 	AgentCustomDefinition,
 	AgentPresetOverrideEnvelope,
 	BranchPrefixMode,
+	BranchSortOrder,
 	ExternalApp,
 	FileOpenMode,
 	GitHubStatus,
 	GitStatus,
+	PostCommitCommand,
 	SitePermissionKind,
 	SitePermissionValue,
+	SmartCommitChangesMode,
 	TerminalLinkBehavior,
 	TerminalPreset,
 	WorkspaceType,
@@ -246,6 +249,14 @@ export const settings = sqliteTable("settings", {
 	exposeHostServiceViaRelay: integer("expose_host_service_via_relay", {
 		mode: "boolean",
 	}),
+	enableSmartCommit: integer("enable_smart_commit", { mode: "boolean" }),
+	smartCommitChanges: text(
+		"smart_commit_changes",
+	).$type<SmartCommitChangesMode>(),
+	autoStash: integer("auto_stash", { mode: "boolean" }),
+	branchSortOrder: text("branch_sort_order").$type<BranchSortOrder>(),
+	pinDefaultBranch: integer("pin_default_branch", { mode: "boolean" }),
+	postCommitCommand: text("post_commit_command").$type<PostCommitCommand>(),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;

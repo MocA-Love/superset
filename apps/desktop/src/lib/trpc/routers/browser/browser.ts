@@ -168,6 +168,81 @@ export const createBrowserRouter = () => {
 				return { success: true };
 			}),
 
+		findInPage: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string(),
+					text: z.string(),
+					forward: z.boolean().optional(),
+					findNext: z.boolean().optional(),
+					matchCase: z.boolean().optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const requestId = browserManager.findInPage(input.paneId, input.text, {
+					forward: input.forward,
+					findNext: input.findNext,
+					matchCase: input.matchCase,
+				});
+				return { requestId };
+			}),
+
+		stopFindInPage: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string(),
+					action: z
+						.enum(["clearSelection", "keepSelection", "activateSelection"])
+						.optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				browserManager.stopFindInPage(
+					input.paneId,
+					input.action ?? "clearSelection",
+				);
+				return { success: true };
+			}),
+
+		onFoundInPage: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{
+					requestId: number;
+					activeMatchOrdinal: number;
+					matches: number;
+					finalUpdate: boolean;
+				}>((emit) => {
+					const handler = (data: {
+						requestId: number;
+						activeMatchOrdinal: number;
+						matches: number;
+						finalUpdate: boolean;
+					}) => {
+						emit.next(data);
+					};
+					browserManager.on(`found-in-page:${input.paneId}`, handler);
+					return () => {
+						browserManager.off(`found-in-page:${input.paneId}`, handler);
+					};
+				});
+			}),
+
+		onFindRequested: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ type: "open" | "escape" }>((emit) => {
+					const openHandler = () => emit.next({ type: "open" });
+					const escapeHandler = () => emit.next({ type: "escape" });
+					browserManager.on(`find-requested:${input.paneId}`, openHandler);
+					browserManager.on(`find-escape:${input.paneId}`, escapeHandler);
+					return () => {
+						browserManager.off(`find-requested:${input.paneId}`, openHandler);
+						browserManager.off(`find-escape:${input.paneId}`, escapeHandler);
+					};
+				});
+			}),
+
 		setZoomLevel: publicProcedure
 			.input(z.object({ paneId: z.string(), level: z.number() }))
 			.mutation(({ input }) => {

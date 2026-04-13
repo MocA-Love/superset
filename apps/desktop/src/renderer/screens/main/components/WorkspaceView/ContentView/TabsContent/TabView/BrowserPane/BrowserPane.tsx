@@ -1,6 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
@@ -15,6 +15,10 @@ import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { BookmarkBar } from "./components/BookmarkBar";
 import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
+import {
+	BrowserFindOverlay,
+	type BrowserFindOverlayHandle,
+} from "./components/BrowserFindOverlay";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
 import { ExtensionToolbar } from "./components/ExtensionToolbar";
@@ -74,6 +78,108 @@ export function BrowserPane({
 		electronTrpc.browser.openDevTools.useMutation();
 	const { mutate: setZoomLevel } =
 		electronTrpc.browser.setZoomLevel.useMutation();
+	const { mutate: findInPage } = electronTrpc.browser.findInPage.useMutation();
+	const { mutate: stopFindInPage } =
+		electronTrpc.browser.stopFindInPage.useMutation();
+
+	// -- Find in page ------------------------------------------------------
+
+	const [isFindOpen, setIsFindOpen] = useState(false);
+	const [findQuery, setFindQuery] = useState("");
+	const [findMatchCase, setFindMatchCase] = useState(false);
+	const [findMatches, setFindMatches] = useState(0);
+	const [findActiveOrdinal, setFindActiveOrdinal] = useState(0);
+	const findOverlayRef = useRef<BrowserFindOverlayHandle | null>(null);
+
+	const openFindOverlay = useCallback(() => {
+		setIsFindOpen(true);
+		// Refocus + select even if already open (repeat Cmd+F).
+		findOverlayRef.current?.focusInput();
+	}, []);
+
+	const closeFindOverlay = useCallback(() => {
+		setIsFindOpen(false);
+		setFindMatches(0);
+		setFindActiveOrdinal(0);
+		stopFindInPage({ paneId, action: "clearSelection" });
+	}, [paneId, stopFindInPage]);
+
+	const runFindQuery = useCallback(
+		(
+			text: string,
+			opts?: { findNext?: boolean; forward?: boolean; matchCase?: boolean },
+		) => {
+			if (!text) {
+				setFindMatches(0);
+				setFindActiveOrdinal(0);
+				stopFindInPage({ paneId, action: "clearSelection" });
+				return;
+			}
+			findInPage({
+				paneId,
+				text,
+				forward: opts?.forward ?? true,
+				findNext: opts?.findNext ?? false,
+				matchCase: opts?.matchCase ?? findMatchCase,
+			});
+		},
+		[findInPage, findMatchCase, paneId, stopFindInPage],
+	);
+
+	const handleFindQueryChange = useCallback(
+		(next: string) => {
+			setFindQuery(next);
+			runFindQuery(next, { findNext: false, forward: true });
+		},
+		[runFindQuery],
+	);
+
+	const handleFindNext = useCallback(() => {
+		if (!findQuery) return;
+		runFindQuery(findQuery, { findNext: true, forward: true });
+	}, [findQuery, runFindQuery]);
+
+	const handleFindPrevious = useCallback(() => {
+		if (!findQuery) return;
+		runFindQuery(findQuery, { findNext: true, forward: false });
+	}, [findQuery, runFindQuery]);
+
+	const handleMatchCaseChange = useCallback(
+		(next: boolean) => {
+			setFindMatchCase(next);
+			if (findQuery) {
+				runFindQuery(findQuery, {
+					findNext: false,
+					forward: true,
+					matchCase: next,
+				});
+			}
+		},
+		[findQuery, runFindQuery],
+	);
+
+	electronTrpc.browser.onFindRequested.useSubscription(
+		{ paneId },
+		{
+			onData: (event) => {
+				if (event.type === "open") {
+					openFindOverlay();
+				} else if (event.type === "escape") {
+					if (isFindOpen) closeFindOverlay();
+				}
+			},
+		},
+	);
+
+	electronTrpc.browser.onFoundInPage.useSubscription(
+		{ paneId },
+		{
+			onData: (result) => {
+				setFindMatches(result.matches);
+				setFindActiveOrdinal(result.activeMatchOrdinal);
+			},
+		},
+	);
 
 	const {
 		containerRef,
@@ -257,7 +363,24 @@ export function BrowserPane({
 				</div>
 			)}
 		>
-			<div className="flex h-full flex-1 flex-col">
+			<div
+				className="flex h-full flex-1 flex-col"
+				onKeyDownCapture={(event) => {
+					if (
+						(event.metaKey || event.ctrlKey) &&
+						!event.altKey &&
+						!event.shiftKey &&
+						event.key.toLowerCase() === "f"
+					) {
+						event.preventDefault();
+						event.stopPropagation();
+						openFindOverlay();
+					} else if (event.key === "Escape" && isFindOpen) {
+						event.preventDefault();
+						closeFindOverlay();
+					}
+				}}
+			>
 				{!isFullscreen && (
 					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
 				)}
@@ -266,6 +389,19 @@ export function BrowserPane({
 						ref={containerRef}
 						className="h-full w-full"
 						style={{ flex: 1 }}
+					/>
+					<BrowserFindOverlay
+						ref={findOverlayRef}
+						isOpen={isFindOpen}
+						query={findQuery}
+						matchCount={findMatches}
+						activeMatchOrdinal={findActiveOrdinal}
+						matchCase={findMatchCase}
+						onQueryChange={handleFindQueryChange}
+						onMatchCaseChange={handleMatchCaseChange}
+						onFindNext={handleFindNext}
+						onFindPrevious={handleFindPrevious}
+						onClose={closeFindOverlay}
 					/>
 					{loadError && !isLoading && (
 						<BrowserErrorOverlay error={loadError} onRetry={reload} />

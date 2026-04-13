@@ -1,4 +1,9 @@
-import type { BranchPrefixMode } from "@superset/local-db";
+import type {
+	BranchPrefixMode,
+	BranchSortOrder,
+	PostCommitCommand,
+	SmartCommitChangesMode,
+} from "@superset/local-db";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import {
@@ -38,6 +43,22 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 	);
 	const showWorktreeLocation = isItemVisible(
 		SETTING_ITEM_ID.GIT_WORKTREE_LOCATION,
+		visibleItems,
+	);
+	const showSmartCommit = isItemVisible(
+		SETTING_ITEM_ID.GIT_SMART_COMMIT,
+		visibleItems,
+	);
+	const showAutoStash = isItemVisible(
+		SETTING_ITEM_ID.GIT_AUTO_STASH,
+		visibleItems,
+	);
+	const showBranchSortOrder = isItemVisible(
+		SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER,
+		visibleItems,
+	);
+	const showPostCommitCommand = isItemVisible(
+		SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND,
 		visibleItems,
 	);
 
@@ -105,6 +126,122 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 			mode: "custom",
 			customPrefix: sanitized || null,
 		});
+	};
+
+	const { data: smartCommit, isLoading: isSmartCommitLoading } =
+		electronTrpc.settings.getSmartCommit.useQuery();
+	const setSmartCommit = electronTrpc.settings.setSmartCommit.useMutation({
+		onMutate: async (next) => {
+			await utils.settings.getSmartCommit.cancel();
+			const previous = utils.settings.getSmartCommit.getData();
+			utils.settings.getSmartCommit.setData(undefined, next);
+			return { previous };
+		},
+		onError: (_err, _vars, context) => {
+			if (context?.previous !== undefined) {
+				utils.settings.getSmartCommit.setData(undefined, context.previous);
+			}
+		},
+		onSettled: () => {
+			utils.settings.getSmartCommit.invalidate();
+		},
+	});
+
+	const smartCommitEnabled = smartCommit?.enabled ?? false;
+	const smartCommitChanges: SmartCommitChangesMode =
+		smartCommit?.changes ?? "all";
+
+	const handleSmartCommitToggle = (enabled: boolean) => {
+		setSmartCommit.mutate({ enabled, changes: smartCommitChanges });
+	};
+	const handleSmartCommitChangesChange = (value: SmartCommitChangesMode) => {
+		setSmartCommit.mutate({ enabled: smartCommitEnabled, changes: value });
+	};
+
+	const { data: autoStash, isLoading: isAutoStashLoading } =
+		electronTrpc.settings.getAutoStash.useQuery();
+	const setAutoStash = electronTrpc.settings.setAutoStash.useMutation({
+		onMutate: async ({ enabled }) => {
+			await utils.settings.getAutoStash.cancel();
+			const previous = utils.settings.getAutoStash.getData();
+			utils.settings.getAutoStash.setData(undefined, enabled);
+			return { previous };
+		},
+		onError: (_err, _vars, context) => {
+			if (context?.previous !== undefined) {
+				utils.settings.getAutoStash.setData(undefined, context.previous);
+			}
+		},
+		onSettled: () => {
+			utils.settings.getAutoStash.invalidate();
+		},
+	});
+	const handleAutoStashToggle = (enabled: boolean) => {
+		setAutoStash.mutate({ enabled });
+	};
+
+	const { data: branchSort, isLoading: isBranchSortLoading } =
+		electronTrpc.settings.getBranchSortOrder.useQuery();
+	const setBranchSortOrderMutation =
+		electronTrpc.settings.setBranchSortOrder.useMutation({
+			onMutate: async (next) => {
+				await utils.settings.getBranchSortOrder.cancel();
+				const previous = utils.settings.getBranchSortOrder.getData();
+				utils.settings.getBranchSortOrder.setData(undefined, next);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getBranchSortOrder.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getBranchSortOrder.invalidate();
+			},
+		});
+	const branchSortOrder: BranchSortOrder =
+		branchSort?.sortOrder ?? "committerdate";
+	const branchSortPinDefault = branchSort?.pinDefault ?? true;
+	const handleBranchSortOrderChange = (value: BranchSortOrder) => {
+		setBranchSortOrderMutation.mutate({
+			sortOrder: value,
+			pinDefault: branchSortPinDefault,
+		});
+	};
+	const handleBranchSortPinDefaultChange = (enabled: boolean) => {
+		setBranchSortOrderMutation.mutate({
+			sortOrder: branchSortOrder,
+			pinDefault: enabled,
+		});
+	};
+
+	const { data: postCommitCommand, isLoading: isPostCommitCommandLoading } =
+		electronTrpc.settings.getPostCommitCommand.useQuery();
+	const setPostCommitCommandMutation =
+		electronTrpc.settings.setPostCommitCommand.useMutation({
+			onMutate: async ({ command }) => {
+				await utils.settings.getPostCommitCommand.cancel();
+				const previous = utils.settings.getPostCommitCommand.getData();
+				utils.settings.getPostCommitCommand.setData(undefined, command);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getPostCommitCommand.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getPostCommitCommand.invalidate();
+			},
+		});
+	const handlePostCommitCommandChange = (value: PostCommitCommand) => {
+		setPostCommitCommandMutation.mutate({ command: value });
 	};
 
 	const { data: worktreeBaseDir, isLoading: isWorktreeBaseDirLoading } =
@@ -225,6 +362,171 @@ export function GitSettings({ visibleItems }: GitSettingsProps) {
 								/>
 							)}
 						</div>
+					</div>
+				)}
+
+				{showSmartCommit && (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label
+									htmlFor="git-smart-commit"
+									className="text-sm font-medium"
+								>
+									Smart Commit
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									When no files are staged, commit all changes in a single step
+									(matches VS Code's <code>git.enableSmartCommit</code>)
+								</p>
+							</div>
+							<Switch
+								id="git-smart-commit"
+								checked={smartCommitEnabled}
+								onCheckedChange={handleSmartCommitToggle}
+								disabled={isSmartCommitLoading || setSmartCommit.isPending}
+							/>
+						</div>
+						{smartCommitEnabled && (
+							<div className="flex items-center justify-between pl-4">
+								<div className="space-y-0.5">
+									<Label className="text-xs font-medium">
+										Changes to auto-stage
+									</Label>
+									<p className="text-[11px] text-muted-foreground">
+										<code>all</code>: include untracked (<code>git add -A</code>
+										). <code>tracked</code>: tracked files only (
+										<code>git add -u</code>).
+									</p>
+								</div>
+								<Select
+									value={smartCommitChanges}
+									onValueChange={(value) =>
+										handleSmartCommitChangesChange(
+											value as SmartCommitChangesMode,
+										)
+									}
+									disabled={isSmartCommitLoading || setSmartCommit.isPending}
+								>
+									<SelectTrigger className="w-[140px]">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">All changes</SelectItem>
+										<SelectItem value="tracked">Tracked only</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
+						)}
+					</div>
+				)}
+
+				{showAutoStash && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label htmlFor="git-auto-stash" className="text-sm font-medium">
+								Auto Stash
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Stash local changes before pull / sync and restore them after it
+								finishes (matches VS Code's <code>git.autoStash</code>).
+								Untracked files are included. If the operation fails the stash
+								is kept on the stack.
+							</p>
+						</div>
+						<Switch
+							id="git-auto-stash"
+							checked={autoStash ?? false}
+							onCheckedChange={handleAutoStashToggle}
+							disabled={isAutoStashLoading || setAutoStash.isPending}
+						/>
+					</div>
+				)}
+
+				{showBranchSortOrder && (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label className="text-sm font-medium">Branch Sort Order</Label>
+								<p className="text-xs text-muted-foreground">
+									Order used in the base branch picker. Remote-only branches are
+									shown as <code>origin/&lt;name&gt;</code>.
+								</p>
+							</div>
+							<Select
+								value={branchSortOrder}
+								onValueChange={(value) =>
+									handleBranchSortOrderChange(value as BranchSortOrder)
+								}
+								disabled={
+									isBranchSortLoading || setBranchSortOrderMutation.isPending
+								}
+							>
+								<SelectTrigger className="w-[180px]">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="committerdate">
+										Committer date (newest first)
+									</SelectItem>
+									<SelectItem value="alphabetical">Alphabetical</SelectItem>
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="flex items-center justify-between pl-4">
+							<div className="space-y-0.5">
+								<Label
+									htmlFor="git-branch-pin-default"
+									className="text-xs font-medium"
+								>
+									Pin default branch at top
+								</Label>
+								<p className="text-[11px] text-muted-foreground">
+									Keep <code>main</code> / <code>master</code> / the repo's
+									default branch as the first entry regardless of sort order.
+								</p>
+							</div>
+							<Switch
+								id="git-branch-pin-default"
+								checked={branchSortPinDefault}
+								onCheckedChange={handleBranchSortPinDefaultChange}
+								disabled={
+									isBranchSortLoading || setBranchSortOrderMutation.isPending
+								}
+							/>
+						</div>
+					</div>
+				)}
+
+				{showPostCommitCommand && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label className="text-sm font-medium">Post Commit Command</Label>
+							<p className="text-xs text-muted-foreground">
+								Run <code>push</code> or <code>sync</code> automatically after a
+								successful commit (matches VS Code's{" "}
+								<code>git.postCommitCommand</code>).
+							</p>
+						</div>
+						<Select
+							value={postCommitCommand ?? "none"}
+							onValueChange={(value) =>
+								handlePostCommitCommandChange(value as PostCommitCommand)
+							}
+							disabled={
+								isPostCommitCommandLoading ||
+								setPostCommitCommandMutation.isPending
+							}
+						>
+							<SelectTrigger className="w-[140px]">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="none">None</SelectItem>
+								<SelectItem value="push">Push</SelectItem>
+								<SelectItem value="sync">Sync</SelectItem>
+							</SelectContent>
+						</Select>
 					</div>
 				)}
 

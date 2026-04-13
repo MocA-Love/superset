@@ -2,6 +2,7 @@ import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { useCallback, useMemo } from "react";
 import type { useGitStatus } from "renderer/hooks/host-service/useGitStatus";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { ChangesFilter } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 import type { SidebarTabDefinition } from "../../types";
@@ -56,8 +57,16 @@ export function useChangesTab({
 		{ refetchOnWindowFocus: true },
 	);
 
+	const { data: branchSortSettings } =
+		electronTrpc.settings.getBranchSortOrder.useQuery(undefined, {
+			staleTime: 10_000,
+		});
 	const branches = workspaceTrpc.git.listBranches.useQuery(
-		{ workspaceId },
+		{
+			workspaceId,
+			sortOrder: branchSortSettings?.sortOrder,
+			pinDefault: branchSortSettings?.pinDefault,
+		},
 		{ refetchInterval: 30_000, refetchOnWindowFocus: true },
 	);
 

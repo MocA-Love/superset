@@ -25,7 +25,10 @@ export function BaseBranchSelector({
 	const filtered = useMemo(() => {
 		if (!search) return branches;
 		const lower = search.toLowerCase();
-		return branches.filter((b) => b.name.toLowerCase().includes(lower));
+		return branches.filter((b) => {
+			const display = b.isRemote ? `origin/${b.name}` : b.name;
+			return display.toLowerCase().includes(lower);
+		});
 	}, [branches, search]);
 
 	return (
@@ -53,23 +56,35 @@ export function BaseBranchSelector({
 				</div>
 				<ScrollArea className="flex-1 overflow-y-auto">
 					<div className="p-1">
-						{filtered.map((branch) => (
-							<button
-								key={branch.name}
-								type="button"
-								className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-								onClick={() => {
-									onChange(branch.name);
-									setOpen(false);
-									setSearch("");
-								}}
-							>
-								<span className="truncate">{branch.name}</span>
-								{branch.name === currentValue && (
-									<Check className="size-3.5 shrink-0" />
-								)}
-							</button>
-						))}
+						{filtered.map((branch) => {
+							const display = branch.isRemote
+								? `origin/${branch.name}`
+								: branch.name;
+							return (
+								<button
+									key={`${branch.isRemote ? "r" : "l"}:${branch.name}`}
+									type="button"
+									className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+									onClick={() => {
+										onChange(branch.name);
+										setOpen(false);
+										setSearch("");
+									}}
+								>
+									<span className="truncate">
+										{display}
+										{branch.isRemote && (
+											<span className="ml-1 text-[10px] text-muted-foreground">
+												remote
+											</span>
+										)}
+									</span>
+									{branch.name === currentValue && (
+										<Check className="size-3.5 shrink-0" />
+									)}
+								</button>
+							);
+						})}
 						{filtered.length === 0 && (
 							<div className="px-2 py-3 text-center text-sm text-muted-foreground">
 								No branches found

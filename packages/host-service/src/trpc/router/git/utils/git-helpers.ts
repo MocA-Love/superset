@@ -80,25 +80,37 @@ export async function buildBranch(
 	name: string,
 	isHead: boolean,
 	compareRef?: string,
+	options?: { isRemote?: boolean },
 ): Promise<Branch> {
+	const isRemote = options?.isRemote ?? false;
 	let upstream: string | null = null;
 	let aheadCount = 0;
 	let behindCount = 0;
 	let lastCommitHash = "";
 	let lastCommitDate = "";
 
-	try {
-		const remote = (
-			await git.raw(["config", `branch.${name}.remote`]).catch(() => "")
-		).trim();
-		const merge = (
-			await git.raw(["config", `branch.${name}.merge`]).catch(() => "")
-		).trim();
-		upstream =
-			remote && merge ? `${remote}/${merge.replace("refs/heads/", "")}` : null;
-	} catch {
-		upstream = null;
+	// Remote-tracking branches don't have `branch.<name>.remote` config
+	// entries, so skip the upstream probe entirely for them.
+	if (!isRemote) {
+		try {
+			const remote = (
+				await git.raw(["config", `branch.${name}.remote`]).catch(() => "")
+			).trim();
+			const merge = (
+				await git.raw(["config", `branch.${name}.merge`]).catch(() => "")
+			).trim();
+			upstream =
+				remote && merge
+					? `${remote}/${merge.replace("refs/heads/", "")}`
+					: null;
+		} catch {
+			upstream = null;
+		}
 	}
+
+	// The ref used for git commands — remote branches must be read via
+	// `origin/<name>` even though we store the short name in the Branch.
+	const ref = isRemote ? `origin/${name}` : name;
 
 	if (compareRef) {
 		try {
@@ -107,7 +119,7 @@ export async function buildBranch(
 					"rev-list",
 					"--left-right",
 					"--count",
-					`${compareRef}...${name}`,
+					`${compareRef}...${ref}`,
 				])
 			).trim();
 			const [behind, ahead] = counts.split("\t").map(Number);
@@ -117,7 +129,7 @@ export async function buildBranch(
 	}
 
 	try {
-		const log = (await git.raw(["log", "-1", "--format=%H\t%aI", name])).trim();
+		const log = (await git.raw(["log", "-1", "--format=%H\t%aI", ref])).trim();
 		const [hash, date] = log.split("\t");
 		lastCommitHash = hash ?? "";
 		lastCommitDate = date ?? "";
@@ -126,6 +138,7 @@ export async function buildBranch(
 	return {
 		name,
 		isHead,
+		isRemote,
 		upstream,
 		aheadCount,
 		behindCount,
