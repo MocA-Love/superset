@@ -330,6 +330,13 @@
       "when": 1776066177884,
       "tag": "0046_auto_stash_setting",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1776067576503,
+      "tag": "0047_branch_sort_order_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -105,6 +105,15 @@ export type FileStatus = PatchStatus | "untracked";
 export interface Branch {
 	name: string;
 	isHead: boolean;
+	/**
+	 * True when this entry represents a remote-tracking branch (e.g.
+	 * `origin/feat-x`) that has no local counterpart. The `name` field
+	 * always holds the short ref name without the `origin/` prefix so
+	 * that `git.listCommits` / `git.getStatus` can keep interpreting it
+	 * as a base ref; the UI is responsible for prefixing the display
+	 * string when `isRemote` is true.
+	 */
+	isRemote: boolean;
 	upstream: string | null;
 	aheadCount: number;
 	behindCount: number;

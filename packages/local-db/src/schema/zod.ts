@@ -255,6 +255,10 @@ export const SMART_COMMIT_CHANGES_MODES = ["all", "tracked"] as const;
 export type SmartCommitChangesMode =
 	(typeof SMART_COMMIT_CHANGES_MODES)[number];
 
+export const BRANCH_SORT_ORDERS = ["committerdate", "alphabetical"] as const;
+
+export type BranchSortOrder = (typeof BRANCH_SORT_ORDERS)[number];
+
 export const SITE_PERMISSION_KINDS = ["microphone", "camera"] as const;
 
 export type SitePermissionKind = (typeof SITE_PERMISSION_KINDS)[number];

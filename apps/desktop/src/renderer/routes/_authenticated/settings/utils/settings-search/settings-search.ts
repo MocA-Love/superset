@@ -37,6 +37,7 @@ export const SETTING_ITEM_ID = {
 	GIT_WORKTREE_LOCATION: "git-worktree-location",
 	GIT_SMART_COMMIT: "git-smart-commit",
 	GIT_AUTO_STASH: "git-auto-stash",
+	GIT_BRANCH_SORT_ORDER: "git-branch-sort-order",
 
 	AGENTS_ENABLED: "agents-enabled",
 	AGENTS_COMMANDS: "agents-commands",
@@ -445,6 +446,25 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		description:
 			"Stash local changes before pull/sync and restore after (VS Code style)",
 		keywords: ["git", "stash", "pull", "sync", "auto", "restore", "pop"],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER,
+		section: "git",
+		title: "Branch Sort Order",
+		description:
+			"Order used in the base branch picker (committer date or alphabetical)",
+		keywords: [
+			"git",
+			"branch",
+			"sort",
+			"order",
+			"committer",
+			"date",
+			"alphabetical",
+			"picker",
+			"pin",
+			"default",
+		],
 	},
 	{
 		id: SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,

@@ -2,6 +2,7 @@ import {
 	type AgentCustomDefinition,
 	type AgentPresetOverrideEnvelope,
 	BRANCH_PREFIX_MODES,
+	BRANCH_SORT_ORDERS,
 	EXECUTION_MODES,
 	EXTERNAL_APPS,
 	FILE_OPEN_MODES,
@@ -909,6 +910,41 @@ export const createSettingsRouter = () => {
 					.onConflictDoUpdate({
 						target: settings.id,
 						set: { autoStash: input.enabled },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		getBranchSortOrder: publicProcedure.query(() => {
+			const row = getSettings();
+			return {
+				sortOrder: row.branchSortOrder ?? "committerdate",
+				pinDefault: row.pinDefaultBranch ?? true,
+			};
+		}),
+
+		setBranchSortOrder: publicProcedure
+			.input(
+				z.object({
+					sortOrder: z.enum(BRANCH_SORT_ORDERS),
+					pinDefault: z.boolean(),
+				}),
+			)
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({
+						id: 1,
+						branchSortOrder: input.sortOrder,
+						pinDefaultBranch: input.pinDefault,
+					})
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: {
+							branchSortOrder: input.sortOrder,
+							pinDefaultBranch: input.pinDefault,
+						},
 					})
 					.run();
 

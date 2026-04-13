@@ -11,6 +11,7 @@ import type {
 	AgentCustomDefinition,
 	AgentPresetOverrideEnvelope,
 	BranchPrefixMode,
+	BranchSortOrder,
 	ExternalApp,
 	FileOpenMode,
 	GitHubStatus,
@@ -252,6 +253,8 @@ export const settings = sqliteTable("settings", {
 		"smart_commit_changes",
 	).$type<SmartCommitChangesMode>(),
 	autoStash: integer("auto_stash", { mode: "boolean" }),
+	branchSortOrder: text("branch_sort_order").$type<BranchSortOrder>(),
+	pinDefaultBranch: integer("pin_default_branch", { mode: "boolean" }),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;
