@@ -306,32 +306,7 @@ export function CommitInput({
 
 	const handleCommit = () => {
 		if (!canCommit) return;
-		const message = commitMessage.trim();
-		const commitOptions = {
-			onSuccess: () => {
-				runPostCommitCommand();
-			},
-		};
-		// Smart commit path: stage first, then commit. We run the stage
-		// mutation imperatively so any failure shows the normal error
-		// dialog (no commit is attempted if staging fails).
-		if (willSmartCommit) {
-			const stageMutation =
-				smartCommitMode === "tracked" ? stageTrackedMutation : stageAllMutation;
-			stageMutation.mutate(
-				{ worktreePath },
-				{
-					onSuccess: () => {
-						commitMutation.mutate({ worktreePath, message }, commitOptions);
-					},
-					onError: (error) => {
-						showGitErrorDialog(error, "stage");
-					},
-				},
-			);
-			return;
-		}
-		commitMutation.mutate({ worktreePath, message }, commitOptions);
+		runCommitWithCallback(runPostCommitCommand);
 	};
 
 	const handlePush = () => {
@@ -450,10 +425,13 @@ export function CommitInput({
 	const handlePull = () => runPullOrSyncWithAutoStash("pull");
 	const handleSync = () => runPullOrSyncWithAutoStash("sync");
 	const handleFetch = () => fetchMutation.mutate({ worktreePath });
+	// Fix C: Fetch & Pull must go through the auto-stash orchestrator so
+	// that git.autoStash is honoured, matching the behaviour of the plain
+	// Pull button.
 	const handleFetchAndPull = () => {
 		fetchMutation.mutate(
 			{ worktreePath },
-			{ onSuccess: () => pullMutation.mutate({ worktreePath }) },
+			{ onSuccess: () => runPullOrSyncWithAutoStash("pull") },
 		);
 	};
 	const handleCreatePR = () => {
@@ -462,27 +440,49 @@ export function CommitInput({
 	};
 	const handleOpenPR = () => prUrl && window.open(prUrl, "_blank");
 
+	// Fix B: Commit+Push / Commit+Push+PR must run the same smart-commit
+	// staging logic as the primary Commit button so that git.enableSmartCommit
+	// is honoured when the staging area is empty.
+	const runCommitWithCallback = (onCommitSuccess: () => void) => {
+		const message = commitMessage.trim();
+		if (willSmartCommit) {
+			const stageMutation =
+				smartCommitMode === "tracked" ? stageTrackedMutation : stageAllMutation;
+			stageMutation.mutate(
+				{ worktreePath },
+				{
+					onSuccess: () => {
+						commitMutation.mutate(
+							{ worktreePath, message },
+							{ onSuccess: onCommitSuccess },
+						);
+					},
+					onError: (error) => {
+						showGitErrorDialog(error, "stage");
+					},
+				},
+			);
+		} else {
+			commitMutation.mutate(
+				{ worktreePath, message },
+				{ onSuccess: onCommitSuccess },
+			);
+		}
+	};
+
 	const handleCommitAndPush = () => {
 		if (!canCommit) return;
-		commitMutation.mutate(
-			{ worktreePath, message: commitMessage.trim() },
-			{ onSuccess: handlePush },
-		);
+		runCommitWithCallback(handlePush);
 	};
 
 	const handleCommitPushAndCreatePR = () => {
 		if (!canCommit) return;
-		commitMutation.mutate(
-			{ worktreePath, message: commitMessage.trim() },
-			{
-				onSuccess: () => {
-					pushMutation.mutate(
-						{ worktreePath, setUpstream: true },
-						{ onSuccess: handleCreatePR },
-					);
-				},
-			},
-		);
+		runCommitWithCallback(() => {
+			pushMutation.mutate(
+				{ worktreePath, setUpstream: true },
+				{ onSuccess: handleCreatePR },
+			);
+		});
 	};
 
 	const primaryAction = getPrimaryAction({

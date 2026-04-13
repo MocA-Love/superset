@@ -65,7 +65,7 @@ export function CloneRepoTab({ onError, parentDir }: CloneRepoTabProps) {
 	// events (done/error/canceled) are delivered even after `status` flips
 	// in the cloneRepo / cancelClone callbacks.
 	electronTrpc.projects.cloneProgress.useSubscription(
-		cloneId ? { cloneId } : (undefined as unknown as { cloneId: string }),
+		{ cloneId: cloneId ?? "" },
 		{
 			enabled: cloneId !== null,
 			onData: (event) => {

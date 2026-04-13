@@ -57,6 +57,7 @@ class BrowserManager extends EventEmitter {
 				this.contextMenuListeners,
 				this.fullscreenListeners,
 				this.popupListeners,
+				this.findListeners,
 			]) {
 				const cleanup = map.get(paneId);
 				if (cleanup) {
