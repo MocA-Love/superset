@@ -173,23 +173,71 @@ export function FileItem({
 		};
 	}, []);
 
+	// VS Code-style: hover / context-menu actions on a file that is part
+	// of a multi-selection apply to the whole selection. Clicking an
+	// action on a non-selected file falls back to the single-file handler
+	// (and does not disturb any existing selection, matching VS Code).
+	const isPartOfActiveSelection =
+		isMultiSelected && (multiSelect?.selectionCount ?? 0) > 1;
+	const selectedFilesSnapshot = multiSelect?.selectedFiles ?? [];
+
+	const runStage = () => {
+		if (isPartOfActiveSelection && multiSelect?.onStageSelected) {
+			multiSelect.onStageSelected(selectedFilesSnapshot);
+			multiSelect.clear();
+			return;
+		}
+		onStage?.();
+	};
+
+	const runUnstage = () => {
+		if (isPartOfActiveSelection && multiSelect?.onUnstageSelected) {
+			multiSelect.onUnstageSelected(selectedFilesSnapshot);
+			multiSelect.clear();
+			return;
+		}
+		onUnstage?.();
+	};
+
+	const runDiscardConfirmed = () => {
+		if (isPartOfActiveSelection && multiSelect?.onDiscardSelected) {
+			multiSelect.onDiscardSelected(selectedFilesSnapshot);
+			multiSelect.clear();
+			return;
+		}
+		onDiscard?.();
+	};
+
 	const handleDiscardClick = () => {
 		setShowDiscardDialog(true);
 	};
 
 	const handleConfirmDiscard = () => {
 		setShowDiscardDialog(false);
-		onDiscard?.();
+		runDiscardConfirmed();
 	};
 
 	const isDeleteAction = file.status === "untracked" || file.status === "added";
 	const discardLabel = isDeleteAction ? "Delete" : "Discard";
-	const discardDialogTitle = isDeleteAction
-		? `Delete "${fileName}"?`
-		: `Discard changes to "${fileName}"?`;
-	const discardDialogDescription = isDeleteAction
-		? "This will permanently delete this file. This action cannot be undone."
-		: "This will revert all changes to this file. This action cannot be undone.";
+	const bulkCount = isPartOfActiveSelection
+		? (multiSelect?.selectionCount ?? 0)
+		: 0;
+	const discardDialogTitle =
+		bulkCount > 0
+			? isDeleteAction
+				? `Delete ${bulkCount} files?`
+				: `Discard changes to ${bulkCount} files?`
+			: isDeleteAction
+				? `Delete "${fileName}"?`
+				: `Discard changes to "${fileName}"?`;
+	const discardDialogDescription =
+		bulkCount > 0
+			? isDeleteAction
+				? "This will permanently delete the selected files. This action cannot be undone."
+				: "This will revert all changes to the selected files. This action cannot be undone."
+			: isDeleteAction
+				? "This will permanently delete this file. This action cannot be undone."
+				: "This will revert all changes to this file. This action cannot be undone.";
 	const hoverActions: RowHoverAction[] = [
 		...(onDiscard
 			? [
@@ -213,7 +261,7 @@ export function FileItem({
 						key: "stage",
 						label: "Stage",
 						icon: <VscAdd className="size-3" />,
-						onClick: onStage,
+						onClick: runStage,
 						disabled: isActioning,
 					},
 				]
@@ -224,7 +272,7 @@ export function FileItem({
 						key: "unstage",
 						label: "Unstage",
 						icon: <VscRemove className="size-3" />,
-						onClick: onUnstage,
+						onClick: runUnstage,
 						disabled: isActioning,
 					},
 				]
@@ -234,6 +282,7 @@ export function FileItem({
 	const fileContent = (
 		<div
 			{...fileDragProps}
+			data-multi-select-path={file.path}
 			className={cn(
 				"group relative w-full flex items-stretch px-1.5 text-left rounded-sm",
 				"hover:bg-accent/50 cursor-pointer transition-colors",
@@ -324,16 +373,16 @@ export function FileItem({
 					{(onStage || onUnstage || onDiscard) && <ContextMenuSeparator />}
 
 					{onStage && (
-						<ContextMenuItem onClick={onStage} disabled={isActioning}>
+						<ContextMenuItem onClick={runStage} disabled={isActioning}>
 							<VscAdd className="mr-2 size-4" />
-							Stage
+							{bulkCount > 0 ? `Stage ${bulkCount} files` : "Stage"}
 						</ContextMenuItem>
 					)}
 
 					{onUnstage && (
-						<ContextMenuItem onClick={onUnstage} disabled={isActioning}>
+						<ContextMenuItem onClick={runUnstage} disabled={isActioning}>
 							<VscRemove className="mr-2 size-4" />
-							Unstage
+							{bulkCount > 0 ? `Unstage ${bulkCount} files` : "Unstage"}
 						</ContextMenuItem>
 					)}
 
@@ -348,7 +397,9 @@ export function FileItem({
 							) : (
 								<VscDiscard className="mr-2 size-4" />
 							)}
-							{discardLabel}
+							{bulkCount > 0
+								? `${discardLabel} ${bulkCount} files`
+								: discardLabel}
 						</ContextMenuItem>
 					)}
 				</ContextMenuContent>

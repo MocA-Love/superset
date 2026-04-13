@@ -8,7 +8,6 @@ import type {
 	ChangedFile,
 	CommitInfo,
 } from "shared/changes-types";
-import { BulkActionBar } from "../../components/BulkActionBar";
 import { CommitListVirtualized } from "../../components/CommitListVirtualized";
 import { FileList } from "../../components/FileList";
 import { orderFilesForViewMode } from "../../components/FileList/fileListOrdering";
@@ -223,11 +222,10 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.staged ? (
-				<MultiSelectProvider files={orderedStagedFiles}>
-					<BulkActionBar
-						onUnstageSelected={onUnstageFiles}
-						isActioning={isStagedActioning}
-					/>
+				<MultiSelectProvider
+					files={orderedStagedFiles}
+					onUnstageSelected={onUnstageFiles}
+				>
 					<FileList
 						files={stagedFiles}
 						viewMode={fileListViewMode}
@@ -284,11 +282,15 @@ export function useOrderedSections({
 				</div>
 			),
 			content: expandedSections.unstaged ? (
-				<MultiSelectProvider files={orderedUnstagedFiles}>
-					<BulkActionBar
-						onStageSelected={onStageFiles}
-						isActioning={isUnstagedActioning}
-					/>
+				<MultiSelectProvider
+					files={orderedUnstagedFiles}
+					onStageSelected={onStageFiles}
+					onDiscardSelected={(files) => {
+						for (const file of files) {
+							onDiscardFile(file);
+						}
+					}}
+				>
 					<FileList
 						files={unstagedFiles}
 						viewMode={fileListViewMode}
