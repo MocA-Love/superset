@@ -382,7 +382,13 @@ function nextCloneSeq(cloneId: string): number {
 	return next;
 }
 
-type CloneEventInput = Omit<CloneProgressEvent, "seq">;
+// Distributive omit preserves the discriminated-union shape so callers can
+// still pass type-specific fields (`message`, `stage`, …) without TS
+// collapsing everything to the common intersection.
+type DistributiveOmit<T, K extends keyof CloneProgressEvent> = T extends unknown
+	? Omit<T, K>
+	: never;
+type CloneEventInput = DistributiveOmit<CloneProgressEvent, "seq">;
 
 function emitCloneEvent(input: CloneEventInput) {
 	const event = {

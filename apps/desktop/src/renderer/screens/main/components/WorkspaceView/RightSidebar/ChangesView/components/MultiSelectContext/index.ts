@@ -1,5 +1,5 @@
 export {
+	type MultiSelectApi,
 	MultiSelectProvider,
 	useMultiSelect,
-	type MultiSelectApi,
 } from "./MultiSelectContext";
