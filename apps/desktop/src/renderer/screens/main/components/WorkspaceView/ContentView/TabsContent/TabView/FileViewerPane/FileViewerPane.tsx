@@ -6,6 +6,7 @@ import type { MosaicBranch } from "react-mosaic-component";
 import { createChatServiceIpcClient } from "renderer/components/Chat/utils/chat-service-client";
 import type { MarkdownEditorAdapter } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { resolveLanguageServiceLanguageId } from "renderer/lib/language-services";
 import {
 	deriveMemoDisplayName,
 	getTrustedMemoRootPath,
@@ -193,7 +194,8 @@ export function FileViewerPane({
 		const cursor = editor?.getCursorPosition();
 		const line = cursor?.line ?? 1;
 		const column = cursor?.column ?? 1;
-		const languageId = detectLanguage(filePath) ?? "typescript";
+		const languageId =
+			resolveLanguageServiceLanguageId(filePath) ?? detectLanguage(filePath);
 		addReferenceGraphTab(
 			normalizedWorkspaceId,
 			filePath,

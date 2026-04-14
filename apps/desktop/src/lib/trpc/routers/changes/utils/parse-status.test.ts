@@ -263,6 +263,9 @@ describe("detectLanguage", () => {
 	test("detects TypeScript files", () => {
 		expect(detectLanguage("file.ts")).toBe("typescript");
 		expect(detectLanguage("file.tsx")).toBe("typescript");
+		expect(detectLanguage("file.mts")).toBe("typescript");
+		expect(detectLanguage("file.d.mts")).toBe("typescript");
+		expect(detectLanguage("file.cts")).toBe("typescript");
 	});
 
 	test("detects JavaScript files", () => {

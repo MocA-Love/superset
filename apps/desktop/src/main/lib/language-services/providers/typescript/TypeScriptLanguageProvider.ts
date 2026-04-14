@@ -2,6 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { resolveShikiLanguageFromFilePath } from "shared/language-registry";
 import { languageDiagnosticsStore } from "../../diagnostics-store";
 import type {
 	LanguageServiceCallHierarchyItem,
@@ -255,36 +256,76 @@ function normalizeTsTextParts(
 		.join("");
 }
 
+function buildMarkdownCodeFence(code: string, language: string): string {
+	const fence = code.includes("```") ? "````" : "```";
+	return `${fence}${language}\n${code}\n${fence}`;
+}
+
+function formatTsTagMarkdown(tag: {
+	name?: string;
+	text?: TsServerTextPart[] | string;
+}): string | null {
+	const tagName = tag.name?.trim();
+	const tagBody = normalizeTsTextParts(tag.text).trim();
+
+	if (!tagName && !tagBody) {
+		return null;
+	}
+
+	if (!tagName) {
+		return tagBody;
+	}
+
+	if (!tagBody) {
+		return `**@${tagName}**`;
+	}
+
+	return `**@${tagName}** ${tagBody}`;
+}
+
 function normalizeTsHoverContents(
 	body: TsServerQuickInfoResponse | undefined,
+	absolutePath: string,
 ): LanguageServiceMarkupContent[] {
 	if (!body) {
 		return [];
 	}
 
-	const sections = [
-		body.displayString?.trim() ?? "",
-		normalizeTsTextParts(body.documentation).trim(),
-		...(body.tags ?? [])
-			.map((tag) => {
-				const tagBody = normalizeTsTextParts(tag.text).trim();
-				return tag.name
-					? `@${tag.name}${tagBody ? ` ${tagBody}` : ""}`
-					: tagBody;
-			})
-			.filter(Boolean),
-	].filter(Boolean);
+	const contents: LanguageServiceMarkupContent[] = [];
+	const signature = body.displayString?.trim();
+	const documentation = normalizeTsTextParts(body.documentation).trim();
+	const tagsMarkdown = (body.tags ?? [])
+		.map((tag) => formatTsTagMarkdown(tag))
+		.filter((tag): tag is string => Boolean(tag))
+		.join("\n\n");
 
-	if (sections.length === 0) {
+	const codeLanguage = resolveShikiLanguageFromFilePath(absolutePath);
+	if (signature) {
+		contents.push({
+			kind: "markdown",
+			value: buildMarkdownCodeFence(signature, codeLanguage ?? "typescript"),
+		});
+	}
+
+	if (documentation) {
+		contents.push({
+			kind: "markdown",
+			value: documentation,
+		});
+	}
+
+	if (tagsMarkdown) {
+		contents.push({
+			kind: "markdown",
+			value: tagsMarkdown,
+		});
+	}
+
+	if (contents.length === 0) {
 		return [];
 	}
 
-	return [
-		{
-			kind: "plaintext",
-			value: sections.join("\n\n"),
-		},
-	];
+	return contents;
 }
 
 function normalizeTsRange(
@@ -561,7 +602,7 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 			});
 
 			const body = response.body as TsServerQuickInfoResponse | undefined;
-			const contents = normalizeTsHoverContents(body);
+			const contents = normalizeTsHoverContents(body, args.absolutePath);
 			if (contents.length === 0) {
 				return null;
 			}
