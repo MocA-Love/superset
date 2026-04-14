@@ -2,7 +2,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -14,7 +14,7 @@ import {
 	DEFAULT_TERMINAL_FONT_FAMILY,
 	DEFAULT_TERMINAL_FONT_SIZE,
 } from "./config";
-import { getDefaultTerminalBg, type TerminalRendererRef } from "./helpers";
+import { getDefaultTerminalBg } from "./helpers";
 import {
 	useFileLinkClick,
 	useTerminalColdRestore,
@@ -38,17 +38,17 @@ import type {
 	TerminalStreamEvent,
 } from "./types";
 import { shellEscapePaths } from "./utils";
+import * as v1TerminalCache from "./v1-terminal-cache";
 
 const stripLeadingEmoji = (text: string) =>
 	text.trim().replace(/^[\p{Emoji}\p{Symbol}]\s*/u, "");
 const TYPING_PREVIEW_MAX_DURATION_MS = 200;
 
-export const Terminal = ({
+export const Terminal = memo(function Terminal({
 	paneId,
 	tabId,
 	workspaceId,
-	isWorkspaceActive,
-}: TerminalProps) => {
+}: TerminalProps) {
 	const pane = useTabsStore((s) => s.panes[paneId]);
 	const isWorkspaceRunPane = Boolean(pane?.workspaceRun?.workspaceId);
 	const paneInitialCwd = pane?.initialCwd;
@@ -96,7 +96,6 @@ export const Terminal = ({
 	const xtermRef = useRef<XTerm | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const searchAddonRef = useRef<SearchAddon | null>(null);
-	const rendererRef = useRef<TerminalRendererRef | null>(null);
 	const isExitedRef = useRef(false);
 	const [exitStatus, setExitStatus] = useState<"killed" | "exited" | null>(
 		null,
@@ -110,8 +109,6 @@ export const Terminal = ({
 	const commandBufferRef = useRef("");
 	const tabIdRef = useRef(tabId);
 	tabIdRef.current = tabId;
-	const workspaceIsActiveRef = useRef(isWorkspaceActive);
-	workspaceIsActiveRef.current = isWorkspaceActive;
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
 	const setPaneName = useTabsStore((s) => s.setPaneName);
 	const focusedPaneId = useTabsStore((s) => s.focusedPaneIds[tabId]);
@@ -126,7 +123,6 @@ export const Terminal = ({
 			createOrAttach: createOrAttachRef,
 			write: writeRef,
 			resize: resizeRef,
-			detach: detachRef,
 			cancelCreateOrAttach: cancelCreateOrAttachRef,
 			clearScrollback: clearScrollbackRef,
 		},
@@ -153,7 +149,7 @@ export const Terminal = ({
 	// File link click handler
 	const { handleFileLinkClick } = useFileLinkClick({
 		workspaceId,
-		workspaceCwd,
+		projectId: workspaceData?.projectId,
 	});
 
 	// URL click handler - opens in app browser or system browser based on setting
@@ -185,7 +181,6 @@ export const Terminal = ({
 		initialThemeRef,
 		paneInitialCwdRef,
 		clearPaneInitialDataRef,
-		workspaceCwdRef,
 		handleFileLinkClickRef,
 		setPaneNameRef,
 		handleTerminalFocusRef,
@@ -204,7 +199,6 @@ export const Terminal = ({
 		terminalTheme,
 		paneInitialCwd,
 		clearPaneInitialData,
-		workspaceCwd,
 		handleFileLinkClick,
 		setPaneName,
 		setFocusedPane,
@@ -289,27 +283,6 @@ export const Terminal = ({
 	// Populate handler refs for flushPendingEvents to use
 	handleTerminalExitRef.current = handleTerminalExit;
 	handleStreamErrorRef.current = handleStreamError;
-
-	// Stream subscription
-	electronTrpc.terminal.stream.useSubscription(paneId, {
-		onData: (event) => {
-			if (connectionErrorRef.current && event.type === "data") {
-				setConnectionError(null);
-				retryCountRef.current = 0;
-			}
-			handleStreamData(event);
-		},
-		onError: (error) => {
-			console.error("[Terminal] Stream subscription error:", {
-				paneId,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			setConnectionError(
-				error instanceof Error ? error.message : "Connection to terminal lost",
-			);
-		},
-		enabled: isWorkspaceActive,
-	});
 
 	// Auto-retry when connection error is set
 	useEffect(() => {
@@ -453,13 +426,10 @@ export const Terminal = ({
 		paneId,
 		tabIdRef,
 		workspaceId,
-		workspaceIsActive: isWorkspaceActive,
-		workspaceIsActiveRef,
 		terminalRef,
 		xtermRef,
 		fitAddonRef,
 		searchAddonRef,
-		rendererRef,
 		isExitedRef,
 		wasKilledByUserRef,
 		commandBufferRef,
@@ -467,7 +437,6 @@ export const Terminal = ({
 		isRestoredModeRef,
 		connectionErrorRef,
 		initialThemeRef,
-		workspaceCwdRef,
 		handleFileLinkClickRef,
 		handleUrlClickRef,
 		paneInitialCwdRef,
@@ -479,7 +448,6 @@ export const Terminal = ({
 		createOrAttachRef,
 		writeRef,
 		resizeRef,
-		detachRef,
 		cancelCreateOrAttachRef,
 		clearScrollbackRef,
 		isStreamReadyRef,
@@ -489,7 +457,6 @@ export const Terminal = ({
 		flushPendingEvents,
 		resetModes,
 		isAlternateScreenRef,
-		isAtPromptRef,
 		isBracketedPasteRef,
 		setPaneNameRef,
 		renameUnnamedWorkspaceRef,
@@ -508,11 +475,45 @@ export const Terminal = ({
 		openHistorySuggestionsRef,
 	});
 
+	// Stream event handler registration — the subscription itself lives in
+	// v1TerminalCache and stays alive across mount/unmount cycles so data
+	// keeps flowing to xterm even while the tab is hidden.
+	// Placed after useTerminalLifecycle so the cache entry exists on cold mount.
+	// Gated on xtermInstance so it re-runs once the lifecycle hook creates it.
 	useEffect(() => {
-		const xterm = xtermRef.current;
-		if (!xterm || !terminalTheme) return;
-		xterm.options.theme = terminalTheme;
-	}, [terminalTheme]);
+		if (!xtermInstance) return;
+
+		const queuedEvents = v1TerminalCache.registerHandlers(paneId, {
+			onEvent: (event) => {
+				if (connectionErrorRef.current && event.type === "data") {
+					setConnectionError(null);
+					retryCountRef.current = 0;
+				}
+				handleStreamData(event);
+			},
+			onError: (error) => {
+				console.error("[Terminal] Stream subscription error:", {
+					paneId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				setConnectionError(
+					error instanceof Error
+						? error.message
+						: "Connection to terminal lost",
+				);
+			},
+		});
+
+		// Process lifecycle events (exit, error, disconnect) that arrived
+		// while this component was unmounted.
+		for (const event of queuedEvents) {
+			handleStreamData(event);
+		}
+
+		return () => {
+			v1TerminalCache.unregisterHandlers(paneId);
+		};
+	}, [paneId, xtermInstance, handleStreamData, setConnectionError]);
 
 	useEffect(() => {
 		const xterm = xtermRef.current;
@@ -527,22 +528,17 @@ export const Terminal = ({
 		},
 	);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: resizeRef is a stable MutableRefObject — .current is read inside the effect, not a dependency
 	useEffect(() => {
-		const xterm = xtermRef.current;
-		if (!xterm || !fontSettings) return;
+		if (!fontSettings) return;
 		const family =
 			fontSettings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY;
 		const size = fontSettings.terminalFontSize ?? DEFAULT_TERMINAL_FONT_SIZE;
-		if (
-			xterm.options.fontFamily === family &&
-			xterm.options.fontSize === size
-		) {
-			return;
+		const result = v1TerminalCache.updateAppearance(paneId, family, size);
+		if (result?.changed) {
+			resizeRef.current({ paneId, cols: result.cols, rows: result.rows });
 		}
-		xterm.options.fontFamily = family;
-		xterm.options.fontSize = size;
-		fitAddonRef.current?.fit();
-	}, [fontSettings]);
+	}, [paneId, fontSettings]);
 
 	useEffect(() => {
 		return () => {
@@ -615,4 +611,4 @@ export const Terminal = ({
 			)}
 		</div>
 	);
-};
+});

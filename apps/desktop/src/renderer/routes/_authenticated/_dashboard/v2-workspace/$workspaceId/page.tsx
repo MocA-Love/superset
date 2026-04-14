@@ -42,11 +42,13 @@ import {
 	getBrowserTabTitle,
 	renderBrowserTabIcon,
 } from "./hooks/usePaneRegistry/components/BrowserPane";
+import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
+	DiffPaneData,
 	FilePaneData,
 	PaneViewerData,
 	TerminalPaneData,
@@ -137,6 +139,11 @@ function WorkspaceContent({
 		projectId,
 		workspaceId,
 	});
+	const { matchedPresets, executePreset } = useV2PresetExecution({
+		store,
+		workspaceId,
+		projectId,
+	});
 	const paneRegistry = usePaneRegistry(workspaceId);
 	const defaultContextMenuActions = useDefaultContextMenuActions();
 	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
@@ -208,8 +215,24 @@ function WorkspaceContent({
 	);
 
 	const openSidebarFilePane = useCallback(
-		(filePath: string) => {
+		(filePath: string, openInNewTab?: boolean) => {
 			const state = store.getState();
+			if (openInNewTab) {
+				state.addTab({
+					titleOverride: filePath.split(/[/\\]/).pop() ?? "File",
+					panes: [
+						{
+							kind: "file",
+							data: {
+								filePath,
+								mode: "editor",
+								hasChanges: false,
+							} as FilePaneData,
+						},
+					],
+				});
+				return;
+			}
 			const active = state.getActivePane();
 			const activeTab = active
 				? (state.tabs.find((tab) => tab.id === active.tabId) ?? null)
@@ -263,6 +286,39 @@ function WorkspaceContent({
 			});
 		},
 		[rightSidebarOpenViewWidth, store],
+	);
+
+	const openDiffPane = useCallback(
+		(filePath: string) => {
+			const state = store.getState();
+			const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+			if (activeTab) {
+				for (const pane of Object.values(activeTab.panes)) {
+					if (pane.kind !== "diff") continue;
+					const prev = pane.data as DiffPaneData;
+					state.setPaneData({
+						paneId: pane.id,
+						data: {
+							...prev,
+							path: filePath,
+						} as PaneViewerData,
+					});
+					state.setActivePane({ tabId: activeTab.id, paneId: pane.id });
+					return;
+				}
+			}
+			state.openPane({
+				pane: {
+					kind: "diff",
+					data: {
+						path: filePath,
+						collapsedFiles: [],
+					} as DiffPaneData,
+				},
+				tabTitle: "Changes",
+			});
+		},
+		[store],
 	);
 
 	const addTerminalTab = useCallback(() => {
@@ -369,7 +425,7 @@ function WorkspaceContent({
 
 	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
 
-	useWorkspaceHotkeys({ store, workspaceId });
+	useWorkspaceHotkeys({ store, workspaceId, matchedPresets, executePreset });
 	useHotkey("QUICK_OPEN", handleQuickOpen);
 	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
 	useHotkey("SEARCH_IN_FILES", handleQuickOpen);
@@ -417,9 +473,8 @@ function WorkspaceContent({
 							renderTabIcon={renderBrowserTabIcon}
 							renderBelowTabBar={() => (
 								<V2PresetsBar
-									workspaceId={workspaceId}
-									projectId={projectId}
-									store={store}
+									matchedPresets={matchedPresets}
+									executePreset={executePreset}
 								/>
 							)}
 							renderAddTabMenu={() => (
@@ -490,6 +545,7 @@ function WorkspaceContent({
 								workspaceId={workspaceId}
 								workspaceName={workspaceName}
 								onSelectFile={openSidebarFilePane}
+								onSelectDiffFile={openDiffPane}
 								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
 							/>

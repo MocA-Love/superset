@@ -10,6 +10,7 @@ export const dashboardSidebarProjectSchema = z.object({
 	createdAt: persistedDateSchema,
 	isCollapsed: z.boolean().default(false),
 	tabOrder: z.number().int().default(0),
+	defaultOpenInApp: z.string().nullable().default(null),
 });
 
 const paneWorkspaceStateSchema = z.custom<WorkspaceState<unknown>>();
@@ -39,7 +40,7 @@ export const workspaceLocalStateSchema = z.object({
 	}),
 	paneLayout: paneWorkspaceStateSchema,
 	rightSidebarOpen: z.boolean().default(false),
-	defaultOpenInApp: z.string().nullable().default(null),
+	viewedFiles: z.array(z.string()).default([]),
 });
 
 export const dashboardSidebarSectionSchema = z.object({
@@ -90,7 +91,9 @@ export const pendingWorkspaceSchema = z.object({
 	status: z.enum(["creating", "failed", "succeeded"]).default("creating"),
 	error: z.string().nullable().default(null),
 	workspaceId: z.string().nullable().default(null),
-	initialCommands: z.array(z.string()).nullable().default(null),
+	terminals: z
+		.array(z.object({ id: z.string(), role: z.string(), label: z.string() }))
+		.default([]),
 	createdAt: persistedDateSchema,
 });
 

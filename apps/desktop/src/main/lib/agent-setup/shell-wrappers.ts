@@ -194,16 +194,6 @@ _superset_home="\${SUPERSET_ORIG_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zshrc" ]] && source "$_superset_home/.zshrc"
 ${SUPERSET_ENV_RESTORE}
-# Disable zsh-autosuggestions to avoid conflict with Superset's built-in
-# terminal suggestions. Uses the plugin's own disable function which
-# properly restores original ZLE widget bindings. Only affects this
-# terminal session; the user's .zshrc is not modified.
-if [[ -n "$SUPERSET_DISABLE_ZSH_AUTOSUGGEST" ]]; then
-  if (( $+functions[_zsh_autosuggest_disable] )); then
-    _zsh_autosuggest_disable
-  fi
-  add-zsh-hook -d precmd _zsh_autosuggest_start 2>/dev/null
-fi
 ${buildPathPrependFunction(paths.BIN_DIR)}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
 rehash 2>/dev/null || true
@@ -228,23 +218,13 @@ ${SUPERSET_ENV_RESTORE}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
 ${buildPathPrependFunction(paths.BIN_DIR)}
 rehash 2>/dev/null || true
-# One-shot shell-ready marker for preset command timing.
-# Uses precmd so it fires AFTER direnv and other hooks complete,
-# right before the first prompt is displayed.
-_superset_shell_ready() {
-  precmd_functions=(\${precmd_functions:#_superset_shell_ready})
-  printf '\\033]777;superset-shell-ready\\007'
+# OSC 133;A prompt marker (FinalTerm standard) — signals shell readiness.
+# Protocol ref: https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md
+__superset_prompt_mark() {
+  printf "\\033]133;A\\007"
 }
 # Keep our hook LAST so it fires after direnv and other precmd hooks complete.
-precmd_functions=(\${precmd_functions[@]} _superset_shell_ready)
-# Persistent precmd: emit prompt marker every time the shell shows a prompt.
-# Used by the suggestion system to detect "user is at shell prompt" vs
-# "a command/TUI is running". Unlike _superset_shell_ready (one-shot),
-# this fires on EVERY prompt.
-_superset_prompt_marker() {
-  printf '\\033]777;superset-prompt\\007'
-}
-precmd_functions=(\${precmd_functions[@]} _superset_prompt_marker)
+precmd_functions=(\${precmd_functions[@]} __superset_prompt_mark)
 export ZDOTDIR="$_superset_home"
 `;
 	const wroteZlogin = writeFileIfChanged(zloginPath, zloginScript, 0o644);
@@ -288,41 +268,21 @@ ${buildPathPrependFunction(paths.BIN_DIR)}
 hash -r 2>/dev/null || true
 # Minimal prompt (path/env shown in toolbar) - emerald to match app theme
 export PS1=$'\\[\\e[1;38;2;52;211;153m\\]❯\\[\\e[0m\\] '
-# One-shot shell-ready marker for preset command timing.
-# Uses PROMPT_COMMAND so it fires AFTER direnv and other hooks complete.
-# Supports both scalar and array PROMPT_COMMAND (Bash 5.1+).
-_superset_shell_ready() {
-  printf '\\033]777;superset-shell-ready\\007'
-  if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-    local -a _new=()
-    for _cmd in "\${PROMPT_COMMAND[@]}"; do
-      [[ "$_cmd" != "_superset_shell_ready" ]] && _new+=("$_cmd")
-    done
-    PROMPT_COMMAND=("\${_new[@]}")
-  else
-    PROMPT_COMMAND="\${_superset_orig_prompt_cmd}"
-    unset _superset_orig_prompt_cmd
-  fi
-  unset -f _superset_shell_ready
+# OSC 133;A prompt marker (FinalTerm standard) — signals shell readiness.
+# Protocol ref: https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md
+__superset_prompt_mark() {
+  printf "\\033]133;A\\007"
 }
+# Hook via PROMPT_COMMAND. Supports both scalar and array forms (Bash 5.1+).
 if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-  PROMPT_COMMAND=("\${PROMPT_COMMAND[@]}" "_superset_shell_ready")
+  PROMPT_COMMAND=("\${PROMPT_COMMAND[@]}" "__superset_prompt_mark")
 else
   _superset_orig_prompt_cmd="\${PROMPT_COMMAND}"
   if [[ -n "\${_superset_orig_prompt_cmd}" ]]; then
-    PROMPT_COMMAND="\${_superset_orig_prompt_cmd};_superset_shell_ready"
+    PROMPT_COMMAND="\${_superset_orig_prompt_cmd};__superset_prompt_mark"
   else
-    PROMPT_COMMAND="_superset_shell_ready"
+    PROMPT_COMMAND="__superset_prompt_mark"
   fi
-fi
-# Persistent prompt marker (fires every prompt, not one-shot).
-_superset_prompt_marker() {
-  printf '\\033]777;superset-prompt\\007'
-}
-if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-  PROMPT_COMMAND=("\${PROMPT_COMMAND[@]}" "_superset_prompt_marker")
-else
-  PROMPT_COMMAND="\${PROMPT_COMMAND};_superset_prompt_marker"
 fi
 `;
 	const changed = writeFileIfChanged(rcfilePath, script, 0o644);
@@ -355,11 +315,19 @@ export function getShellArgs(
 	if (shellName === "fish") {
 		// Use --init-command to prepend BIN_DIR to PATH after config is loaded.
 		// Use fish list-aware checks to avoid duplicate PATH entries across nested shells.
+		// OSC 133;A emitted on fish_prompt — signals shell readiness.
 		const escapedBinDir = escapeFishDoubleQuoted(paths.BIN_DIR);
 		return [
 			"-l",
 			"--init-command",
-			`set -l _superset_bin "${escapedBinDir}"; contains -- "$_superset_bin" $PATH; or set -gx PATH "$_superset_bin" $PATH; function _superset_shell_ready --on-event fish_prompt; printf '\\033]777;superset-shell-ready\\007'; functions -e _superset_shell_ready; end; function _superset_prompt_marker --on-event fish_prompt; printf '\\033]777;superset-prompt\\007'; end`,
+			[
+				`set -l _superset_bin "${escapedBinDir}"`,
+				`contains -- "$_superset_bin" $PATH`,
+				`or set -gx PATH "$_superset_bin" $PATH`,
+				`function _superset_prompt_mark --on-event fish_prompt`,
+				`printf '\\033]133;A\\007'`,
+				`end`,
+			].join("; "),
 		];
 	}
 	if (["zsh", "sh", "ksh"].includes(shellName)) {

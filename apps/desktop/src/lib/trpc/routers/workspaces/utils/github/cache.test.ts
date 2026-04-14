@@ -86,7 +86,7 @@ describe("getCachedGitHubStatusState", () => {
 		try {
 			setCachedGitHubStatus(worktreePath, status);
 
-			Date.now = () => 1000 + 10_001;
+			Date.now = () => 1000 + 30_001;
 
 			expect(getCachedGitHubStatus(worktreePath)).toBeNull();
 			expect(getCachedGitHubStatusState(worktreePath)).toEqual({

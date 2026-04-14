@@ -102,6 +102,8 @@ export function TabPane({
 			path={path}
 			tabId={tabId}
 			splitPaneAuto={splitPaneAuto}
+			splitPaneHorizontal={splitPaneHorizontal}
+			splitPaneVertical={splitPaneVertical}
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
 			onPopOut={onPopOut}
@@ -126,6 +128,7 @@ export function TabPane({
 					<PaneToolbarActions
 						splitOrientation={handlers.splitOrientation}
 						onSplitPane={handlers.onSplitPane}
+						onSplitPaneOpposite={handlers.onSplitPaneOpposite}
 						onClosePane={handlers.onClosePane}
 						closeHotkeyId="CLOSE_TERMINAL"
 						onPopOut={handlers.onPopOut}

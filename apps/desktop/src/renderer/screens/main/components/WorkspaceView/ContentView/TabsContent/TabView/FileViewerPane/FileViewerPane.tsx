@@ -758,6 +758,8 @@ export function FileViewerPane({
 				path={path}
 				tabId={tabId}
 				splitPaneAuto={splitPaneAuto}
+				splitPaneHorizontal={splitPaneHorizontal}
+				splitPaneVertical={splitPaneVertical}
 				removePane={requestPaneClose}
 				setFocusedPane={setFocusedPane}
 				onPopOut={onPopOut}
@@ -779,6 +781,7 @@ export function FileViewerPane({
 							onDiffViewModeChange={setDiffViewMode}
 							onToggleHideUnchangedRegions={toggleHideUnchangedRegions}
 							onSplitPane={handlers.onSplitPane}
+							onSplitPaneOpposite={handlers.onSplitPaneOpposite}
 							onPin={handlePin}
 							onClosePane={handlers.onClosePane}
 							onPopOut={handlers.onPopOut}

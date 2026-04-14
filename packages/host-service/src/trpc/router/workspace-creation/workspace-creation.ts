@@ -6,8 +6,10 @@ import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
+import { createTerminalSessionInternal } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
 import { protectedProcedure, router } from "../../index";
+import { resolveStartPoint } from "./utils/resolve-start-point";
 import { deduplicateBranchName } from "./utils/sanitize-branch";
 
 // ── In-memory create progress (polled by renderer) ──────────────────
@@ -91,6 +93,8 @@ async function resolveGithubRepo(
 	}
 	return { owner: repo.owner, name: repo.name };
 }
+
+import { normalizeGitHubQuery } from "./normalize-github-query";
 
 async function listBranchNames(
 	ctx: HostServiceContext,
@@ -378,17 +382,43 @@ export const workspaceCreationRouter = router({
 			);
 
 			const git = await ctx.git(localProject.repoPath);
-			const baseBranch = input.composer.baseBranch || "HEAD";
+
+			// Resolve the best start point: prefer origin/<branch> for freshest code,
+			// fall back to local branch, then HEAD.
+			const { ref: startPoint, resolvedFrom } = await resolveStartPoint(
+				git,
+				input.composer.baseBranch,
+			);
+			console.log(
+				`[workspaceCreation.create] start point resolved: ${startPoint} (${resolvedFrom})`,
+			);
+
+			// If we resolved to a remote-tracking ref, fetch just that branch
+			// to ensure we're branching from the latest remote state.
+			if (startPoint.startsWith("origin/")) {
+				const remoteBranch = startPoint.replace(/^origin\//, "");
+				try {
+					await git.fetch(["origin", remoteBranch, "--quiet", "--no-tags"]);
+				} catch (err) {
+					console.warn(
+						`[workspaceCreation.create] fetch origin ${remoteBranch} failed, proceeding with local ref:`,
+						err,
+					);
+				}
+			}
 
 			// Always create a new branch — never check out an existing one.
 			// Checking out existing branches is a separate intent (e.g. createFromPr).
+			// --no-track prevents the new branch from tracking the remote ref
+			// (e.g. origin/main); push.autoSetupRemote handles first-push tracking.
 			await git.raw([
 				"worktree",
 				"add",
+				"--no-track",
 				"-b",
 				branchName,
 				worktreePath,
-				baseBranch,
+				startPoint,
 			]);
 
 			setProgress(input.pendingId, "registering");
@@ -459,12 +489,33 @@ export const workspaceCreationRouter = router({
 				})
 				.run();
 
-			// 5. Resolve setup commands (returned to renderer, not executed here)
-			let initialCommands: string[] | null = null;
+			// 5. Create setup terminal if setup script exists
+			const terminals: Array<{
+				id: string;
+				role: string;
+				label: string;
+			}> = [];
+			const warnings: string[] = [];
+
 			if (input.composer.runSetupScript) {
 				const setupScriptPath = join(worktreePath, ".superset", "setup.sh");
 				if (existsSync(setupScriptPath)) {
-					initialCommands = [`bash "${setupScriptPath}"`];
+					const terminalId = crypto.randomUUID();
+					const result = createTerminalSessionInternal({
+						terminalId,
+						workspaceId: cloudRow.id,
+						db: ctx.db,
+						initialCommand: `bash "${setupScriptPath}"`,
+					});
+					if ("error" in result) {
+						warnings.push(`Failed to start setup terminal: ${result.error}`);
+					} else {
+						terminals.push({
+							id: terminalId,
+							role: "setup",
+							label: "Workspace Setup",
+						});
+					}
 				}
 			}
 
@@ -472,8 +523,8 @@ export const workspaceCreationRouter = router({
 
 			return {
 				workspace: cloudRow,
-				initialCommands,
-				warnings: [] as string[],
+				terminals,
+				warnings,
 			};
 		}),
 
@@ -489,37 +540,58 @@ export const workspaceCreationRouter = router({
 		)
 		.query(async ({ ctx, input }) => {
 			const repo = await resolveGithubRepo(ctx, input.projectId);
-			const octokit = await ctx.github();
 			const limit = input.limit ?? 30;
 
+			// Normalize the query: detect GitHub issue URLs, strip `#` shorthand
+			const raw = input.query?.trim() ?? "";
+			const normalized = normalizeGitHubQuery(raw, repo, "issue");
+
+			if (normalized.repoMismatch) {
+				return {
+					issues: [],
+					repoMismatch: `${repo.owner}/${repo.name}`,
+				};
+			}
+
+			const effectiveQuery = normalized.query;
+			const octokit = await ctx.github();
+
 			try {
-				if (input.query?.trim()) {
-					const q = `repo:${repo.owner}/${repo.name} is:issue is:open in:title,body ${input.query}`;
-					const { data } = await octokit.search.issuesAndPullRequests({
-						q,
-						per_page: limit,
+				// Direct lookup by issue number (from URL paste or `#123` shorthand)
+				if (normalized.isDirectLookup) {
+					const issueNumber = Number.parseInt(effectiveQuery, 10);
+					const { data: issue } = await octokit.issues.get({
+						owner: repo.owner,
+						repo: repo.name,
+						issue_number: issueNumber,
 					});
+					// issues.get returns PRs too — filter them out
+					if (issue.pull_request) {
+						return { issues: [] };
+					}
 					return {
-						issues: data.items
-							.filter((item) => !item.pull_request)
-							.map((item) => ({
-								issueNumber: item.number,
-								title: item.title,
-								url: item.html_url,
-								state: item.state,
-								authorLogin: item.user?.login ?? null,
-							})),
+						issues: [
+							{
+								issueNumber: issue.number,
+								title: issue.title,
+								url: issue.html_url,
+								state: issue.state,
+								authorLogin: issue.user?.login ?? null,
+							},
+						],
 					};
 				}
 
-				const { data } = await octokit.issues.listForRepo({
-					owner: repo.owner,
-					repo: repo.name,
-					state: "open",
+				const q =
+					`repo:${repo.owner}/${repo.name} is:issue ${effectiveQuery}`.trim();
+				const { data } = await octokit.search.issuesAndPullRequests({
+					q,
 					per_page: limit,
+					sort: "updated",
+					order: "desc",
 				});
 				return {
-					issues: data
+					issues: data.items
 						.filter((item) => !item.pull_request)
 						.map((item) => ({
 							issueNumber: item.number,
@@ -545,47 +617,64 @@ export const workspaceCreationRouter = router({
 		)
 		.query(async ({ ctx, input }) => {
 			const repo = await resolveGithubRepo(ctx, input.projectId);
-			const octokit = await ctx.github();
 			const limit = input.limit ?? 30;
 
+			// Normalize the query: detect GitHub PR URLs, strip `#` shorthand
+			const raw = input.query?.trim() ?? "";
+			const normalized = normalizeGitHubQuery(raw, repo, "pull");
+
+			if (normalized.repoMismatch) {
+				return {
+					pullRequests: [],
+					repoMismatch: `${repo.owner}/${repo.name}`,
+				};
+			}
+
+			const effectiveQuery = normalized.query;
+			const octokit = await ctx.github();
+
 			try {
-				if (input.query?.trim()) {
-					const q = `repo:${repo.owner}/${repo.name} is:pr in:title ${input.query}`;
-					const { data } = await octokit.search.issuesAndPullRequests({
-						q,
-						per_page: limit,
+				// Direct lookup by PR number (from URL paste or `#123` shorthand)
+				if (normalized.isDirectLookup) {
+					const prNumber = Number.parseInt(effectiveQuery, 10);
+					const { data: pr } = await octokit.pulls.get({
+						owner: repo.owner,
+						repo: repo.name,
+						pull_number: prNumber,
 					});
 					return {
-						pullRequests: data.items
-							.filter((item) => item.pull_request)
-							.map((item) => ({
-								prNumber: item.number,
-								title: item.title,
-								url: item.html_url,
-								state: item.state,
-								isDraft: item.draft ?? false,
-								authorLogin: item.user?.login ?? null,
-							})),
+						pullRequests: [
+							{
+								prNumber: pr.number,
+								title: pr.title,
+								url: pr.html_url,
+								state: pr.state,
+								isDraft: pr.draft ?? false,
+								authorLogin: pr.user?.login ?? null,
+							},
+						],
 					};
 				}
 
-				const { data } = await octokit.pulls.list({
-					owner: repo.owner,
-					repo: repo.name,
-					state: "open",
-					sort: "updated",
-					direction: "desc",
+				const q =
+					`repo:${repo.owner}/${repo.name} is:pr ${effectiveQuery}`.trim();
+				const { data } = await octokit.search.issuesAndPullRequests({
+					q,
 					per_page: limit,
+					sort: "updated",
+					order: "desc",
 				});
 				return {
-					pullRequests: data.map((pr) => ({
-						prNumber: pr.number,
-						title: pr.title,
-						url: pr.html_url,
-						state: pr.state,
-						isDraft: pr.draft ?? false,
-						authorLogin: pr.user?.login ?? null,
-					})),
+					pullRequests: data.items
+						.filter((item) => item.pull_request)
+						.map((item) => ({
+							prNumber: item.number,
+							title: item.title,
+							url: item.html_url,
+							state: item.state,
+							isDraft: item.draft ?? false,
+							authorLogin: item.user?.login ?? null,
+						})),
 				};
 			} catch (err) {
 				console.warn("[workspaceCreation.searchPullRequests] failed", err);

@@ -34,6 +34,7 @@ interface FileViewerToolbarProps {
 	onDiffViewModeChange: (mode: DiffViewMode) => void;
 	onToggleHideUnchangedRegions: () => void;
 	onSplitPane: (e: React.MouseEvent) => void;
+	onSplitPaneOpposite?: (e: React.MouseEvent) => void;
 	/** Pin this pane (convert from preview to permanent) */
 	onPin: () => void;
 	onClosePane: (e: React.MouseEvent) => void;
@@ -58,6 +59,7 @@ export function FileViewerToolbar({
 	onDiffViewModeChange,
 	onToggleHideUnchangedRegions,
 	onSplitPane,
+	onSplitPaneOpposite,
 	onPin,
 	onClosePane,
 	onPopOut,
@@ -260,6 +262,7 @@ export function FileViewerToolbar({
 				<PaneToolbarActions
 					splitOrientation={splitOrientation}
 					onSplitPane={onSplitPane}
+					onSplitPaneOpposite={onSplitPaneOpposite}
 					onClosePane={onClosePane}
 					onPopOut={onPopOut}
 					leadingActions={

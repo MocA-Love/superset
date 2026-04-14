@@ -11,6 +11,7 @@ export interface PaneHandlers {
 	onFocus: () => void;
 	onClosePane: (e: React.MouseEvent) => void;
 	onSplitPane: (e: React.MouseEvent) => void;
+	onSplitPaneOpposite?: (e: React.MouseEvent) => void;
 	onPopOut?: (e: React.MouseEvent) => void;
 	splitOrientation: SplitOrientation;
 }
@@ -37,6 +38,16 @@ interface BasePaneWindowProps {
 		dimensions: { width: number; height: number },
 		path?: MosaicBranch[],
 	) => void;
+	splitPaneHorizontal?: (
+		tabId: string,
+		sourcePaneId: string,
+		path?: MosaicBranch[],
+	) => void;
+	splitPaneVertical?: (
+		tabId: string,
+		sourcePaneId: string,
+		path?: MosaicBranch[],
+	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
 	onPopOut?: () => void;
@@ -53,6 +64,8 @@ export function BasePaneWindow({
 	path,
 	tabId,
 	splitPaneAuto,
+	splitPaneHorizontal,
+	splitPaneVertical,
 	removePane,
 	setFocusedPane,
 	onPopOut,
@@ -92,6 +105,18 @@ export function BasePaneWindow({
 		splitPaneAuto(tabId, paneId, { width, height }, path);
 	};
 
+	const handleSplitPaneOpposite =
+		splitPaneHorizontal && splitPaneVertical
+			? (e: React.MouseEvent) => {
+					e.stopPropagation();
+					if (splitOrientation === "vertical") {
+						splitPaneHorizontal(tabId, paneId, path);
+					} else {
+						splitPaneVertical(tabId, paneId, path);
+					}
+				}
+			: undefined;
+
 	const handlePopOut = onPopOut
 		? (e: React.MouseEvent) => {
 				e.stopPropagation();
@@ -103,6 +128,7 @@ export function BasePaneWindow({
 		onFocus: handleFocus,
 		onClosePane: handleClosePane,
 		onSplitPane: handleSplitPane,
+		onSplitPaneOpposite: handleSplitPaneOpposite,
 		onPopOut: handlePopOut,
 		splitOrientation,
 	};

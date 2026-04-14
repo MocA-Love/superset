@@ -11,6 +11,12 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import type { Socket } from "node:net";
 import * as path from "node:path";
+import {
+	createScanState,
+	SHELLS_WITH_READY_MARKER,
+	type ShellReadyScanState,
+	scanForShellReady,
+} from "@superset/shared/shell-ready-scanner";
 import { DEFAULT_TERMINAL_SCROLLBACK } from "shared/constants";
 import {
 	getCommandShellArgs,
@@ -34,7 +40,6 @@ import {
 	createFrameHeader,
 	PtySubprocessFrameDecoder,
 	PtySubprocessIpcType,
-	SHELL_READY_MARKER,
 } from "./pty-subprocess-ipc";
 
 // =============================================================================
@@ -46,8 +51,6 @@ import {
  * Prevents indefinite hang when continuous output (e.g., tail -f) keeps the queue non-empty.
  */
 const ATTACH_FLUSH_TIMEOUT_MS = 500;
-const RESIZE_SETTLE_MS = 75;
-const DEBUG_TERMINAL = process.env.SUPERSET_TERMINAL_DEBUG === "1";
 
 /**
  * Maximum bytes allowed in subprocess stdin queue.
@@ -77,9 +80,6 @@ const EMULATOR_WRITE_QUEUE_LOW_WATERMARK_BYTES = 250_000;
  * buffered writes flush immediately (same behavior as before this feature).
  */
 const SHELL_READY_TIMEOUT_MS = 15_000;
-
-/** Shells whose wrapper files inject a {@link SHELL_READY_MARKER}. */
-const SHELLS_WITH_READY_MARKER = new Set(["zsh", "bash", "fish"]);
 
 /**
  * Shell readiness lifecycle:
@@ -124,11 +124,6 @@ export interface AttachedClient {
 	attachToken: symbol;
 }
 
-type EmulatorWriteQueueEntry = {
-	data: string;
-	onProcessed?: () => void;
-};
-
 // =============================================================================
 // Session Class
 // =============================================================================
@@ -169,21 +164,22 @@ export class Session {
 	private shellReadyState: ShellReadyState;
 	private shellReadyTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	private preReadyStdinQueue: string[] = [];
-	// Marker scanner — tracks how many characters of SHELL_READY_MARKER
-	// we've matched so far. Held bytes are withheld from terminal output
-	// until we confirm a full match (discard them) or a mismatch (flush
-	// them as regular output). This prevents partial OSC sequences from
-	// ever reaching the renderer, even when the marker spans two Data frames.
-	private markerMatchPos = 0;
-	private markerHeldBytes = "";
+	// OSC 133;A scanner state — shared with v2 host-service via @superset/shared
+	private scanState: ShellReadyScanState = createScanState();
 
-	private emulatorWriteQueue: EmulatorWriteQueueEntry[] = [];
+	private emulatorWriteQueue: string[] = [];
 	private emulatorWriteQueuedBytes = 0;
 	private emulatorWriteScheduled = false;
 	private emulatorFlushWaiters: Array<() => void> = [];
-	private resizeSettleTimer: ReturnType<typeof setTimeout> | null = null;
-	private resizeSettlePromise: Promise<void> | null = null;
-	private resizeSettleResolve: (() => void) | null = null;
+
+	// Snapshot boundary tracking for concurrent attaches.
+	private emulatorWriteProcessedItems = 0;
+	private nextSnapshotBoundaryWaiterId = 1;
+	private snapshotBoundaryWaiters: Array<{
+		id: number;
+		targetProcessedItems: number;
+		resolve: () => void;
+	}> = [];
 
 	// Callbacks
 	private onSessionExit?: (
@@ -365,32 +361,13 @@ export class Session {
 				if (payload.length === 0) break;
 				let data = payload.toString("utf8");
 
-				// Scan for SHELL_READY_MARKER one character at a time.
-				// Matching bytes are held back from output; on full match
-				// they're discarded and readiness resolves. On mismatch
-				// they're flushed as regular terminal output.
+				// Scan for OSC 133;A (shell ready) and strip from output.
 				if (this.shellReadyState === "pending") {
-					let output = "";
-					for (let i = 0; i < data.length; i++) {
-						if (data[i] === SHELL_READY_MARKER[this.markerMatchPos]) {
-							this.markerHeldBytes += data[i];
-							this.markerMatchPos++;
-							if (this.markerMatchPos === SHELL_READY_MARKER.length) {
-								// Full match — discard held bytes, resolve
-								this.markerHeldBytes = "";
-								this.markerMatchPos = 0;
-								this.resolveShellReady("ready");
-								output += data.slice(i + 1);
-								break;
-							}
-						} else {
-							// Mismatch — flush held bytes as regular output
-							output += this.markerHeldBytes + data[i];
-							this.markerHeldBytes = "";
-							this.markerMatchPos = 0;
-						}
+					const result = scanForShellReady(this.scanState, data);
+					data = result.output;
+					if (result.matched) {
+						this.resolveShellReady("ready");
 					}
-					data = output;
 				}
 
 				if (data.length === 0) break;
@@ -600,17 +577,11 @@ export class Session {
 		return this.sendFrameToSubprocess(PtySubprocessIpcType.Dispose);
 	}
 
-	private enqueueEmulatorWriteEntry(entry: EmulatorWriteQueueEntry): void {
-		this.emulatorWriteQueue.push(entry);
-		if (entry.data.length > 0) {
-			this.emulatorWriteQueuedBytes += Buffer.byteLength(entry.data, "utf8");
-			this.maybePauseSubprocessStdoutForEmulatorBackpressure();
-		}
-		this.scheduleEmulatorWrite();
-	}
-
 	private enqueueEmulatorWrite(data: string): void {
-		this.enqueueEmulatorWriteEntry({ data });
+		this.emulatorWriteQueue.push(data);
+		this.emulatorWriteQueuedBytes += Buffer.byteLength(data, "utf8");
+		this.maybePauseSubprocessStdoutForEmulatorBackpressure();
+		this.scheduleEmulatorWrite();
 	}
 
 	private scheduleEmulatorWrite(): void {
@@ -625,7 +596,10 @@ export class Session {
 		if (this.disposed) {
 			this.emulatorWriteQueue = [];
 			this.emulatorWriteQueuedBytes = 0;
+			this.emulatorWriteProcessedItems = 0;
+			this.nextSnapshotBoundaryWaiterId = 1;
 			this.emulatorWriteScheduled = false;
+			this.resolveAllSnapshotBoundaryWaiters();
 			const waiters = this.emulatorFlushWaiters;
 			this.emulatorFlushWaiters = [];
 			for (const resolve of waiters) resolve();
@@ -641,14 +615,11 @@ export class Session {
 		const budgetMs =
 			backlogBytes > 1024 * 1024 ? Math.max(baseBudgetMs, 25) : baseBudgetMs;
 		const MAX_CHUNK_CHARS = 8192;
-		let yieldedForProcessedCallback = false;
 
 		while (this.emulatorWriteQueue.length > 0) {
 			if (performance.now() - start > budgetMs) break;
 
-			const entry = this.emulatorWriteQueue[0];
-			let chunk = entry.data;
-			let onProcessed = entry.onProcessed;
+			let chunk = this.emulatorWriteQueue[0];
 			if (chunk.length > MAX_CHUNK_CHARS) {
 				let splitAt = MAX_CHUNK_CHARS;
 				const prev = chunk.charCodeAt(splitAt - 1);
@@ -661,43 +632,19 @@ export class Session {
 				) {
 					splitAt--;
 				}
-				this.emulatorWriteQueue[0] = {
-					...entry,
-					data: chunk.slice(splitAt),
-				};
+				this.emulatorWriteQueue[0] = chunk.slice(splitAt);
 				chunk = chunk.slice(0, splitAt);
-				onProcessed = undefined;
 			} else {
 				this.emulatorWriteQueue.shift();
+				this.emulatorWriteProcessedItems++;
+				this.resolveReachedSnapshotBoundaryWaiters();
 			}
 
 			this.emulatorWriteQueuedBytes -= Buffer.byteLength(chunk, "utf8");
-			if (onProcessed) {
-				yieldedForProcessedCallback = true;
-				// Snapshot boundary markers rely on xterm's write callback ordering:
-				// once this callback fires, every earlier chunk has been applied to
-				// the headless emulator and later chunks must wait for the next tick.
-				this.emulator.write(chunk, () => {
-					onProcessed();
-					if (
-						!this.disposed &&
-						this.emulatorWriteQueue.length > 0 &&
-						!this.emulatorWriteScheduled
-					) {
-						this.scheduleEmulatorWrite();
-					}
-				});
-				break;
-			}
 			this.emulator.write(chunk);
 		}
 
 		this.maybeResumeSubprocessStdoutForEmulatorBackpressure();
-
-		if (yieldedForProcessedCallback) {
-			this.emulatorWriteScheduled = false;
-			return;
-		}
 
 		if (this.emulatorWriteQueue.length > 0) {
 			setImmediate(() => {
@@ -707,60 +654,32 @@ export class Session {
 		}
 
 		this.emulatorWriteScheduled = false;
+		this.resolveReachedSnapshotBoundaryWaiters();
 
 		const waiters = this.emulatorFlushWaiters;
 		this.emulatorFlushWaiters = [];
 		for (const resolve of waiters) resolve();
 	}
 
-	private scheduleResizeSettle(): void {
-		if (DEBUG_TERMINAL) {
-			const dims = this.emulator.getDimensions();
-			console.log("[terminal-session] scheduleResizeSettle", {
-				sessionId: this.sessionId,
-				paneId: this.paneId,
-				currentCols: dims.cols,
-				currentRows: dims.rows,
-				settleMs: RESIZE_SETTLE_MS,
-			});
-		}
-		if (!this.resizeSettlePromise) {
-			this.resizeSettlePromise = new Promise<void>((resolve) => {
-				this.resizeSettleResolve = resolve;
-			});
-		}
+	private resolveReachedSnapshotBoundaryWaiters(): void {
+		if (this.snapshotBoundaryWaiters.length === 0) return;
 
-		if (this.resizeSettleTimer) {
-			clearTimeout(this.resizeSettleTimer);
-		}
-
-		this.resizeSettleTimer = setTimeout(() => {
-			this.resizeSettleTimer = null;
-			const resolve = this.resizeSettleResolve;
-			this.resizeSettleResolve = null;
-			this.resizeSettlePromise = null;
-			if (DEBUG_TERMINAL) {
-				const dims = this.emulator.getDimensions();
-				console.log("[terminal-session] resize settled", {
-					sessionId: this.sessionId,
-					paneId: this.paneId,
-					cols: dims.cols,
-					rows: dims.rows,
-				});
+		const remainingWaiters: typeof this.snapshotBoundaryWaiters = [];
+		for (const waiter of this.snapshotBoundaryWaiters) {
+			if (this.emulatorWriteProcessedItems >= waiter.targetProcessedItems) {
+				waiter.resolve();
+			} else {
+				remainingWaiters.push(waiter);
 			}
-			resolve?.();
-		}, RESIZE_SETTLE_MS);
+		}
+		this.snapshotBoundaryWaiters = remainingWaiters;
 	}
 
-	private async waitForResizeSettle(signal?: AbortSignal): Promise<void> {
-		if (!this.resizeSettlePromise) return;
-		if (DEBUG_TERMINAL) {
-			console.log("[terminal-session] waitForResizeSettle", {
-				sessionId: this.sessionId,
-				paneId: this.paneId,
-			});
-		}
-		await raceWithAbort(this.resizeSettlePromise, signal);
+	private resolveAllSnapshotBoundaryWaiters(): void {
+		if (this.snapshotBoundaryWaiters.length === 0) return;
+		const waiters = this.snapshotBoundaryWaiters;
+		this.snapshotBoundaryWaiters = [];
+		for (const waiter of waiters) waiter.resolve();
 	}
 
 	/**
@@ -769,28 +688,42 @@ export class Session {
 	 * even with continuous output - we only wait for data received BEFORE this call.
 	 */
 	private async flushToSnapshotBoundary(timeoutMs: number): Promise<boolean> {
-		if (this.disposed) {
-			return false;
+		if (this.emulatorWriteQueue.length === 0) {
+			return true; // Already flushed
 		}
 
-		return await new Promise<boolean>((resolve) => {
-			let settled = false;
-			const finish = (value: boolean) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timeoutId);
-				resolve(value);
-			};
+		const targetProcessedItems =
+			this.emulatorWriteProcessedItems + this.emulatorWriteQueue.length;
 
-			const timeoutId = setTimeout(() => finish(false), timeoutMs);
+		const waiterId = this.nextSnapshotBoundaryWaiterId++;
+		let reachedBoundary = false;
 
-			this.enqueueEmulatorWriteEntry({
-				data: "",
-				// Empty write callbacks are ordered after all earlier writes, so
-				// this gives us a true point-in-time boundary for attach snapshots.
-				onProcessed: () => finish(true),
+		const boundaryPromise = new Promise<void>((resolve) => {
+			this.snapshotBoundaryWaiters.push({
+				id: waiterId,
+				targetProcessedItems,
+				resolve: () => {
+					reachedBoundary = true;
+					resolve();
+				},
 			});
+			this.scheduleEmulatorWrite();
+			this.resolveReachedSnapshotBoundaryWaiters();
 		});
+
+		const timeoutPromise = new Promise<void>((resolve) =>
+			setTimeout(resolve, timeoutMs),
+		);
+
+		await Promise.race([boundaryPromise, timeoutPromise]);
+
+		if (!reachedBoundary) {
+			this.snapshotBoundaryWaiters = this.snapshotBoundaryWaiters.filter(
+				(waiter) => waiter.id !== waiterId,
+			);
+		}
+
+		return reachedBoundary;
 	}
 
 	/**
@@ -865,22 +798,6 @@ export class Session {
 		// This ensures we capture all data received BEFORE attach was called,
 		// even if new data continues to arrive during the flush.
 		try {
-			if (DEBUG_TERMINAL) {
-				const dims = this.emulator.getDimensions();
-				console.log("[terminal-session] attach start", {
-					sessionId: this.sessionId,
-					paneId: this.paneId,
-					cols: dims.cols,
-					rows: dims.rows,
-					queueLength: this.emulatorWriteQueue.length,
-					queuedBytes: this.emulatorWriteQueuedBytes,
-				});
-			}
-			// PTY resize triggers SIGWINCH-driven redraws asynchronously. When we
-			// reattach immediately after a workspace restore, give that redraw a
-			// short quiet window so the snapshot reflects the new geometry.
-			await this.waitForResizeSettle(signal);
-
 			const reachedBoundary = await raceWithAbort(
 				this.flushToSnapshotBoundary(ATTACH_FLUSH_TIMEOUT_MS),
 				signal,
@@ -892,21 +809,9 @@ export class Session {
 				);
 			}
 
+			await raceWithAbort(this.emulator.flush(), signal);
 			throwIfAborted(signal);
-			const snapshot = this.emulator.getSnapshot();
-			if (DEBUG_TERMINAL) {
-				console.log("[terminal-session] attach snapshot", {
-					sessionId: this.sessionId,
-					paneId: this.paneId,
-					snapshotCols: snapshot.cols,
-					snapshotRows: snapshot.rows,
-					alternateScreen: snapshot.modes.alternateScreen,
-					scrollbackLines: snapshot.scrollbackLines,
-					queueLengthAfterBoundary: this.emulatorWriteQueue.length,
-					queuedBytesAfterBoundary: this.emulatorWriteQueuedBytes,
-				});
-			}
-			return snapshot;
+			return this.emulator.getSnapshot();
 		} catch (error) {
 			if (isTerminalAttachCanceledError(error)) {
 				this.detachAttachedClient(socket, attachedClient);
@@ -963,33 +868,10 @@ export class Session {
 	 * Resize PTY and emulator
 	 */
 	resize(cols: number, rows: number): void {
-		const dims = this.emulator.getDimensions();
-		if (dims.cols === cols && dims.rows === rows) {
-			if (DEBUG_TERMINAL) {
-				console.log("[terminal-session] resize skipped", {
-					sessionId: this.sessionId,
-					paneId: this.paneId,
-					cols,
-					rows,
-				});
-			}
-			return;
-		}
-		if (DEBUG_TERMINAL) {
-			console.log("[terminal-session] resize", {
-				sessionId: this.sessionId,
-				paneId: this.paneId,
-				prevCols: dims.cols,
-				prevRows: dims.rows,
-				nextCols: cols,
-				nextRows: rows,
-			});
-		}
 		if (this.subprocess && this.subprocessReady) {
 			this.sendResizeToSubprocess(cols, rows);
 		}
 		this.emulator.resize(cols, rows);
-		this.scheduleResizeSettle();
 	}
 
 	/**
@@ -1111,8 +993,7 @@ export class Session {
 			this.shellReadyTimeoutId = null;
 		}
 		this.preReadyStdinQueue = [];
-		this.markerMatchPos = 0;
-		this.markerHeldBytes = "";
+		this.scanState = createScanState();
 		this.subprocessStdinQueue = [];
 		this.subprocessStdinQueuedBytes = 0;
 		this.subprocessStdinDrainArmed = false;
@@ -1121,7 +1002,10 @@ export class Session {
 
 		this.emulatorWriteQueue = [];
 		this.emulatorWriteQueuedBytes = 0;
+		this.emulatorWriteProcessedItems = 0;
+		this.nextSnapshotBoundaryWaiterId = 1;
 		this.emulatorWriteScheduled = false;
+		this.resolveAllSnapshotBoundaryWaiters();
 		const waiters = this.emulatorFlushWaiters;
 		this.emulatorFlushWaiters = [];
 		for (const resolve of waiters) resolve();
@@ -1153,15 +1037,15 @@ export class Session {
 			this.shellReadyTimeoutId = null;
 		}
 		// Flush held marker bytes — they weren't part of a full marker
-		if (this.markerHeldBytes.length > 0) {
-			this.enqueueEmulatorWrite(this.markerHeldBytes);
+		if (this.scanState.heldBytes.length > 0) {
+			this.enqueueEmulatorWrite(this.scanState.heldBytes);
 			this.broadcastEvent("data", {
 				type: "data",
-				data: this.markerHeldBytes,
+				data: this.scanState.heldBytes,
 			} satisfies TerminalDataEvent);
-			this.markerHeldBytes = "";
+			this.scanState.heldBytes = "";
 		}
-		this.markerMatchPos = 0;
+		this.scanState.matchPos = 0;
 		// Flush queued writes in FIFO order
 		const queue = this.preReadyStdinQueue;
 		this.preReadyStdinQueue = [];

@@ -38,7 +38,7 @@ export function useTerminalModes(): UseTerminalModesReturn {
 	// Track bracketed paste mode so large pastes can preserve a single bracketed-paste envelope.
 	const isBracketedPasteRef = useRef(false);
 	// Track whether the shell is at a prompt. Set true when the shell emits
-	// OSC 777;superset-prompt (via precmd), set false when the user presses Enter.
+	// OSC 133;A (FinalTerm standard, via precmd), set false when the user presses Enter.
 	// Starts as true so suggestions work before the first marker arrives and
 	// in shells that don't emit the marker at all.
 	const isAtPromptRef = useRef(true);
@@ -72,7 +72,11 @@ export function useTerminalModes(): UseTerminalModesReturn {
 		}
 
 		// Detect shell prompt marker (emitted by precmd in shell-wrappers.ts)
-		if (combined.includes("\x1b]777;superset-prompt\x07")) {
+		// FORK NOTE: upstream changed marker from OSC 777 to OSC 133;A (#3389)
+		if (
+			combined.includes("\x1b]133;A\x07") ||
+			combined.includes("\x1b]777;superset-prompt\x07")
+		) {
 			isAtPromptRef.current = true;
 			hasReceivedPromptMarkerRef.current = true;
 		}

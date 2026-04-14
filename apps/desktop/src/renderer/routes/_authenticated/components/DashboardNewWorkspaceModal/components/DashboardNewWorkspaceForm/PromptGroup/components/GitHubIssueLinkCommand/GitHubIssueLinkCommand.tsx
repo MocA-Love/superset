@@ -21,7 +21,7 @@ import {
 } from "renderer/screens/main/components/IssueIcon/IssueIcon";
 import type { WorkspaceHostTarget } from "../../../components/DevicePicker";
 
-const MAX_RESULTS = 20;
+const MAX_RESULTS = 30;
 
 const normalizeIssueState = (state: string): IssueState =>
 	state.toLowerCase() === "closed" ? "closed" : "open";
@@ -54,32 +54,48 @@ export function GitHubIssueLinkCommand({
 	const debouncedQuery = useDebouncedValue(searchQuery, 300);
 	const { activeHostUrl } = useLocalHostService();
 
+	const trimmedQuery = searchQuery.trim();
+	const debouncedTrimmed = debouncedQuery.trim();
+	const isPendingDebounce = trimmedQuery !== debouncedTrimmed;
+
 	const hostUrl =
 		hostTarget.kind === "local"
 			? activeHostUrl
 			: `${env.RELAY_URL}/hosts/${hostTarget.hostId}`;
 
-	const { data, isLoading } = useQuery({
+	const { data, isFetching } = useQuery({
 		queryKey: [
 			"workspaceCreation",
 			"searchGitHubIssues",
 			projectId,
 			hostUrl,
-			debouncedQuery,
+			debouncedTrimmed,
 		],
 		queryFn: async () => {
 			if (!hostUrl || !projectId) return { issues: [] };
 			const client = getHostServiceClientByUrl(hostUrl);
 			return client.workspaceCreation.searchGitHubIssues.query({
 				projectId,
-				query: debouncedQuery.trim() || undefined,
+				query: debouncedTrimmed || undefined,
 				limit: MAX_RESULTS,
 			});
 		},
 		enabled: !!projectId && !!hostUrl && open,
 	});
 
-	const searchResults = data?.issues ?? [];
+	// Hide stale results while the debounce is pending — the query has changed
+	// but results haven't caught up yet, so showing the old list could mislead.
+	const hasSettledQuery = !isPendingDebounce;
+	const searchResults = hasSettledQuery ? (data?.issues ?? []) : [];
+	const repoMismatch =
+		hasSettledQuery && data && "repoMismatch" in data
+			? data.repoMismatch
+			: null;
+
+	const isLoading =
+		trimmedQuery || debouncedTrimmed
+			? isFetching || !hasSettledQuery
+			: isFetching;
 
 	const handleClose = () => {
 		setSearchQuery("");
@@ -117,11 +133,25 @@ export function GitHubIssueLinkCommand({
 					<CommandList className="max-h-[280px]">
 						{searchResults.length === 0 && (
 							<CommandEmpty>
-								{isLoading ? "Loading issues..." : "No open issues found."}
+								{isLoading
+									? debouncedTrimmed
+										? "Searching..."
+										: "Loading..."
+									: repoMismatch
+										? `Issue URL must match ${repoMismatch}.`
+										: debouncedTrimmed
+											? "No issues found."
+											: "No issues found."}
 							</CommandEmpty>
 						)}
 						{searchResults.length > 0 && (
-							<CommandGroup heading={searchQuery ? "Results" : "Open issues"}>
+							<CommandGroup
+								heading={
+									debouncedTrimmed
+										? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
+										: "Recent issues"
+								}
+							>
 								{searchResults.map((issue) => (
 									<CommandItem
 										key={issue.issueNumber}
