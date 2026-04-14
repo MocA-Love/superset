@@ -253,6 +253,7 @@ export interface TabsStore extends TabsState {
 		url: string,
 		title: string,
 		faviconUrl?: string,
+		historyNavDirection?: "back" | "forward",
 	) => void;
 	navigateBrowserHistory: (
 		paneId: string,

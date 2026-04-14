@@ -159,6 +159,7 @@ export function usePersistentWebview({
 	const faviconUrlRef = useRef<string | undefined>(undefined);
 	const initialUrlRef = useRef(initialUrl);
 	const lastSyncedUrlRef = useRef<string | null>(null);
+	const pendingNavDirectionRef = useRef<"back" | "forward" | null>(null);
 
 	const browserState = useTabsStore((s) => s.panes[paneId]?.browser);
 	const historyIndex = browserState?.historyIndex ?? 0;
@@ -531,12 +532,15 @@ export function usePersistentWebview({
 
 		const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
 			lastSyncedUrlRef.current = e.url ?? null;
+			const direction = pendingNavDirectionRef.current;
+			pendingNavDirectionRef.current = null;
 			const store = useTabsStore.getState();
 			store.updateBrowserUrl(
 				paneId,
 				e.url ?? "",
 				wv.getTitle() ?? "",
 				faviconUrlRef.current,
+				direction ?? undefined,
 			);
 			store.updateBrowserLoading(paneId, false);
 		};
@@ -687,6 +691,7 @@ export function usePersistentWebview({
 	const goBack = useCallback(() => {
 		const webview = getPersistentWebview(paneId);
 		if (webview?.canGoBack()) {
+			pendingNavDirectionRef.current = "back";
 			webview.goBack();
 		}
 	}, [paneId]);
@@ -694,6 +699,7 @@ export function usePersistentWebview({
 	const goForward = useCallback(() => {
 		const webview = getPersistentWebview(paneId);
 		if (webview?.canGoForward()) {
+			pendingNavDirectionRef.current = "forward";
 			webview.goForward();
 		}
 	}, [paneId]);
