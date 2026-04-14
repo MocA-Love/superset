@@ -1,4 +1,5 @@
 import { isTerminalAttachCanceledMessage } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/attach-cancel";
+import { waitForTerminalSessionReady } from "./session-readiness";
 
 interface TerminalCreateOrAttachInput {
 	paneId: string;
@@ -23,6 +24,11 @@ interface LaunchCommandInPaneOptions {
 	createOrAttach: (input: TerminalCreateOrAttachInput) => Promise<unknown>;
 	write: (input: TerminalWriteInput) => Promise<unknown>;
 	noExecute?: boolean;
+	/**
+	 * Only use this for panes that will mount immediately in the active tab.
+	 * Background tabs must use the helper-side attach path instead.
+	 */
+	waitForMountedSession?: boolean;
 }
 
 function normalizeTerminalCommand(command: string): string {
@@ -82,7 +88,14 @@ export async function launchCommandInPane({
 	createOrAttach,
 	write,
 	noExecute,
+	waitForMountedSession,
 }: LaunchCommandInPaneOptions): Promise<void> {
+	if (waitForMountedSession) {
+		await waitForTerminalSessionReady(paneId);
+		await writeCommandInPane({ paneId, command, write, noExecute });
+		return;
+	}
+
 	await ensureTerminalAttached({
 		paneId,
 		tabId,
