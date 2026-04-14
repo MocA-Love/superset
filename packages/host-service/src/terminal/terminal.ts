@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import type { NodeWebSocket } from "@hono/node-ws";
 import {
 	createScanState,
@@ -265,9 +266,10 @@ export function createTerminalSessionInternal({
 		})
 		.run();
 
-	// Determine shell readiness support
-	const shellName = shell.split("/").pop() || shell;
-	const shellSupportsReady = SHELLS_WITH_READY_MARKER.has(shellName);
+	// Determine shell readiness support.
+	// Use path.basename and strip .exe so "bash.exe" (MSYS2/Cygwin) matches "bash".
+	const shellBasename = basename(shell).replace(/\.exe$/i, "");
+	const shellSupportsReady = SHELLS_WITH_READY_MARKER.has(shellBasename);
 
 	let shellReadyResolve: (() => void) | null = null;
 	const shellReadyPromise = shellSupportsReady
