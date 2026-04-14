@@ -185,8 +185,11 @@ class Range {
 		endChar?: number,
 	) {
 		if (typeof startLine === "number") {
+			if (typeof endLine !== "number" || typeof endChar !== "number") {
+				throw new TypeError("Range requires endLine and endChar");
+			}
 			this.start = new Position(startLine, startChar as number);
-			this.end = new Position(endLine!, endChar!);
+			this.end = new Position(endLine, endChar);
 		} else {
 			this.start = startLine;
 			this.end = startChar as Position;
@@ -213,9 +216,12 @@ class Selection extends Range {
 		activeChar?: number,
 	) {
 		if (typeof anchorLine === "number") {
-			super(anchorLine, anchorChar as number, activeLine!, activeChar!);
+			if (typeof activeLine !== "number" || typeof activeChar !== "number") {
+				throw new TypeError("Selection requires activeLine and activeChar");
+			}
+			super(anchorLine, anchorChar as number, activeLine, activeChar);
 			this.anchor = new Position(anchorLine, anchorChar as number);
-			this.active = new Position(activeLine!, activeChar!);
+			this.active = new Position(activeLine, activeChar);
 		} else {
 			super(anchorLine, anchorChar as Position);
 			this.anchor = anchorLine;
@@ -381,26 +387,66 @@ class NotebookCellOutput {
 	}
 }
 
-class NotebookCellKind {
-	static readonly Markup = 1;
-	static readonly Code = 2;
-}
+const NotebookCellKind = {
+	Markup: 1,
+	Code: 2,
+} as const;
 
 class NotebookEdit {
-	static replaceCells(_range: unknown, _cells: unknown[]): NotebookEdit {
-		return new NotebookEdit();
+	readonly range?: unknown;
+	readonly newCells?: unknown[];
+	readonly index?: number;
+	readonly metadata?: Record<string, unknown>;
+	readonly kind:
+		| "replaceCells"
+		| "insertCells"
+		| "deleteCells"
+		| "updateCellMetadata";
+
+	constructor(
+		range?: unknown,
+		newCells?: unknown[],
+		options?: {
+			index?: number;
+			metadata?: Record<string, unknown>;
+			kind?:
+				| "replaceCells"
+				| "insertCells"
+				| "deleteCells"
+				| "updateCellMetadata";
+		},
+	) {
+		this.range = range;
+		this.newCells = newCells;
+		this.index = options?.index;
+		this.metadata = options?.metadata;
+		this.kind = options?.kind ?? "replaceCells";
 	}
-	static insertCells(_index: number, _cells: unknown[]): NotebookEdit {
-		return new NotebookEdit();
+
+	static replaceCells(range: unknown, newCells: unknown[]): NotebookEdit {
+		return new NotebookEdit(range, newCells, { kind: "replaceCells" });
 	}
-	static deleteCells(_range: unknown): NotebookEdit {
-		return new NotebookEdit();
+
+	static insertCells(index: number, newCells: unknown[]): NotebookEdit {
+		return new NotebookEdit(undefined, newCells, {
+			index,
+			kind: "insertCells",
+		});
 	}
+
+	static deleteCells(range: unknown): NotebookEdit {
+		return new NotebookEdit(range, undefined, { kind: "deleteCells" });
+	}
+
 	static updateCellMetadata(
-		_index: number,
-		_metadata: Record<string, unknown>,
+		index: number,
+		metadata: Record<string, unknown>,
 	): NotebookEdit {
-		return new NotebookEdit();
+		return new NotebookEdit(undefined, undefined, {
+			index,
+			metadata,
+			kind: "updateCellMetadata",
+		});
 	}
 }
 
