@@ -328,24 +328,6 @@ export const HOTKEYS_REGISTRY = {
 		category: "Terminal",
 		description: "Scroll the active terminal to the bottom",
 	},
-	PREV_TAB: {
-		key: {
-			mac: "meta+alt+left",
-			windows: "ctrl+shift+alt+left",
-			linux: "ctrl+shift+alt+left",
-		},
-		label: "Previous Tab",
-		category: "Terminal",
-	},
-	NEXT_TAB: {
-		key: {
-			mac: "meta+alt+right",
-			windows: "ctrl+shift+alt+right",
-			linux: "ctrl+shift+alt+right",
-		},
-		label: "Next Tab",
-		category: "Terminal",
-	},
 	PREV_TAB_ALT: {
 		key: {
 			mac: "ctrl+shift+tab",
