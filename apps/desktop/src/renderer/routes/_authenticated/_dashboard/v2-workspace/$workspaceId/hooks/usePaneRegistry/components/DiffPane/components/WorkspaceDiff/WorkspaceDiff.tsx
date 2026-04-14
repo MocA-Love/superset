@@ -123,18 +123,23 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 		[newContents, copyToClipboard],
 	);
 
+	const utils = workspaceTrpc.useUtils();
 	const handleDiscard = useMemo(() => {
 		if (source.kind !== "unstaged" || !worktreePath) return undefined;
 		return () => {
 			electronTrpcClient.changes.discardChanges
 				.mutate({ worktreePath, filePath: path })
+				.then(() => {
+					void utils.git.getDiff.invalidate({ workspaceId, path });
+					void utils.git.getStatus.invalidate({ workspaceId });
+				})
 				.catch((err) => {
 					toast.error("Couldn't discard changes", {
 						description: err instanceof Error ? err.message : String(err),
 					});
 				});
 		};
-	}, [source.kind, worktreePath, path]);
+	}, [source.kind, worktreePath, path, workspaceId, utils]);
 
 	return (
 		<div className="flex flex-col overflow-hidden rounded-md border border-border">

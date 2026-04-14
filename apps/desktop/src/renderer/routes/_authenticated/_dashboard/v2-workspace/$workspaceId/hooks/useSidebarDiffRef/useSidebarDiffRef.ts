@@ -31,11 +31,15 @@ export function useSidebarDiffRef(workspaceId: string): DiffRef {
 			case "uncommitted":
 				return { kind: "uncommitted" };
 			case "commit":
-				return { kind: "commit", commitHash: commitHash ?? "" };
+				// Fall back to against-base when commitHash is missing to avoid
+				// sending an empty string to useChangeset / git.getCommitFiles.
+				if (!commitHash) return { kind: "against-base", baseBranch };
+				return { kind: "commit", commitHash };
 			case "range":
+				if (!commitHash) return { kind: "against-base", baseBranch };
 				return {
 					kind: "commit",
-					commitHash: commitHash ?? "",
+					commitHash,
 					fromHash: fromHash ?? undefined,
 				};
 			default:

@@ -20,6 +20,14 @@ import { createVscodeApi } from "./vscode-api";
 const vscodeApi = createVscodeApi();
 let interceptInstalled = false;
 
+type ResolveFilename = (
+	this: unknown,
+	request: string,
+	parent: unknown,
+	isMain: boolean,
+	options: unknown,
+) => string;
+
 function installRequireIntercept(): void {
 	if (interceptInstalled) return;
 	interceptInstalled = true;
@@ -43,29 +51,21 @@ function installRequireIntercept(): void {
 		isPreloading: false,
 	} as unknown as NodeModule;
 
-	// biome-ignore lint/complexity/noBannedTypes: Module internals require Function type
-	type ResolveFn = Function;
-	const originalResolveFilename = (
-		Module as unknown as { _resolveFilename: ResolveFn }
-	)._resolveFilename;
-	(Module as unknown as { _resolveFilename: ResolveFn })._resolveFilename =
-		function (
-			request: string,
-			parent: unknown,
-			isMain: boolean,
-			options: unknown,
-		) {
-			if (request === "vscode") {
-				return VSCODE_CACHE_KEY;
-			}
-			return originalResolveFilename.call(
-				this,
-				request,
-				parent,
-				isMain,
-				options,
-			);
-		};
+	const moduleWithResolver = Module as unknown as {
+		_resolveFilename: ResolveFilename;
+	};
+	const originalResolveFilename = moduleWithResolver._resolveFilename;
+	moduleWithResolver._resolveFilename = function (
+		request: string,
+		parent: unknown,
+		isMain: boolean,
+		options: unknown,
+	) {
+		if (request === "vscode") {
+			return VSCODE_CACHE_KEY;
+		}
+		return originalResolveFilename.call(this, request, parent, isMain, options);
+	};
 }
 
 export function discoverExtensions(extensionsDir: string): ExtensionInfo[] {
@@ -113,9 +113,9 @@ const loadedExtensions = new Map<string, LoadedExtension>();
 export async function loadExtension(
 	info: ExtensionInfo,
 ): Promise<LoadedExtension> {
-	if (loadedExtensions.has(info.id)) {
-		// biome-ignore lint/style/noNonNullAssertion: has() check guarantees presence
-		return loadedExtensions.get(info.id)!;
+	const existing = loadedExtensions.get(info.id);
+	if (existing) {
+		return existing;
 	}
 
 	installRequireIntercept();
@@ -131,8 +131,11 @@ export async function loadExtension(
 	);
 
 	// Load the extension's main module
-	// biome-ignore lint/style/noNonNullAssertion: manifest.main is checked before calling loadExtension
-	const mainPath = path.resolve(info.extensionPath, info.manifest.main!);
+	const manifestMain = info.manifest.main;
+	if (!manifestMain) {
+		throw new Error(`[vscode-shim] Extension ${info.id} has no main entry`);
+	}
+	const mainPath = path.resolve(info.extensionPath, manifestMain);
 	shimLog(`[vscode-shim] Loading extension: ${info.id} from ${mainPath}`);
 
 	let extensionModule: Record<string, unknown>;

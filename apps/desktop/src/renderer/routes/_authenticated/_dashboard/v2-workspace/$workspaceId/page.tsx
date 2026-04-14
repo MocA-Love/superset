@@ -147,6 +147,25 @@ function WorkspaceContent({
 	const paneRegistry = usePaneRegistry(workspaceId);
 	const defaultContextMenuActions = useDefaultContextMenuActions();
 	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
+	const utils = electronTrpc.useUtils();
+	const { data: showPresetsBar } =
+		electronTrpc.settings.getShowPresetsBar.useQuery();
+	const setShowPresetsBar = electronTrpc.settings.setShowPresetsBar.useMutation(
+		{
+			onMutate: async ({ enabled }) => {
+				await utils.settings.getShowPresetsBar.cancel();
+				const previous = utils.settings.getShowPresetsBar.getData();
+				utils.settings.getShowPresetsBar.setData(undefined, enabled);
+				return { previous };
+			},
+			onError: (_error, _variables, context) => {
+				utils.settings.getShowPresetsBar.setData(undefined, context?.previous);
+			},
+			onSettled: () => {
+				utils.settings.getShowPresetsBar.invalidate();
+			},
+		},
+	);
 
 	const selectedFilePath = useStore(store, (s) => {
 		const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -351,11 +370,6 @@ function WorkspaceContent({
 				toast.error(`Failed to create memo: ${error.message}`);
 			});
 	}, [openFilePane, workspaceId]);
-
-	const { data: showPresetsBar } =
-		electronTrpc.settings.getShowPresetsBar.useQuery();
-	const setShowPresetsBar =
-		electronTrpc.settings.setShowPresetsBar.useMutation();
 
 	const commandPalette = useCommandPalette({
 		workspaceId,

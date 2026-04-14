@@ -82,24 +82,30 @@ export function useChangeset({
 		if (!status) return [];
 
 		if (ref.kind === "uncommitted") {
-			return [
-				...status.staged.map<ChangesetFile>((file) => ({
+			// Merge staged and unstaged by path, preferring unstaged (working-tree
+			// diff) when both exist for the same file (partial-stage case).
+			const byPath = new Map<string, ChangesetFile>();
+			for (const file of status.staged) {
+				byPath.set(file.path, {
 					path: file.path,
 					oldPath: file.oldPath,
 					status: file.status as FileStatus,
 					additions: file.additions,
 					deletions: file.deletions,
 					source: { kind: "staged" },
-				})),
-				...status.unstaged.map<ChangesetFile>((file) => ({
+				});
+			}
+			for (const file of status.unstaged) {
+				byPath.set(file.path, {
 					path: file.path,
 					oldPath: file.oldPath,
 					status: file.status as FileStatus,
 					additions: file.additions,
 					deletions: file.deletions,
 					source: { kind: "unstaged" },
-				})),
-			];
+				});
+			}
+			return Array.from(byPath.values());
 		}
 
 		// against-base: merge committed + dirty, last-wins by path, each file

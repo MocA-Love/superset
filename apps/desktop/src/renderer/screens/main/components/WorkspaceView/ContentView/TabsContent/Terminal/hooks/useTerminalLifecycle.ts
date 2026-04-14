@@ -248,7 +248,12 @@ export function useTerminalLifecycle({
 		// that state leaves the pane permanently disconnected with no daemon
 		// session and no stream subscription.
 		const cachedBeforeCreate = v1TerminalCache.get(paneId);
-		const isReattach = cachedBeforeCreate?.streamReady === true;
+		// Only treat as reattach when the stream is still alive (subscription ≠ null).
+		// If the stream died while the tab was hidden (onError sets subscription=null),
+		// we must go through the full create/attach path to restart it.
+		const isReattach =
+			cachedBeforeCreate?.streamReady === true &&
+			cachedBeforeCreate.subscription !== null;
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] isReattach=${isReattach} paneId=${paneId}`);
 		}

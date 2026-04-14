@@ -12,9 +12,20 @@ import {
 	TipTapMarkdownRenderer,
 } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	resolveLanguageServiceLanguageId,
+	resolveLanguageServiceProviderId,
+} from "renderer/lib/language-services";
+import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
+import type {
+	SymbolHoverResult,
+	SymbolPosition,
+} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createSymbolInteractions";
+import { useLanguageServicePreferencesStore } from "renderer/stores/language-service-preferences";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
 import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import { type DiffViewMode, isDiffEditable } from "shared/changes-types";
@@ -209,6 +220,7 @@ interface FileViewerContentProps {
 	editorRef: MutableRefObject<CodeEditorAdapter | null>;
 	markdownEditorRef: MutableRefObject<MarkdownEditorAdapter | null>;
 	renderedContent: string;
+	documentVersion?: number;
 	initialLine?: number;
 	initialColumn?: number;
 	diffViewMode: DiffViewMode;
@@ -251,6 +263,7 @@ export function FileViewerContent({
 	editorRef,
 	markdownEditorRef,
 	renderedContent,
+	documentVersion,
 	initialLine,
 	initialColumn,
 	diffViewMode,
@@ -287,6 +300,10 @@ export function FileViewerContent({
 	} = useNextEditCompletion({
 		filePath,
 	});
+	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
+	const enabledProviders = useLanguageServicePreferencesStore(
+		(state) => state.enabledProviders,
+	);
 
 	useScrollToFirstDiffChange({
 		containerRef: diffContainerRef,
@@ -358,6 +375,21 @@ export function FileViewerContent({
 						: false) || problem.relativePath === filePath,
 			),
 		[workspaceDiagnostics?.problems, absoluteFilePath, filePath],
+	);
+	const languageId = useMemo(
+		() => resolveLanguageServiceLanguageId(absoluteFilePath),
+		[absoluteFilePath],
+	);
+	const providerId = useMemo(
+		() => (languageId ? resolveLanguageServiceProviderId(languageId) : null),
+		[languageId],
+	);
+	const canResolveSymbols = Boolean(
+		workspaceId &&
+			absoluteFilePath &&
+			languageId &&
+			providerId &&
+			enabledProviders[providerId] !== false,
 	);
 
 	const { data: blameData } = electronTrpc.changes.getGitBlame.useQuery(
@@ -440,6 +472,30 @@ export function FileViewerContent({
 		};
 	};
 
+	const getDiffLookupPosition = useCallback((): SymbolPosition | null => {
+		if (!diffData) {
+			return null;
+		}
+
+		const location = lastDiffLocationRef.current;
+		if (!location || location.side !== "additions") {
+			return null;
+		}
+
+		const position = mapDiffLocationToRawPosition({
+			contents: diffData,
+			lineNumber: location.lineNumber,
+			side: location.side,
+			lineType: location.lineType,
+			column: location.column,
+		});
+
+		return {
+			line: position.lineNumber,
+			column: position.column,
+		};
+	}, [diffData]);
+
 	const openRawFromDiffLocation = (
 		location: DiffDomLocation & {
 			column: number;
@@ -480,6 +536,90 @@ export function FileViewerContent({
 			onContentChange(value);
 		},
 		[onContentChange, trackDocumentChange],
+	);
+
+	const resolveSymbolHover = useCallback(
+		async (position: SymbolPosition): Promise<SymbolHoverResult | null> => {
+			if (!workspaceId || !absoluteFilePath || !languageId) {
+				return null;
+			}
+
+			return await electronTrpcClient.languageServices.getHover.query({
+				workspaceId,
+				absolutePath: absoluteFilePath,
+				languageId,
+				line: position.line,
+				column: position.column,
+				...(documentVersion !== undefined
+					? {
+							content: renderedContent,
+							version: documentVersion,
+						}
+					: {}),
+			});
+		},
+		[
+			absoluteFilePath,
+			documentVersion,
+			languageId,
+			renderedContent,
+			workspaceId,
+		],
+	);
+
+	const goToDefinition = useCallback(
+		async (position: SymbolPosition) => {
+			if (!workspaceId || !absoluteFilePath || !languageId) {
+				return;
+			}
+
+			const definitions =
+				await electronTrpcClient.languageServices.getDefinition.query({
+					workspaceId,
+					absolutePath: absoluteFilePath,
+					languageId,
+					line: position.line,
+					column: position.column,
+					...(documentVersion !== undefined
+						? {
+								content: renderedContent,
+								version: documentVersion,
+							}
+						: {}),
+				});
+			const target = definitions?.[0];
+			if (!target) {
+				return;
+			}
+
+			if (pathsMatch(target.absolutePath, absoluteFilePath)) {
+				if (viewMode === "diff") {
+					onSwitchToRawAtLocation(target.line, target.column);
+					return;
+				}
+
+				editorRef.current?.revealPosition(target.line, target.column);
+				return;
+			}
+
+			addFileViewerPane(workspaceId, {
+				filePath: target.absolutePath,
+				line: target.line,
+				column: target.column,
+				isPinned: false,
+			});
+		},
+		[
+			absoluteFilePath,
+			addFileViewerPane,
+			documentVersion,
+			editorRef,
+			languageId,
+			onSwitchToRawAtLocation,
+			renderedContent,
+			viewMode,
+			workspaceId,
+		],
 	);
 
 	useEffect(() => {
@@ -578,6 +718,18 @@ export function FileViewerContent({
 						column: location.column,
 					});
 				}}
+				onGoToDefinition={
+					canResolveSymbols
+						? () => {
+								const position = getDiffLookupPosition();
+								if (!position) {
+									return;
+								}
+
+								void goToDefinition(position);
+							}
+						: undefined
+				}
 			>
 				<div className="relative h-full">
 					<div
@@ -619,6 +771,10 @@ export function FileViewerContent({
 									? requestInlineCompletion
 									: null
 							}
+							resolveSymbolHover={
+								canResolveSymbols ? resolveSymbolHover : undefined
+							}
+							onGoToDefinition={canResolveSymbols ? goToDefinition : undefined}
 						/>
 					</div>
 				</div>
@@ -781,6 +937,18 @@ export function FileViewerContent({
 			onMoveToTab={onMoveToTab}
 			onMoveToNewTab={onMoveToNewTab}
 			onShowReferenceGraph={onShowReferenceGraph}
+			onGoToDefinition={
+				canResolveSymbols
+					? () => {
+							const position = editorRef.current?.getCursorPosition();
+							if (!position) {
+								return;
+							}
+
+							void goToDefinition(position);
+						}
+					: undefined
+			}
 		>
 			<div className="h-full w-full">
 				<CodeEditor
@@ -798,6 +966,10 @@ export function FileViewerContent({
 					inlineCompletionRequest={
 						isNextEditAvailable ? requestInlineCompletion : null
 					}
+					resolveSymbolHover={
+						canResolveSymbols ? resolveSymbolHover : undefined
+					}
+					onGoToDefinition={canResolveSymbols ? goToDefinition : undefined}
 				/>
 			</div>
 		</FileEditorContextMenu>

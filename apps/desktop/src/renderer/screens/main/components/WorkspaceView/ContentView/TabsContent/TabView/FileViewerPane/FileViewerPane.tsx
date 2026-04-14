@@ -842,6 +842,7 @@ export function FileViewerPane({
 							editorRef={editorRef}
 							markdownEditorRef={markdownEditorRef}
 							renderedContent={renderedContent}
+							documentVersion={documentState?.contentVersion}
 							initialLine={initialLine}
 							initialColumn={initialColumn}
 							diffViewMode={diffViewMode}

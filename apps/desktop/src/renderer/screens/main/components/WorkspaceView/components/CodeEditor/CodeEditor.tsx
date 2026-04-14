@@ -50,6 +50,11 @@ import {
 	createInlineCompletionPlugin,
 	type InlineCompletionRequest,
 } from "./createInlineCompletionPlugin";
+import {
+	createSymbolInteractions,
+	type SymbolHoverResult,
+	type SymbolPosition,
+} from "./createSymbolInteractions";
 import { createTrailingSpacesPlugin } from "./createTrailingSpacesPlugin";
 import { loadLanguageSupport } from "./loadLanguageSupport";
 
@@ -73,6 +78,10 @@ interface CodeEditorProps {
 		severity: "error" | "warning" | "info" | "hint";
 	}>;
 	inlineCompletionRequest?: InlineCompletionRequest | null;
+	resolveSymbolHover?: (
+		position: SymbolPosition,
+	) => Promise<SymbolHoverResult | null> | SymbolHoverResult | null;
+	onGoToDefinition?: (position: SymbolPosition) => Promise<void> | void;
 }
 
 const HIGHLIGHT_CLEAR_DELAY_MS = 1800;
@@ -527,6 +536,8 @@ export function CodeEditor({
 	blameEntries,
 	diagnostics = [],
 	inlineCompletionRequest = null,
+	resolveSymbolHover,
+	onGoToDefinition,
 }: CodeEditorProps) {
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchQuery, setSearchQueryState] = useState("");
@@ -556,6 +567,8 @@ export function CodeEditor({
 	const inlineCompletionRequestRef = useRef<InlineCompletionRequest | null>(
 		inlineCompletionRequest,
 	);
+	const resolveSymbolHoverRef = useRef(resolveSymbolHover);
+	const onGoToDefinitionRef = useRef(onGoToDefinition);
 	// Guards against re-entrant onChange calls triggered by the value-sync effect's own dispatch.
 	const isExternalUpdateRef = useRef(false);
 	const { data: fontSettings } = useQuery({
@@ -580,6 +593,8 @@ export function CodeEditor({
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
 	inlineCompletionRequestRef.current = inlineCompletionRequest;
+	resolveSymbolHoverRef.current = resolveSymbolHover;
+	onGoToDefinitionRef.current = onGoToDefinition;
 	searchModeRef.current = searchMode;
 	isSearchOpenRef.current = isSearchOpen;
 
@@ -877,6 +892,12 @@ export function CodeEditor({
 						),
 					),
 				]),
+				...createSymbolInteractions({
+					resolveHover: (position) =>
+						resolveSymbolHoverRef.current?.(position) ?? null,
+					onGoToDefinition: (position) =>
+						onGoToDefinitionRef.current?.(position),
+				}),
 				updateListener,
 				overlaySearchUpdateListener,
 			],

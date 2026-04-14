@@ -336,6 +336,9 @@ export const createExternalRouter = () => {
 				const workspace = input.workspaceId
 					? getWorkspace(input.workspaceId)
 					: null;
+				// If a workspaceId was provided but we couldn't find the workspace,
+				// return null rather than resolving relative to process.cwd().
+				if (input.workspaceId && !workspace) return null;
 				const cwd = workspace
 					? (getWorkspacePath(workspace) ?? undefined)
 					: undefined;

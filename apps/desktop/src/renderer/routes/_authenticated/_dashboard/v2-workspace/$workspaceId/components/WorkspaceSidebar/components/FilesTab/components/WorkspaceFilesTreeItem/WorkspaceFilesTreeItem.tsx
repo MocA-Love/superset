@@ -91,10 +91,14 @@ function WorkspaceFilesTreeItemComponent({
 						isSelected ? "!bg-accent" : undefined,
 					)}
 					onClick={(e) => {
-						if (e.metaKey || e.ctrlKey) {
+						if (isFolder) {
+							if (e.metaKey || e.ctrlKey) {
+								onOpenInEditor(node.absolutePath);
+							} else {
+								onToggleDirectory(node.absolutePath);
+							}
+						} else if (e.metaKey || e.ctrlKey) {
 							onOpenInEditor(node.absolutePath);
-						} else if (isFolder) {
-							onToggleDirectory(node.absolutePath);
 						} else if (e.shiftKey) {
 							onSelectFile(node.absolutePath, true);
 						} else {

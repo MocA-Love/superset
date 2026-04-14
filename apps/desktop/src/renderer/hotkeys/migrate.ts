@@ -31,6 +31,16 @@ export async function migrateHotkeyOverrides(): Promise<void> {
 			return;
 		}
 
+		// If the user already has a hotkey-overrides entry in localStorage (set
+		// after the v1 migration), preserve it rather than overwriting with the
+		// potentially stale legacy tRPC store value.
+		const existingRaw = localStorage.getItem("hotkey-overrides");
+		if (existingRaw) {
+			localStorage.setItem(MIGRATION_MARKER_KEY, "1");
+			console.log("[hotkeys] Migration skipped — localStorage overrides already present");
+			return;
+		}
+
 		const cleaned: Record<string, string | null> = {};
 		let dropped = 0;
 		for (const [id, raw] of Object.entries(oldOverrides)) {
