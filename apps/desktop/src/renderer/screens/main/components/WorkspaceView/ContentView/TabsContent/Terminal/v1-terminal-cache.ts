@@ -228,9 +228,10 @@ export function startStream(paneId: string): void {
 			routeEvent(entry, event);
 		},
 		onError: (error: unknown) => {
-			// Subscription is dead after onError — null it so startStream()
-			// can create a replacement on remount.
+			// Subscription is dead after onError — null it and reset streamReady
+			// so the next remount goes through the full create/attach path.
 			entry.subscription = null;
+			entry.streamReady = false;
 
 			if (entry.subscriptionErrorHandler) {
 				entry.subscriptionErrorHandler(error);

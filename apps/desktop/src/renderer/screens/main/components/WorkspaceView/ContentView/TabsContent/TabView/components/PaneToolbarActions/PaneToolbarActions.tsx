@@ -86,6 +86,7 @@ export function PaneToolbarActions({
 						<button
 							type="button"
 							onClick={onSplitPaneOpposite}
+							aria-label={splitOppositeLabel}
 							className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
 						>
 							{splitOppositeIcon}

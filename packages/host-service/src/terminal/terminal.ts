@@ -132,10 +132,17 @@ function resolveShellReady(
 		clearTimeout(session.shellReadyTimeoutId);
 		session.shellReadyTimeoutId = null;
 	}
-	// Flush held marker bytes — they weren't part of a full marker
+	// Flush held marker bytes — they weren't part of a full marker.
+	// Send directly to a connected socket so the output isn't lost; fall back
+	// to the output buffer when no client is currently attached.
 	if (session.scanState.heldBytes.length > 0) {
-		bufferOutput(session, session.scanState.heldBytes);
+		const heldBytes = session.scanState.heldBytes;
 		session.scanState.heldBytes = "";
+		if (session.socket?.readyState === 1) {
+			sendMessage(session.socket, { type: "data", data: heldBytes });
+		} else {
+			bufferOutput(session, heldBytes);
+		}
 	}
 	session.scanState.matchPos = 0;
 	if (session.shellReadyResolve) {

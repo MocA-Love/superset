@@ -83,13 +83,16 @@ export function GitHubIssueLinkCommand({
 		enabled: !!projectId && !!hostUrl && open,
 	});
 
-	const searchResults = data?.issues ?? [];
+	// Hide stale results while the debounce is pending — the query has changed
+	// but results haven't caught up yet, so showing the old list could mislead.
+	const hasSettledQuery = !isPendingDebounce;
+	const searchResults = hasSettledQuery ? (data?.issues ?? []) : [];
 	const repoMismatch =
-		data && "repoMismatch" in data ? data.repoMismatch : null;
+		hasSettledQuery && data && "repoMismatch" in data ? data.repoMismatch : null;
 
 	const isLoading =
-		debouncedTrimmed || trimmedQuery
-			? isFetching || isPendingDebounce
+		trimmedQuery || debouncedTrimmed
+			? isFetching || !hasSettledQuery
 			: isFetching;
 
 	const handleClose = () => {

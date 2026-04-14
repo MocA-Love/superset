@@ -66,6 +66,11 @@ export function useV2PresetExecution({
 
 	const executePreset = useCallback(
 		async (preset: V2TerminalPresetRow) => {
+			if (preset.commands.length === 0) {
+				toast.error("This preset has no commands to run.");
+				return;
+			}
+
 			const state = store.getState();
 			const activeTabId = state.activeTabId;
 			const target = resolveTarget(preset.executionMode);
