@@ -256,9 +256,20 @@ export function useTerminalLifecycle({
 		// Only treat as reattach when the stream is still alive (subscription ≠ null).
 		// If the stream died while the tab was hidden (onError sets subscription=null),
 		// we must go through the full create/attach path to restart it.
+		//
+		// FORK NOTE: Also block the fast-path while the pane is in cold-restore
+		// mode. Cold restore returns `isColdRestore: true` without creating a
+		// backend session, but the onSuccess handler below still marks the
+		// cache as `streamReady=true`. On the next mount (e.g. after a tab
+		// switch unmount) the fast-path would otherwise skip createOrAttach
+		// entirely, leaving a stream with no backend → user typing is silently
+		// dropped by `electronTrpcClient.terminal.write`. Forcing the full
+		// attach path here lets `handleStartShell` run and spawn a real shell.
+		const hasPendingColdRestore = coldRestoreState.has(paneId);
 		const isReattach =
 			cachedBeforeCreate?.streamReady === true &&
-			cachedBeforeCreate.subscription !== null;
+			cachedBeforeCreate.subscription !== null &&
+			!hasPendingColdRestore;
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] isReattach=${isReattach} paneId=${paneId}`);
 		}
@@ -602,13 +613,14 @@ export function useTerminalLifecycle({
 									setConnectionError(null);
 									clearPaneInitialDataRef.current(paneId);
 
-									// Start the cache-owned stream subscription now that the
-									// backend session exists, and mark it ready so events
-									// flow through the component's registered handler.
-									v1TerminalCache.startStream(paneId);
-									v1TerminalCache.setStreamReady(paneId);
-									markTerminalSessionReady(paneId);
-
+									// FORK NOTE: Do NOT mark the cache as streamReady here
+									// yet. Cold-restore responses come back without a real
+									// backend session, so we must defer startStream /
+									// setStreamReady / markTerminalSessionReady until
+									// handleStartShell spawns an actual shell. Marking
+									// readiness up front caused tab-switch remounts to enter
+									// the isReattach fast-path with no backend, silently
+									// dropping every user keystroke.
 									const storedColdRestore = coldRestoreState.get(paneId);
 									if (storedColdRestore?.isRestored) {
 										setIsRestoredMode(true);
@@ -639,6 +651,12 @@ export function useTerminalLifecycle({
 										didFirstRenderRef.current = true;
 										return;
 									}
+
+									// Real backend session is live — safe to start the stream
+									// subscription and unblock waiters.
+									v1TerminalCache.startStream(paneId);
+									v1TerminalCache.setStreamReady(paneId);
+									markTerminalSessionReady(paneId);
 
 									pendingInitialStateRef.current = result;
 									maybeApplyInitialState();
