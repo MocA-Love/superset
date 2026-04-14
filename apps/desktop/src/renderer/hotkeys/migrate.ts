@@ -37,7 +37,9 @@ export async function migrateHotkeyOverrides(): Promise<void> {
 		const existingRaw = localStorage.getItem("hotkey-overrides");
 		if (existingRaw) {
 			localStorage.setItem(MIGRATION_MARKER_KEY, "1");
-			console.log("[hotkeys] Migration skipped — localStorage overrides already present");
+			console.log(
+				"[hotkeys] Migration skipped — localStorage overrides already present",
+			);
 			return;
 		}
 

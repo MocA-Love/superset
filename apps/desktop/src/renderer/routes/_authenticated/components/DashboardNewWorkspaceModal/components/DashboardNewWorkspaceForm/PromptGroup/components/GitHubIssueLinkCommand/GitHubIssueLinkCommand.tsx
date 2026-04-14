@@ -88,7 +88,9 @@ export function GitHubIssueLinkCommand({
 	const hasSettledQuery = !isPendingDebounce;
 	const searchResults = hasSettledQuery ? (data?.issues ?? []) : [];
 	const repoMismatch =
-		hasSettledQuery && data && "repoMismatch" in data ? data.repoMismatch : null;
+		hasSettledQuery && data && "repoMismatch" in data
+			? data.repoMismatch
+			: null;
 
 	const isLoading =
 		trimmedQuery || debouncedTrimmed
