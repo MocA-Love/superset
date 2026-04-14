@@ -547,12 +547,15 @@ export function usePersistentWebview({
 
 		const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
 			lastSyncedUrlRef.current = e.url ?? null;
+			const direction = pendingNavDirectionRef.current;
+			pendingNavDirectionRef.current = null;
 			const store = useTabsStore.getState();
 			store.updateBrowserUrl(
 				paneId,
 				e.url ?? "",
 				wv.getTitle() ?? "",
 				faviconUrlRef.current,
+				direction ?? undefined,
 			);
 		};
 

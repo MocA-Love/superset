@@ -2215,12 +2215,14 @@ export const useTabsStore = create<TabsStore>()(
 					// URL-bar navigation or loadURL() calls must never match an adjacent
 					// entry — they should always truncate forward history and push a new
 					// entry, even if the URL happens to coincide with a neighbour.
-					if (historyNavDirection === "back") {
-						const backwardEntry = prevHistory[historyIndex - 1];
-						if (backwardEntry && backwardEntry.url === url) {
+					if (historyNavDirection) {
+						const offset = historyNavDirection === "back" ? -1 : 1;
+						const adjacentIndex = historyIndex + offset;
+						const adjacentEntry = prevHistory[adjacentIndex];
+						if (adjacentEntry && adjacentEntry.url === url) {
 							const history = [...prevHistory];
-							history[historyIndex - 1] = {
-								...backwardEntry,
+							history[adjacentIndex] = {
+								...adjacentEntry,
 								title,
 								...(faviconUrl !== undefined ? { faviconUrl } : {}),
 							};
@@ -2233,40 +2235,7 @@ export const useTabsStore = create<TabsStore>()(
 										...pane.browser,
 										currentUrl: url,
 										history,
-										historyIndex: historyIndex - 1,
-									},
-								},
-							};
-							const tabName = deriveTabName(newPanes, pane.tabId);
-							set({
-								panes: newPanes,
-								tabs: state.tabs.map((t) =>
-									t.id === pane.tabId ? { ...t, name: tabName } : t,
-								),
-							});
-							return;
-						}
-					}
-
-					if (historyNavDirection === "forward") {
-						const forwardEntry = prevHistory[historyIndex + 1];
-						if (forwardEntry && forwardEntry.url === url) {
-							const history = [...prevHistory];
-							history[historyIndex + 1] = {
-								...forwardEntry,
-								title,
-								...(faviconUrl !== undefined ? { faviconUrl } : {}),
-							};
-							const newPanes = {
-								...state.panes,
-								[paneId]: {
-									...pane,
-									name: title || "Browser",
-									browser: {
-										...pane.browser,
-										currentUrl: url,
-										history,
-										historyIndex: historyIndex + 1,
+										historyIndex: adjacentIndex,
 									},
 								},
 							};
