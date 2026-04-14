@@ -50,13 +50,13 @@ import {
 	createInlineCompletionPlugin,
 	type InlineCompletionRequest,
 } from "./createInlineCompletionPlugin";
-import {
-	createSymbolInteractions,
-	type SymbolHoverResult,
-	type SymbolPosition,
-} from "./createSymbolInteractions";
+import { createSymbolInteractions } from "./createSymbolInteractions";
 import { createTrailingSpacesPlugin } from "./createTrailingSpacesPlugin";
 import { loadLanguageSupport } from "./loadLanguageSupport";
+import type {
+	SymbolHoverResult,
+	SymbolPosition,
+} from "./symbolInteractions.types";
 
 interface CodeEditorProps {
 	value: string;

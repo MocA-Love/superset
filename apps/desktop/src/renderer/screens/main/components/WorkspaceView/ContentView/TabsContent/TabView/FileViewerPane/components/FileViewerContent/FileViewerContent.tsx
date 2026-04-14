@@ -23,7 +23,7 @@ import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/compo
 import type {
 	SymbolHoverResult,
 	SymbolPosition,
-} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createSymbolInteractions";
+} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/symbolInteractions.types";
 import { useLanguageServicePreferencesStore } from "renderer/stores/language-service-preferences";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";

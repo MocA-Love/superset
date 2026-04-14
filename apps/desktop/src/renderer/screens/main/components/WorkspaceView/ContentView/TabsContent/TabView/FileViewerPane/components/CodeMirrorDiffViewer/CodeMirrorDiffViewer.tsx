@@ -40,12 +40,12 @@ import {
 	createInlineCompletionPlugin,
 	type InlineCompletionRequest,
 } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createInlineCompletionPlugin";
-import {
-	createSymbolInteractions,
-	type SymbolHoverResult,
-	type SymbolPosition,
-} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createSymbolInteractions";
+import { createSymbolInteractions } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createSymbolInteractions";
 import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/loadLanguageSupport";
+import type {
+	SymbolHoverResult,
+	SymbolPosition,
+} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/symbolInteractions.types";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
 import type { DiffViewMode } from "shared/changes-types";

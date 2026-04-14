@@ -6,29 +6,36 @@ import {
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 
-const SUPPORTED_LANGUAGES: BundledLanguage[] = [
+const SUPPORTED_LANGUAGES = [
+	"bash",
+	"c",
+	"cpp",
+	"csharp",
+	"css",
+	"dart",
+	"diff",
+	"go",
+	"graphql",
 	"typescript",
 	"javascript",
 	"tsx",
 	"jsx",
-	"python",
-	"go",
-	"rust",
-	"java",
-	"c",
-	"cpp",
-	"csharp",
-	"ruby",
-	"php",
-	"swift",
-	"kotlin",
-	"vue",
 	"html",
-	"css",
+	"java",
 	"json",
+	"kotlin",
 	"yaml",
 	"markdown",
-];
+	"php",
+	"plaintext",
+	"python",
+	"ruby",
+	"rust",
+	"sql",
+	"swift",
+	"toml",
+	"vue",
+] as BundledLanguage[];
 
 async function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
@@ -60,7 +67,7 @@ export async function highlightCode(
 
 	const safeLanguage = SUPPORTED_LANGUAGES.includes(language as BundledLanguage)
 		? (language as BundledLanguage)
-		: "typescript";
+		: "plaintext";
 
 	let themeName = "dark-plus";
 

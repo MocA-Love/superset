@@ -7,28 +7,13 @@ import {
 	ViewPlugin,
 	type ViewUpdate,
 } from "@codemirror/view";
-
-export interface SymbolPosition {
-	line: number;
-	column: number;
-}
-
-export interface SymbolRange {
-	line: number;
-	column: number;
-	endLine: number;
-	endColumn: number;
-}
-
-export interface SymbolMarkupContent {
-	kind: "plaintext" | "markdown";
-	value: string;
-}
-
-export interface SymbolHoverResult {
-	contents: SymbolMarkupContent[];
-	range: SymbolRange | null;
-}
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { CodeEditorSymbolHover } from "./components/CodeEditorSymbolHover";
+import type {
+	SymbolHoverResult,
+	SymbolPosition,
+} from "./symbolInteractions.types";
 
 interface CreateSymbolInteractionsOptions {
 	resolveHover?: (
@@ -54,7 +39,7 @@ function positionToDocOffset(doc: Text, position: SymbolPosition): number {
 
 function rangeToOffsets(
 	doc: Text,
-	range: SymbolRange | null,
+	range: SymbolHoverResult["range"],
 	fallbackOffset: number,
 ): { from: number; to: number } {
 	if (!range) {
@@ -79,39 +64,208 @@ function rangeToOffsets(
 	};
 }
 
-function createTooltipDom(contents: SymbolMarkupContent[]): HTMLElement {
+function isDefinitionModifierPressed(event: {
+	metaKey: boolean;
+	ctrlKey: boolean;
+	altKey: boolean;
+	shiftKey: boolean;
+}) {
+	return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+}
+
+function createTooltip(
+	hover: SymbolHoverResult,
+	doc: Text,
+	pos: number,
+	canGoToDefinition: boolean,
+	onGoToDefinition?: (() => void) | undefined,
+): Tooltip {
 	const dom = document.createElement("div");
-	dom.style.maxWidth = "480px";
-	dom.style.padding = "8px 10px";
-	dom.style.borderRadius = "8px";
-	dom.style.border = "1px solid hsl(var(--border))";
-	dom.style.background = "hsl(var(--popover))";
-	dom.style.color = "hsl(var(--popover-foreground))";
-	dom.style.boxShadow =
-		"0 10px 30px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.12)";
-	dom.style.fontSize = "12px";
-	dom.style.lineHeight = "1.5";
-	dom.style.whiteSpace = "pre-wrap";
-	dom.style.wordBreak = "break-word";
+	const root = createRoot(dom);
 
-	contents.forEach((content, index) => {
-		const section = document.createElement("div");
-		if (index > 0) {
-			section.style.marginTop = "8px";
-			section.style.paddingTop = "8px";
-			section.style.borderTop = "1px solid hsl(var(--border))";
-		}
+	root.render(
+		createElement(CodeEditorSymbolHover, {
+			contents: hover.contents,
+			canGoToDefinition,
+			onGoToDefinition,
+		}),
+	);
 
-		if (content.kind === "markdown") {
-			section.style.fontFamily =
-				"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-		}
+	const { from, to } = rangeToOffsets(doc, hover.range, pos);
+	return {
+		pos: from,
+		end: to,
+		above: true,
+		arrow: true,
+		create() {
+			return {
+				dom,
+				destroy() {
+					root.unmount();
+				},
+			};
+		},
+	};
+}
 
-		section.textContent = content.value;
-		dom.appendChild(section);
-	});
+function createDefinitionLinkPlugin(): Extension {
+	return ViewPlugin.fromClass(
+		class {
+			private modifierPressed = false;
+			private hoveredOffset: number | null = null;
+			private lastPointerCoords: { x: number; y: number } | null = null;
+			private highlightedElement: HTMLElement | null = null;
+			private highlightedElementPreviousStyle: {
+				cursor: string;
+				textDecoration: string;
+				textDecorationColor: string;
+				textDecorationThickness: string;
+				textUnderlineOffset: string;
+			} | null = null;
+			private readonly handleMouseMove = (event: MouseEvent) => {
+				this.onMouseMove(event);
+			};
+			private readonly handleMouseLeave = () => {
+				this.onMouseLeave();
+			};
+			private readonly handleWindowKeyChange = (event: KeyboardEvent) => {
+				this.setModifierPressed(isDefinitionModifierPressed(event));
+			};
+			private readonly handleWindowBlur = () => {
+				this.setModifierPressed(false);
+			};
+			private readonly window: Window | null;
 
-	return dom;
+			constructor(private readonly view: EditorView) {
+				this.window = this.view.dom.ownerDocument.defaultView;
+				this.view.dom.addEventListener("mousemove", this.handleMouseMove);
+				this.view.dom.addEventListener("mouseleave", this.handleMouseLeave);
+				this.window?.addEventListener("keydown", this.handleWindowKeyChange);
+				this.window?.addEventListener("keyup", this.handleWindowKeyChange);
+				this.window?.addEventListener("blur", this.handleWindowBlur);
+			}
+
+			update(update: ViewUpdate) {
+				if (update.docChanged) {
+					this.syncHighlight();
+				}
+			}
+
+			private onMouseMove(event: MouseEvent) {
+				this.lastPointerCoords = {
+					x: event.clientX,
+					y: event.clientY,
+				};
+
+				if (!this.modifierPressed) {
+					this.setHoveredOffset(null);
+					return;
+				}
+
+				this.setHoveredOffset(
+					this.view.posAtCoords({
+						x: event.clientX,
+						y: event.clientY,
+					}),
+				);
+			}
+
+			private onMouseLeave() {
+				this.lastPointerCoords = null;
+				this.setHoveredOffset(null);
+			}
+
+			destroy() {
+				this.view.dom.removeEventListener("mousemove", this.handleMouseMove);
+				this.view.dom.removeEventListener("mouseleave", this.handleMouseLeave);
+				this.window?.removeEventListener("keydown", this.handleWindowKeyChange);
+				this.window?.removeEventListener("keyup", this.handleWindowKeyChange);
+				this.window?.removeEventListener("blur", this.handleWindowBlur);
+				this.clearHighlight();
+			}
+
+			private setModifierPressed(nextValue: boolean) {
+				if (this.modifierPressed === nextValue) {
+					return;
+				}
+
+				this.modifierPressed = nextValue;
+				if (this.modifierPressed && this.lastPointerCoords) {
+					this.setHoveredOffset(this.view.posAtCoords(this.lastPointerCoords));
+					return;
+				}
+
+				this.setHoveredOffset(null);
+			}
+
+			private setHoveredOffset(offset: number | null) {
+				if (this.hoveredOffset === offset) {
+					return;
+				}
+
+				this.hoveredOffset = offset;
+				this.syncHighlight();
+			}
+
+			private clearHighlight() {
+				if (this.highlightedElement && this.highlightedElementPreviousStyle) {
+					this.highlightedElement.style.cursor =
+						this.highlightedElementPreviousStyle.cursor;
+					this.highlightedElement.style.textDecoration =
+						this.highlightedElementPreviousStyle.textDecoration;
+					this.highlightedElement.style.textDecorationColor =
+						this.highlightedElementPreviousStyle.textDecorationColor;
+					this.highlightedElement.style.textDecorationThickness =
+						this.highlightedElementPreviousStyle.textDecorationThickness;
+					this.highlightedElement.style.textUnderlineOffset =
+						this.highlightedElementPreviousStyle.textUnderlineOffset;
+				}
+
+				this.highlightedElement = null;
+				this.highlightedElementPreviousStyle = null;
+				this.view.dom.classList.remove("cm-definition-link-mode");
+			}
+
+			private syncHighlight() {
+				this.clearHighlight();
+				if (!this.modifierPressed || this.hoveredOffset === null) {
+					return;
+				}
+
+				const domAtPos = this.view.domAtPos(this.hoveredOffset);
+				const baseElement =
+					domAtPos.node instanceof HTMLElement
+						? domAtPos.node
+						: domAtPos.node.parentElement;
+				const tokenElement = baseElement?.closest("span");
+				if (
+					!(tokenElement instanceof HTMLElement) ||
+					!this.view.dom.contains(tokenElement)
+				) {
+					return;
+				}
+
+				this.highlightedElementPreviousStyle = {
+					cursor: tokenElement.style.cursor,
+					textDecoration: tokenElement.style.textDecoration,
+					textDecorationColor: tokenElement.style.textDecorationColor,
+					textDecorationThickness: tokenElement.style.textDecorationThickness,
+					textUnderlineOffset: tokenElement.style.textUnderlineOffset,
+				};
+				tokenElement.style.cursor = "pointer";
+				tokenElement.style.textDecoration = "underline";
+				tokenElement.style.textDecorationColor = "currentColor";
+				tokenElement.style.textDecorationThickness = "1px";
+				tokenElement.style.textUnderlineOffset = "2px";
+				this.highlightedElement = tokenElement;
+				this.view.dom.classList.add("cm-definition-link-mode");
+			}
+		},
+	);
+}
+
+function logSymbolInteractionError(action: string, error: unknown) {
+	console.error(`Failed to ${action}`, error);
 }
 
 export function createSymbolInteractions({
@@ -120,43 +274,56 @@ export function createSymbolInteractions({
 	onCursorChange,
 }: CreateSymbolInteractionsOptions): Extension[] {
 	const extensions: Extension[] = [];
+	const runGoToDefinition =
+		onGoToDefinition === undefined
+			? undefined
+			: (position: SymbolPosition) => {
+					void Promise.resolve(onGoToDefinition(position)).catch((error) => {
+						logSymbolInteractionError("go to definition", error);
+					});
+				};
 
 	if (resolveHover) {
 		extensions.push(
 			hoverTooltip(
 				async (view, pos): Promise<Tooltip | null> => {
-					const hover = await resolveHover(
-						docOffsetToPosition(view.state.doc, pos),
-					);
+					const position = docOffsetToPosition(view.state.doc, pos);
+					let hover: SymbolHoverResult | null;
+					try {
+						hover = await resolveHover(position);
+					} catch (error) {
+						logSymbolInteractionError("resolve symbol hover", error);
+						return null;
+					}
 					if (!hover || hover.contents.length === 0) {
 						return null;
 					}
 
-					const { from, to } = rangeToOffsets(view.state.doc, hover.range, pos);
-					return {
-						pos: from,
-						end: to,
-						above: true,
-						arrow: true,
-						create() {
-							return {
-								dom: createTooltipDom(hover.contents),
-							};
-						},
-					};
+					return createTooltip(
+						hover,
+						view.state.doc,
+						pos,
+						Boolean(runGoToDefinition),
+						runGoToDefinition
+							? () => {
+									runGoToDefinition(position);
+								}
+							: undefined,
+					);
 				},
 				{ hoverTime: 250 },
 			),
 		);
 	}
 
-	if (onGoToDefinition) {
+	if (runGoToDefinition) {
+		extensions.push(createDefinitionLinkPlugin());
 		extensions.push(
 			keymap.of([
 				{
 					key: "F12",
 					run(view) {
-						void onGoToDefinition(
+						runGoToDefinition(
 							docOffsetToPosition(
 								view.state.doc,
 								view.state.selection.main.head,
@@ -173,9 +340,8 @@ export function createSymbolInteractions({
 				mousedown(event, view) {
 					if (
 						event.button !== 0 ||
-						(!event.metaKey && !event.ctrlKey) ||
-						event.altKey ||
-						event.shiftKey
+						!isDefinitionModifierPressed(event) ||
+						event.defaultPrevented
 					) {
 						return false;
 					}
@@ -189,7 +355,7 @@ export function createSymbolInteractions({
 					}
 
 					event.preventDefault();
-					void onGoToDefinition(docOffsetToPosition(view.state.doc, offset));
+					runGoToDefinition(docOffsetToPosition(view.state.doc, offset));
 					return true;
 				},
 			}),
