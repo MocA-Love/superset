@@ -550,8 +550,12 @@ export function FileViewerContent({
 				languageId,
 				line: position.line,
 				column: position.column,
-				content: renderedContent,
-				version: documentVersion ?? 0,
+				...(documentVersion !== undefined
+					? {
+							content: renderedContent,
+							version: documentVersion,
+						}
+					: {}),
 			});
 		},
 		[
@@ -576,8 +580,12 @@ export function FileViewerContent({
 					languageId,
 					line: position.line,
 					column: position.column,
-					content: renderedContent,
-					version: documentVersion ?? 0,
+					...(documentVersion !== undefined
+						? {
+								content: renderedContent,
+								version: documentVersion,
+							}
+						: {}),
 				});
 			const target = definitions?.[0];
 			if (!target) {

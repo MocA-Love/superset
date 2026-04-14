@@ -392,20 +392,63 @@ const NotebookCellKind = {
 	Code: 2,
 } as const;
 
-const NotebookEdit = {
-	replaceCells(_range: unknown, _cells: unknown[]) {
-		return {};
-	},
-	insertCells(_index: number, _cells: unknown[]) {
-		return {};
-	},
-	deleteCells(_range: unknown) {
-		return {};
-	},
-	updateCellMetadata(_index: number, _metadata: Record<string, unknown>) {
-		return {};
-	},
-} as const;
+class NotebookEdit {
+	readonly range?: unknown;
+	readonly newCells?: unknown[];
+	readonly index?: number;
+	readonly metadata?: Record<string, unknown>;
+	readonly kind:
+		| "replaceCells"
+		| "insertCells"
+		| "deleteCells"
+		| "updateCellMetadata";
+
+	constructor(
+		range?: unknown,
+		newCells?: unknown[],
+		options?: {
+			index?: number;
+			metadata?: Record<string, unknown>;
+			kind?:
+				| "replaceCells"
+				| "insertCells"
+				| "deleteCells"
+				| "updateCellMetadata";
+		},
+	) {
+		this.range = range;
+		this.newCells = newCells;
+		this.index = options?.index;
+		this.metadata = options?.metadata;
+		this.kind = options?.kind ?? "replaceCells";
+	}
+
+	static replaceCells(range: unknown, newCells: unknown[]): NotebookEdit {
+		return new NotebookEdit(range, newCells, { kind: "replaceCells" });
+	}
+
+	static insertCells(index: number, newCells: unknown[]): NotebookEdit {
+		return new NotebookEdit(undefined, newCells, {
+			index,
+			kind: "insertCells",
+		});
+	}
+
+	static deleteCells(range: unknown): NotebookEdit {
+		return new NotebookEdit(range, undefined, { kind: "deleteCells" });
+	}
+
+	static updateCellMetadata(
+		index: number,
+		metadata: Record<string, unknown>,
+	): NotebookEdit {
+		return new NotebookEdit(undefined, undefined, {
+			index,
+			metadata,
+			kind: "updateCellMetadata",
+		});
+	}
+}
 
 class TabInputTextDiff {
 	readonly original: Uri;

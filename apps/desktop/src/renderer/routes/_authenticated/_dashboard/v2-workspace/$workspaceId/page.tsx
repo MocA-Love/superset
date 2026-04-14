@@ -152,9 +152,7 @@ function WorkspaceContent({
 				return { previous };
 			},
 			onError: (_error, _variables, context) => {
-				if (context?.previous !== undefined) {
-					utils.settings.getShowPresetsBar.setData(undefined, context.previous);
-				}
+				utils.settings.getShowPresetsBar.setData(undefined, context?.previous);
 			},
 			onSettled: () => {
 				utils.settings.getShowPresetsBar.invalidate();
