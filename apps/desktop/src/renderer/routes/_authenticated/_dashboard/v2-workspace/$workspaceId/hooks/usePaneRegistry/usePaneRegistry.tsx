@@ -45,7 +45,7 @@ import { FilePane } from "./components/FilePane";
 import { TerminalPane } from "./components/TerminalPane";
 
 function getFileName(filePath: string): string {
-	return filePath.split("/").pop() ?? filePath;
+	return filePath.split(/[/\\]/).pop() || filePath;
 }
 
 const MOD_KEY = navigator.platform.toLowerCase().includes("mac")
