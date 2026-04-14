@@ -2209,6 +2209,70 @@ export const useTabsStore = create<TabsStore>()(
 						return;
 					}
 
+					// Native browser back/forward should move within existing history
+					// instead of creating a brand-new entry for an old URL.
+					const backwardEntry = prevHistory[historyIndex - 1];
+					if (backwardEntry && backwardEntry.url === url) {
+						const history = [...prevHistory];
+						history[historyIndex - 1] = {
+							...backwardEntry,
+							title,
+							...(faviconUrl !== undefined ? { faviconUrl } : {}),
+						};
+						const newPanes = {
+							...state.panes,
+							[paneId]: {
+								...pane,
+								name: title || "Browser",
+								browser: {
+									...pane.browser,
+									currentUrl: url,
+									history,
+									historyIndex: historyIndex - 1,
+								},
+							},
+						};
+						const tabName = deriveTabName(newPanes, pane.tabId);
+						set({
+							panes: newPanes,
+							tabs: state.tabs.map((t) =>
+								t.id === pane.tabId ? { ...t, name: tabName } : t,
+							),
+						});
+						return;
+					}
+
+					const forwardEntry = prevHistory[historyIndex + 1];
+					if (forwardEntry && forwardEntry.url === url) {
+						const history = [...prevHistory];
+						history[historyIndex + 1] = {
+							...forwardEntry,
+							title,
+							...(faviconUrl !== undefined ? { faviconUrl } : {}),
+						};
+						const newPanes = {
+							...state.panes,
+							[paneId]: {
+								...pane,
+								name: title || "Browser",
+								browser: {
+									...pane.browser,
+									currentUrl: url,
+									history,
+									historyIndex: historyIndex + 1,
+								},
+							},
+						};
+						const tabName = deriveTabName(newPanes, pane.tabId);
+						set({
+							panes: newPanes,
+							tabs: state.tabs.map((t) =>
+								t.id === pane.tabId ? { ...t, name: tabName } : t,
+							),
+						});
+						return;
+					}
+
 					// Truncate forward entries when navigating from a non-end position
 					const history = prevHistory.slice(0, historyIndex + 1);
 					history.push({
