@@ -98,7 +98,10 @@ export function ToolCallBlock({
 			if (!workspaceId) return;
 			const normalizedPath = normalizeFilePath(filePath);
 			if (!normalizedPath) return;
-			addFileViewerPane(workspaceId, { filePath: normalizedPath });
+			addFileViewerPane(workspaceId, {
+				filePath: normalizedPath,
+				useRightSidebarOpenViewWidth: true,
+			});
 			posthog.capture("chat_file_opened_from_tool", {
 				workspace_id: workspaceId,
 				session_id: sessionId ?? null,
@@ -164,6 +167,7 @@ export function ToolCallBlock({
 				commitHash: diffPaneTarget?.commitHash,
 				oldPath: diffPaneTarget?.oldPath,
 				viewMode: "diff",
+				useRightSidebarOpenViewWidth: true,
 			});
 			posthog.capture("chat_file_opened_from_tool", {
 				workspace_id: workspaceId,

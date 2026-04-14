@@ -292,6 +292,7 @@ export function WorkspacePage({
 			column: pendingWorkspaceIntent.column,
 			viewMode: "raw",
 			isPinned: true,
+			useRightSidebarOpenViewWidth: true,
 		});
 
 		markPendingWorkspaceIntentFileHandled(pendingWorkspaceIntent.id);

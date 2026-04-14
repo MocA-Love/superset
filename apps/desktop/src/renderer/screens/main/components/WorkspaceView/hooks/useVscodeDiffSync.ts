@@ -25,6 +25,7 @@ export function useVscodeDiffSync() {
 					filePath: data.rightUri,
 					viewMode: "diff",
 					diffCategory: "unstaged",
+					useRightSidebarOpenViewWidth: true,
 					...(isRename ? { oldPath: data.leftUri } : {}),
 				});
 			},

@@ -69,7 +69,10 @@ export function MessagePartsRenderer({
 				workspaceRoot: workspaceCwd,
 			});
 			if (!normalizedPath) return;
-			addFileViewerPane(workspaceId, { filePath: normalizedPath });
+			addFileViewerPane(workspaceId, {
+				filePath: normalizedPath,
+				useRightSidebarOpenViewWidth: true,
+			});
 		},
 		[addFileViewerPane, workspaceCwd, workspaceId],
 	);

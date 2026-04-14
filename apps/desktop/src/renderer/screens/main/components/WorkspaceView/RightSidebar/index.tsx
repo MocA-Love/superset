@@ -582,6 +582,7 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				viewMode: "raw",
 				line,
 				column,
+				useRightSidebarOpenViewWidth: true,
 			});
 		},
 		[workspaceId, worktreePath, addFileViewerPane],

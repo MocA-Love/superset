@@ -20,6 +20,7 @@ export function useVscodeOpenFileSync() {
 					filePath: data.filePath,
 					line: data.line,
 					viewMode: "raw",
+					useRightSidebarOpenViewWidth: true,
 				});
 			},
 		},

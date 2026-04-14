@@ -151,6 +151,7 @@ function ReferenceGraphInner({
 				filePath: absolutePath,
 				line,
 				isPinned: false,
+				useRightSidebarOpenViewWidth: true,
 			});
 		},
 		[addFileViewerPane, workspaceId],

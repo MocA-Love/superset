@@ -191,7 +191,10 @@ export function useCommandPalette({
 				});
 				return;
 			}
-			useTabsStore.getState().addFileViewerPane(targetWs, { filePath });
+			useTabsStore.getState().addFileViewerPane(targetWs, {
+				filePath,
+				useRightSidebarOpenViewWidth: true,
+			});
 			handleOpenChange(false);
 			if (targetWs !== workspaceId) {
 				navigateToWorkspace(targetWs, navigate);

@@ -227,6 +227,7 @@ export function CommitDetailsPanel({
 										commitHash: node.hash,
 										oldPath: absoluteOldPath,
 										openInNewTab: false,
+										useRightSidebarOpenViewWidth: true,
 									});
 								}}
 								className="grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2 border-t border-border/50 px-3 py-2 text-left transition-colors hover:bg-muted/50 first:border-t-0"

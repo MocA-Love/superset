@@ -76,6 +76,7 @@ export function EmptyTabView({
 				filePath: memo.memoFileAbsolutePath,
 				displayName: memo.displayName,
 				isPinned: true,
+				useRightSidebarOpenViewWidth: true,
 			});
 		} catch (error) {
 			const message =
