@@ -56,8 +56,10 @@ import type { Tab } from "renderer/stores/tabs/types";
 import { useTabsWithPresets } from "renderer/stores/tabs/useTabsWithPresets";
 import {
 	extractPaneIdsFromLayout,
+	type FocusDirection,
 	findPanePath,
 	getFirstPaneId,
+	getSpatialNeighborMosaicPaneId,
 	resolveActiveTabIdForWorkspace,
 } from "renderer/stores/tabs/utils";
 import {
@@ -800,6 +802,27 @@ export function WorkspacePage({
 		},
 		{ enabled: isActive },
 	);
+
+	// FORK NOTE: upstream #3460 introduces v1 directional pane focus via
+	// FOCUS_PANE_{LEFT,RIGHT,UP,DOWN}. The default bindings are unbound after
+	// #3472 (Cmd+Alt+Arrow goes back to prev/next tab/workspace), so this only
+	// fires when the user explicitly rebinds the FOCUS_PANE_* ids in Settings.
+	const moveFocusDirectional = useCallback(
+		(dir: FocusDirection) => {
+			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
+			const neighbor = getSpatialNeighborMosaicPaneId(
+				activeTab.layout,
+				focusedPaneId,
+				dir,
+			);
+			if (neighbor) setFocusedPane(activeTabId, neighbor);
+		},
+		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
+	);
+	useHotkey("FOCUS_PANE_LEFT", () => moveFocusDirectional("left"));
+	useHotkey("FOCUS_PANE_RIGHT", () => moveFocusDirectional("right"));
+	useHotkey("FOCUS_PANE_UP", () => moveFocusDirectional("up"));
+	useHotkey("FOCUS_PANE_DOWN", () => moveFocusDirectional("down"));
 
 	// FORK NOTE: v1 workspace uses tRPC-based prev/next workspace navigation.
 	// Upstream removed these handlers in #3403 (they use DashboardSidebar's
