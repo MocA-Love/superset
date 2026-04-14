@@ -12,6 +12,10 @@ import {
 	TipTapMarkdownRenderer,
 } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	resolveLanguageServiceLanguageId,
+	resolveLanguageServiceProviderId,
+} from "renderer/lib/language-services";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { getTrustedMemoRootPath } from "renderer/lib/workspace-memos";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
@@ -20,6 +24,7 @@ import type {
 	SymbolHoverResult,
 	SymbolPosition,
 } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createSymbolInteractions";
+import { useLanguageServicePreferencesStore } from "renderer/stores/language-service-preferences";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
 import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
@@ -296,6 +301,9 @@ export function FileViewerContent({
 		filePath,
 	});
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
+	const enabledProviders = useLanguageServicePreferencesStore(
+		(state) => state.enabledProviders,
+	);
 
 	useScrollToFirstDiffChange({
 		containerRef: diffContainerRef,
@@ -368,9 +376,20 @@ export function FileViewerContent({
 			),
 		[workspaceDiagnostics?.problems, absoluteFilePath, filePath],
 	);
-	const languageId = useMemo(() => detectLanguage(filePath), [filePath]);
+	const languageId = useMemo(
+		() => resolveLanguageServiceLanguageId(absoluteFilePath),
+		[absoluteFilePath],
+	);
+	const providerId = useMemo(
+		() => (languageId ? resolveLanguageServiceProviderId(languageId) : null),
+		[languageId],
+	);
 	const canResolveSymbols = Boolean(
-		workspaceId && absoluteFilePath && languageId,
+		workspaceId &&
+			absoluteFilePath &&
+			languageId &&
+			providerId &&
+			enabledProviders[providerId] !== false,
 	);
 
 	const { data: blameData } = electronTrpc.changes.getGitBlame.useQuery(
@@ -388,7 +407,6 @@ export function FileViewerContent({
 		  })
 		| null
 	>(null);
-	const lastModifiedCursorRef = useRef<SymbolPosition | null>(null);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: Reset on file change only
 	useEffect(() => {
@@ -453,6 +471,30 @@ export function FileViewerContent({
 			endLine: position.lineNumber,
 		};
 	};
+
+	const getDiffLookupPosition = useCallback((): SymbolPosition | null => {
+		if (!diffData) {
+			return null;
+		}
+
+		const location = lastDiffLocationRef.current;
+		if (!location || location.side !== "additions") {
+			return null;
+		}
+
+		const position = mapDiffLocationToRawPosition({
+			contents: diffData,
+			lineNumber: location.lineNumber,
+			side: location.side,
+			lineType: location.lineType,
+			column: location.column,
+		});
+
+		return {
+			line: position.lineNumber,
+			column: position.column,
+		};
+	}, [diffData]);
 
 	const openRawFromDiffLocation = (
 		location: DiffDomLocation & {
@@ -671,10 +713,7 @@ export function FileViewerContent({
 				onGoToDefinition={
 					canResolveSymbols
 						? () => {
-								if (lastDiffLocationRef.current?.side !== "additions") {
-									return;
-								}
-								const position = lastModifiedCursorRef.current;
+								const position = getDiffLookupPosition();
 								if (!position) {
 									return;
 								}
@@ -728,9 +767,6 @@ export function FileViewerContent({
 								canResolveSymbols ? resolveSymbolHover : undefined
 							}
 							onGoToDefinition={canResolveSymbols ? goToDefinition : undefined}
-							onModifiedCursorChange={(position) => {
-								lastModifiedCursorRef.current = position;
-							}}
 						/>
 					</div>
 				</div>

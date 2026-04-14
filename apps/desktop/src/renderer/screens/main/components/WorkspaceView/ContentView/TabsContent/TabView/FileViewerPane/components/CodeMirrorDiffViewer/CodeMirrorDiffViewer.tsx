@@ -226,7 +226,6 @@ interface CodeMirrorDiffViewerProps {
 		position: SymbolPosition,
 	) => Promise<SymbolHoverResult | null> | SymbolHoverResult | null;
 	onGoToDefinition?: (position: SymbolPosition) => Promise<void> | void;
-	onModifiedCursorChange?: (position: SymbolPosition | null) => void;
 }
 
 function createDiagnosticsTheme(theme: ReturnType<typeof getEditorTheme>) {
@@ -303,7 +302,6 @@ export function CodeMirrorDiffViewer({
 	inlineCompletionRequest,
 	resolveSymbolHover,
 	onGoToDefinition,
-	onModifiedCursorChange,
 }: CodeMirrorDiffViewerProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const mergeViewRef = useRef<MergeView | null>(null);
@@ -330,7 +328,6 @@ export function CodeMirrorDiffViewer({
 	const inlineCompletionRequestRef = useRef(inlineCompletionRequest);
 	const resolveSymbolHoverRef = useRef(resolveSymbolHover);
 	const onGoToDefinitionRef = useRef(onGoToDefinition);
-	const onModifiedCursorChangeRef = useRef(onModifiedCursorChange);
 	const activeTheme = useResolvedTheme();
 	const { data: fontSettings } = electronTrpc.settings.getFontSettings.useQuery(
 		undefined,
@@ -345,7 +342,6 @@ export function CodeMirrorDiffViewer({
 	inlineCompletionRequestRef.current = inlineCompletionRequest;
 	resolveSymbolHoverRef.current = resolveSymbolHover;
 	onGoToDefinitionRef.current = onGoToDefinition;
-	onModifiedCursorChangeRef.current = onModifiedCursorChange;
 
 	const getActiveEditor = (): EditorView | null => {
 		const mv = mergeViewRef.current;
@@ -598,8 +594,6 @@ export function CodeMirrorDiffViewer({
 				resolveHover: (position) =>
 					resolveSymbolHoverRef.current?.(position) ?? null,
 				onGoToDefinition: (position) => onGoToDefinitionRef.current?.(position),
-				onCursorChange: (position) =>
-					onModifiedCursorChangeRef.current?.(position),
 			}),
 		];
 
