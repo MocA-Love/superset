@@ -89,6 +89,166 @@ export function createCodeMirrorTheme(
 				color: editorTheme.colors.panelButtonForeground,
 				border: `1px solid ${editorTheme.colors.panelButtonBorder}`,
 			},
+			".cm-tooltip.cm-tooltip-hover": {
+				border: `1px solid ${editorTheme.colors.panelBorder}`,
+				backgroundColor: editorTheme.colors.panel,
+				color: editorTheme.colors.foreground,
+				borderRadius: "10px",
+				boxShadow:
+					"0 16px 40px rgba(0, 0, 0, 0.28), 0 4px 14px rgba(0, 0, 0, 0.16)",
+				overflow: "hidden",
+			},
+			".cm-tooltip.cm-tooltip-hover .cm-tooltip-arrow:before": {
+				borderTopColor: editorTheme.colors.panel,
+				borderBottomColor: editorTheme.colors.panel,
+			},
+			".cm-tooltip.cm-tooltip-hover .cm-tooltip-arrow:after": {
+				borderTopColor: editorTheme.colors.panelBorder,
+				borderBottomColor: editorTheme.colors.panelBorder,
+			},
+			".cm-definition-link": {
+				cursor: "pointer",
+				textDecoration: `underline ${editorTheme.colors.searchActive}`,
+				textUnderlineOffset: "2px",
+				textDecorationThickness: "1px",
+			},
+			"&.cm-definition-link-mode .cm-content": {
+				cursor: "pointer",
+			},
+			".cm-superset-symbol-hover": {
+				width: "min(560px, 70vw)",
+				maxHeight: "min(420px, 60vh)",
+				display: "flex",
+				flexDirection: "column",
+				backgroundColor: editorTheme.colors.panel,
+				color: editorTheme.colors.foreground,
+			},
+			".cm-superset-symbol-hover-body": {
+				overflow: "auto",
+			},
+			".cm-superset-symbol-hover-section": {
+				padding: "10px 12px",
+				fontSize: "12px",
+				lineHeight: "1.6",
+			},
+			".cm-superset-symbol-hover-section-bordered": {
+				borderTop: `1px solid ${editorTheme.colors.border}`,
+			},
+			".cm-superset-symbol-hover-plaintext": {
+				margin: "0",
+				whiteSpace: "pre-wrap",
+				wordBreak: "break-word",
+				fontFamily: fontSettings.fontFamily ?? DEFAULT_CODE_EDITOR_FONT_FAMILY,
+				fontSize: "12px",
+				lineHeight: "1.55",
+			},
+			".cm-superset-symbol-hover-paragraph": {
+				margin: "0 0 8px 0",
+			},
+			".cm-superset-symbol-hover-paragraph:last-child": {
+				marginBottom: "0",
+			},
+			".cm-superset-symbol-hover-inline-code": {
+				padding: "1px 5px",
+				borderRadius: "5px",
+				backgroundColor: editorTheme.colors.activeLine,
+				fontFamily: fontSettings.fontFamily ?? DEFAULT_CODE_EDITOR_FONT_FAMILY,
+				fontSize: "11px",
+			},
+			".cm-superset-symbol-hover-link": {
+				color: editorTheme.colors.searchActive,
+				textDecoration: "underline",
+			},
+			".cm-superset-symbol-hover-list": {
+				margin: "8px 0 0 0",
+				paddingLeft: "18px",
+			},
+			".cm-superset-symbol-hover-list-ordered": {
+				listStyleType: "decimal",
+			},
+			".cm-superset-symbol-hover-list-item": {
+				marginBottom: "4px",
+			},
+			".cm-superset-symbol-hover-blockquote": {
+				margin: "8px 0 0 0",
+				paddingLeft: "10px",
+				borderLeft: `2px solid ${editorTheme.colors.border}`,
+				color: editorTheme.colors.gutterForeground,
+			},
+			".cm-superset-symbol-hover-heading": {
+				margin: "0 0 8px 0",
+				fontSize: "12px",
+				fontWeight: "600",
+			},
+			".cm-superset-symbol-hover-table-wrap": {
+				overflowX: "auto",
+				marginTop: "8px",
+			},
+			".cm-superset-symbol-hover-table": {
+				borderCollapse: "collapse",
+				width: "100%",
+			},
+			".cm-superset-symbol-hover-table th, .cm-superset-symbol-hover-table td":
+				{
+					border: `1px solid ${editorTheme.colors.border}`,
+					padding: "4px 6px",
+					textAlign: "left",
+				},
+			".cm-superset-symbol-hover-code-block": {
+				margin: "8px 0 0 0",
+				borderRadius: "8px",
+				border: `1px solid ${editorTheme.colors.border}`,
+				backgroundColor: editorTheme.colors.background,
+				overflow: "auto",
+			},
+			".cm-superset-symbol-hover-code-block pre": {
+				margin: "0",
+			},
+			".cm-superset-symbol-hover-code-block code": {
+				display: "block",
+				padding: "10px 12px",
+				fontFamily: fontSettings.fontFamily ?? DEFAULT_CODE_EDITOR_FONT_FAMILY,
+				fontSize: "12px",
+				lineHeight: "1.55",
+				whiteSpace: "pre",
+			},
+			".cm-superset-symbol-hover .shiki": {
+				margin: "0",
+				padding: "0",
+				backgroundColor: "transparent !important",
+				fontSize: "12px",
+				lineHeight: "1.55",
+			},
+			".cm-superset-symbol-hover .shiki code": {
+				padding: "10px 0",
+				fontFamily: fontSettings.fontFamily ?? DEFAULT_CODE_EDITOR_FONT_FAMILY,
+			},
+			".cm-superset-symbol-hover .shiki code .line": {
+				display: "block",
+				padding: "0 12px",
+			},
+			".cm-superset-symbol-hover-footer": {
+				display: "flex",
+				alignItems: "center",
+				justifyContent: "space-between",
+				gap: "12px",
+				padding: "8px 12px",
+				borderTop: `1px solid ${editorTheme.colors.border}`,
+				backgroundColor: editorTheme.colors.activeLine,
+			},
+			".cm-superset-symbol-hover-action": {
+				padding: "0",
+				border: "0",
+				background: "transparent",
+				color: editorTheme.colors.searchActive,
+				fontSize: "11px",
+				fontWeight: "600",
+				cursor: "pointer",
+			},
+			".cm-superset-symbol-hover-shortcut": {
+				fontSize: "11px",
+				color: editorTheme.colors.gutterForeground,
+			},
 			// Diff / merge view colors (a = original/left, b = modified/right)
 			"&.cm-merge-a .cm-changedLine": {
 				backgroundColor: `${editorTheme.colors.deletion}14`,
