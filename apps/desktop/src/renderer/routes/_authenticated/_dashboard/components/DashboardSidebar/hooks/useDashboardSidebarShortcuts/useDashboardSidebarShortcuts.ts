@@ -48,7 +48,6 @@ export function useDashboardSidebarShortcuts(
 	useHotkey("JUMP_TO_WORKSPACE_8", () => switchToWorkspace(7));
 	useHotkey("JUMP_TO_WORKSPACE_9", () => switchToWorkspace(8));
 
-	// Prev/next workspace navigation (cycles)
 	const matchRoute = useMatchRoute();
 	const currentWorkspaceMatch = matchRoute({
 		to: "/v2-workspace/$workspaceId",
@@ -62,6 +61,7 @@ export function useDashboardSidebarShortcuts(
 		const index = flattenedWorkspaces.findIndex(
 			(w) => w.id === currentWorkspaceId,
 		);
+		if (index === -1) return;
 		const prevIndex = index <= 0 ? flattenedWorkspaces.length - 1 : index - 1;
 		navigateToV2Workspace(flattenedWorkspaces[prevIndex].id, navigate);
 	});
@@ -71,8 +71,8 @@ export function useDashboardSidebarShortcuts(
 		const index = flattenedWorkspaces.findIndex(
 			(w) => w.id === currentWorkspaceId,
 		);
-		const nextIndex =
-			index >= flattenedWorkspaces.length - 1 || index === -1 ? 0 : index + 1;
+		if (index === -1) return;
+		const nextIndex = index >= flattenedWorkspaces.length - 1 ? 0 : index + 1;
 		navigateToV2Workspace(flattenedWorkspaces[nextIndex].id, navigate);
 	});
 

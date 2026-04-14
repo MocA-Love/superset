@@ -102,22 +102,16 @@ export const HOTKEYS_REGISTRY = {
 		category: "Workspace",
 	},
 	PREV_WORKSPACE: {
-		key: {
-			mac: "meta+alt+up",
-			windows: "ctrl+shift+alt+up",
-			linux: "ctrl+shift+alt+up",
-		},
+		key: { mac: null, windows: null, linux: null },
 		label: "Previous Workspace",
 		category: "Workspace",
+		description: "Navigate to the previous workspace in the sidebar",
 	},
 	NEXT_WORKSPACE: {
-		key: {
-			mac: "meta+alt+down",
-			windows: "ctrl+shift+alt+down",
-			linux: "ctrl+shift+alt+down",
-		},
+		key: { mac: null, windows: null, linux: null },
 		label: "Next Workspace",
 		category: "Workspace",
+		description: "Navigate to the next workspace in the sidebar",
 	},
 	CLOSE_WORKSPACE: {
 		key: {
@@ -334,24 +328,6 @@ export const HOTKEYS_REGISTRY = {
 		category: "Terminal",
 		description: "Scroll the active terminal to the bottom",
 	},
-	PREV_TAB: {
-		key: {
-			mac: "meta+alt+left",
-			windows: "ctrl+shift+alt+left",
-			linux: "ctrl+shift+alt+left",
-		},
-		label: "Previous Tab",
-		category: "Terminal",
-	},
-	NEXT_TAB: {
-		key: {
-			mac: "meta+alt+right",
-			windows: "ctrl+shift+alt+right",
-			linux: "ctrl+shift+alt+right",
-		},
-		label: "Next Tab",
-		category: "Terminal",
-	},
 	PREV_TAB_ALT: {
 		key: {
 			mac: "ctrl+shift+tab",
@@ -366,6 +342,20 @@ export const HOTKEYS_REGISTRY = {
 		label: "Next Tab (Alt)",
 		category: "Terminal",
 	},
+	PREV_TAB: {
+		key: { mac: null, windows: null, linux: null },
+		label: "Previous Tab",
+		category: "Terminal",
+		description: "Focus the previous tab in the active workspace",
+	},
+	NEXT_TAB: {
+		key: { mac: null, windows: null, linux: null },
+		label: "Next Tab",
+		category: "Terminal",
+		description: "Focus the next tab in the active workspace",
+	},
+	// FORK NOTE: upstream renamed PREV_PANE → FOCUS_PANE_LEFT in #3403 (PR#3).
+	// Keep PREV_PANE until that cherry-pick is applied.
 	PREV_PANE: {
 		key: {
 			mac: "meta+shift+left",
