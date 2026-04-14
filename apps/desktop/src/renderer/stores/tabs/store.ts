@@ -2170,6 +2170,7 @@ export const useTabsStore = create<TabsStore>()(
 					url: string,
 					title: string,
 					faviconUrl?: string,
+					historyNavDirection?: "back" | "forward",
 				) => {
 					const state = get();
 					const pane = state.panes[paneId];
@@ -2207,6 +2208,46 @@ export const useTabsStore = create<TabsStore>()(
 							),
 						});
 						return;
+					}
+
+					// Only reuse adjacent history entries when the caller explicitly
+					// signals that a native back/forward gesture triggered this update.
+					// URL-bar navigation or loadURL() calls must never match an adjacent
+					// entry — they should always truncate forward history and push a new
+					// entry, even if the URL happens to coincide with a neighbour.
+					if (historyNavDirection) {
+						const offset = historyNavDirection === "back" ? -1 : 1;
+						const adjacentIndex = historyIndex + offset;
+						const adjacentEntry = prevHistory[adjacentIndex];
+						if (adjacentEntry && adjacentEntry.url === url) {
+							const history = [...prevHistory];
+							history[adjacentIndex] = {
+								...adjacentEntry,
+								title,
+								...(faviconUrl !== undefined ? { faviconUrl } : {}),
+							};
+							const newPanes = {
+								...state.panes,
+								[paneId]: {
+									...pane,
+									name: title || "Browser",
+									browser: {
+										...pane.browser,
+										currentUrl: url,
+										history,
+										historyIndex: adjacentIndex,
+									},
+								},
+							};
+							const tabName = deriveTabName(newPanes, pane.tabId);
+							set({
+								panes: newPanes,
+								tabs: state.tabs.map((t) =>
+									t.id === pane.tabId ? { ...t, name: tabName } : t,
+								),
+							});
+							return;
+						}
 					}
 
 					// Truncate forward entries when navigating from a non-end position

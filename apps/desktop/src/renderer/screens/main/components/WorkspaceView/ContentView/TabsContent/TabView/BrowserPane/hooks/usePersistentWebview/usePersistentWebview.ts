@@ -156,11 +156,11 @@ export function usePersistentWebview({
 	splitPaneAuto,
 }: UsePersistentWebviewOptions) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
-	const isHistoryNavigation = useRef(false);
 	const faviconUrlRef = useRef<string | undefined>(undefined);
 	const initialUrlRef = useRef(initialUrl);
+	const lastSyncedUrlRef = useRef<string | null>(null);
+	const pendingNavDirectionRef = useRef<"back" | "forward" | null>(null);
 
-	const navigateBrowserHistory = useTabsStore((s) => s.navigateBrowserHistory);
 	const browserState = useTabsStore((s) => s.panes[paneId]?.browser);
 	const historyIndex = browserState?.historyIndex ?? 0;
 	const historyLength = browserState?.history.length ?? 0;
@@ -210,17 +210,26 @@ export function usePersistentWebview({
 			try {
 				const url = webview.getURL();
 				const title = webview.getTitle();
-				if (url) {
-					const store = useTabsStore.getState();
-					const currentUrl = store.panes[paneId]?.browser?.currentUrl;
-					if (url !== currentUrl) {
-						store.updateBrowserUrl(
-							paneId,
-							url,
-							title ?? "",
-							faviconUrlRef.current,
-						);
-					}
+				if (!url) {
+					return;
+				}
+				lastSyncedUrlRef.current = url;
+				const store = useTabsStore.getState();
+				const browser = store.panes[paneId]?.browser;
+				const currentUrl = browser?.currentUrl;
+				const currentTitle =
+					browser?.history[browser.historyIndex]?.title ?? "";
+				if (
+					url !== currentUrl ||
+					(title ?? "") !== currentTitle ||
+					faviconUrlRef.current !== undefined
+				) {
+					store.updateBrowserUrl(
+						paneId,
+						url,
+						title ?? "",
+						faviconUrlRef.current,
+					);
 				}
 			} catch {
 				// webview may not be ready
@@ -498,14 +507,10 @@ export function usePersistentWebview({
 			const store = useTabsStore.getState();
 			store.updateBrowserLoading(paneId, false);
 
-			if (isHistoryNavigation.current) {
-				isHistoryNavigation.current = false;
-				return;
-			}
-
 			try {
 				const url = wv.getURL();
 				const title = wv.getTitle();
+				lastSyncedUrlRef.current = url ?? null;
 				store.updateBrowserUrl(
 					paneId,
 					url ?? "",
@@ -526,37 +531,44 @@ export function usePersistentWebview({
 		};
 
 		const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
-			if (isHistoryNavigation.current) {
-				isHistoryNavigation.current = false;
-				return;
-			}
+			lastSyncedUrlRef.current = e.url ?? null;
+			const direction = pendingNavDirectionRef.current;
+			pendingNavDirectionRef.current = null;
 			const store = useTabsStore.getState();
 			store.updateBrowserUrl(
 				paneId,
 				e.url ?? "",
 				wv.getTitle() ?? "",
 				faviconUrlRef.current,
+				direction ?? undefined,
 			);
 			store.updateBrowserLoading(paneId, false);
 		};
 
 		const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
-			if (isHistoryNavigation.current) {
-				isHistoryNavigation.current = false;
-				return;
-			}
+			lastSyncedUrlRef.current = e.url ?? null;
+			const direction = pendingNavDirectionRef.current;
+			pendingNavDirectionRef.current = null;
 			const store = useTabsStore.getState();
 			store.updateBrowserUrl(
 				paneId,
 				e.url ?? "",
 				wv.getTitle() ?? "",
 				faviconUrlRef.current,
+				direction ?? undefined,
 			);
 		};
 
 		const handlePageTitleUpdated = (e: Electron.PageTitleUpdatedEvent) => {
+			let currentUrl = "";
+			try {
+				currentUrl = wv.getURL() ?? "";
+				lastSyncedUrlRef.current = currentUrl || lastSyncedUrlRef.current;
+			} catch {
+				currentUrl =
+					useTabsStore.getState().panes[paneId]?.browser?.currentUrl ?? "";
+			}
 			const store = useTabsStore.getState();
-			const currentUrl = store.panes[paneId]?.browser?.currentUrl ?? "";
 			store.updateBrowserUrl(
 				paneId,
 				currentUrl,
@@ -569,12 +581,21 @@ export function usePersistentWebview({
 			const favicons = e.favicons;
 			if (favicons && favicons.length > 0) {
 				faviconUrlRef.current = favicons[0];
+				let currentUrl = "";
+				let currentTitle = "";
+				try {
+					currentUrl = wv.getURL() ?? "";
+					currentTitle = wv.getTitle() ?? "";
+					lastSyncedUrlRef.current = currentUrl || lastSyncedUrlRef.current;
+				} catch {
+					const store = useTabsStore.getState();
+					currentUrl = store.panes[paneId]?.browser?.currentUrl ?? "";
+					currentTitle =
+						store.panes[paneId]?.browser?.history[
+							store.panes[paneId]?.browser?.historyIndex ?? 0
+						]?.title ?? "";
+				}
 				const store = useTabsStore.getState();
-				const currentUrl = store.panes[paneId]?.browser?.currentUrl ?? "";
-				const currentTitle =
-					store.panes[paneId]?.browser?.history[
-						store.panes[paneId]?.browser?.historyIndex ?? 0
-					]?.title ?? "";
 				store.updateBrowserUrl(paneId, currentUrl, currentTitle, favicons[0]);
 				if (currentUrl && currentUrl !== "about:blank") {
 					upsertHistoryRef.current({
@@ -658,28 +679,33 @@ export function usePersistentWebview({
 	}, [paneId, syncStoreFromWebview]);
 
 	useEffect(() => {
+		const normalizedInitialUrl = sanitizeUrl(initialUrl);
+		if (
+			lastSyncedUrlRef.current &&
+			sanitizeUrl(lastSyncedUrlRef.current) === normalizedInitialUrl
+		) {
+			return;
+		}
 		navigatePersistentWebview(paneId, initialUrl);
 	}, [initialUrl, paneId]);
 
 	// -- Navigation methods (operate directly on the webview) ---------------
 
 	const goBack = useCallback(() => {
-		const url = navigateBrowserHistory(paneId, "back");
-		if (url) {
-			isHistoryNavigation.current = true;
-			const webview = getPersistentWebview(paneId);
-			if (webview) webview.loadURL(sanitizeUrl(url));
+		const webview = getPersistentWebview(paneId);
+		if (webview?.canGoBack()) {
+			pendingNavDirectionRef.current = "back";
+			webview.goBack();
 		}
-	}, [paneId, navigateBrowserHistory]);
+	}, [paneId]);
 
 	const goForward = useCallback(() => {
-		const url = navigateBrowserHistory(paneId, "forward");
-		if (url) {
-			isHistoryNavigation.current = true;
-			const webview = getPersistentWebview(paneId);
-			if (webview) webview.loadURL(sanitizeUrl(url));
+		const webview = getPersistentWebview(paneId);
+		if (webview?.canGoForward()) {
+			pendingNavDirectionRef.current = "forward";
+			webview.goForward();
 		}
-	}, [paneId, navigateBrowserHistory]);
+	}, [paneId]);
 
 	const reload = useCallback(() => {
 		const webview = getPersistentWebview(paneId);

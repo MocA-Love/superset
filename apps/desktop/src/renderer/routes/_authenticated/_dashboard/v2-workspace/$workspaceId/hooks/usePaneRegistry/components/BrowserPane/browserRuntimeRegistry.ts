@@ -229,6 +229,7 @@ class BrowserRuntimeRegistryImpl {
 				isLoading: false,
 			});
 			this.refreshNavState(paneId);
+			firePersist();
 		};
 
 		const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
@@ -236,10 +237,12 @@ class BrowserRuntimeRegistryImpl {
 			const title = webview.getTitle() ?? "";
 			this.setState(paneId, { currentUrl: url, pageTitle: title });
 			this.refreshNavState(paneId);
+			firePersist();
 		};
 
 		const handlePageTitleUpdated = (e: Electron.PageTitleUpdatedEvent) => {
 			this.setState(paneId, { pageTitle: e.title ?? "" });
+			firePersist();
 		};
 
 		const handlePageFaviconUpdated = (e: Electron.PageFaviconUpdatedEvent) => {
@@ -340,6 +343,11 @@ class BrowserRuntimeRegistryImpl {
 		entry.onPersist = onPersist;
 		entry.placeholder = placeholder;
 		entry.visible = true;
+		entry.onPersist?.({
+			url: entry.state.currentUrl,
+			pageTitle: entry.state.pageTitle,
+			faviconUrl: entry.state.faviconUrl,
+		});
 
 		entry.resizeObserver?.disconnect();
 		const observer = new ResizeObserver(() => {
