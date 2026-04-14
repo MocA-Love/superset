@@ -1,9 +1,6 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { useCallback, useRef, useState } from "react";
-import {
-	markTerminalSessionReady,
-	rejectTerminalSessionReady,
-} from "renderer/lib/terminal/session-readiness";
+import { rejectTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { coldRestoreState } from "../state";
@@ -219,9 +216,7 @@ export function useTerminalColdRestore({
 					// for the cold-restore path so that a tab-switch remount
 					// does not take the isReattach fast-path before a real
 					// shell exists.
-					v1TerminalCache.startStream(paneId);
-					v1TerminalCache.setStreamReady(paneId);
-					markTerminalSessionReady(paneId);
+					v1TerminalCache.markSessionReady(paneId);
 
 					setIsRestoredMode(false);
 					coldRestoreState.delete(paneId);

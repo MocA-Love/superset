@@ -7,7 +7,6 @@ import { writeCommandInPane } from "renderer/lib/terminal/launch-command";
 import type { DetectedLink } from "renderer/lib/terminal/links";
 import {
 	clearTerminalSessionReady,
-	markTerminalSessionReady,
 	rejectTerminalSessionReady,
 } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
@@ -654,9 +653,7 @@ export function useTerminalLifecycle({
 
 									// Real backend session is live — safe to start the stream
 									// subscription and unblock waiters.
-									v1TerminalCache.startStream(paneId);
-									v1TerminalCache.setStreamReady(paneId);
-									markTerminalSessionReady(paneId);
+									v1TerminalCache.markSessionReady(paneId);
 
 									pendingInitialStateRef.current = result;
 									maybeApplyInitialState();

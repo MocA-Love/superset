@@ -2,6 +2,7 @@ import type { Unsubscribable } from "@trpc/server/observable";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { markTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { DEBUG_TERMINAL } from "./config";
 import { type CreateTerminalOptions, createTerminalInWrapper } from "./helpers";
@@ -264,6 +265,21 @@ export function setStreamReady(paneId: string): void {
 	for (const event of pending) {
 		routeEvent(entry, event);
 	}
+}
+
+/**
+ * Mark a pane as session-ready: start the tRPC stream, flip the cache's
+ * `streamReady` flag, and resolve any {@link waitForTerminalSessionReady}
+ * waiters in one step.
+ *
+ * FORK NOTE: centralizes the three-call sequence so the cold-restore and
+ * normal attach paths can't drift — see useTerminalLifecycle.ts and
+ * useTerminalColdRestore.ts.
+ */
+export function markSessionReady(paneId: string): void {
+	startStream(paneId);
+	setStreamReady(paneId);
+	markTerminalSessionReady(paneId);
 }
 
 /**
