@@ -21,7 +21,7 @@ export interface ResolvedFileLanguage {
 const DEFAULT_FILE_LANGUAGE: ResolvedFileLanguage = {
 	editorLanguage: "plaintext",
 	languageServiceLanguageId: null,
-	activeEditorLanguageId: "plaintext",
+	activeEditorLanguageId: null,
 	referenceGraphLanguageId: "plaintext",
 	shikiLanguage: null,
 };

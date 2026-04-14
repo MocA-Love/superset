@@ -59,7 +59,9 @@ export function useActiveEditorSync() {
 
 		if (pane.type === "file-viewer" && pane.fileViewer?.filePath) {
 			filePath = pane.fileViewer.filePath;
-			languageId = resolveActiveEditorLanguageId(filePath) ?? undefined;
+			const resolvedLanguageId = resolveActiveEditorLanguageId(filePath);
+			const ext = filePath.split(".").pop()?.toLowerCase();
+			languageId = resolvedLanguageId ?? ext ?? "plaintext";
 		}
 
 		if (filePath !== lastFilePath.current) {
