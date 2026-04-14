@@ -264,19 +264,37 @@ function createDefinitionLinkPlugin(): Extension {
 	);
 }
 
+function logSymbolInteractionError(action: string, error: unknown) {
+	console.error(`Failed to ${action}`, error);
+}
+
 export function createSymbolInteractions({
 	resolveHover,
 	onGoToDefinition,
 	onCursorChange,
 }: CreateSymbolInteractionsOptions): Extension[] {
 	const extensions: Extension[] = [];
+	const runGoToDefinition =
+		onGoToDefinition === undefined
+			? undefined
+			: (position: SymbolPosition) => {
+					void Promise.resolve(onGoToDefinition(position)).catch((error) => {
+						logSymbolInteractionError("go to definition", error);
+					});
+				};
 
 	if (resolveHover) {
 		extensions.push(
 			hoverTooltip(
 				async (view, pos): Promise<Tooltip | null> => {
 					const position = docOffsetToPosition(view.state.doc, pos);
-					const hover = await resolveHover(position);
+					let hover: SymbolHoverResult | null;
+					try {
+						hover = await resolveHover(position);
+					} catch (error) {
+						logSymbolInteractionError("resolve symbol hover", error);
+						return null;
+					}
 					if (!hover || hover.contents.length === 0) {
 						return null;
 					}
@@ -285,10 +303,10 @@ export function createSymbolInteractions({
 						hover,
 						view.state.doc,
 						pos,
-						Boolean(onGoToDefinition),
-						onGoToDefinition
+						Boolean(runGoToDefinition),
+						runGoToDefinition
 							? () => {
-									void onGoToDefinition(position);
+									runGoToDefinition(position);
 								}
 							: undefined,
 					);
@@ -298,14 +316,14 @@ export function createSymbolInteractions({
 		);
 	}
 
-	if (onGoToDefinition) {
+	if (runGoToDefinition) {
 		extensions.push(createDefinitionLinkPlugin());
 		extensions.push(
 			keymap.of([
 				{
 					key: "F12",
 					run(view) {
-						void onGoToDefinition(
+						runGoToDefinition(
 							docOffsetToPosition(
 								view.state.doc,
 								view.state.selection.main.head,
@@ -337,7 +355,7 @@ export function createSymbolInteractions({
 					}
 
 					event.preventDefault();
-					void onGoToDefinition(docOffsetToPosition(view.state.doc, offset));
+					runGoToDefinition(docOffsetToPosition(view.state.doc, offset));
 					return true;
 				},
 			}),

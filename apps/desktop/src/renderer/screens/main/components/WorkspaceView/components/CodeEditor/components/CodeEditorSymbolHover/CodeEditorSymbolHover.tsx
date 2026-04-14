@@ -160,6 +160,8 @@ export function CodeEditorSymbolHover({
 						className="cm-superset-symbol-hover-action"
 						onMouseDown={(event) => {
 							event.preventDefault();
+						}}
+						onClick={() => {
 							onGoToDefinition?.();
 						}}
 					>
