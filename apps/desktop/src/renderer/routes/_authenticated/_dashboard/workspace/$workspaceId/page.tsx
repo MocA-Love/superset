@@ -20,6 +20,7 @@ import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { usePresets } from "renderer/react-query/presets";
 import type { WorkspaceSearchParams } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
+import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { usePresetHotkeys } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
 import { useWorkspaceRunCommand } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/useWorkspaceRunCommand";
 import { NotFound } from "renderer/routes/not-found";
@@ -832,7 +833,6 @@ export function WorkspacePage({
 		},
 		{ enabled: isActive },
 	);
-
 
 	return (
 		<WorkspaceIdProvider value={workspaceId}>

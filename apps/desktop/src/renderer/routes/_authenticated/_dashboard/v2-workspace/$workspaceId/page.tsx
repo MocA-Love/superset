@@ -205,7 +205,6 @@ function WorkspaceContent({
 						displayName,
 					} as FilePaneData,
 				},
-				tabTitle: "Files",
 			});
 		},
 		[store],
