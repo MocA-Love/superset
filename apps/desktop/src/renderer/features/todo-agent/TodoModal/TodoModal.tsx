@@ -1,4 +1,5 @@
 import { Button } from "@superset/ui/button";
+import { Checkbox } from "@superset/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -11,7 +12,9 @@ import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
+import { cn } from "@superset/ui/utils";
 import { useCallback, useState } from "react";
+import { HiMiniSparkles } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { EnhanceButton } from "./components/EnhanceButton";
 
@@ -25,6 +28,7 @@ interface TodoModalProps {
 const DEFAULT_VERIFY_COMMAND = "";
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_MINUTES = 30;
+const DEFAULT_CREATE_WORKTREE = false;
 
 /**
  * Creation form for a new TODO autonomous session. Collects the minimum
@@ -46,6 +50,9 @@ export function TodoModal({
 	const [maxIterations, setMaxIterations] = useState(DEFAULT_MAX_ITERATIONS);
 	const [maxMinutes, setMaxMinutes] = useState(DEFAULT_MAX_MINUTES);
 	const [submitting, setSubmitting] = useState(false);
+	const [createWorktree, setCreateWorktree] = useState(
+		DEFAULT_CREATE_WORKTREE,
+	);
 
 	const utils = electronTrpc.useUtils();
 	const create = electronTrpc.todoAgent.create.useMutation({
@@ -53,6 +60,8 @@ export function TodoModal({
 			await utils.todoAgent.list.invalidate({ workspaceId });
 		},
 	});
+	const createWorkspaceMut =
+		electronTrpc.workspaces.create.useMutation();
 
 	const reset = useCallback(() => {
 		setTitle("");
@@ -61,6 +70,7 @@ export function TodoModal({
 		setVerifyCommand(DEFAULT_VERIFY_COMMAND);
 		setMaxIterations(DEFAULT_MAX_ITERATIONS);
 		setMaxMinutes(DEFAULT_MAX_MINUTES);
+		setCreateWorktree(DEFAULT_CREATE_WORKTREE);
 		setSubmitting(false);
 	}, []);
 
@@ -72,13 +82,16 @@ export function TodoModal({
 		[onOpenChange, reset],
 	);
 
+	const canUseNewWorktree = Boolean(projectId);
 	const canSubmit =
 		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		maxIterations >= 1 &&
 		maxMinutes >= 1 &&
 		!submitting &&
-		workspaceId.length > 0;
+		(createWorktree
+			? canUseNewWorktree
+			: workspaceId.length > 0);
 
 	const hasVerify = verifyCommand.trim().length > 0;
 	const hasGoal = goal.trim().length > 0;
@@ -87,8 +100,31 @@ export function TodoModal({
 		if (!canSubmit) return;
 		setSubmitting(true);
 		try {
-			await create.mutateAsync({
-				workspaceId,
+			// Optionally create a dedicated worktree for this TODO first
+			// so the worker runs in isolation. `workspaces.create` with a
+			// `prompt` field auto-generates both the branch name and the
+			// display name via the existing AI helpers
+			// (ai-branch-name.ts / ai-name.ts), which reuse the same
+			// `callSmallModel` path as the TODO text enhancer.
+			let targetWorkspaceId = workspaceId;
+			if (createWorktree) {
+				if (!projectId) {
+					throw new Error(
+						"このワークスペースにはプロジェクトが紐付いていないので新しい worktree を作成できません",
+					);
+				}
+				const namingPrompt = [title.trim(), description.trim()]
+					.filter(Boolean)
+					.join("\n\n");
+				const result = await createWorkspaceMut.mutateAsync({
+					projectId,
+					prompt: namingPrompt || title.trim(),
+				});
+				targetWorkspaceId = result.workspace.id;
+			}
+
+			const created = await create.mutateAsync({
+				workspaceId: targetWorkspaceId,
 				projectId,
 				title: title.trim(),
 				description: description.trim(),
@@ -97,8 +133,15 @@ export function TodoModal({
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
 			});
-			toast.success("TODO セッションを作成しました");
+			if (createWorktree) {
+				toast.success(
+					"新しい worktree を作成して TODO セッションを紐付けました",
+				);
+			} else {
+				toast.success("TODO セッションを作成しました");
+			}
 			handleOpenChange(false);
+			void created;
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : "作成に失敗しました";
@@ -110,6 +153,8 @@ export function TodoModal({
 		hasVerify,
 		canSubmit,
 		create,
+		createWorkspaceMut,
+		createWorktree,
 		description,
 		goal,
 		handleOpenChange,
@@ -146,6 +191,40 @@ export function TodoModal({
 							maxLength={200}
 							autoFocus
 						/>
+					</div>
+
+					<div
+						className={cn(
+							"flex items-start gap-2.5 rounded-lg border p-3",
+							createWorktree
+								? "border-primary/40 bg-primary/5"
+								: "border-border/40 bg-muted/20",
+							!canUseNewWorktree && "opacity-60",
+						)}
+					>
+						<Checkbox
+							id="todo-new-worktree"
+							checked={createWorktree}
+							disabled={!canUseNewWorktree}
+							onCheckedChange={(checked) =>
+								setCreateWorktree(checked === true)
+							}
+							className="mt-0.5"
+						/>
+						<div className="flex flex-col gap-0.5 min-w-0 flex-1">
+							<Label
+								htmlFor="todo-new-worktree"
+								className="text-xs font-medium cursor-pointer flex items-center gap-1.5"
+							>
+								新しい worktree を作成してそこで実行する
+								<HiMiniSparkles className="size-3 text-primary" />
+							</Label>
+							<p className="text-[11px] text-muted-foreground leading-relaxed">
+								{canUseNewWorktree
+									? "ブランチ名とワークスペース名はタスクのタイトル / 説明から AI が自動生成します。worktree が用意できたら、その中でこの TODO を実行します。"
+									: "このワークスペースはプロジェクトに紐付いていないので新しい worktree を作成できません。現在のワークスペース内で実行されます。"}
+							</p>
+						</div>
 					</div>
 
 					<div className="flex flex-col gap-1.5">
