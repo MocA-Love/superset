@@ -837,6 +837,14 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							)}
 						</DetailBlock>
 
+						{session.customSystemPrompt?.trim() && (
+							<DetailBlock label="システムプロンプト（プリセット）">
+								<div className="rounded-md border border-border/40 bg-muted/30 p-2 text-[11px] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto font-mono">
+									{session.customSystemPrompt}
+								</div>
+							</DetailBlock>
+						)}
+
 						<div className="grid grid-cols-2 gap-4">
 							<DetailBlock label="Verify">
 								{session.verifyCommand ? (
