@@ -353,8 +353,26 @@ class TodoSupervisor {
 					});
 				}
 
-				// No verify → single-turn mode. Claude is done, we are done.
+				// No verify → single-turn mode by default. But if the user
+				// queued an intervention between "Claude finished iteration
+				// N" and "we decide to end", we must not declare done —
+				// otherwise the intervention sits in `pendingIntervention`
+				// forever and the UI shows "予約済み" while Claude never
+				// sees it. Loop another iteration so the next turn picks it
+				// up (same mechanism verify-mode already uses).
 				if (!currentSession.verifyCommand) {
+					const postTurn = store.get(sessionId);
+					const hasFollowUp = (postTurn?.pendingIntervention ?? "").trim()
+						.length > 0;
+					if (hasFollowUp) {
+						store.update(sessionId, {
+							claudeSessionId,
+							finalAssistantText: lastAssistantText,
+							totalCostUsd: aggregatedCostUsd || null,
+							totalNumTurns: aggregatedNumTurns || null,
+						});
+						continue;
+					}
 					store.update(sessionId, {
 						status: "done",
 						phase: "done",
