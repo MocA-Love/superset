@@ -18,6 +18,7 @@ import {
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { SafeImage } from "renderer/components/MarkdownRenderer/components/SafeImage";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useTheme } from "renderer/stores";
 import { Streamdown } from "streamdown";
@@ -197,11 +198,52 @@ function CommentCodeBlock({
 	);
 }
 
+// FORK NOTE: override <a> and <img> so comment body markdown from GitHub
+// can't navigate the main window away or load arbitrary remote images.
+// Matches the shared MarkdownRenderer guards.
+function CommentLink({
+	href,
+	children,
+}: {
+	href?: string;
+	children?: ReactNode;
+}) {
+	const onClick = useCallback(
+		(event: React.MouseEvent<HTMLAnchorElement>) => {
+			event.preventDefault();
+			if (!href) return;
+			electronTrpcClient.external.openUrl.mutate(href).catch((err) => {
+				console.warn("Failed to open external URL", err);
+			});
+		},
+		[href],
+	);
+	return (
+		<a href={href} onClick={onClick} rel="noopener noreferrer">
+			{children}
+		</a>
+	);
+}
+
+function CommentImage({
+	src,
+	alt,
+	className,
+}: {
+	src?: string;
+	alt?: string;
+	className?: string;
+}) {
+	return <SafeImage src={src} alt={alt} className={className} />;
+}
+
 const commentComponents = {
 	code: CommentCodeBlock,
 	table: ({ children }: { children?: ReactNode }) => (
 		<CopyableTable>{children}</CopyableTable>
 	),
+	a: CommentLink,
+	img: CommentImage,
 };
 
 function CopyableTable({ children }: { children?: ReactNode }) {

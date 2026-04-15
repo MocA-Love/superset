@@ -85,7 +85,9 @@ export function useReviewTab({
 	return {
 		id: "review",
 		label: "Review",
-		badge: openCommentCount,
+		// FORK NOTE: suppress `0` badge when there are no open comments —
+		// Changes tab does the same.
+		badge: openCommentCount > 0 ? openCommentCount : undefined,
 		content,
 	};
 }
@@ -174,22 +176,26 @@ function computeDurationText(
 function normalizeThreadsToComments(data: V2ThreadsData): NormalizedComment[] {
 	const comments: NormalizedComment[] = [];
 
+	// FORK NOTE: upstream #3463 only picked thread.comments[0] which dropped
+	// every reply in a review thread. v1 flattened all comments in a thread.
+	// Keep that behavior so the comment count badge and listing match the
+	// real PR state.
 	for (const thread of data.reviewThreads) {
-		const first = thread.comments[0];
-		if (!first) continue;
-		comments.push({
-			id: first.id,
-			authorLogin: first.author.login,
-			avatarUrl: first.author.avatarUrl || undefined,
-			body: first.body,
-			createdAt: first.createdAt,
-			url: undefined,
-			kind: "review",
-			path: thread.path || undefined,
-			line: thread.line ?? undefined,
-			isResolved: thread.isResolved,
-			threadId: thread.id,
-		});
+		for (const c of thread.comments) {
+			comments.push({
+				id: c.id,
+				authorLogin: c.author.login,
+				avatarUrl: c.author.avatarUrl || undefined,
+				body: c.body,
+				createdAt: c.createdAt,
+				url: undefined,
+				kind: "review",
+				path: thread.path || undefined,
+				line: thread.line ?? undefined,
+				isResolved: thread.isResolved,
+				threadId: thread.id,
+			});
+		}
 	}
 
 	for (const c of data.conversationComments) {
