@@ -8,6 +8,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
+import { isEnterSubmit } from "@superset/ui/lib/keyboard";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
@@ -557,14 +558,10 @@ export function CommitInput({
 						onChange={(e) => setCommitMessage(e.target.value)}
 						className="min-h-[52px] resize-none text-[10px] bg-background pr-7"
 						onKeyDown={(e) => {
-							if (
-								e.key === "Enter" &&
-								(e.metaKey || e.ctrlKey) &&
-								!primary.disabled
-							) {
-								e.preventDefault();
-								primary.handler();
-							}
+							if (!isEnterSubmit(e, { requireMod: true })) return;
+							if (primary.disabled) return;
+							e.preventDefault();
+							primary.handler();
 						}}
 					/>
 				</div>

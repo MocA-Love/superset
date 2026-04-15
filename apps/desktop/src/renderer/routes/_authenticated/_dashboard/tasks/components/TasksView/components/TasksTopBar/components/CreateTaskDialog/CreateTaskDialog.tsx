@@ -11,6 +11,7 @@ import {
 	DialogTitle,
 } from "@superset/ui/dialog";
 import { Kbd, KbdGroup } from "@superset/ui/kbd";
+import { isEnterSubmit } from "@superset/ui/lib/keyboard";
 import { toast } from "@superset/ui/sonner";
 import { useLiveQuery } from "@tanstack/react-db";
 import { useNavigate } from "@tanstack/react-router";
@@ -202,10 +203,9 @@ export function CreateTaskDialog({
 						value={title}
 						onChange={(event) => setTitle(event.target.value)}
 						onKeyDown={(event) => {
-							if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-								event.preventDefault();
-								void handleCreate();
-							}
+							if (!isEnterSubmit(event, { requireMod: true })) return;
+							event.preventDefault();
+							void handleCreate();
 						}}
 						placeholder="Task title"
 						className="w-full bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60"
