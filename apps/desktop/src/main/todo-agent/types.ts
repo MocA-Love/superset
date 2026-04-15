@@ -83,5 +83,46 @@ export type TodoSessionPhase =
 	| "paused";
 
 export const TODO_ARTIFACT_SUBDIR = ".superset/todo";
-export const DEFAULT_IDLE_WINDOW_MS = 5_000;
-export const MIN_IDLE_BEFORE_VERIFY_MS = 3_000;
+
+// ---- Headless stream-json events ----
+//
+// These types describe the NDJSON messages Claude Code emits on stdout when
+// invoked with `-p --output-format stream-json`. We do not attempt to cover
+// the full schema; we only name the shapes the TODO supervisor needs to
+// reason about. Unknown event types fall through as the base `raw` variant.
+// See: https://code.claude.com/docs/en/headless
+
+export type TodoStreamEventKind =
+	| "system_init"
+	| "assistant_text"
+	| "tool_use"
+	| "tool_result"
+	| "result"
+	| "error"
+	| "raw";
+
+/**
+ * One condensed event we store in the per-session in-memory buffer and send
+ * over the subscription. Raw NDJSON is kept for the `raw` variant so the UI
+ * can always show unparsed context for debugging.
+ */
+export interface TodoStreamEvent {
+	/** Stable id so React can key on it without re-rendering siblings. */
+	id: string;
+	/** Millisecond timestamp when the event was observed by the supervisor. */
+	ts: number;
+	/** Turn number this event belongs to (1-based, bumped on each iteration). */
+	iteration: number;
+	kind: TodoStreamEventKind;
+	/** One-line label used by the renderer (e.g. "User", "Claude", "Bash"). */
+	label: string;
+	/** Human-readable body text, already stripped of ANSI. */
+	text: string;
+	/** Optional raw payload for the "raw" / debug kind. */
+	raw?: unknown;
+}
+
+export interface TodoStreamUpdate {
+	sessionId: string;
+	events: TodoStreamEvent[];
+}

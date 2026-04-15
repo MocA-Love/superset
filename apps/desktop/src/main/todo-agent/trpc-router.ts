@@ -9,11 +9,11 @@ import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSupervisor } from "./supervisor";
 import { TODO_ARTIFACT_SUBDIR } from "./types";
 import {
-	todoAttachPaneInputSchema,
 	todoCreateInputSchema,
 	todoEnhanceTextInputSchema,
 	todoSendInputSchema,
 	type TodoSessionStateEvent,
+	type TodoStreamUpdate,
 } from "./types";
 
 /**
@@ -48,6 +48,11 @@ export const createTodoAgentRouter = () => {
 					iteration: 0,
 					attachedPaneId: null,
 					attachedTabId: null,
+					claudeSessionId: null,
+					finalAssistantText: null,
+					totalCostUsd: null,
+					totalNumTurns: null,
+					pendingIntervention: null,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
@@ -91,17 +96,40 @@ export const createTodoAgentRouter = () => {
 			.input(z.object({ sessionId: z.string().min(1) }))
 			.query(({ input }) => getTodoSessionStore().get(input.sessionId)),
 
-		attachPane: publicProcedure
-			.input(todoAttachPaneInputSchema)
+		/**
+		 * Kick off the headless claude loop for a queued session. There
+		 * is no pane to attach anymore — the supervisor spawns claude as
+		 * a plain child process in the main process and the Manager
+		 * renders the parsed stream events inline.
+		 */
+		start: publicProcedure
+			.input(z.object({ sessionId: z.string().min(1) }))
 			.mutation(async ({ input }) => {
 				const store = getTodoSessionStore();
+				const session = store.get(input.sessionId);
+				if (!session) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "セッションが見つかりません",
+					});
+				}
+				if (
+					session.status !== "queued" &&
+					session.status !== "failed" &&
+					session.status !== "aborted" &&
+					session.status !== "escalated"
+				) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: `このセッションは既に ${session.status} 状態なので開始できません`,
+					});
+				}
 				store.update(input.sessionId, {
-					attachedPaneId: input.paneId,
-					attachedTabId: input.tabId,
 					status: "preparing",
+					phase: "preparing",
 				});
-				// Fire-and-forget: kick off the loop.
-				void getTodoSupervisor().attachAndStart(input.sessionId);
+				// Fire-and-forget: the supervisor drives the rest of the loop.
+				void getTodoSupervisor().start(input.sessionId);
 				return { ok: true };
 			}),
 
@@ -193,6 +221,11 @@ export const createTodoAgentRouter = () => {
 					iteration: 0,
 					attachedPaneId: null,
 					attachedTabId: null,
+					claudeSessionId: null,
+					finalAssistantText: null,
+					totalCostUsd: null,
+					totalNumTurns: null,
+					pendingIntervention: null,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
@@ -207,11 +240,52 @@ export const createTodoAgentRouter = () => {
 				return { sessionId: next.id };
 			}),
 
+		/**
+		 * Queue a user intervention for the next turn. Headless mode
+		 * cannot inject text mid-stream, so interventions land at the
+		 * next iteration boundary.
+		 */
 		sendInput: publicProcedure
 			.input(todoSendInputSchema)
 			.mutation(({ input }) => {
-				getTodoSupervisor().sendInput(input.sessionId, input.data);
+				getTodoSupervisor().queueIntervention(input.sessionId, input.data);
 				return { ok: true };
+			}),
+
+		/**
+		 * Snapshot of the in-memory stream events buffer for a session.
+		 * Used by the Manager to paint the initial state of the detail
+		 * pane before the subscription takes over.
+		 */
+		getStream: publicProcedure
+			.input(z.object({ sessionId: z.string().min(1) }))
+			.query(({ input }) =>
+				getTodoSessionStore().getStreamEvents(input.sessionId),
+			),
+
+		/**
+		 * Live stream events (assistant text, tool calls, verify results,
+		 * errors) for the selected session. Emits the in-memory tail on
+		 * subscribe then fans out every subsequent append.
+		 */
+		subscribeStream: publicProcedure
+			.input(z.object({ sessionId: z.string().min(1) }))
+			.subscription(({ input }) => {
+				return observable<TodoStreamUpdate>((emit) => {
+					const store = getTodoSessionStore();
+					const initial = store.getStreamEvents(input.sessionId);
+					if (initial.length > 0) {
+						emit.next({
+							sessionId: input.sessionId,
+							events: initial,
+						});
+					}
+					const unsubscribe = store.subscribeStream(
+						input.sessionId,
+						(update) => emit.next(update),
+					);
+					return () => unsubscribe();
+				});
 			}),
 
 		subscribeState: publicProcedure

@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+	index,
+	integer,
+	real,
+	sqliteTable,
+	text,
+} from "drizzle-orm/sqlite-core";
 import { v4 as uuidv4 } from "uuid";
 
 import { projects, workspaces } from "./schema";
@@ -44,6 +50,28 @@ export const todoSessions = sqliteTable(
 
 		attachedPaneId: text("attached_pane_id"),
 		attachedTabId: text("attached_tab_id"),
+
+		// Claude Code headless session id captured from the stream-json
+		// `system.init` event. Used as `--resume` for retry iterations so
+		// subsequent turns share the same conversation state with Claude.
+		claudeSessionId: text("claude_session_id"),
+
+		// The actual final assistant message captured from the stream-json
+		// `result` event. This is what the user sees as the verdict text
+		// instead of the previous static placeholder.
+		finalAssistantText: text("final_assistant_text"),
+
+		// Aggregated cost / token / turn counters captured from the
+		// `result` event across all iterations. Nullable because they are
+		// only known after at least one iteration has completed.
+		totalCostUsd: real("total_cost_usd"),
+		totalNumTurns: integer("total_num_turns"),
+
+		// Free-form text the user types in the Manager's intervene box.
+		// Supervisor reads-then-clears this at the next turn boundary and
+		// prepends it to the follow-up prompt so users can steer the
+		// agent mid-run without needing mid-stream injection.
+		pendingIntervention: text("pending_intervention"),
 
 		verdictPassed: integer("verdict_passed", { mode: "boolean" }),
 		verdictReason: text("verdict_reason"),

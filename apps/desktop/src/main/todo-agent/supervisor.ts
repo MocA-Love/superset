@@ -1,53 +1,61 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SelectTodoSession } from "@superset/local-db";
-import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import {
-	DEFAULT_IDLE_WINDOW_MS,
-	MIN_IDLE_BEFORE_VERIFY_MS,
-	TODO_ARTIFACT_SUBDIR,
-} from "./types";
-import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
+	getTodoSessionStore,
+	resolveWorktreePath,
+} from "./session-store";
+import type { TodoStreamEvent, TodoStreamEventKind } from "./types";
+import { TODO_ARTIFACT_SUBDIR } from "./types";
 
+/**
+ * Headless Claude Code driver for TODO autonomous sessions.
+ *
+ * The previous iteration drove interactive Claude Code through a real PTY
+ * and tried to detect turn completion with an idle heuristic. That was
+ * fundamentally unreliable (long-thinking Claude looked identical to a
+ * dead claude), and the PTY leaked into the workspace tab bar. This
+ * rewrite replaces the PTY with `claude -p --output-format stream-json`:
+ *
+ *   - The child process is spawned by the main process (no PTY, no tab
+ *     bar involvement, no hidden-tab hacks).
+ *   - Completion is **process exit**. No idle heuristic. No guessing.
+ *   - The `result` NDJSON event carries `result` (the final assistant
+ *     text), `session_id`, `total_cost_usd`, and `num_turns`, which are
+ *     stored on the DB row so the Manager can show a real verdict and
+ *     timing information.
+ *   - Retry iterations use `--resume <session_id>` so the same
+ *     conversation state is preserved across verify failures.
+ *   - Per-turn stream events are appended to an in-memory ring buffer
+ *     and fanned out over a tRPC subscription so the Manager detail
+ *     pane shows a live, chat-like view of the worker's activity.
+ *
+ * `--bare` is deliberately NOT passed. The `--bare` flag forces
+ * `ANTHROPIC_API_KEY` and explicitly refuses OAuth/keychain reads,
+ * which would break users authenticated via Claude Max. We still gain
+ * reproducibility because we own every argument and the CLAUDE.md
+ * discovery just adds project context, not hooks we do not want.
+ */
 interface ActiveRun {
 	sessionId: string;
 	abortController: AbortController;
 	lastFailingTest?: string;
 	consecutiveSameFailure: number;
-	lastDiffHash?: string;
-	consecutiveSameDiff: number;
 	startedAt: number;
+	currentChild: ChildProcess | null;
 }
 
-/**
- * Singleton TODO Supervisor.
- *
- * Responsibilities
- * - Accept a session and drive it to a terminal verdict (done/failed/escalated/aborted).
- * - Compose per-iteration prompts and write them to the worker's PTY via
- *   the workspace terminal runtime.
- * - Detect turn completion via PTY idle timing.
- * - Run the user-defined verify command after each turn.
- * - Apply budget + futility guards.
- *
- * The supervisor does NOT create the terminal pane itself; the renderer
- * creates it and passes the paneId via `todo.attachPane`. This is because
- * panes are a client-side (Zustand) concept in this codebase.
- */
 class TodoSupervisor {
 	private active: ActiveRun | undefined;
 	private readonly queue: string[] = [];
 
-	/**
-	 * Ensure the session's artifact directory exists and `goal.md` is
-	 * written. Called at session creation.
-	 */
 	prepareArtifacts(session: SelectTodoSession): string {
 		const worktreePath = resolveWorktreePath(session.workspaceId);
 		if (!worktreePath) {
 			throw new Error(
-				`todo-agent: no worktree path for workspace ${session.workspaceId}`,
+				`todo-agent: workspace ${session.workspaceId} has no resolvable path`,
 			);
 		}
 		const dir = path.join(
@@ -64,19 +72,12 @@ class TodoSupervisor {
 		return dir;
 	}
 
-	/**
-	 * Called by trpc `todo.attachPane` after the renderer has created a
-	 * terminal pane, launched an interactive `claude` inside it, and is
-	 * ready for the supervisor to take over the input side.
-	 */
-	async attachAndStart(sessionId: string): Promise<void> {
+	async start(sessionId: string): Promise<void> {
 		if (this.active) {
-			// Already running something else; queue it.
 			if (!this.queue.includes(sessionId)) this.queue.push(sessionId);
 			return;
 		}
 		await this.runSession(sessionId);
-		// After the run settles, drain the queue.
 		while (this.queue.length > 0) {
 			const next = this.queue.shift();
 			if (next) await this.runSession(next);
@@ -84,27 +85,57 @@ class TodoSupervisor {
 	}
 
 	abort(sessionId: string): void {
+		const store = getTodoSessionStore();
 		if (this.active?.sessionId === sessionId) {
 			this.active.abortController.abort();
+			// Send SIGINT first (clean shutdown), then SIGKILL as a safety
+			// net via a short timer so we never leak a runaway child.
+			const child = this.active.currentChild;
+			if (child && !child.killed) {
+				try {
+					child.kill("SIGINT");
+				} catch {
+					// ignore
+				}
+				setTimeout(() => {
+					if (child && !child.killed) {
+						try {
+							child.kill("SIGKILL");
+						} catch {
+							// ignore
+						}
+					}
+				}, 1500);
+			}
 		}
-		const store = getTodoSessionStore();
 		const session = store.get(sessionId);
 		if (!session) return;
-		// Try to interrupt the running claude in the pane.
-		if (session.attachedPaneId) {
-			this.writeToPane(session.attachedPaneId, "\x03\x03");
+		if (
+			session.status !== "done" &&
+			session.status !== "failed" &&
+			session.status !== "escalated" &&
+			session.status !== "aborted"
+		) {
+			store.update(sessionId, {
+				status: "aborted",
+				phase: "aborted",
+				completedAt: Date.now(),
+			});
 		}
-		store.update(sessionId, {
-			status: "aborted",
-			completedAt: Date.now(),
-		});
 	}
 
-	sendInput(sessionId: string, data: string): void {
+	/**
+	 * Queue a free-form user intervention that will be prepended to the
+	 * next turn's prompt. In the headless architecture we cannot inject
+	 * mid-stream, so interventions land at the next turn boundary.
+	 */
+	queueIntervention(sessionId: string, data: string): void {
 		const store = getTodoSessionStore();
-		const session = store.get(sessionId);
-		if (!session?.attachedPaneId) return;
-		this.writeToPane(session.attachedPaneId, data);
+		const existing = store.get(sessionId);
+		if (!existing) return;
+		const previous = existing.pendingIntervention?.trim();
+		const next = [previous, data.trim()].filter(Boolean).join("\n\n");
+		store.update(sessionId, { pendingIntervention: next });
 	}
 
 	// ---- internals ----
@@ -113,77 +144,56 @@ class TodoSupervisor {
 		const store = getTodoSessionStore();
 		const session0 = store.get(sessionId);
 		if (!session0) return;
-		if (!session0.attachedPaneId) {
-			store.update(sessionId, {
-				status: "failed",
-				verdictReason: "No pane attached to session",
-				completedAt: Date.now(),
-			});
-			return;
-		}
+
+		// Fresh in-memory buffer for this run. Old events from previous
+		// runs of the same session are cleared so the UI sees just the
+		// current attempt.
+		store.clearStreamEvents(sessionId);
 
 		const ac = new AbortController();
 		const run: ActiveRun = {
 			sessionId,
 			abortController: ac,
 			consecutiveSameFailure: 0,
-			consecutiveSameDiff: 0,
 			startedAt: Date.now(),
+			currentChild: null,
 		};
 		this.active = run;
 
 		try {
 			store.update(sessionId, {
 				status: "running",
+				phase: "running",
 				startedAt: Date.now(),
+				completedAt: null,
+				verdictPassed: null,
+				verdictReason: null,
+				verdictFailingTest: null,
+				finalAssistantText: null,
+				claudeSessionId: null,
+				totalCostUsd: null,
+				totalNumTurns: null,
+				iteration: 0,
 			});
 
-			// Single-turn mode: no verify command means "research /
-			// investigation / one-shot". Write the initial prompt, wait for
-			// the worker to go idle, then settle. Before marking done we
-			// scan the captured PTY output for startup errors (auth,
-			// command-not-found, crash) so we do not report "done" on a
-			// worker that never actually ran.
-			if (!session0.verifyCommand) {
-				store.update(sessionId, { iteration: 1, phase: "running" });
-				const promptSession = store.get(sessionId);
-				if (!promptSession) return;
-				const prompt = buildIterationPrompt(promptSession, 1);
-				this.writeToPane(
-					promptSession.attachedPaneId as string,
-					`${prompt}\n`,
-				);
-				const { idled, buffer } = await this.waitForIdle(
-					promptSession.attachedPaneId as string,
-					DEFAULT_IDLE_WINDOW_MS,
-					session0.maxWallClockSec * 1000,
-					ac.signal,
-				);
-				if (ac.signal.aborted) return;
-				const startupError = detectStartupError(buffer);
-				if (startupError) {
-					store.update(sessionId, {
-						status: "failed",
-						phase: "failed",
-						verdictPassed: false,
-						verdictReason: startupError,
-						completedAt: Date.now(),
-					});
-					return;
-				}
+			const worktreePath = resolveWorktreePath(session0.workspaceId);
+			if (!worktreePath) {
 				store.update(sessionId, {
-					status: "done",
-					phase: "done",
-					verdictPassed: true,
-					verdictReason: idled
-						? "単発タスク完了。ワーカーの出力をターミナルで確認してください。"
-						: "中断されました。",
+					status: "failed",
+					phase: "failed",
+					verdictReason:
+						"ワークスペースのパスを解決できませんでした（worktree も mainRepoPath も見つからない）",
 					completedAt: Date.now(),
 				});
 				return;
 			}
 
-			let iteration = session0.iteration;
+			let claudeSessionId: string | null = null;
+			let lastAssistantText: string | null = null;
+			let aggregatedCostUsd = 0;
+			let aggregatedNumTurns = 0;
+			let iteration = 0;
+
 			while (iteration < session0.maxIterations) {
 				if (ac.signal.aborted) break;
 				if (
@@ -192,70 +202,130 @@ class TodoSupervisor {
 				) {
 					store.update(sessionId, {
 						status: "escalated",
-						verdictReason: "wall-clock budget exhausted",
+						phase: "escalated",
+						verdictReason: "wall-clock 予算を使い切りました",
+						finalAssistantText: lastAssistantText,
+						claudeSessionId,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
 						completedAt: Date.now(),
 					});
 					return;
 				}
 
 				iteration += 1;
-				store.update(sessionId, { iteration, phase: "running" });
+				store.update(sessionId, {
+					iteration,
+					phase: "running",
+				});
 
-				const promptSession = store.get(sessionId);
-				if (!promptSession) return;
-				const prompt = buildIterationPrompt(promptSession, iteration);
-				this.writeToPane(
-					promptSession.attachedPaneId as string,
-					`${prompt}\n`,
-				);
+				// Read-then-clear pending intervention at the turn boundary
+				// so user-queued steering actually reaches Claude.
+				const liveSession = store.get(sessionId);
+				const pendingIntervention =
+					liveSession?.pendingIntervention ?? null;
+				if (pendingIntervention) {
+					store.update(sessionId, { pendingIntervention: null });
+				}
 
-				// Wait for the PTY to go idle, indicating the turn is done.
-				const { idled, buffer } = await this.waitForIdle(
-					promptSession.attachedPaneId as string,
-					DEFAULT_IDLE_WINDOW_MS,
-					session0.maxWallClockSec * 1000,
-					ac.signal,
-				);
-				if (!idled) break;
+				const currentSession = store.get(sessionId);
+				if (!currentSession) return;
 
-				// On the first iteration, short-circuit if the worker never
-				// actually started (auth / not-found / crash). Running the
-				// verify command against a broken worker would produce a
-				// misleading "failed verify" instead of the real reason.
-				if (iteration === 1) {
-					const startupError = detectStartupError(buffer);
-					if (startupError) {
-						store.update(sessionId, {
-							status: "failed",
-							phase: "failed",
-							verdictPassed: false,
-							verdictReason: startupError,
-							completedAt: Date.now(),
-						});
-						return;
-					}
+				const prompt = buildIterationPrompt({
+					session: currentSession,
+					iteration,
+					previousVerdictReason: currentSession.verdictReason ?? null,
+					intervention: pendingIntervention,
+				});
+
+				appendUserEvent(sessionId, iteration, prompt);
+
+				const turnResult = await this.runClaudeTurn({
+					sessionId,
+					iteration,
+					cwd: worktreePath,
+					prompt,
+					resumeSessionId: claudeSessionId,
+					signal: ac.signal,
+					onChild: (child) => {
+						run.currentChild = child;
+					},
+				});
+				run.currentChild = null;
+
+				if (ac.signal.aborted) return;
+
+				if (turnResult.error && !turnResult.result) {
+					store.update(sessionId, {
+						status: "failed",
+						phase: "failed",
+						verdictReason: turnResult.error,
+						finalAssistantText: lastAssistantText,
+						claudeSessionId,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
+						completedAt: Date.now(),
+					});
+					return;
+				}
+
+				if (turnResult.sessionId) {
+					claudeSessionId = turnResult.sessionId;
+				}
+				if (turnResult.result) {
+					lastAssistantText = turnResult.result;
+					aggregatedCostUsd += turnResult.costUsd ?? 0;
+					aggregatedNumTurns += turnResult.numTurns ?? 0;
+					store.update(sessionId, {
+						claudeSessionId,
+						finalAssistantText: lastAssistantText,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
+					});
+				}
+
+				// No verify → single-turn mode. Claude is done, we are done.
+				if (!currentSession.verifyCommand) {
+					store.update(sessionId, {
+						status: "done",
+						phase: "done",
+						verdictPassed: true,
+						verdictReason: lastAssistantText,
+						finalAssistantText: lastAssistantText,
+						claudeSessionId,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
+						completedAt: Date.now(),
+					});
+					return;
 				}
 
 				store.update(sessionId, { phase: "verifying" });
 				const verdict = await runVerify(
-					// biome-ignore lint/style/noNonNullAssertion: verifyCommand is non-null in this branch (checked above)
-					promptSession.verifyCommand!,
-					promptSession.workspaceId,
+					currentSession.verifyCommand,
+					worktreePath,
 					ac.signal,
 				);
+				appendVerifyEvent(sessionId, iteration, verdict);
 
 				if (verdict.passed) {
 					store.update(sessionId, {
 						status: "done",
 						phase: "done",
 						verdictPassed: true,
-						verdictReason: "verify command exited 0",
+						verdictReason:
+							lastAssistantText ??
+							"verify コマンドが exit 0 で完了しました",
+						finalAssistantText: lastAssistantText,
+						claudeSessionId,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
 						completedAt: Date.now(),
 					});
 					return;
 				}
 
-				// Futility: same failing test 3x in a row.
+				// Futility: same failing test 3 iterations in a row → escalate
 				if (
 					verdict.failingTest &&
 					verdict.failingTest === run.lastFailingTest
@@ -268,9 +338,16 @@ class TodoSupervisor {
 				if (run.consecutiveSameFailure >= 3) {
 					store.update(sessionId, {
 						status: "escalated",
+						phase: "escalated",
 						verdictPassed: false,
-						verdictReason: `futility: ${verdict.failingTest ?? "same failure"} recurred ${run.consecutiveSameFailure} times`,
+						verdictReason: `futility: ${
+							verdict.failingTest ?? "同一失敗"
+						} が ${run.consecutiveSameFailure} 回連続で再現しました`,
 						verdictFailingTest: verdict.failingTest,
+						finalAssistantText: lastAssistantText,
+						claudeSessionId,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
 						completedAt: Date.now(),
 					});
 					return;
@@ -285,7 +362,12 @@ class TodoSupervisor {
 
 			store.update(sessionId, {
 				status: "escalated",
-				verdictReason: "iteration budget exhausted",
+				phase: "escalated",
+				verdictReason: "iteration 予算を使い切りました",
+				finalAssistantText: lastAssistantText,
+				claudeSessionId,
+				totalCostUsd: aggregatedCostUsd || null,
+				totalNumTurns: aggregatedNumTurns || null,
 				completedAt: Date.now(),
 			});
 		} finally {
@@ -293,114 +375,166 @@ class TodoSupervisor {
 		}
 	}
 
-	private writeToPane(paneId: string, data: string): void {
-		const terminal = getWorkspaceRuntimeRegistry().getDefault().terminal;
-		try {
-			terminal.write({ paneId, data });
-		} catch (error) {
-			console.error("[todo-agent] write failed", error);
-		}
-	}
-
-	private waitForIdle(
-		paneId: string,
-		idleWindowMs: number,
-		hardCapMs: number,
-		signal: AbortSignal,
-	): Promise<{ idled: boolean; buffer: string }> {
+	private runClaudeTurn(params: {
+		sessionId: string;
+		iteration: number;
+		cwd: string;
+		prompt: string;
+		resumeSessionId: string | null;
+		signal: AbortSignal;
+		onChild: (child: ChildProcess) => void;
+	}): Promise<{
+		result: string | null;
+		sessionId: string | null;
+		costUsd: number | null;
+		numTurns: number | null;
+		error: string | null;
+	}> {
 		return new Promise((resolve) => {
-			const terminal = getWorkspaceRuntimeRegistry().getDefault().terminal;
-			let idleTimer: NodeJS.Timeout | undefined;
-			let hardTimer: NodeJS.Timeout | undefined;
-			const start = Date.now();
-			// Ring-ish buffer: keep the last ~16 KB of PTY output so we can
-			// scan it for startup errors (auth failure, command not found,
-			// crash banners) after the worker goes idle. 16 KB is enough to
-			// hold a typical claude-code TUI header plus any error tail.
-			const CAP = 16 * 1024;
-			let buffer = "";
+			const args = [
+				"-p",
+				"--output-format",
+				"stream-json",
+				"--verbose",
+				"--include-partial-messages",
+				"--permission-mode",
+				"acceptEdits",
+			];
+			if (params.resumeSessionId) {
+				args.push("--resume", params.resumeSessionId);
+			}
+			args.push(params.prompt);
 
-			const cleanup = () => {
-				if (idleTimer) clearTimeout(idleTimer);
-				if (hardTimer) clearTimeout(hardTimer);
-				terminal.off(`data:${paneId}`, onData);
-				signal.removeEventListener("abort", onAbort);
-			};
+			let child: ChildProcess;
+			try {
+				child = spawn("claude", args, {
+					cwd: params.cwd,
+					env: process.env,
+				});
+			} catch (error) {
+				resolve({
+					result: null,
+					sessionId: null,
+					costUsd: null,
+					numTurns: null,
+					error:
+						error instanceof Error
+							? `claude を起動できませんでした: ${error.message}`
+							: "claude を起動できませんでした",
+				});
+				return;
+			}
 
-			const kickIdle = () => {
-				if (idleTimer) clearTimeout(idleTimer);
-				idleTimer = setTimeout(() => {
-					if (Date.now() - start < MIN_IDLE_BEFORE_VERIFY_MS) {
-						kickIdle();
-						return;
-					}
-					cleanup();
-					resolve({ idled: true, buffer });
-				}, idleWindowMs);
-			};
+			params.onChild(child);
 
-			const onData = (chunk: unknown) => {
-				const text =
-					typeof chunk === "string"
-						? chunk
-						: chunk instanceof Uint8Array
-							? Buffer.from(chunk).toString("utf8")
-							: String(chunk ?? "");
-				buffer += text;
-				if (buffer.length > CAP) buffer = buffer.slice(-CAP);
-				kickIdle();
-			};
+			let claudeSessionId: string | null = null;
+			let resultText: string | null = null;
+			let costUsd: number | null = null;
+			let numTurns: number | null = null;
+			let errorText: string | null = null;
+			let stdoutBuffer = "";
+			let stderrBuffer = "";
+
 			const onAbort = () => {
-				cleanup();
-				resolve({ idled: false, buffer });
+				try {
+					child.kill("SIGINT");
+				} catch {
+					// ignore
+				}
+			};
+			params.signal.addEventListener("abort", onAbort);
+
+			const drainLines = (chunk: string) => {
+				stdoutBuffer += chunk;
+				let newlineIdx = stdoutBuffer.indexOf("\n");
+				while (newlineIdx !== -1) {
+					const line = stdoutBuffer.slice(0, newlineIdx).trim();
+					stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
+					if (line.length > 0) {
+						handleLine(line);
+					}
+					newlineIdx = stdoutBuffer.indexOf("\n");
+				}
 			};
 
-			terminal.on(`data:${paneId}`, onData);
-			signal.addEventListener("abort", onAbort);
-			hardTimer = setTimeout(() => {
-				cleanup();
-				resolve({ idled: true, buffer });
-			}, hardCapMs);
-			kickIdle();
+			const handleLine = (line: string) => {
+				let payload: unknown;
+				try {
+					payload = JSON.parse(line);
+				} catch {
+					appendRawEvent(
+						params.sessionId,
+						params.iteration,
+						"raw",
+						"raw",
+						line.slice(0, 600),
+					);
+					return;
+				}
+				const parsed = classifyStreamJson(payload);
+				if (parsed.sessionId && !claudeSessionId) {
+					claudeSessionId = parsed.sessionId;
+				}
+				if (parsed.resultText) {
+					resultText = parsed.resultText;
+				}
+				if (parsed.costUsd != null) {
+					costUsd = parsed.costUsd;
+				}
+				if (parsed.numTurns != null) {
+					numTurns = parsed.numTurns;
+				}
+				if (parsed.event) {
+					getTodoSessionStore().appendStreamEvents(params.sessionId, [
+						{
+							id: randomUUID(),
+							ts: Date.now(),
+							iteration: params.iteration,
+							kind: parsed.event.kind,
+							label: parsed.event.label,
+							text: parsed.event.text,
+						},
+					]);
+				}
+			};
+
+			child.stdout?.setEncoding("utf8");
+			child.stdout?.on("data", (chunk: string) => {
+				drainLines(chunk);
+			});
+			child.stderr?.setEncoding("utf8");
+			child.stderr?.on("data", (chunk: string) => {
+				stderrBuffer += chunk;
+				if (stderrBuffer.length > 16_000) {
+					stderrBuffer = stderrBuffer.slice(-16_000);
+				}
+			});
+
+			child.on("error", (err) => {
+				errorText = err.message;
+			});
+			child.on("close", (code) => {
+				params.signal.removeEventListener("abort", onAbort);
+				if (stdoutBuffer.trim().length > 0) {
+					handleLine(stdoutBuffer.trim());
+					stdoutBuffer = "";
+				}
+				if (code !== 0 && !resultText && !errorText) {
+					const tail = stderrBuffer.trim().split("\n").slice(-6).join("\n");
+					errorText = `claude が exit code ${code} で終了しました${
+						tail ? `:\n${tail}` : ""
+					}`;
+				}
+				resolve({
+					result: resultText,
+					sessionId: claudeSessionId,
+					costUsd,
+					numTurns,
+					error: errorText,
+				});
+			});
 		});
 	}
-}
-
-/**
- * Detect "the worker never really started" conditions by scanning the PTY
- * capture for known fatal markers. Returns a user-facing reason when one is
- * found. Intentionally conservative — we do not want to mistake a normal
- * test failure in the worker's TUI for a startup error.
- */
-function detectStartupError(buffer: string): string | undefined {
-	// Strip ANSI so pattern matching stays simple.
-	const clean = buffer.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-	const patterns: Array<[RegExp, string]> = [
-		[
-			/Please run \/login/i,
-			"Claude Code の認証が切れています。ワーカーのターミナルで `/login` を実行してください。",
-		],
-		[
-			/authentication_error|Invalid authentication credentials/i,
-			"Claude Code の認証に失敗しました（API Error 401）。ワーカーのターミナルで `/login` を実行してください。",
-		],
-		[
-			/claude: command not found|command not found: claude/i,
-			"`claude` コマンドが見つかりません。Claude Code CLI がインストールされているか、PATH を確認してください。",
-		],
-		[
-			/API Error:\s*5\d\d/i,
-			"Claude Code が API エラー（5xx）を返しました。ネットワークまたは上流サービスの状態を確認してください。",
-		],
-		[
-			/fatal:/i,
-			"ワーカーが起動時に fatal エラーを出しました。詳細はワーカーのターミナルを確認してください。",
-		],
-	];
-	for (const [re, reason] of patterns) {
-		if (re.test(clean)) return reason;
-	}
-	return undefined;
 }
 
 let supervisor: TodoSupervisor | undefined;
@@ -443,26 +577,56 @@ function renderGoalDoc(session: SelectTodoSession): string {
 	return lines.join("\n");
 }
 
-function buildIterationPrompt(
-	session: SelectTodoSession,
-	iteration: number,
-): string {
+function buildIterationPrompt(params: {
+	session: SelectTodoSession;
+	iteration: number;
+	previousVerdictReason: string | null;
+	intervention: string | null;
+}): string {
+	const { session, iteration, previousVerdictReason, intervention } = params;
 	const goalPath = `.superset/todo/${session.id}/goal.md`;
 	const goalClause = session.goal?.trim()
 		? "ゴール（受け入れ条件）を達成することを目指してください"
 		: "『やって欲しいこと』が完了した時点で完了とみなしてください";
-	if (!session.verifyCommand) {
-		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、${goalClause}。外部 verify は行いません。達成したと判断したら停止してください。`;
-	}
+
+	const sections: string[] = [];
 	if (iteration === 1) {
-		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、${goalClause}。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行し、追加のターンが必要かどうかを知らせます。`;
+		sections.push(
+			`${goalPath} を読んで、${goalClause}。作業ディレクトリは worktree のルートです。`,
+		);
+		sections.push(
+			`タスクのタイトル: ${session.title}\n説明: ${session.description}`,
+		);
+		if (session.goal?.trim()) {
+			sections.push(`ゴール:\n${session.goal.trim()}`);
+		}
+	} else {
+		sections.push(
+			`イテレーション ${iteration} です。前回の verify は失敗しました。`,
+		);
+		if (previousVerdictReason) {
+			sections.push(`前回の verify 結果:\n${previousVerdictReason}`);
+		}
+		sections.push(
+			`${goalPath} を読み直し、${goalClause}。`,
+		);
 	}
-	return `イテレーション ${iteration}。verify コマンド \`${session.verifyCommand}\` が失敗しました。理由: ${session.verdictReason ?? "不明"}。${goalPath} を読み直し、${goalClause}。作業を続けてください。`;
+	if (intervention) {
+		sections.push(
+			`ユーザーからの介入指示（優先度: 高）:\n${intervention}`,
+		);
+	}
+	if (session.verifyCommand) {
+		sections.push(
+			`完了判定: 作業が終わったら、セッション終了後に supervisor が \`${session.verifyCommand}\` を実行して exit 0 を要求します。`,
+		);
+	}
+	return sections.join("\n\n");
 }
 
 function tailForReason(log: string): string {
 	const tail = log.trim().split("\n").slice(-20).join("\n");
-	return tail.length > 2000 ? `${tail.slice(-2000)}` : tail;
+	return tail.length > 2000 ? tail.slice(-2000) : tail;
 }
 
 interface VerifyResult {
@@ -473,15 +637,10 @@ interface VerifyResult {
 
 function runVerify(
 	verifyCommand: string,
-	workspaceId: string,
+	cwd: string,
 	signal: AbortSignal,
 ): Promise<VerifyResult> {
 	return new Promise((resolve) => {
-		const cwd = resolveWorktreePath(workspaceId);
-		if (!cwd) {
-			resolve({ passed: false, log: "no worktree path for workspace" });
-			return;
-		}
 		const child = spawn("sh", ["-c", verifyCommand], {
 			cwd,
 			env: process.env,
@@ -508,64 +667,305 @@ function runVerify(
 	});
 }
 
-/**
- * Extract a stable identifier for the first failing test in a log. Used by
- * the futility detector to decide "same failure recurring" vs "different
- * failure each iteration". The goal is not to pretty-print; it is to return
- * a stable-ish string that stays identical across runs of the same failing
- * test, so we should normalize away run-specific noise (timings, object
- * hex ids, absolute paths of runner binaries).
- *
- * Supported runners, in priority order:
- *   - bun test         `(fail) path/file.test.ts > describe > it`
- *   - vitest           `❯ path/file.test.ts > suite > case` / `FAIL  path`
- *   - jest             `✕ describe > it (12 ms)` / `FAIL  src/…`
- *   - node:test        `not ok 1 - describe > it`
- *   - playwright       `1) [chromium] › path/file:line:col › title`
- *   - plain shell      falls back to first non-empty stderr-looking line.
- */
 function guessFailingTest(log: string): string | undefined {
 	const stripAnsi = log.replace(/\x1b\[[0-9;]*m/g, "");
 	const lines = stripAnsi.split("\n");
-
 	const patterns: RegExp[] = [
-		/^\s*\(fail\)\s+(.+?)(?:\s+\[\d.*)?$/i, // bun test
-		/^\s*❯\s+(.+?)(?:\s+\d+ms)?$/, // vitest tree view
-		/^\s*FAIL\s+(.+?)(?:\s+>\s+.+)?$/, // vitest/jest summary
-		/^\s*✕\s+(.+?)(?:\s+\(\d+\s*ms\))?$/, // jest inline fail
-		/^\s*×\s+(.+?)(?:\s+\(\d+\s*ms\))?$/, // vitest inline fail
-		/^\s*✗\s+(.+?)(?:\s+\(\d+\s*ms\))?$/, // generic
-		/^\s*not ok \d+\s*-\s*(.+)$/, // TAP / node:test
-		/^\s*\d+\)\s+(?:\[[^\]]+\]\s+)?[›»>]\s+(.+)$/, // playwright
+		/^\s*\(fail\)\s+(.+?)(?:\s+\[\d.*)?$/i,
+		/^\s*❯\s+(.+?)(?:\s+\d+ms)?$/,
+		/^\s*FAIL\s+(.+?)(?:\s+>\s+.+)?$/,
+		/^\s*✕\s+(.+?)(?:\s+\(\d+\s*ms\))?$/,
+		/^\s*×\s+(.+?)(?:\s+\(\d+\s*ms\))?$/,
+		/^\s*✗\s+(.+?)(?:\s+\(\d+\s*ms\))?$/,
+		/^\s*not ok \d+\s*-\s*(.+)$/,
+		/^\s*\d+\)\s+(?:\[[^\]]+\]\s+)?[›»>]\s+(.+)$/,
 	];
-
 	for (const line of lines) {
 		for (const re of patterns) {
 			const m = line.match(re);
-			if (m?.[1]) {
-				return normalizeTestId(m[1]);
-			}
+			if (m?.[1]) return normalizeTestId(m[1]);
 		}
 	}
-
-	// Fallback: look for "Error:" or "AssertionError:" anchored lines.
 	const errorLine = lines.find((l) => /\b(Error|Assertion)\b.*:/.test(l));
 	if (errorLine) return normalizeTestId(errorLine.trim());
-
 	return undefined;
 }
 
 function normalizeTestId(raw: string): string {
 	return raw
 		.trim()
-		// Drop "(123 ms)" timing suffixes that change every run.
 		.replace(/\s*\(\d+\s*ms\)\s*$/, "")
-		// Drop "[123.45ms]" suffixes.
 		.replace(/\s*\[\d+(?:\.\d+)?\s*m?s\]\s*$/, "")
-		// Collapse object hex ids like Foo@0x7f8b3c004a00 → Foo@0x?
 		.replace(/@0x[0-9a-f]+/gi, "@0x?")
-		// Strip trailing ANSI colon+reason ("...: expected 1 to be 2") which
-		// can vary in wording across runs for the same logical failure.
 		.replace(/:\s*expected.*$/i, "")
 		.slice(0, 240);
+}
+
+// ---- stream-json parsing ----
+
+interface ClassifiedEvent {
+	kind: TodoStreamEventKind;
+	label: string;
+	text: string;
+}
+
+interface ClassifiedLine {
+	sessionId: string | null;
+	resultText: string | null;
+	costUsd: number | null;
+	numTurns: number | null;
+	event: ClassifiedEvent | null;
+}
+
+/**
+ * Reduce one NDJSON record emitted by `claude -p --output-format stream-json`
+ * into the condensed event our UI wants, plus any scalar fields we promote
+ * to DB columns. The Claude Code stream is stable enough to key on but we
+ * defensively handle unknown shapes by falling through to a `raw` event.
+ */
+function classifyStreamJson(payload: unknown): ClassifiedLine {
+	const empty: ClassifiedLine = {
+		sessionId: null,
+		resultText: null,
+		costUsd: null,
+		numTurns: null,
+		event: null,
+	};
+	if (typeof payload !== "object" || payload === null) return empty;
+	const rec = payload as Record<string, unknown>;
+	const type = typeof rec.type === "string" ? (rec.type as string) : "";
+	const sessionId =
+		typeof rec.session_id === "string" ? (rec.session_id as string) : null;
+
+	if (type === "system" && rec.subtype === "init") {
+		return {
+			...empty,
+			sessionId,
+			event: {
+				kind: "system_init",
+				label: "init",
+				text: `session ${sessionId ?? "?"} 準備完了`,
+			},
+		};
+	}
+
+	if (type === "assistant") {
+		const text = extractAssistantText(rec.message);
+		if (text) {
+			return {
+				...empty,
+				sessionId,
+				event: { kind: "assistant_text", label: "Claude", text },
+			};
+		}
+		const tool = extractToolUseSummary(rec.message);
+		if (tool) {
+			return {
+				...empty,
+				sessionId,
+				event: { kind: "tool_use", label: tool.label, text: tool.text },
+			};
+		}
+		return empty;
+	}
+
+	if (type === "user") {
+		const text = extractToolResultText(rec.message);
+		if (text) {
+			return {
+				...empty,
+				sessionId,
+				event: {
+					kind: "tool_result",
+					label: "tool result",
+					text: truncate(text, 400),
+				},
+			};
+		}
+		return empty;
+	}
+
+	if (type === "result") {
+		const resultText =
+			typeof rec.result === "string" ? (rec.result as string) : null;
+		const costUsd =
+			typeof rec.total_cost_usd === "number"
+				? (rec.total_cost_usd as number)
+				: null;
+		const numTurns =
+			typeof rec.num_turns === "number" ? (rec.num_turns as number) : null;
+		return {
+			sessionId,
+			resultText,
+			costUsd,
+			numTurns,
+			event: {
+				kind: "result",
+				label: "result",
+				text: resultText ?? "（空の結果）",
+			},
+		};
+	}
+
+	if (
+		type === "error" ||
+		(typeof rec.subtype === "string" && rec.subtype === "error")
+	) {
+		const message =
+			typeof rec.error === "string"
+				? (rec.error as string)
+				: JSON.stringify(rec).slice(0, 400);
+		return {
+			...empty,
+			sessionId,
+			event: { kind: "error", label: "error", text: message },
+		};
+	}
+
+	return empty;
+}
+
+function extractAssistantText(message: unknown): string | null {
+	if (typeof message !== "object" || message === null) return null;
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return null;
+	const parts: string[] = [];
+	for (const part of content) {
+		if (typeof part !== "object" || part === null) continue;
+		const rec = part as Record<string, unknown>;
+		if (rec.type === "text" && typeof rec.text === "string") {
+			parts.push(rec.text as string);
+		}
+	}
+	const joined = parts.join("").trim();
+	return joined.length > 0 ? joined : null;
+}
+
+function extractToolUseSummary(
+	message: unknown,
+): { label: string; text: string } | null {
+	if (typeof message !== "object" || message === null) return null;
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return null;
+	for (const part of content) {
+		if (typeof part !== "object" || part === null) continue;
+		const rec = part as Record<string, unknown>;
+		if (rec.type !== "tool_use") continue;
+		const name = typeof rec.name === "string" ? (rec.name as string) : "tool";
+		const input = rec.input;
+		const inputSummary = summarizeToolInput(name, input);
+		return { label: name, text: inputSummary };
+	}
+	return null;
+}
+
+function extractToolResultText(message: unknown): string | null {
+	if (typeof message !== "object" || message === null) return null;
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return null;
+	const parts: string[] = [];
+	for (const part of content) {
+		if (typeof part !== "object" || part === null) continue;
+		const rec = part as Record<string, unknown>;
+		if (rec.type === "tool_result") {
+			const inner = rec.content;
+			if (typeof inner === "string") {
+				parts.push(inner);
+			} else if (Array.isArray(inner)) {
+				for (const p of inner) {
+					if (typeof p !== "object" || p === null) continue;
+					const pr = p as Record<string, unknown>;
+					if (pr.type === "text" && typeof pr.text === "string") {
+						parts.push(pr.text as string);
+					}
+				}
+			}
+		}
+	}
+	const joined = parts.join("\n").trim();
+	return joined.length > 0 ? joined : null;
+}
+
+function summarizeToolInput(name: string, input: unknown): string {
+	if (typeof input !== "object" || input === null) {
+		return name;
+	}
+	const rec = input as Record<string, unknown>;
+	const key =
+		typeof rec.command === "string"
+			? (rec.command as string)
+			: typeof rec.file_path === "string"
+				? (rec.file_path as string)
+				: typeof rec.path === "string"
+					? (rec.path as string)
+					: typeof rec.pattern === "string"
+						? (rec.pattern as string)
+						: typeof rec.description === "string"
+							? (rec.description as string)
+							: null;
+	return key ? truncate(`${name}: ${key}`, 300) : name;
+}
+
+function truncate(text: string, cap: number): string {
+	if (text.length <= cap) return text;
+	return `${text.slice(0, cap)}…`;
+}
+
+function appendUserEvent(
+	sessionId: string,
+	iteration: number,
+	prompt: string,
+): void {
+	getTodoSessionStore().appendStreamEvents(sessionId, [
+		{
+			id: randomUUID(),
+			ts: Date.now(),
+			iteration,
+			kind: "raw",
+			label: iteration === 1 ? "最初のプロンプト" : `イテレーション ${iteration}`,
+			text: truncate(prompt, 4000),
+		},
+	]);
+}
+
+function appendVerifyEvent(
+	sessionId: string,
+	iteration: number,
+	verdict: VerifyResult,
+): void {
+	getTodoSessionStore().appendStreamEvents(sessionId, [
+		{
+			id: randomUUID(),
+			ts: Date.now(),
+			iteration,
+			kind: verdict.passed ? "result" : "error",
+			label: verdict.passed ? "verify pass" : "verify fail",
+			text: truncate(verdict.log || "(no output)", 1200),
+		},
+	]);
+}
+
+function appendRawEvent(
+	sessionId: string,
+	iteration: number,
+	kind: TodoStreamEventKind,
+	label: string,
+	text: string,
+): void {
+	getTodoSessionStore().appendStreamEvents(sessionId, [
+		{
+			id: randomUUID(),
+			ts: Date.now(),
+			iteration,
+			kind,
+			label,
+			text,
+		},
+	]);
+}
+
+// Hash helper (not currently used, kept for future `id` fallbacks when
+// randomUUID is unavailable).
+export function __hashId(input: string): string {
+	return createHash("sha1").update(input).digest("hex").slice(0, 8);
 }

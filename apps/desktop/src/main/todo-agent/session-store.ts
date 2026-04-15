@@ -11,9 +11,18 @@ import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
 	TodoSessionStateEvent,
+	TodoStreamEvent,
+	TodoStreamUpdate,
 } from "./types";
 
 export type { TodoSessionListEntry };
+
+/**
+ * Cap on the number of stream events we keep in memory per session. Enough
+ * to show "the whole current run" in the UI without letting an unbounded
+ * stream balloon process memory. Older events are dropped from the head.
+ */
+const STREAM_EVENT_BUFFER_CAP = 500;
 
 /**
  * In-memory session bookkeeping + persistence helpers for the TODO agent.
@@ -24,9 +33,44 @@ export type { TodoSessionListEntry };
  */
 class TodoSessionStore {
 	private readonly emitter = new EventEmitter();
+	/** In-memory per-session stream event buffer. Not persisted. */
+	private readonly streamBuffers = new Map<string, TodoStreamEvent[]>();
 
 	constructor() {
 		this.emitter.setMaxListeners(0);
+	}
+
+	appendStreamEvents(sessionId: string, events: TodoStreamEvent[]): void {
+		if (events.length === 0) return;
+		const buffer = this.streamBuffers.get(sessionId) ?? [];
+		buffer.push(...events);
+		// Drop from the head if we are over the cap so the tail (most
+		// recent activity) is always preserved.
+		if (buffer.length > STREAM_EVENT_BUFFER_CAP) {
+			buffer.splice(0, buffer.length - STREAM_EVENT_BUFFER_CAP);
+		}
+		this.streamBuffers.set(sessionId, buffer);
+		const update: TodoStreamUpdate = { sessionId, events };
+		this.emitter.emit(`stream:${sessionId}`, update);
+	}
+
+	getStreamEvents(sessionId: string): TodoStreamEvent[] {
+		return [...(this.streamBuffers.get(sessionId) ?? [])];
+	}
+
+	clearStreamEvents(sessionId: string): void {
+		this.streamBuffers.delete(sessionId);
+	}
+
+	subscribeStream(
+		sessionId: string,
+		handler: (update: TodoStreamUpdate) => void,
+	): () => void {
+		const key = `stream:${sessionId}`;
+		this.emitter.on(key, handler);
+		return () => {
+			this.emitter.off(key, handler);
+		};
 	}
 
 	insert(row: Omit<SelectTodoSession, "id" | "createdAt" | "updatedAt"> & {
@@ -110,6 +154,7 @@ class TodoSessionStore {
 			.delete(todoSessions)
 			.where(eq(todoSessions.id, sessionId))
 			.run();
+		this.clearStreamEvents(sessionId);
 		return result.changes > 0;
 	}
 

@@ -1,15 +1,16 @@
-import { buildAgentPromptCommand } from "@superset/shared/agent-command";
 import { Button } from "@superset/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@superset/ui/dialog";
 import { Input } from "@superset/ui/input";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import type { TodoSessionListEntry } from "main/todo-agent/types";
-import { useCallback, useMemo, useState } from "react";
+import type {
+	TodoSessionListEntry,
+	TodoStreamEvent,
+} from "main/todo-agent/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	HiMiniArrowPath,
-	HiMiniArrowTopRightOnSquare,
 	HiMiniChevronDown,
 	HiMiniChevronRight,
 	HiMiniPlus,
@@ -17,26 +18,11 @@ import {
 	HiMiniXMark,
 } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { launchCommandInPane } from "renderer/lib/terminal/launch-command";
-import { useTabsStore } from "renderer/stores/tabs/store";
 
 interface TodoManagerProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	/**
-	 * Workspace currently active in the shell. Used (a) as the default
-	 * target for the "新しい TODO" button so creation stays in the
-	 * expected workspace and (b) to decide whether "ターミナルを開く"
-	 * should directly switch the foreground tab or just set the active
-	 * tab id in the store for when the user navigates back.
-	 */
 	currentWorkspaceId?: string;
-	/**
-	 * Invoked when the user clicks the "新しい TODO" button. The parent
-	 * owns the creation modal state so the two shadcn Dialogs are
-	 * siblings rather than nested — stacks more reliably on top of the
-	 * Manager and avoids click-outside interference.
-	 */
 	onRequestNewTodo: () => void;
 }
 
@@ -45,21 +31,17 @@ type TodoSession = TodoSessionListEntry;
 /**
  * Agent-Manager style full-view drawer for TODO autonomous sessions.
  *
- * Layout: dialog ~2040px × 92vh (capped to viewport) with a 2-pane
- * split — a workspace-grouped, collapsible session list on the left
- * and a detail view on the right. Inspired by Google Antigravity's
- * Agent Manager, Cursor 2.0's agents sidebar, and Factory Desktop's
- * sessions view.
- *
- * The manager does NOT embed a live PTY. The worker runs in a regular
- * terminal tab inside its own workspace; the detail pane has an
- * "open terminal" button that switches the workspace's active tab to
- * the worker pane so users can jump to it with one click.
+ * The session runs headlessly in the main process (child_process spawn of
+ * `claude -p --output-format stream-json`) — there is no PTY and no
+ * workspace terminal tab. Parsed stream events (assistant text, tool
+ * calls, tool results, verify outcomes) flow back to this dialog via the
+ * `todoAgent.subscribeStream` observable so everything a user needs to
+ * watch or review lives inside the Manager.
  */
 export function TodoManager({
 	open,
 	onOpenChange,
-	currentWorkspaceId,
+	currentWorkspaceId: _currentWorkspaceId,
 	onRequestNewTodo,
 }: TodoManagerProps) {
 	const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -201,7 +183,6 @@ export function TodoManager({
 						{selected ? (
 							<SessionDetail
 								session={selected}
-								currentWorkspaceId={currentWorkspaceId}
 								onDeleted={() => setSelectedId(null)}
 							/>
 						) : (
@@ -261,27 +242,21 @@ function StatusDot({ status }: { status: string }) {
 
 interface SessionDetailProps {
 	session: TodoSession;
-	currentWorkspaceId?: string;
 	onDeleted: () => void;
 }
 
-function SessionDetail({
-	session,
-	currentWorkspaceId,
-	onDeleted,
-}: SessionDetailProps) {
+function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	const [intervention, setIntervention] = useState("");
 	const [starting, setStarting] = useState(false);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const [streamEvents, setStreamEvents] = useState<TodoStreamEvent[]>([]);
 
 	const utils = electronTrpc.useUtils();
-	const attachPane = electronTrpc.todoAgent.attachPane.useMutation();
-	const abort = electronTrpc.todoAgent.abort.useMutation();
-	const sendInput = electronTrpc.todoAgent.sendInput.useMutation();
+	const startMut = electronTrpc.todoAgent.start.useMutation();
+	const abortMut = electronTrpc.todoAgent.abort.useMutation();
+	const sendInputMut = electronTrpc.todoAgent.sendInput.useMutation();
 	const deleteMut = electronTrpc.todoAgent.delete.useMutation();
 	const rerunMut = electronTrpc.todoAgent.rerun.useMutation();
-	const createOrAttach = electronTrpc.terminal.createOrAttach.useMutation();
-	const write = electronTrpc.terminal.write.useMutation();
 
 	const isActive =
 		session.status === "queued" ||
@@ -289,12 +264,57 @@ function SessionDetail({
 		session.status === "running" ||
 		session.status === "verifying";
 
-	const canStart = session.status === "queued";
+	const canStart =
+		session.status === "queued" ||
+		session.status === "failed" ||
+		session.status === "aborted" ||
+		session.status === "escalated";
+	const isRunning =
+		session.status === "preparing" ||
+		session.status === "running" ||
+		session.status === "verifying";
 	const isFinal =
 		session.status === "done" ||
 		session.status === "failed" ||
 		session.status === "escalated" ||
 		session.status === "aborted";
+
+	// Reset the event buffer + subscribe when selection changes. The
+	// snapshot query paints the initial state; the subscription keeps us
+	// live-updated without polling.
+	useEffect(() => {
+		setStreamEvents([]);
+	}, [session.id]);
+
+	const { data: initialStream } = electronTrpc.todoAgent.getStream.useQuery(
+		{ sessionId: session.id },
+		{ refetchInterval: false },
+	);
+	useEffect(() => {
+		if (initialStream) {
+			setStreamEvents(initialStream);
+		}
+	}, [initialStream]);
+
+	electronTrpc.todoAgent.subscribeStream.useSubscription(
+		{ sessionId: session.id },
+		{
+			onData: (update) => {
+				setStreamEvents((prev) => {
+					const seen = new Set(prev.map((e) => e.id));
+					const merged = [...prev];
+					for (const ev of update.events) {
+						if (!seen.has(ev.id)) merged.push(ev);
+					}
+					// Cap at 500 client-side too.
+					if (merged.length > 500) {
+						return merged.slice(-500);
+					}
+					return merged;
+				});
+			},
+		},
+	);
 
 	const invalidate = useCallback(async () => {
 		await utils.todoAgent.listAll.invalidate();
@@ -307,60 +327,9 @@ function SessionDetail({
 		if (!canStart) return;
 		setStarting(true);
 		try {
-			// Capture the user's currently-active tab in that workspace so
-			// we can restore it after launching the worker tab. This is
-			// the "background start" behavior: Start should not steal
-			// focus from whatever the user was doing — the new tab only
-			// becomes visible when the user explicitly opens it via the
-			// ターミナルを開く button.
-			const tabsStateBefore = useTabsStore.getState();
-			const previousActiveTabId =
-				tabsStateBefore.activeTabIds[session.workspaceId];
-
-			const tabs = useTabsStore.getState();
-			const { tabId, paneId } = tabs.addTab(session.workspaceId);
-			tabs.setTabAutoTitle(tabId, `TODO: ${session.title.slice(0, 24)}`);
-
-			const goalRef = `.superset/todo/${session.id}/goal.md`;
-			const goalClause = session.goal?.trim()
-				? "ゴール（受け入れ条件）を達成することを目指してください"
-				: "『やって欲しいこと』が完了した時点で完了とみなしてください";
-			const initialPrompt = session.verifyCommand
-				? `${goalRef} を読んで、${goalClause}。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行して次のターンが必要かを判定します。`
-				: `${goalRef} を読んで、${goalClause}。単発タスクなので外部 verify は行いません。達成したと判断したら停止してください。`;
-			const command = buildAgentPromptCommand({
-				prompt: initialPrompt,
-				randomId: session.id,
-				agent: "claude",
-			});
-
-			await launchCommandInPane({
-				paneId,
-				tabId,
-				workspaceId: session.workspaceId,
-				command,
-				createOrAttach: (input) =>
-					createOrAttach.mutateAsync(input as never),
-				write: (input) => write.mutateAsync(input as never),
-			});
-
-			await attachPane.mutateAsync({
-				sessionId: session.id,
-				tabId,
-				paneId,
-			});
-
-			// Restore the previous active tab so the user stays on
-			// whatever they were looking at. The worker keeps running in
-			// the background; ターミナルを開く will bring it to the front.
-			if (previousActiveTabId && previousActiveTabId !== tabId) {
-				useTabsStore
-					.getState()
-					.setActiveTab(session.workspaceId, previousActiveTabId);
-			}
-
+			await startMut.mutateAsync({ sessionId: session.id });
 			await invalidate();
-			toast.success(`バックグラウンドで開始しました: ${session.title}`);
+			toast.success(`実行を開始しました: ${session.title}`);
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "開始に失敗しました",
@@ -368,32 +337,11 @@ function SessionDetail({
 		} finally {
 			setStarting(false);
 		}
-	}, [
-		attachPane,
-		canStart,
-		createOrAttach,
-		invalidate,
-		session,
-		write,
-	]);
-
-	const handleOpenTerminal = useCallback(() => {
-		if (!session.attachedTabId || !session.attachedPaneId) {
-			toast.error("ターミナルがまだアタッチされていません");
-			return;
-		}
-		const tabs = useTabsStore.getState();
-		tabs.setActiveTab(session.workspaceId, session.attachedTabId);
-		if (session.workspaceId !== currentWorkspaceId) {
-			toast.info(
-				`ターミナルは別のワークスペース「${session.workspaceName ?? session.workspaceId}」内のタブです。手動でそのワークスペースに移動してください。`,
-			);
-		}
-	}, [currentWorkspaceId, session]);
+	}, [canStart, invalidate, session.id, session.title, startMut]);
 
 	const handleAbort = useCallback(async () => {
 		try {
-			await abort.mutateAsync({ sessionId: session.id });
+			await abortMut.mutateAsync({ sessionId: session.id });
 			await invalidate();
 			toast.success("中断しました");
 		} catch (error) {
@@ -401,22 +349,23 @@ function SessionDetail({
 				error instanceof Error ? error.message : "中断に失敗しました",
 			);
 		}
-	}, [abort, invalidate, session.id]);
+	}, [abortMut, invalidate, session.id]);
 
 	const handleSendInput = useCallback(async () => {
 		if (!intervention.trim()) return;
 		try {
-			await sendInput.mutateAsync({
+			await sendInputMut.mutateAsync({
 				sessionId: session.id,
-				data: `${intervention}\n`,
+				data: intervention.trim(),
 			});
 			setIntervention("");
+			toast.success("次のターンに介入指示を注入します");
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "送信に失敗しました",
 			);
 		}
-	}, [intervention, sendInput, session.id]);
+	}, [intervention, sendInputMut, session.id]);
 
 	const handleDelete = useCallback(async () => {
 		try {
@@ -445,7 +394,7 @@ function SessionDetail({
 	}, [invalidate, rerunMut, session.id]);
 
 	return (
-		<div className="flex flex-col gap-5 p-6 max-w-4xl text-sm">
+		<div className="flex flex-col gap-5 p-6 max-w-5xl text-sm">
 			<div className="flex items-start gap-3">
 				<div className="flex-1 min-w-0">
 					<div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
@@ -469,7 +418,7 @@ function SessionDetail({
 					</h2>
 				</div>
 				<div className="flex items-center gap-2 shrink-0">
-					{canStart && (
+					{canStart && !isRunning && (
 						<Button
 							type="button"
 							size="sm"
@@ -479,7 +428,7 @@ function SessionDetail({
 							{starting ? "開始中…" : "Start"}
 						</Button>
 					)}
-					{isActive && !canStart && (
+					{isRunning && (
 						<Button
 							type="button"
 							size="sm"
@@ -487,19 +436,6 @@ function SessionDetail({
 							onClick={handleAbort}
 						>
 							中断
-						</Button>
-					)}
-					{session.attachedTabId && (
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							className="gap-1"
-							onClick={handleOpenTerminal}
-							title="ワーカーのターミナルタブを前面に出す"
-						>
-							<HiMiniArrowTopRightOnSquare className="size-3.5" />
-							ターミナルを開く
 						</Button>
 					)}
 					{isFinal && (
@@ -523,9 +459,9 @@ function SessionDetail({
 							variant="ghost"
 							className="gap-1 text-muted-foreground hover:text-destructive"
 							onClick={() => setConfirmingDelete(true)}
-							disabled={isActive && !canStart}
+							disabled={isActive && isRunning}
 							title={
-								isActive && !canStart
+								isRunning
 									? "実行中のセッションは先に中断してください"
 									: "削除"
 							}
@@ -556,6 +492,8 @@ function SessionDetail({
 					)}
 				</div>
 			</div>
+
+			<TimingBlock session={session} />
 
 			<DetailBlock label="やって欲しいこと">
 				<div className="whitespace-pre-wrap text-xs leading-relaxed">
@@ -596,48 +534,181 @@ function SessionDetail({
 				</DetailBlock>
 			</div>
 
-			{session.verdictReason && (
-				<DetailBlock label="直近の結果">
+			{(session.totalCostUsd != null || session.totalNumTurns != null) && (
+				<DetailBlock label="消費">
+					<div className="text-xs text-muted-foreground">
+						{session.totalCostUsd != null &&
+							`$${session.totalCostUsd.toFixed(4)}`}
+						{session.totalCostUsd != null && session.totalNumTurns != null
+							? " · "
+							: ""}
+						{session.totalNumTurns != null &&
+							`${session.totalNumTurns} turns`}
+					</div>
+				</DetailBlock>
+			)}
+
+			<DetailBlock label="Claude の応答 / ライブストリーム">
+				<StreamView events={streamEvents} />
+			</DetailBlock>
+
+			{session.finalAssistantText && (
+				<DetailBlock label="最終回答">
+					<div className="text-xs leading-relaxed whitespace-pre-wrap bg-muted/60 rounded p-3 max-h-60 overflow-auto">
+						{session.finalAssistantText}
+					</div>
+				</DetailBlock>
+			)}
+
+			{session.verdictReason && session.verdictPassed === false && (
+				<DetailBlock label="直近の verify 失敗ログ">
 					<pre className="text-[11px] bg-muted rounded p-3 whitespace-pre-wrap max-h-48 overflow-auto leading-relaxed">
 						{session.verdictReason}
 					</pre>
 				</DetailBlock>
 			)}
 
-			{isActive && !canStart && session.attachedPaneId && (
-				<DetailBlock label="介入">
-					<div className="flex gap-2">
-						<Input
-							value={intervention}
-							onChange={(e) => setIntervention(e.target.value)}
-							placeholder="ワーカーに送るテキストを入力（Enter で送信）"
-							onKeyDown={(e) => {
-								if (e.key === "Enter" && !e.shiftKey) {
-									e.preventDefault();
-									void handleSendInput();
-								}
-							}}
-						/>
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							onClick={handleSendInput}
-							disabled={!intervention.trim()}
-						>
-							送信
-						</Button>
-					</div>
-				</DetailBlock>
-			)}
+			<DetailBlock label="介入">
+				<div className="flex gap-2">
+					<Input
+						value={intervention}
+						onChange={(e) => setIntervention(e.target.value)}
+						placeholder="次のターンに注入する指示を入力（Enter で送信）"
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault();
+								void handleSendInput();
+							}
+						}}
+					/>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						onClick={handleSendInput}
+						disabled={!intervention.trim()}
+					>
+						キュー
+					</Button>
+				</div>
+				{session.pendingIntervention && (
+					<p className="text-[11px] text-muted-foreground mt-1">
+						予約済み: {session.pendingIntervention}
+					</p>
+				)}
+			</DetailBlock>
 
 			<div className="text-[11px] text-muted-foreground pt-3 border-t">
-				ヒント: Start するとワーカーはバックグラウンドのタブで動作します。
-				『ターミナルを開く』でそのタブを前面に出すとライブで見たり
-				直接入力したりできます。
+				ヒント: ワーカーはバックグラウンドで headless 実行されます。
+				ここに表示されるのが唯一のライブ出力です。介入指示はキューされ、
+				次のイテレーション開始時に Claude に渡されます。
 			</div>
 		</div>
 	);
+}
+
+function TimingBlock({ session }: { session: TodoSession }) {
+	return (
+		<div className="grid grid-cols-4 gap-3 text-xs">
+			<TimingCell label="作成" value={formatTimestamp(session.createdAt)} />
+			<TimingCell label="開始" value={formatTimestamp(session.startedAt)} />
+			<TimingCell label="終了" value={formatTimestamp(session.completedAt)} />
+			<TimingCell
+				label="実行時間"
+				value={formatDuration(session.startedAt, session.completedAt)}
+			/>
+		</div>
+	);
+}
+
+function TimingCell({ label, value }: { label: string; value: string }) {
+	return (
+		<div>
+			<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+				{label}
+			</div>
+			<div className="text-xs tabular-nums">{value}</div>
+		</div>
+	);
+}
+
+function formatTimestamp(ms: number | null): string {
+	if (ms == null) return "—";
+	const d = new Date(ms);
+	const pad = (n: number) => n.toString().padStart(2, "0");
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+		d.getDate(),
+	)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function formatDuration(
+	startMs: number | null,
+	endMs: number | null,
+): string {
+	if (startMs == null) return "—";
+	const end = endMs ?? Date.now();
+	const diffSec = Math.max(0, Math.round((end - startMs) / 1000));
+	if (diffSec < 60) return `${diffSec}秒`;
+	if (diffSec < 60 * 60) {
+		const m = Math.floor(diffSec / 60);
+		const s = diffSec % 60;
+		return `${m}分${s}秒`;
+	}
+	const h = Math.floor(diffSec / 3600);
+	const m = Math.floor((diffSec % 3600) / 60);
+	return `${h}時間${m}分`;
+}
+
+function StreamView({ events }: { events: TodoStreamEvent[] }) {
+	if (events.length === 0) {
+		return (
+			<div className="text-xs text-muted-foreground bg-muted/40 rounded p-4">
+				まだストリームイベントがありません。Start するとここにリアルタイムで
+				Claude の応答・ツール使用・verify 結果が流れます。
+			</div>
+		);
+	}
+	return (
+		<div className="flex flex-col gap-2 bg-muted/30 rounded p-3 max-h-[50vh] overflow-auto">
+			{events.map((event) => (
+				<StreamEventRow key={event.id} event={event} />
+			))}
+		</div>
+	);
+}
+
+function StreamEventRow({ event }: { event: TodoStreamEvent }) {
+	const color =
+		event.kind === "assistant_text"
+			? "border-primary/40 bg-primary/5"
+			: event.kind === "tool_use"
+				? "border-amber-500/40 bg-amber-500/5"
+				: event.kind === "tool_result"
+					? "border-emerald-500/30 bg-emerald-500/5"
+					: event.kind === "result"
+						? "border-emerald-600/50 bg-emerald-600/10"
+						: event.kind === "error"
+							? "border-rose-500/50 bg-rose-500/5"
+							: "border-border/40 bg-background";
+	return (
+		<div className={cn("border rounded px-3 py-2 text-xs", color)}>
+			<div className="flex items-center justify-between gap-2 mb-1">
+				<span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+					[iter {event.iteration}] {event.label}
+				</span>
+				<span className="text-[10px] text-muted-foreground tabular-nums">
+					{formatClock(event.ts)}
+				</span>
+			</div>
+			<div className="whitespace-pre-wrap leading-relaxed">{event.text}</div>
+		</div>
+	);
+}
+
+function formatClock(ms: number): string {
+	const d = new Date(ms);
+	const pad = (n: number) => n.toString().padStart(2, "0");
+	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function DetailBlock({
