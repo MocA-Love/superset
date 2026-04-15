@@ -25,6 +25,7 @@ import { HotkeyMenuShortcut } from "renderer/components/HotkeyMenuShortcut";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { usePresets } from "renderer/react-query/presets";
+import { TodoButton } from "renderer/features/todo-agent/TodoButton";
 import { WorkspaceRunButton } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/WorkspaceRunButton";
 import { PRESET_HOTKEY_IDS } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -485,6 +486,11 @@ export function PresetsBar() {
 				})}
 			{workspaceId && (
 				<div className="ml-auto flex items-center gap-1 shrink-0">
+					<TodoButton
+						projectId={workspace?.projectId ?? workspace?.project?.id}
+						workspaceId={workspaceId}
+						worktreePath={workspace?.worktreePath}
+					/>
 					<WorkspaceRunButton
 						projectId={workspace?.projectId ?? workspace?.project?.id}
 						workspaceId={workspaceId}
