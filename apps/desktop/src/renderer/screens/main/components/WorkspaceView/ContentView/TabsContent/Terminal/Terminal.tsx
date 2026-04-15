@@ -248,6 +248,7 @@ export const Terminal = memo(function Terminal({
 		pendingInitialStateRef,
 		pendingEventsRef,
 		createOrAttachRef,
+		cancelCreateOrAttachRef,
 		setConnectionError,
 		setExitStatus,
 		maybeApplyInitialState,
