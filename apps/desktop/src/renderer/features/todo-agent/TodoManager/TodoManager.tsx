@@ -82,7 +82,7 @@ export function TodoManager({
 		<>
 			<Dialog open={open} onOpenChange={onOpenChange}>
 				<DialogContent
-					className="max-w-none sm:max-w-none w-[95vw] h-[86vh] p-0 gap-0 overflow-hidden"
+					className="w-[1080px] max-w-[calc(100vw-4rem)] sm:max-w-[calc(100vw-4rem)] h-[80vh] max-h-[760px] p-0 gap-0 overflow-hidden flex flex-col"
 					showCloseButton={false}
 				>
 					<DialogTitle className="sr-only">
@@ -120,7 +120,7 @@ export function TodoManager({
 						</div>
 					</div>
 
-					<div className="grid grid-cols-[300px_1fr] h-[calc(86vh-48px)]">
+					<div className="grid grid-cols-[260px_1fr] flex-1 min-h-0">
 						<div className="flex flex-col border-r min-h-0">
 							<div className="p-2 border-b">
 								<Input
