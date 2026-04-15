@@ -228,6 +228,12 @@ export const Terminal = memo(function Terminal({
 			setConnectionError(reason || "Connection to terminal daemon lost"),
 	});
 
+	// Auto-retry connection with exponential backoff. Declared before
+	// useTerminalColdRestore so the retry handler can reset the counter on
+	// attach success.
+	const retryCountRef = useRef(0);
+	const MAX_RETRIES = 5;
+
 	// Cold restore handling
 	const {
 		isRestoredMode,
@@ -249,6 +255,7 @@ export const Terminal = memo(function Terminal({
 		pendingEventsRef,
 		createOrAttachRef,
 		cancelCreateOrAttachRef,
+		retryCountRef,
 		setConnectionError,
 		setExitStatus,
 		maybeApplyInitialState,
@@ -261,10 +268,6 @@ export const Terminal = memo(function Terminal({
 	isRestoredModeRef.current = isRestoredMode;
 	const connectionErrorRef = useRef(connectionError);
 	connectionErrorRef.current = connectionError;
-
-	// Auto-retry connection with exponential backoff
-	const retryCountRef = useRef(0);
-	const MAX_RETRIES = 5;
 
 	// Stream handling
 	const { handleTerminalExit, handleStreamError, handleStreamData } =
@@ -303,19 +306,6 @@ export const Terminal = memo(function Terminal({
 		const timeout = setTimeout(handleRetryConnection, delay);
 		return () => clearTimeout(timeout);
 	}, [connectionError, handleRetryConnection]);
-
-	// Reset the auto-retry counter as soon as the error clears. Without this
-	// the counter only resets on the first `data` event after a reconnect
-	// (see registerHandlers below), so idle shells that produce no output
-	// (e.g. a quiet ssh session) exhaust MAX_RETRIES after a handful of
-	// transient disconnects even when every retry succeeded.
-	const prevConnectionErrorRef = useRef<string | null>(null);
-	useEffect(() => {
-		if (prevConnectionErrorRef.current && !connectionError) {
-			retryCountRef.current = 0;
-		}
-		prevConnectionErrorRef.current = connectionError;
-	}, [connectionError]);
 
 	const { isSearchOpen, setIsSearchOpen } = useTerminalHotkeys({
 		isFocused,
