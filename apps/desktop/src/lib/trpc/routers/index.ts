@@ -17,6 +17,8 @@ import { createDockerRouter } from "./docker";
 import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
+// Fork-local: TODO autonomous agent feature.
+import { createTodoAgentRouter } from "main/todo-agent";
 import { createGitHubMetricsRouter } from "./github-metrics";
 import { createHostServiceCoordinatorRouter } from "./host-service-coordinator";
 import { createLanguageServicesRouter } from "./language-services";
@@ -77,6 +79,7 @@ export const createAppRouter = (
 		tabTearoff: createTabTearoffRouter(wm),
 		extensions: createExtensionsRouter(getWindow),
 		vscodeExtensions: createVscodeExtensionsRouter(),
+		todoAgent: createTodoAgentRouter(),
 	});
 };
 

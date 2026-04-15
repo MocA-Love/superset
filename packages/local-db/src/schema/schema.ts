@@ -455,3 +455,7 @@ export type InsertBrowserSitePermission =
 	typeof browserSitePermissions.$inferInsert;
 export type SelectBrowserSitePermission =
 	typeof browserSitePermissions.$inferSelect;
+
+// Fork-local: TODO autonomous agent sessions. Re-exported so drizzle-kit
+// (configured with schema="./src/schema/schema.ts") picks up the table.
+export * from "./todo-sessions";
