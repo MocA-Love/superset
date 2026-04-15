@@ -164,34 +164,75 @@ export function applyVibrancy(
 		window.setVibrancy(vibrancyType);
 	}
 
-	// Drive the native CIGaussianBlur filter on top of the NSVisualEffectView.
-	// When the addon failed to load this is a no-op and we fall back to
-	// whatever the selected material produces on its own.
-	if (isNativeBlurAvailable()) {
-		const handle = window.getNativeWindowHandle();
-		const radius = state.enabled ? state.blurRadius : 0;
-		// Apply immediately on the current tick so the fast path is
-		// responsive, then re-apply a few more times over the next couple
-		// of frames. NSVisualEffectView occasionally overwrites its own
-		// filter stack in response to internal state changes (focus,
-		// material updates, lazy backdrop-layer creation), so a single
-		// mutation can silently get rolled back. Re-applying covers that
-		// window without adding noticeable cost.
-		const applyOnce = (attempt: number): void => {
-			if (window.isDestroyed()) return;
-			try {
-				const ok = setWindowBlurRadius(handle, radius);
-				vdbg("setWindowBlurRadius returned", { ok, radius, attempt });
-			} catch (error) {
-				console.warn("[vibrancy] setWindowBlurRadius failed:", error);
-			}
-		};
-		applyOnce(0);
-		setTimeout(() => applyOnce(1), 16);
-		setTimeout(() => applyOnce(2), 64);
-		setTimeout(() => applyOnce(3), 180);
-	} else {
+	scheduleNativeBlur(window, state);
+}
+
+// --- Native blur scheduling ----------------------------------------------
+// Each window tracks the "latest requested radius" plus a list of pending
+// retry timers. When a new applyVibrancy call arrives we:
+//   1. Update the latest radius for that window
+//   2. Cancel any still-pending retries from older calls
+//   3. Schedule a fresh burst of retries that all read from `latestRadius`
+// This kills a subtle race where a user dragging the blur slider quickly
+// would have an old value's 180ms retry land after a newer value was
+// already applied, clobbering it.
+
+interface BlurSchedule {
+	latestRadius: number;
+	timers: ReturnType<typeof setTimeout>[];
+}
+
+const blurSchedules = new WeakMap<BrowserWindow, BlurSchedule>();
+
+function scheduleNativeBlur(window: BrowserWindow, state: VibrancyState): void {
+	if (!isNativeBlurAvailable()) {
 		vdbg("native blur unavailable — skipping setWindowBlurRadius");
+		return;
+	}
+
+	const radius = state.enabled ? state.blurRadius : 0;
+	let schedule = blurSchedules.get(window);
+	if (!schedule) {
+		schedule = { latestRadius: radius, timers: [] };
+		blurSchedules.set(window, schedule);
+	} else {
+		schedule.latestRadius = radius;
+		for (const timer of schedule.timers) clearTimeout(timer);
+		schedule.timers.length = 0;
+	}
+
+	const handle = window.getNativeWindowHandle();
+	const apply = (attempt: number): void => {
+		if (window.isDestroyed()) return;
+		const current = blurSchedules.get(window);
+		if (!current) return;
+		try {
+			const ok = setWindowBlurRadius(handle, current.latestRadius);
+			vdbg("setWindowBlurRadius returned", {
+				ok,
+				radius: current.latestRadius,
+				attempt,
+			});
+		} catch (error) {
+			console.warn("[vibrancy] setWindowBlurRadius failed:", error);
+		}
+	};
+
+	// Immediate apply + retries that stretch long enough to beat the
+	// NSVisualEffectView's own lazy refresh cycle.
+	apply(0);
+	const delays = [16, 64, 180, 480, 960];
+	for (let i = 0; i < delays.length; i++) {
+		const attempt = i + 1;
+		const delay = delays[i];
+		if (delay === undefined) continue;
+		const timer = setTimeout(() => {
+			if (!schedule) return;
+			const index = schedule.timers.indexOf(timer);
+			if (index >= 0) schedule.timers.splice(index, 1);
+			apply(attempt);
+		}, delay);
+		schedule.timers.push(timer);
 	}
 }
 
