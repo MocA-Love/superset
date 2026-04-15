@@ -8,7 +8,7 @@ import {
 } from "@superset/ui/select";
 import { Slider } from "@superset/ui/slider";
 import { Switch } from "@superset/ui/switch";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useVibrancyStore } from "renderer/stores/vibrancy";
 import {
 	VIBRANCY_OPACITY_MAX,
@@ -30,6 +30,12 @@ export function VibrancySection() {
 	const opacity = useVibrancyStore((s) => s.opacity);
 	const blurLevel = useVibrancyStore((s) => s.blurLevel);
 	const setState = useVibrancyStore((s) => s.setState);
+
+	// Drag-local opacity: drives the slider thumb and a CSS preview via the
+	// `--vibrancy-alpha` variable, so the window updates in real time without
+	// hitting the filesystem on every tick. Persistence happens on commit.
+	const [draftOpacity, setDraftOpacity] = useState<number | null>(null);
+	const displayOpacity = draftOpacity ?? opacity;
 
 	useEffect(() => {
 		// index.tsx already kicks off hydrate at startup; this is a safety net
@@ -86,21 +92,35 @@ export function VibrancySection() {
 					<Label className="text-sm font-medium">
 						不透明度
 						<span className="ml-2 text-xs text-muted-foreground">
-							{opacity}%
+							{displayOpacity}%
 						</span>
 					</Label>
 				</div>
 				<Slider
-					value={[opacity]}
+					value={[displayOpacity]}
 					min={VIBRANCY_OPACITY_MIN}
 					max={VIBRANCY_OPACITY_MAX}
 					step={1}
 					disabled={!enabled || !hydrated}
 					onValueChange={(values) => {
 						const value = values[0];
-						if (typeof value === "number") {
-							void setState({ opacity: value });
+						if (typeof value !== "number") return;
+						setDraftOpacity(value);
+						// Live-preview: drive the CSS variable directly so the
+						// window updates as the user drags, without writing to
+						// disk or hopping through tRPC on every tick.
+						if (typeof document !== "undefined") {
+							document.documentElement.style.setProperty(
+								"--vibrancy-alpha",
+								(value / 100).toFixed(3),
+							);
 						}
+					}}
+					onValueCommit={(values) => {
+						const value = values[0];
+						if (typeof value !== "number") return;
+						setDraftOpacity(null);
+						void setState({ opacity: value });
 					}}
 				/>
 				<p className="text-xs text-muted-foreground">

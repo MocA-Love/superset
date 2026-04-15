@@ -39,15 +39,28 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 					electronTrpcClient.vibrancy.get.query(),
 					electronTrpcClient.vibrancy.getSupported.query(),
 				]);
-				applyToDom(current);
-				set({ ...current, supported: supportInfo.supported, hydrated: true });
+				// Coerce to disabled on unsupported platforms so a state imported
+				// from macOS (enabled: true) never leaks into the DOM on Win/Linux.
+				const effective: VibrancyState = supportInfo.supported
+					? current
+					: { ...current, enabled: false };
+				applyToDom(effective);
+				set({
+					...effective,
+					supported: supportInfo.supported,
+					hydrated: true,
+				});
 
 				if (!subscriptionEstablished) {
 					subscriptionEstablished = true;
 					electronTrpcClient.vibrancy.onChanged.subscribe(undefined, {
 						onData: (incoming) => {
-							applyToDom(incoming);
-							set(incoming);
+							const isSupported = get().supported;
+							const effectiveIncoming: VibrancyState = isSupported
+								? incoming
+								: { ...incoming, enabled: false };
+							applyToDom(effectiveIncoming);
+							set(effectiveIncoming);
 						},
 						onError: (err) => {
 							console.error("[vibrancy] subscription error:", err);
