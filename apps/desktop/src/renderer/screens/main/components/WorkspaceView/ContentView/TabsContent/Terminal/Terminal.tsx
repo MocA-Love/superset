@@ -304,6 +304,19 @@ export const Terminal = memo(function Terminal({
 		return () => clearTimeout(timeout);
 	}, [connectionError, handleRetryConnection]);
 
+	// Reset the auto-retry counter as soon as the error clears. Without this
+	// the counter only resets on the first `data` event after a reconnect
+	// (see registerHandlers below), so idle shells that produce no output
+	// (e.g. a quiet ssh session) exhaust MAX_RETRIES after a handful of
+	// transient disconnects even when every retry succeeded.
+	const prevConnectionErrorRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (prevConnectionErrorRef.current && !connectionError) {
+			retryCountRef.current = 0;
+		}
+		prevConnectionErrorRef.current = connectionError;
+	}, [connectionError]);
+
 	const { isSearchOpen, setIsSearchOpen } = useTerminalHotkeys({
 		isFocused,
 		xtermRef,
