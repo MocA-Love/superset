@@ -6,42 +6,64 @@ import {
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 
-const SUPPORTED_LANGUAGES = [
-	"bash",
-	"c",
-	"cpp",
-	"csharp",
-	"css",
-	"dart",
-	"diff",
-	"go",
-	"graphql",
-	"typescript",
-	"javascript",
-	"tsx",
-	"jsx",
-	"html",
-	"java",
-	"json",
-	"kotlin",
-	"yaml",
-	"markdown",
-	"php",
-	"plaintext",
-	"python",
-	"ruby",
-	"rust",
-	"sql",
-	"swift",
-	"toml",
-	"vue",
-] as BundledLanguage[];
+const SHIKI_LANGUAGE_ALIASES: Record<string, string | null> = {
+	"c#": "csharp",
+	cs: "csharp",
+	cjs: "javascript",
+	cts: "typescript",
+	gql: "graphql",
+	htm: "html",
+	js: "javascript",
+	javascriptreact: "jsx",
+	jsx: "jsx",
+	md: "markdown",
+	mjs: "javascript",
+	mts: "typescript",
+	py: "python",
+	plaintext: null,
+	rs: "rust",
+	scss: "scss",
+	sh: "shellscript",
+	shellscript: "shellscript",
+	text: null,
+	ts: "typescript",
+	typescriptreact: "tsx",
+	txt: null,
+	yml: "yaml",
+};
+
+function normalizeShikiLanguage(language: string): string | null {
+	const normalized = language.trim().toLowerCase();
+	if (!normalized) {
+		return null;
+	}
+
+	return SHIKI_LANGUAGE_ALIASES[normalized] ?? normalized;
+}
+
+async function ensureLanguageLoaded(
+	highlighter: Highlighter,
+	language: string,
+): Promise<BundledLanguage> {
+	const normalized = normalizeShikiLanguage(language);
+	if (!normalized) {
+		throw new Error("No Shiki language provided");
+	}
+
+	if (
+		!highlighter.getLoadedLanguages().includes(normalized as BundledLanguage)
+	) {
+		await highlighter.loadLanguage(normalized as BundledLanguage);
+	}
+
+	return normalized as BundledLanguage;
+}
 
 async function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = createHighlighter({
 			themes: ["dark-plus"],
-			langs: SUPPORTED_LANGUAGES,
+			langs: [],
 		});
 	}
 	return highlighterPromise;
@@ -64,10 +86,7 @@ export async function highlightCode(
 	},
 ): Promise<string> {
 	const highlighter = await getHighlighter();
-
-	const safeLanguage = SUPPORTED_LANGUAGES.includes(language as BundledLanguage)
-		? (language as BundledLanguage)
-		: "plaintext";
+	const safeLanguage = await ensureLanguageLoaded(highlighter, language);
 
 	let themeName = "dark-plus";
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { resolveActiveEditorLanguageId } from "shared/language-registry";
 import { useWorkspaceId } from "../WorkspaceIdContext";
 
 /**
@@ -58,26 +59,9 @@ export function useActiveEditorSync() {
 
 		if (pane.type === "file-viewer" && pane.fileViewer?.filePath) {
 			filePath = pane.fileViewer.filePath;
+			const resolvedLanguageId = resolveActiveEditorLanguageId(filePath);
 			const ext = filePath.split(".").pop()?.toLowerCase();
-			const EXT_TO_LANG: Record<string, string> = {
-				ts: "typescript",
-				tsx: "typescriptreact",
-				js: "javascript",
-				jsx: "javascriptreact",
-				py: "python",
-				rs: "rust",
-				go: "go",
-				json: "json",
-				md: "markdown",
-				css: "css",
-				html: "html",
-				yaml: "yaml",
-				yml: "yaml",
-				toml: "toml",
-				sh: "shellscript",
-				sql: "sql",
-			};
-			languageId = ext ? (EXT_TO_LANG[ext] ?? ext) : "plaintext";
+			languageId = resolvedLanguageId ?? ext ?? "plaintext";
 		}
 
 		if (filePath !== lastFilePath.current) {

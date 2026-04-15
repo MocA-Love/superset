@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveReferenceGraphLanguageId } from "shared/language-registry";
 import { languageServiceManager } from "../language-services/manager";
 import type {
 	LanguageServiceCallHierarchyItem,
@@ -20,39 +21,7 @@ function makeNodeId(absolutePath: string, line: number, column: number) {
 }
 
 function getLanguageIdFromPath(filePath: string): string {
-	const ext = path.extname(filePath).toLowerCase();
-	const map: Record<string, string> = {
-		".ts": "typescript",
-		".tsx": "typescriptreact",
-		".js": "javascript",
-		".jsx": "javascriptreact",
-		".py": "python",
-		".go": "go",
-		".rs": "rust",
-		".json": "json",
-		".html": "html",
-		".css": "css",
-		".yaml": "yaml",
-		".yml": "yaml",
-		".md": "markdown",
-		".dart": "dart",
-		".graphql": "graphql",
-		".gql": "graphql",
-		".toml": "toml",
-		".sql": "sql",
-		".sh": "shellscript",
-		".bash": "shellscript",
-		".java": "java",
-		".kt": "kotlin",
-		".rb": "ruby",
-		".php": "php",
-		".swift": "swift",
-		".c": "c",
-		".cpp": "cpp",
-		".h": "c",
-		".hpp": "cpp",
-	};
-	return map[ext] ?? "plaintext";
+	return resolveReferenceGraphLanguageId(filePath);
 }
 
 async function getCodeSnippet(
