@@ -1,11 +1,14 @@
+import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "lib/trpc";
+import { describeEnhanceFailure, enhanceTodoText } from "./enhance-text";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSupervisor } from "./supervisor";
 import {
 	todoAttachPaneInputSchema,
 	todoCreateInputSchema,
+	todoEnhanceTextInputSchema,
 	todoSendInputSchema,
 	type TodoSessionStateEvent,
 } from "./types";
@@ -33,7 +36,7 @@ export const createTodoAgentRouter = () => {
 					workspaceId: input.workspaceId,
 					title: input.title,
 					description: input.description,
-					goal: input.goal,
+					goal: input.goal ?? null,
 					verifyCommand: input.verifyCommand ?? null,
 					maxIterations: input.maxIterations,
 					maxWallClockSec: input.maxWallClockSec,
@@ -61,6 +64,25 @@ export const createTodoAgentRouter = () => {
 			.query(({ input }) =>
 				getTodoSessionStore().listForWorkspace(input.workspaceId),
 			),
+
+		// Cross-workspace feed used by the Agent-Manager-style view.
+		listAll: publicProcedure.query(() => getTodoSessionStore().listAll()),
+
+		enhanceText: publicProcedure
+			.input(todoEnhanceTextInputSchema)
+			.mutation(async ({ input }) => {
+				const { text, attempts } = await enhanceTodoText(
+					input.text,
+					input.kind,
+				);
+				if (text === null) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: describeEnhanceFailure(attempts),
+					});
+				}
+				return { text };
+			}),
 
 		get: publicProcedure
 			.input(z.object({ sessionId: z.string().min(1) }))

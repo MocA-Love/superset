@@ -415,11 +415,12 @@ function renderGoalDoc(session: SelectTodoSession): string {
 	const lines: string[] = [
 		`# TODO: ${session.title}`,
 		"",
-		"## 説明",
+		"## やって欲しいこと",
 		session.description,
 		"",
 		"## ゴール（受け入れ条件）",
-		session.goal,
+		session.goal?.trim() ||
+			"（未指定。上記『やって欲しいこと』が完了した時点で完了とみなす）",
 		"",
 	];
 	if (session.verifyCommand) {
@@ -447,13 +448,16 @@ function buildIterationPrompt(
 	iteration: number,
 ): string {
 	const goalPath = `.superset/todo/${session.id}/goal.md`;
+	const goalClause = session.goal?.trim()
+		? "ゴール（受け入れ条件）を達成することを目指してください"
+		: "『やって欲しいこと』が完了した時点で完了とみなしてください";
 	if (!session.verifyCommand) {
-		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、ゴールに向かって作業してください。外部 verify は行いません。ゴールを達成したら停止してください。`;
+		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、${goalClause}。外部 verify は行いません。達成したと判断したら停止してください。`;
 	}
 	if (iteration === 1) {
-		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、ゴールに向かって作業してください。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行し、追加のターンが必要かどうかを知らせます。`;
+		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、${goalClause}。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行し、追加のターンが必要かどうかを知らせます。`;
 	}
-	return `イテレーション ${iteration}。verify コマンド \`${session.verifyCommand}\` が失敗しました。理由: ${session.verdictReason ?? "不明"}。${goalPath} のゴールに向けて作業を続けてください。`;
+	return `イテレーション ${iteration}。verify コマンド \`${session.verifyCommand}\` が失敗しました。理由: ${session.verdictReason ?? "不明"}。${goalPath} を読み直し、${goalClause}。作業を続けてください。`;
 }
 
 function tailForReason(log: string): string {

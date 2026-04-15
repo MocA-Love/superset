@@ -6,9 +6,15 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { eq } from "drizzle-orm";
+import { desc, eq, isNull } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type { TodoSessionStateEvent } from "./types";
+
+export interface TodoSessionListEntry extends SelectTodoSession {
+	workspaceName: string | null;
+	workspaceBranch: string | null;
+	projectName: string | null;
+}
 
 /**
  * In-memory session bookkeeping + persistence helpers for the TODO agent.
@@ -49,7 +55,37 @@ class TodoSessionStore {
 			.select()
 			.from(todoSessions)
 			.where(eq(todoSessions.workspaceId, workspaceId))
+			.orderBy(desc(todoSessions.createdAt))
 			.all();
+	}
+
+	/**
+	 * Cross-workspace list used by the Agent-Manager-style view. Joins in
+	 * workspace + project names so the manager can group and label rows
+	 * without issuing N extra queries. Deleted workspaces
+	 * (`deletingAt IS NOT NULL`) are filtered out.
+	 */
+	listAll(): TodoSessionListEntry[] {
+		const rows = localDb
+			.select({
+				session: todoSessions,
+				workspaceName: workspaces.name,
+				workspaceBranch: workspaces.branch,
+				workspaceDeletingAt: workspaces.deletingAt,
+				projectName: projects.name,
+			})
+			.from(todoSessions)
+			.leftJoin(workspaces, eq(workspaces.id, todoSessions.workspaceId))
+			.leftJoin(projects, eq(projects.id, workspaces.projectId))
+			.where(isNull(workspaces.deletingAt))
+			.orderBy(desc(todoSessions.createdAt))
+			.all();
+		return rows.map((row) => ({
+			...row.session,
+			workspaceName: row.workspaceName ?? null,
+			workspaceBranch: row.workspaceBranch ?? null,
+			projectName: row.projectName ?? null,
+		}));
 	}
 
 	update(

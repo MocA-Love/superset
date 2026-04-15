@@ -25,7 +25,10 @@ export const todoSessions = sqliteTable(
 
 		title: text("title").notNull(),
 		description: text("description").notNull(),
-		goal: text("goal").notNull(),
+		// Nullable: when omitted, the session treats "description completed"
+		// as the implicit goal. Keeps the UX friction low for investigation
+		// tasks where the user does not have a crisp acceptance sentence.
+		goal: text("goal"),
 		// Nullable: when absent, the session runs as a single-turn task
 		// (no iteration loop, no decisive gate). Used for research /
 		// investigation / single-shot work where there is no sensible

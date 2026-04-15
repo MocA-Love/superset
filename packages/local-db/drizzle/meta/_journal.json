@@ -358,6 +358,13 @@
       "when": 1776268299588,
       "tag": "0050_todo_verify_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1776270194234,
+      "tag": "0051_todo_goal_optional",
+      "breakpoints": true
     }
   ]
 }

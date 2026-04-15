@@ -6,19 +6,33 @@ export const todoCreateInputSchema = z.object({
 	projectId: z.string().optional(),
 	title: z.string().min(1).max(200),
 	description: z.string().min(1).max(10_000),
-	goal: z.string().min(1).max(10_000),
+	// Optional: when omitted, the session treats "やって欲しいこと
+	// (description) が完了したとき" as the implicit goal.
+	goal: z
+		.string()
+		.trim()
+		.max(10_000)
+		.optional()
+		.transform((v) => (v && v.length > 0 ? v : undefined)),
 	// Optional: when omitted, the session runs as a single-turn task
 	// (research / investigation / one-shot). When provided, it is the
 	// decisive gate for the iteration loop.
 	verifyCommand: z
 		.string()
 		.trim()
-		.min(1)
+		.max(10_000)
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
 	maxIterations: z.number().int().min(1).max(100).default(10),
 	maxWallClockSec: z.number().int().min(60).max(60 * 60 * 4).default(1800),
 });
+
+export const todoEnhanceTextInputSchema = z.object({
+	text: z.string().trim().min(1).max(10_000),
+	kind: z.enum(["description", "goal"]),
+});
+
+export type TodoEnhanceTextInput = z.infer<typeof todoEnhanceTextInputSchema>;
 
 export type TodoCreateInput = z.infer<typeof todoCreateInputSchema>;
 
