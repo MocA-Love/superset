@@ -1,6 +1,11 @@
 import { join } from "node:path";
 import { type BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
+import { appState } from "../app-state";
+import {
+	DEFAULT_VIBRANCY_STATE,
+	getInitialWindowOptions as getInitialVibrancyOptions,
+} from "../vibrancy";
 
 interface TearoffWindowOptions {
 	windowId: string;
@@ -112,6 +117,13 @@ export class WindowManager {
 	} {
 		const { windowId } = options;
 
+		const initialVibrancyState =
+			appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+		const vibrancyWindowOptions = getInitialVibrancyOptions(
+			initialVibrancyState,
+			nativeTheme.shouldUseDarkColors,
+		);
+
 		const window = createWindow({
 			id: "tearoff",
 			title: "Superset",
@@ -122,7 +134,7 @@ export class WindowManager {
 			minWidth: 400,
 			minHeight: 400,
 			show: false,
-			backgroundColor: nativeTheme.shouldUseDarkColors ? "#252525" : "#ffffff",
+			...vibrancyWindowOptions,
 			frame: false,
 			titleBarStyle: "hidden",
 			trafficLightPosition: { x: 16, y: 16 },

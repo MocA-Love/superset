@@ -6,5 +6,6 @@ export * from "./settings-state";
 export * from "./sidebar-state";
 export * from "./tabs";
 export * from "./theme";
+export * from "./vibrancy";
 export * from "./workspace-init";
 export * from "./workspace-sidebar-state";

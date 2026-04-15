@@ -29,6 +29,10 @@ import {
 	getNotificationTitle,
 	getWorkspaceName,
 } from "../lib/notifications/utils";
+import {
+	DEFAULT_VIBRANCY_STATE,
+	getInitialWindowOptions as getInitialVibrancyOptions,
+} from "../lib/vibrancy";
 import { windowManager } from "../lib/window-manager";
 import {
 	getInitialWindowBounds,
@@ -136,6 +140,13 @@ export async function MainWindow() {
 		? `${productName} — ${workspaceName}`
 		: productName;
 
+	const initialVibrancyState =
+		appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+	const vibrancyWindowOptions = getInitialVibrancyOptions(
+		initialVibrancyState,
+		nativeTheme.shouldUseDarkColors,
+	);
+
 	const window = createWindow({
 		id: "main",
 		title: windowTitle,
@@ -146,7 +157,7 @@ export async function MainWindow() {
 		minWidth: 400,
 		minHeight: 400,
 		show: false,
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#252525" : "#ffffff",
+		...vibrancyWindowOptions,
 		center: initialBounds.center,
 		movable: true,
 		resizable: true,

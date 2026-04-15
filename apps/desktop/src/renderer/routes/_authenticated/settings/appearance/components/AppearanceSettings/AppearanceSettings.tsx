@@ -7,6 +7,7 @@ import {
 import { FontSettingSection } from "./components/FontSettingSection";
 import { MarkdownStyleSection } from "./components/MarkdownStyleSection";
 import { ThemeSection } from "./components/ThemeSection";
+import { VibrancySection } from "./components/VibrancySection";
 
 /**
  * Renders a list of visible sections with automatic border separators.
@@ -67,6 +68,7 @@ export function AppearanceSettings({ visibleItems }: AppearanceSettingsProps) {
 
 			<SectionList>
 				{showThemeSection && <ThemeSection key="theme" />}
+				<VibrancySection key="vibrancy" />
 				{showMarkdown && <MarkdownStyleSection key="markdown" />}
 				{showEditorFont && (
 					<FontSettingSection key="editor-font" variant="editor" />

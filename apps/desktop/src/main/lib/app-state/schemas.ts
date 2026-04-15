@@ -3,6 +3,10 @@
  */
 import type { BaseTabsState } from "shared/tabs-types";
 import type { Theme } from "shared/themes";
+import {
+	DEFAULT_VIBRANCY_STATE,
+	type VibrancyState,
+} from "shared/vibrancy-types";
 
 // Re-export for convenience
 export type { BaseTabsState as TabsState, Pane } from "shared/tabs-types";
@@ -24,6 +28,7 @@ export interface AppState {
 	tabsState: BaseTabsState;
 	themeState: ThemeState;
 	hotkeysState: LegacyHotkeysState;
+	vibrancyState: VibrancyState;
 }
 
 export const defaultAppState: AppState = {
@@ -44,4 +49,5 @@ export const defaultAppState: AppState = {
 		version: 1,
 		byPlatform: { darwin: {}, win32: {}, linux: {} },
 	},
+	vibrancyState: DEFAULT_VIBRANCY_STATE,
 };

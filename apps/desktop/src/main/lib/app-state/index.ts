@@ -60,6 +60,10 @@ function ensureValidShape(data: Partial<AppState>): AppState {
 				...(data.hotkeysState?.byPlatform ?? {}),
 			},
 		},
+		vibrancyState: {
+			...defaultAppState.vibrancyState,
+			...(data.vibrancyState ?? {}),
+		},
 	};
 }
 
