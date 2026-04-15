@@ -52,18 +52,32 @@ class TodoSupervisor {
 	private active: ActiveRun | undefined;
 	private readonly queue: string[] = [];
 
-	prepareArtifacts(session: SelectTodoSession): string {
-		const worktreePath = resolveWorktreePath(session.workspaceId);
+	/**
+	 * Pre-compute the artifact directory path for a not-yet-inserted
+	 * session. Called from the `create` mutation BEFORE the row is
+	 * written so the DB insert can land the final absolute path in one
+	 * shot — no more two-step `PENDING` → update dance, no more
+	 * half-written rows left behind by a crash between the two steps.
+	 */
+	computeArtifactPath(params: {
+		sessionId: string;
+		workspaceId: string;
+	}): string {
+		const worktreePath = resolveWorktreePath(params.workspaceId);
 		if (!worktreePath) {
 			throw new Error(
-				`todo-agent: workspace ${session.workspaceId} has no resolvable path`,
+				`todo-agent: workspace ${params.workspaceId} has no resolvable path`,
 			);
 		}
-		const dir = path.join(
-			worktreePath,
-			TODO_ARTIFACT_SUBDIR,
-			session.id,
-		);
+		return path.join(worktreePath, TODO_ARTIFACT_SUBDIR, params.sessionId);
+	}
+
+	/**
+	 * Materialize the artifact directory and write the initial goal.md.
+	 * Called right after insert. Idempotent — safe to call on rerun.
+	 */
+	prepareArtifacts(session: SelectTodoSession): string {
+		const dir = session.artifactPath;
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(
 			path.join(dir, "goal.md"),
@@ -150,6 +164,9 @@ class TodoSupervisor {
 		// runs of the same session are cleared so the UI sees just the
 		// current attempt.
 		store.clearStreamEvents(sessionId);
+		// Prime the artifact-path cache so the hot stream-persist path
+		// does not need to do a synchronous SQLite read per event.
+		store.setArtifactPathCache(sessionId, session0.artifactPath);
 
 		const ac = new AbortController();
 		const run: ActiveRun = {
@@ -352,6 +369,11 @@ class TodoSupervisor {
 					worktreePath,
 					ac.signal,
 				);
+				// If the user aborted while verify was running, bail out
+				// BEFORE we write any verdict state. Otherwise the aborted
+				// session would be tainted with "verify failed: AbortError…"
+				// even though verify was never allowed to finish.
+				if (ac.signal.aborted) return;
 				appendVerifyEvent(sessionId, iteration, verdict);
 
 				if (verdict.passed) {

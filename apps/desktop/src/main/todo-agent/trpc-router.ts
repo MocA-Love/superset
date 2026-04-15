@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { todoPromptPresets } from "@superset/local-db";
@@ -46,7 +47,19 @@ export const createTodoAgentRouter = () => {
 					);
 				}
 
+				// Compute the final artifact path up-front so the row is
+				// inserted with its permanent path in one shot. No more
+				// half-written PENDING rows left behind if the process
+				// crashes between insert and update.
+				const sessionId = randomUUID();
+				const supervisor = getTodoSupervisor();
+				const artifactPath = supervisor.computeArtifactPath({
+					sessionId,
+					workspaceId: input.workspaceId,
+				});
+
 				const session = store.insert({
+					id: sessionId,
 					projectId: input.projectId ?? null,
 					workspaceId: input.workspaceId,
 					title: input.title,
@@ -70,13 +83,15 @@ export const createTodoAgentRouter = () => {
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
-					artifactPath: `.superset/todo/PENDING`,
+					artifactPath,
 					startedAt: null,
 					completedAt: null,
 				});
 
-				const artifactPath = getTodoSupervisor().prepareArtifacts(session);
-				store.update(session.id, { artifactPath });
+				// Materialize the directory + goal.md. If this throws after
+				// the row exists the user can delete the broken session
+				// from the Manager — same as any other filesystem error.
+				supervisor.prepareArtifacts(session);
 
 				return { sessionId: session.id };
 			}),
@@ -241,7 +256,15 @@ export const createTodoAgentRouter = () => {
 				// authored fields from the source. Verdict / iteration /
 				// pane attachment are reset so the new session starts
 				// clean in the Agent Manager.
+				const nextId = randomUUID();
+				const supervisor = getTodoSupervisor();
+				const artifactPath = supervisor.computeArtifactPath({
+					sessionId: nextId,
+					workspaceId: source.workspaceId,
+				});
+
 				const next = store.insert({
+					id: nextId,
 					projectId: source.projectId,
 					workspaceId: source.workspaceId,
 					title: source.title,
@@ -265,13 +288,12 @@ export const createTodoAgentRouter = () => {
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
-					artifactPath: `.superset/todo/PENDING`,
+					artifactPath,
 					startedAt: null,
 					completedAt: null,
 				});
 
-				const artifactPath = getTodoSupervisor().prepareArtifacts(next);
-				store.update(next.id, { artifactPath });
+				supervisor.prepareArtifacts(next);
 
 				return { sessionId: next.id };
 			}),

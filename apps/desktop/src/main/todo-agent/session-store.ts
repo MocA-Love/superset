@@ -1,10 +1,6 @@
 import { EventEmitter } from "node:events";
-import {
-	appendFileSync,
-	existsSync,
-	mkdirSync,
-	readFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import path from "node:path";
 import {
 	projects,
@@ -13,7 +9,7 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { desc, eq, isNull } from "drizzle-orm";
+import { desc, eq, inArray, isNull } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
@@ -44,9 +40,39 @@ class TodoSessionStore {
 	private readonly emitter = new EventEmitter();
 	/** In-memory per-session stream event buffer. Not persisted. */
 	private readonly streamBuffers = new Map<string, TodoStreamEvent[]>();
+	/**
+	 * Cached absolute artifact path per sessionId. The supervisor
+	 * primes this at the start of each run via `setArtifactPathCache`
+	 * so append-hot stream writes do not need to hit SQLite on every
+	 * event.
+	 */
+	private readonly artifactPathCache = new Map<string, string>();
+	/**
+	 * Per-session serialized append chain. `appendFile` from
+	 * node:fs/promises is async, and bursts of stream events can race
+	 * and write out-of-order. We sequence them per session via a
+	 * promise chain — cheap and avoids reordering the JSONL.
+	 */
+	private readonly persistQueues = new Map<string, Promise<void>>();
 
 	constructor() {
 		this.emitter.setMaxListeners(0);
+		this.rehydrateStrandedSessions();
+	}
+
+	setArtifactPathCache(sessionId: string, artifactPath: string | null): void {
+		if (artifactPath && artifactPath.startsWith("/")) {
+			this.artifactPathCache.set(sessionId, artifactPath);
+			// Make sure the directory exists once, up-front, so the async
+			// appendFile calls below never race on mkdir.
+			try {
+				mkdirSync(artifactPath, { recursive: true });
+			} catch (error) {
+				console.warn("[todo-agent] artifact mkdir failed", error);
+			}
+		} else {
+			this.artifactPathCache.delete(sessionId);
+		}
 	}
 
 	appendStreamEvents(sessionId: string, events: TodoStreamEvent[]): void {
@@ -88,16 +114,74 @@ class TodoSessionStore {
 		sessionId: string,
 		events: TodoStreamEvent[],
 	): void {
-		try {
+		// Fast-path: use the cached absolute path the supervisor primed
+		// when the run started. Falls back to a DB read only when no
+		// cache entry exists (e.g. a historical session being replayed
+		// outside of a run).
+		let dir = this.artifactPathCache.get(sessionId);
+		if (!dir) {
 			const session = this.get(sessionId);
-			const dir = session?.artifactPath;
-			if (!dir || !dir.startsWith("/")) return;
-			mkdirSync(dir, { recursive: true });
-			const filePath = path.join(dir, STREAM_JSONL_FILE);
-			const body = `${events.map((e) => JSON.stringify(e)).join("\n")}\n`;
-			appendFileSync(filePath, body, "utf8");
+			dir = session?.artifactPath;
+			if (dir && dir.startsWith("/")) {
+				this.artifactPathCache.set(sessionId, dir);
+			}
+		}
+		if (!dir || !dir.startsWith("/")) return;
+		const filePath = path.join(dir, STREAM_JSONL_FILE);
+		const body = `${events.map((e) => JSON.stringify(e)).join("\n")}\n`;
+
+		// Chain async appends so bursty event streams stay ordered in
+		// the JSONL file and main process is not blocked on fs I/O.
+		const previous =
+			this.persistQueues.get(sessionId) ?? Promise.resolve();
+		const nextTask = previous
+			.catch(() => {})
+			.then(() => appendFile(filePath, body, "utf8"))
+			.catch((error) => {
+				console.warn("[todo-agent] stream persist failed", error);
+			});
+		this.persistQueues.set(sessionId, nextTask);
+	}
+
+	/**
+	 * On app startup, any session that was mid-run when the previous
+	 * process died will still have a non-terminal status
+	 * (`preparing` / `running` / `verifying`) in the DB. The
+	 * in-memory supervisor is obviously gone, so those rows would
+	 * otherwise render as "running" forever in the Agent Manager
+	 * with no way to start, stop, or re-run them. Flip them to
+	 * `failed` once with a clear reason so the user can immediately
+	 * delete or re-run from the UI.
+	 */
+	private rehydrateStrandedSessions(): void {
+		try {
+			const stranded = localDb
+				.update(todoSessions)
+				.set({
+					status: "failed",
+					phase: "failed",
+					verdictPassed: false,
+					verdictReason:
+						"前回の実行が中断されました（アプリ再起動）。再実行するか削除してください。",
+					completedAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+				.where(
+					inArray(todoSessions.status, [
+						"preparing",
+						"running",
+						"verifying",
+					]),
+				)
+				.returning()
+				.all();
+			if (stranded.length > 0) {
+				console.log(
+					`[todo-agent] rehydrated ${stranded.length} stranded session(s)`,
+				);
+			}
 		} catch (error) {
-			console.warn("[todo-agent] stream persist failed", error);
+			console.warn("[todo-agent] rehydrate on startup failed", error);
 		}
 	}
 
