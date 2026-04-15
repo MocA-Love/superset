@@ -344,6 +344,13 @@
       "when": 1776068037113,
       "tag": "0048_post_commit_command",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1776267414307,
+      "tag": "0049_add_todo_sessions",
+      "breakpoints": true
     }
   ]
 }
