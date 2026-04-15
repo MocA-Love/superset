@@ -1,11 +1,4 @@
 import { Label } from "@superset/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@superset/ui/select";
 import { Slider } from "@superset/ui/slider";
 import { Switch } from "@superset/ui/switch";
 import { useEffect, useState } from "react";
@@ -16,12 +9,34 @@ import {
 	type VibrancyBlurLevel,
 } from "shared/vibrancy-types";
 
-const BLUR_OPTIONS: Array<{ value: VibrancyBlurLevel; label: string }> = [
-	{ value: "subtle", label: "弱 (sidebar)" },
-	{ value: "standard", label: "標準 (header)" },
-	{ value: "strong", label: "強 (content)" },
-	{ value: "ultra", label: "最強 (fullscreen-ui)" },
+const BLUR_LEVEL_ORDER: VibrancyBlurLevel[] = [
+	"subtle",
+	"standard",
+	"strong",
+	"ultra",
 ];
+const BLUR_LEVEL_LABEL: Record<VibrancyBlurLevel, string> = {
+	subtle: "弱",
+	standard: "標準",
+	strong: "強",
+	ultra: "最強",
+};
+
+function sliderValueToBlurLevel(value: number): VibrancyBlurLevel {
+	const clamped = Math.max(0, Math.min(100, value));
+	// 4 equal buckets across the 0-100 range.
+	const index = Math.min(
+		BLUR_LEVEL_ORDER.length - 1,
+		Math.floor((clamped / 100) * BLUR_LEVEL_ORDER.length),
+	);
+	return BLUR_LEVEL_ORDER[index] ?? "standard";
+}
+
+function blurLevelToSliderValue(level: VibrancyBlurLevel): number {
+	const index = BLUR_LEVEL_ORDER.indexOf(level);
+	if (index < 0) return 50;
+	return Math.round(((index + 0.5) / BLUR_LEVEL_ORDER.length) * 100);
+}
 
 export function VibrancySection() {
 	const hydrated = useVibrancyStore((s) => s.hydrated);
@@ -124,29 +139,33 @@ export function VibrancySection() {
 				</p>
 			</div>
 
-			<div className="space-y-2">
-				<Label className="text-sm font-medium">ブラー強度</Label>
-				<Select
-					value={blurLevel}
+			<div className="space-y-3">
+				<div className="flex items-center justify-between gap-4">
+					<Label className="text-sm font-medium">
+						ブラー強度
+						<span className="ml-2 text-xs text-muted-foreground">
+							{BLUR_LEVEL_LABEL[blurLevel]}
+						</span>
+					</Label>
+				</div>
+				<Slider
+					value={[blurLevelToSliderValue(blurLevel)]}
+					min={0}
+					max={100}
+					step={1}
 					disabled={!enabled || !hydrated}
-					onValueChange={(value) => {
-						void setState({ blurLevel: value as VibrancyBlurLevel });
+					onValueCommit={(values) => {
+						const value = values[0];
+						if (typeof value !== "number") return;
+						const nextLevel = sliderValueToBlurLevel(value);
+						if (nextLevel !== blurLevel) {
+							void setState({ blurLevel: nextLevel });
+						}
 					}}
-				>
-					<SelectTrigger className="w-full">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{BLUR_OPTIONS.map((option) => (
-							<SelectItem key={option.value} value={option.value}>
-								{option.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				/>
 				<p className="text-xs text-muted-foreground">
-					macOS の NSVisualEffectView の material
-					を切り替えることで、ブラーの強さを段階的に変更します。
+					macOS の NSVisualEffectView の material を段階的に切り替えます (弱 →
+					標準 → 強 → 最強)。
 				</p>
 			</div>
 		</div>

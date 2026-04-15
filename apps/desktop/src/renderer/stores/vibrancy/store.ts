@@ -72,24 +72,34 @@ export function useEffectiveTerminalTheme(): ITheme | null {
  */
 function applyVibrancyOverlay(theme: Theme, alpha: number): void {
 	const root = document.documentElement;
-	const set = (cssVar: string, base: string | undefined, delta = 0): void => {
+	const set = (cssVar: string, base: string | undefined, a: number): void => {
 		if (!base) return;
-		const effective = clampAlpha(alpha + delta);
-		root.style.setProperty(cssVar, toAlphaColor(base, effective));
+		root.style.setProperty(cssVar, toAlphaColor(base, clampAlpha(a)));
 	};
 
-	// Apply the same alpha uniformly so no surface feels conspicuously
-	// more opaque than another. Popover intentionally stays near-opaque so
-	// menus / tooltips remain readable.
-	set("--background", theme.ui.background);
-	set("--card", theme.ui.card);
-	set("--muted", theme.ui.muted);
-	set("--accent", theme.ui.accent);
-	set("--sidebar", theme.ui.sidebar);
-	set("--sidebar-accent", theme.ui.sidebarAccent);
-	set("--tertiary", theme.ui.tertiary);
-	set("--tertiary-active", theme.ui.tertiaryActive);
+	// The main --background is intentionally set to `transparent` (not
+	// rgba with low alpha). The window itself is already tinted via
+	// BrowserWindow.setBackgroundColor(rgba) on top of the NSVisualEffectView,
+	// so if we made --background semi-transparent as well, every nested
+	// `bg-background` container would multiply the tint and create visibly
+	// darker rectangles where the UI stacks panes inside each other.
+	// Letting the web content be fully transparent means the window
+	// chrome is the single source of truth for the base color.
+	root.style.setProperty("--background", "transparent");
+
+	// Chrome surfaces keep a tint so they stand out from the transparent
+	// body. We bias them slightly more opaque than the raw alpha so
+	// sidebars/cards are still legible at low opacity settings.
+	const chromeAlpha = clampAlpha(alpha + 0.15);
+	set("--card", theme.ui.card, chromeAlpha);
+	set("--muted", theme.ui.muted, chromeAlpha);
+	set("--accent", theme.ui.accent, chromeAlpha);
+	set("--sidebar", theme.ui.sidebar, chromeAlpha);
+	set("--sidebar-accent", theme.ui.sidebarAccent, chromeAlpha);
+	set("--tertiary", theme.ui.tertiary, chromeAlpha);
+	set("--tertiary-active", theme.ui.tertiaryActive, chromeAlpha);
 	if (theme.ui.popover) {
+		// Popovers / menus stay near-opaque so text remains readable.
 		root.style.setProperty("--popover", toAlphaColor(theme.ui.popover, 0.95));
 	}
 }
