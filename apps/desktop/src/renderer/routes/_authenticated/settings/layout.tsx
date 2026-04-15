@@ -154,7 +154,7 @@ function SettingsLayout() {
 			)
 				return;
 			event.preventDefault();
-			navigate({ to: originRoute });
+			navigate({ to: originRoute, replace: true });
 		},
 		{ enableOnFormTags: false, enableOnContentEditable: false },
 		[navigate, originRoute],
