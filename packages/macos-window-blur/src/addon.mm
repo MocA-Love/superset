@@ -3,11 +3,14 @@
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
+
+static const void* kOriginalBlurRadiusKey = &kOriginalBlurRadiusKey;
 
 /**
  * Walk the view hierarchy rooted at `root` looking for an NSVisualEffectView.
  * Electron inserts one of these to implement BrowserWindow's `vibrancy`
- * option, and we attach our CIGaussianBlur filter to its backing layer.
+ * option and it owns the backdrop layer we need to mutate.
  */
 static NSVisualEffectView* FindVisualEffectView(NSView* root) {
 	if (!root) return nil;
@@ -19,6 +22,102 @@ static NSVisualEffectView* FindVisualEffectView(NSView* root) {
 		if (found) return found;
 	}
 	return nil;
+}
+
+/**
+ * Recursively look for a CALayer whose class name matches `className`.
+ * The real CABackdropLayer that does the blur may be nested several
+ * sublayers deep inside the NSVisualEffectView's own layer hierarchy,
+ * so we can't just check `vev.layer` directly.
+ */
+static CALayer* FindLayerByClassName(CALayer* root, NSString* className) {
+	if (!root) return nil;
+	if ([NSStringFromClass([root class]) isEqualToString:className]) {
+		return root;
+	}
+	Class target = NSClassFromString(className);
+	if (target && [root isKindOfClass:target]) {
+		return root;
+	}
+	for (CALayer* sublayer in root.sublayers) {
+		CALayer* found = FindLayerByClassName(sublayer, className);
+		if (found) return found;
+	}
+	return nil;
+}
+
+static id FindBackdropFilter(NSArray* filters, NSString* wantedType) {
+	for (id filter in filters) {
+		NSString* name = nil;
+		NSString* type = nil;
+		@try {
+			name = [filter valueForKey:@"name"];
+		} @catch (NSException*) {}
+		@try {
+			type = [filter valueForKey:@"type"];
+		} @catch (NSException*) {}
+		if ([name isEqualToString:wantedType] ||
+			[type isEqualToString:wantedType]) {
+			return filter;
+		}
+	}
+	return nil;
+}
+
+/**
+ * Returns (creating if necessary) a backdrop filter of the requested
+ * CoreAnimation filter type (e.g. "gaussianBlur"). CABackdropLayer's
+ * filter stack is built from `CAFilter` instances, NOT the `CIFilter`
+ * class that Core Image exposes — using CIFilter here is a silent no-op.
+ *
+ * `CAFilter` is a private class, accessed via NSClassFromString so the
+ * binary still compiles on older SDKs.
+ */
+static id EnsureBackdropFilter(CALayer* backdrop, NSString* type) {
+	NSMutableArray* filters =
+		[NSMutableArray arrayWithArray:backdrop.filters ?: @[]];
+	id filter = FindBackdropFilter(filters, type);
+	if (filter) return filter;
+	Class cls = NSClassFromString(@"CAFilter");
+	if (!cls || ![cls respondsToSelector:@selector(filterWithType:)]) {
+		return nil;
+	}
+	filter = [cls performSelector:@selector(filterWithType:) withObject:type];
+	if (!filter) return nil;
+	@try {
+		[filter setValue:type forKey:@"name"];
+	} @catch (NSException*) {}
+	[filters addObject:filter];
+	backdrop.filters = filters;
+	return filter;
+}
+
+static void ApplyBlurRadiusToBackdrop(CALayer* backdrop, double radius) {
+	id blur = EnsureBackdropFilter(backdrop, @"gaussianBlur");
+	if (!blur) return;
+
+	// Remember the system-provided default so the caller can restore it
+	// later by passing radius <= 0.
+	NSNumber* stored =
+		objc_getAssociatedObject(backdrop, kOriginalBlurRadiusKey);
+	if (!stored) {
+		double initial = 0.0;
+		@try {
+			initial = [[blur valueForKey:@"inputRadius"] doubleValue];
+		} @catch (NSException*) {}
+		objc_setAssociatedObject(
+			backdrop,
+			kOriginalBlurRadiusKey,
+			@(initial > 0.0 ? initial : 30.0),
+			OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		stored = objc_getAssociatedObject(backdrop, kOriginalBlurRadiusKey);
+	}
+
+	double effective = radius <= 0.0 ? stored.doubleValue : radius;
+	@try {
+		[blur setValue:@YES forKey:@"inputNormalizeEdges"];
+	} @catch (NSException*) {}
+	[blur setValue:@(effective) forKey:@"inputRadius"];
 }
 
 static NSWindow* WindowFromNativeHandle(const Napi::Buffer<uint8_t>& handle) {
@@ -39,14 +138,11 @@ static NSWindow* WindowFromNativeHandle(const Napi::Buffer<uint8_t>& handle) {
 /**
  * setWindowBlurRadius(handle: Buffer, radius: number): boolean
  *
- * Attaches a CIGaussianBlur filter to the window's NSVisualEffectView layer
- * so the blur radius can be driven by a continuous slider instead of the
- * coarse NSVisualEffectView material presets. Pass radius = 0 to remove
- * the custom filter (restoring the system-provided material look).
- *
- * Returns true on success. Returns false on non-macOS platforms, when the
- * handle is invalid, or when no NSVisualEffectView was found in the
- * window's view hierarchy.
+ * Walks into the NSVisualEffectView that Electron created for the window,
+ * finds its private CABackdropLayer, and rewrites the `gaussianBlur`
+ * CAFilter in place with the requested radius. Passing `radius <= 0`
+ * restores the original system-provided radius so the material looks
+ * normal again.
  */
 Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 	Napi::Env env = info.Env();
@@ -72,39 +168,17 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 		if (!contentView) return;
 		NSVisualEffectView* vev = FindVisualEffectView(contentView);
 		if (!vev) return;
+		[contentView layoutSubtreeIfNeeded];
+		[vev layoutSubtreeIfNeeded];
 		vev.wantsLayer = YES;
-		CALayer* layer = vev.layer;
-		if (!layer) return;
+		CALayer* backdrop = FindLayerByClassName(vev.layer, @"CABackdropLayer");
+		if (!backdrop) return;
 
-		// NSVisualEffectView's backing layer is a CABackdropLayer subclass
-		// on macOS 11+. Setting `backgroundFilters` on it is silently
-		// ignored because the system manages the backdrop separately, but
-		// `filters` is interpreted as the backdrop filter stack for
-		// backdrop-style layers. We set both to be safe: `filters` drives
-		// the blur on CABackdropLayer, and `backgroundFilters` is a no-op
-		// on backdrop layers but works on plain CALayers as a fallback.
-		if (radius <= 0.0) {
-			layer.filters = @[];
-			layer.backgroundFilters = @[];
-			success = true;
-			return;
-		}
-
-		CIFilter* blur = [CIFilter filterWithName:@"CIGaussianBlur"];
-		if (!blur) return;
-		[blur setDefaults];
-		[blur setValue:@(radius) forKey:@"inputRadius"];
-		if ([blur respondsToSelector:@selector(setName:)]) {
-			[blur setValue:@"supersetVibrancyBlur" forKey:@"name"];
-		}
-
-		Class backdropClass = NSClassFromString(@"CABackdropLayer");
-		if (backdropClass && [layer isKindOfClass:backdropClass]) {
-			layer.filters = @[blur];
-		} else {
-			layer.backgroundFilters = @[blur];
-		}
-		[layer setNeedsDisplay];
+		[CATransaction begin];
+		[CATransaction setDisableActions:YES];
+		ApplyBlurRadiusToBackdrop(backdrop, radius);
+		[CATransaction commit];
+		[CATransaction flush];
 		success = true;
 	};
 	if ([NSThread isMainThread]) {
