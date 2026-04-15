@@ -1,6 +1,12 @@
 import { join } from "node:path";
 import { type BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
+import { appState } from "../app-state";
+import {
+	applyVibrancy,
+	DEFAULT_VIBRANCY_STATE,
+	getInitialWindowOptions as getInitialVibrancyOptions,
+} from "../vibrancy";
 
 interface TearoffWindowOptions {
 	windowId: string;
@@ -112,6 +118,13 @@ export class WindowManager {
 	} {
 		const { windowId } = options;
 
+		const initialVibrancyState =
+			appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+		const vibrancyWindowOptions = getInitialVibrancyOptions(
+			initialVibrancyState,
+			nativeTheme.shouldUseDarkColors,
+		);
+
 		const window = createWindow({
 			id: "tearoff",
 			title: "Superset",
@@ -122,7 +135,7 @@ export class WindowManager {
 			minWidth: 400,
 			minHeight: 400,
 			show: false,
-			backgroundColor: nativeTheme.shouldUseDarkColors ? "#252525" : "#ffffff",
+			...vibrancyWindowOptions,
 			frame: false,
 			titleBarStyle: "hidden",
 			trafficLightPosition: { x: 16, y: 16 },
@@ -146,6 +159,16 @@ export class WindowManager {
 		});
 
 		window.webContents.once("did-finish-load", () => {
+			// Re-apply vibrancy now that the tearoff is on-screen so the
+			// native blur addon can find the NSVisualEffectView and write
+			// the user's persisted blurRadius. Without this the tearoff
+			// would stick to the default material blur until the user
+			// touched the vibrancy settings again.
+			applyVibrancy(
+				window,
+				appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE,
+				nativeTheme.shouldUseDarkColors,
+			);
 			window.show();
 		});
 

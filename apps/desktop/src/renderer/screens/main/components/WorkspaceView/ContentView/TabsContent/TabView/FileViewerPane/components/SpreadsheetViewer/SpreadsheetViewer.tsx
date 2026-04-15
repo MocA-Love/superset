@@ -341,7 +341,10 @@ export function SpreadsheetViewer({
 			<div className="flex items-center justify-end border-b border-border bg-muted/20 px-3 py-2">
 				<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
 			</div>
-			<div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-white">
+			<div
+				ref={containerRef}
+				className="min-h-0 flex-1 overflow-auto bg-background"
+			>
 				{/* Outer wrapper: clips to container width */}
 				<div
 					style={{
@@ -386,13 +389,13 @@ export function SpreadsheetViewer({
 								<tr>
 									<th
 										style={{
-											border: "1px solid #c0c0c0",
-											backgroundColor: "#f0f0f0",
+											border: "1px solid var(--border)",
+											backgroundColor: "var(--muted)",
 											padding: "2px 4px",
 											textAlign: "center",
 											fontSize: "9px",
 											fontWeight: "normal",
-											color: "#666",
+											color: "var(--muted-foreground)",
 										}}
 									/>
 									{Array.from({ length: activeSheet.columnCount }, (_, i) => {
@@ -401,13 +404,13 @@ export function SpreadsheetViewer({
 											<th
 												key={label}
 												style={{
-													border: "1px solid #c0c0c0",
-													backgroundColor: "#f0f0f0",
+													border: "1px solid var(--border)",
+													backgroundColor: "var(--muted)",
 													padding: "2px 4px",
 													textAlign: "center",
 													fontSize: "9px",
 													fontWeight: "normal",
-													color: "#666",
+													color: "var(--muted-foreground)",
 												}}
 											>
 												{label}
@@ -425,13 +428,13 @@ export function SpreadsheetViewer({
 									>
 										<td
 											style={{
-												border: "1px solid #c0c0c0",
-												backgroundColor: "#f0f0f0",
+												border: "1px solid var(--border)",
+												backgroundColor: "var(--muted)",
 												padding: "2px 4px",
 												textAlign: "center",
 												fontSize: "9px",
 												fontWeight: "normal",
-												color: "#666",
+												color: "var(--muted-foreground)",
 												userSelect: "none",
 											}}
 										>
@@ -494,12 +497,12 @@ export function SpreadsheetViewer({
 				{activeSheet.truncated && (
 					<div
 						style={{
-							borderTop: "1px solid #c0c0c0",
-							backgroundColor: "#f8f8f8",
+							borderTop: "1px solid var(--border)",
+							backgroundColor: "var(--muted)",
 							padding: "8px 12px",
 							textAlign: "center",
 							fontSize: "12px",
-							color: "#888",
+							color: "var(--muted-foreground)",
 						}}
 					>
 						Showing first 2,000 rows. Full file contains more rows.

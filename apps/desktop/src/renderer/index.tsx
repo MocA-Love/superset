@@ -17,12 +17,17 @@ import { posthog } from "./lib/posthog";
 import { electronQueryClient } from "./providers/ElectronTRPCProvider";
 import { routeTree } from "./routeTree.gen";
 import { useDeepLinkNavigationStore } from "./stores/deep-link-navigation";
+import { useVibrancyStore } from "./stores/vibrancy";
 
 import "./globals.css";
 import "./styles/bundled-fonts.css";
 
 const rootElement = document.querySelector("app");
 initBootErrorHandling(rootElement);
+
+// Hydrate vibrancy store early so the window chrome doesn't flash opaque when
+// the user has vibrancy enabled. Fire-and-forget; failures degrade gracefully.
+void useVibrancyStore.getState().hydrate();
 
 const router = createRouter({
 	routeTree,

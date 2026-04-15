@@ -7,6 +7,7 @@ import {
 import { FontSettingSection } from "./components/FontSettingSection";
 import { MarkdownStyleSection } from "./components/MarkdownStyleSection";
 import { ThemeSection } from "./components/ThemeSection";
+import { VibrancySection } from "./components/VibrancySection";
 
 /**
  * Renders a list of visible sections with automatic border separators.
@@ -55,6 +56,10 @@ export function AppearanceSettings({ visibleItems }: AppearanceSettingsProps) {
 		visibleItems,
 	);
 	const showThemeSection = showTheme || showCustomThemes;
+	const showVibrancy = isItemVisible(
+		SETTING_ITEM_ID.APPEARANCE_VIBRANCY,
+		visibleItems,
+	);
 
 	return (
 		<div className="p-6 max-w-4xl w-full">
@@ -67,6 +72,7 @@ export function AppearanceSettings({ visibleItems }: AppearanceSettingsProps) {
 
 			<SectionList>
 				{showThemeSection && <ThemeSection key="theme" />}
+				{showVibrancy && <VibrancySection key="vibrancy" />}
 				{showMarkdown && <MarkdownStyleSection key="markdown" />}
 				{showEditorFont && (
 					<FontSettingSection key="editor-font" variant="editor" />

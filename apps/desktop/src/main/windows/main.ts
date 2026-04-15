@@ -29,6 +29,11 @@ import {
 	getNotificationTitle,
 	getWorkspaceName,
 } from "../lib/notifications/utils";
+import {
+	applyVibrancy,
+	DEFAULT_VIBRANCY_STATE,
+	getInitialWindowOptions as getInitialVibrancyOptions,
+} from "../lib/vibrancy";
 import { windowManager } from "../lib/window-manager";
 import {
 	getInitialWindowBounds,
@@ -122,6 +127,19 @@ app.on("child-process-gone", (_event, details) => {
 	}
 });
 
+// Re-apply vibrancy when the OS dark/light appearance changes. The
+// computed setBackgroundColor depends on isDark so the window would
+// otherwise keep the previous tint until the user interacted with the
+// vibrancy settings again. Only relevant on macOS, but nativeTheme is
+// harmless to subscribe to on other platforms.
+nativeTheme.on("updated", () => {
+	const isDark = nativeTheme.shouldUseDarkColors;
+	const vibrancyState = appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+	for (const win of windowManager.getAll().values()) {
+		applyVibrancy(win, vibrancyState, isDark);
+	}
+});
+
 export async function MainWindow() {
 	const shouldPersistWindowPosition = isWindowPositionPersistenceEnabled();
 	const savedWindowState = loadWindowState();
@@ -136,6 +154,13 @@ export async function MainWindow() {
 		? `${productName} — ${workspaceName}`
 		: productName;
 
+	const initialVibrancyState =
+		appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+	const vibrancyWindowOptions = getInitialVibrancyOptions(
+		initialVibrancyState,
+		nativeTheme.shouldUseDarkColors,
+	);
+
 	const window = createWindow({
 		id: "main",
 		title: windowTitle,
@@ -146,7 +171,7 @@ export async function MainWindow() {
 		minWidth: 400,
 		minHeight: 400,
 		show: false,
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#252525" : "#ffffff",
+		...vibrancyWindowOptions,
 		center: initialBounds.center,
 		movable: true,
 		resizable: true,
@@ -312,6 +337,14 @@ export async function MainWindow() {
 		if (persistedZoomLevel !== undefined) {
 			window.webContents.setZoomLevel(persistedZoomLevel);
 		}
+
+		// Re-apply vibrancy now that the window is actually on-screen so the
+		// native CIGaussianBlur addon has a real NSVisualEffectView to mutate.
+		applyVibrancy(
+			window,
+			appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE,
+			nativeTheme.shouldUseDarkColors,
+		);
 
 		if (!hasCompletedFirstLoad) {
 			if (initialBounds.isMaximized) {

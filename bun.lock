@@ -163,6 +163,7 @@
         "@superset/host-service": "workspace:*",
         "@superset/local-db": "workspace:*",
         "@superset/macos-process-metrics": "workspace:*",
+        "@superset/macos-window-blur": "workspace:*",
         "@superset/panes": "workspace:*",
         "@superset/shared": "workspace:*",
         "@superset/trpc": "workspace:*",
@@ -834,6 +835,13 @@
     },
     "packages/macos-process-metrics": {
       "name": "@superset/macos-process-metrics",
+      "version": "0.0.1",
+      "dependencies": {
+        "node-addon-api": "^7.1.0",
+      },
+    },
+    "packages/macos-window-blur": {
+      "name": "@superset/macos-window-blur",
       "version": "0.0.1",
       "dependencies": {
         "node-addon-api": "^7.1.0",
@@ -2520,6 +2528,8 @@
     "@superset/local-db": ["@superset/local-db@workspace:packages/local-db"],
 
     "@superset/macos-process-metrics": ["@superset/macos-process-metrics@workspace:packages/macos-process-metrics"],
+
+    "@superset/macos-window-blur": ["@superset/macos-window-blur@workspace:packages/macos-window-blur"],
 
     "@superset/marketing": ["@superset/marketing@workspace:apps/marketing"],
 

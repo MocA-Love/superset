@@ -27,6 +27,10 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
 	fontSize: DEFAULT_TERMINAL_FONT_SIZE,
 	fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
 	theme: TERMINAL_THEME,
+	// Required so the WebGL renderer honours rgba background colors when
+	// the window vibrancy feature is enabled. No visual effect when the
+	// theme's background is fully opaque.
+	allowTransparency: true,
 	allowProposedApi: true,
 	scrollback: DEFAULT_TERMINAL_SCROLLBACK,
 	// Allow Option+key to type special characters on international keyboards (e.g., Option+2 = @)

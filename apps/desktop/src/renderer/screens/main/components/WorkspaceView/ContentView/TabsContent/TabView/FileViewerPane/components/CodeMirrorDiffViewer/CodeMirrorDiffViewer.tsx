@@ -48,6 +48,7 @@ import type {
 } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/symbolInteractions.types";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
+import { useVibrancyStore } from "renderer/stores/vibrancy";
 import type { DiffViewMode } from "shared/changes-types";
 import { getEditorTheme } from "shared/themes";
 
@@ -329,6 +330,11 @@ export function CodeMirrorDiffViewer({
 	const resolveSymbolHoverRef = useRef(resolveSymbolHover);
 	const onGoToDefinitionRef = useRef(onGoToDefinition);
 	const activeTheme = useResolvedTheme();
+	const vibrancyEnabled = useVibrancyStore((s) => s.enabled);
+	const vibrancyOpacityRaw = useVibrancyStore((s) => s.opacity);
+	const vibrancyOpacity = vibrancyEnabled
+		? vibrancyOpacityRaw / 100
+		: undefined;
 	const { data: fontSettings } = electronTrpc.settings.getFontSettings.useQuery(
 		undefined,
 		{ staleTime: 30_000 },
@@ -603,6 +609,7 @@ export function CodeMirrorDiffViewer({
 				activeTheme,
 				{ fontFamily: editorFontFamily, fontSize: editorFontSize },
 				true,
+				{ vibrancyOpacity },
 			),
 		];
 
@@ -671,6 +678,7 @@ export function CodeMirrorDiffViewer({
 				activeTheme,
 				{ fontFamily: editorFontFamily, fontSize: editorFontSize },
 				true,
+				{ vibrancyOpacity },
 			),
 		];
 
@@ -682,6 +690,7 @@ export function CodeMirrorDiffViewer({
 		editorFontSize,
 		themeCompartmentA,
 		themeCompartmentB,
+		vibrancyOpacity,
 	]);
 
 	useEffect(() => {

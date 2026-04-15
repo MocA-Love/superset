@@ -7,12 +7,12 @@ import {
 	type TerminalAppearance,
 } from "renderer/lib/terminal/appearance";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
-import { useTerminalTheme } from "renderer/stores/theme";
+import { useEffectiveTerminalTheme } from "renderer/stores/vibrancy";
 
 const fallbackTheme = getDefaultTerminalAppearance().theme;
 
 export function useTerminalAppearance(): TerminalAppearance {
-	const terminalTheme = useTerminalTheme();
+	const terminalTheme = useEffectiveTerminalTheme();
 	const { data: fontSettings } = useQuery({
 		queryKey: ["electron", "settings", "getFontSettings"],
 		queryFn: () => electronTrpcClient.settings.getFontSettings.query(),

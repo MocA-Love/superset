@@ -7,7 +7,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestions";
-import { useTerminalTheme } from "renderer/stores/theme";
+import { useEffectiveTerminalTheme } from "renderer/stores/vibrancy";
 import { sanitizeForTitle } from "./commandBuffer";
 import { SessionKilledOverlay } from "./components";
 import {
@@ -113,7 +113,7 @@ export const Terminal = memo(function Terminal({
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
 	const setPaneName = useTabsStore((s) => s.setPaneName);
 	const focusedPaneId = useTabsStore((s) => s.focusedPaneIds[tabId]);
-	const terminalTheme = useTerminalTheme();
+	const terminalTheme = useEffectiveTerminalTheme();
 
 	// Terminal connection state and mutations
 	const {

@@ -96,6 +96,66 @@
 	--highlight-active: rgba(255, 150, 50, 0.55);
 }
 
+/**
+ * Vibrancy mode (macOS only, opt-in).
+ *
+ * When the vibrancy store sets `data-vibrancy="on"` on <html>, chrome surfaces
+ * switch to rgba variants so the macOS NSVisualEffectView blur underneath the
+ * window shows through. `--vibrancy-alpha` is tweaked live from JavaScript
+ * based on the user's opacity slider (0.0 = fully transparent, 1.0 = opaque).
+ *
+ * IMPORTANT: BrowserPane (webview) stays opaque via --background-solid because
+ * Chromium's compositor always renders <webview> frames on an opaque layer.
+ */
+:root {
+	--vibrancy-alpha: 0.6;
+	--background-solid: #151110;
+}
+
+:root.light {
+	--background-solid: oklch(1 0 0);
+}
+
+:root[data-vibrancy="on"] {
+	--background: rgba(21, 17, 16, var(--vibrancy-alpha));
+	--card: rgba(32, 30, 28, min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	--popover: rgba(32, 30, 28, 0.95);
+	--muted: rgba(42, 40, 39, min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	--accent: rgba(42, 40, 39, min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	--sidebar: rgba(26, 23, 22, max(0, calc(var(--vibrancy-alpha) - 0.05)));
+	--sidebar-accent: rgba(
+		37,
+		34,
+		32,
+		min(1, calc(var(--vibrancy-alpha) + 0.05))
+	);
+	--tertiary: rgba(26, 23, 22, max(0, calc(var(--vibrancy-alpha) - 0.05)));
+	--tertiary-active: rgba(
+		37,
+		34,
+		32,
+		min(1, calc(var(--vibrancy-alpha) + 0.05))
+	);
+}
+
+:root[data-vibrancy="on"].light {
+	--background: rgb(255 255 255 / var(--vibrancy-alpha));
+	--card: rgb(255 255 255 / min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	--popover: rgb(255 255 255 / 0.95);
+	--muted: rgb(247 247 247 / min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	--accent: rgb(247 247 247 / min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	--sidebar: rgb(251 251 251 / max(0, calc(var(--vibrancy-alpha) - 0.05)));
+	--sidebar-accent: rgb(
+		247 247 247 /
+		min(1, calc(var(--vibrancy-alpha) + 0.05))
+	);
+	--tertiary: rgb(243 243 243 / max(0, calc(var(--vibrancy-alpha) - 0.05)));
+	--tertiary-active: rgb(
+		233 233 233 /
+		min(1, calc(var(--vibrancy-alpha) + 0.05))
+	);
+}
+
 @theme inline {
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
@@ -181,6 +241,18 @@
 	.xterm .xterm-screen {
 		height: 100%;
 		width: 100%;
+	}
+
+	/* Vibrancy: force every nested xterm surface to be transparent so
+	 * the canvas / WebGL layer can render with the rgba theme background
+	 * that the terminal theme store is injecting. Without this override
+	 * the .xterm-viewport / .xterm-screen elements keep the stylesheet
+	 * defaults and hide the alpha channel underneath the terminal pane. */
+	:root[data-vibrancy="on"] .xterm,
+	:root[data-vibrancy="on"] .xterm .xterm-viewport,
+	:root[data-vibrancy="on"] .xterm .xterm-screen,
+	:root[data-vibrancy="on"] .xterm canvas {
+		background-color: transparent;
 	}
 	.xterm .xterm-rows a {
 		color: inherit;

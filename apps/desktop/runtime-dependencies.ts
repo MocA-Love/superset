@@ -50,6 +50,12 @@ const externalizedRuntimeModules: ExternalizedRuntimeModule[] = [
 		asarUnpackGlobs: ["**/node_modules/@superset/macos-process-metrics/**/*"],
 	},
 	{
+		specifier: "@superset/macos-window-blur",
+		materialize: ["@superset/macos-window-blur"],
+		packagedCopies: [copyWholeModule("@superset/macos-window-blur")],
+		asarUnpackGlobs: ["**/node_modules/@superset/macos-window-blur/**/*"],
+	},
+	{
 		specifier: "@ast-grep/napi",
 		materialize: ["@ast-grep/napi"],
 		packagedCopies: [copyWholeModule("@ast-grep")],

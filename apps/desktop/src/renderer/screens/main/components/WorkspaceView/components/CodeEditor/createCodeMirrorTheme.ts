@@ -10,20 +10,49 @@ interface CodeEditorFontSettings {
 	fontSize?: number;
 }
 
+interface CodeEditorThemeOptions {
+	/**
+	 * If set (0-1), the editor background is mixed with `transparent` at this
+	 * alpha so the window's vibrancy layer can show through. Leave undefined
+	 * for the default opaque rendering.
+	 */
+	vibrancyOpacity?: number;
+}
+
+function toTranslucentBackground(base: string, alpha: number): string {
+	const clamped = Math.max(0, Math.min(1, alpha));
+	return `color-mix(in srgb, ${base} ${(clamped * 100).toFixed(2)}%, transparent)`;
+}
+
 export function createCodeMirrorTheme(
 	theme: Theme,
 	fontSettings: CodeEditorFontSettings,
 	fillHeight: boolean,
+	options: CodeEditorThemeOptions = {},
 ) {
 	const fontSize = fontSettings.fontSize ?? DEFAULT_CODE_EDITOR_FONT_SIZE;
 	const lineHeight = Math.round(fontSize * 1.5);
 	const editorTheme = getEditorTheme(theme);
+	const backgroundColor =
+		options.vibrancyOpacity !== undefined
+			? toTranslucentBackground(
+					editorTheme.colors.background,
+					options.vibrancyOpacity,
+				)
+			: editorTheme.colors.background;
+	const gutterBackground =
+		options.vibrancyOpacity !== undefined
+			? toTranslucentBackground(
+					editorTheme.colors.gutterBackground,
+					options.vibrancyOpacity,
+				)
+			: editorTheme.colors.gutterBackground;
 
 	return EditorView.theme(
 		{
 			"&": {
 				height: fillHeight ? "100%" : "auto",
-				backgroundColor: editorTheme.colors.background,
+				backgroundColor,
 				color: editorTheme.colors.foreground,
 				fontFamily: fontSettings.fontFamily ?? DEFAULT_CODE_EDITOR_FONT_FAMILY,
 				fontSize: `${fontSize}px`,
@@ -41,7 +70,7 @@ export function createCodeMirrorTheme(
 				padding: "0 12px",
 			},
 			".cm-gutters": {
-				backgroundColor: editorTheme.colors.gutterBackground,
+				backgroundColor: gutterBackground,
 				color: editorTheme.colors.gutterForeground,
 				borderRight: `1px solid ${editorTheme.colors.border}`,
 			},

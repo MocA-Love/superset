@@ -266,7 +266,7 @@ function DiffTable({
 	return (
 		<div
 			ref={setRefs}
-			className="min-h-0 flex-1 overflow-auto bg-white"
+			className="min-h-0 flex-1 overflow-auto bg-background"
 			onScroll={handleScroll}
 		>
 			<div
@@ -274,9 +274,9 @@ function DiffTable({
 					padding: "4px 8px",
 					fontSize: "11px",
 					fontWeight: 500,
-					color: "#666",
-					borderBottom: "1px solid #e0e0e0",
-					backgroundColor: "#fafafa",
+					color: "var(--muted-foreground)",
+					borderBottom: "1px solid var(--border)",
+					backgroundColor: "var(--muted)",
 					position: "sticky",
 					top: 0,
 					zIndex: 11,
@@ -309,12 +309,12 @@ function DiffTable({
 						<tr key={`r${rowIdx + 1}`} style={{ height: row.height }}>
 							<td
 								style={{
-									border: "1px solid #d0d0d0",
-									backgroundColor: "#f5f5f5",
+									border: "1px solid var(--border)",
+									backgroundColor: "var(--muted)",
 									padding: "1px 3px",
 									textAlign: "center",
 									fontSize: "8px",
-									color: "#999",
+									color: "var(--muted-foreground)",
 									userSelect: "none",
 								}}
 							>
@@ -568,7 +568,13 @@ export function SpreadsheetDiffViewer({
 					scrollRef={leftScrollRef}
 					peerScrollRef={rightScrollRef}
 				/>
-				<div style={{ width: 1, backgroundColor: "#d0d0d0", flexShrink: 0 }} />
+				<div
+					style={{
+						width: 1,
+						backgroundColor: "var(--border)",
+						flexShrink: 0,
+					}}
+				/>
 				<DiffTable
 					rows={activeSheet.modifiedRows}
 					columnWidths={activeSheet.columnWidths}

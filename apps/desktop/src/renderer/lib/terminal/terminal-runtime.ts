@@ -55,6 +55,9 @@ function createTerminal(
 		fontFamily: appearance.fontFamily,
 		fontSize: appearance.fontSize,
 		theme: appearance.theme,
+		// Needed so the WebGL renderer honours rgba background colors when
+		// window vibrancy is enabled.
+		allowTransparency: true,
 		allowProposedApi: true,
 		scrollback: DEFAULT_TERMINAL_SCROLLBACK,
 		macOptionIsMeta: false,
