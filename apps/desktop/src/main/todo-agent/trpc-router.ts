@@ -1,9 +1,12 @@
 import { rmSync } from "node:fs";
 import path from "node:path";
+import { todoPromptPresets } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import { z } from "zod";
+import { desc, eq } from "drizzle-orm";
 import { publicProcedure, router } from "lib/trpc";
+import { localDb } from "main/lib/local-db";
+import { z } from "zod";
 import { describeEnhanceFailure, enhanceTodoText } from "./enhance-text";
 import {
 	getSessionFileDiff,
@@ -12,7 +15,11 @@ import {
 } from "./git-status";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSupervisor } from "./supervisor";
-import { TODO_ARTIFACT_SUBDIR } from "./types";
+import {
+	TODO_ARTIFACT_SUBDIR,
+	todoPresetCreateInputSchema,
+	todoPresetUpdateInputSchema,
+} from "./types";
 import {
 	todoCreateInputSchema,
 	todoEnhanceTextInputSchema,
@@ -59,6 +66,7 @@ export const createTodoAgentRouter = () => {
 					totalNumTurns: null,
 					pendingIntervention: null,
 					startHeadSha: null,
+					customSystemPrompt: input.customSystemPrompt ?? null,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
@@ -253,6 +261,7 @@ export const createTodoAgentRouter = () => {
 					totalNumTurns: null,
 					pendingIntervention: null,
 					startHeadSha: null,
+					customSystemPrompt: source.customSystemPrompt,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
@@ -393,6 +402,67 @@ export const createTodoAgentRouter = () => {
 					return () => unsubscribe();
 				});
 			}),
+
+		/**
+		 * CRUD for reusable system-prompt templates the user attaches
+		 * to new TODO sessions. Managed from the Agent Manager's
+		 * Settings panel.
+		 */
+		presets: router({
+			list: publicProcedure.query(() =>
+				localDb
+					.select()
+					.from(todoPromptPresets)
+					.orderBy(desc(todoPromptPresets.updatedAt))
+					.all(),
+			),
+			create: publicProcedure
+				.input(todoPresetCreateInputSchema)
+				.mutation(({ input }) => {
+					const now = Date.now();
+					const row = localDb
+						.insert(todoPromptPresets)
+						.values({
+							name: input.name,
+							content: input.content,
+							createdAt: now,
+							updatedAt: now,
+						})
+						.returning()
+						.get();
+					return row;
+				}),
+			update: publicProcedure
+				.input(todoPresetUpdateInputSchema)
+				.mutation(({ input }) => {
+					const row = localDb
+						.update(todoPromptPresets)
+						.set({
+							name: input.name,
+							content: input.content,
+							updatedAt: Date.now(),
+						})
+						.where(eq(todoPromptPresets.id, input.id))
+						.returning()
+						.get();
+					if (!row) {
+						throw new TRPCError({
+							code: "NOT_FOUND",
+							message: "プリセットが見つかりません",
+						});
+					}
+					return row;
+				}),
+			delete: publicProcedure
+				.input(z.object({ id: z.string().min(1) }))
+				.mutation(({ input }) => {
+					const result = localDb
+						.delete(todoPromptPresets)
+						.where(eq(todoPromptPresets.id, input.id))
+						.run();
+					return { ok: result.changes > 0 };
+				}),
+		}),
 	});
 };
 

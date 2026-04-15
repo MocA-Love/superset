@@ -36,6 +36,28 @@ export const todoCreateInputSchema = z.object({
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
 	maxIterations: z.number().int().min(1).max(100).default(10),
 	maxWallClockSec: z.number().int().min(60).max(60 * 60 * 4).default(1800),
+	// Optional free-form text the user attached at creation time,
+	// usually pulled from a saved preset. Passed to claude via
+	// `--append-system-prompt` so the session steering stays
+	// consistent across iterations without having to repeat it in
+	// every turn's prompt.
+	customSystemPrompt: z
+		.string()
+		.trim()
+		.max(20_000)
+		.optional()
+		.transform((v) => (v && v.length > 0 ? v : undefined)),
+});
+
+export const todoPresetCreateInputSchema = z.object({
+	name: z.string().trim().min(1).max(120),
+	content: z.string().trim().min(1).max(20_000),
+});
+
+export const todoPresetUpdateInputSchema = z.object({
+	id: z.string().min(1),
+	name: z.string().trim().min(1).max(120),
+	content: z.string().trim().min(1).max(20_000),
 });
 
 export const todoEnhanceTextInputSchema = z.object({

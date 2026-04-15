@@ -290,6 +290,8 @@ class TodoSupervisor {
 					cwd: worktreePath,
 					prompt,
 					resumeSessionId: claudeSessionId,
+					customSystemPrompt:
+						currentSession.customSystemPrompt ?? null,
 					signal: ac.signal,
 					onChild: (child) => {
 						run.currentChild = child;
@@ -433,6 +435,7 @@ class TodoSupervisor {
 		cwd: string;
 		prompt: string;
 		resumeSessionId: string | null;
+		customSystemPrompt: string | null;
 		signal: AbortSignal;
 		onChild: (child: ChildProcess) => void;
 	}): Promise<{
@@ -461,6 +464,9 @@ class TodoSupervisor {
 				"--permission-mode",
 				"bypassPermissions",
 			];
+			if (params.customSystemPrompt) {
+				args.push("--append-system-prompt", params.customSystemPrompt);
+			}
 			if (params.resumeSessionId) {
 				args.push("--resume", params.resumeSessionId);
 			}

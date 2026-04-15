@@ -458,4 +458,5 @@ export type SelectBrowserSitePermission =
 
 // Fork-local: TODO autonomous agent sessions. Re-exported so drizzle-kit
 // (configured with schema="./src/schema/schema.ts") picks up the table.
+export * from "./todo-prompt-presets";
 export * from "./todo-sessions";

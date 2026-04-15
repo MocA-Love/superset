@@ -80,6 +80,12 @@ export const todoSessions = sqliteTable(
 		// including unrelated user commits in the same worktree.
 		startHeadSha: text("start_head_sha"),
 
+		// Optional system prompt the user attached at creation time —
+		// usually pulled from a saved preset. Passed to claude via
+		// `--append-system-prompt` so it stacks on top of whatever
+		// CLAUDE.md / workspace context already applies.
+		customSystemPrompt: text("custom_system_prompt"),
+
 		verdictPassed: integer("verdict_passed", { mode: "boolean" }),
 		verdictReason: text("verdict_reason"),
 		verdictFailingTest: text("verdict_failing_test"),

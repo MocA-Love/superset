@@ -3,18 +3,25 @@ import { Checkbox } from "@superset/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
-	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@superset/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@superset/ui/dropdown-menu";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
-import { useCallback, useState } from "react";
-import { HiMiniSparkles } from "react-icons/hi2";
+import { useCallback, useMemo, useState } from "react";
+import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { EnhanceButton } from "./components/EnhanceButton";
 
@@ -53,6 +60,9 @@ export function TodoModal({
 	const [createWorktree, setCreateWorktree] = useState(
 		DEFAULT_CREATE_WORKTREE,
 	);
+	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(
+		null,
+	);
 
 	const utils = electronTrpc.useUtils();
 	const create = electronTrpc.todoAgent.create.useMutation({
@@ -62,6 +72,14 @@ export function TodoModal({
 	});
 	const createWorkspaceMut =
 		electronTrpc.workspaces.create.useMutation();
+	const { data: presets } =
+		electronTrpc.todoAgent.presets.list.useQuery(undefined, {
+			enabled: open,
+		});
+	const selectedPreset = useMemo(
+		() => (presets ?? []).find((p) => p.id === selectedPresetId) ?? null,
+		[presets, selectedPresetId],
+	);
 
 	const reset = useCallback(() => {
 		setTitle("");
@@ -71,6 +89,7 @@ export function TodoModal({
 		setMaxIterations(DEFAULT_MAX_ITERATIONS);
 		setMaxMinutes(DEFAULT_MAX_MINUTES);
 		setCreateWorktree(DEFAULT_CREATE_WORKTREE);
+		setSelectedPresetId(null);
 		setSubmitting(false);
 	}, []);
 
@@ -132,6 +151,7 @@ export function TodoModal({
 				verifyCommand: hasVerify ? verifyCommand.trim() : undefined,
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
+				customSystemPrompt: selectedPreset?.content ?? undefined,
 			});
 			if (createWorktree) {
 				toast.success(
@@ -161,6 +181,7 @@ export function TodoModal({
 		maxIterations,
 		maxMinutes,
 		projectId,
+		selectedPreset,
 		title,
 		verifyCommand,
 		workspaceId,
@@ -168,38 +189,33 @@ export function TodoModal({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-xl">
+			<DialogContent className="max-w-xl rounded-xl">
 				<DialogHeader>
 					<DialogTitle>新しい自律 TODO</DialogTitle>
-					<DialogDescription>
-						自律的な Claude Code セッションを起動します。Verify コマンドを
-						指定した場合はその終了コードが 0 になるか予算上限に達するまで
-						ループします。空欄の場合は単発タスクとして 1 ターンだけ実行します
-						（調査・リサーチ向け）。実行中は TODO パネルから状況を確認でき、
-						ワーカーのターミナルに直接入力して介入できます。
-					</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex flex-col gap-4 py-2">
+				<div className="flex flex-col gap-4">
 					<div className="flex flex-col gap-1.5">
 						<Label htmlFor="todo-title">タイトル</Label>
 						<Input
 							id="todo-title"
 							value={title}
 							onChange={(e) => setTitle(e.target.value)}
-							placeholder="例: Issue #123 のログインリダイレクト問題を修正"
+							placeholder="例: Issue #123 を修正"
 							maxLength={200}
 							autoFocus
+							className="rounded-md"
 						/>
 					</div>
 
-					<div
+					<label
+						htmlFor="todo-new-worktree"
 						className={cn(
-							"flex items-start gap-2.5 rounded-lg border p-3",
+							"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
 							createWorktree
 								? "border-primary/40 bg-primary/5"
-								: "border-border/40 bg-muted/20",
-							!canUseNewWorktree && "opacity-60",
+								: "border-border/40 hover:bg-muted/40",
+							!canUseNewWorktree && "opacity-60 cursor-not-allowed",
 						)}
 					>
 						<Checkbox
@@ -209,23 +225,12 @@ export function TodoModal({
 							onCheckedChange={(checked) =>
 								setCreateWorktree(checked === true)
 							}
-							className="mt-0.5"
 						/>
-						<div className="flex flex-col gap-0.5 min-w-0 flex-1">
-							<Label
-								htmlFor="todo-new-worktree"
-								className="text-xs font-medium cursor-pointer flex items-center gap-1.5"
-							>
-								新しい worktree を作成してそこで実行する
-								<HiMiniSparkles className="size-3 text-primary" />
-							</Label>
-							<p className="text-[11px] text-muted-foreground leading-relaxed">
-								{canUseNewWorktree
-									? "ブランチ名とワークスペース名はタスクのタイトル / 説明から AI が自動生成します。worktree が用意できたら、その中でこの TODO を実行します。"
-									: "このワークスペースはプロジェクトに紐付いていないので新しい worktree を作成できません。現在のワークスペース内で実行されます。"}
-							</p>
-						</div>
-					</div>
+						<span className="text-xs font-medium flex-1">
+							新しい worktree を作成して実行
+						</span>
+						<HiMiniSparkles className="size-3 text-primary/70" />
+					</label>
 
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
@@ -240,16 +245,22 @@ export function TodoModal({
 							id="todo-description"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							placeholder="タスクの内容を記述してください。背景や制約を多めに書くほど、エージェントが必要とするイテレーション数が減ります。"
+							placeholder="やってほしい作業を書く"
 							rows={4}
+							className="rounded-md"
 						/>
 					</div>
 
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
-							<Label htmlFor="todo-goal">
-								ゴール{" "}
-								<span className="text-muted-foreground font-normal">（任意）</span>
+							<Label
+								htmlFor="todo-goal"
+								className="flex items-center gap-1"
+							>
+								ゴール
+								<span className="text-muted-foreground font-normal text-[10px]">
+									任意
+								</span>
 							</Label>
 							<EnhanceButton
 								value={goal}
@@ -261,26 +272,43 @@ export function TodoModal({
 							id="todo-goal"
 							value={goal}
 							onChange={(e) => setGoal(e.target.value)}
-							placeholder="例: ○○の調査結果がまとまっている / △△のバグが再現しなくなっている（空欄なら『やって欲しいこと』の完了をゴールとします）"
-							rows={3}
+							placeholder="完了条件（空欄可）"
+							rows={2}
+							className="rounded-md"
 						/>
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-verify">
-							Verify コマンド{" "}
-							<span className="text-muted-foreground font-normal">（任意）</span>
+						<Label
+							htmlFor="todo-verify"
+							className="flex items-center gap-1"
+						>
+							Verify
+							<span className="text-muted-foreground font-normal text-[10px]">
+								任意
+							</span>
 						</Label>
 						<Input
 							id="todo-verify"
 							value={verifyCommand}
 							onChange={(e) => setVerifyCommand(e.target.value)}
-							placeholder="例: bun test（空欄なら単発実行）"
+							placeholder="例: bun test"
+							className="rounded-md"
 						/>
-						<p className="text-xs text-muted-foreground">
-							指定した場合は worktree で実行され、終了コード 0 で完了判定されます。
-							調査タスクなど「完了判定がテストで出せない」場合は空欄にしてください。
-						</p>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<Label className="flex items-center gap-1">
+							システムプロンプト
+							<span className="text-muted-foreground font-normal text-[10px]">
+								任意
+							</span>
+						</Label>
+						<PresetPicker
+							selected={selectedPreset}
+							presets={presets ?? []}
+							onSelect={setSelectedPresetId}
+						/>
 					</div>
 
 					{hasVerify && (
@@ -334,5 +362,91 @@ export function TodoModal({
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+interface PresetPickerProps {
+	selected: { id: string; name: string; content: string } | null;
+	presets: Array<{ id: string; name: string; content: string }>;
+	onSelect: (id: string | null) => void;
+}
+
+function PresetPicker({ selected, presets, onSelect }: PresetPickerProps) {
+	const [open, setOpen] = useState(false);
+	return (
+		<DropdownMenu open={open} onOpenChange={setOpen}>
+			<DropdownMenuTrigger asChild>
+				<button
+					type="button"
+					className={cn(
+						"flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs transition",
+						selected
+							? "border-primary/40 bg-primary/5 text-foreground"
+							: "border-border/40 text-muted-foreground hover:bg-muted/40",
+					)}
+				>
+					<HiMiniSparkles className="size-3 text-primary/80" />
+					<span className="flex-1 text-left truncate">
+						{selected ? selected.name : "プリセットを選択（設定から管理）"}
+					</span>
+					{selected && (
+						<button
+							type="button"
+							className="size-4 rounded-sm flex items-center justify-center hover:bg-background/80"
+							onClick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								onSelect(null);
+							}}
+							title="解除"
+						>
+							<HiMiniXMark className="size-3" />
+						</button>
+					)}
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent
+				align="start"
+				className="w-[--radix-dropdown-menu-trigger-width] max-w-md"
+			>
+				<DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+					プリセット
+				</DropdownMenuLabel>
+				{presets.length === 0 ? (
+					<DropdownMenuItem disabled>
+						プリセットがありません。設定から作成してください。
+					</DropdownMenuItem>
+				) : (
+					presets.map((preset) => (
+						<DropdownMenuItem
+							key={preset.id}
+							onClick={() => {
+								onSelect(preset.id);
+								setOpen(false);
+							}}
+							className="flex flex-col items-start gap-0.5"
+						>
+							<span className="text-xs font-medium">{preset.name}</span>
+							<span className="text-[10px] text-muted-foreground line-clamp-2">
+								{preset.content}
+							</span>
+						</DropdownMenuItem>
+					))
+				)}
+				{presets.length > 0 && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							onClick={() => {
+								onSelect(null);
+								setOpen(false);
+							}}
+						>
+							選択を解除
+						</DropdownMenuItem>
+					</>
+				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

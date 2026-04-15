@@ -27,6 +27,7 @@ import {
 	HiMiniArrowPath,
 	HiMiniChevronDown,
 	HiMiniChevronRight,
+	HiMiniCog6Tooth,
 	HiMiniDocumentDuplicate,
 	HiMiniEllipsisVertical,
 	HiMiniPencil,
@@ -43,6 +44,7 @@ import {
 import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { ChangesSidebar } from "./ChangesSidebar";
+import { PresetsDialog } from "./PresetsDialog";
 
 async function copyToClipboard(text: string, label = "コピーしました") {
 	try {
@@ -89,6 +91,7 @@ export function TodoManager({
 	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(
 		false,
 	);
+	const [presetsDialogOpen, setPresetsDialogOpen] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.listAll.useQuery(
 		undefined,
@@ -262,6 +265,17 @@ export function TodoManager({
 								);
 							})}
 						</ScrollArea>
+						<div className="shrink-0 border-t p-1.5">
+							<button
+								type="button"
+								onClick={() => setPresetsDialogOpen(true)}
+								className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition"
+								title="システムプロンプトテンプレートを管理"
+							>
+								<HiMiniCog6Tooth className="size-3.5" />
+								<span>設定 / プリセット</span>
+							</button>
+						</div>
 					</div>
 
 					<div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -298,6 +312,10 @@ export function TodoManager({
 					</div>
 				</div>
 			</DialogContent>
+			<PresetsDialog
+				open={presetsDialogOpen}
+				onOpenChange={setPresetsDialogOpen}
+			/>
 		</Dialog>
 	);
 }
