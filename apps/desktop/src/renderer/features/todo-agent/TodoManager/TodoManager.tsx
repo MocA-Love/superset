@@ -599,6 +599,13 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset-on-change dep
 	useEffect(() => {
 		setStreamEvents([]);
+		// Also drop any in-progress description/goal edit state from
+		// the previously selected session — SessionDetail is reused
+		// across selections, so leaving stale edit state would let
+		// the user "save" into whichever session happens to be picked
+		// next.
+		setEditingField(null);
+		setEditDraft("");
 	}, [session.id]);
 
 	// Force a re-render once per second while the session is still
