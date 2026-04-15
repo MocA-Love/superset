@@ -50,6 +50,11 @@ function getTrayIconPath(): string | null {
 }
 
 let tray: Tray | null = null;
+// FORK NOTE: bump on each updateTrayMenu entry so overlapping async runs
+// can drop stale results. Without this, a late-returning fetch would
+// rebuild the menu from a snapshot of orgIds taken before a status change,
+// re-introducing stopped services and the wrong Quit-mode variant.
+let trayUpdateToken = 0;
 
 function createTrayIcon(): Electron.NativeImage | null {
 	const iconPath = getTrayIconPath();
@@ -186,6 +191,7 @@ function buildHostServiceSubmenu(
 async function updateTrayMenu(): Promise<void> {
 	if (!tray) return;
 
+	const token = ++trayUpdateToken;
 	const coordinator = getHostServiceCoordinator();
 	const orgIds = coordinator.getActiveOrganizationIds();
 
@@ -197,7 +203,9 @@ async function updateTrayMenu(): Promise<void> {
 		if (info) infos.set(orgId, info);
 	}
 
-	if (!tray) return;
+	// Drop results if a newer updateTrayMenu has already started — otherwise
+	// an older snapshot can overwrite the newer one and show stale state.
+	if (!tray || token !== trayUpdateToken) return;
 
 	const hasActive = orgIds.length > 0;
 	const hostServiceLabel = hasActive
