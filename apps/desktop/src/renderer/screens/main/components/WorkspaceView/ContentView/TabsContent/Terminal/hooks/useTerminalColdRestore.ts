@@ -1,5 +1,6 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { useCallback, useRef, useState } from "react";
+import { rejectTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { coldRestoreState } from "../state";
@@ -9,6 +10,7 @@ import type {
 	TerminalStreamEvent,
 } from "../types";
 import { scrollToBottom } from "../utils";
+import * as v1TerminalCache from "../v1-terminal-cache";
 
 export interface UseTerminalColdRestoreOptions {
 	paneId: string;
@@ -208,6 +210,14 @@ export function useTerminalColdRestore({
 					pendingInitialStateRef.current = result;
 					maybeApplyInitialState();
 
+					// FORK NOTE: now that handleStartShell has a real backend
+					// session, mark the v1 cache + session-readiness waiters as
+					// ready. useTerminalLifecycle.ts intentionally defers this
+					// for the cold-restore path so that a tab-switch remount
+					// does not take the isReattach fast-path before a real
+					// shell exists.
+					v1TerminalCache.markSessionReady(paneId);
+
 					setIsRestoredMode(false);
 					coldRestoreState.delete(paneId);
 
@@ -226,6 +236,10 @@ export function useTerminalColdRestore({
 					setConnectionError(error.message || "Failed to start shell");
 					setIsRestoredMode(false);
 					coldRestoreState.delete(paneId);
+					rejectTerminalSessionReady(
+						paneId,
+						new Error(error.message || "Failed to start shell"),
+					);
 					isStreamReadyRef.current = true;
 					flushPendingEvents();
 				},
