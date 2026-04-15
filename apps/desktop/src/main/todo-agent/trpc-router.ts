@@ -7,6 +7,7 @@ import { observable } from "@trpc/server/observable";
 import { desc, eq } from "drizzle-orm";
 import { publicProcedure, router } from "lib/trpc";
 import { localDb } from "main/lib/local-db";
+import { workspaceInitManager } from "main/lib/workspace-init-manager";
 import { z } from "zod";
 import { describeEnhanceFailure, enhanceTodoText } from "./enhance-text";
 import {
@@ -37,6 +38,23 @@ export const createTodoAgentRouter = () => {
 		create: publicProcedure
 			.input(todoCreateInputSchema)
 			.mutation(async ({ input }) => {
+				// When the UI creates a fresh workspace+worktree immediately
+				// before creating the TODO (the "新しい worktree を作成して実行"
+				// checkbox), `workspaces.create` returns while `git worktree
+				// add` is still running in the background. Materializing the
+				// artifact directory now would mkdir inside the future
+				// worktree path, leaving it non-empty and causing the
+				// subsequent `git worktree add` to fail — the symptom users
+				// see as the sidebar error + "ブランチ取得中…" that never
+				// resolves. Block until init is done (or already no-op) so
+				// prepareArtifacts runs against a real worktree.
+				await workspaceInitManager.waitForInit(input.workspaceId);
+				if (workspaceInitManager.hasFailed(input.workspaceId)) {
+					throw new Error(
+						`todo-agent: workspace ${input.workspaceId} の初期化に失敗しました`,
+					);
+				}
+
 				const store = getTodoSessionStore();
 				const worktreePath = resolveWorktreePath(input.workspaceId);
 				if (!worktreePath) {
