@@ -1012,6 +1012,52 @@ function formatDuration(startMs: number | null, endMs: number | null): string {
 	return `${h}時間${m}分`;
 }
 
+type StreamItem =
+	| { type: "single"; id: string; event: TodoStreamEvent }
+	| {
+			type: "tools";
+			id: string;
+			events: TodoStreamEvent[];
+			iteration: number;
+	  };
+
+/**
+ * Collapse consecutive tool_use / tool_result / raw events into a
+ * single grouped item so the live stream reads like VS Code's
+ * Claude Code extension — a tall, dense list of N tool calls
+ * becomes one compact row you can expand when you actually care.
+ * assistant_text / result / error / system_init stay as their own
+ * rows because they are the narrative checkpoints users scan for.
+ */
+function groupStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
+	const items: StreamItem[] = [];
+	let toolBucket: TodoStreamEvent[] = [];
+	const flushBucket = () => {
+		if (toolBucket.length === 0) return;
+		items.push({
+			type: "tools",
+			id: `tools:${toolBucket[0]?.id ?? ""}:${toolBucket.length}`,
+			events: toolBucket,
+			iteration: toolBucket[0]?.iteration ?? 0,
+		});
+		toolBucket = [];
+	};
+	for (const ev of events) {
+		if (
+			ev.kind === "tool_use" ||
+			ev.kind === "tool_result" ||
+			ev.kind === "raw"
+		) {
+			toolBucket.push(ev);
+			continue;
+		}
+		flushBucket();
+		items.push({ type: "single", id: ev.id, event: ev });
+	}
+	flushBucket();
+	return items;
+}
+
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
 	// Auto-scroll to the bottom whenever a new event arrives, but only
 	// if the user hadn't scrolled up to read older output. Tracked via
@@ -1037,6 +1083,8 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		el.scrollTop = el.scrollHeight;
 	}, [events.length]);
 
+	const items = useMemo(() => groupStreamEvents(events), [events]);
+
 	return (
 		<div
 			ref={scrollRef}
@@ -1049,7 +1097,67 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 					Claude の応答・ツール使用・verify 結果が流れます。
 				</div>
 			) : (
-				events.map((event) => <StreamEventRow key={event.id} event={event} />)
+				items.map((item) =>
+					item.type === "single" ? (
+						<StreamEventRow key={item.id} event={item.event} />
+					) : (
+						<StreamToolGroup key={item.id} item={item} />
+					),
+				)
+			)}
+		</div>
+	);
+}
+
+function StreamToolGroup({
+	item,
+}: {
+	item: Extract<StreamItem, { type: "tools" }>;
+}) {
+	const [open, setOpen] = useState(false);
+	const toolUseCount = item.events.filter((e) => e.kind === "tool_use").length;
+	const resultCount = item.events.filter(
+		(e) => e.kind === "tool_result",
+	).length;
+	const lastTool = [...item.events]
+		.reverse()
+		.find((e) => e.kind === "tool_use");
+	const summary = lastTool
+		? `${lastTool.label}: ${lastTool.text.replace(/\s+/g, " ").slice(0, 80)}`
+		: "ツール実行";
+	return (
+		<div className="border border-border/40 rounded-lg bg-background/40">
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-accent/30 transition rounded-lg"
+			>
+				{open ? (
+					<HiMiniChevronDown className="size-3 text-muted-foreground shrink-0" />
+				) : (
+					<HiMiniChevronRight className="size-3 text-muted-foreground shrink-0" />
+				)}
+				<span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">
+					[iter {item.iteration}]
+				</span>
+				<span className="text-[10px] font-semibold text-amber-600 shrink-0">
+					🔧 {toolUseCount}件
+				</span>
+				{resultCount > 0 && (
+					<span className="text-[10px] text-emerald-600 shrink-0">
+						✓ {resultCount}
+					</span>
+				)}
+				<span className="text-[11px] text-muted-foreground truncate flex-1 font-mono">
+					{summary}
+				</span>
+			</button>
+			{open && (
+				<div className="flex flex-col gap-1.5 px-2 pb-2 pt-1">
+					{item.events.map((ev) => (
+						<StreamEventRow key={ev.id} event={ev} />
+					))}
+				</div>
 			)}
 		</div>
 	);
