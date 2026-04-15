@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SelectTodoSession } from "@superset/local-db";
+import { getCurrentHeadSha } from "./git-status";
 import {
 	getTodoSessionStore,
 	resolveWorktreePath,
@@ -161,6 +162,15 @@ class TodoSupervisor {
 		this.active = run;
 
 		try {
+			const worktreePath = resolveWorktreePath(session0.workspaceId);
+			// Capture the git HEAD at session start so the Manager's right
+			// sidebar can show exactly what this session produced via
+			// `git log <startHeadSha>..HEAD` — user commits made before
+			// the session are excluded from attribution.
+			const startHeadSha = worktreePath
+				? await getCurrentHeadSha(worktreePath)
+				: null;
+
 			store.update(sessionId, {
 				status: "running",
 				phase: "running",
@@ -174,9 +184,9 @@ class TodoSupervisor {
 				totalCostUsd: null,
 				totalNumTurns: null,
 				iteration: 0,
+				startHeadSha,
 			});
 
-			const worktreePath = resolveWorktreePath(session0.workspaceId);
 			if (!worktreePath) {
 				store.update(sessionId, {
 					status: "failed",

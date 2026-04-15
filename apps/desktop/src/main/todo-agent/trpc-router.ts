@@ -5,6 +5,11 @@ import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "lib/trpc";
 import { describeEnhanceFailure, enhanceTodoText } from "./enhance-text";
+import {
+	getSessionFileDiff,
+	getSessionGitSnapshot,
+	type SessionDiffScope,
+} from "./git-status";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSupervisor } from "./supervisor";
 import { TODO_ARTIFACT_SUBDIR } from "./types";
@@ -53,6 +58,7 @@ export const createTodoAgentRouter = () => {
 					totalCostUsd: null,
 					totalNumTurns: null,
 					pendingIntervention: null,
+					startHeadSha: null,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
@@ -246,6 +252,7 @@ export const createTodoAgentRouter = () => {
 					totalCostUsd: null,
 					totalNumTurns: null,
 					pendingIntervention: null,
+					startHeadSha: null,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
@@ -288,6 +295,68 @@ export const createTodoAgentRouter = () => {
 		 * errors) for the selected session. Emits the in-memory tail on
 		 * subscribe then fans out every subsequent append.
 		 */
+		/**
+		 * Per-session git snapshot: branch, current vs session-start HEAD,
+		 * commits produced since the session started, working-tree files.
+		 * The right-sidebar in the Manager polls this every few seconds
+		 * while the session is live.
+		 */
+		gitSnapshot: publicProcedure
+			.input(z.object({ sessionId: z.string().min(1) }))
+			.query(async ({ input }) => {
+				const session = getTodoSessionStore().get(input.sessionId);
+				if (!session) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "セッションが見つかりません",
+					});
+				}
+				const worktreePath = resolveWorktreePath(session.workspaceId);
+				if (!worktreePath) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: "ワークスペースのパスを解決できませんでした",
+					});
+				}
+				return getSessionGitSnapshot({
+					cwd: worktreePath,
+					startHeadSha: session.startHeadSha ?? null,
+				});
+			}),
+
+		/**
+		 * Unified diff for a single file at a user-selected scope
+		 * (session-range / staged / unstaged / a specific commit).
+		 */
+		gitFileDiff: publicProcedure
+			.input(
+				z.object({
+					sessionId: z.string().min(1),
+					path: z.string().min(1),
+					scope: z.enum(["session", "staged", "unstaged", "commit"]),
+					commitSha: z.string().optional(),
+				}),
+			)
+			.query(async ({ input }) => {
+				const session = getTodoSessionStore().get(input.sessionId);
+				if (!session) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "セッションが見つかりません",
+					});
+				}
+				const worktreePath = resolveWorktreePath(session.workspaceId);
+				if (!worktreePath) return "";
+				const diff = await getSessionFileDiff({
+					cwd: worktreePath,
+					startHeadSha: session.startHeadSha ?? null,
+					path: input.path,
+					scope: input.scope as SessionDiffScope,
+					commitSha: input.commitSha,
+				});
+				return diff;
+			}),
+
 		subscribeStream: publicProcedure
 			.input(z.object({ sessionId: z.string().min(1) }))
 			.subscription(({ input }) => {

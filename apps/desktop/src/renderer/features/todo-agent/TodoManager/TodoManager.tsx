@@ -34,9 +34,15 @@ import {
 	HiMiniTrash,
 	HiMiniXMark,
 } from "react-icons/hi2";
-import { LuPanelLeftClose, LuPanelLeftOpen } from "react-icons/lu";
+import {
+	LuPanelLeftClose,
+	LuPanelLeftOpen,
+	LuPanelRightClose,
+	LuPanelRightOpen,
+} from "react-icons/lu";
 import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { ChangesSidebar } from "./ChangesSidebar";
 
 async function copyToClipboard(text: string, label = "コピーしました") {
 	try {
@@ -80,6 +86,9 @@ export function TodoManager({
 		new Set(),
 	);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(
+		false,
+	);
 
 	const { data: sessions } = electronTrpc.todoAgent.listAll.useQuery(
 		undefined,
@@ -153,6 +162,24 @@ export function TodoManager({
 						>
 							<HiMiniPlus className="size-4" />
 							新しい TODO
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-7 w-7 p-0 rounded-md"
+							onClick={() => setChangesSidebarCollapsed((v) => !v)}
+							title={
+								changesSidebarCollapsed
+									? "変更パネルを開く"
+									: "変更パネルを閉じる"
+							}
+						>
+							{changesSidebarCollapsed ? (
+								<LuPanelRightOpen className="size-4" />
+							) : (
+								<LuPanelRightClose className="size-4" />
+							)}
 						</Button>
 						<Button
 							type="button"
@@ -247,6 +274,26 @@ export function TodoManager({
 							<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
 								セッションを選択すると詳細が表示されます。
 							</div>
+						)}
+					</div>
+
+					<div
+						className={cn(
+							"shrink-0 border-l min-h-0 overflow-hidden transition-[width] duration-150 ease-out",
+							changesSidebarCollapsed ? "w-0 border-l-0" : "w-[380px]",
+						)}
+					>
+						{selected && !changesSidebarCollapsed && (
+							<ChangesSidebar
+								sessionId={selected.id}
+								workspaceId={selected.workspaceId}
+								active={
+									selected.status === "running" ||
+									selected.status === "verifying" ||
+									selected.status === "preparing" ||
+									selected.status === "queued"
+								}
+							/>
 						)}
 					</div>
 				</div>

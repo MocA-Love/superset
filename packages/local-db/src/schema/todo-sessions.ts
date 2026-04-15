@@ -73,6 +73,13 @@ export const todoSessions = sqliteTable(
 		// agent mid-run without needing mid-stream injection.
 		pendingIntervention: text("pending_intervention"),
 
+		// Git HEAD SHA captured at the moment the supervisor started this
+		// session's run. Used as the base for "commits made in this
+		// session" queries (git log <sha>..HEAD) so the Manager's right
+		// sidebar can show exactly what the worker produced without
+		// including unrelated user commits in the same worktree.
+		startHeadSha: text("start_head_sha"),
+
 		verdictPassed: integer("verdict_passed", { mode: "boolean" }),
 		verdictReason: text("verdict_reason"),
 		verdictFailingTest: text("verdict_failing_test"),
