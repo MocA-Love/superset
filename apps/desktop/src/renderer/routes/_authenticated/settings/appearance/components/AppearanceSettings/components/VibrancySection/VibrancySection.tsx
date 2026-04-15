@@ -58,6 +58,11 @@ export function VibrancySection() {
 	const displayOpacity = draftOpacity ?? opacity;
 	const [draftBlurRadius, setDraftBlurRadius] = useState<number | null>(null);
 	const displayBlurRadius = draftBlurRadius ?? blurRadius;
+	const [draftBlurLevelValue, setDraftBlurLevelValue] = useState<number | null>(
+		null,
+	);
+	const displayBlurLevelValue =
+		draftBlurLevelValue ?? blurLevelToSliderValue(blurLevel);
 
 	useEffect(() => {
 		// index.tsx already kicks off hydrate at startup; this is a safety net
@@ -183,19 +188,29 @@ export function VibrancySection() {
 						<Label className="text-sm font-medium">
 							ブラー強度
 							<span className="ml-2 text-xs text-muted-foreground">
-								{BLUR_LEVEL_LABEL[blurLevel]}
+								{
+									BLUR_LEVEL_LABEL[
+										sliderValueToBlurLevel(displayBlurLevelValue)
+									]
+								}
 							</span>
 						</Label>
 					</div>
 					<Slider
-						value={[blurLevelToSliderValue(blurLevel)]}
+						value={[displayBlurLevelValue]}
 						min={0}
 						max={100}
 						step={1}
 						disabled={!enabled || !hydrated}
+						onValueChange={(values) => {
+							const value = values[0];
+							if (typeof value !== "number") return;
+							setDraftBlurLevelValue(value);
+						}}
 						onValueCommit={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
+							setDraftBlurLevelValue(null);
 							const nextLevel = sliderValueToBlurLevel(value);
 							if (nextLevel !== blurLevel) {
 								void setState({ blurLevel: nextLevel });
