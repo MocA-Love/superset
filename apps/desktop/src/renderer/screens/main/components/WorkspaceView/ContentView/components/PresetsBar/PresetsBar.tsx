@@ -22,6 +22,7 @@ import {
 	useIsDarkTheme,
 } from "renderer/assets/app-icons/preset-icons";
 import { HotkeyMenuShortcut } from "renderer/components/HotkeyMenuShortcut";
+import { TodoButton } from "renderer/features/todo-agent/TodoButton";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { usePresets } from "renderer/react-query/presets";
@@ -485,6 +486,11 @@ export function PresetsBar() {
 				})}
 			{workspaceId && (
 				<div className="ml-auto flex items-center gap-1 shrink-0">
+					<TodoButton
+						projectId={workspace?.projectId ?? workspace?.project?.id}
+						workspaceId={workspaceId}
+						worktreePath={workspace?.worktreePath}
+					/>
 					<WorkspaceRunButton
 						projectId={workspace?.projectId ?? workspace?.project?.id}
 						workspaceId={workspaceId}

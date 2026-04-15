@@ -54,6 +54,10 @@ next-env.d.ts
 # Superset (track scripts/config; ignore generated workspace artifacts)
 .superset/ports.json
 .superset/config.local.json
+# Fork-local: TODO autonomous agent runtime artifacts (goal.md, state files)
+.superset/todo/
+# Fork-local: Claude Code's local worktree scratch dirs
+.claude/worktrees/
 
 # tsbuildinfo
 *.tsbuildinfo

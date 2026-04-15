@@ -1,5 +1,7 @@
 import type { BrowserWindow } from "electron";
 import type { WindowManager } from "main/lib/window-manager";
+// Fork-local: TODO autonomous agent feature.
+import { createTodoAgentRouter } from "main/todo-agent";
 import { router } from "..";
 import { createAnalyticsRouter } from "./analytics";
 import { createAuthRouter } from "./auth";
@@ -77,6 +79,7 @@ export const createAppRouter = (
 		tabTearoff: createTabTearoffRouter(wm),
 		extensions: createExtensionsRouter(getWindow),
 		vscodeExtensions: createVscodeExtensionsRouter(),
+		todoAgent: createTodoAgentRouter(),
 	});
 };
 

@@ -1,0 +1,1 @@
+ALTER TABLE `todo_sessions` ADD `start_head_sha` text;

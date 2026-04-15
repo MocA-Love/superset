@@ -1,0 +1,357 @@
+import { EventEmitter } from "node:events";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
+import path from "node:path";
+import {
+	projects,
+	type SelectTodoSession,
+	todoSessions,
+	workspaces,
+	worktrees,
+} from "@superset/local-db";
+import { desc, eq, inArray, isNull } from "drizzle-orm";
+import { localDb } from "main/lib/local-db";
+import type {
+	TodoSessionListEntry,
+	TodoSessionStateEvent,
+	TodoStreamEvent,
+	TodoStreamUpdate,
+} from "./types";
+
+export type { TodoSessionListEntry };
+
+const STREAM_JSONL_FILE = "stream.jsonl";
+
+/**
+ * Cap on the number of stream events we keep in memory per session. Enough
+ * to show "the whole current run" in the UI without letting an unbounded
+ * stream balloon process memory. Older events are dropped from the head.
+ */
+const STREAM_EVENT_BUFFER_CAP = 500;
+
+/**
+ * In-memory session bookkeeping + persistence helpers for the TODO agent.
+ *
+ * All state transitions go through `updateSession` so we have exactly one
+ * place that writes to the DB and emits the state event consumed by the
+ * tRPC subscription.
+ */
+class TodoSessionStore {
+	private readonly emitter = new EventEmitter();
+	/** In-memory per-session stream event buffer. Not persisted. */
+	private readonly streamBuffers = new Map<string, TodoStreamEvent[]>();
+	/**
+	 * Cached absolute artifact path per sessionId. The supervisor
+	 * primes this at the start of each run via `setArtifactPathCache`
+	 * so append-hot stream writes do not need to hit SQLite on every
+	 * event.
+	 */
+	private readonly artifactPathCache = new Map<string, string>();
+	/**
+	 * Per-session serialized append chain. `appendFile` from
+	 * node:fs/promises is async, and bursts of stream events can race
+	 * and write out-of-order. We sequence them per session via a
+	 * promise chain — cheap and avoids reordering the JSONL.
+	 */
+	private readonly persistQueues = new Map<string, Promise<void>>();
+
+	constructor() {
+		this.emitter.setMaxListeners(0);
+		this.rehydrateStrandedSessions();
+	}
+
+	setArtifactPathCache(sessionId: string, artifactPath: string | null): void {
+		if (artifactPath?.startsWith("/")) {
+			this.artifactPathCache.set(sessionId, artifactPath);
+			// Make sure the directory exists once, up-front, so the async
+			// appendFile calls below never race on mkdir.
+			try {
+				mkdirSync(artifactPath, { recursive: true });
+			} catch (error) {
+				console.warn("[todo-agent] artifact mkdir failed", error);
+			}
+		} else {
+			this.artifactPathCache.delete(sessionId);
+		}
+	}
+
+	appendStreamEvents(sessionId: string, events: TodoStreamEvent[]): void {
+		if (events.length === 0) return;
+		const buffer = this.streamBuffers.get(sessionId) ?? [];
+		buffer.push(...events);
+		// Drop from the head if we are over the cap so the tail (most
+		// recent activity) is always preserved.
+		if (buffer.length > STREAM_EVENT_BUFFER_CAP) {
+			buffer.splice(0, buffer.length - STREAM_EVENT_BUFFER_CAP);
+		}
+		this.streamBuffers.set(sessionId, buffer);
+
+		// Persist every event to disk so that sessions stay reviewable
+		// across app restarts and after the in-memory cap evicts them.
+		// The file lives inside the per-session artifact dir we already
+		// created via `prepareArtifacts`, so cleanup is automatic when
+		// the session (and its artifact dir) are deleted.
+		this.persistStreamEvents(sessionId, events);
+
+		const update: TodoStreamUpdate = { sessionId, events };
+		this.emitter.emit(`stream:${sessionId}`, update);
+	}
+
+	getStreamEvents(sessionId: string): TodoStreamEvent[] {
+		const inMemory = this.streamBuffers.get(sessionId);
+		if (inMemory && inMemory.length > 0) return [...inMemory];
+		// Fall back to the JSONL file — this is how we hydrate a past
+		// session whose in-memory buffer was cleared (either by app
+		// restart or by the eviction cap).
+		return this.loadStreamEventsFromDisk(sessionId);
+	}
+
+	clearStreamEvents(sessionId: string): void {
+		this.streamBuffers.delete(sessionId);
+	}
+
+	private persistStreamEvents(
+		sessionId: string,
+		events: TodoStreamEvent[],
+	): void {
+		// Fast-path: use the cached absolute path the supervisor primed
+		// when the run started. Falls back to a DB read only when no
+		// cache entry exists (e.g. a historical session being replayed
+		// outside of a run).
+		let dir = this.artifactPathCache.get(sessionId);
+		if (!dir) {
+			const session = this.get(sessionId);
+			dir = session?.artifactPath;
+			if (dir?.startsWith("/")) {
+				this.artifactPathCache.set(sessionId, dir);
+			}
+		}
+		if (!dir || !dir.startsWith("/")) return;
+		const filePath = path.join(dir, STREAM_JSONL_FILE);
+		const body = `${events.map((e) => JSON.stringify(e)).join("\n")}\n`;
+
+		// Chain async appends so bursty event streams stay ordered in
+		// the JSONL file and main process is not blocked on fs I/O.
+		const previous = this.persistQueues.get(sessionId) ?? Promise.resolve();
+		const nextTask = previous
+			.catch(() => {})
+			.then(() => appendFile(filePath, body, "utf8"))
+			.catch((error) => {
+				console.warn("[todo-agent] stream persist failed", error);
+			});
+		this.persistQueues.set(sessionId, nextTask);
+	}
+
+	/**
+	 * On app startup, any session that was mid-run when the previous
+	 * process died will still have a non-terminal status
+	 * (`preparing` / `running` / `verifying`) in the DB. The
+	 * in-memory supervisor is obviously gone, so those rows would
+	 * otherwise render as "running" forever in the Agent Manager
+	 * with no way to start, stop, or re-run them. Flip them to
+	 * `failed` once with a clear reason so the user can immediately
+	 * delete or re-run from the UI.
+	 */
+	private rehydrateStrandedSessions(): void {
+		try {
+			const stranded = localDb
+				.update(todoSessions)
+				.set({
+					status: "failed",
+					phase: "failed",
+					verdictPassed: false,
+					verdictReason:
+						"前回の実行が中断されました（アプリ再起動）。再実行するか削除してください。",
+					completedAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+				.where(
+					inArray(todoSessions.status, ["preparing", "running", "verifying"]),
+				)
+				.returning()
+				.all();
+			if (stranded.length > 0) {
+				console.log(
+					`[todo-agent] rehydrated ${stranded.length} stranded session(s)`,
+				);
+			}
+		} catch (error) {
+			console.warn("[todo-agent] rehydrate on startup failed", error);
+		}
+	}
+
+	private loadStreamEventsFromDisk(sessionId: string): TodoStreamEvent[] {
+		try {
+			const session = this.get(sessionId);
+			const dir = session?.artifactPath;
+			if (!dir || !dir.startsWith("/")) return [];
+			const filePath = path.join(dir, STREAM_JSONL_FILE);
+			if (!existsSync(filePath)) return [];
+			const text = readFileSync(filePath, "utf8");
+			const lines = text.split("\n").filter((l) => l.length > 0);
+			const events: TodoStreamEvent[] = [];
+			for (const line of lines) {
+				try {
+					const parsed = JSON.parse(line) as TodoStreamEvent;
+					if (
+						parsed &&
+						typeof parsed === "object" &&
+						typeof parsed.id === "string" &&
+						typeof parsed.kind === "string"
+					) {
+						events.push(parsed);
+					}
+				} catch {
+					// Skip malformed line.
+				}
+			}
+			return events;
+		} catch (error) {
+			console.warn("[todo-agent] stream load failed", error);
+			return [];
+		}
+	}
+
+	subscribeStream(
+		sessionId: string,
+		handler: (update: TodoStreamUpdate) => void,
+	): () => void {
+		const key = `stream:${sessionId}`;
+		this.emitter.on(key, handler);
+		return () => {
+			this.emitter.off(key, handler);
+		};
+	}
+
+	insert(
+		row: Omit<SelectTodoSession, "id" | "createdAt" | "updatedAt"> & {
+			id?: string;
+		},
+	): SelectTodoSession {
+		const inserted = localDb.insert(todoSessions).values(row).returning().get();
+		this.emit(inserted);
+		return inserted;
+	}
+
+	get(sessionId: string): SelectTodoSession | undefined {
+		return localDb
+			.select()
+			.from(todoSessions)
+			.where(eq(todoSessions.id, sessionId))
+			.get();
+	}
+
+	listForWorkspace(workspaceId: string): SelectTodoSession[] {
+		return localDb
+			.select()
+			.from(todoSessions)
+			.where(eq(todoSessions.workspaceId, workspaceId))
+			.orderBy(desc(todoSessions.createdAt))
+			.all();
+	}
+
+	/**
+	 * Cross-workspace list used by the Agent-Manager-style view. Joins in
+	 * workspace + project names so the manager can group and label rows
+	 * without issuing N extra queries. Deleted workspaces
+	 * (`deletingAt IS NOT NULL`) are filtered out.
+	 */
+	listAll(): TodoSessionListEntry[] {
+		const rows = localDb
+			.select({
+				session: todoSessions,
+				workspaceName: workspaces.name,
+				workspaceBranch: workspaces.branch,
+				workspaceDeletingAt: workspaces.deletingAt,
+				projectName: projects.name,
+			})
+			.from(todoSessions)
+			.leftJoin(workspaces, eq(workspaces.id, todoSessions.workspaceId))
+			.leftJoin(projects, eq(projects.id, workspaces.projectId))
+			.where(isNull(workspaces.deletingAt))
+			.orderBy(desc(todoSessions.createdAt))
+			.all();
+		return rows.map((row) => ({
+			...row.session,
+			workspaceName: row.workspaceName ?? null,
+			workspaceBranch: row.workspaceBranch ?? null,
+			projectName: row.projectName ?? null,
+		}));
+	}
+
+	update(
+		sessionId: string,
+		patch: Partial<SelectTodoSession>,
+	): SelectTodoSession | undefined {
+		const next = {
+			...patch,
+			updatedAt: Date.now(),
+		};
+		const updated = localDb
+			.update(todoSessions)
+			.set(next)
+			.where(eq(todoSessions.id, sessionId))
+			.returning()
+			.get();
+		if (updated) this.emit(updated);
+		return updated;
+	}
+
+	remove(sessionId: string): boolean {
+		const result = localDb
+			.delete(todoSessions)
+			.where(eq(todoSessions.id, sessionId))
+			.run();
+		this.clearStreamEvents(sessionId);
+		return result.changes > 0;
+	}
+
+	subscribe(
+		sessionId: string,
+		handler: (event: TodoSessionStateEvent) => void,
+	): () => void {
+		const key = `session:${sessionId}`;
+		this.emitter.on(key, handler);
+		return () => {
+			this.emitter.off(key, handler);
+		};
+	}
+
+	private emit(session: SelectTodoSession): void {
+		const event: TodoSessionStateEvent = {
+			sessionId: session.id,
+			session,
+		};
+		this.emitter.emit(`session:${session.id}`, event);
+	}
+}
+
+let singleton: TodoSessionStore | undefined;
+
+export function getTodoSessionStore(): TodoSessionStore {
+	if (!singleton) singleton = new TodoSessionStore();
+	return singleton;
+}
+
+/**
+ * Resolve the absolute filesystem path a TODO session should run in for a
+ * given workspace. For `type="worktree"` workspaces this is the worktree
+ * path; for `type="branch"` workspaces there is no worktree row and we
+ * fall back to the project's `mainRepoPath`, matching the resolution
+ * strategy used by the existing terminal runtime in
+ * `workspace-terminal-context.ts`. Returns undefined only when the
+ * workspace does not exist.
+ */
+export function resolveWorktreePath(workspaceId: string): string | undefined {
+	const row = localDb
+		.select({
+			worktreePath: worktrees.path,
+			mainRepoPath: projects.mainRepoPath,
+		})
+		.from(workspaces)
+		.leftJoin(projects, eq(projects.id, workspaces.projectId))
+		.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
+		.where(eq(workspaces.id, workspaceId))
+		.get();
+	return row?.worktreePath ?? row?.mainRepoPath ?? undefined;
+}
