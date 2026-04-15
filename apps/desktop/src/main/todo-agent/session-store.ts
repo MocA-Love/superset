@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import {
+	projects,
 	type SelectTodoSession,
 	todoSessions,
 	workspaces,
@@ -97,15 +98,24 @@ export function getTodoSessionStore(): TodoSessionStore {
 }
 
 /**
- * Resolve the absolute worktree path for a workspace. Returns undefined if
- * the workspace is branch-typed (no worktree) or does not exist.
+ * Resolve the absolute filesystem path a TODO session should run in for a
+ * given workspace. For `type="worktree"` workspaces this is the worktree
+ * path; for `type="branch"` workspaces there is no worktree row and we
+ * fall back to the project's `mainRepoPath`, matching the resolution
+ * strategy used by the existing terminal runtime in
+ * `workspace-terminal-context.ts`. Returns undefined only when the
+ * workspace does not exist.
  */
 export function resolveWorktreePath(workspaceId: string): string | undefined {
 	const row = localDb
-		.select({ path: worktrees.path })
+		.select({
+			worktreePath: worktrees.path,
+			mainRepoPath: projects.mainRepoPath,
+		})
 		.from(workspaces)
+		.leftJoin(projects, eq(projects.id, workspaces.projectId))
 		.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
 		.where(eq(workspaces.id, workspaceId))
 		.get();
-	return row?.path ?? undefined;
+	return row?.worktreePath ?? row?.mainRepoPath ?? undefined;
 }
