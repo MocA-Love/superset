@@ -63,11 +63,17 @@ export function useReviewTab({
 		};
 	}, [prQuery.data]);
 
+	// FORK NOTE: gate comments on `pr` existence. React Query keeps the last
+	// successful threadsQuery.data in cache even after `getPullRequest`
+	// returns null (e.g. PR closed/unlinked), so without this guard the
+	// Review tab would keep showing stale comments and badge count after
+	// the PR disappears.
 	const comments = useMemo<NormalizedComment[]>(() => {
+		if (!pr) return [];
 		const data = threadsQuery.data;
 		if (!data) return [];
 		return normalizeThreadsToComments(data);
-	}, [threadsQuery.data]);
+	}, [pr, threadsQuery.data]);
 
 	const openCommentCount = comments.filter((c) => !c.isResolved).length;
 
