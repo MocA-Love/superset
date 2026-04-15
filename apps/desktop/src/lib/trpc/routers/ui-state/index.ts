@@ -259,7 +259,98 @@ const terminalColorsSchema = z.object({
 });
 
 /**
- * Zod schema for Theme
+ * Zod schema for editor chrome colors.
+ * Mirrors EditorColors in shared/themes/types.ts.
+ */
+const editorColorsSchema = z.object({
+	background: z.string(),
+	foreground: z.string(),
+	border: z.string(),
+	cursor: z.string(),
+	gutterBackground: z.string(),
+	gutterForeground: z.string(),
+	activeLine: z.string(),
+	selection: z.string(),
+	search: z.string(),
+	searchActive: z.string(),
+	panel: z.string(),
+	panelBorder: z.string(),
+	panelInputBackground: z.string(),
+	panelInputForeground: z.string(),
+	panelInputBorder: z.string(),
+	panelButtonBackground: z.string(),
+	panelButtonForeground: z.string(),
+	panelButtonBorder: z.string(),
+	diffBuffer: z.string(),
+	diffHover: z.string(),
+	diffSeparator: z.string(),
+	addition: z.string(),
+	deletion: z.string(),
+	modified: z.string(),
+});
+
+/**
+ * Zod schema for editor syntax colors.
+ * Mirrors EditorSyntaxColors in shared/themes/types.ts.
+ */
+const editorSyntaxColorsSchema = z.object({
+	plainText: z.string(),
+	comment: z.string(),
+	docComment: z.string(),
+	keyword: z.string(),
+	controlKeyword: z.string(),
+	storageKeyword: z.string(),
+	string: z.string(),
+	escape: z.string(),
+	number: z.string(),
+	functionCall: z.string(),
+	variableName: z.string(),
+	variableProperty: z.string(),
+	typeName: z.string(),
+	className: z.string(),
+	constant: z.string(),
+	regexp: z.string(),
+	tagName: z.string(),
+	attributeName: z.string(),
+	invalid: z.string(),
+	annotation: z.string(),
+	operator: z.string(),
+	punctuation: z.string(),
+	markdownHeading: z.string(),
+	markdownEmphasis: z.string(),
+	markdownStrong: z.string(),
+	markdownStrikethrough: z.string(),
+	markdownLink: z.string(),
+	markdownUrl: z.string(),
+	markdownCode: z.string(),
+	markdownQuote: z.string(),
+	markdownList: z.string(),
+	markdownSeparator: z.string(),
+	meta: z.string(),
+});
+
+/**
+ * Zod schema for EditorThemeOverrides.
+ * Both `colors` and `syntax` accept partial shapes so imported themes that
+ * only override a subset of tokens still round-trip through persistence.
+ */
+const editorThemeOverridesSchema = z.object({
+	colors: editorColorsSchema.partial().optional(),
+	syntax: editorSyntaxColorsSchema.partial().optional(),
+});
+
+/**
+ * Zod schema for Theme.
+ *
+ * `terminal` and `editor` are optional to match the Theme interface in
+ * shared/themes/types.ts. If they are missing, the app falls back to
+ * defaults derived from the theme type and base UI colors.
+ *
+ * Every field declared on the Theme interface MUST appear here — Zod's
+ * default `z.object()` silently strips unknown keys during
+ * `.input(...)` validation on the `theme.set` tRPC mutation, which
+ * means any missing field would be dropped on every persist cycle and
+ * lost after app restart.
  */
 const themeSchema = z.object({
 	id: z.string(),
@@ -269,7 +360,8 @@ const themeSchema = z.object({
 	description: z.string().optional(),
 	type: z.enum(["dark", "light"]),
 	ui: uiColorsSchema,
-	terminal: terminalColorsSchema,
+	terminal: terminalColorsSchema.optional(),
+	editor: editorThemeOverridesSchema.optional(),
 	isBuiltIn: z.boolean().optional(),
 	isCustom: z.boolean().optional(),
 });
@@ -283,6 +375,11 @@ const themeStateSchema = z.object({
 	systemLightThemeId: z.string().optional(),
 	systemDarkThemeId: z.string().optional(),
 });
+
+export const __testing = {
+	themeSchema,
+	themeStateSchema,
+};
 
 /**
  * UI State router - manages tabs and theme persistence via lowdb
