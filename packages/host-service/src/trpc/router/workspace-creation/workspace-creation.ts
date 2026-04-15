@@ -641,8 +641,21 @@ export const workspaceCreationRouter = router({
 			// or the picker's Check out action via the `checkout` procedure).
 			// --no-track prevents the new branch from tracking the remote ref
 			// (e.g. origin/main); push.autoSetupRemote handles first-push tracking.
-			const startPointArg =
-				startPoint.kind === "head" ? "HEAD" : startPoint.shortName;
+			//
+			// FORK NOTE: use fullRef for remote-tracking refs instead of
+			// remoteShortName. The short form `origin/foo` is still ambiguous
+			// with a local branch literally named `origin/foo` — which is the
+			// exact edge case this refactor was supposed to address. Passing
+			// `refs/remotes/origin/foo` removes the ambiguity at the
+			// `git worktree add` boundary too.
+			let startPointArg: string;
+			if (startPoint.kind === "head") {
+				startPointArg = "HEAD";
+			} else if (startPoint.kind === "remote-tracking") {
+				startPointArg = startPoint.fullRef;
+			} else {
+				startPointArg = startPoint.fullRef;
+			}
 			await git.raw([
 				"worktree",
 				"add",
@@ -650,9 +663,7 @@ export const workspaceCreationRouter = router({
 				"-b",
 				branchName,
 				worktreePath,
-				startPoint.kind === "remote-tracking"
-					? startPoint.remoteShortName
-					: startPointArg,
+				startPointArg,
 			]);
 
 			setProgress(input.pendingId, "registering");

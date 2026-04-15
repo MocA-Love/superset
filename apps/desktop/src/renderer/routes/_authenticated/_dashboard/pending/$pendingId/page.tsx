@@ -219,6 +219,16 @@ function PendingWorkspacePage() {
 	// navigate anyway after a bounded wait. Target page will show its own
 	// loading state.
 	const [syncTimedOut, setSyncTimedOut] = useState(false);
+	// FORK NOTE: reset syncTimedOut when pendingId switches — otherwise a
+	// sticky `true` from the previous pending would skip the local-sync
+	// wait on the next pending and reintroduce the `workspace not found`
+	// race this fallback is trying to paper over. Biome flags [pendingId]
+	// as unnecessary because the effect body doesn't read it, but we want
+	// the effect to *re-run on change* — that's the whole point.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional re-run on pendingId change
+	useEffect(() => {
+		setSyncTimedOut(false);
+	}, [pendingId]);
 	useEffect(() => {
 		if (
 			pending?.status !== "succeeded" ||

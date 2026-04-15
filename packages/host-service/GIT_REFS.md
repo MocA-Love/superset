@@ -148,7 +148,7 @@ Use template-literal types for `fullRef` and `asLocalRef`'s return type. Don't u
 ### 4. Type-only re-exports across package boundaries
 
 ```ts
-// runtime/git/refs.ts
+// runtime/git/index.ts (barrel)
 export type { ResolvedRef } from "./refs";
 export { resolveRef, asLocalRef } from "./refs";
 ```
