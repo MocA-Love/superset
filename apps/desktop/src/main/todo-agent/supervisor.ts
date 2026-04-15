@@ -373,8 +373,64 @@ function runVerify(
 	});
 }
 
+/**
+ * Extract a stable identifier for the first failing test in a log. Used by
+ * the futility detector to decide "same failure recurring" vs "different
+ * failure each iteration". The goal is not to pretty-print; it is to return
+ * a stable-ish string that stays identical across runs of the same failing
+ * test, so we should normalize away run-specific noise (timings, object
+ * hex ids, absolute paths of runner binaries).
+ *
+ * Supported runners, in priority order:
+ *   - bun test         `(fail) path/file.test.ts > describe > it`
+ *   - vitest           `❯ path/file.test.ts > suite > case` / `FAIL  path`
+ *   - jest             `✕ describe > it (12 ms)` / `FAIL  src/…`
+ *   - node:test        `not ok 1 - describe > it`
+ *   - playwright       `1) [chromium] › path/file:line:col › title`
+ *   - plain shell      falls back to first non-empty stderr-looking line.
+ */
 function guessFailingTest(log: string): string | undefined {
-	// Very rough heuristic: first line that looks like a test failure marker.
-	const match = log.match(/(?:FAIL|✗|×)\s+([^\s][^\n]+)/);
-	return match?.[1]?.trim();
+	const stripAnsi = log.replace(/\x1b\[[0-9;]*m/g, "");
+	const lines = stripAnsi.split("\n");
+
+	const patterns: RegExp[] = [
+		/^\s*\(fail\)\s+(.+?)(?:\s+\[\d.*)?$/i, // bun test
+		/^\s*❯\s+(.+?)(?:\s+\d+ms)?$/, // vitest tree view
+		/^\s*FAIL\s+(.+?)(?:\s+>\s+.+)?$/, // vitest/jest summary
+		/^\s*✕\s+(.+?)(?:\s+\(\d+\s*ms\))?$/, // jest inline fail
+		/^\s*×\s+(.+?)(?:\s+\(\d+\s*ms\))?$/, // vitest inline fail
+		/^\s*✗\s+(.+?)(?:\s+\(\d+\s*ms\))?$/, // generic
+		/^\s*not ok \d+\s*-\s*(.+)$/, // TAP / node:test
+		/^\s*\d+\)\s+(?:\[[^\]]+\]\s+)?[›»>]\s+(.+)$/, // playwright
+	];
+
+	for (const line of lines) {
+		for (const re of patterns) {
+			const m = line.match(re);
+			if (m?.[1]) {
+				return normalizeTestId(m[1]);
+			}
+		}
+	}
+
+	// Fallback: look for "Error:" or "AssertionError:" anchored lines.
+	const errorLine = lines.find((l) => /\b(Error|Assertion)\b.*:/.test(l));
+	if (errorLine) return normalizeTestId(errorLine.trim());
+
+	return undefined;
+}
+
+function normalizeTestId(raw: string): string {
+	return raw
+		.trim()
+		// Drop "(123 ms)" timing suffixes that change every run.
+		.replace(/\s*\(\d+\s*ms\)\s*$/, "")
+		// Drop "[123.45ms]" suffixes.
+		.replace(/\s*\[\d+(?:\.\d+)?\s*m?s\]\s*$/, "")
+		// Collapse object hex ids like Foo@0x7f8b3c004a00 → Foo@0x?
+		.replace(/@0x[0-9a-f]+/gi, "@0x?")
+		// Strip trailing ANSI colon+reason ("...: expected 1 to be 2") which
+		// can vary in wording across runs for the same logical failure.
+		.replace(/:\s*expected.*$/i, "")
+		.slice(0, 240);
 }

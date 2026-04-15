@@ -154,7 +154,7 @@ apps/desktop/src/main/todo-agent/
   futility-detector.ts          repeat-failure / diff-stall detection
   prompt-builder.ts             composes the claude prompt per iteration
   trpc-router.ts                tRPC router factory (createTodoAgentRouter)
-packages/db/src/schema/todo-sessions.ts                          (new table)
+packages/local-db/src/schema/todo-sessions.ts                    (new table)
 apps/desktop/src/renderer/features/todo-agent/
   TodoButton/TodoButton.tsx
   TodoButton/index.ts
@@ -168,7 +168,7 @@ apps/desktop/src/renderer/features/todo-agent/
 
 ### 変更する既存ファイル（最小限、追記のみ）
 
-1. `packages/db/src/schema/index.ts`
+1. `packages/local-db/src/schema/index.ts` および `schema.ts`
    1 行追加: `export * from "./todo-sessions";`
 2. `apps/desktop/src/lib/trpc/routers/index.ts`
    import 1 行 + router object に 1 行追加:
@@ -185,7 +185,7 @@ upstream 側で多少の変更があっても衝突しにくい。
 ## データモデル
 
 ```ts
-// packages/db/src/schema/todo-sessions.ts
+// packages/local-db/src/schema/todo-sessions.ts (SQLite)
 export const todoSessions = pgTable("todo_sessions", {
   id: uuid().primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id),
