@@ -21,7 +21,7 @@ interface TodoModalProps {
 	projectId?: string;
 }
 
-const DEFAULT_VERIFY_COMMAND = "bun test";
+const DEFAULT_VERIFY_COMMAND = "";
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_MINUTES = 30;
 
@@ -75,10 +75,11 @@ export function TodoModal({
 		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		goal.trim().length > 0 &&
-		verifyCommand.trim().length > 0 &&
 		maxIterations >= 1 &&
 		maxMinutes >= 1 &&
 		!submitting;
+
+	const hasVerify = verifyCommand.trim().length > 0;
 
 	const handleSubmit = useCallback(async () => {
 		if (!canSubmit) return;
@@ -90,19 +91,20 @@ export function TodoModal({
 				title: title.trim(),
 				description: description.trim(),
 				goal: goal.trim(),
-				verifyCommand: verifyCommand.trim(),
+				verifyCommand: hasVerify ? verifyCommand.trim() : undefined,
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
 			});
-			toast.success("TODO session created");
+			toast.success("TODO セッションを作成しました");
 			handleOpenChange(false);
 		} catch (error) {
 			const message =
-				error instanceof Error ? error.message : "Failed to create TODO";
+				error instanceof Error ? error.message : "作成に失敗しました";
 			toast.error(message);
 			setSubmitting(false);
 		}
 	}, [
+		hasVerify,
 		canSubmit,
 		create,
 		description,
@@ -120,90 +122,98 @@ export function TodoModal({
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="max-w-xl">
 				<DialogHeader>
-					<DialogTitle>New autonomous TODO</DialogTitle>
+					<DialogTitle>新しい自律 TODO</DialogTitle>
 					<DialogDescription>
-						An autonomous Claude Code session will run until the verify
-						command exits 0 or the budget is exhausted. You can watch and
-						intervene from the TODO panel while it runs.
+						自律的な Claude Code セッションを起動します。Verify コマンドを
+						指定した場合はその終了コードが 0 になるか予算上限に達するまで
+						ループします。空欄の場合は単発タスクとして 1 ターンだけ実行します
+						（調査・リサーチ向け）。実行中は TODO パネルから状況を確認でき、
+						ワーカーのターミナルに直接入力して介入できます。
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="flex flex-col gap-4 py-2">
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-title">Title</Label>
+						<Label htmlFor="todo-title">タイトル</Label>
 						<Input
 							id="todo-title"
 							value={title}
 							onChange={(e) => setTitle(e.target.value)}
-							placeholder="Fix issue #123: login redirect loop"
+							placeholder="例: Issue #123 のログインリダイレクト問題を修正"
 							maxLength={200}
 							autoFocus
 						/>
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-description">What should be done?</Label>
+						<Label htmlFor="todo-description">やってほしいこと</Label>
 						<Textarea
 							id="todo-description"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Describe the task. The more context you give, the fewer iterations the agent will need."
+							placeholder="タスクの内容を記述してください。背景や制約を多めに書くほど、エージェントが必要とするイテレーション数が減ります。"
 							rows={4}
 						/>
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-goal">Clear goal (acceptance criteria)</Label>
+						<Label htmlFor="todo-goal">ゴール（明確な達成条件）</Label>
 						<Textarea
 							id="todo-goal"
 							value={goal}
 							onChange={(e) => setGoal(e.target.value)}
-							placeholder="The task is done when: ..."
+							placeholder="例: ○○の調査結果がまとまっている / △△のバグが再現しなくなっている"
 							rows={3}
 						/>
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-verify">Verify command</Label>
+						<Label htmlFor="todo-verify">
+							Verify コマンド{" "}
+							<span className="text-muted-foreground font-normal">（任意）</span>
+						</Label>
 						<Input
 							id="todo-verify"
 							value={verifyCommand}
 							onChange={(e) => setVerifyCommand(e.target.value)}
-							placeholder={DEFAULT_VERIFY_COMMAND}
+							placeholder="例: bun test（空欄なら単発実行）"
 						/>
 						<p className="text-xs text-muted-foreground">
-							Run in the worktree. Exit code 0 = done.
+							指定した場合は worktree で実行され、終了コード 0 で完了判定されます。
+							調査タスクなど「完了判定がテストで出せない」場合は空欄にしてください。
 						</p>
 					</div>
 
-					<div className="grid grid-cols-2 gap-4">
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="todo-iter">Max iterations</Label>
-							<Input
-								id="todo-iter"
-								type="number"
-								min={1}
-								max={100}
-								value={maxIterations}
-								onChange={(e) =>
-									setMaxIterations(Number(e.target.value) || 1)
-								}
-							/>
+					{hasVerify && (
+						<div className="grid grid-cols-2 gap-4">
+							<div className="flex flex-col gap-1.5">
+								<Label htmlFor="todo-iter">最大イテレーション数</Label>
+								<Input
+									id="todo-iter"
+									type="number"
+									min={1}
+									max={100}
+									value={maxIterations}
+									onChange={(e) =>
+										setMaxIterations(Number(e.target.value) || 1)
+									}
+								/>
+							</div>
+							<div className="flex flex-col gap-1.5">
+								<Label htmlFor="todo-minutes">壁時計上限（分）</Label>
+								<Input
+									id="todo-minutes"
+									type="number"
+									min={1}
+									max={240}
+									value={maxMinutes}
+									onChange={(e) =>
+										setMaxMinutes(Number(e.target.value) || 1)
+									}
+								/>
+							</div>
 						</div>
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="todo-minutes">Wall-clock (minutes)</Label>
-							<Input
-								id="todo-minutes"
-								type="number"
-								min={1}
-								max={240}
-								value={maxMinutes}
-								onChange={(e) =>
-									setMaxMinutes(Number(e.target.value) || 1)
-								}
-							/>
-						</div>
-					</div>
+					)}
 				</div>
 
 				<DialogFooter>
@@ -213,14 +223,14 @@ export function TodoModal({
 						onClick={() => handleOpenChange(false)}
 						disabled={submitting}
 					>
-						Cancel
+						キャンセル
 					</Button>
 					<Button
 						type="button"
 						onClick={handleSubmit}
 						disabled={!canSubmit}
 					>
-						{submitting ? "Creating…" : "Create TODO"}
+						{submitting ? "作成中…" : "作成"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

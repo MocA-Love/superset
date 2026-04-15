@@ -138,6 +138,39 @@ class TodoSupervisor {
 				startedAt: Date.now(),
 			});
 
+			// Single-turn mode: no verify command means "research /
+			// investigation / one-shot". Write the initial prompt, wait for
+			// the worker to go idle, then settle as done. The user reviews
+			// the output in the worker terminal tab and can keep talking to
+			// it manually if they want to.
+			if (!session0.verifyCommand) {
+				store.update(sessionId, { iteration: 1, phase: "running" });
+				const promptSession = store.get(sessionId);
+				if (!promptSession) return;
+				const prompt = buildIterationPrompt(promptSession, 1);
+				this.writeToPane(
+					promptSession.attachedPaneId as string,
+					`${prompt}\n`,
+				);
+				const idled = await this.waitForIdle(
+					promptSession.attachedPaneId as string,
+					DEFAULT_IDLE_WINDOW_MS,
+					session0.maxWallClockSec * 1000,
+					ac.signal,
+				);
+				if (ac.signal.aborted) return;
+				store.update(sessionId, {
+					status: "done",
+					phase: "done",
+					verdictPassed: true,
+					verdictReason: idled
+						? "単発タスク完了。ワーカーの出力をターミナルで確認してください。"
+						: "中断されました。",
+					completedAt: Date.now(),
+				});
+				return;
+			}
+
 			let iteration = session0.iteration;
 			while (iteration < session0.maxIterations) {
 				if (ac.signal.aborted) break;
@@ -175,7 +208,8 @@ class TodoSupervisor {
 
 				store.update(sessionId, { phase: "verifying" });
 				const verdict = await runVerify(
-					promptSession.verifyCommand,
+					// biome-ignore lint/style/noNonNullAssertion: verifyCommand is non-null in this branch (checked above)
+					promptSession.verifyCommand!,
 					promptSession.workspaceId,
 					ac.signal,
 				);
@@ -295,34 +329,48 @@ export function getTodoSupervisor(): TodoSupervisor {
 // ---- helpers ----
 
 function renderGoalDoc(session: SelectTodoSession): string {
-	return [
+	const lines: string[] = [
 		`# TODO: ${session.title}`,
 		"",
-		"## Description",
+		"## 説明",
 		session.description,
 		"",
-		"## Goal (acceptance criteria)",
+		"## ゴール（受け入れ条件）",
 		session.goal,
 		"",
-		"## Verify command",
-		"```sh",
-		session.verifyCommand,
-		"```",
-		"",
-		`Budget: ${session.maxIterations} iterations, ${session.maxWallClockSec}s wall clock.`,
-		"",
-	].join("\n");
+	];
+	if (session.verifyCommand) {
+		lines.push(
+			"## Verify コマンド",
+			"```sh",
+			session.verifyCommand,
+			"```",
+			"",
+			`予算: ${session.maxIterations} イテレーション / ${session.maxWallClockSec} 秒`,
+			"",
+		);
+	} else {
+		lines.push(
+			"## モード",
+			"単発タスク。外部 verify は行いません。ゴールを達成したと判断したらターンを終えて停止してください。",
+			"",
+		);
+	}
+	return lines.join("\n");
 }
 
 function buildIterationPrompt(
 	session: SelectTodoSession,
 	iteration: number,
 ): string {
-	const header =
-		iteration === 1
-			? `You are executing an autonomous TODO task. Goal file is at .superset/todo/${session.id}/goal.md. Read it, then work towards the goal. When you believe a turn is complete, stop and wait; an external verifier will run \`${session.verifyCommand}\` and tell you if you need another turn.`
-			: `Iteration ${iteration}. The verify command \`${session.verifyCommand}\` failed. Reason: ${session.verdictReason ?? "unknown"}. Continue working toward the goal in .superset/todo/${session.id}/goal.md.`;
-	return header;
+	const goalPath = `.superset/todo/${session.id}/goal.md`;
+	if (!session.verifyCommand) {
+		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、ゴールに向かって作業してください。外部 verify は行いません。ゴールを達成したら停止してください。`;
+	}
+	if (iteration === 1) {
+		return `自律 TODO タスクを実行します。まず ${goalPath} を読み、ゴールに向かって作業してください。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行し、追加のターンが必要かどうかを知らせます。`;
+	}
+	return `イテレーション ${iteration}。verify コマンド \`${session.verifyCommand}\` が失敗しました。理由: ${session.verdictReason ?? "不明"}。${goalPath} のゴールに向けて作業を続けてください。`;
 }
 
 function tailForReason(log: string): string {

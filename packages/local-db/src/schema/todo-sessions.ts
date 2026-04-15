@@ -26,7 +26,11 @@ export const todoSessions = sqliteTable(
 		title: text("title").notNull(),
 		description: text("description").notNull(),
 		goal: text("goal").notNull(),
-		verifyCommand: text("verify_command").notNull(),
+		// Nullable: when absent, the session runs as a single-turn task
+		// (no iteration loop, no decisive gate). Used for research /
+		// investigation / single-shot work where there is no sensible
+		// acceptance command.
+		verifyCommand: text("verify_command"),
 
 		maxIterations: integer("max_iterations").notNull().default(10),
 		maxWallClockSec: integer("max_wall_clock_sec").notNull().default(1800),

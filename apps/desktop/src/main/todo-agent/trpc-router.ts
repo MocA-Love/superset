@@ -24,7 +24,7 @@ export const createTodoAgentRouter = () => {
 				const worktreePath = resolveWorktreePath(input.workspaceId);
 				if (!worktreePath) {
 					throw new Error(
-						`todo-agent: workspace ${input.workspaceId} has no worktree`,
+						`todo-agent: workspace ${input.workspaceId} のパスを解決できませんでした`,
 					);
 				}
 
@@ -34,7 +34,7 @@ export const createTodoAgentRouter = () => {
 					title: input.title,
 					description: input.description,
 					goal: input.goal,
-					verifyCommand: input.verifyCommand,
+					verifyCommand: input.verifyCommand ?? null,
 					maxIterations: input.maxIterations,
 					maxWallClockSec: input.maxWallClockSec,
 					status: "queued",

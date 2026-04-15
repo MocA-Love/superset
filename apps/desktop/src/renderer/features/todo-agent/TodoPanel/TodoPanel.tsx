@@ -44,10 +44,10 @@ export function TodoPanel({ open, onOpenChange, workspaceId }: TodoPanelProps) {
 		<Sheet open={open} onOpenChange={onOpenChange}>
 			<SheetContent side="right" className="w-[540px] sm:max-w-[540px] p-0">
 				<SheetHeader className="px-5 pt-5 pb-3 border-b">
-					<SheetTitle>TODO autonomous sessions</SheetTitle>
+					<SheetTitle>自律 TODO セッション</SheetTitle>
 					<SheetDescription>
-						Sessions for this workspace. Click Start to hand off a queued
-						session to the supervisor.
+						このワークスペースの TODO セッション一覧。queued 状態のものは
+						Start を押すと Supervisor にハンドオフされます。
 					</SheetDescription>
 				</SheetHeader>
 				<div className="grid grid-cols-[200px_1fr] h-[calc(100%-90px)]">
@@ -55,7 +55,7 @@ export function TodoPanel({ open, onOpenChange, workspaceId }: TodoPanelProps) {
 						<div className="flex flex-col p-2 gap-1">
 							{(sessions ?? []).length === 0 && (
 								<p className="text-xs text-muted-foreground px-2 py-4">
-									No sessions yet. Create one from the TODO button.
+									まだセッションはありません。TODO ボタンから作成してください。
 								</p>
 							)}
 							{(sessions ?? []).map((session) => (
@@ -86,7 +86,7 @@ export function TodoPanel({ open, onOpenChange, workspaceId }: TodoPanelProps) {
 							/>
 						) : (
 							<div className="p-4 text-sm text-muted-foreground">
-								Select a session to view details.
+								セッションを選択すると詳細が表示されます。
 							</div>
 						)}
 					</ScrollArea>
@@ -132,7 +132,10 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 
 			// Launch interactive claude code with an initial prompt that
 			// points at the goal file the supervisor wrote at creation time.
-			const initialPrompt = `Read .superset/todo/${session.id}/goal.md and begin working toward the goal. Stop when you believe a turn is complete; an external verifier will run \`${session.verifyCommand}\` and tell you if another turn is needed.`;
+			const goalRef = `.superset/todo/${session.id}/goal.md`;
+			const initialPrompt = session.verifyCommand
+				? `${goalRef} を読んで、ゴールに向けて作業を開始してください。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行して次のターンが必要かを判定します。`
+				: `${goalRef} を読んで、ゴールに向けて作業してください。単発タスクなので外部 verify は行いません。ゴール達成と判断したら停止してください。`;
 			const command = `claude ${JSON.stringify(initialPrompt)}`;
 
 			await launchCommandInPane({
@@ -154,10 +157,10 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 			});
 
 			await utils.todoAgent.list.invalidate({ workspaceId });
-			toast.success(`Started: ${session.title}`);
+			toast.success(`開始しました: ${session.title}`);
 		} catch (error) {
 			const message =
-				error instanceof Error ? error.message : "Failed to start";
+				error instanceof Error ? error.message : "開始に失敗しました";
 			toast.error(message);
 		} finally {
 			setStarting(false);
@@ -176,10 +179,10 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 		try {
 			await abort.mutateAsync({ sessionId: session.id });
 			await utils.todoAgent.list.invalidate({ workspaceId });
-			toast.success("Aborted");
+			toast.success("中断しました");
 		} catch (error) {
 			toast.error(
-				error instanceof Error ? error.message : "Failed to abort",
+				error instanceof Error ? error.message : "中断に失敗しました",
 			);
 		}
 	}, [abort, session.id, utils, workspaceId]);
@@ -194,7 +197,7 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 			setIntervention("");
 		} catch (error) {
 			toast.error(
-				error instanceof Error ? error.message : "Failed to send input",
+				error instanceof Error ? error.message : "送信に失敗しました",
 			);
 		}
 	}, [intervention, sendInput, session.id]);
@@ -203,28 +206,28 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 		<div className="flex flex-col gap-4 p-4 text-sm">
 			<div>
 				<div className="text-xs uppercase tracking-wide text-muted-foreground">
-					Status
+					ステータス
 				</div>
 				<div className="font-medium">{statusLabel(session)}</div>
 			</div>
 
 			<div>
 				<div className="text-xs uppercase tracking-wide text-muted-foreground">
-					Title
+					タイトル
 				</div>
 				<div>{session.title}</div>
 			</div>
 
 			<div>
 				<div className="text-xs uppercase tracking-wide text-muted-foreground">
-					Description
+					やってほしいこと
 				</div>
 				<div className="whitespace-pre-wrap text-xs">{session.description}</div>
 			</div>
 
 			<div>
 				<div className="text-xs uppercase tracking-wide text-muted-foreground">
-					Goal
+					ゴール
 				</div>
 				<div className="whitespace-pre-wrap text-xs">{session.goal}</div>
 			</div>
@@ -234,15 +237,22 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 					<div className="text-xs uppercase tracking-wide text-muted-foreground">
 						Verify
 					</div>
-					<code className="text-xs">{session.verifyCommand}</code>
+					{session.verifyCommand ? (
+						<code className="text-xs break-all">{session.verifyCommand}</code>
+					) : (
+						<div className="text-xs text-muted-foreground">
+							単発モード（verify なし）
+						</div>
+					)}
 				</div>
 				<div>
 					<div className="text-xs uppercase tracking-wide text-muted-foreground">
-						Budget
+						予算
 					</div>
 					<div className="text-xs">
-						{session.iteration}/{session.maxIterations} iter ·{" "}
-						{Math.round(session.maxWallClockSec / 60)}m cap
+						{session.verifyCommand
+							? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
+							: `${Math.round(session.maxWallClockSec / 60)}分`}
 					</div>
 				</div>
 			</div>
@@ -250,7 +260,7 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 			{session.verdictReason && (
 				<div>
 					<div className="text-xs uppercase tracking-wide text-muted-foreground">
-						Last verdict
+						直近の結果
 					</div>
 					<pre className="text-[11px] bg-muted rounded p-2 whitespace-pre-wrap max-h-40 overflow-auto">
 						{session.verdictReason}
@@ -266,7 +276,7 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 						onClick={handleStart}
 						disabled={starting}
 					>
-						{starting ? "Starting…" : "Start"}
+						{starting ? "開始中…" : "Start"}
 					</Button>
 				)}
 				{isActive && !canStart && (
@@ -276,7 +286,7 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 						variant="destructive"
 						onClick={handleAbort}
 					>
-						Abort
+						中断
 					</Button>
 				)}
 			</div>
@@ -286,7 +296,7 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 					<Input
 						value={intervention}
 						onChange={(e) => setIntervention(e.target.value)}
-						placeholder="Type to intervene (sent to worker terminal)"
+						placeholder="ワーカーに送るテキストを入力"
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && !e.shiftKey) {
 								e.preventDefault();
@@ -301,14 +311,14 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 						onClick={handleSendInput}
 						disabled={!intervention.trim()}
 					>
-						Send
+						送信
 					</Button>
 				</div>
 			)}
 
 			<p className="text-[11px] text-muted-foreground pt-2 border-t">
-				Tip: the worker runs in a normal terminal tab in this workspace.
-				Open that tab from the tab bar to watch it live or type directly.
+				ヒント: ワーカーはこのワークスペースの通常のターミナルタブで動いています。
+				タブバーからそのタブを開けば、ライブで見たり直接入力したりできます。
 			</p>
 		</div>
 	);

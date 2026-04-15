@@ -57,7 +57,7 @@ export const TodoButton = memo(function TodoButton({
 						activeCount > 0 && "text-primary",
 					)}
 					onClick={() => setModalOpen(true)}
-					title="Create an autonomous TODO task"
+					title="自律 TODO タスクを作成"
 				>
 					<HiMiniListBullet className="size-4" />
 					<span className="font-medium">TODO</span>
@@ -74,18 +74,18 @@ export const TodoButton = memo(function TodoButton({
 							size="sm"
 							variant="ghost"
 							className="h-7 px-1 rounded-l-none border-l border-border/50"
-							title="TODO options"
+							title="TODO メニュー"
 						>
 							<HiChevronDown className="size-3" />
 						</Button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-48">
 						<DropdownMenuItem onClick={() => setModalOpen(true)}>
-							New TODO…
+							新しい TODO…
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem onClick={() => setPanelOpen(true)}>
-							Open panel
+							パネルを開く
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
