@@ -1,9 +1,29 @@
 #include <napi.h>
+#include <stdio.h>
 
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
+
+// Enabled when SUPERSET_VIBRANCY_DEBUG=1 in the environment.
+static bool VibrancyDebugEnabled(void) {
+	static int cached = -1;
+	if (cached == -1) {
+		const char* v = getenv("SUPERSET_VIBRANCY_DEBUG");
+		cached = (v && v[0] && v[0] != '0') ? 1 : 0;
+	}
+	return cached == 1;
+}
+
+#define VDBG(...)                                                \
+	do {                                                         \
+		if (VibrancyDebugEnabled()) {                            \
+			fprintf(stderr, "[macos-window-blur] " __VA_ARGS__); \
+			fprintf(stderr, "\n");                               \
+			fflush(stderr);                                      \
+		}                                                        \
+	} while (0)
 
 static const void* kOriginalBlurRadiusKey = &kOriginalBlurRadiusKey;
 
@@ -162,23 +182,69 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 
 	__block bool success = false;
 	dispatch_block_t work = ^{
+		VDBG("setWindowBlurRadius called: radius=%.2f", radius);
+
 		NSWindow* window = WindowFromNativeHandle(handle);
-		if (!window) return;
+		if (!window) {
+			VDBG("  window lookup failed (invalid handle)");
+			return;
+		}
 		NSView* contentView = window.contentView;
-		if (!contentView) return;
+		if (!contentView) {
+			VDBG("  window has no contentView");
+			return;
+		}
 		NSVisualEffectView* vev = FindVisualEffectView(contentView);
-		if (!vev) return;
+		if (!vev) {
+			VDBG("  NSVisualEffectView not found in contentView hierarchy");
+			return;
+		}
+		VDBG("  found NSVisualEffectView (material=%ld state=%ld)",
+			(long)vev.material, (long)vev.state);
 		[contentView layoutSubtreeIfNeeded];
 		[vev layoutSubtreeIfNeeded];
 		vev.wantsLayer = YES;
+		CALayer* outerLayer = vev.layer;
+		VDBG("  vev.layer class = %s",
+			outerLayer ? [NSStringFromClass([outerLayer class]) UTF8String]
+			           : "(nil)");
 		CALayer* backdrop = FindLayerByClassName(vev.layer, @"CABackdropLayer");
-		if (!backdrop) return;
+		if (!backdrop) {
+			VDBG("  CABackdropLayer not found — dumping sublayer tree:");
+			@try {
+				[outerLayer.sublayers enumerateObjectsUsingBlock:^(
+					CALayer* sub, NSUInteger idx, BOOL* stop) {
+					(void)stop;
+					VDBG("    [%lu] %s frame=%.0fx%.0f",
+						(unsigned long)idx,
+						[NSStringFromClass([sub class]) UTF8String],
+						sub.frame.size.width,
+						sub.frame.size.height);
+				}];
+			} @catch (NSException*) {}
+			return;
+		}
+		VDBG("  backdrop layer class=%s filters=%lu",
+			[NSStringFromClass([backdrop class]) UTF8String],
+			(unsigned long)backdrop.filters.count);
 
 		[CATransaction begin];
 		[CATransaction setDisableActions:YES];
 		ApplyBlurRadiusToBackdrop(backdrop, radius);
 		[CATransaction commit];
 		[CATransaction flush];
+
+		if (VibrancyDebugEnabled()) {
+			id postBlur = FindBackdropFilter(backdrop.filters, @"gaussianBlur");
+			double effective = 0.0;
+			if (postBlur) {
+				@try {
+					effective = [[postBlur valueForKey:@"inputRadius"] doubleValue];
+				} @catch (NSException*) {}
+			}
+			VDBG("  after mutation: gaussianBlur inputRadius=%.2f (filter count=%lu)",
+				effective, (unsigned long)backdrop.filters.count);
+		}
 		success = true;
 	};
 	if ([NSThread isMainThread]) {

@@ -30,6 +30,7 @@ import {
 	getWorkspaceName,
 } from "../lib/notifications/utils";
 import {
+	applyVibrancy,
 	DEFAULT_VIBRANCY_STATE,
 	getInitialWindowOptions as getInitialVibrancyOptions,
 } from "../lib/vibrancy";
@@ -323,6 +324,14 @@ export async function MainWindow() {
 		if (persistedZoomLevel !== undefined) {
 			window.webContents.setZoomLevel(persistedZoomLevel);
 		}
+
+		// Re-apply vibrancy now that the window is actually on-screen so the
+		// native CIGaussianBlur addon has a real NSVisualEffectView to mutate.
+		applyVibrancy(
+			window,
+			appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE,
+			nativeTheme.shouldUseDarkColors,
+		);
 
 		if (!hasCompletedFirstLoad) {
 			if (initialBounds.isMaximized) {

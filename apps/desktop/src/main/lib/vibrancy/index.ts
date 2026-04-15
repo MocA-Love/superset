@@ -122,16 +122,38 @@ export function resolveVibrancyType(
  * macOS — on other platforms this is a no-op so callers can invoke it
  * unconditionally.
  */
+const VIBRANCY_DEBUG = Boolean(process.env.SUPERSET_VIBRANCY_DEBUG);
+
+function vdbg(message: string, extra?: Record<string, unknown>): void {
+	if (!VIBRANCY_DEBUG) return;
+	console.log(`[vibrancy] ${message}`, extra ?? "");
+}
+
 export function applyVibrancy(
 	window: BrowserWindow,
 	state: VibrancyState,
 	isDark: boolean,
 ): void {
-	if (window.isDestroyed()) return;
-	if (!isVibrancySupported()) return;
+	if (window.isDestroyed()) {
+		vdbg("applyVibrancy skipped: window destroyed");
+		return;
+	}
+	if (!isVibrancySupported()) {
+		vdbg("applyVibrancy skipped: platform unsupported");
+		return;
+	}
 
 	const vibrancyType = resolveVibrancyType(state);
 	const backgroundColor = computeBackgroundColor(state, isDark);
+	vdbg("applyVibrancy", {
+		enabled: state.enabled,
+		opacity: state.opacity,
+		blurLevel: state.blurLevel,
+		blurRadius: state.blurRadius,
+		vibrancyType,
+		backgroundColor,
+		isDark,
+	});
 
 	window.setBackgroundColor(backgroundColor);
 	// Electron's setVibrancy accepts null to disable since 6.x. When the
@@ -152,10 +174,13 @@ export function applyVibrancy(
 		try {
 			const handle = window.getNativeWindowHandle();
 			const radius = state.enabled ? state.blurRadius : 0;
-			setWindowBlurRadius(handle, radius);
+			const ok = setWindowBlurRadius(handle, radius);
+			vdbg("setWindowBlurRadius returned", { ok, radius });
 		} catch (error) {
 			console.warn("[vibrancy] setWindowBlurRadius failed:", error);
 		}
+	} else {
+		vdbg("native blur unavailable — skipping setWindowBlurRadius");
 	}
 }
 
