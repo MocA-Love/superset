@@ -140,6 +140,26 @@ export const createTodoAgentRouter = () => {
 				return { ok: true };
 			}),
 
+		updateTitle: publicProcedure
+			.input(
+				z.object({
+					sessionId: z.string().min(1),
+					title: z.string().trim().min(1).max(200),
+				}),
+			)
+			.mutation(({ input }) => {
+				const store = getTodoSessionStore();
+				const session = store.get(input.sessionId);
+				if (!session) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "セッションが見つかりません",
+					});
+				}
+				store.update(input.sessionId, { title: input.title });
+				return { ok: true };
+			}),
+
 		delete: publicProcedure
 			.input(z.object({ sessionId: z.string().min(1) }))
 			.mutation(({ input }) => {

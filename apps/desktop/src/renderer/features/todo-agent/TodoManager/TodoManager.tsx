@@ -1,5 +1,12 @@
 import { Button } from "@superset/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@superset/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@superset/ui/dropdown-menu";
 import { Input } from "@superset/ui/input";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
@@ -8,17 +15,38 @@ import type {
 	TodoSessionListEntry,
 	TodoStreamEvent,
 } from "main/todo-agent/types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	HiMiniArrowPath,
 	HiMiniChevronDown,
 	HiMiniChevronRight,
+	HiMiniDocumentDuplicate,
+	HiMiniEllipsisVertical,
+	HiMiniPencil,
 	HiMiniPlus,
 	HiMiniTrash,
 	HiMiniXMark,
 } from "react-icons/hi2";
+import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+
+async function copyToClipboard(text: string, label = "コピーしました") {
+	try {
+		await navigator.clipboard.writeText(text);
+		toast.success(label);
+	} catch (error) {
+		toast.error(
+			error instanceof Error ? error.message : "コピーに失敗しました",
+		);
+	}
+}
 
 interface TodoManagerProps {
 	open: boolean;
@@ -50,6 +78,7 @@ export function TodoManager({
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
 		new Set(),
 	);
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.listAll.useQuery(
 		undefined,
@@ -87,12 +116,26 @@ export function TodoManager({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
-				className="w-[2040px] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] h-[92vh] max-h-[1290px] p-0 gap-0 overflow-hidden flex flex-col"
+				className="w-[2040px] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] h-[92vh] max-h-[1290px] p-0 gap-0 overflow-hidden flex flex-col rounded-xl"
 				showCloseButton={false}
 			>
 				<DialogTitle className="sr-only">TODO Agent Manager</DialogTitle>
 				<div className="flex items-center justify-between border-b px-4 h-12 shrink-0">
-					<div className="flex items-center gap-3">
+					<div className="flex items-center gap-2">
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							className="h-7 w-7 p-0 rounded-md"
+							onClick={() => setSidebarCollapsed((v) => !v)}
+							title={sidebarCollapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
+						>
+							{sidebarCollapsed ? (
+								<HiMiniChevronRight className="size-4" />
+							) : (
+								<HiMiniChevronDown className="size-4 rotate-90" />
+							)}
+						</Button>
 						<span className="text-sm font-semibold">
 							TODO Agent Manager
 						</span>
@@ -104,7 +147,7 @@ export function TodoManager({
 						<Button
 							type="button"
 							size="sm"
-							className="h-7 gap-1 px-2 text-xs"
+							className="h-7 gap-1 px-2.5 text-xs rounded-md"
 							onClick={onRequestNewTodo}
 						>
 							<HiMiniPlus className="size-4" />
@@ -114,7 +157,7 @@ export function TodoManager({
 							type="button"
 							size="sm"
 							variant="ghost"
-							className="h-7 w-7 p-0"
+							className="h-7 w-7 p-0 rounded-md"
 							onClick={() => onOpenChange(false)}
 							title="閉じる"
 						>
@@ -123,14 +166,23 @@ export function TodoManager({
 					</div>
 				</div>
 
-				<div className="grid grid-cols-[340px_1fr] flex-1 min-h-0">
-					<div className="flex flex-col border-r min-h-0">
-						<div className="p-2 border-b">
+				{/* Body: flex-based 2-column so height resolution is
+				    rock-solid in every nested grid/scroll layer. The
+				    previous grid-based version occasionally let the
+				    detail pane's footer get clipped. */}
+				<div className="flex flex-1 min-h-0">
+					<div
+						className={cn(
+							"shrink-0 flex flex-col border-r min-h-0 overflow-hidden transition-[width] duration-150 ease-out",
+							sidebarCollapsed ? "w-0 border-r-0" : "w-[320px]",
+						)}
+					>
+						<div className="p-2 border-b shrink-0">
 							<Input
 								value={filter}
 								onChange={(e) => setFilter(e.target.value)}
 								placeholder="絞り込み（タイトル / ワークスペース）"
-								className="h-8 text-xs"
+								className="h-8 text-xs rounded-md"
 							/>
 						</div>
 						<ScrollArea className="flex-1">
@@ -163,13 +215,17 @@ export function TodoManager({
 											</span>
 										</button>
 										{!collapsed && (
-											<div className="flex flex-col">
+											<div className="flex flex-col px-1.5 py-1 gap-0.5">
 												{group.sessions.map((session) => (
 													<SessionRow
 														key={session.id}
 														session={session}
 														isSelected={selected?.id === session.id}
 														onSelect={() => setSelectedId(session.id)}
+														onDeleted={() => {
+															if (selectedId === session.id)
+																setSelectedId(null);
+														}}
 													/>
 												))}
 											</div>
@@ -180,16 +236,18 @@ export function TodoManager({
 						</ScrollArea>
 					</div>
 
-					{selected ? (
-						<SessionDetail
-							session={selected}
-							onDeleted={() => setSelectedId(null)}
-						/>
-					) : (
-						<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
-							セッションを選択すると詳細が表示されます。
-						</div>
-					)}
+					<div className="flex-1 min-w-0 min-h-0 flex flex-col">
+						{selected ? (
+							<SessionDetail
+								session={selected}
+								onDeleted={() => setSelectedId(null)}
+							/>
+						) : (
+							<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
+								セッションを選択すると詳細が表示されます。
+							</div>
+						)}
+					</div>
 				</div>
 			</DialogContent>
 		</Dialog>
@@ -200,28 +258,194 @@ interface SessionRowProps {
 	session: TodoSession;
 	isSelected: boolean;
 	onSelect: () => void;
+	onDeleted: () => void;
 }
 
-function SessionRow({ session, isSelected, onSelect }: SessionRowProps) {
+function SessionRow({
+	session,
+	isSelected,
+	onSelect,
+	onDeleted,
+}: SessionRowProps) {
+	const [menuOpen, setMenuOpen] = useState(false);
+	const [renaming, setRenaming] = useState(false);
+	const [renameValue, setRenameValue] = useState(session.title);
+
+	const utils = electronTrpc.useUtils();
+	const updateTitleMut = electronTrpc.todoAgent.updateTitle.useMutation();
+	const rerunMut = electronTrpc.todoAgent.rerun.useMutation();
+	const deleteMut = electronTrpc.todoAgent.delete.useMutation();
+	const abortMut = electronTrpc.todoAgent.abort.useMutation();
+
+	const isActive =
+		session.status === "preparing" ||
+		session.status === "running" ||
+		session.status === "verifying";
+
+	const invalidate = useCallback(async () => {
+		await utils.todoAgent.listAll.invalidate();
+		await utils.todoAgent.list.invalidate({
+			workspaceId: session.workspaceId,
+		});
+	}, [utils, session.workspaceId]);
+
+	const startRename = useCallback(() => {
+		setRenameValue(session.title);
+		setRenaming(true);
+		setMenuOpen(false);
+	}, [session.title]);
+
+	const commitRename = useCallback(async () => {
+		const next = renameValue.trim();
+		if (!next || next === session.title) {
+			setRenaming(false);
+			return;
+		}
+		try {
+			await updateTitleMut.mutateAsync({
+				sessionId: session.id,
+				title: next,
+			});
+			await invalidate();
+			setRenaming(false);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "改名に失敗しました",
+			);
+		}
+	}, [invalidate, renameValue, session.id, session.title, updateTitleMut]);
+
+	const handleRenameKey = useCallback(
+		(e: ReactKeyboardEvent<HTMLInputElement>) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				e.stopPropagation();
+				void commitRename();
+			}
+			if (e.key === "Escape") {
+				e.preventDefault();
+				e.stopPropagation();
+				setRenaming(false);
+			}
+		},
+		[commitRename],
+	);
+
+	const handleRerun = useCallback(async () => {
+		setMenuOpen(false);
+		try {
+			await rerunMut.mutateAsync({ sessionId: session.id });
+			await invalidate();
+			toast.success("同じ内容で新しいセッションを作成しました");
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "再実行の作成に失敗しました",
+			);
+		}
+	}, [invalidate, rerunMut, session.id]);
+
+	const handleDelete = useCallback(async () => {
+		setMenuOpen(false);
+		if (isActive) {
+			try {
+				await abortMut.mutateAsync({ sessionId: session.id });
+			} catch {
+				// ignore; supervisor.abort is idempotent
+			}
+		}
+		try {
+			await deleteMut.mutateAsync({ sessionId: session.id });
+			await invalidate();
+			toast.success("削除しました");
+			onDeleted();
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "削除に失敗しました",
+			);
+		}
+	}, [abortMut, deleteMut, invalidate, isActive, onDeleted, session.id]);
+
+	const handleCopyTitle = useCallback(() => {
+		setMenuOpen(false);
+		void copyToClipboard(session.title, "タイトルをコピーしました");
+	}, [session.title]);
+
 	return (
-		<button
-			type="button"
-			onClick={onSelect}
+		<div
 			className={cn(
-				"text-left px-3 py-2 hover:bg-accent/60 border-b border-border/30",
-				isSelected && "bg-accent",
+				"group relative rounded-lg transition",
+				isSelected
+					? "bg-accent"
+					: "hover:bg-accent/50",
 			)}
 		>
-			<div className="flex items-center gap-2">
-				<StatusDot status={session.status} />
-				<span className="text-xs font-medium line-clamp-1 flex-1">
-					{session.title}
-				</span>
-			</div>
-			<div className="text-[10px] text-muted-foreground line-clamp-1 pl-4 mt-0.5">
-				{statusLabel(session)}
-			</div>
-		</button>
+			<button
+				type="button"
+				onClick={onSelect}
+				className="text-left w-full px-2.5 py-2 pr-8"
+			>
+				<div className="flex items-center gap-2">
+					<StatusDot status={session.status} />
+					{renaming ? (
+						<Input
+							autoFocus
+							value={renameValue}
+							onChange={(e) => setRenameValue(e.target.value)}
+							onKeyDown={handleRenameKey}
+							onBlur={() => void commitRename()}
+							onClick={(e) => e.stopPropagation()}
+							className="h-6 text-xs rounded-md"
+						/>
+					) : (
+						<span className="text-xs font-medium line-clamp-1 flex-1">
+							{session.title}
+						</span>
+					)}
+				</div>
+				<div className="text-[10px] text-muted-foreground line-clamp-1 pl-4 mt-0.5">
+					{statusLabel(session)}
+				</div>
+			</button>
+			<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+				<DropdownMenuTrigger asChild>
+					<button
+						type="button"
+						className={cn(
+							"absolute right-1 top-1.5 size-6 rounded-md flex items-center justify-center text-muted-foreground transition",
+							menuOpen
+								? "bg-background/80 opacity-100"
+								: "opacity-0 group-hover:opacity-100 hover:bg-background/80",
+						)}
+						title="アクション"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<HiMiniEllipsisVertical className="size-3.5" />
+					</button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="w-44">
+					<DropdownMenuItem onClick={startRename}>
+						<HiMiniPencil className="size-3.5 mr-2" />
+						リネーム
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={handleCopyTitle}>
+						<HiMiniDocumentDuplicate className="size-3.5 mr-2" />
+						タイトルをコピー
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={handleRerun}>
+						<HiMiniArrowPath className="size-3.5 mr-2" />
+						同じ内容で再実行
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						onClick={handleDelete}
+						className="text-destructive focus:text-destructive"
+					>
+						<HiMiniTrash className="size-3.5 mr-2" />
+						削除
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</div>
 	);
 }
 
@@ -500,98 +724,114 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 				</div>
 			</div>
 
-			{/* Body: 2-column split, both columns scroll independently.
-			    Left = static metadata (description / goal / verify / cost /
-			    verdict / final answer). Right = live stream fills the full
-			    height and auto-scrolls to the bottom as events arrive. This
-			    gives the stream the maximum vertical + horizontal space
-			    without making the metadata section fight for it. */}
-			<div className="grid grid-cols-[minmax(380px,34%)_1fr] gap-0 flex-1 min-h-0">
-				<ScrollArea className="border-r">
-					<div className="flex flex-col gap-5 p-6">
-						<DetailBlock label="やって欲しいこと">
-							<div className="whitespace-pre-wrap text-xs leading-relaxed">
-								{session.description}
-							</div>
-						</DetailBlock>
-
-						<DetailBlock label="ゴール">
-							{session.goal?.trim() ? (
+			{/* Body: flex-based 2-column so height resolution chains
+			    correctly from DialogContent → TodoManager body → SessionDetail
+			    → this flex. Earlier `grid` version let the footer clip under
+			    heavy content. */}
+			<div className="flex flex-1 min-h-0">
+				<div className="w-[34%] min-w-[360px] max-w-[520px] border-r min-h-0 flex flex-col">
+					<ScrollArea className="flex-1">
+						<div className="flex flex-col gap-5 p-5">
+							<DetailBlock label="やって欲しいこと">
 								<div className="whitespace-pre-wrap text-xs leading-relaxed">
-									{session.goal}
+									{session.description}
 								</div>
-							) : (
-								<div className="text-xs text-muted-foreground">
-									未指定 ·『やって欲しいこと』の完了をゴールとみなします
-								</div>
-							)}
-						</DetailBlock>
+							</DetailBlock>
 
-						<div className="grid grid-cols-2 gap-4">
-							<DetailBlock label="Verify">
-								{session.verifyCommand ? (
-									<code className="text-[11px] break-all">
-										{session.verifyCommand}
-									</code>
+							<DetailBlock label="ゴール">
+								{session.goal?.trim() ? (
+									<div className="whitespace-pre-wrap text-xs leading-relaxed">
+										{session.goal}
+									</div>
 								) : (
 									<div className="text-xs text-muted-foreground">
-										単発モード（verify なし）
+										未指定 ·『やって欲しいこと』の完了をゴールとみなします
 									</div>
 								)}
 							</DetailBlock>
-							<DetailBlock label="予算">
-								<div className="text-xs">
-									{session.verifyCommand
-										? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
-										: `${Math.round(session.maxWallClockSec / 60)}分`}
-								</div>
-							</DetailBlock>
+
+							<div className="grid grid-cols-2 gap-4">
+								<DetailBlock label="Verify">
+									{session.verifyCommand ? (
+										<code className="text-[11px] break-all">
+											{session.verifyCommand}
+										</code>
+									) : (
+										<div className="text-xs text-muted-foreground">
+											単発モード（verify なし）
+										</div>
+									)}
+								</DetailBlock>
+								<DetailBlock label="予算">
+									<div className="text-xs">
+										{session.verifyCommand
+											? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
+											: `${Math.round(session.maxWallClockSec / 60)}分`}
+									</div>
+								</DetailBlock>
+							</div>
+
+							{(session.totalCostUsd != null ||
+								session.totalNumTurns != null) && (
+								<DetailBlock label="消費">
+									<div className="text-xs text-muted-foreground">
+										{session.totalCostUsd != null &&
+											`$${session.totalCostUsd.toFixed(4)}`}
+										{session.totalCostUsd != null &&
+										session.totalNumTurns != null
+											? " · "
+											: ""}
+										{session.totalNumTurns != null &&
+											`${session.totalNumTurns} turns`}
+									</div>
+								</DetailBlock>
+							)}
+
+							{session.finalAssistantText && (
+								<DetailBlock
+									label="最終回答"
+									action={
+										<CopyIconButton
+											value={session.finalAssistantText}
+											title="最終回答をコピー"
+										/>
+									}
+								>
+									<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40">
+										<MarkdownRenderer
+											content={session.finalAssistantText}
+											scrollable={false}
+										/>
+									</div>
+								</DetailBlock>
+							)}
+
+							{session.verdictReason && session.verdictPassed === false && (
+								<DetailBlock
+									label="直近の verify 失敗ログ"
+									action={
+										<CopyIconButton
+											value={session.verdictReason}
+											title="失敗ログをコピー"
+										/>
+									}
+								>
+									<pre className="text-[11px] bg-muted/40 rounded-lg p-3 border border-border/40 whitespace-pre-wrap leading-relaxed">
+										{session.verdictReason}
+									</pre>
+								</DetailBlock>
+							)}
 						</div>
+					</ScrollArea>
+				</div>
 
-						{(session.totalCostUsd != null ||
-							session.totalNumTurns != null) && (
-							<DetailBlock label="消費">
-								<div className="text-xs text-muted-foreground">
-									{session.totalCostUsd != null &&
-										`$${session.totalCostUsd.toFixed(4)}`}
-									{session.totalCostUsd != null &&
-									session.totalNumTurns != null
-										? " · "
-										: ""}
-									{session.totalNumTurns != null &&
-										`${session.totalNumTurns} turns`}
-								</div>
-							</DetailBlock>
-						)}
-
-						{session.finalAssistantText && (
-							<DetailBlock label="最終回答">
-								<div className="text-xs bg-muted/60 rounded p-3">
-									<MarkdownRenderer
-										content={session.finalAssistantText}
-										scrollable={false}
-									/>
-								</div>
-							</DetailBlock>
-						)}
-
-						{session.verdictReason && session.verdictPassed === false && (
-							<DetailBlock label="直近の verify 失敗ログ">
-								<pre className="text-[11px] bg-muted rounded p-3 whitespace-pre-wrap leading-relaxed">
-									{session.verdictReason}
-								</pre>
-							</DetailBlock>
-						)}
-					</div>
-				</ScrollArea>
-
-				<div className="flex flex-col min-h-0">
-					<div className="px-6 pt-5 pb-2 shrink-0">
+				<div className="flex-1 min-w-0 min-h-0 flex flex-col">
+					<div className="px-5 pt-5 pb-2 shrink-0">
 						<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
 							Claude の応答 / ライブストリーム
 						</div>
 					</div>
-					<div className="flex-1 min-h-0 px-6 pb-5">
+					<div className="flex-1 min-h-0 px-5 pb-5">
 						<StreamView events={streamEvents} />
 					</div>
 				</div>
@@ -755,14 +995,19 @@ function StreamEventRow({ event }: { event: TodoStreamEvent }) {
 	const useMarkdown =
 		event.kind === "assistant_text" || event.kind === "result";
 	return (
-		<div className={cn("border rounded px-3 py-2 text-xs", color)}>
+		<div className={cn("group border rounded-lg px-3 py-2 text-xs", color)}>
 			<div className="flex items-center justify-between gap-2 mb-1">
 				<span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
 					[iter {event.iteration}] {event.label}
 				</span>
-				<span className="text-[10px] text-muted-foreground tabular-nums">
-					{formatClock(event.ts)}
-				</span>
+				<div className="flex items-center gap-1">
+					<span className="text-[10px] text-muted-foreground tabular-nums">
+						{formatClock(event.ts)}
+					</span>
+					<div className="opacity-0 group-hover:opacity-100 transition">
+						<CopyIconButton value={event.text} title="このイベントをコピー" />
+					</div>
+				</div>
 			</div>
 			{useMarkdown ? (
 				<MarkdownRenderer content={event.text} scrollable={false} />
@@ -783,18 +1028,47 @@ function formatClock(ms: number): string {
 
 function DetailBlock({
 	label,
+	action,
 	children,
 }: {
 	label: string;
+	action?: React.ReactNode;
 	children: React.ReactNode;
 }) {
 	return (
 		<div>
-			<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
-				{label}
+			<div className="flex items-center justify-between mb-1">
+				<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+					{label}
+				</div>
+				{action}
 			</div>
 			{children}
 		</div>
+	);
+}
+
+function CopyIconButton({
+	value,
+	title,
+	label,
+}: {
+	value: string;
+	title?: string;
+	label?: string;
+}) {
+	return (
+		<button
+			type="button"
+			className="size-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition"
+			onClick={(e) => {
+				e.stopPropagation();
+				void copyToClipboard(value, label);
+			}}
+			title={title ?? "コピー"}
+		>
+			<HiMiniDocumentDuplicate className="size-3.5" />
+		</button>
 	);
 }
 
