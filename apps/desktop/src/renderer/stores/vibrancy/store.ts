@@ -1,3 +1,4 @@
+import type { ITheme } from "@xterm/xterm";
 import type { Theme } from "shared/themes";
 import {
 	DEFAULT_VIBRANCY_STATE,
@@ -26,6 +27,43 @@ function toAlphaColor(base: string, alpha: number): string {
 	return `color-mix(in srgb, ${base} ${pct.toFixed(2)}%, transparent)`;
 }
 
+function hexToRgba(hex: string, alpha: number): string | null {
+	const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+	if (!match) return null;
+	const digits = match[1];
+	if (!digits) return null;
+	let r: number;
+	let g: number;
+	let b: number;
+	if (digits.length === 3) {
+		r = Number.parseInt(`${digits[0]}${digits[0]}`, 16);
+		g = Number.parseInt(`${digits[1]}${digits[1]}`, 16);
+		b = Number.parseInt(`${digits[2]}${digits[2]}`, 16);
+	} else {
+		r = Number.parseInt(digits.slice(0, 2), 16);
+		g = Number.parseInt(digits.slice(2, 4), 16);
+		b = Number.parseInt(digits.slice(4, 6), 16);
+	}
+	return `rgba(${r}, ${g}, ${b}, ${clampAlpha(alpha).toFixed(3)})`;
+}
+
+/**
+ * Hook consumed by the terminal pane. Returns the theme as-is when
+ * vibrancy is off, and a translucent-background variant when vibrancy
+ * is on so the xterm canvas blends into the window's vibrancy layer.
+ */
+export function useEffectiveTerminalTheme(): ITheme | null {
+	const base = useThemeStore((s) => s.terminalTheme);
+	const enabled = useVibrancyStore((s) => s.enabled);
+	const opacity = useVibrancyStore((s) => s.opacity);
+	if (!base || !enabled) return base;
+	const bg = base.background;
+	if (typeof bg !== "string") return base;
+	const rgba = hexToRgba(bg, opacity / 100);
+	if (!rgba) return base;
+	return { ...base, background: rgba };
+}
+
 /**
  * Overlay the translucent color variables inline so they win the cascade
  * against the theme store's own inline writes (applyUIColors). Without this
@@ -40,15 +78,17 @@ function applyVibrancyOverlay(theme: Theme, alpha: number): void {
 		root.style.setProperty(cssVar, toAlphaColor(base, effective));
 	};
 
+	// Apply the same alpha uniformly so no surface feels conspicuously
+	// more opaque than another. Popover intentionally stays near-opaque so
+	// menus / tooltips remain readable.
 	set("--background", theme.ui.background);
-	set("--card", theme.ui.card, 0.1);
-	set("--muted", theme.ui.muted, 0.1);
-	set("--accent", theme.ui.accent, 0.1);
-	set("--sidebar", theme.ui.sidebar, -0.05);
-	set("--sidebar-accent", theme.ui.sidebarAccent, 0.05);
-	set("--tertiary", theme.ui.tertiary, -0.05);
-	set("--tertiary-active", theme.ui.tertiaryActive, 0.05);
-	// Popover stays mostly opaque so menus and toasts remain readable.
+	set("--card", theme.ui.card);
+	set("--muted", theme.ui.muted);
+	set("--accent", theme.ui.accent);
+	set("--sidebar", theme.ui.sidebar);
+	set("--sidebar-accent", theme.ui.sidebarAccent);
+	set("--tertiary", theme.ui.tertiary);
+	set("--tertiary-active", theme.ui.tertiaryActive);
 	if (theme.ui.popover) {
 		root.style.setProperty("--popover", toAlphaColor(theme.ui.popover, 0.95));
 	}

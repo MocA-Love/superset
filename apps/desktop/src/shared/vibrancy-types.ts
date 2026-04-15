@@ -14,7 +14,7 @@ export interface VibrancyState {
 
 export const DEFAULT_VIBRANCY_STATE: VibrancyState = {
 	enabled: false,
-	opacity: 60,
+	opacity: 35,
 	blurLevel: "standard",
 };
 
