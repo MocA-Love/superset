@@ -30,6 +30,7 @@ export function VibrancySection() {
 	const opacity = useVibrancyStore((s) => s.opacity);
 	const blurLevel = useVibrancyStore((s) => s.blurLevel);
 	const setState = useVibrancyStore((s) => s.setState);
+	const previewOpacity = useVibrancyStore((s) => s.previewOpacity);
 
 	// Drag-local opacity: drives the slider thumb and a CSS preview via the
 	// `--vibrancy-alpha` variable, so the window updates in real time without
@@ -106,15 +107,9 @@ export function VibrancySection() {
 						const value = values[0];
 						if (typeof value !== "number") return;
 						setDraftOpacity(value);
-						// Live-preview: drive the CSS variable directly so the
-						// window updates as the user drags, without writing to
-						// disk or hopping through tRPC on every tick.
-						if (typeof document !== "undefined") {
-							document.documentElement.style.setProperty(
-								"--vibrancy-alpha",
-								(value / 100).toFixed(3),
-							);
-						}
+						// Live-preview via the store so all CSS variable
+						// overlays are recomputed — no disk write, no IPC.
+						previewOpacity(value);
 					}}
 					onValueCommit={(values) => {
 						const value = values[0];
