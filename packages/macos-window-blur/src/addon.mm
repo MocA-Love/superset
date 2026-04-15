@@ -6,23 +6,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
-// Enabled when SUPERSET_VIBRANCY_DEBUG=1 in the environment.
-static bool VibrancyDebugEnabled(void) {
-	static int cached = -1;
-	if (cached == -1) {
-		const char* v = getenv("SUPERSET_VIBRANCY_DEBUG");
-		cached = (v && v[0] && v[0] != '0') ? 1 : 0;
-	}
-	return cached == 1;
-}
-
-#define VDBG(...)                                                \
-	do {                                                         \
-		if (VibrancyDebugEnabled()) {                            \
-			fprintf(stderr, "[macos-window-blur] " __VA_ARGS__); \
-			fprintf(stderr, "\n");                               \
-			fflush(stderr);                                      \
-		}                                                        \
+#define VDBG(...)                                            \
+	do {                                                     \
+		fprintf(stderr, "[macos-window-blur] " __VA_ARGS__); \
+		fprintf(stderr, "\n");                               \
+		fflush(stderr);                                      \
 	} while (0)
 
 static const void* kOriginalBlurRadiusKey = &kOriginalBlurRadiusKey;
@@ -234,7 +222,7 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 		[CATransaction commit];
 		[CATransaction flush];
 
-		if (VibrancyDebugEnabled()) {
+		{
 			id postBlur = FindBackdropFilter(backdrop.filters, @"gaussianBlur");
 			double effective = 0.0;
 			if (postBlur) {

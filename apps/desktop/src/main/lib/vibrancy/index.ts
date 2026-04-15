@@ -122,10 +122,7 @@ export function resolveVibrancyType(
  * macOS — on other platforms this is a no-op so callers can invoke it
  * unconditionally.
  */
-const VIBRANCY_DEBUG = Boolean(process.env.SUPERSET_VIBRANCY_DEBUG);
-
 function vdbg(message: string, extra?: Record<string, unknown>): void {
-	if (!VIBRANCY_DEBUG) return;
 	console.log(`[vibrancy] ${message}`, extra ?? "");
 }
 

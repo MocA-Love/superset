@@ -1,22 +1,16 @@
-const DEBUG = Boolean(process.env.SUPERSET_VIBRANCY_DEBUG);
-
 let native;
 let loadError = null;
 try {
 	native = require("./build/Release/macos_window_blur.node");
-	if (DEBUG) {
-		console.log(
-			"[macos-window-blur] native addon loaded successfully",
-			typeof native.setWindowBlurRadius,
-		);
-	}
+	console.log(
+		"[macos-window-blur] native addon loaded successfully",
+		typeof native.setWindowBlurRadius,
+	);
 } catch (error) {
 	// Non-macOS, or native build was skipped — fall back gracefully.
 	native = null;
 	loadError = error;
-	if (DEBUG) {
-		console.warn("[macos-window-blur] failed to load native addon:", error);
-	}
+	console.warn("[macos-window-blur] failed to load native addon:", error);
 }
 
 /**
@@ -41,29 +35,25 @@ function isNativeBlurAvailable() {
  */
 function setWindowBlurRadius(handle, radius) {
 	if (!isNativeBlurAvailable()) {
-		if (DEBUG) {
-			console.log(
-				"[macos-window-blur] setWindowBlurRadius: addon unavailable",
-				{ native: Boolean(native), loadError: loadError?.message },
-			);
-		}
+		console.log("[macos-window-blur] setWindowBlurRadius: addon unavailable", {
+			native: Boolean(native),
+			loadError: loadError?.message,
+		});
 		return false;
 	}
 	if (!Buffer.isBuffer(handle)) {
-		if (DEBUG) console.log("[macos-window-blur] invalid handle (not a Buffer)");
+		console.log("[macos-window-blur] invalid handle (not a Buffer)");
 		return false;
 	}
 	if (typeof radius !== "number" || Number.isNaN(radius)) {
-		if (DEBUG) console.log("[macos-window-blur] invalid radius:", radius);
+		console.log("[macos-window-blur] invalid radius:", radius);
 		return false;
 	}
 	try {
 		const ok = Boolean(native.setWindowBlurRadius(handle, radius));
-		if (DEBUG) {
-			console.log(
-				`[macos-window-blur] setWindowBlurRadius(radius=${radius}) -> ${ok}`,
-			);
-		}
+		console.log(
+			`[macos-window-blur] setWindowBlurRadius(radius=${radius}) -> ${ok}`,
+		);
 		return ok;
 	} catch (error) {
 		console.warn("[macos-window-blur] setWindowBlurRadius failed:", error);
