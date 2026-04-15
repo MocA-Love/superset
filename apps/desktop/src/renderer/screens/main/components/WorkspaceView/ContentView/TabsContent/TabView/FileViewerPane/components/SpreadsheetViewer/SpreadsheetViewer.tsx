@@ -389,13 +389,13 @@ export function SpreadsheetViewer({
 								<tr>
 									<th
 										style={{
-											border: "1px solid #c0c0c0",
-											backgroundColor: "#f0f0f0",
+											border: "1px solid var(--border)",
+											backgroundColor: "var(--muted)",
 											padding: "2px 4px",
 											textAlign: "center",
 											fontSize: "9px",
 											fontWeight: "normal",
-											color: "#666",
+											color: "var(--muted-foreground)",
 										}}
 									/>
 									{Array.from({ length: activeSheet.columnCount }, (_, i) => {
@@ -404,13 +404,13 @@ export function SpreadsheetViewer({
 											<th
 												key={label}
 												style={{
-													border: "1px solid #c0c0c0",
-													backgroundColor: "#f0f0f0",
+													border: "1px solid var(--border)",
+													backgroundColor: "var(--muted)",
 													padding: "2px 4px",
 													textAlign: "center",
 													fontSize: "9px",
 													fontWeight: "normal",
-													color: "#666",
+													color: "var(--muted-foreground)",
 												}}
 											>
 												{label}
@@ -428,13 +428,13 @@ export function SpreadsheetViewer({
 									>
 										<td
 											style={{
-												border: "1px solid #c0c0c0",
-												backgroundColor: "#f0f0f0",
+												border: "1px solid var(--border)",
+												backgroundColor: "var(--muted)",
 												padding: "2px 4px",
 												textAlign: "center",
 												fontSize: "9px",
 												fontWeight: "normal",
-												color: "#666",
+												color: "var(--muted-foreground)",
 												userSelect: "none",
 											}}
 										>
@@ -497,12 +497,12 @@ export function SpreadsheetViewer({
 				{activeSheet.truncated && (
 					<div
 						style={{
-							borderTop: "1px solid #c0c0c0",
-							backgroundColor: "#f8f8f8",
+							borderTop: "1px solid var(--border)",
+							backgroundColor: "var(--muted)",
 							padding: "8px 12px",
 							textAlign: "center",
 							fontSize: "12px",
-							color: "#888",
+							color: "var(--muted-foreground)",
 						}}
 					>
 						Showing first 2,000 rows. Full file contains more rows.

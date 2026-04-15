@@ -127,6 +127,19 @@ app.on("child-process-gone", (_event, details) => {
 	}
 });
 
+// Re-apply vibrancy when the OS dark/light appearance changes. The
+// computed setBackgroundColor depends on isDark so the window would
+// otherwise keep the previous tint until the user interacted with the
+// vibrancy settings again. Only relevant on macOS, but nativeTheme is
+// harmless to subscribe to on other platforms.
+nativeTheme.on("updated", () => {
+	const isDark = nativeTheme.shouldUseDarkColors;
+	const vibrancyState = appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+	for (const win of windowManager.getAll().values()) {
+		applyVibrancy(win, vibrancyState, isDark);
+	}
+});
+
 export async function MainWindow() {
 	const shouldPersistWindowPosition = isWindowPositionPersistenceEnabled();
 	const savedWindowState = loadWindowState();

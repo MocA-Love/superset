@@ -1,17 +1,9 @@
 #include <napi.h>
-#include <stdio.h>
 
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
-
-#define VDBG(...)                                            \
-	do {                                                     \
-		fprintf(stderr, "[macos-window-blur] " __VA_ARGS__); \
-		fprintf(stderr, "\n");                               \
-		fflush(stderr);                                      \
-	} while (0)
 
 static const void* kOriginalBlurRadiusKey = &kOriginalBlurRadiusKey;
 
@@ -183,70 +175,17 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 
 	__block bool success = false;
 	dispatch_block_t work = ^{
-		VDBG("setWindowBlurRadius called: radius=%.2f", radius);
-
 		NSWindow* window = WindowFromNativeHandle(handle);
-		if (!window) {
-			VDBG("  window lookup failed (invalid handle)");
-			return;
-		}
+		if (!window) return;
 		NSView* contentView = window.contentView;
-		if (!contentView) {
-			VDBG("  window has no contentView");
-			return;
-		}
+		if (!contentView) return;
 		NSVisualEffectView* vev = FindVisualEffectView(contentView);
-		if (!vev) {
-			VDBG("  NSVisualEffectView not found in contentView hierarchy");
-			return;
-		}
-		VDBG("  found NSVisualEffectView (material=%ld state=%ld)",
-			(long)vev.material, (long)vev.state);
+		if (!vev) return;
 		[contentView layoutSubtreeIfNeeded];
 		[vev layoutSubtreeIfNeeded];
 		vev.wantsLayer = YES;
-		CALayer* outerLayer = vev.layer;
-		VDBG("  vev.layer class = %s",
-			outerLayer ? [NSStringFromClass([outerLayer class]) UTF8String]
-			           : "(nil)");
 		CALayer* backdrop = FindLayerByClassName(vev.layer, @"CABackdropLayer");
-		if (!backdrop) {
-			VDBG("  CABackdropLayer not found — dumping sublayer tree:");
-			@try {
-				[outerLayer.sublayers enumerateObjectsUsingBlock:^(
-					CALayer* sub, NSUInteger idx, BOOL* stop) {
-					(void)stop;
-					VDBG("    [%lu] %s frame=%.0fx%.0f",
-						(unsigned long)idx,
-						[NSStringFromClass([sub class]) UTF8String],
-						sub.frame.size.width,
-						sub.frame.size.height);
-				}];
-			} @catch (NSException*) {}
-			return;
-		}
-		VDBG("  backdrop layer class=%s filters=%lu",
-			[NSStringFromClass([backdrop class]) UTF8String],
-			(unsigned long)backdrop.filters.count);
-		@try {
-			[backdrop.filters enumerateObjectsUsingBlock:^(
-				id filter, NSUInteger idx, BOOL* stop) {
-				(void)stop;
-				NSString* name = nil;
-				NSString* type = nil;
-				@try {
-					name = [filter valueForKey:@"name"];
-				} @catch (NSException*) {}
-				@try {
-					type = [filter valueForKey:@"type"];
-				} @catch (NSException*) {}
-				VDBG("    pre filter[%lu] class=%s name=%s type=%s",
-					(unsigned long)idx,
-					[NSStringFromClass([filter class]) UTF8String],
-					name ? [name UTF8String] : "(nil)",
-					type ? [type UTF8String] : "(nil)");
-			}];
-		} @catch (NSException*) {}
+		if (!backdrop) return;
 
 		[CATransaction begin];
 		[CATransaction setDisableActions:YES];
@@ -260,18 +199,6 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 		@try {
 			[backdrop displayIfNeeded];
 		} @catch (NSException*) {}
-
-		{
-			id postBlur = FindBackdropFilter(backdrop.filters, @"gaussianBlur");
-			double effective = 0.0;
-			if (postBlur) {
-				@try {
-					effective = [[postBlur valueForKey:@"inputRadius"] doubleValue];
-				} @catch (NSException*) {}
-			}
-			VDBG("  after mutation: gaussianBlur inputRadius=%.2f (filter count=%lu)",
-				effective, (unsigned long)backdrop.filters.count);
-		}
 		success = true;
 	};
 	if ([NSThread isMainThread]) {

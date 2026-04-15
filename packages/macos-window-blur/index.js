@@ -1,16 +1,9 @@
 let native;
-let loadError = null;
 try {
 	native = require("./build/Release/macos_window_blur.node");
-	console.log(
-		"[macos-window-blur] native addon loaded successfully",
-		typeof native.setWindowBlurRadius,
-	);
-} catch (error) {
+} catch {
 	// Non-macOS, or native build was skipped — fall back gracefully.
 	native = null;
-	loadError = error;
-	console.warn("[macos-window-blur] failed to load native addon:", error);
 }
 
 /**
@@ -34,27 +27,11 @@ function isNativeBlurAvailable() {
  *          or no NSVisualEffectView could be found in the window.
  */
 function setWindowBlurRadius(handle, radius) {
-	if (!isNativeBlurAvailable()) {
-		console.log("[macos-window-blur] setWindowBlurRadius: addon unavailable", {
-			native: Boolean(native),
-			loadError: loadError?.message,
-		});
-		return false;
-	}
-	if (!Buffer.isBuffer(handle)) {
-		console.log("[macos-window-blur] invalid handle (not a Buffer)");
-		return false;
-	}
-	if (typeof radius !== "number" || Number.isNaN(radius)) {
-		console.log("[macos-window-blur] invalid radius:", radius);
-		return false;
-	}
+	if (!isNativeBlurAvailable()) return false;
+	if (!Buffer.isBuffer(handle)) return false;
+	if (typeof radius !== "number" || Number.isNaN(radius)) return false;
 	try {
-		const ok = Boolean(native.setWindowBlurRadius(handle, radius));
-		console.log(
-			`[macos-window-blur] setWindowBlurRadius(radius=${radius}) -> ${ok}`,
-		);
-		return ok;
+		return Boolean(native.setWindowBlurRadius(handle, radius));
 	} catch (error) {
 		console.warn("[macos-window-blur] setWindowBlurRadius failed:", error);
 		return false;

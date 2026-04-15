@@ -122,35 +122,16 @@ export function resolveVibrancyType(
  * macOS — on other platforms this is a no-op so callers can invoke it
  * unconditionally.
  */
-function vdbg(message: string, extra?: Record<string, unknown>): void {
-	console.log(`[vibrancy] ${message}`, extra ?? "");
-}
-
 export function applyVibrancy(
 	window: BrowserWindow,
 	state: VibrancyState,
 	isDark: boolean,
 ): void {
-	if (window.isDestroyed()) {
-		vdbg("applyVibrancy skipped: window destroyed");
-		return;
-	}
-	if (!isVibrancySupported()) {
-		vdbg("applyVibrancy skipped: platform unsupported");
-		return;
-	}
+	if (window.isDestroyed()) return;
+	if (!isVibrancySupported()) return;
 
 	const vibrancyType = resolveVibrancyType(state);
 	const backgroundColor = computeBackgroundColor(state, isDark);
-	vdbg("applyVibrancy", {
-		enabled: state.enabled,
-		opacity: state.opacity,
-		blurLevel: state.blurLevel,
-		blurRadius: state.blurRadius,
-		vibrancyType,
-		backgroundColor,
-		isDark,
-	});
 
 	window.setBackgroundColor(backgroundColor);
 	// Electron's setVibrancy accepts null to disable since 6.x. When the
@@ -185,10 +166,7 @@ interface BlurSchedule {
 const blurSchedules = new WeakMap<BrowserWindow, BlurSchedule>();
 
 function scheduleNativeBlur(window: BrowserWindow, state: VibrancyState): void {
-	if (!isNativeBlurAvailable()) {
-		vdbg("native blur unavailable — skipping setWindowBlurRadius");
-		return;
-	}
+	if (!isNativeBlurAvailable()) return;
 
 	const radius = state.enabled ? state.blurRadius : 0;
 	let schedule = blurSchedules.get(window);
@@ -202,17 +180,12 @@ function scheduleNativeBlur(window: BrowserWindow, state: VibrancyState): void {
 	}
 
 	const handle = window.getNativeWindowHandle();
-	const apply = (attempt: number): void => {
+	const apply = (): void => {
 		if (window.isDestroyed()) return;
 		const current = blurSchedules.get(window);
 		if (!current) return;
 		try {
-			const ok = setWindowBlurRadius(handle, current.latestRadius);
-			vdbg("setWindowBlurRadius returned", {
-				ok,
-				radius: current.latestRadius,
-				attempt,
-			});
+			setWindowBlurRadius(handle, current.latestRadius);
 		} catch (error) {
 			console.warn("[vibrancy] setWindowBlurRadius failed:", error);
 		}
@@ -220,17 +193,14 @@ function scheduleNativeBlur(window: BrowserWindow, state: VibrancyState): void {
 
 	// Immediate apply + retries that stretch long enough to beat the
 	// NSVisualEffectView's own lazy refresh cycle.
-	apply(0);
+	apply();
 	const delays = [16, 64, 180, 480, 960];
-	for (let i = 0; i < delays.length; i++) {
-		const attempt = i + 1;
-		const delay = delays[i];
-		if (delay === undefined) continue;
+	for (const delay of delays) {
 		const timer = setTimeout(() => {
 			if (!schedule) return;
 			const index = schedule.timers.indexOf(timer);
 			if (index >= 0) schedule.timers.splice(index, 1);
-			apply(attempt);
+			apply();
 		}, delay);
 		schedule.timers.push(timer);
 	}
