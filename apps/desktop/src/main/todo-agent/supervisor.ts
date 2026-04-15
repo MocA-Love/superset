@@ -668,10 +668,7 @@ export function getTodoSupervisor(): TodoSupervisor {
  * so it is a session leader). On Windows we fall back to
  * `taskkill /T /F` via the synchronous child_process API.
  */
-function killProcessTree(
-	pid: number,
-	signal: NodeJS.Signals,
-): void {
+function killProcessTree(pid: number, signal: NodeJS.Signals): void {
 	if (process.platform === "win32") {
 		try {
 			spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"]);
