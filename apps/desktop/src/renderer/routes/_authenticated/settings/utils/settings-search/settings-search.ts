@@ -18,6 +18,7 @@ export const SETTING_ITEM_ID = {
 	APPEARANCE_CUSTOM_THEMES: "appearance-custom-themes",
 	APPEARANCE_EDITOR_FONT: "appearance-editor-font",
 	APPEARANCE_TERMINAL_FONT: "appearance-terminal-font",
+	APPEARANCE_VIBRANCY: "appearance-vibrancy",
 
 	RINGTONES_NOTIFICATION: "ringtones-notification",
 
@@ -326,6 +327,26 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"typography",
 			"custom",
 			"nerd",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.APPEARANCE_VIBRANCY,
+		section: "appearance",
+		title: "Window Vibrancy",
+		description: "Make the window semi-transparent with a macOS vibrancy blur",
+		keywords: [
+			"appearance",
+			"vibrancy",
+			"transparent",
+			"transparency",
+			"blur",
+			"opacity",
+			"glass",
+			"warp",
+			"macos",
+			"ウィンドウ透過",
+			"不透明度",
+			"ブラー",
 		],
 	},
 	{

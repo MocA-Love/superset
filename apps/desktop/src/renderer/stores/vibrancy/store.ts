@@ -1,4 +1,5 @@
 import type { ITheme } from "@xterm/xterm";
+import { useMemo } from "react";
 import type { Theme } from "shared/themes";
 import {
 	DEFAULT_VIBRANCY_STATE,
@@ -57,12 +58,18 @@ export function useEffectiveTerminalTheme(): ITheme | null {
 	const base = useThemeStore((s) => s.terminalTheme);
 	const enabled = useVibrancyStore((s) => s.enabled);
 	const opacity = useVibrancyStore((s) => s.opacity);
-	if (!base || !enabled) return base;
-	const bg = base.background;
-	if (typeof bg !== "string") return base;
-	const rgba = hexToRgba(bg, opacity / 100);
-	if (!rgba) return base;
-	return { ...base, background: rgba };
+	// Memoize so the returned object is stable across unrelated renders.
+	// Terminal.tsx applies the theme inside an effect keyed on the theme
+	// identity, so returning a fresh `{ ...base, background: rgba }` on
+	// every render would force xterm to reconfigure itself on each tick.
+	return useMemo(() => {
+		if (!base || !enabled) return base;
+		const bg = base.background;
+		if (typeof bg !== "string") return base;
+		const rgba = hexToRgba(bg, opacity / 100);
+		if (!rgba) return base;
+		return { ...base, background: rgba };
+	}, [base, enabled, opacity]);
 }
 
 /**

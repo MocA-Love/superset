@@ -134,16 +134,10 @@ export function applyVibrancy(
 	const backgroundColor = computeBackgroundColor(state, isDark);
 
 	window.setBackgroundColor(backgroundColor);
-	// Electron's setVibrancy accepts null to disable since 6.x. When the
-	// type annotation for a specific Electron version doesn't list `null`,
-	// we pass the empty string fallback instead.
-	if (vibrancyType === null) {
-		window.setVibrancy(
-			null as unknown as Parameters<BrowserWindow["setVibrancy"]>[0],
-		);
-	} else {
-		window.setVibrancy(vibrancyType);
-	}
+	// Electron's setVibrancy accepts `null` to clear the effect — the type
+	// definition in Electron 30+ includes `string | null`, so the value
+	// returned by resolveVibrancyType can be passed through directly.
+	window.setVibrancy(vibrancyType);
 
 	scheduleNativeBlur(window, state);
 }

@@ -56,6 +56,10 @@ export function AppearanceSettings({ visibleItems }: AppearanceSettingsProps) {
 		visibleItems,
 	);
 	const showThemeSection = showTheme || showCustomThemes;
+	const showVibrancy = isItemVisible(
+		SETTING_ITEM_ID.APPEARANCE_VIBRANCY,
+		visibleItems,
+	);
 
 	return (
 		<div className="p-6 max-w-4xl w-full">
@@ -68,7 +72,7 @@ export function AppearanceSettings({ visibleItems }: AppearanceSettingsProps) {
 
 			<SectionList>
 				{showThemeSection && <ThemeSection key="theme" />}
-				<VibrancySection key="vibrancy" />
+				{showVibrancy && <VibrancySection key="vibrancy" />}
 				{showMarkdown && <MarkdownStyleSection key="markdown" />}
 				{showEditorFont && (
 					<FontSettingSection key="editor-font" variant="editor" />
