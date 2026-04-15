@@ -28,6 +28,7 @@ export interface UseTerminalColdRestoreOptions {
 	pendingEventsRef: React.MutableRefObject<TerminalStreamEvent[]>;
 	createOrAttachRef: React.MutableRefObject<CreateOrAttachMutate>;
 	cancelCreateOrAttachRef: React.MutableRefObject<TerminalCancelCreateOrAttachMutate>;
+	retryCountRef: React.MutableRefObject<number>;
 	setConnectionError: (error: string | null) => void;
 	setExitStatus: (status: "killed" | "exited" | null) => void;
 	maybeApplyInitialState: () => void;
@@ -66,6 +67,7 @@ export function useTerminalColdRestore({
 	pendingEventsRef,
 	createOrAttachRef,
 	cancelCreateOrAttachRef,
+	retryCountRef,
 	setConnectionError,
 	setExitStatus,
 	maybeApplyInitialState,
@@ -127,6 +129,13 @@ export function useTerminalColdRestore({
 					const currentXterm = xtermRef.current;
 					if (!currentXterm) return;
 
+					// FORK NOTE: reset retry counter only on actual attach
+					// success. Resetting earlier (e.g. as soon as
+					// connectionError becomes null) created an infinite
+					// retry loop because handleRetryConnection clears
+					// connectionError up front, so every failed attempt
+					// would look like the first one.
+					retryCountRef.current = 0;
 					setConnectionError(null);
 					currentXterm.writeln("\x1b[90m[Reconnected]\x1b[0m");
 
@@ -219,6 +228,7 @@ export function useTerminalColdRestore({
 		pendingInitialStateRef,
 		createOrAttachRef,
 		cancelActiveRequest,
+		retryCountRef,
 		setConnectionError,
 		setExitStatus,
 		maybeApplyInitialState,

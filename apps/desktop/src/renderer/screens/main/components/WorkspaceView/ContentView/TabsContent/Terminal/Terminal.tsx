@@ -43,6 +43,7 @@ import * as v1TerminalCache from "./v1-terminal-cache";
 const stripLeadingEmoji = (text: string) =>
 	text.trim().replace(/^[\p{Emoji}\p{Symbol}]\s*/u, "");
 const TYPING_PREVIEW_MAX_DURATION_MS = 200;
+const MAX_RETRIES = 5;
 
 export const Terminal = memo(function Terminal({
 	paneId,
@@ -228,6 +229,11 @@ export const Terminal = memo(function Terminal({
 			setConnectionError(reason || "Connection to terminal daemon lost"),
 	});
 
+	// Auto-retry connection with exponential backoff. Declared before
+	// useTerminalColdRestore so the retry handler can reset the counter on
+	// attach success.
+	const retryCountRef = useRef(0);
+
 	// Cold restore handling
 	const {
 		isRestoredMode,
@@ -249,6 +255,7 @@ export const Terminal = memo(function Terminal({
 		pendingEventsRef,
 		createOrAttachRef,
 		cancelCreateOrAttachRef,
+		retryCountRef,
 		setConnectionError,
 		setExitStatus,
 		maybeApplyInitialState,
@@ -261,10 +268,6 @@ export const Terminal = memo(function Terminal({
 	isRestoredModeRef.current = isRestoredMode;
 	const connectionErrorRef = useRef(connectionError);
 	connectionErrorRef.current = connectionError;
-
-	// Auto-retry connection with exponential backoff
-	const retryCountRef = useRef(0);
-	const MAX_RETRIES = 5;
 
 	// Stream handling
 	const { handleTerminalExit, handleStreamError, handleStreamData } =
