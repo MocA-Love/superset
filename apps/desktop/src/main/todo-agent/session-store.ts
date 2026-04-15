@@ -61,7 +61,7 @@ class TodoSessionStore {
 	}
 
 	setArtifactPathCache(sessionId: string, artifactPath: string | null): void {
-		if (artifactPath && artifactPath.startsWith("/")) {
+		if (artifactPath?.startsWith("/")) {
 			this.artifactPathCache.set(sessionId, artifactPath);
 			// Make sure the directory exists once, up-front, so the async
 			// appendFile calls below never race on mkdir.
@@ -122,7 +122,7 @@ class TodoSessionStore {
 		if (!dir) {
 			const session = this.get(sessionId);
 			dir = session?.artifactPath;
-			if (dir && dir.startsWith("/")) {
+			if (dir?.startsWith("/")) {
 				this.artifactPathCache.set(sessionId, dir);
 			}
 		}
@@ -132,8 +132,7 @@ class TodoSessionStore {
 
 		// Chain async appends so bursty event streams stay ordered in
 		// the JSONL file and main process is not blocked on fs I/O.
-		const previous =
-			this.persistQueues.get(sessionId) ?? Promise.resolve();
+		const previous = this.persistQueues.get(sessionId) ?? Promise.resolve();
 		const nextTask = previous
 			.catch(() => {})
 			.then(() => appendFile(filePath, body, "utf8"))
@@ -167,11 +166,7 @@ class TodoSessionStore {
 					updatedAt: Date.now(),
 				})
 				.where(
-					inArray(todoSessions.status, [
-						"preparing",
-						"running",
-						"verifying",
-					]),
+					inArray(todoSessions.status, ["preparing", "running", "verifying"]),
 				)
 				.returning()
 				.all();
@@ -228,14 +223,12 @@ class TodoSessionStore {
 		};
 	}
 
-	insert(row: Omit<SelectTodoSession, "id" | "createdAt" | "updatedAt"> & {
-		id?: string;
-	}): SelectTodoSession {
-		const inserted = localDb
-			.insert(todoSessions)
-			.values(row)
-			.returning()
-			.get();
+	insert(
+		row: Omit<SelectTodoSession, "id" | "createdAt" | "updatedAt"> & {
+			id?: string;
+		},
+	): SelectTodoSession {
+		const inserted = localDb.insert(todoSessions).values(row).returning().get();
 		this.emit(inserted);
 		return inserted;
 	}

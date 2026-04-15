@@ -57,12 +57,8 @@ export function TodoModal({
 	const [maxIterations, setMaxIterations] = useState(DEFAULT_MAX_ITERATIONS);
 	const [maxMinutes, setMaxMinutes] = useState(DEFAULT_MAX_MINUTES);
 	const [submitting, setSubmitting] = useState(false);
-	const [createWorktree, setCreateWorktree] = useState(
-		DEFAULT_CREATE_WORKTREE,
-	);
-	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(
-		null,
-	);
+	const [createWorktree, setCreateWorktree] = useState(DEFAULT_CREATE_WORKTREE);
+	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 
 	const utils = electronTrpc.useUtils();
 	const create = electronTrpc.todoAgent.create.useMutation({
@@ -70,12 +66,13 @@ export function TodoModal({
 			await utils.todoAgent.list.invalidate({ workspaceId });
 		},
 	});
-	const createWorkspaceMut =
-		electronTrpc.workspaces.create.useMutation();
-	const { data: presets } =
-		electronTrpc.todoAgent.presets.list.useQuery(undefined, {
+	const createWorkspaceMut = electronTrpc.workspaces.create.useMutation();
+	const { data: presets } = electronTrpc.todoAgent.presets.list.useQuery(
+		undefined,
+		{
 			enabled: open,
-		});
+		},
+	);
 	const selectedPreset = useMemo(
 		() => (presets ?? []).find((p) => p.id === selectedPresetId) ?? null,
 		[presets, selectedPresetId],
@@ -108,9 +105,7 @@ export function TodoModal({
 		maxIterations >= 1 &&
 		maxMinutes >= 1 &&
 		!submitting &&
-		(createWorktree
-			? canUseNewWorktree
-			: workspaceId.length > 0);
+		(createWorktree ? canUseNewWorktree : workspaceId.length > 0);
 
 	const hasVerify = verifyCommand.trim().length > 0;
 	const hasGoal = goal.trim().length > 0;
@@ -222,9 +217,7 @@ export function TodoModal({
 							id="todo-new-worktree"
 							checked={createWorktree}
 							disabled={!canUseNewWorktree}
-							onCheckedChange={(checked) =>
-								setCreateWorktree(checked === true)
-							}
+							onCheckedChange={(checked) => setCreateWorktree(checked === true)}
 						/>
 						<span className="text-xs font-medium flex-1">
 							新しい worktree を作成して実行
@@ -253,20 +246,13 @@ export function TodoModal({
 
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
-							<Label
-								htmlFor="todo-goal"
-								className="flex items-center gap-1"
-							>
+							<Label htmlFor="todo-goal" className="flex items-center gap-1">
 								ゴール
 								<span className="text-muted-foreground font-normal text-[10px]">
 									任意
 								</span>
 							</Label>
-							<EnhanceButton
-								value={goal}
-								onEnhanced={setGoal}
-								kind="goal"
-							/>
+							<EnhanceButton value={goal} onEnhanced={setGoal} kind="goal" />
 						</div>
 						<Textarea
 							id="todo-goal"
@@ -279,10 +265,7 @@ export function TodoModal({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label
-							htmlFor="todo-verify"
-							className="flex items-center gap-1"
-						>
+						<Label htmlFor="todo-verify" className="flex items-center gap-1">
 							Verify
 							<span className="text-muted-foreground font-normal text-[10px]">
 								任意
@@ -334,9 +317,7 @@ export function TodoModal({
 									min={1}
 									max={240}
 									value={maxMinutes}
-									onChange={(e) =>
-										setMaxMinutes(Number(e.target.value) || 1)
-									}
+									onChange={(e) => setMaxMinutes(Number(e.target.value) || 1)}
 								/>
 							</div>
 						</div>
@@ -352,11 +333,7 @@ export function TodoModal({
 					>
 						キャンセル
 					</Button>
-					<Button
-						type="button"
-						onClick={handleSubmit}
-						disabled={!canSubmit}
-					>
+					<Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
 						{submitting ? "作成中…" : "作成"}
 					</Button>
 				</DialogFooter>

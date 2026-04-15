@@ -35,7 +35,12 @@ export const todoCreateInputSchema = z.object({
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
 	maxIterations: z.number().int().min(1).max(100).default(10),
-	maxWallClockSec: z.number().int().min(60).max(60 * 60 * 4).default(1800),
+	maxWallClockSec: z
+		.number()
+		.int()
+		.min(60)
+		.max(60 * 60 * 4)
+		.default(1800),
 	// Optional free-form text the user attached at creation time,
 	// usually pulled from a saved preset. Passed to claude via
 	// `--append-system-prompt` so the session steering stays

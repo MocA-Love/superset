@@ -10,7 +10,6 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 
 interface ChangesSidebarProps {
 	sessionId: string;
-	workspaceId: string;
 	active: boolean;
 }
 
@@ -30,11 +29,7 @@ interface SelectedDiff {
  * `startHeadSha` the supervisor captures at run start to scope commits
  * to "this session only" via `git log startHeadSha..HEAD`.
  */
-export function ChangesSidebar({
-	sessionId,
-	workspaceId,
-	active,
-}: ChangesSidebarProps) {
+export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 	const [selected, setSelected] = useState<SelectedDiff | null>(null);
 	const [commitsOpen, setCommitsOpen] = useState(true);
 	const [workingTreeOpen, setWorkingTreeOpen] = useState(true);
@@ -100,9 +95,7 @@ export function ChangesSidebar({
 						{data?.branch ? (
 							<span className="font-mono">{data.branch}</span>
 						) : (
-							<span className="text-muted-foreground">
-								（ブランチ取得中…）
-							</span>
+							<span className="text-muted-foreground">（ブランチ取得中…）</span>
 						)}
 					</div>
 				</div>
@@ -113,10 +106,7 @@ export function ChangesSidebar({
 					title="再取得"
 				>
 					<HiMiniArrowPath
-						className={cn(
-							"size-3.5",
-							snapshot.isFetching && "animate-spin",
-						)}
+						className={cn("size-3.5", snapshot.isFetching && "animate-spin")}
 					/>
 				</button>
 			</div>
@@ -237,7 +227,8 @@ export function ChangesSidebar({
 							</span>
 							{stagedCount + unstagedCount + untrackedCount > 0 && (
 								<span className="ml-auto text-[10px] text-muted-foreground/70 font-normal normal-case">
-									staged {stagedCount} · unstaged {unstagedCount} · ? {untrackedCount}
+									staged {stagedCount} · unstaged {unstagedCount} · ?{" "}
+									{untrackedCount}
 								</span>
 							)}
 						</button>
@@ -315,13 +306,7 @@ export function ChangesSidebar({
 	);
 }
 
-function StatusBadge({
-	code,
-	stage,
-}: {
-	code: string;
-	stage: string;
-}) {
+function StatusBadge({ code, stage }: { code: string; stage: string }) {
 	const { letter, color } = useMemo(() => {
 		if (stage === "untracked") {
 			return { letter: "?", color: "text-muted-foreground" };

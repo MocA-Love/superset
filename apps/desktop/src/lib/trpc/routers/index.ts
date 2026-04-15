@@ -1,5 +1,7 @@
 import type { BrowserWindow } from "electron";
 import type { WindowManager } from "main/lib/window-manager";
+// Fork-local: TODO autonomous agent feature.
+import { createTodoAgentRouter } from "main/todo-agent";
 import { router } from "..";
 import { createAnalyticsRouter } from "./analytics";
 import { createAuthRouter } from "./auth";
@@ -17,8 +19,6 @@ import { createDockerRouter } from "./docker";
 import { createExtensionsRouter } from "./extensions";
 import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
-// Fork-local: TODO autonomous agent feature.
-import { createTodoAgentRouter } from "main/todo-agent";
 import { createGitHubMetricsRouter } from "./github-metrics";
 import { createHostServiceCoordinatorRouter } from "./host-service-coordinator";
 import { createLanguageServicesRouter } from "./language-services";

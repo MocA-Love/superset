@@ -4,11 +4,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SelectTodoSession } from "@superset/local-db";
 import { getCurrentHeadSha } from "./git-status";
-import {
-	getTodoSessionStore,
-	resolveWorktreePath,
-} from "./session-store";
-import type { TodoStreamEvent, TodoStreamEventKind } from "./types";
+import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
+import type { TodoStreamEventKind } from "./types";
 import { TODO_ARTIFACT_SUBDIR } from "./types";
 
 /**
@@ -79,11 +76,7 @@ class TodoSupervisor {
 	prepareArtifacts(session: SelectTodoSession): string {
 		const dir = session.artifactPath;
 		mkdirSync(dir, { recursive: true });
-		writeFileSync(
-			path.join(dir, "goal.md"),
-			renderGoalDoc(session),
-			"utf8",
-		);
+		writeFileSync(path.join(dir, "goal.md"), renderGoalDoc(session), "utf8");
 		return dir;
 	}
 
@@ -179,7 +172,11 @@ class TodoSupervisor {
 		this.active = run;
 
 		try {
-			appendSetupEvent(sessionId, "セットアップ", "ワークスペースを解決しています…");
+			appendSetupEvent(
+				sessionId,
+				"セットアップ",
+				"ワークスペースを解決しています…",
+			);
 			const worktreePath = resolveWorktreePath(session0.workspaceId);
 			// Capture the git HEAD at session start so the Manager's right
 			// sidebar can show exactly what this session produced via
@@ -199,17 +196,9 @@ class TodoSupervisor {
 				);
 			}
 			if (session0.verifyCommand) {
-				appendSetupEvent(
-					sessionId,
-					"verify",
-					session0.verifyCommand,
-				);
+				appendSetupEvent(sessionId, "verify", session0.verifyCommand);
 			} else {
-				appendSetupEvent(
-					sessionId,
-					"モード",
-					"単発タスク（外部 verify なし）",
-				);
+				appendSetupEvent(sessionId, "モード", "単発タスク（外部 verify なし）");
 			}
 			appendSetupEvent(
 				sessionId,
@@ -257,10 +246,7 @@ class TodoSupervisor {
 
 			while (iteration < session0.maxIterations) {
 				if (ac.signal.aborted) break;
-				if (
-					Date.now() - run.startedAt >
-					session0.maxWallClockSec * 1000
-				) {
+				if (Date.now() - run.startedAt > session0.maxWallClockSec * 1000) {
 					store.update(sessionId, {
 						status: "escalated",
 						phase: "escalated",
@@ -283,8 +269,7 @@ class TodoSupervisor {
 				// Read-then-clear pending intervention at the turn boundary
 				// so user-queued steering actually reaches Claude.
 				const liveSession = store.get(sessionId);
-				const pendingIntervention =
-					liveSession?.pendingIntervention ?? null;
+				const pendingIntervention = liveSession?.pendingIntervention ?? null;
 				if (pendingIntervention) {
 					store.update(sessionId, { pendingIntervention: null });
 				}
@@ -307,8 +292,7 @@ class TodoSupervisor {
 					cwd: worktreePath,
 					prompt,
 					resumeSessionId: claudeSessionId,
-					customSystemPrompt:
-						currentSession.customSystemPrompt ?? null,
+					customSystemPrompt: currentSession.customSystemPrompt ?? null,
 					signal: ac.signal,
 					onChild: (child) => {
 						run.currentChild = child;
@@ -382,8 +366,7 @@ class TodoSupervisor {
 						phase: "done",
 						verdictPassed: true,
 						verdictReason:
-							lastAssistantText ??
-							"verify コマンドが exit 0 で完了しました",
+							lastAssistantText ?? "verify コマンドが exit 0 で完了しました",
 						finalAssistantText: lastAssistantText,
 						claudeSessionId,
 						totalCostUsd: aggregatedCostUsd || null,
@@ -714,14 +697,10 @@ function buildIterationPrompt(params: {
 		if (previousVerdictReason) {
 			sections.push(`前回の verify 結果:\n${previousVerdictReason}`);
 		}
-		sections.push(
-			`${goalPath} を読み直し、${goalClause}。`,
-		);
+		sections.push(`${goalPath} を読み直し、${goalClause}。`);
 	}
 	if (intervention) {
-		sections.push(
-			`ユーザーからの介入指示（優先度: 高）:\n${intervention}`,
-		);
+		sections.push(`ユーザーからの介入指示（優先度: 高）:\n${intervention}`);
 	}
 	if (session.verifyCommand) {
 		sections.push(
@@ -775,7 +754,8 @@ function runVerify(
 }
 
 function guessFailingTest(log: string): string | undefined {
-	const stripAnsi = log.replace(/\x1b\[[0-9;]*m/g, "");
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping real ANSI escapes from verify output is the whole point
+	const stripAnsi = log.replace(/\u001B\[[0-9;]*m/g, "");
 	const lines = stripAnsi.split("\n");
 	const patterns: RegExp[] = [
 		/^\s*\(fail\)\s+(.+?)(?:\s+\[\d.*)?$/i,
@@ -1046,7 +1026,8 @@ function appendUserEvent(
 			ts: Date.now(),
 			iteration,
 			kind: "raw",
-			label: iteration === 1 ? "最初のプロンプト" : `イテレーション ${iteration}`,
+			label:
+				iteration === 1 ? "最初のプロンプト" : `イテレーション ${iteration}`,
 			text: truncate(prompt, 4000),
 		},
 	]);

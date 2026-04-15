@@ -53,13 +53,7 @@ export interface SessionGitSnapshot {
 }
 
 const COMMIT_DELIM = "\x00";
-const COMMIT_FORMAT = [
-	"%H",
-	"%h",
-	"%s",
-	"%an",
-	"%aI",
-].join(COMMIT_DELIM);
+const COMMIT_FORMAT = ["%H", "%h", "%s", "%an", "%aI"].join(COMMIT_DELIM);
 
 export async function getSessionGitSnapshot(params: {
 	cwd: string;
@@ -77,11 +71,7 @@ export async function getSessionGitSnapshot(params: {
 	// Commits produced since the session started. If start and current
 	// are the same (no new commits yet) this returns an empty list.
 	let commits: SessionGitCommit[] = [];
-	if (
-		startHeadSha &&
-		currentHeadSha &&
-		startHeadSha !== currentHeadSha
-	) {
+	if (startHeadSha && currentHeadSha && startHeadSha !== currentHeadSha) {
 		const logOut = await gitOut(
 			[
 				"log",
@@ -146,15 +136,7 @@ export async function getSessionGitSnapshot(params: {
 	let ahead = 0;
 	let behind = 0;
 	const rlOut = (
-		await gitOut(
-			[
-				"rev-list",
-				"--left-right",
-				"--count",
-				"HEAD...@{u}",
-			],
-			cwd,
-		)
+		await gitOut(["rev-list", "--left-right", "--count", "HEAD...@{u}"], cwd)
 	).trim();
 	if (rlOut) {
 		const parts = rlOut.split(/\s+/);
@@ -175,11 +157,7 @@ export async function getSessionGitSnapshot(params: {
 	};
 }
 
-export type SessionDiffScope =
-	| "session"
-	| "staged"
-	| "unstaged"
-	| "commit";
+export type SessionDiffScope = "session" | "staged" | "unstaged" | "commit";
 
 export async function getSessionFileDiff(params: {
 	cwd: string;

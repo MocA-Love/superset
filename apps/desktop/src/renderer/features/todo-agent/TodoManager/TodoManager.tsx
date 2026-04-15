@@ -88,9 +88,7 @@ export function TodoManager({
 		new Set(),
 	);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(
-		false,
-	);
+	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(false);
 	const [presetsDialogOpen, setPresetsDialogOpen] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.listAll.useQuery(
@@ -141,7 +139,9 @@ export function TodoManager({
 							variant="ghost"
 							className="h-7 w-7 p-0 rounded-md"
 							onClick={() => setSidebarCollapsed((v) => !v)}
-							title={sidebarCollapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
+							title={
+								sidebarCollapsed ? "サイドバーを開く" : "サイドバーを閉じる"
+							}
 						>
 							{sidebarCollapsed ? (
 								<LuPanelLeftOpen className="size-4" />
@@ -149,9 +149,7 @@ export function TodoManager({
 								<LuPanelLeftClose className="size-4" />
 							)}
 						</Button>
-						<span className="text-sm font-semibold">
-							TODO Agent Manager
-						</span>
+						<span className="text-sm font-semibold">TODO Agent Manager</span>
 						<span className="text-xs text-muted-foreground">
 							自律 TODO セッションを横断表示
 						</span>
@@ -300,7 +298,6 @@ export function TodoManager({
 						{selected && !changesSidebarCollapsed && (
 							<ChangesSidebar
 								sessionId={selected.id}
-								workspaceId={selected.workspaceId}
 								active={
 									selected.status === "running" ||
 									selected.status === "verifying" ||
@@ -592,7 +589,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	// the dedupe path simple and avoids double-delivery on mount.
 	useEffect(() => {
 		setStreamEvents([]);
-	}, [session.id]);
+	}, []);
 
 	// Force a re-render once per second while the session is still
 	// running so TimingBlock's 実行時間 ticks smoothly instead of being
@@ -818,96 +815,95 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 			<div className="flex flex-1 min-h-0 overflow-hidden">
 				<div className="w-[34%] min-w-[360px] max-w-[520px] border-r min-h-0 overflow-y-auto">
 					<div className="flex flex-col gap-5 p-5">
-							<DetailBlock label="やって欲しいこと">
-								<div className="whitespace-pre-wrap text-xs leading-relaxed">
-									{session.description}
-								</div>
-							</DetailBlock>
+						<DetailBlock label="やって欲しいこと">
+							<div className="whitespace-pre-wrap text-xs leading-relaxed">
+								{session.description}
+							</div>
+						</DetailBlock>
 
-							<DetailBlock label="ゴール">
-								{session.goal?.trim() ? (
-									<div className="whitespace-pre-wrap text-xs leading-relaxed">
-										{session.goal}
-									</div>
+						<DetailBlock label="ゴール">
+							{session.goal?.trim() ? (
+								<div className="whitespace-pre-wrap text-xs leading-relaxed">
+									{session.goal}
+								</div>
+							) : (
+								<div className="text-xs text-muted-foreground">
+									未指定 ·『やって欲しいこと』の完了をゴールとみなします
+								</div>
+							)}
+						</DetailBlock>
+
+						<div className="grid grid-cols-2 gap-4">
+							<DetailBlock label="Verify">
+								{session.verifyCommand ? (
+									<code className="text-[11px] break-all">
+										{session.verifyCommand}
+									</code>
 								) : (
 									<div className="text-xs text-muted-foreground">
-										未指定 ·『やって欲しいこと』の完了をゴールとみなします
+										単発モード（verify なし）
 									</div>
 								)}
 							</DetailBlock>
-
-							<div className="grid grid-cols-2 gap-4">
-								<DetailBlock label="Verify">
-									{session.verifyCommand ? (
-										<code className="text-[11px] break-all">
-											{session.verifyCommand}
-										</code>
-									) : (
-										<div className="text-xs text-muted-foreground">
-											単発モード（verify なし）
-										</div>
-									)}
-								</DetailBlock>
-								<DetailBlock label="予算">
-									<div className="text-xs">
-										{session.verifyCommand
-											? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
-											: `${Math.round(session.maxWallClockSec / 60)}分`}
-									</div>
-								</DetailBlock>
-							</div>
-
-							{(session.totalCostUsd != null ||
-								session.totalNumTurns != null) && (
-								<DetailBlock label="消費">
-									<div className="text-xs text-muted-foreground">
-										{session.totalCostUsd != null &&
-											`$${session.totalCostUsd.toFixed(4)}`}
-										{session.totalCostUsd != null &&
-										session.totalNumTurns != null
-											? " · "
-											: ""}
-										{session.totalNumTurns != null &&
-											`${session.totalNumTurns} turns`}
-									</div>
-								</DetailBlock>
-							)}
-
-							{session.finalAssistantText && (
-								<DetailBlock
-									label="最終回答"
-									action={
-										<CopyIconButton
-											value={session.finalAssistantText}
-											title="最終回答をコピー"
-										/>
-									}
-								>
-									<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40">
-										<MarkdownRenderer
-											content={session.finalAssistantText}
-											scrollable={false}
-										/>
-									</div>
-								</DetailBlock>
-							)}
-
-							{session.verdictReason && session.verdictPassed === false && (
-								<DetailBlock
-									label="直近の verify 失敗ログ"
-									action={
-										<CopyIconButton
-											value={session.verdictReason}
-											title="失敗ログをコピー"
-										/>
-									}
-								>
-									<pre className="text-[11px] bg-muted/40 rounded-lg p-3 border border-border/40 whitespace-pre-wrap leading-relaxed">
-										{session.verdictReason}
-									</pre>
-								</DetailBlock>
-							)}
+							<DetailBlock label="予算">
+								<div className="text-xs">
+									{session.verifyCommand
+										? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
+										: `${Math.round(session.maxWallClockSec / 60)}分`}
+								</div>
+							</DetailBlock>
 						</div>
+
+						{(session.totalCostUsd != null ||
+							session.totalNumTurns != null) && (
+							<DetailBlock label="消費">
+								<div className="text-xs text-muted-foreground">
+									{session.totalCostUsd != null &&
+										`$${session.totalCostUsd.toFixed(4)}`}
+									{session.totalCostUsd != null && session.totalNumTurns != null
+										? " · "
+										: ""}
+									{session.totalNumTurns != null &&
+										`${session.totalNumTurns} turns`}
+								</div>
+							</DetailBlock>
+						)}
+
+						{session.finalAssistantText && (
+							<DetailBlock
+								label="最終回答"
+								action={
+									<CopyIconButton
+										value={session.finalAssistantText}
+										title="最終回答をコピー"
+									/>
+								}
+							>
+								<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40">
+									<MarkdownRenderer
+										content={session.finalAssistantText}
+										scrollable={false}
+									/>
+								</div>
+							</DetailBlock>
+						)}
+
+						{session.verdictReason && session.verdictPassed === false && (
+							<DetailBlock
+								label="直近の verify 失敗ログ"
+								action={
+									<CopyIconButton
+										value={session.verdictReason}
+										title="失敗ログをコピー"
+									/>
+								}
+							>
+								<pre className="text-[11px] bg-muted/40 rounded-lg p-3 border border-border/40 whitespace-pre-wrap leading-relaxed">
+									{session.verdictReason}
+								</pre>
+							</DetailBlock>
+						)}
+					</div>
 				</div>
 
 				<div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
@@ -997,10 +993,7 @@ function formatTimestamp(ms: number | null): string {
 	)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function formatDuration(
-	startMs: number | null,
-	endMs: number | null,
-): string {
+function formatDuration(startMs: number | null, endMs: number | null): string {
 	if (startMs == null) return "—";
 	const end = endMs ?? Date.now();
 	const diffSec = Math.max(0, Math.round((end - startMs) / 1000));
@@ -1052,9 +1045,7 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 					Claude の応答・ツール使用・verify 結果が流れます。
 				</div>
 			) : (
-				events.map((event) => (
-					<StreamEventRow key={event.id} event={event} />
-				))
+				events.map((event) => <StreamEventRow key={event.id} event={event} />)
 			)}
 		</div>
 	);

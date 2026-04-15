@@ -18,15 +18,13 @@ import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSupervisor } from "./supervisor";
 import {
 	TODO_ARTIFACT_SUBDIR,
-	todoPresetCreateInputSchema,
-	todoPresetUpdateInputSchema,
-} from "./types";
-import {
-	todoCreateInputSchema,
-	todoEnhanceTextInputSchema,
-	todoSendInputSchema,
 	type TodoSessionStateEvent,
 	type TodoStreamUpdate,
+	todoCreateInputSchema,
+	todoEnhanceTextInputSchema,
+	todoPresetCreateInputSchema,
+	todoPresetUpdateInputSchema,
+	todoSendInputSchema,
 } from "./types";
 
 /**
@@ -231,10 +229,7 @@ export const createTodoAgentRouter = () => {
 						rmSync(dir, { recursive: true, force: true });
 					}
 				} catch (error) {
-					console.warn(
-						"[todo-agent] artifact cleanup failed",
-						error,
-					);
+					console.warn("[todo-agent] artifact cleanup failed", error);
 				}
 
 				return { ok: true };
@@ -400,9 +395,8 @@ export const createTodoAgentRouter = () => {
 							events: initial,
 						});
 					}
-					const unsubscribe = store.subscribeStream(
-						input.sessionId,
-						(update) => emit.next(update),
+					const unsubscribe = store.subscribeStream(input.sessionId, (update) =>
+						emit.next(update),
 					);
 					return () => unsubscribe();
 				});

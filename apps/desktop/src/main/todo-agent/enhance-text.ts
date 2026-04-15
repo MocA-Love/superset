@@ -81,9 +81,7 @@ export async function enhanceTodoText(
  * message in Japanese. Returns a generic fallback if no attempt carries
  * a useful reason.
  */
-export function describeEnhanceFailure(
-	attempts: SmallModelAttempt[],
-): string {
+export function describeEnhanceFailure(attempts: SmallModelAttempt[]): string {
 	for (let index = attempts.length - 1; index >= 0; index -= 1) {
 		const attempt = attempts[index];
 		if (!attempt) continue;

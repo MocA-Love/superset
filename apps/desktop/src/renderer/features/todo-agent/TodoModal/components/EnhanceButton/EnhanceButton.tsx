@@ -61,9 +61,7 @@ export function EnhanceButton({
 			disabled={disabled}
 			title={title ?? (running ? "AI で書き換え中…" : "AI で書き換える")}
 		>
-			<HiMiniSparkles
-				className={cn("size-3.5", running && "animate-pulse")}
-			/>
+			<HiMiniSparkles className={cn("size-3.5", running && "animate-pulse")} />
 		</Button>
 	);
 }

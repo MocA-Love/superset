@@ -7,11 +7,7 @@ import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-	HiMiniPlus,
-	HiMiniTrash,
-	HiMiniXMark,
-} from "react-icons/hi2";
+import { HiMiniPlus, HiMiniTrash, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
 interface PresetsDialogProps {
@@ -173,28 +169,26 @@ export function PresetsDialog({ open, onOpenChange }: PresetsDialogProps) {
 										まだプリセットはありません。右上から新規作成してください。
 									</p>
 								)}
-								{(presets ?? []).map(
-									(preset: SelectTodoPromptPreset) => (
-										<button
-											key={preset.id}
-											type="button"
-											onClick={() => setSelectedId(preset.id)}
-											className={cn(
-												"text-left rounded-md px-2.5 py-1.5 text-xs transition",
-												selectedId === preset.id
-													? "bg-accent"
-													: "hover:bg-accent/50",
-											)}
-										>
-											<div className="font-medium line-clamp-1">
-												{preset.name}
-											</div>
-											<div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
-												{preset.content.replace(/\s+/g, " ")}
-											</div>
-										</button>
-									),
-								)}
+								{(presets ?? []).map((preset: SelectTodoPromptPreset) => (
+									<button
+										key={preset.id}
+										type="button"
+										onClick={() => setSelectedId(preset.id)}
+										className={cn(
+											"text-left rounded-md px-2.5 py-1.5 text-xs transition",
+											selectedId === preset.id
+												? "bg-accent"
+												: "hover:bg-accent/50",
+										)}
+									>
+										<div className="font-medium line-clamp-1">
+											{preset.name}
+										</div>
+										<div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+											{preset.content.replace(/\s+/g, " ")}
+										</div>
+									</button>
+								))}
 							</div>
 						</ScrollArea>
 					</div>
@@ -275,9 +269,7 @@ export function PresetsDialog({ open, onOpenChange }: PresetsDialogProps) {
 								type="button"
 								size="sm"
 								onClick={handleSave}
-								disabled={
-									!dirty || createMut.isPending || updateMut.isPending
-								}
+								disabled={!dirty || createMut.isPending || updateMut.isPending}
 							>
 								{draft.id ? "更新" : "作成"}
 							</Button>
