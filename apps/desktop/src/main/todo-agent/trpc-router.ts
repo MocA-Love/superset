@@ -48,11 +48,32 @@ export const createTodoAgentRouter = () => {
 				// see as the sidebar error + "ブランチ取得中…" that never
 				// resolves. Block until init is done (or already no-op) so
 				// prepareArtifacts runs against a real worktree.
-				await workspaceInitManager.waitForInit(input.workspaceId);
-				if (workspaceInitManager.hasFailed(input.workspaceId)) {
-					throw new Error(
-						`todo-agent: workspace ${input.workspaceId} の初期化に失敗しました`,
+				//
+				// `waitForInit` has a 30s internal timeout that resolves
+				// silently even if init is still running, so a slow
+				// fetch/clone path could still slip through. Loop on the
+				// `isInitializing` flag so we really block until the job
+				// reaches a terminal state, up to a generous ceiling.
+				const INIT_WAIT_STEP_MS = 30_000;
+				const INIT_WAIT_CEILING_MS = 10 * 60_000;
+				const waitStartedAt = Date.now();
+				while (workspaceInitManager.isInitializing(input.workspaceId)) {
+					if (Date.now() - waitStartedAt > INIT_WAIT_CEILING_MS) {
+						throw new TRPCError({
+							code: "TIMEOUT",
+							message: `todo-agent: workspace ${input.workspaceId} の初期化が時間内に終わりませんでした`,
+						});
+					}
+					await workspaceInitManager.waitForInit(
+						input.workspaceId,
+						INIT_WAIT_STEP_MS,
 					);
+				}
+				if (workspaceInitManager.hasFailed(input.workspaceId)) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: `todo-agent: workspace ${input.workspaceId} の初期化に失敗しました`,
+					});
 				}
 
 				const store = getTodoSessionStore();
