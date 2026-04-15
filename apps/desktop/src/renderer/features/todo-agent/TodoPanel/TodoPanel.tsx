@@ -1,4 +1,5 @@
 import type { SelectTodoSession } from "@superset/local-db";
+import { buildAgentPromptCommand } from "@superset/shared/agent-command";
 import { Button } from "@superset/ui/button";
 import { Input } from "@superset/ui/input";
 import { ScrollArea } from "@superset/ui/scroll-area";
@@ -132,11 +133,20 @@ function TodoSessionDetail({ session, workspaceId }: TodoSessionDetailProps) {
 
 			// Launch interactive claude code with an initial prompt that
 			// points at the goal file the supervisor wrote at creation time.
+			// Use the canonical `buildAgentPromptCommand` so the PTY sees the
+			// exact same command shape as the existing Run / task launches
+			// (`claude --dangerously-skip-permissions "$(cat <<DELIM ...)"`).
+			// Calling `claude <prompt>` by hand bypasses the agent preset and
+			// has proven to hit auth/wrapper edge cases.
 			const goalRef = `.superset/todo/${session.id}/goal.md`;
 			const initialPrompt = session.verifyCommand
 				? `${goalRef} を読んで、ゴールに向けて作業を開始してください。ターンが完了したと判断したら停止して待機してください。外部 verifier が \`${session.verifyCommand}\` を実行して次のターンが必要かを判定します。`
 				: `${goalRef} を読んで、ゴールに向けて作業してください。単発タスクなので外部 verify は行いません。ゴール達成と判断したら停止してください。`;
-			const command = `claude ${JSON.stringify(initialPrompt)}`;
+			const command = buildAgentPromptCommand({
+				prompt: initialPrompt,
+				randomId: session.id,
+				agent: "claude",
+			});
 
 			await launchCommandInPane({
 				paneId,

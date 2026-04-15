@@ -140,9 +140,10 @@ class TodoSupervisor {
 
 			// Single-turn mode: no verify command means "research /
 			// investigation / one-shot". Write the initial prompt, wait for
-			// the worker to go idle, then settle as done. The user reviews
-			// the output in the worker terminal tab and can keep talking to
-			// it manually if they want to.
+			// the worker to go idle, then settle. Before marking done we
+			// scan the captured PTY output for startup errors (auth,
+			// command-not-found, crash) so we do not report "done" on a
+			// worker that never actually ran.
 			if (!session0.verifyCommand) {
 				store.update(sessionId, { iteration: 1, phase: "running" });
 				const promptSession = store.get(sessionId);
@@ -152,13 +153,24 @@ class TodoSupervisor {
 					promptSession.attachedPaneId as string,
 					`${prompt}\n`,
 				);
-				const idled = await this.waitForIdle(
+				const { idled, buffer } = await this.waitForIdle(
 					promptSession.attachedPaneId as string,
 					DEFAULT_IDLE_WINDOW_MS,
 					session0.maxWallClockSec * 1000,
 					ac.signal,
 				);
 				if (ac.signal.aborted) return;
+				const startupError = detectStartupError(buffer);
+				if (startupError) {
+					store.update(sessionId, {
+						status: "failed",
+						phase: "failed",
+						verdictPassed: false,
+						verdictReason: startupError,
+						completedAt: Date.now(),
+					});
+					return;
+				}
 				store.update(sessionId, {
 					status: "done",
 					phase: "done",
@@ -198,13 +210,31 @@ class TodoSupervisor {
 				);
 
 				// Wait for the PTY to go idle, indicating the turn is done.
-				const idled = await this.waitForIdle(
+				const { idled, buffer } = await this.waitForIdle(
 					promptSession.attachedPaneId as string,
 					DEFAULT_IDLE_WINDOW_MS,
 					session0.maxWallClockSec * 1000,
 					ac.signal,
 				);
 				if (!idled) break;
+
+				// On the first iteration, short-circuit if the worker never
+				// actually started (auth / not-found / crash). Running the
+				// verify command against a broken worker would produce a
+				// misleading "failed verify" instead of the real reason.
+				if (iteration === 1) {
+					const startupError = detectStartupError(buffer);
+					if (startupError) {
+						store.update(sessionId, {
+							status: "failed",
+							phase: "failed",
+							verdictPassed: false,
+							verdictReason: startupError,
+							completedAt: Date.now(),
+						});
+						return;
+					}
+				}
 
 				store.update(sessionId, { phase: "verifying" });
 				const verdict = await runVerify(
@@ -277,12 +307,18 @@ class TodoSupervisor {
 		idleWindowMs: number,
 		hardCapMs: number,
 		signal: AbortSignal,
-	): Promise<boolean> {
+	): Promise<{ idled: boolean; buffer: string }> {
 		return new Promise((resolve) => {
 			const terminal = getWorkspaceRuntimeRegistry().getDefault().terminal;
 			let idleTimer: NodeJS.Timeout | undefined;
 			let hardTimer: NodeJS.Timeout | undefined;
 			const start = Date.now();
+			// Ring-ish buffer: keep the last ~16 KB of PTY output so we can
+			// scan it for startup errors (auth failure, command not found,
+			// crash banners) after the worker goes idle. 16 KB is enough to
+			// hold a typical claude-code TUI header plus any error tail.
+			const CAP = 16 * 1024;
+			let buffer = "";
 
 			const cleanup = () => {
 				if (idleTimer) clearTimeout(idleTimer);
@@ -299,25 +335,72 @@ class TodoSupervisor {
 						return;
 					}
 					cleanup();
-					resolve(true);
+					resolve({ idled: true, buffer });
 				}, idleWindowMs);
 			};
 
-			const onData = () => kickIdle();
+			const onData = (chunk: unknown) => {
+				const text =
+					typeof chunk === "string"
+						? chunk
+						: chunk instanceof Uint8Array
+							? Buffer.from(chunk).toString("utf8")
+							: String(chunk ?? "");
+				buffer += text;
+				if (buffer.length > CAP) buffer = buffer.slice(-CAP);
+				kickIdle();
+			};
 			const onAbort = () => {
 				cleanup();
-				resolve(false);
+				resolve({ idled: false, buffer });
 			};
 
 			terminal.on(`data:${paneId}`, onData);
 			signal.addEventListener("abort", onAbort);
 			hardTimer = setTimeout(() => {
 				cleanup();
-				resolve(true);
+				resolve({ idled: true, buffer });
 			}, hardCapMs);
 			kickIdle();
 		});
 	}
+}
+
+/**
+ * Detect "the worker never really started" conditions by scanning the PTY
+ * capture for known fatal markers. Returns a user-facing reason when one is
+ * found. Intentionally conservative — we do not want to mistake a normal
+ * test failure in the worker's TUI for a startup error.
+ */
+function detectStartupError(buffer: string): string | undefined {
+	// Strip ANSI so pattern matching stays simple.
+	const clean = buffer.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+	const patterns: Array<[RegExp, string]> = [
+		[
+			/Please run \/login/i,
+			"Claude Code の認証が切れています。ワーカーのターミナルで `/login` を実行してください。",
+		],
+		[
+			/authentication_error|Invalid authentication credentials/i,
+			"Claude Code の認証に失敗しました（API Error 401）。ワーカーのターミナルで `/login` を実行してください。",
+		],
+		[
+			/claude: command not found|command not found: claude/i,
+			"`claude` コマンドが見つかりません。Claude Code CLI がインストールされているか、PATH を確認してください。",
+		],
+		[
+			/API Error:\s*5\d\d/i,
+			"Claude Code が API エラー（5xx）を返しました。ネットワークまたは上流サービスの状態を確認してください。",
+		],
+		[
+			/fatal:/i,
+			"ワーカーが起動時に fatal エラーを出しました。詳細はワーカーのターミナルを確認してください。",
+		],
+	];
+	for (const [re, reason] of patterns) {
+		if (re.test(clean)) return reason;
+	}
+	return undefined;
 }
 
 let supervisor: TodoSupervisor | undefined;
