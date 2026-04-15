@@ -43,6 +43,7 @@ import * as v1TerminalCache from "./v1-terminal-cache";
 const stripLeadingEmoji = (text: string) =>
 	text.trim().replace(/^[\p{Emoji}\p{Symbol}]\s*/u, "");
 const TYPING_PREVIEW_MAX_DURATION_MS = 200;
+const MAX_RETRIES = 5;
 
 export const Terminal = memo(function Terminal({
 	paneId,
@@ -232,7 +233,6 @@ export const Terminal = memo(function Terminal({
 	// useTerminalColdRestore so the retry handler can reset the counter on
 	// attach success.
 	const retryCountRef = useRef(0);
-	const MAX_RETRIES = 5;
 
 	// Cold restore handling
 	const {
