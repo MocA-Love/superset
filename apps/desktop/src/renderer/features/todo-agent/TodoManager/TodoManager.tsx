@@ -82,7 +82,7 @@ export function TodoManager({
 		<>
 			<Dialog open={open} onOpenChange={onOpenChange}>
 				<DialogContent
-					className="max-w-none w-[95vw] h-[86vh] p-0 gap-0 overflow-hidden"
+					className="max-w-none sm:max-w-none w-[95vw] h-[86vh] p-0 gap-0 overflow-hidden"
 					showCloseButton={false}
 				>
 					<DialogTitle className="sr-only">
