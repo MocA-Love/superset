@@ -76,9 +76,15 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 		CALayer* layer = vev.layer;
 		if (!layer) return;
 
+		// NSVisualEffectView's backing layer is a CABackdropLayer subclass
+		// on macOS 11+. Setting `backgroundFilters` on it is silently
+		// ignored because the system manages the backdrop separately, but
+		// `filters` is interpreted as the backdrop filter stack for
+		// backdrop-style layers. We set both to be safe: `filters` drives
+		// the blur on CABackdropLayer, and `backgroundFilters` is a no-op
+		// on backdrop layers but works on plain CALayers as a fallback.
 		if (radius <= 0.0) {
-			// Clear our override and let the NSVisualEffectView material
-			// drive the appearance again.
+			layer.filters = @[];
 			layer.backgroundFilters = @[];
 			success = true;
 			return;
@@ -91,7 +97,14 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 		if ([blur respondsToSelector:@selector(setName:)]) {
 			[blur setValue:@"supersetVibrancyBlur" forKey:@"name"];
 		}
-		layer.backgroundFilters = @[blur];
+
+		Class backdropClass = NSClassFromString(@"CABackdropLayer");
+		if (backdropClass && [layer isKindOfClass:backdropClass]) {
+			layer.filters = @[blur];
+		} else {
+			layer.backgroundFilters = @[blur];
+		}
+		[layer setNeedsDisplay];
 		success = true;
 	};
 	if ([NSThread isMainThread]) {

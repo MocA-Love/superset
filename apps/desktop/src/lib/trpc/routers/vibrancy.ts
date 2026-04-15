@@ -30,7 +30,12 @@ const vibrancyInputSchema = z.object({
 });
 
 function getCurrentState(): VibrancyState {
-	return appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE;
+	const stored = appState.data?.vibrancyState;
+	// Merge over defaults so older on-disk states (written before we added
+	// blurRadius) still produce a complete VibrancyState. Otherwise the
+	// missing field would round-trip as `undefined` and the slider would
+	// appear to reset on every restart.
+	return { ...DEFAULT_VIBRANCY_STATE, ...stored };
 }
 
 async function writeState(next: VibrancyState): Promise<void> {
