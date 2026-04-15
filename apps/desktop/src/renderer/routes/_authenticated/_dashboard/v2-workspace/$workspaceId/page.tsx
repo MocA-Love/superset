@@ -45,6 +45,7 @@ import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
+	CommentPaneData,
 	DiffPaneData,
 	FilePaneData,
 	PaneViewerData,
@@ -363,6 +364,36 @@ function WorkspaceContent({
 			});
 	}, [openFilePane, workspaceId]);
 
+	// FORK NOTE: upstream #3463 introduces openCommentPane for the new
+	// v2 Review tab. Keep it alongside fork's useCommandPalette-based
+	// quick open (fork uses a hook, upstream uses a simple boolean state).
+	const openCommentPane = useCallback(
+		(comment: CommentPaneData) => {
+			const state = store.getState();
+			for (const tab of state.tabs) {
+				for (const pane of Object.values(tab.panes)) {
+					if (pane.kind !== "comment") continue;
+					state.setPaneData({
+						paneId: pane.id,
+						data: comment as PaneViewerData,
+					});
+					state.setActiveTab(tab.id);
+					state.setActivePane({ tabId: tab.id, paneId: pane.id });
+					return;
+				}
+			}
+			state.addTab({
+				panes: [
+					{
+						kind: "comment",
+						data: comment as PaneViewerData,
+					},
+				],
+			});
+		},
+		[store],
+	);
+
 	const commandPalette = useCommandPalette({
 		workspaceId,
 		navigate,
@@ -537,6 +568,7 @@ function WorkspaceContent({
 								workspaceName={workspaceName}
 								onSelectFile={openSidebarFilePane}
 								onSelectDiffFile={openDiffPane}
+								onOpenComment={openCommentPane}
 								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
 							/>
