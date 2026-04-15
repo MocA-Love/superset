@@ -130,6 +130,30 @@ export function useTerminalColdRestore({
 					setConnectionError(null);
 					currentXterm.writeln("\x1b[90m[Reconnected]\x1b[0m");
 
+					// FORK NOTE: when the previous stream subscription died
+					// (v1-terminal-cache.ts onError nulls `subscription` and
+					// resets `streamReady`) only useTerminalLifecycle's initial
+					// attach path restarts it. handleRetryConnection is a
+					// standalone re-attach that used to succeed silently but
+					// left the cache without a live subscription — so the
+					// reconnected shell's stdout/exit/error events never
+					// reached the component and the user saw a terminal that
+					// displayed "[Reconnected]" but never produced any more
+					// output.
+					//
+					// Only mark the cache as session-ready when the daemon
+					// actually returned a real backend session. The cold
+					// restore branch below has no backend yet (PR #167
+					// invariant: streamReady must not be set before a real
+					// shell exists, otherwise tab-switch remounts can take
+					// the isReattach fast-path and silently drop user
+					// keystrokes). The replacement shell created later by
+					// handleStartShell calls markSessionReady itself, so the
+					// cold-restore reconnect path is still covered end-to-end.
+					if (!result.isColdRestore) {
+						v1TerminalCache.markSessionReady(paneId);
+					}
+
 					if (result.isColdRestore) {
 						const scrollback =
 							result.snapshot?.snapshotAnsi ?? result.scrollback;
