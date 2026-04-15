@@ -172,13 +172,16 @@ export function useTerminalColdRestore({
 		// Drop any queued events from the pre-restore session
 		pendingEventsRef.current = [];
 
-		// Acknowledge cold restore to main process
-		trpcClient.terminal.ackColdRestore.mutate({ paneId }).catch((error) => {
-			console.warn("[Terminal] Failed to acknowledge cold restore:", {
-				paneId,
-				error: error instanceof Error ? error.message : String(error),
-			});
-		});
+		// FORK NOTE: Defer ackColdRestore and coldRestoreState.delete until the
+		// replacement shell actually spawns. Previously both ran at the top of
+		// this function, which told main to drop its `coldRestoreInfo` entry
+		// *before* createOrAttach succeeded. If the new shell failed to spawn
+		// (transient fd exhaustion, daemon hiccup, signal while rehydrating)
+		// the restored scrollback became permanently unrecoverable: main had
+		// already forgotten the snapshot, the renderer cleared its cache, and
+		// the onError path also deleted coldRestoreState — the user saw
+		// `Failed to start shell` with no way to retry or view the last run's
+		// output.
 
 		// Add visual separator
 		xterm.write("\r\n\x1b[90m─── Session Contents Restored ───\x1b[0m\r\n\r\n");
@@ -208,6 +211,18 @@ export function useTerminalColdRestore({
 					pendingInitialStateRef.current = result;
 					maybeApplyInitialState();
 
+					// Now that a real shell is alive, it is safe to tell main
+					// to drop the sticky cold-restore snapshot and clear the
+					// renderer-side cache.
+					trpcClient.terminal.ackColdRestore
+						.mutate({ paneId })
+						.catch((error) => {
+							console.warn("[Terminal] Failed to acknowledge cold restore:", {
+								paneId,
+								error: error instanceof Error ? error.message : String(error),
+							});
+						});
+
 					setIsRestoredMode(false);
 					coldRestoreState.delete(paneId);
 
@@ -224,8 +239,12 @@ export function useTerminalColdRestore({
 					}
 					console.error("[Terminal] Failed to start shell:", error);
 					setConnectionError(error.message || "Failed to start shell");
-					setIsRestoredMode(false);
-					coldRestoreState.delete(paneId);
+					// FORK NOTE: keep coldRestoreState intact on failure so the
+					// caller (or a future retry button) can re-enter restored
+					// mode without losing the snapshot that was already written
+					// to xterm. setIsRestoredMode(false) is intentionally also
+					// dropped here for the same reason — leaving the overlay
+					// up lets the user see the error while preserving context.
 					isStreamReadyRef.current = true;
 					flushPendingEvents();
 				},
