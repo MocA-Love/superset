@@ -1,6 +1,7 @@
 import "highlight.js/styles/github-dark.css";
 import "./task-markdown.css";
 
+import { isEnterSubmit } from "@superset/ui/lib/keyboard";
 import { cn } from "@superset/ui/utils";
 import { Extension } from "@tiptap/core";
 import { Blockquote } from "@tiptap/extension-blockquote";
@@ -247,11 +248,9 @@ export function TaskMarkdownRenderer({
 				class: cn("focus:outline-none min-h-[100px]", editorClassName),
 			},
 			handleKeyDown: (_, event) => {
-				if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-					onModEnter?.();
-					return true;
-				}
-				return false;
+				if (!isEnterSubmit(event, { requireMod: true })) return false;
+				onModEnter?.();
+				return true;
 			},
 		},
 		onUpdate: ({ editor }) => {
