@@ -8,7 +8,8 @@ import type {
 	TodoSessionListEntry,
 	TodoStreamEvent,
 } from "main/todo-agent/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import {
 	HiMiniArrowPath,
 	HiMiniChevronDown,
@@ -179,18 +180,16 @@ export function TodoManager({
 						</ScrollArea>
 					</div>
 
-					<ScrollArea>
-						{selected ? (
-							<SessionDetail
-								session={selected}
-								onDeleted={() => setSelectedId(null)}
-							/>
-						) : (
-							<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
-								セッションを選択すると詳細が表示されます。
-							</div>
-						)}
-					</ScrollArea>
+					{selected ? (
+						<SessionDetail
+							session={selected}
+							onDeleted={() => setSelectedId(null)}
+						/>
+					) : (
+						<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
+							セッションを選択すると詳細が表示されます。
+						</div>
+					)}
 				</div>
 			</DialogContent>
 		</Dialog>
@@ -396,186 +395,215 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	}, [invalidate, rerunMut, session.id]);
 
 	return (
-		<div className="flex flex-col gap-5 p-6 max-w-5xl text-sm">
-			<div className="flex items-start gap-3">
-				<div className="flex-1 min-w-0">
-					<div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-						<StatusDot status={session.status} />
-						<span>{statusLabel(session)}</span>
-						{session.workspaceName && (
-							<>
-								<span className="text-muted-foreground/50">·</span>
-								<span className="truncate">{session.workspaceName}</span>
-							</>
-						)}
-						{session.projectName && (
-							<>
-								<span className="text-muted-foreground/50">·</span>
-								<span className="truncate">{session.projectName}</span>
-							</>
-						)}
+		<div className="flex flex-col h-full min-h-0 text-sm">
+			{/* Header: title + actions. Fixed, not scrollable. */}
+			<div className="shrink-0 border-b px-6 pt-5 pb-4">
+				<div className="flex items-start gap-3">
+					<div className="flex-1 min-w-0">
+						<div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+							<StatusDot status={session.status} />
+							<span>{statusLabel(session)}</span>
+							{session.workspaceName && (
+								<>
+									<span className="text-muted-foreground/50">·</span>
+									<span className="truncate">{session.workspaceName}</span>
+								</>
+							)}
+							{session.projectName && (
+								<>
+									<span className="text-muted-foreground/50">·</span>
+									<span className="truncate">{session.projectName}</span>
+								</>
+							)}
+						</div>
+						<h2 className="text-lg font-semibold mt-1 leading-tight break-words">
+							{session.title}
+						</h2>
 					</div>
-					<h2 className="text-lg font-semibold mt-1 leading-tight break-words">
-						{session.title}
-					</h2>
-				</div>
-				<div className="flex items-center gap-2 shrink-0">
-					{canStart && !isRunning && (
-						<Button
-							type="button"
-							size="sm"
-							onClick={handleStart}
-							disabled={starting}
-						>
-							{starting ? "開始中…" : "Start"}
-						</Button>
-					)}
-					{isRunning && (
-						<Button
-							type="button"
-							size="sm"
-							variant="destructive"
-							onClick={handleAbort}
-						>
-							中断
-						</Button>
-					)}
-					{isFinal && (
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							className="gap-1"
-							onClick={handleRerun}
-							disabled={rerunMut.isPending}
-							title="同じ内容で新しいセッションを作成"
-						>
-							<HiMiniArrowPath className="size-3.5" />
-							再実行
-						</Button>
-					)}
-					{!confirmingDelete ? (
-						<Button
-							type="button"
-							size="sm"
-							variant="ghost"
-							className="gap-1 text-muted-foreground hover:text-destructive"
-							onClick={() => setConfirmingDelete(true)}
-							disabled={isActive && isRunning}
-							title={
-								isRunning
-									? "実行中のセッションは先に中断してください"
-									: "削除"
-							}
-						>
-							<HiMiniTrash className="size-3.5" />
-							削除
-						</Button>
-					) : (
-						<div className="flex items-center gap-1">
+					<div className="flex items-center gap-2 shrink-0">
+						{canStart && !isRunning && (
+							<Button
+								type="button"
+								size="sm"
+								onClick={handleStart}
+								disabled={starting}
+							>
+								{starting ? "開始中…" : "Start"}
+							</Button>
+						)}
+						{isRunning && (
 							<Button
 								type="button"
 								size="sm"
 								variant="destructive"
-								onClick={handleDelete}
-								disabled={deleteMut.isPending}
+								onClick={handleAbort}
 							>
-								本当に削除
+								中断
 							</Button>
+						)}
+						{isFinal && (
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								className="gap-1"
+								onClick={handleRerun}
+								disabled={rerunMut.isPending}
+								title="同じ内容で新しいセッションを作成"
+							>
+								<HiMiniArrowPath className="size-3.5" />
+								再実行
+							</Button>
+						)}
+						{!confirmingDelete ? (
 							<Button
 								type="button"
 								size="sm"
 								variant="ghost"
-								onClick={() => setConfirmingDelete(false)}
+								className="gap-1 text-muted-foreground hover:text-destructive"
+								onClick={() => setConfirmingDelete(true)}
+								disabled={isActive && isRunning}
+								title={
+									isRunning
+										? "実行中のセッションは先に中断してください"
+										: "削除"
+								}
 							>
-								キャンセル
+								<HiMiniTrash className="size-3.5" />
+								削除
 							</Button>
-						</div>
-					)}
+						) : (
+							<div className="flex items-center gap-1">
+								<Button
+									type="button"
+									size="sm"
+									variant="destructive"
+									onClick={handleDelete}
+									disabled={deleteMut.isPending}
+								>
+									本当に削除
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									variant="ghost"
+									onClick={() => setConfirmingDelete(false)}
+								>
+									キャンセル
+								</Button>
+							</div>
+						)}
+					</div>
+				</div>
+				<div className="mt-4">
+					<TimingBlock session={session} />
 				</div>
 			</div>
 
-			<TimingBlock session={session} />
+			{/* Body: 2-column split, both columns scroll independently.
+			    Left = static metadata (description / goal / verify / cost /
+			    verdict / final answer). Right = live stream fills the full
+			    height and auto-scrolls to the bottom as events arrive. This
+			    gives the stream the maximum vertical + horizontal space
+			    without making the metadata section fight for it. */}
+			<div className="grid grid-cols-[minmax(380px,34%)_1fr] gap-0 flex-1 min-h-0">
+				<ScrollArea className="border-r">
+					<div className="flex flex-col gap-5 p-6">
+						<DetailBlock label="やって欲しいこと">
+							<div className="whitespace-pre-wrap text-xs leading-relaxed">
+								{session.description}
+							</div>
+						</DetailBlock>
 
-			<DetailBlock label="やって欲しいこと">
-				<div className="whitespace-pre-wrap text-xs leading-relaxed">
-					{session.description}
-				</div>
-			</DetailBlock>
+						<DetailBlock label="ゴール">
+							{session.goal?.trim() ? (
+								<div className="whitespace-pre-wrap text-xs leading-relaxed">
+									{session.goal}
+								</div>
+							) : (
+								<div className="text-xs text-muted-foreground">
+									未指定 ·『やって欲しいこと』の完了をゴールとみなします
+								</div>
+							)}
+						</DetailBlock>
 
-			<DetailBlock label="ゴール">
-				{session.goal?.trim() ? (
-					<div className="whitespace-pre-wrap text-xs leading-relaxed">
-						{session.goal}
-					</div>
-				) : (
-					<div className="text-xs text-muted-foreground">
-						未指定 ·『やって欲しいこと』の完了をゴールとみなします
-					</div>
-				)}
-			</DetailBlock>
-
-			<div className="grid grid-cols-2 gap-4">
-				<DetailBlock label="Verify">
-					{session.verifyCommand ? (
-						<code className="text-[11px] break-all">
-							{session.verifyCommand}
-						</code>
-					) : (
-						<div className="text-xs text-muted-foreground">
-							単発モード（verify なし）
+						<div className="grid grid-cols-2 gap-4">
+							<DetailBlock label="Verify">
+								{session.verifyCommand ? (
+									<code className="text-[11px] break-all">
+										{session.verifyCommand}
+									</code>
+								) : (
+									<div className="text-xs text-muted-foreground">
+										単発モード（verify なし）
+									</div>
+								)}
+							</DetailBlock>
+							<DetailBlock label="予算">
+								<div className="text-xs">
+									{session.verifyCommand
+										? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
+										: `${Math.round(session.maxWallClockSec / 60)}分`}
+								</div>
+							</DetailBlock>
 						</div>
-					)}
-				</DetailBlock>
-				<DetailBlock label="予算">
-					<div className="text-xs">
-						{session.verifyCommand
-							? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
-							: `${Math.round(session.maxWallClockSec / 60)}分`}
+
+						{(session.totalCostUsd != null ||
+							session.totalNumTurns != null) && (
+							<DetailBlock label="消費">
+								<div className="text-xs text-muted-foreground">
+									{session.totalCostUsd != null &&
+										`$${session.totalCostUsd.toFixed(4)}`}
+									{session.totalCostUsd != null &&
+									session.totalNumTurns != null
+										? " · "
+										: ""}
+									{session.totalNumTurns != null &&
+										`${session.totalNumTurns} turns`}
+								</div>
+							</DetailBlock>
+						)}
+
+						{session.finalAssistantText && (
+							<DetailBlock label="最終回答">
+								<div className="text-xs bg-muted/60 rounded p-3">
+									<MarkdownRenderer
+										content={session.finalAssistantText}
+										scrollable={false}
+									/>
+								</div>
+							</DetailBlock>
+						)}
+
+						{session.verdictReason && session.verdictPassed === false && (
+							<DetailBlock label="直近の verify 失敗ログ">
+								<pre className="text-[11px] bg-muted rounded p-3 whitespace-pre-wrap leading-relaxed">
+									{session.verdictReason}
+								</pre>
+							</DetailBlock>
+						)}
 					</div>
-				</DetailBlock>
+				</ScrollArea>
+
+				<div className="flex flex-col min-h-0">
+					<div className="px-6 pt-5 pb-2 shrink-0">
+						<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+							Claude の応答 / ライブストリーム
+						</div>
+					</div>
+					<div className="flex-1 min-h-0 px-6 pb-5">
+						<StreamView events={streamEvents} />
+					</div>
+				</div>
 			</div>
 
-			{(session.totalCostUsd != null || session.totalNumTurns != null) && (
-				<DetailBlock label="消費">
-					<div className="text-xs text-muted-foreground">
-						{session.totalCostUsd != null &&
-							`$${session.totalCostUsd.toFixed(4)}`}
-						{session.totalCostUsd != null && session.totalNumTurns != null
-							? " · "
-							: ""}
-						{session.totalNumTurns != null &&
-							`${session.totalNumTurns} turns`}
-					</div>
-				</DetailBlock>
-			)}
-
-			<DetailBlock label="Claude の応答 / ライブストリーム">
-				<StreamView events={streamEvents} />
-			</DetailBlock>
-
-			{session.finalAssistantText && (
-				<DetailBlock label="最終回答">
-					<div className="text-xs leading-relaxed whitespace-pre-wrap bg-muted/60 rounded p-3 max-h-60 overflow-auto">
-						{session.finalAssistantText}
-					</div>
-				</DetailBlock>
-			)}
-
-			{session.verdictReason && session.verdictPassed === false && (
-				<DetailBlock label="直近の verify 失敗ログ">
-					<pre className="text-[11px] bg-muted rounded p-3 whitespace-pre-wrap max-h-48 overflow-auto leading-relaxed">
-						{session.verdictReason}
-					</pre>
-				</DetailBlock>
-			)}
-
-			<DetailBlock label="介入">
-				<div className="flex gap-2">
+			{/* Footer: intervention input, pinned. Always reachable. */}
+			<div className="shrink-0 border-t px-6 py-3 bg-background">
+				<div className="flex items-center gap-2">
 					<Input
 						value={intervention}
 						onChange={(e) => setIntervention(e.target.value)}
-						placeholder="次のターンに注入する指示を入力（Enter で送信）"
+						placeholder="次のターンに注入する介入指示（Enter で送信）"
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && !e.shiftKey) {
 								e.preventDefault();
@@ -593,17 +621,18 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 						キュー
 					</Button>
 				</div>
-				{session.pendingIntervention && (
-					<p className="text-[11px] text-muted-foreground mt-1">
-						予約済み: {session.pendingIntervention}
+				<div className="flex items-center justify-between gap-3 mt-1.5">
+					<p className="text-[10px] text-muted-foreground line-clamp-1">
+						{session.pendingIntervention ? (
+							<>予約済み: {session.pendingIntervention}</>
+						) : (
+							<>
+								ヒント: 介入指示は次のイテレーション開始時に Claude
+								に渡されます。
+							</>
+						)}
 					</p>
-				)}
-			</DetailBlock>
-
-			<div className="text-[11px] text-muted-foreground pt-3 border-t">
-				ヒント: ワーカーはバックグラウンドで headless 実行されます。
-				ここに表示されるのが唯一のライブ出力です。介入指示はキューされ、
-				次のイテレーション開始時に Claude に渡されます。
+				</div>
 			</div>
 		</div>
 	);
@@ -662,19 +691,46 @@ function formatDuration(
 }
 
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
-	if (events.length === 0) {
-		return (
-			<div className="text-xs text-muted-foreground bg-muted/40 rounded p-4">
-				まだストリームイベントがありません。Start するとここにリアルタイムで
-				Claude の応答・ツール使用・verify 結果が流れます。
-			</div>
-		);
-	}
+	// Auto-scroll to the bottom whenever a new event arrives, but only
+	// if the user hadn't scrolled up to read older output. Tracked via
+	// a `pinnedToBottom` ref that flips to false the moment the user
+	// manually scrolls up, and back to true when they scroll near the
+	// bottom again.
+	const scrollRef = useRef<HTMLDivElement | null>(null);
+	const pinnedToBottomRef = useRef(true);
+
+	const handleScroll = useCallback(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const distanceFromBottom =
+			el.scrollHeight - (el.scrollTop + el.clientHeight);
+		pinnedToBottomRef.current = distanceFromBottom < 40;
+	}, []);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: events.length intentional — we want to scroll on new events, not on identity changes
+	useEffect(() => {
+		if (!pinnedToBottomRef.current) return;
+		const el = scrollRef.current;
+		if (!el) return;
+		el.scrollTop = el.scrollHeight;
+	}, [events.length]);
+
 	return (
-		<div className="flex flex-col gap-2 bg-muted/30 rounded p-3 max-h-[50vh] overflow-auto">
-			{events.map((event) => (
-				<StreamEventRow key={event.id} event={event} />
-			))}
+		<div
+			ref={scrollRef}
+			onScroll={handleScroll}
+			className="h-full overflow-auto bg-muted/30 rounded p-3 flex flex-col gap-2"
+		>
+			{events.length === 0 ? (
+				<div className="text-xs text-muted-foreground p-2">
+					まだストリームイベントがありません。Start するとここにリアルタイムで
+					Claude の応答・ツール使用・verify 結果が流れます。
+				</div>
+			) : (
+				events.map((event) => (
+					<StreamEventRow key={event.id} event={event} />
+				))
+			)}
 		</div>
 	);
 }
@@ -692,6 +748,12 @@ function StreamEventRow({ event }: { event: TodoStreamEvent }) {
 						: event.kind === "error"
 							? "border-rose-500/50 bg-rose-500/5"
 							: "border-border/40 bg-background";
+	// Markdown rendering for the two kinds where authoring is natural
+	// (Claude's prose assistant messages + the final `result` text).
+	// Tool calls, tool results, and raw log lines stay plain text so
+	// their monospace / short-label nature is preserved.
+	const useMarkdown =
+		event.kind === "assistant_text" || event.kind === "result";
 	return (
 		<div className={cn("border rounded px-3 py-2 text-xs", color)}>
 			<div className="flex items-center justify-between gap-2 mb-1">
@@ -702,7 +764,13 @@ function StreamEventRow({ event }: { event: TodoStreamEvent }) {
 					{formatClock(event.ts)}
 				</span>
 			</div>
-			<div className="whitespace-pre-wrap leading-relaxed">{event.text}</div>
+			{useMarkdown ? (
+				<MarkdownRenderer content={event.text} scrollable={false} />
+			) : (
+				<div className="whitespace-pre-wrap leading-relaxed font-mono text-[11px]">
+					{event.text}
+				</div>
+			)}
 		</div>
 	);
 }
