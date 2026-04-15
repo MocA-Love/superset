@@ -1,5 +1,5 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { rejectTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
@@ -7,10 +7,12 @@ import { coldRestoreState } from "../state";
 import type {
 	CreateOrAttachMutate,
 	CreateOrAttachResult,
+	TerminalCancelCreateOrAttachMutate,
 	TerminalStreamEvent,
 } from "../types";
 import { scrollToBottom } from "../utils";
 import * as v1TerminalCache from "../v1-terminal-cache";
+import { createAttachRequestId } from "./attach-request-id";
 
 export interface UseTerminalColdRestoreOptions {
 	paneId: string;
@@ -25,6 +27,7 @@ export interface UseTerminalColdRestoreOptions {
 	pendingInitialStateRef: React.MutableRefObject<CreateOrAttachResult | null>;
 	pendingEventsRef: React.MutableRefObject<TerminalStreamEvent[]>;
 	createOrAttachRef: React.MutableRefObject<CreateOrAttachMutate>;
+	cancelCreateOrAttachRef: React.MutableRefObject<TerminalCancelCreateOrAttachMutate>;
 	setConnectionError: (error: string | null) => void;
 	setExitStatus: (status: "killed" | "exited" | null) => void;
 	maybeApplyInitialState: () => void;
@@ -62,6 +65,7 @@ export function useTerminalColdRestore({
 	pendingInitialStateRef,
 	pendingEventsRef,
 	createOrAttachRef,
+	cancelCreateOrAttachRef,
 	setConnectionError,
 	setExitStatus,
 	maybeApplyInitialState,
@@ -75,6 +79,25 @@ export function useTerminalColdRestore({
 	const restoredCwdRef = useRef(restoredCwd);
 	restoredCwdRef.current = restoredCwd;
 
+	// FORK NOTE: Track the request id of any in-flight createOrAttach kicked
+	// off from handleRetryConnection / handleStartShell so we can cancel it
+	// when the pane unmounts (or the call is superseded by another retry).
+	// Without this, closing a pane mid-reconnect or mid-cold-restore leaves
+	// a daemon-side attach running to completion — potentially spawning an
+	// orphan shell the user never sees, and leaking PTY + fd + memory.
+	const activeRequestIdRef = useRef<string | null>(null);
+
+	const cancelActiveRequest = useCallback(() => {
+		const current = activeRequestIdRef.current;
+		if (!current) return;
+		activeRequestIdRef.current = null;
+		cancelCreateOrAttachRef.current({ paneId, requestId: current });
+	}, [paneId, cancelCreateOrAttachRef]);
+
+	// Cancel any in-flight cold-restore attach on unmount so a rapid
+	// pane close / component teardown does not leave a dangling attach.
+	useEffect(() => cancelActiveRequest, [cancelActiveRequest]);
+
 	const handleRetryConnection = useCallback(() => {
 		setConnectionError(null);
 		const xterm = xtermRef.current;
@@ -83,9 +106,15 @@ export function useTerminalColdRestore({
 		isStreamReadyRef.current = false;
 		pendingInitialStateRef.current = null;
 
+		// Supersede any previous in-flight cold-restore attach — no-op if none.
+		cancelActiveRequest();
+		const requestId = createAttachRequestId(paneId);
+		activeRequestIdRef.current = requestId;
+
 		createOrAttachRef.current(
 			{
 				paneId,
+				requestId,
 				tabId,
 				workspaceId,
 				cols: xterm.cols,
@@ -93,6 +122,8 @@ export function useTerminalColdRestore({
 			},
 			{
 				onSuccess: (result: CreateOrAttachResult) => {
+					if (activeRequestIdRef.current !== requestId) return;
+					activeRequestIdRef.current = null;
 					const currentXterm = xtermRef.current;
 					if (!currentXterm) return;
 
@@ -132,6 +163,8 @@ export function useTerminalColdRestore({
 					}
 				},
 				onError: (error: { message?: string }) => {
+					if (activeRequestIdRef.current !== requestId) return;
+					activeRequestIdRef.current = null;
 					if (isTerminalAttachCanceledMessage(error.message)) {
 						return;
 					}
@@ -161,6 +194,7 @@ export function useTerminalColdRestore({
 		didFirstRenderRef,
 		pendingInitialStateRef,
 		createOrAttachRef,
+		cancelActiveRequest,
 		setConnectionError,
 		setExitStatus,
 		maybeApplyInitialState,
@@ -193,10 +227,18 @@ export function useTerminalColdRestore({
 		pendingInitialStateRef.current = null;
 		resetModes();
 
+		// Supersede any previous cold-restore attach before spawning the
+		// replacement shell — covers the case where handleStartShell is
+		// re-invoked while an earlier attempt is still in flight.
+		cancelActiveRequest();
+		const requestId = createAttachRequestId(paneId);
+		activeRequestIdRef.current = requestId;
+
 		// Create new session with previous cwd
 		createOrAttachRef.current(
 			{
 				paneId,
+				requestId,
 				tabId,
 				workspaceId,
 				cols: xterm.cols,
@@ -207,6 +249,8 @@ export function useTerminalColdRestore({
 			},
 			{
 				onSuccess: (result: CreateOrAttachResult) => {
+					if (activeRequestIdRef.current !== requestId) return;
+					activeRequestIdRef.current = null;
 					pendingInitialStateRef.current = result;
 					maybeApplyInitialState();
 
@@ -229,6 +273,8 @@ export function useTerminalColdRestore({
 					}, 0);
 				},
 				onError: (error: { message?: string }) => {
+					if (activeRequestIdRef.current !== requestId) return;
+					activeRequestIdRef.current = null;
 					if (isTerminalAttachCanceledMessage(error.message)) {
 						return;
 					}
@@ -256,6 +302,7 @@ export function useTerminalColdRestore({
 		pendingInitialStateRef,
 		pendingEventsRef,
 		createOrAttachRef,
+		cancelActiveRequest,
 		setConnectionError,
 		setExitStatus,
 		maybeApplyInitialState,
