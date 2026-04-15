@@ -1022,32 +1022,38 @@ type StreamItem =
 	  };
 
 /**
- * Collapse consecutive tool_use / tool_result / raw events into a
+ * Collapse consecutive tool_use / tool_result events into a
  * single grouped item so the live stream reads like VS Code's
  * Claude Code extension — a tall, dense list of N tool calls
  * becomes one compact row you can expand when you actually care.
- * assistant_text / result / error / system_init stay as their own
- * rows because they are the narrative checkpoints users scan for.
+ * assistant_text / result / error / system_init / raw stay as
+ * their own rows because they are the narrative checkpoints
+ * users scan for (user prompts are emitted as `raw` via
+ * appendUserEvent, so grouping them would hide iteration
+ * boundaries inside collapsed tool blocks).
  */
 function groupStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
 	const items: StreamItem[] = [];
 	let toolBucket: TodoStreamEvent[] = [];
 	const flushBucket = () => {
 		if (toolBucket.length === 0) return;
+		const first = toolBucket[0];
+		// Key on the id of the first event in the bucket and the
+		// iteration, NOT the bucket length. Otherwise every newly
+		// streamed event forces a remount of StreamToolGroup and
+		// its local `open` state resets to collapsed — users who
+		// expanded the group to read live output would see it
+		// close on them on every new chunk.
 		items.push({
 			type: "tools",
-			id: `tools:${toolBucket[0]?.id ?? ""}:${toolBucket.length}`,
+			id: `tools:${first?.id ?? ""}`,
 			events: toolBucket,
-			iteration: toolBucket[0]?.iteration ?? 0,
+			iteration: first?.iteration ?? 0,
 		});
 		toolBucket = [];
 	};
 	for (const ev of events) {
-		if (
-			ev.kind === "tool_use" ||
-			ev.kind === "tool_result" ||
-			ev.kind === "raw"
-		) {
+		if (ev.kind === "tool_use" || ev.kind === "tool_result") {
 			toolBucket.push(ev);
 			continue;
 		}
