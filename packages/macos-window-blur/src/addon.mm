@@ -228,12 +228,38 @@ Napi::Value SetWindowBlurRadius(const Napi::CallbackInfo& info) {
 		VDBG("  backdrop layer class=%s filters=%lu",
 			[NSStringFromClass([backdrop class]) UTF8String],
 			(unsigned long)backdrop.filters.count);
+		@try {
+			[backdrop.filters enumerateObjectsUsingBlock:^(
+				id filter, NSUInteger idx, BOOL* stop) {
+				(void)stop;
+				NSString* name = nil;
+				NSString* type = nil;
+				@try {
+					name = [filter valueForKey:@"name"];
+				} @catch (NSException*) {}
+				@try {
+					type = [filter valueForKey:@"type"];
+				} @catch (NSException*) {}
+				VDBG("    pre filter[%lu] class=%s name=%s type=%s",
+					(unsigned long)idx,
+					[NSStringFromClass([filter class]) UTF8String],
+					name ? [name UTF8String] : "(nil)",
+					type ? [type UTF8String] : "(nil)");
+			}];
+		} @catch (NSException*) {}
 
 		[CATransaction begin];
 		[CATransaction setDisableActions:YES];
 		ApplyBlurRadiusToBackdrop(backdrop, radius);
+		[backdrop setNeedsDisplay];
+		[backdrop setNeedsLayout];
 		[CATransaction commit];
 		[CATransaction flush];
+		// Force a synchronous display pass so the new filter value is
+		// picked up immediately rather than waiting for the next vsync.
+		@try {
+			[backdrop displayIfNeeded];
+		} @catch (NSException*) {}
 
 		{
 			id postBlur = FindBackdropFilter(backdrop.filters, @"gaussianBlur");

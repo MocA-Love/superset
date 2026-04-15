@@ -170,25 +170,26 @@ export function applyVibrancy(
 	if (isNativeBlurAvailable()) {
 		const handle = window.getNativeWindowHandle();
 		const radius = state.enabled ? state.blurRadius : 0;
-		const attemptNativeBlur = (delayMs: number, attempt: number): void => {
-			setTimeout(() => {
-				if (window.isDestroyed()) return;
-				try {
-					const ok = setWindowBlurRadius(handle, radius);
-					vdbg("setWindowBlurRadius returned", { ok, radius, attempt });
-					// NSVisualEffectView creates its CABackdropLayer lazily the
-					// first frame after setVibrancy is called, so the initial
-					// toggle can land before the layer exists. Retry a couple
-					// of times on the next runloop tick.
-					if (!ok && attempt < 4 && state.enabled) {
-						attemptNativeBlur(delayMs * 2, attempt + 1);
-					}
-				} catch (error) {
-					console.warn("[vibrancy] setWindowBlurRadius failed:", error);
-				}
-			}, delayMs);
+		// Apply immediately on the current tick so the fast path is
+		// responsive, then re-apply a few more times over the next couple
+		// of frames. NSVisualEffectView occasionally overwrites its own
+		// filter stack in response to internal state changes (focus,
+		// material updates, lazy backdrop-layer creation), so a single
+		// mutation can silently get rolled back. Re-applying covers that
+		// window without adding noticeable cost.
+		const applyOnce = (attempt: number): void => {
+			if (window.isDestroyed()) return;
+			try {
+				const ok = setWindowBlurRadius(handle, radius);
+				vdbg("setWindowBlurRadius returned", { ok, radius, attempt });
+			} catch (error) {
+				console.warn("[vibrancy] setWindowBlurRadius failed:", error);
+			}
 		};
-		attemptNativeBlur(0, 0);
+		applyOnce(0);
+		setTimeout(() => applyOnce(1), 16);
+		setTimeout(() => applyOnce(2), 64);
+		setTimeout(() => applyOnce(3), 180);
 	} else {
 		vdbg("native blur unavailable — skipping setWindowBlurRadius");
 	}
