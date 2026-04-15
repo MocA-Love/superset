@@ -239,12 +239,18 @@ export function useTerminalColdRestore({
 					}
 					console.error("[Terminal] Failed to start shell:", error);
 					setConnectionError(error.message || "Failed to start shell");
-					// FORK NOTE: keep coldRestoreState intact on failure so the
-					// caller (or a future retry button) can re-enter restored
-					// mode without losing the snapshot that was already written
-					// to xterm. setIsRestoredMode(false) is intentionally also
-					// dropped here for the same reason — leaving the overlay
-					// up lets the user see the error while preserving context.
+					// FORK NOTE: restore normal input/retry plumbing even on
+					// failure. Leaving isRestoredMode=true locks the pane —
+					// useTerminalLifecycle gates handleTerminalInput on the
+					// ref, and Terminal.tsx only calls handleStartShell on a
+					// false→true transition, so the pane could never recover
+					// without a manual remount. The backend snapshot is still
+					// preserved: because ackColdRestore was deferred to the
+					// onSuccess branch above, main-side `coldRestoreInfo`
+					// remains intact for the auto-retry / next mount to pick
+					// up via the normal createOrAttach path.
+					setIsRestoredMode(false);
+					coldRestoreState.delete(paneId);
 					isStreamReadyRef.current = true;
 					flushPendingEvents();
 				},
