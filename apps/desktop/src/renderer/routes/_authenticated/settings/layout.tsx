@@ -5,10 +5,12 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type SettingsSection,
 	useSetSettingsSearchQuery,
+	useSettingsOriginRoute,
 	useSettingsSearchQuery,
 } from "renderer/stores/settings-state";
 import { SearchResultsBanner } from "./components/SearchResultsBanner";
@@ -105,6 +107,7 @@ function SettingsLayout() {
 	const isMac = platform === undefined || platform === "darwin";
 	const searchQuery = useSettingsSearchQuery();
 	const setSearchQuery = useSetSettingsSearchQuery();
+	const originRoute = useSettingsOriginRoute();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const normalizedSearchQuery = searchQuery.trim();
@@ -133,6 +136,29 @@ function SettingsLayout() {
 			}
 		}
 	}, [isSearchActive, location.pathname, navigate, normalizedSearchQuery]);
+
+	useHotkeys(
+		"escape",
+		(event) => {
+			// FORK NOTE: upstream #3466 used `[data-state="open"]` which also
+			// matches Radix Collapsible (AgentCard etc.), silently disabling
+			// Escape whenever any card was expanded. Narrow to explicit
+			// overlay shapes: role-based (Dialog/AlertDialog/Menu/Select) plus
+			// popper-based content (Popover/HoverCard) which has no semantic
+			// role but is always rendered inside [data-radix-popper-content-wrapper].
+			// Collapsible is inline (not popper), so it stays excluded.
+			if (
+				document.querySelector(
+					'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"], [data-radix-popper-content-wrapper] [data-state="open"]',
+				)
+			)
+				return;
+			event.preventDefault();
+			navigate({ to: originRoute, replace: true });
+		},
+		{ enableOnFormTags: false, enableOnContentEditable: false },
+		[navigate, originRoute],
+	);
 
 	return (
 		<div className="flex flex-col h-screen w-screen bg-tertiary">
