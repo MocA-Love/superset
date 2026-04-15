@@ -605,7 +605,7 @@ if (!gotTheLock) {
 		await getHostServiceManager().discoverAll();
 
 		if (IS_DEV) {
-			getHostServiceCoordinator().enableDevReload(async () => {
+			getHostServiceManager().enableDevReload(async () => {
 				const { token } = await loadToken();
 				if (!token) return null;
 				return { authToken: token, cloudApiUrl: mainEnv.NEXT_PUBLIC_API_URL };

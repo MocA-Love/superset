@@ -140,7 +140,16 @@ function SettingsLayout() {
 	useHotkeys(
 		"escape",
 		(event) => {
-			if (document.querySelector('[data-state="open"]')) return;
+			// FORK NOTE: upstream #3466 used `[data-state="open"]` which also
+			// matches Radix Collapsible (AgentCard etc.), silently disabling
+			// Escape whenever any card was expanded. Narrow to role-based
+			// overlays only so we still defer to open Dialog/Menu/Select.
+			if (
+				document.querySelector(
+					'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+				)
+			)
+				return;
 			event.preventDefault();
 			navigate({ to: originRoute });
 		},
