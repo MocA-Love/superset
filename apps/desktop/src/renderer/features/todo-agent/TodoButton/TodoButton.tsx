@@ -1,17 +1,9 @@
 import { Button } from "@superset/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@superset/ui/dropdown-menu";
 import { cn } from "@superset/ui/utils";
 import { memo, useState } from "react";
-import { HiChevronDown, HiMiniListBullet } from "react-icons/hi2";
+import { HiMiniListBullet } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { TodoModal } from "../TodoModal";
-import { TodoPanel } from "../TodoPanel";
+import { TodoManager } from "../TodoManager";
 
 interface TodoButtonProps {
 	projectId?: string | null;
@@ -20,17 +12,17 @@ interface TodoButtonProps {
 }
 
 /**
- * Fork-local TODO autonomous agent entry point. Sits immediately left of
- * the WorkspaceRunButton in PresetsBar. Opens a modal where the user
- * specifies a goal; the modal submits via trpc and the supervisor takes
- * over from there.
+ * Entry point for the fork-local TODO autonomous agent feature. Sits
+ * immediately left of the WorkspaceRunButton in PresetsBar.
+ *
+ * Clicking the button opens the Agent-Manager-style TodoManager drawer.
+ * Session creation lives inside the manager so users always see the
+ * context of what already exists before creating something new.
  */
 export const TodoButton = memo(function TodoButton({
-	projectId,
 	workspaceId,
 }: TodoButtonProps) {
-	const [modalOpen, setModalOpen] = useState(false);
-	const [panelOpen, setPanelOpen] = useState(false);
+	const [managerOpen, setManagerOpen] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.list.useQuery(
 		{ workspaceId },
@@ -47,59 +39,29 @@ export const TodoButton = memo(function TodoButton({
 
 	return (
 		<>
-			<div className="flex items-center">
-				<Button
-					type="button"
-					size="sm"
-					variant="ghost"
-					className={cn(
-						"h-7 gap-1 px-2 text-xs rounded-r-none",
-						activeCount > 0 && "text-primary",
-					)}
-					onClick={() => setModalOpen(true)}
-					title="自律 TODO タスクを作成"
-				>
-					<HiMiniListBullet className="size-4" />
-					<span className="font-medium">TODO</span>
-					{activeCount > 0 && (
-						<span className="ml-1 rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-semibold tabular-nums">
-							{activeCount}
-						</span>
-					)}
-				</Button>
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button
-							type="button"
-							size="sm"
-							variant="ghost"
-							className="h-7 px-1 rounded-l-none border-l border-border/50"
-							title="TODO メニュー"
-						>
-							<HiChevronDown className="size-3" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-48">
-						<DropdownMenuItem onClick={() => setModalOpen(true)}>
-							新しい TODO…
-						</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem onClick={() => setPanelOpen(true)}>
-							パネルを開く
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</div>
-			<TodoModal
-				open={modalOpen}
-				onOpenChange={setModalOpen}
-				workspaceId={workspaceId}
-				projectId={projectId ?? undefined}
-			/>
-			<TodoPanel
-				open={panelOpen}
-				onOpenChange={setPanelOpen}
-				workspaceId={workspaceId}
+			<Button
+				type="button"
+				size="sm"
+				variant="ghost"
+				className={cn(
+					"h-7 gap-1 px-2 text-xs",
+					activeCount > 0 && "text-primary",
+				)}
+				onClick={() => setManagerOpen(true)}
+				title="自律 TODO Agent Manager を開く"
+			>
+				<HiMiniListBullet className="size-4" />
+				<span className="font-medium">TODO</span>
+				{activeCount > 0 && (
+					<span className="ml-1 rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-semibold tabular-nums">
+						{activeCount}
+					</span>
+				)}
+			</Button>
+			<TodoManager
+				open={managerOpen}
+				onOpenChange={setManagerOpen}
+				currentWorkspaceId={workspaceId}
 			/>
 		</>
 	);

@@ -13,6 +13,7 @@ import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { useCallback, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { EnhanceButton } from "./components/EnhanceButton";
 
 interface TodoModalProps {
 	open: boolean;
@@ -74,12 +75,13 @@ export function TodoModal({
 	const canSubmit =
 		title.trim().length > 0 &&
 		description.trim().length > 0 &&
-		goal.trim().length > 0 &&
 		maxIterations >= 1 &&
 		maxMinutes >= 1 &&
-		!submitting;
+		!submitting &&
+		workspaceId.length > 0;
 
 	const hasVerify = verifyCommand.trim().length > 0;
+	const hasGoal = goal.trim().length > 0;
 
 	const handleSubmit = useCallback(async () => {
 		if (!canSubmit) return;
@@ -90,7 +92,7 @@ export function TodoModal({
 				projectId,
 				title: title.trim(),
 				description: description.trim(),
-				goal: goal.trim(),
+				goal: hasGoal ? goal.trim() : undefined,
 				verifyCommand: hasVerify ? verifyCommand.trim() : undefined,
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
@@ -104,6 +106,7 @@ export function TodoModal({
 			setSubmitting(false);
 		}
 	}, [
+		hasGoal,
 		hasVerify,
 		canSubmit,
 		create,
@@ -146,7 +149,14 @@ export function TodoModal({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-description">やってほしいこと</Label>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="todo-description">やって欲しいこと</Label>
+							<EnhanceButton
+								value={description}
+								onEnhanced={setDescription}
+								kind="description"
+							/>
+						</div>
 						<Textarea
 							id="todo-description"
 							value={description}
@@ -157,12 +167,22 @@ export function TodoModal({
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-goal">ゴール（明確な達成条件）</Label>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="todo-goal">
+								ゴール{" "}
+								<span className="text-muted-foreground font-normal">（任意）</span>
+							</Label>
+							<EnhanceButton
+								value={goal}
+								onEnhanced={setGoal}
+								kind="goal"
+							/>
+						</div>
 						<Textarea
 							id="todo-goal"
 							value={goal}
 							onChange={(e) => setGoal(e.target.value)}
-							placeholder="例: ○○の調査結果がまとまっている / △△のバグが再現しなくなっている"
+							placeholder="例: ○○の調査結果がまとまっている / △△のバグが再現しなくなっている（空欄なら『やって欲しいこと』の完了をゴールとします）"
 							rows={3}
 						/>
 					</div>

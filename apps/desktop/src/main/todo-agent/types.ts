@@ -1,6 +1,17 @@
 import type { SelectTodoSession } from "@superset/local-db";
 import { z } from "zod";
 
+/**
+ * Row shape returned by the cross-workspace `todoAgent.listAll` query:
+ * the session fields + the joined workspace / project names so the
+ * Agent-Manager view can group and label rows without N+1 queries.
+ */
+export interface TodoSessionListEntry extends SelectTodoSession {
+	workspaceName: string | null;
+	workspaceBranch: string | null;
+	projectName: string | null;
+}
+
 export const todoCreateInputSchema = z.object({
 	workspaceId: z.string().min(1),
 	projectId: z.string().optional(),

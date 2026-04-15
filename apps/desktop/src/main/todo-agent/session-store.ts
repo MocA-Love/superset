@@ -8,13 +8,12 @@ import {
 } from "@superset/local-db";
 import { desc, eq, isNull } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
-import type { TodoSessionStateEvent } from "./types";
+import type {
+	TodoSessionListEntry,
+	TodoSessionStateEvent,
+} from "./types";
 
-export interface TodoSessionListEntry extends SelectTodoSession {
-	workspaceName: string | null;
-	workspaceBranch: string | null;
-	projectName: string | null;
-}
+export type { TodoSessionListEntry };
 
 /**
  * In-memory session bookkeeping + persistence helpers for the TODO agent.
