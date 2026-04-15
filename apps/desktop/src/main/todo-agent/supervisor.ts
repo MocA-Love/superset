@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -128,13 +128,21 @@ class TodoSupervisor {
 			// child becomes a session leader; here we signal the
 			// negative PID to reach every descendant.
 			const child = this.active.currentChild;
-			if (child?.pid && !child.killed) {
-				killProcessTree(child.pid, "SIGINT");
-				setTimeout(() => {
-					if (child.pid && !child.killed) {
-						killProcessTree(child.pid, "SIGKILL");
+			if (child?.pid) {
+				const pid = child.pid;
+				killProcessTree(pid, "SIGINT");
+				// Use an exit-aware guard instead of `child.killed`.
+				// `killProcessTree` signals via `process.kill(-pid, ...)`
+				// so the node `ChildProcess` never flips its `killed`
+				// flag and `child.killed` alone would make us blindly
+				// SIGKILL 1.5s later even if the process already exited
+				// cleanly — a reused pid could then receive the signal.
+				const kill = setTimeout(() => {
+					if (child.exitCode == null && child.signalCode == null) {
+						killProcessTree(pid, "SIGKILL");
 					}
 				}, 1500);
+				child.once("close", () => clearTimeout(kill));
 			}
 		}
 		const session = store.get(sessionId);
@@ -671,7 +679,17 @@ export function getTodoSupervisor(): TodoSupervisor {
 function killProcessTree(pid: number, signal: NodeJS.Signals): void {
 	if (process.platform === "win32") {
 		try {
-			spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"]);
+			// Async spawn so we never block Electron's main thread on a
+			// slow taskkill (large tool trees can take noticeable time
+			// to unwind). Detach + unref so node does not wait on it.
+			const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+				stdio: "ignore",
+				detached: true,
+			});
+			killer.on("error", () => {
+				/* ignore — best-effort */
+			});
+			killer.unref();
 		} catch {
 			// ignore — best-effort
 		}
