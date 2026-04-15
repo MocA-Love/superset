@@ -168,14 +168,27 @@ export function applyVibrancy(
 	// When the addon failed to load this is a no-op and we fall back to
 	// whatever the selected material produces on its own.
 	if (isNativeBlurAvailable()) {
-		try {
-			const handle = window.getNativeWindowHandle();
-			const radius = state.enabled ? state.blurRadius : 0;
-			const ok = setWindowBlurRadius(handle, radius);
-			vdbg("setWindowBlurRadius returned", { ok, radius });
-		} catch (error) {
-			console.warn("[vibrancy] setWindowBlurRadius failed:", error);
-		}
+		const handle = window.getNativeWindowHandle();
+		const radius = state.enabled ? state.blurRadius : 0;
+		const attemptNativeBlur = (delayMs: number, attempt: number): void => {
+			setTimeout(() => {
+				if (window.isDestroyed()) return;
+				try {
+					const ok = setWindowBlurRadius(handle, radius);
+					vdbg("setWindowBlurRadius returned", { ok, radius, attempt });
+					// NSVisualEffectView creates its CABackdropLayer lazily the
+					// first frame after setVibrancy is called, so the initial
+					// toggle can land before the layer exists. Retry a couple
+					// of times on the next runloop tick.
+					if (!ok && attempt < 4 && state.enabled) {
+						attemptNativeBlur(delayMs * 2, attempt + 1);
+					}
+				} catch (error) {
+					console.warn("[vibrancy] setWindowBlurRadius failed:", error);
+				}
+			}, delayMs);
+		};
+		attemptNativeBlur(0, 0);
 	} else {
 		vdbg("native blur unavailable — skipping setWindowBlurRadius");
 	}

@@ -72,47 +72,19 @@ static id FindBackdropFilter(NSArray* filters, NSString* wantedType) {
 	return nil;
 }
 
-/**
- * Returns (creating if necessary) a backdrop filter of the requested
- * CoreAnimation filter type (e.g. "gaussianBlur"). CABackdropLayer's
- * filter stack is built from `CAFilter` instances, NOT the `CIFilter`
- * class that Core Image exposes — using CIFilter here is a silent no-op.
- *
- * `CAFilter` is a private class, accessed via NSClassFromString so the
- * binary still compiles on older SDKs.
- */
-static id EnsureBackdropFilter(CALayer* backdrop, NSString* type) {
-	NSMutableArray* filters =
-		[NSMutableArray arrayWithArray:backdrop.filters ?: @[]];
-	id filter = FindBackdropFilter(filters, type);
-	if (filter) return filter;
-	Class cls = NSClassFromString(@"CAFilter");
-	if (!cls || ![cls respondsToSelector:@selector(filterWithType:)]) {
-		return nil;
-	}
-	filter = [cls performSelector:@selector(filterWithType:) withObject:type];
-	if (!filter) return nil;
-	@try {
-		[filter setValue:type forKey:@"name"];
-	} @catch (NSException*) {}
-	[filters addObject:filter];
-	backdrop.filters = filters;
-	return filter;
-}
-
 static void ApplyBlurRadiusToBackdrop(CALayer* backdrop, double radius) {
-	id blur = EnsureBackdropFilter(backdrop, @"gaussianBlur");
-	if (!blur) return;
-
 	// Remember the system-provided default so the caller can restore it
 	// later by passing radius <= 0.
 	NSNumber* stored =
 		objc_getAssociatedObject(backdrop, kOriginalBlurRadiusKey);
 	if (!stored) {
+		id existing = FindBackdropFilter(backdrop.filters, @"gaussianBlur");
 		double initial = 0.0;
-		@try {
-			initial = [[blur valueForKey:@"inputRadius"] doubleValue];
-		} @catch (NSException*) {}
+		if (existing) {
+			@try {
+				initial = [[existing valueForKey:@"inputRadius"] doubleValue];
+			} @catch (NSException*) {}
+		}
 		objc_setAssociatedObject(
 			backdrop,
 			kOriginalBlurRadiusKey,
@@ -122,10 +94,51 @@ static void ApplyBlurRadiusToBackdrop(CALayer* backdrop, double radius) {
 	}
 
 	double effective = radius <= 0.0 ? stored.doubleValue : radius;
+
+	// Mutating an existing CAFilter's inputRadius in place is accepted by
+	// the setter but Core Animation does not observe property changes on
+	// the filter object, so the layer never re-renders. Replace the
+	// existing gaussianBlur with a brand-new CAFilter instance and
+	// reassign `backdrop.filters`, which does fire the layer's property
+	// observer and schedules a display pass.
+	Class cls = NSClassFromString(@"CAFilter");
+	if (!cls || ![cls respondsToSelector:@selector(filterWithType:)]) return;
+	id replacement = [cls performSelector:@selector(filterWithType:)
+								withObject:@"gaussianBlur"];
+	if (!replacement) return;
 	@try {
-		[blur setValue:@YES forKey:@"inputNormalizeEdges"];
+		[replacement setValue:@"gaussianBlur" forKey:@"name"];
 	} @catch (NSException*) {}
-	[blur setValue:@(effective) forKey:@"inputRadius"];
+	@try {
+		[replacement setValue:@YES forKey:@"inputNormalizeEdges"];
+	} @catch (NSException*) {}
+	[replacement setValue:@(effective) forKey:@"inputRadius"];
+
+	NSMutableArray* next =
+		[NSMutableArray arrayWithArray:backdrop.filters ?: @[]];
+	BOOL replaced = NO;
+	for (NSUInteger i = 0; i < next.count; i++) {
+		id entry = next[i];
+		NSString* name = nil;
+		NSString* type = nil;
+		@try {
+			name = [entry valueForKey:@"name"];
+		} @catch (NSException*) {}
+		@try {
+			type = [entry valueForKey:@"type"];
+		} @catch (NSException*) {}
+		if ([name isEqualToString:@"gaussianBlur"] ||
+			[type isEqualToString:@"gaussianBlur"]) {
+			next[i] = replacement;
+			replaced = YES;
+			break;
+		}
+	}
+	if (!replaced) {
+		[next addObject:replacement];
+	}
+	backdrop.filters = next;
+	[backdrop setNeedsDisplay];
 }
 
 static NSWindow* WindowFromNativeHandle(const Napi::Buffer<uint8_t>& handle) {
