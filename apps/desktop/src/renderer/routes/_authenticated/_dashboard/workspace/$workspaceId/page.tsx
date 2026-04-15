@@ -807,6 +807,8 @@ export function WorkspacePage({
 	// FOCUS_PANE_{LEFT,RIGHT,UP,DOWN}. The default bindings are unbound after
 	// #3472 (Cmd+Alt+Arrow goes back to prev/next tab/workspace), so this only
 	// fires when the user explicitly rebinds the FOCUS_PANE_* ids in Settings.
+	// `enabled: isActive` is required so inactive WorkspacePage instances
+	// kept mounted by KeepAliveWorkspaces don't also register the hotkey.
 	const moveFocusDirectional = useCallback(
 		(dir: FocusDirection) => {
 			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
@@ -819,10 +821,18 @@ export function WorkspacePage({
 		},
 		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
 	);
-	useHotkey("FOCUS_PANE_LEFT", () => moveFocusDirectional("left"));
-	useHotkey("FOCUS_PANE_RIGHT", () => moveFocusDirectional("right"));
-	useHotkey("FOCUS_PANE_UP", () => moveFocusDirectional("up"));
-	useHotkey("FOCUS_PANE_DOWN", () => moveFocusDirectional("down"));
+	useHotkey("FOCUS_PANE_LEFT", () => moveFocusDirectional("left"), {
+		enabled: isActive,
+	});
+	useHotkey("FOCUS_PANE_RIGHT", () => moveFocusDirectional("right"), {
+		enabled: isActive,
+	});
+	useHotkey("FOCUS_PANE_UP", () => moveFocusDirectional("up"), {
+		enabled: isActive,
+	});
+	useHotkey("FOCUS_PANE_DOWN", () => moveFocusDirectional("down"), {
+		enabled: isActive,
+	});
 
 	// FORK NOTE: v1 workspace uses tRPC-based prev/next workspace navigation.
 	// Upstream removed these handlers in #3403 (they use DashboardSidebar's
