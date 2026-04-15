@@ -14,10 +14,12 @@ import {
 import { makeAppSetup } from "lib/electron-app/factories/app/setup";
 import {
 	handleAuthCallback,
+	loadToken,
 	parseAuthDeepLink,
 } from "lib/trpc/routers/auth/utils/auth-functions";
 import { fetchGitHubOwner } from "lib/trpc/routers/projects/utils/github";
 import { applyShellEnvToProcess } from "lib/trpc/routers/workspaces/utils/shell-env";
+import { env as mainEnv } from "main/env.main";
 import {
 	DEFAULT_CONFIRM_ON_QUIT,
 	PLATFORM,
@@ -601,6 +603,14 @@ if (!gotTheLock) {
 		// Discover and adopt host-services that survived a previous quit
 		// before the tray initializes, so it shows accurate status immediately.
 		await getHostServiceManager().discoverAll();
+
+		if (IS_DEV) {
+			getHostServiceCoordinator().enableDevReload(async () => {
+				const { token } = await loadToken();
+				if (!token) return null;
+				return { authToken: token, cloudApiUrl: mainEnv.NEXT_PUBLIC_API_URL };
+			});
+		}
 
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
