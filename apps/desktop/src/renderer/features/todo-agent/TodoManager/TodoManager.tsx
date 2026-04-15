@@ -279,22 +279,24 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		session.status === "escalated" ||
 		session.status === "aborted";
 
-	// Reset the event buffer + subscribe when selection changes. The
-	// snapshot query paints the initial state; the subscription keeps us
-	// live-updated without polling.
+	// Reset the event buffer when selection changes. The subscription
+	// emits the current in-memory buffer immediately on connect, so
+	// there is no separate getStream query — one source of truth keeps
+	// the dedupe path simple and avoids double-delivery on mount.
 	useEffect(() => {
 		setStreamEvents([]);
 	}, [session.id]);
 
-	const { data: initialStream } = electronTrpc.todoAgent.getStream.useQuery(
-		{ sessionId: session.id },
-		{ refetchInterval: false },
-	);
+	// Force a re-render once per second while the session is still
+	// running so TimingBlock's 実行時間 ticks smoothly instead of being
+	// tied to the 2-second listAll polling cadence. Stops as soon as
+	// `completedAt` is set to avoid needless renders on finished rows.
+	const [, setTick] = useState(0);
 	useEffect(() => {
-		if (initialStream) {
-			setStreamEvents(initialStream);
-		}
-	}, [initialStream]);
+		if (session.completedAt != null) return;
+		const id = setInterval(() => setTick((t) => t + 1), 1000);
+		return () => clearInterval(id);
+	}, [session.completedAt]);
 
 	electronTrpc.todoAgent.subscribeStream.useSubscription(
 		{ sessionId: session.id },

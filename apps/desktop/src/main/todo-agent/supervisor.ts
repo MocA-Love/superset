@@ -360,16 +360,24 @@ class TodoSupervisor {
 				});
 			}
 
-			store.update(sessionId, {
-				status: "escalated",
-				phase: "escalated",
-				verdictReason: "iteration 予算を使い切りました",
-				finalAssistantText: lastAssistantText,
-				claudeSessionId,
-				totalCostUsd: aggregatedCostUsd || null,
-				totalNumTurns: aggregatedNumTurns || null,
-				completedAt: Date.now(),
-			});
+			// Only write the "iteration budget exhausted" verdict if we
+			// left the loop cleanly. If the user aborted, `abort()` has
+			// already written `status: "aborted"` and we must not
+			// overwrite it. Without this guard, a race between the abort
+			// signal and the final DB write mislabels aborted sessions
+			// as escalated with a wrong reason.
+			if (!ac.signal.aborted) {
+				store.update(sessionId, {
+					status: "escalated",
+					phase: "escalated",
+					verdictReason: "iteration 予算を使い切りました",
+					finalAssistantText: lastAssistantText,
+					claudeSessionId,
+					totalCostUsd: aggregatedCostUsd || null,
+					totalNumTurns: aggregatedNumTurns || null,
+					completedAt: Date.now(),
+				});
+			}
 		} finally {
 			this.active = undefined;
 		}
@@ -397,8 +405,17 @@ class TodoSupervisor {
 				"stream-json",
 				"--verbose",
 				"--include-partial-messages",
+				// `bypassPermissions` is required for truly unattended
+				// headless runs. `acceptEdits` auto-approves Edit/Write
+				// but still prompts for Bash tool calls; in `-p` mode
+				// there is nobody to grant that approval, so the child
+				// would hang forever waiting for a prompt that never
+				// comes, leaving the session stuck in `running` state.
+				// TODO agent is a deliberate-use feature where the user
+				// already opted into full autonomy, so bypassing all
+				// permission checks is the right default here.
 				"--permission-mode",
-				"acceptEdits",
+				"bypassPermissions",
 			];
 			if (params.resumeSessionId) {
 				args.push("--resume", params.resumeSessionId);
@@ -434,6 +451,7 @@ class TodoSupervisor {
 			let errorText: string | null = null;
 			let stdoutBuffer = "";
 			let stderrBuffer = "";
+			let settled = false;
 
 			const onAbort = () => {
 				try {
@@ -443,6 +461,29 @@ class TodoSupervisor {
 				}
 			};
 			params.signal.addEventListener("abort", onAbort);
+
+			// Single-shot settlement. `child.on("error", ...)` can fire
+			// WITHOUT a subsequent `close` (e.g. ENOENT when the claude
+			// binary is missing from PATH), and without this guard the
+			// outer promise would hang forever and the session would get
+			// stuck in `running`. Both the error and close handlers now
+			// funnel through this helper.
+			const settle = () => {
+				if (settled) return;
+				settled = true;
+				params.signal.removeEventListener("abort", onAbort);
+				if (stdoutBuffer.trim().length > 0) {
+					handleLine(stdoutBuffer.trim());
+					stdoutBuffer = "";
+				}
+				resolve({
+					result: resultText,
+					sessionId: claudeSessionId,
+					costUsd,
+					numTurns,
+					error: errorText,
+				});
+			};
 
 			const drainLines = (chunk: string) => {
 				stdoutBuffer += chunk;
@@ -511,27 +552,21 @@ class TodoSupervisor {
 			});
 
 			child.on("error", (err) => {
-				errorText = err.message;
+				// Spawn failures (ENOENT, EACCES) reach us via this event,
+				// often WITHOUT a follow-up `close`. Settle eagerly.
+				if (!errorText) {
+					errorText = `claude プロセスエラー: ${err.message}`;
+				}
+				settle();
 			});
 			child.on("close", (code) => {
-				params.signal.removeEventListener("abort", onAbort);
-				if (stdoutBuffer.trim().length > 0) {
-					handleLine(stdoutBuffer.trim());
-					stdoutBuffer = "";
-				}
 				if (code !== 0 && !resultText && !errorText) {
 					const tail = stderrBuffer.trim().split("\n").slice(-6).join("\n");
 					errorText = `claude が exit code ${code} で終了しました${
 						tail ? `:\n${tail}` : ""
 					}`;
 				}
-				resolve({
-					result: resultText,
-					sessionId: claudeSessionId,
-					costUsd,
-					numTurns,
-					error: errorText,
-				});
+				settle();
 			});
 		});
 	}
