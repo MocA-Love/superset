@@ -41,6 +41,7 @@ import { electronTrpcClient } from "renderer/lib/trpc-client";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
+import { useVibrancyStore } from "renderer/stores/vibrancy";
 import { getEditorTheme } from "shared/themes";
 import { CodeEditorSearchOverlay } from "./components/CodeEditorSearchOverlay";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
@@ -588,6 +589,11 @@ export function CodeEditor({
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const activeTheme = useResolvedTheme();
 	const editorTheme = getEditorTheme(activeTheme);
+	const vibrancyEnabled = useVibrancyStore((s) => s.enabled);
+	const vibrancyOpacityRaw = useVibrancyStore((s) => s.opacity);
+	const vibrancyOpacity = vibrancyEnabled
+		? vibrancyOpacityRaw / 100
+		: undefined;
 	const inlineCompletionCompartment = useRef(new Compartment()).current;
 
 	onChangeRef.current = onChange;
@@ -877,6 +883,7 @@ export function CodeEditor({
 							fontSize: editorFontSize,
 						},
 						fillHeight,
+						{ vibrancyOpacity },
 					),
 				]),
 				languageCompartment.of([]),
@@ -966,6 +973,7 @@ export function CodeEditor({
 						fontSize: editorFontSize,
 					},
 					fillHeight,
+					{ vibrancyOpacity },
 				),
 			]),
 		});
@@ -975,6 +983,7 @@ export function CodeEditor({
 		editorFontSize,
 		fillHeight,
 		themeCompartment,
+		vibrancyOpacity,
 	]);
 
 	useEffect(() => {

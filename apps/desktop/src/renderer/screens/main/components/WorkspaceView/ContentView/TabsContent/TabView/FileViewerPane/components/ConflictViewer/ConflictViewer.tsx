@@ -15,6 +15,7 @@ import { createCodeMirrorTheme } from "renderer/screens/main/components/Workspac
 import { loadLanguageSupport } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/loadLanguageSupport";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
+import { useVibrancyStore } from "renderer/stores/vibrancy";
 import { detectLanguage } from "shared/detect-language";
 import {
 	ConflictActionWidget,
@@ -144,6 +145,11 @@ export function ConflictViewer({
 	const contentRef = useRef<string>("");
 	const regionsRef = useRef<ConflictRegion[]>([]);
 	const activeTheme = useResolvedTheme();
+	const vibrancyEnabled = useVibrancyStore((s) => s.enabled);
+	const vibrancyOpacityRaw = useVibrancyStore((s) => s.opacity);
+	const vibrancyOpacity = vibrancyEnabled
+		? vibrancyOpacityRaw / 100
+		: undefined;
 	// Use refs for callbacks to avoid re-creating the editor on every render
 	const handleResolveRef = useRef<
 		(regionIndex: number, resolution: ConflictResolution) => void
@@ -217,7 +223,9 @@ export function ConflictViewer({
 		if (editorRef.current) return;
 
 		const language = detectLanguage(absoluteFilePath);
-		const editorTheme = createCodeMirrorTheme(activeTheme, {}, true);
+		const editorTheme = createCodeMirrorTheme(activeTheme, {}, true, {
+			vibrancyOpacity,
+		});
 		const syntaxHighlighting = getCodeSyntaxHighlighting(activeTheme);
 		const langCompartment = new Compartment();
 
@@ -298,7 +306,7 @@ export function ConflictViewer({
 			editorRef.current = null;
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [absoluteFilePath, activeTheme]);
+	}, [absoluteFilePath, activeTheme, vibrancyOpacity]);
 
 	// Load file content into editor when fetched
 	useEffect(() => {

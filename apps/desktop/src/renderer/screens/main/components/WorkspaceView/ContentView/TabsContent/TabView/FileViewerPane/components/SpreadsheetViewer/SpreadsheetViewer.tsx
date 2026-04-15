@@ -341,7 +341,10 @@ export function SpreadsheetViewer({
 			<div className="flex items-center justify-end border-b border-border bg-muted/20 px-3 py-2">
 				<SpreadsheetDefaultAppButton absoluteFilePath={absoluteFilePath} />
 			</div>
-			<div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-white">
+			<div
+				ref={containerRef}
+				className="min-h-0 flex-1 overflow-auto bg-background"
+			>
 				{/* Outer wrapper: clips to container width */}
 				<div
 					style={{
