@@ -56,15 +56,14 @@ export function EnhanceButton({
 			type="button"
 			size="sm"
 			variant="ghost"
-			className="h-6 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-primary"
+			className="h-6 w-6 p-0 rounded-md text-muted-foreground hover:text-primary"
 			onClick={handleClick}
 			disabled={disabled}
-			title={title ?? "AI で書き換える"}
+			title={title ?? (running ? "AI で書き換え中…" : "AI で書き換える")}
 		>
 			<HiMiniSparkles
 				className={cn("size-3.5", running && "animate-pulse")}
 			/>
-			<span>{running ? "書き換え中…" : "AI"}</span>
 		</Button>
 	);
 }

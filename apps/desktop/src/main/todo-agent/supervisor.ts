@@ -162,14 +162,48 @@ class TodoSupervisor {
 		this.active = run;
 
 		try {
+			appendSetupEvent(sessionId, "セットアップ", "ワークスペースを解決しています…");
 			const worktreePath = resolveWorktreePath(session0.workspaceId);
 			// Capture the git HEAD at session start so the Manager's right
 			// sidebar can show exactly what this session produced via
 			// `git log <startHeadSha>..HEAD` — user commits made before
 			// the session are excluded from attribution.
+			if (worktreePath) {
+				appendSetupEvent(sessionId, "worktree", worktreePath);
+			}
 			const startHeadSha = worktreePath
 				? await getCurrentHeadSha(worktreePath)
 				: null;
+			if (startHeadSha) {
+				appendSetupEvent(
+					sessionId,
+					"開始時 HEAD",
+					`${startHeadSha.slice(0, 12)}`,
+				);
+			}
+			if (session0.verifyCommand) {
+				appendSetupEvent(
+					sessionId,
+					"verify",
+					session0.verifyCommand,
+				);
+			} else {
+				appendSetupEvent(
+					sessionId,
+					"モード",
+					"単発タスク（外部 verify なし）",
+				);
+			}
+			appendSetupEvent(
+				sessionId,
+				"予算",
+				`${session0.maxIterations} iter · ${Math.round(session0.maxWallClockSec / 60)} 分`,
+			);
+			appendSetupEvent(
+				sessionId,
+				"Claude",
+				"claude -p --output-format stream-json を起動します",
+			);
 
 			store.update(sessionId, {
 				status: "running",
@@ -954,6 +988,23 @@ function summarizeToolInput(name: string, input: unknown): string {
 function truncate(text: string, cap: number): string {
 	if (text.length <= cap) return text;
 	return `${text.slice(0, cap)}…`;
+}
+
+function appendSetupEvent(
+	sessionId: string,
+	label: string,
+	text: string,
+): void {
+	getTodoSessionStore().appendStreamEvents(sessionId, [
+		{
+			id: randomUUID(),
+			ts: Date.now(),
+			iteration: 0,
+			kind: "system_init",
+			label,
+			text,
+		},
+	]);
 }
 
 function appendUserEvent(
