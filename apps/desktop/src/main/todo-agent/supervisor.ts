@@ -88,12 +88,34 @@ class TodoSupervisor {
 		await this.runSession(sessionId);
 		while (this.queue.length > 0) {
 			const next = this.queue.shift();
-			if (next) await this.runSession(next);
+			if (!next) continue;
+			// A session can be aborted / deleted / rerun while still
+			// waiting in the queue. Re-check its latest persisted status
+			// before actually running it so we never revive an already
+			// terminal session into execution.
+			const latest = getTodoSessionStore().get(next);
+			if (!latest) continue;
+			if (
+				latest.status === "aborted" ||
+				latest.status === "failed" ||
+				latest.status === "done" ||
+				latest.status === "escalated"
+			) {
+				continue;
+			}
+			await this.runSession(next);
 		}
 	}
 
 	abort(sessionId: string): void {
 		const store = getTodoSessionStore();
+		// If the session is still waiting in the pending queue, drop it
+		// from there so the drain loop does not silently revive it once
+		// the active run finishes.
+		const queueIdx = this.queue.indexOf(sessionId);
+		if (queueIdx !== -1) {
+			this.queue.splice(queueIdx, 1);
+		}
 		if (this.active?.sessionId === sessionId) {
 			this.active.abortController.abort();
 			// Send SIGINT first (clean shutdown), then SIGKILL as a safety

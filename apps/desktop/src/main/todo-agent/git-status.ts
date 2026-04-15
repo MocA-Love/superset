@@ -180,23 +180,27 @@ export async function getSessionFileDiff(params: {
 		case "unstaged":
 			args.push("--", path);
 			break;
-		case "commit":
+		case "commit": {
 			if (!commitSha) return "";
-			// `commit^!` is shorthand for `commit^..commit` = the changes
-			// introduced by that single commit.
-			args.splice(1, 0);
-			return gitOut(
-				[
-					"--no-pager",
-					"show",
-					"--no-color",
-					"--format=",
-					commitSha,
-					"--",
-					path,
-				],
-				cwd,
-			);
+			// Whole-commit diff: `git show --format= <sha>` returns just
+			// the patch, no commit header. When the caller supplies a
+			// path we scope to that file via `-- <path>`; when the path
+			// is empty (UI selects a commit row, not a specific file),
+			// we must NOT append an empty pathspec or Git rejects it
+			// with "empty string is not a valid pathspec" and the diff
+			// silently disappears from the sidebar.
+			const showArgs = [
+				"--no-pager",
+				"show",
+				"--no-color",
+				"--format=",
+				commitSha,
+			];
+			if (path && path.length > 0) {
+				showArgs.push("--", path);
+			}
+			return gitOut(showArgs, cwd);
+		}
 	}
 
 	return gitOut(args, cwd);

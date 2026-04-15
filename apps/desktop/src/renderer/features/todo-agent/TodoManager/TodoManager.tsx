@@ -583,13 +583,17 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		session.status === "escalated" ||
 		session.status === "aborted";
 
-	// Reset the event buffer when selection changes. The subscription
-	// emits the current in-memory buffer immediately on connect, so
-	// there is no separate getStream query — one source of truth keeps
-	// the dedupe path simple and avoids double-delivery on mount.
+	// Reset the event buffer when the selected session changes. The
+	// subscription emits the current in-memory buffer immediately on
+	// connect, so there is no separate getStream query — one source of
+	// truth keeps the dedupe path simple and avoids double-delivery on
+	// mount. `session.id` is intentionally in the deps array (not
+	// read inside the body) so React fires the reset on every selection
+	// change, since SessionDetail is reused across selections.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset-on-change dep
 	useEffect(() => {
 		setStreamEvents([]);
-	}, []);
+	}, [session.id]);
 
 	// Force a re-render once per second while the session is still
 	// running so TimingBlock's 実行時間 ticks smoothly instead of being
