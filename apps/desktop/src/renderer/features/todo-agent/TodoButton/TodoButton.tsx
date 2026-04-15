@@ -1,9 +1,10 @@
 import { Button } from "@superset/ui/button";
 import { cn } from "@superset/ui/utils";
-import { memo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { HiMiniListBullet } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { TodoManager } from "../TodoManager";
+import { TodoModal } from "../TodoModal";
 
 interface TodoButtonProps {
 	projectId?: string | null;
@@ -20,9 +21,11 @@ interface TodoButtonProps {
  * context of what already exists before creating something new.
  */
 export const TodoButton = memo(function TodoButton({
+	projectId,
 	workspaceId,
 }: TodoButtonProps) {
 	const [managerOpen, setManagerOpen] = useState(false);
+	const [modalOpen, setModalOpen] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.list.useQuery(
 		{ workspaceId },
@@ -36,6 +39,10 @@ export const TodoButton = memo(function TodoButton({
 			session.status === "running" ||
 			session.status === "verifying",
 	).length;
+
+	const handleRequestNewTodo = useCallback(() => {
+		setModalOpen(true);
+	}, []);
 
 	return (
 		<>
@@ -62,6 +69,19 @@ export const TodoButton = memo(function TodoButton({
 				open={managerOpen}
 				onOpenChange={setManagerOpen}
 				currentWorkspaceId={workspaceId}
+				onRequestNewTodo={handleRequestNewTodo}
+			/>
+			{/*
+			  Rendered as a sibling of TodoManager rather than inside it so
+			  the two shadcn Dialogs stack independently. The modal opens
+			  on top of the Manager without the outer Dialog's
+			  click-outside handlers interfering.
+			*/}
+			<TodoModal
+				open={modalOpen}
+				onOpenChange={setModalOpen}
+				workspaceId={workspaceId}
+				projectId={projectId ?? undefined}
 			/>
 		</>
 	);

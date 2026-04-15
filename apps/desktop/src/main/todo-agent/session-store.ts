@@ -105,6 +105,14 @@ class TodoSessionStore {
 		return updated;
 	}
 
+	remove(sessionId: string): boolean {
+		const result = localDb
+			.delete(todoSessions)
+			.where(eq(todoSessions.id, sessionId))
+			.run();
+		return result.changes > 0;
+	}
+
 	subscribe(
 		sessionId: string,
 		handler: (event: TodoSessionStateEvent) => void,
