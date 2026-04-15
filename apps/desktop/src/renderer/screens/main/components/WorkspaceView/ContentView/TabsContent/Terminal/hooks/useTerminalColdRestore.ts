@@ -139,17 +139,20 @@ export function useTerminalColdRestore({
 					// reconnected shell's stdout/exit/error events never
 					// reached the component and the user saw a terminal that
 					// displayed "[Reconnected]" but never produced any more
-					// output. Kick the cache-owned stream (and any
-					// session-readiness waiters) back into the ready state
-					// here — unconditionally, so the cold-restore branch
-					// below also gets live events. This mirrors the initial
-					// attach path in useTerminalLifecycle.ts which calls
-					// markSessionReady *before* inspecting result.isColdRestore.
-					// markSessionReady internally runs startStream +
-					// setStreamReady + markTerminalSessionReady, which are
-					// all idempotent (see v1-terminal-cache.ts), so running
-					// them in both reconnect branches is safe.
-					v1TerminalCache.markSessionReady(paneId);
+					// output.
+					//
+					// Only mark the cache as session-ready when the daemon
+					// actually returned a real backend session. The cold
+					// restore branch below has no backend yet (PR #167
+					// invariant: streamReady must not be set before a real
+					// shell exists, otherwise tab-switch remounts can take
+					// the isReattach fast-path and silently drop user
+					// keystrokes). The replacement shell created later by
+					// handleStartShell calls markSessionReady itself, so the
+					// cold-restore reconnect path is still covered end-to-end.
+					if (!result.isColdRestore) {
+						v1TerminalCache.markSessionReady(paneId);
+					}
 
 					if (result.isColdRestore) {
 						const scrollback =
