@@ -1,5 +1,12 @@
 import { EventEmitter } from "node:events";
 import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+} from "node:fs";
+import path from "node:path";
+import {
 	projects,
 	type SelectTodoSession,
 	todoSessions,
@@ -16,6 +23,8 @@ import type {
 } from "./types";
 
 export type { TodoSessionListEntry };
+
+const STREAM_JSONL_FILE = "stream.jsonl";
 
 /**
  * Cap on the number of stream events we keep in memory per session. Enough
@@ -50,16 +59,78 @@ class TodoSessionStore {
 			buffer.splice(0, buffer.length - STREAM_EVENT_BUFFER_CAP);
 		}
 		this.streamBuffers.set(sessionId, buffer);
+
+		// Persist every event to disk so that sessions stay reviewable
+		// across app restarts and after the in-memory cap evicts them.
+		// The file lives inside the per-session artifact dir we already
+		// created via `prepareArtifacts`, so cleanup is automatic when
+		// the session (and its artifact dir) are deleted.
+		this.persistStreamEvents(sessionId, events);
+
 		const update: TodoStreamUpdate = { sessionId, events };
 		this.emitter.emit(`stream:${sessionId}`, update);
 	}
 
 	getStreamEvents(sessionId: string): TodoStreamEvent[] {
-		return [...(this.streamBuffers.get(sessionId) ?? [])];
+		const inMemory = this.streamBuffers.get(sessionId);
+		if (inMemory && inMemory.length > 0) return [...inMemory];
+		// Fall back to the JSONL file — this is how we hydrate a past
+		// session whose in-memory buffer was cleared (either by app
+		// restart or by the eviction cap).
+		return this.loadStreamEventsFromDisk(sessionId);
 	}
 
 	clearStreamEvents(sessionId: string): void {
 		this.streamBuffers.delete(sessionId);
+	}
+
+	private persistStreamEvents(
+		sessionId: string,
+		events: TodoStreamEvent[],
+	): void {
+		try {
+			const session = this.get(sessionId);
+			const dir = session?.artifactPath;
+			if (!dir || !dir.startsWith("/")) return;
+			mkdirSync(dir, { recursive: true });
+			const filePath = path.join(dir, STREAM_JSONL_FILE);
+			const body = `${events.map((e) => JSON.stringify(e)).join("\n")}\n`;
+			appendFileSync(filePath, body, "utf8");
+		} catch (error) {
+			console.warn("[todo-agent] stream persist failed", error);
+		}
+	}
+
+	private loadStreamEventsFromDisk(sessionId: string): TodoStreamEvent[] {
+		try {
+			const session = this.get(sessionId);
+			const dir = session?.artifactPath;
+			if (!dir || !dir.startsWith("/")) return [];
+			const filePath = path.join(dir, STREAM_JSONL_FILE);
+			if (!existsSync(filePath)) return [];
+			const text = readFileSync(filePath, "utf8");
+			const lines = text.split("\n").filter((l) => l.length > 0);
+			const events: TodoStreamEvent[] = [];
+			for (const line of lines) {
+				try {
+					const parsed = JSON.parse(line) as TodoStreamEvent;
+					if (
+						parsed &&
+						typeof parsed === "object" &&
+						typeof parsed.id === "string" &&
+						typeof parsed.kind === "string"
+					) {
+						events.push(parsed);
+					}
+				} catch {
+					// Skip malformed line.
+				}
+			}
+			return events;
+		} catch (error) {
+			console.warn("[todo-agent] stream load failed", error);
+			return [];
+		}
 	}
 
 	subscribeStream(

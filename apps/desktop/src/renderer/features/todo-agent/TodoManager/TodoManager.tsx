@@ -34,6 +34,7 @@ import {
 	HiMiniTrash,
 	HiMiniXMark,
 } from "react-icons/hi2";
+import { LuPanelLeftClose, LuPanelLeftOpen } from "react-icons/lu";
 import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
@@ -131,9 +132,9 @@ export function TodoManager({
 							title={sidebarCollapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
 						>
 							{sidebarCollapsed ? (
-								<HiMiniChevronRight className="size-4" />
+								<LuPanelLeftOpen className="size-4" />
 							) : (
-								<HiMiniChevronDown className="size-4 rotate-90" />
+								<LuPanelLeftClose className="size-4" />
 							)}
 						</Button>
 						<span className="text-sm font-semibold">
@@ -373,16 +374,14 @@ function SessionRow({
 	return (
 		<div
 			className={cn(
-				"group relative rounded-lg transition",
-				isSelected
-					? "bg-accent"
-					: "hover:bg-accent/50",
+				"group relative rounded-lg transition flex items-stretch",
+				isSelected ? "bg-accent" : "hover:bg-accent/50",
 			)}
 		>
 			<button
 				type="button"
 				onClick={onSelect}
-				className="text-left w-full px-2.5 py-2 pr-8"
+				className="text-left flex-1 min-w-0 pl-2.5 pr-1 py-2"
 			>
 				<div className="flex items-center gap-2">
 					<StatusDot status={session.status} />
@@ -402,51 +401,71 @@ function SessionRow({
 						</span>
 					)}
 				</div>
-				<div className="text-[10px] text-muted-foreground line-clamp-1 pl-4 mt-0.5">
-					{statusLabel(session)}
+				<div className="flex items-center justify-between gap-2 pl-4 mt-0.5">
+					<span className="text-[10px] text-muted-foreground line-clamp-1 flex-1">
+						{statusLabel(session)}
+					</span>
+					<span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+						{formatRelativeTime(session.createdAt)}
+					</span>
 				</div>
 			</button>
-			<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-				<DropdownMenuTrigger asChild>
-					<button
-						type="button"
-						className={cn(
-							"absolute right-1 top-1.5 size-6 rounded-md flex items-center justify-center text-muted-foreground transition",
-							menuOpen
-								? "bg-background/80 opacity-100"
-								: "opacity-0 group-hover:opacity-100 hover:bg-background/80",
-						)}
-						title="アクション"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<HiMiniEllipsisVertical className="size-3.5" />
-					</button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="w-44">
-					<DropdownMenuItem onClick={startRename}>
-						<HiMiniPencil className="size-3.5 mr-2" />
-						リネーム
-					</DropdownMenuItem>
-					<DropdownMenuItem onClick={handleCopyTitle}>
-						<HiMiniDocumentDuplicate className="size-3.5 mr-2" />
-						タイトルをコピー
-					</DropdownMenuItem>
-					<DropdownMenuItem onClick={handleRerun}>
-						<HiMiniArrowPath className="size-3.5 mr-2" />
-						同じ内容で再実行
-					</DropdownMenuItem>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem
-						onClick={handleDelete}
-						className="text-destructive focus:text-destructive"
-					>
-						<HiMiniTrash className="size-3.5 mr-2" />
-						削除
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			<div className="flex items-center pr-1">
+				<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+					<DropdownMenuTrigger asChild>
+						<button
+							type="button"
+							className={cn(
+								"size-6 rounded-md flex items-center justify-center text-muted-foreground transition shrink-0",
+								menuOpen
+									? "bg-background/80 opacity-100"
+									: "opacity-0 group-hover:opacity-100 hover:bg-background/80",
+							)}
+							title="アクション"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<HiMiniEllipsisVertical className="size-3.5" />
+						</button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-44">
+						<DropdownMenuItem onClick={startRename}>
+							<HiMiniPencil className="size-3.5 mr-2" />
+							リネーム
+						</DropdownMenuItem>
+						<DropdownMenuItem onClick={handleCopyTitle}>
+							<HiMiniDocumentDuplicate className="size-3.5 mr-2" />
+							タイトルをコピー
+						</DropdownMenuItem>
+						<DropdownMenuItem onClick={handleRerun}>
+							<HiMiniArrowPath className="size-3.5 mr-2" />
+							同じ内容で再実行
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							onClick={handleDelete}
+							className="text-destructive focus:text-destructive"
+						>
+							<HiMiniTrash className="size-3.5 mr-2" />
+							削除
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
 		</div>
 	);
+}
+
+function formatRelativeTime(ms: number): string {
+	const diff = Date.now() - ms;
+	if (diff < 60_000) return "今";
+	if (diff < 60 * 60_000) return `${Math.floor(diff / 60_000)}分前`;
+	if (diff < 24 * 60 * 60_000)
+		return `${Math.floor(diff / (60 * 60_000))}時間前`;
+	if (diff < 30 * 24 * 60 * 60_000)
+		return `${Math.floor(diff / (24 * 60 * 60_000))}日前`;
+	if (diff < 365 * 24 * 60 * 60_000)
+		return `${Math.floor(diff / (30 * 24 * 60 * 60_000))}ヶ月前`;
+	return `${Math.floor(diff / (365 * 24 * 60 * 60_000))}年前`;
 }
 
 function StatusDot({ status }: { status: string }) {
@@ -619,7 +638,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	}, [invalidate, rerunMut, session.id]);
 
 	return (
-		<div className="flex flex-col h-full min-h-0 text-sm">
+		<div className="flex flex-col h-full min-h-0 overflow-hidden text-sm">
 			{/* Header: title + actions. Fixed, not scrollable. */}
 			<div className="shrink-0 border-b px-6 pt-5 pb-4">
 				<div className="flex items-start gap-3">
@@ -726,12 +745,14 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 
 			{/* Body: flex-based 2-column so height resolution chains
 			    correctly from DialogContent → TodoManager body → SessionDetail
-			    → this flex. Earlier `grid` version let the footer clip under
-			    heavy content. */}
-			<div className="flex flex-1 min-h-0">
-				<div className="w-[34%] min-w-[360px] max-w-[520px] border-r min-h-0 flex flex-col">
-					<ScrollArea className="flex-1">
-						<div className="flex flex-col gap-5 p-5">
+			    → this flex. `overflow-hidden` on every wrapper prevents
+			    any child from pushing the pinned footer off-screen
+			    when content is taller than the available space. Left
+			    column uses native overflow-y-auto instead of
+			    <ScrollArea> so height resolution is deterministic. */}
+			<div className="flex flex-1 min-h-0 overflow-hidden">
+				<div className="w-[34%] min-w-[360px] max-w-[520px] border-r min-h-0 overflow-y-auto">
+					<div className="flex flex-col gap-5 p-5">
 							<DetailBlock label="やって欲しいこと">
 								<div className="whitespace-pre-wrap text-xs leading-relaxed">
 									{session.description}
@@ -822,16 +843,15 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 								</DetailBlock>
 							)}
 						</div>
-					</ScrollArea>
 				</div>
 
-				<div className="flex-1 min-w-0 min-h-0 flex flex-col">
+				<div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 					<div className="px-5 pt-5 pb-2 shrink-0">
 						<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
 							Claude の応答 / ライブストリーム
 						</div>
 					</div>
-					<div className="flex-1 min-h-0 px-5 pb-5">
+					<div className="flex-1 min-h-0 px-5 pb-5 overflow-hidden">
 						<StreamView events={streamEvents} />
 					</div>
 				</div>
