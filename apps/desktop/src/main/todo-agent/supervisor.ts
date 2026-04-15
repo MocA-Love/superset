@@ -362,8 +362,8 @@ class TodoSupervisor {
 				// up (same mechanism verify-mode already uses).
 				if (!currentSession.verifyCommand) {
 					const postTurn = store.get(sessionId);
-					const hasFollowUp = (postTurn?.pendingIntervention ?? "").trim()
-						.length > 0;
+					const hasFollowUp =
+						(postTurn?.pendingIntervention ?? "").trim().length > 0;
 					if (hasFollowUp) {
 						store.update(sessionId, {
 							claudeSessionId,
