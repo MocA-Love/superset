@@ -4,6 +4,7 @@ import { appState } from "main/lib/app-state";
 import {
 	applyVibrancy,
 	DEFAULT_VIBRANCY_STATE,
+	isNativeContinuousBlurSupported,
 	isVibrancySupported,
 	normalizeVibrancyState,
 	type VibrancyBlurLevel,
@@ -25,6 +26,7 @@ const vibrancyInputSchema = z.object({
 	enabled: z.boolean().optional(),
 	opacity: z.number().int().min(0).max(100).optional(),
 	blurLevel: blurLevelSchema.optional(),
+	blurRadius: z.number().min(0).max(100).optional(),
 });
 
 function getCurrentState(): VibrancyState {
@@ -47,7 +49,10 @@ function broadcastVibrancy(wm: WindowManager, state: VibrancyState): void {
 export const createVibrancyRouter = (wm: WindowManager) => {
 	return router({
 		getSupported: publicProcedure.query(() => {
-			return { supported: isVibrancySupported() };
+			return {
+				supported: isVibrancySupported(),
+				nativeBlurSupported: isNativeContinuousBlurSupported(),
+			};
 		}),
 
 		get: publicProcedure.query(() => {

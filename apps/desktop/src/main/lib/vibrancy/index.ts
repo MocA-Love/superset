@@ -1,7 +1,13 @@
+import {
+	isNativeBlurAvailable,
+	setWindowBlurRadius,
+} from "@superset/macos-window-blur";
 import type { BrowserWindow } from "electron";
 import { PLATFORM } from "shared/constants";
 import {
 	DEFAULT_VIBRANCY_STATE,
+	VIBRANCY_BLUR_RADIUS_MAX,
+	VIBRANCY_BLUR_RADIUS_MIN,
 	VIBRANCY_OPACITY_MAX,
 	VIBRANCY_OPACITY_MIN,
 	type VibrancyBlurLevel,
@@ -53,11 +59,28 @@ export function normalizeVibrancyState(
 		partial.blurLevel && partial.blurLevel in BLUR_TO_ELECTRON_VIBRANCY
 			? partial.blurLevel
 			: base.blurLevel;
+	const blurRadius =
+		partial.blurRadius === undefined
+			? base.blurRadius
+			: Math.max(
+					VIBRANCY_BLUR_RADIUS_MIN,
+					Math.min(VIBRANCY_BLUR_RADIUS_MAX, Math.round(partial.blurRadius)),
+				);
 	return {
 		enabled: partial.enabled ?? base.enabled,
 		opacity,
 		blurLevel,
+		blurRadius,
 	};
+}
+
+/**
+ * Whether the native CIGaussianBlur addon loaded successfully on this
+ * machine. When false, the vibrancy slider UI should fall back to the
+ * four-step blurLevel selection.
+ */
+export function isNativeContinuousBlurSupported(): boolean {
+	return isVibrancySupported() && isNativeBlurAvailable();
 }
 
 function toHexAlpha(opacityPercent: number): string {
@@ -120,6 +143,19 @@ export function applyVibrancy(
 		);
 	} else {
 		window.setVibrancy(vibrancyType);
+	}
+
+	// Drive the native CIGaussianBlur filter on top of the NSVisualEffectView.
+	// When the addon failed to load this is a no-op and we fall back to
+	// whatever the selected material produces on its own.
+	if (isNativeBlurAvailable()) {
+		try {
+			const handle = window.getNativeWindowHandle();
+			const radius = state.enabled ? state.blurRadius : 0;
+			setWindowBlurRadius(handle, radius);
+		} catch (error) {
+			console.warn("[vibrancy] setWindowBlurRadius failed:", error);
+		}
 	}
 }
 

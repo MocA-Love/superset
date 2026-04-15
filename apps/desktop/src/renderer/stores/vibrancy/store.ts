@@ -11,6 +11,7 @@ import { applyUIColors } from "../theme/utils";
 
 interface VibrancyStore extends VibrancyState {
 	supported: boolean;
+	nativeBlurSupported: boolean;
 	hydrated: boolean;
 	setState: (partial: Partial<VibrancyState>) => Promise<void>;
 	previewOpacity: (opacity: number) => void;
@@ -142,6 +143,7 @@ function ensureThemeSubscription(): void {
 export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 	...DEFAULT_VIBRANCY_STATE,
 	supported: false,
+	nativeBlurSupported: false,
 	hydrated: false,
 
 	hydrate: async () => {
@@ -165,6 +167,7 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 				set({
 					...effective,
 					supported: supportInfo.supported,
+					nativeBlurSupported: supportInfo.nativeBlurSupported,
 					hydrated: true,
 				});
 				ensureThemeSubscription();
@@ -209,6 +212,7 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 			enabled: partial.enabled ?? current.enabled,
 			opacity: partial.opacity ?? current.opacity,
 			blurLevel: partial.blurLevel ?? current.blurLevel,
+			blurRadius: partial.blurRadius ?? current.blurRadius,
 		};
 		applyToDom(optimistic);
 		set(optimistic);
