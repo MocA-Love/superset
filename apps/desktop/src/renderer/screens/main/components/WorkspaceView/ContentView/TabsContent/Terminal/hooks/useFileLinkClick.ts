@@ -54,6 +54,7 @@ export function useFileLinkClick({
 				filePath: resolvedPath,
 				line,
 				column,
+				useRightSidebarOpenViewWidth: true,
 			});
 		},
 		[terminalLinkBehavior, workspaceId, projectId, addFileViewerPane],

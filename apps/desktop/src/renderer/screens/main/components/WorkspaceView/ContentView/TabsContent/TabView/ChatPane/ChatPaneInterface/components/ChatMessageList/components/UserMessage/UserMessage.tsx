@@ -52,6 +52,7 @@ export function UserMessage({
 			addFileViewerPane(workspaceId, {
 				filePath: url,
 				isPinned: true,
+				useRightSidebarOpenViewWidth: true,
 				...(filename ? { displayName: filename } : {}),
 			});
 		},
@@ -59,7 +60,11 @@ export function UserMessage({
 	);
 	const openMentionedFile = useCallback(
 		(filePath: string) => {
-			addFileViewerPane(workspaceId, { filePath, isPinned: true });
+			addFileViewerPane(workspaceId, {
+				filePath,
+				isPinned: true,
+				useRightSidebarOpenViewWidth: true,
+			});
 		},
 		[addFileViewerPane, workspaceId],
 	);

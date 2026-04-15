@@ -71,7 +71,11 @@ export function MessageList({
 	const handleImageClick = useCallback(
 		(url: string) => {
 			if (!workspaceId) return;
-			addFileViewerPane(workspaceId, { filePath: url, isPinned: true });
+			addFileViewerPane(workspaceId, {
+				filePath: url,
+				isPinned: true,
+				useRightSidebarOpenViewWidth: true,
+			});
 		},
 		[workspaceId, addFileViewerPane],
 	);
@@ -197,6 +201,7 @@ export function MessageList({
 																addFileViewerPane(workspaceId, {
 																	filePath: normalizedPath,
 																	isPinned: true,
+																	useRightSidebarOpenViewWidth: true,
 																});
 															}}
 														/>

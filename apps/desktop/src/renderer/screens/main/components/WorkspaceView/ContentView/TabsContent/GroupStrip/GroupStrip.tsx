@@ -247,6 +247,7 @@ export function GroupStrip() {
 				filePath: memo.memoFileAbsolutePath,
 				displayName: memo.displayName,
 				isPinned: true,
+				useRightSidebarOpenViewWidth: true,
 			});
 		} catch (error) {
 			const message =

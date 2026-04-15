@@ -95,6 +95,7 @@ export function useKeywordSearch({ workspaceId }: UseKeywordSearchParams) {
 				filePath: match.path,
 				line: match.line,
 				column: match.column,
+				useRightSidebarOpenViewWidth: true,
 			});
 			handleOpenChange(false);
 		},

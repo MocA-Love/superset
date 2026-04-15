@@ -123,6 +123,7 @@ export function AssistantMessage({
 			addFileViewerPane(workspaceId, {
 				filePath: url,
 				isPinned: true,
+				useRightSidebarOpenViewWidth: true,
 				...(filename ? { displayName: filename } : {}),
 			});
 		},

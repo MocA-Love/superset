@@ -607,6 +607,7 @@ export function FileViewerContent({
 				line: target.line,
 				column: target.column,
 				isPinned: false,
+				useRightSidebarOpenViewWidth: true,
 			});
 		},
 		[
