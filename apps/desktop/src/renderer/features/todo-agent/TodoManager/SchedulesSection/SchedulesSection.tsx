@@ -1,5 +1,6 @@
 import type { SelectTodoSchedule } from "@superset/local-db";
 import { Button } from "@superset/ui/button";
+import { Input } from "@superset/ui/input";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { useMemo, useState } from "react";
 import { HiMiniPlus } from "react-icons/hi2";
@@ -15,6 +16,7 @@ import { ScheduleListRow } from "./components/ScheduleListRow";
 export function SchedulesSection() {
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editing, setEditing] = useState<SelectTodoSchedule | null>(null);
+	const [filter, setFilter] = useState("");
 
 	const { data: schedules } = electronTrpc.todoAgent.schedule.listAll.useQuery(
 		undefined,
@@ -36,6 +38,25 @@ export function SchedulesSection() {
 		for (const p of projects ?? []) map.set(p.id, p.name);
 		return map;
 	}, [projects]);
+
+	const filteredSchedules = useMemo(() => {
+		const list = schedules ?? [];
+		const needle = filter.trim().toLowerCase();
+		if (!needle) return list;
+		return list.filter((s) => {
+			const wsName = s.workspaceId
+				? (workspaceNameById.get(s.workspaceId) ?? "")
+				: "";
+			const projName = projectNameById.get(s.projectId) ?? "";
+			return (
+				s.name.toLowerCase().includes(needle) ||
+				s.title.toLowerCase().includes(needle) ||
+				s.description.toLowerCase().includes(needle) ||
+				wsName.toLowerCase().includes(needle) ||
+				projName.toLowerCase().includes(needle)
+			);
+		});
+	}, [schedules, filter, workspaceNameById, projectNameById]);
 
 	const openNew = () => {
 		setEditing(null);
@@ -65,9 +86,17 @@ export function SchedulesSection() {
 					新規
 				</Button>
 			</div>
+			<div className="p-2 border-b shrink-0">
+				<Input
+					value={filter}
+					onChange={(e) => setFilter(e.target.value)}
+					placeholder="絞り込み（名前 / タイトル / プロジェクト）"
+					className="h-8 text-xs rounded-md"
+				/>
+			</div>
 			<ScrollArea className="flex-1">
 				<div className="flex flex-col gap-1.5 p-2">
-					{(schedules?.length ?? 0) === 0 && (
+					{(schedules?.length ?? 0) === 0 ? (
 						<p className="text-xs text-muted-foreground px-1 py-4">
 							まだスケジュールはありません。「新規」ボタンから作成してください。
 							<br />
@@ -75,20 +104,25 @@ export function SchedulesSection() {
 								スケジュールはアプリ起動中のみ発火します。
 							</span>
 						</p>
+					) : filteredSchedules.length === 0 ? (
+						<p className="text-xs text-muted-foreground px-1 py-4">
+							条件に一致するスケジュールがありません。
+						</p>
+					) : (
+						filteredSchedules.map((schedule) => (
+							<ScheduleListRow
+								key={schedule.id}
+								schedule={schedule}
+								projectName={projectNameById.get(schedule.projectId) ?? null}
+								workspaceName={
+									schedule.workspaceId
+										? (workspaceNameById.get(schedule.workspaceId) ?? null)
+										: null
+								}
+								onEdit={() => openEdit(schedule)}
+							/>
+						))
 					)}
-					{(schedules ?? []).map((schedule) => (
-						<ScheduleListRow
-							key={schedule.id}
-							schedule={schedule}
-							projectName={projectNameById.get(schedule.projectId) ?? null}
-							workspaceName={
-								schedule.workspaceId
-									? (workspaceNameById.get(schedule.workspaceId) ?? null)
-									: null
-							}
-							onEdit={() => openEdit(schedule)}
-						/>
-					))}
 				</div>
 			</ScrollArea>
 

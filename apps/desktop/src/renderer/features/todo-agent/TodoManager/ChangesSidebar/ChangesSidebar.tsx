@@ -33,6 +33,7 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 	const [selected, setSelected] = useState<SelectedDiff | null>(null);
 	const [commitsOpen, setCommitsOpen] = useState(true);
 	const [workingTreeOpen, setWorkingTreeOpen] = useState(true);
+	const [sessionFilesOpen, setSessionFilesOpen] = useState(true);
 
 	const snapshot = electronTrpc.todoAgent.gitSnapshot.useQuery(
 		{ sessionId },
@@ -70,6 +71,8 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 	const data = snapshot.data;
 	const commits = data?.commits ?? [];
 	const workingTree = data?.workingTree ?? [];
+	const sessionFiles = data?.sessionFiles ?? [];
+	const startHeadUnreachable = data?.startHeadUnreachable ?? false;
 
 	const stagedCount = useMemo(
 		() => workingTree.filter((f) => f.stage === "staged").length,
@@ -144,6 +147,82 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 							このパネルに差分とコミット履歴が表示されます。
 						</div>
 					)}
+
+					{startHeadUnreachable && (
+						<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-500">
+							開始時 HEAD
+							のコミットが見つかりません。ブランチがリセットされたか、
+							オブジェクトが失われている可能性があります。
+						</div>
+					)}
+
+					{/* Cumulative session delta (startHeadSha ↔ HEAD), shown
+					    even when no new commits exist so branch switches /
+					    rebases don't leave the sidebar looking empty. */}
+					<section>
+						<button
+							type="button"
+							onClick={() => setSessionFilesOpen((v) => !v)}
+							className="w-full flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1 hover:text-foreground transition"
+						>
+							{sessionFilesOpen ? (
+								<HiMiniChevronDown className="size-3" />
+							) : (
+								<HiMiniChevronRight className="size-3" />
+							)}
+							セッション全体
+							<span className="ml-1 text-muted-foreground/70">
+								({sessionFiles.length})
+							</span>
+						</button>
+						{sessionFilesOpen && (
+							<div className="flex flex-col gap-0.5">
+								{!data?.startHeadSha ? (
+									<p className="text-[11px] text-muted-foreground px-1 py-2">
+										開始時 HEAD が未記録のため、差分を算出できません。
+									</p>
+								) : sessionFiles.length === 0 ? (
+									<p className="text-[11px] text-muted-foreground px-1 py-2">
+										開始時からの差分はありません。
+									</p>
+								) : (
+									sessionFiles.map((file) => {
+										const key = `session:${file.path}`;
+										// Deletions ARE the diff at session scope —
+										// `git diff <start>..HEAD -- <path>` still emits
+										// a valid deletion patch, so keep every entry
+										// clickable. The working-tree section below
+										// rightly disables `D`, because there the file
+										// is already gone from the worktree.
+										return (
+											<button
+												key={key}
+												type="button"
+												onClick={() =>
+													setSelected({
+														key,
+														path: file.path,
+														scope: "session",
+														label: file.path,
+													})
+												}
+												className={cn(
+													"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2",
+													selected?.key === key &&
+														"bg-accent border-primary/40",
+												)}
+											>
+												<StatusBadge code={file.code} stage="session" />
+												<span className="text-[11px] font-mono truncate flex-1">
+													{file.path}
+												</span>
+											</button>
+										);
+									})
+								)}
+							</div>
+						)}
+					</section>
 
 					{/* Commits since session start */}
 					<section>
@@ -284,7 +363,7 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 								<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold truncate">
 									{selected.scope === "commit"
 										? `コミット ${selected.label}`
-										: `${selected.scope === "staged" ? "staged" : "unstaged"} · ${selected.label}`}
+										: `${scopeLabel(selected.scope)} · ${selected.label}`}
 								</div>
 								<button
 									type="button"
@@ -393,4 +472,17 @@ function formatShortDate(iso: string): string {
 	if (Number.isNaN(d.getTime())) return iso;
 	const pad = (n: number) => n.toString().padStart(2, "0");
 	return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function scopeLabel(scope: DiffScope): string {
+	switch (scope) {
+		case "staged":
+			return "staged";
+		case "unstaged":
+			return "unstaged";
+		case "session":
+			return "セッション全体";
+		case "commit":
+			return "commit";
+	}
 }

@@ -9,7 +9,7 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { and, desc, eq, inArray, isNull, not } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, not } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
@@ -279,6 +279,8 @@ class TodoSessionStore {
 			verdictReason: null,
 			verdictFailingTest: null,
 			artifactPath: template.artifactPath,
+			waitingUntil: null,
+			waitingReason: null,
 			startedAt: null,
 			completedAt: null,
 		});
@@ -299,6 +301,51 @@ class TodoSessionStore {
 			.where(eq(todoSessions.workspaceId, workspaceId))
 			.orderBy(desc(todoSessions.createdAt))
 			.all();
+	}
+
+	/**
+	 * Sessions parked in `waiting` whose `waitingUntil` deadline has
+	 * passed. Drives the scheduler tick that resumes `ScheduleWakeup`-
+	 * paused sessions once their delay elapses.
+	 */
+	listWaitingDue(nowMs: number): SelectTodoSession[] {
+		return localDb
+			.select()
+			.from(todoSessions)
+			.where(
+				and(
+					eq(todoSessions.status, "waiting"),
+					lte(todoSessions.waitingUntil, nowMs),
+				),
+			)
+			.all();
+	}
+
+	/**
+	 * Atomically flip a row from `waiting` → `queued` and clear the
+	 * parking fields. Returns the updated row (so callers can tell they
+	 * won the claim) or undefined when the session has since moved to a
+	 * different status — typically because the user clicked Abort while
+	 * the scheduler tick was already in flight. Used as the race guard
+	 * before the scheduler hands a session back to the supervisor.
+	 */
+	claimWaitingForResume(sessionId: string): SelectTodoSession | undefined {
+		const updated = localDb
+			.update(todoSessions)
+			.set({
+				status: "queued",
+				phase: "queued",
+				waitingUntil: null,
+				waitingReason: null,
+				updatedAt: Date.now(),
+			})
+			.where(
+				and(eq(todoSessions.id, sessionId), eq(todoSessions.status, "waiting")),
+			)
+			.returning()
+			.get();
+		if (updated) this.emit(updated);
+		return updated;
 	}
 
 	/**

@@ -106,7 +106,12 @@ function isSessionActive(session: SelectTodoSession | undefined): boolean {
 		session.status === "preparing" ||
 		session.status === "running" ||
 		session.status === "verifying" ||
-		session.status === "paused"
+		session.status === "paused" ||
+		// `waiting` means the worker called `ScheduleWakeup` to pause
+		// itself and will be resumed by the scheduler tick. Count it as
+		// active so the overlap guard and the concurrency display do not
+		// treat a self-parked session as finished.
+		session.status === "waiting"
 	);
 }
 
@@ -172,6 +177,11 @@ class TodoScheduler {
 		this.inFlight = true;
 		try {
 			const store = getTodoScheduleStore();
+			// Wake self-paced (`ScheduleWakeup`) sessions whose deadline
+			// has passed before we process new schedule fires. Doing this
+			// first means a schedule firing into an already-waiting
+			// session sees the updated status and respects overlap mode.
+			this.resumeDueWaitingSessions();
 			// Snapshot "due" using tick start time, but compute each
 			// schedule's firedAt from the actual moment fire() runs.
 			// Otherwise a slow fire leaves the next schedule in the loop
@@ -190,6 +200,39 @@ class TodoScheduler {
 			console.warn("[todo-scheduler] tick failed:", error);
 		} finally {
 			this.inFlight = false;
+		}
+	}
+
+	/**
+	 * Scan for `waiting` sessions whose `waitingUntil` has elapsed and
+	 * hand them back to the supervisor. The status flip is gated on the
+	 * row still being `waiting` at claim time so a race with the user
+	 * clicking Abort (which writes `aborted`) between `listWaitingDue`
+	 * and the update cannot resurrect an abort into a fresh run.
+	 *
+	 * `supervisor.start` is currently a synchronous queue+drain wrapper
+	 * that does not throw, so the trailing `.catch` here is purely a
+	 * defensive log path: if a future change to `start` introduces
+	 * validation throws, the rejection still surfaces in the console
+	 * instead of becoming an unhandled rejection. Run-time failures
+	 * inside `runSession` are owned by the supervisor's own drain
+	 * pipeline and are not the scheduler's responsibility.
+	 */
+	private resumeDueWaitingSessions(): void {
+		const sessionStore = getTodoSessionStore();
+		const due = sessionStore.listWaitingDue(Date.now());
+		if (due.length === 0) return;
+		const supervisor = getTodoSupervisor();
+		for (const session of due) {
+			if (this.isStopped) return;
+			const claimed = sessionStore.claimWaitingForResume(session.id);
+			if (!claimed) continue;
+			void supervisor.start(session.id).catch((err) => {
+				console.warn(
+					`[todo-scheduler] supervisor.start unexpectedly rejected for ${session.id}:`,
+					err,
+				);
+			});
 		}
 	}
 

@@ -12,7 +12,8 @@ import {
 import { Textarea } from "@superset/ui/textarea";
 import { useEffect, useRef, useState } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
-import { getCommentAvatarFallback, getCommentPreviewText } from "../../utils";
+import { getCommentAvatarFallback } from "../../utils";
+import { CommentBody } from "../CommentBody";
 
 interface ReplyDialogProps {
 	comment: PullRequestComment | null;
@@ -20,6 +21,7 @@ interface ReplyDialogProps {
 	onOpenChange: (open: boolean) => void;
 	onSubmit: (body: string) => Promise<void> | void;
 	isSubmitting: boolean;
+	onOpenUrl?: (url: string, e: React.MouseEvent) => void;
 }
 
 export function ReplyDialog({
@@ -28,6 +30,7 @@ export function ReplyDialog({
 	onOpenChange,
 	onSubmit,
 	isSubmitting,
+	onOpenUrl,
 }: ReplyDialogProps) {
 	const [body, setBody] = useState("");
 	const inFlightRef = useRef(false);
@@ -87,7 +90,7 @@ export function ReplyDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="max-h-32 overflow-y-auto rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
+				<div className="max-h-48 overflow-y-auto rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
 					<div className="mb-1 flex items-center gap-1.5">
 						<Avatar className="size-4">
 							{comment.avatarUrl ? (
@@ -110,9 +113,9 @@ export function ReplyDialog({
 							</span>
 						) : null}
 					</div>
-					<p className="whitespace-pre-wrap text-muted-foreground">
-						{getCommentPreviewText(comment.body)}
-					</p>
+					<div className="review-comment-body break-words text-xs leading-5 text-muted-foreground">
+						<CommentBody body={comment.body} onOpenUrl={onOpenUrl} />
+					</div>
 				</div>
 
 				<form className="space-y-3" onSubmit={handleSubmit}>

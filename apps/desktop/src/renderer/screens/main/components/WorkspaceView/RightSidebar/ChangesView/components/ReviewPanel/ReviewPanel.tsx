@@ -19,7 +19,7 @@ import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	LuArrowUpRight,
 	LuCheck,
@@ -33,18 +33,13 @@ import {
 	LuX,
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
-import { remarkAlert } from "remark-github-blockquote-alert";
-import { CodeBlock } from "renderer/components/MarkdownRenderer/components/CodeBlock";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs";
 import { CheckSteps } from "./components/CheckSteps";
+import { CommentBody } from "./components/CommentBody";
 import { ReplyDialog } from "./components/ReplyDialog";
 import {
 	ALL_COMMENTS_COPY_ACTION_KEY,
@@ -60,44 +55,7 @@ import {
 	resolveCheckDestinationUrl,
 	reviewDecisionConfig,
 	splitPullRequestComments,
-	stripHtmlComments,
 } from "./utils";
-
-const CommentBody = memo(function CommentBody({
-	body,
-	onOpenUrl,
-}: {
-	body: string;
-	onOpenUrl: (url: string, e: React.MouseEvent) => void;
-}) {
-	return (
-		<ReactMarkdown
-			remarkPlugins={[remarkGfm, remarkAlert]}
-			rehypePlugins={[rehypeRaw, rehypeSanitize]}
-			components={{
-				a: ({ href, children }) =>
-					href ? (
-						<a
-							href={href}
-							className="text-primary underline"
-							onClick={(e) => onOpenUrl(href, e)}
-						>
-							{children}
-						</a>
-					) : (
-						<span>{children}</span>
-					),
-				code: ({ className, children, node }) => (
-					<CodeBlock className={className} node={node}>
-						{children}
-					</CodeBlock>
-				),
-			}}
-		>
-			{stripHtmlComments(body)}
-		</ReactMarkdown>
-	);
-});
 
 function buildIdentitySummary(items: string[]): string {
 	if (items.length === 0) {
@@ -1464,6 +1422,7 @@ export function ReviewPanel({
 				onOpenChange={handleReplyDialogOpenChange}
 				onSubmit={handleSubmitReply}
 				isSubmitting={isReplySubmitting}
+				onOpenUrl={handleOpenUrl}
 			/>
 		</div>
 	);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { todoPromptPresets } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
@@ -175,7 +175,11 @@ export const createTodoAgentRouter = () => {
 					session.status !== "queued" &&
 					session.status !== "failed" &&
 					session.status !== "aborted" &&
-					session.status !== "escalated"
+					session.status !== "escalated" &&
+					// Allow manual "wake now" on a ScheduleWakeup-paused
+					// session — the user should not have to wait out the
+					// delay if they already have the context they wanted.
+					session.status !== "waiting"
 				) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
@@ -185,6 +189,10 @@ export const createTodoAgentRouter = () => {
 				store.update(input.sessionId, {
 					status: "preparing",
 					phase: "preparing",
+					// Clear the ScheduleWakeup parking fields so the row
+					// reflects an active run rather than a pending wake.
+					waitingUntil: null,
+					waitingReason: null,
 				});
 				// Fire-and-forget: the supervisor drives the rest of the loop.
 				void getTodoSupervisor().start(input.sessionId);
@@ -220,11 +228,12 @@ export const createTodoAgentRouter = () => {
 
 		/**
 		 * Edit the user-authored fields (description / goal) of a TODO
-		 * session that has not started yet. Allowed only in pre-start
-		 * states (queued / failed / aborted / escalated) so a running
-		 * worker's prompt can never mutate under its feet. When the
-		 * description / goal changes we rewrite the session's goal.md
-		 * so the next run picks up the edit.
+		 * session. Allowed in queued / preparing / failed / aborted /
+		 * escalated. `preparing` is safe because the supervisor has
+		 * not spawned Claude yet and `prepareArtifacts` will rewrite
+		 * goal.md before it is read. Refused once the session is
+		 * running / verifying so the worker's prompt never mutates
+		 * under its feet.
 		 */
 		updateFields: publicProcedure
 			.input(
@@ -251,6 +260,7 @@ export const createTodoAgentRouter = () => {
 				}
 				if (
 					session.status !== "queued" &&
+					session.status !== "preparing" &&
 					session.status !== "failed" &&
 					session.status !== "aborted" &&
 					session.status !== "escalated"
@@ -258,7 +268,7 @@ export const createTodoAgentRouter = () => {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
 						message:
-							"実行中またはキュー済みでないセッションは編集できません。中断してから再度お試しください。",
+							"実行中のセッションは編集できません。中断してから再度お試しください。",
 					});
 				}
 				const patch: {
@@ -385,6 +395,8 @@ export const createTodoAgentRouter = () => {
 					verdictReason: null,
 					verdictFailingTest: null,
 					artifactPath,
+					waitingUntil: null,
+					waitingReason: null,
 					startedAt: null,
 					completedAt: null,
 				});
@@ -645,11 +657,71 @@ export const createTodoAgentRouter = () => {
 				return { path: filePath };
 			}),
 
+		/**
+		 * Read an image attachment back from disk so the renderer can
+		 * preview it inline. Restricted to the saveAttachment output
+		 * directory to prevent the renderer from coercing the main
+		 * process into reading arbitrary user files via this channel.
+		 */
+		readAttachment: publicProcedure
+			.input(z.object({ path: z.string().min(1).max(4096) }))
+			.query(({ input }) => {
+				const dir = path.resolve(
+					path.join(app.getPath("userData"), "todo-agent", "attachments"),
+				);
+				const resolved = path.resolve(input.path);
+				const dirPrefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+				if (!resolved.startsWith(dirPrefix)) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "添付ディレクトリ外のパスは読み取れません",
+					});
+				}
+				let buf: Buffer;
+				try {
+					buf = readFileSync(resolved);
+				} catch (error) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message:
+							error instanceof Error
+								? `添付ファイルを読めませんでした: ${error.message}`
+								: "添付ファイルを読めませんでした",
+					});
+				}
+				const ext = path.extname(resolved).toLowerCase();
+				const mimeType =
+					ext === ".png"
+						? "image/png"
+						: ext === ".jpg" || ext === ".jpeg"
+							? "image/jpeg"
+							: ext === ".gif"
+								? "image/gif"
+								: ext === ".webp"
+									? "image/webp"
+									: ext === ".svg"
+										? "image/svg+xml"
+										: "application/octet-stream";
+				return {
+					mimeType,
+					dataBase64: buf.toString("base64"),
+					byteLength: buf.byteLength,
+				};
+			}),
+
 		settings: router({
 			get: publicProcedure.query(() => getTodoSettings()),
 			update: publicProcedure
 				.input(todoSettingsUpdateSchema)
-				.mutation(({ input }) => updateTodoSettings(input)),
+				.mutation(({ input }) => {
+					const next = updateTodoSettings(input);
+					// Nudge the supervisor so a raised `maxConcurrentTasks`
+					// immediately releases queued sessions. Without this, a
+					// bump from 1 → N leaves already-pending tasks waiting
+					// until the currently running session finishes.
+					getTodoSupervisor().handleSettingsChanged();
+					return next;
+				}),
 		}),
 
 		schedule: router({

@@ -20,6 +20,23 @@ async function gitOut(args: string[], cwd: string): Promise<string> {
 	}
 }
 
+/**
+ * Does `sha` resolve to a commit object in `cwd`'s git dir? Used to
+ * distinguish "no new commits" from "startHeadSha was orphaned by a
+ * reset/rebase" — otherwise both look identical in the sidebar.
+ */
+async function gitRevExists(sha: string, cwd: string): Promise<boolean> {
+	try {
+		await execGitWithShellPath(
+			["rev-parse", "--verify", "--quiet", `${sha}^{commit}`],
+			{ cwd },
+		);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export async function getCurrentHeadSha(cwd: string): Promise<string | null> {
 	const out = (await gitOut(["rev-parse", "HEAD"], cwd)).trim();
 	return out || null;
@@ -42,12 +59,34 @@ export interface SessionGitFile {
 	code: string;
 }
 
+export interface SessionGitChangedFile {
+	path: string;
+	/** First letter of git's name-status code: A / M / D / R / C / T */
+	code: string;
+}
+
 export interface SessionGitSnapshot {
 	branch: string | null;
 	startHeadSha: string | null;
 	currentHeadSha: string | null;
 	commits: SessionGitCommit[];
 	workingTree: SessionGitFile[];
+	/**
+	 * Files whose contents differ between `startHeadSha` and HEAD
+	 * (two-dot `git diff`). Populated regardless of whether HEAD is a
+	 * descendant of startHeadSha, so branch switches / rebases still
+	 * surface the cumulative session delta instead of silently
+	 * rendering an empty sidebar.
+	 */
+	sessionFiles: SessionGitChangedFile[];
+	/**
+	 * True when `startHeadSha` is set but its commit object is no
+	 * longer reachable (e.g. the branch was reset and the object was
+	 * pruned, or a different repo was swapped in under the worktree).
+	 * The UI uses this to show an explanatory message rather than a
+	 * silently empty panel.
+	 */
+	startHeadUnreachable: boolean;
 	ahead: number;
 	behind: number;
 }
@@ -68,32 +107,53 @@ export async function getSessionGitSnapshot(params: {
 	const branch = branchOut.trim() || null;
 	const currentHeadSha = currentOut.trim() || null;
 
-	// Commits produced since the session started. If start and current
-	// are the same (no new commits yet) this returns an empty list.
+	// Commits produced since the session started. Scoped to the range
+	// `startHeadSha..HEAD`; when HEAD is not a descendant of
+	// startHeadSha (branch switch / reset / rebase), this can validly
+	// return an empty list, and we surface cumulative file-level
+	// changes via `sessionFiles` below so the sidebar isn't empty.
 	let commits: SessionGitCommit[] = [];
+	let sessionFiles: SessionGitChangedFile[] = [];
+	let startHeadUnreachable = false;
 	if (startHeadSha && currentHeadSha && startHeadSha !== currentHeadSha) {
-		const logOut = await gitOut(
-			[
-				"log",
-				`${startHeadSha}..${currentHeadSha}`,
-				`--format=${COMMIT_FORMAT}`,
-			],
-			cwd,
-		);
-		commits = logOut
-			.split("\n")
-			.filter((l) => l.length > 0)
-			.map((line) => {
-				const [sha, shortSha, subject, authorName, authorDate] =
-					line.split(COMMIT_DELIM);
-				return {
-					sha: sha ?? "",
-					shortSha: shortSha ?? "",
-					subject: subject ?? "",
-					authorName: authorName ?? "",
-					authorDate: authorDate ?? "",
-				};
-			});
+		const reachable = await gitRevExists(startHeadSha, cwd);
+		if (!reachable) {
+			startHeadUnreachable = true;
+		} else {
+			const logOut = await gitOut(
+				[
+					"log",
+					`${startHeadSha}..${currentHeadSha}`,
+					`--format=${COMMIT_FORMAT}`,
+				],
+				cwd,
+			);
+			commits = logOut
+				.split("\n")
+				.filter((l) => l.length > 0)
+				.map((line) => {
+					const [sha, shortSha, subject, authorName, authorDate] =
+						line.split(COMMIT_DELIM);
+					return {
+						sha: sha ?? "",
+						shortSha: shortSha ?? "",
+						subject: subject ?? "",
+						authorName: authorName ?? "",
+						authorDate: authorDate ?? "",
+					};
+				});
+
+			// `git diff --name-status -z A B` compares the two commits
+			// directly (two-dot in diff has no range semantics), so it
+			// works even when A and B are on divergent histories. This
+			// is what lets the sidebar show the real session delta
+			// when commits are zero but files were touched.
+			const diffOut = await gitOut(
+				["diff", "--name-status", "-z", startHeadSha, currentHeadSha],
+				cwd,
+			);
+			sessionFiles = parseNameStatusNul(diffOut);
+		}
 	}
 
 	// Working tree state via porcelain v1 for stable parsing.
@@ -152,9 +212,43 @@ export async function getSessionGitSnapshot(params: {
 		currentHeadSha,
 		commits,
 		workingTree,
+		sessionFiles,
+		startHeadUnreachable,
 		ahead,
 		behind,
 	};
+}
+
+/**
+ * Parse `git diff --name-status -z` output.
+ *
+ * Standard entries are `<CODE>\0<path>\0`; rename/copy entries are
+ * `<CODE><score>\0<oldPath>\0<newPath>\0` — we keep only the new path
+ * and collapse the code to its first letter so the UI can render a
+ * single badge per file.
+ */
+function parseNameStatusNul(raw: string): SessionGitChangedFile[] {
+	const files: SessionGitChangedFile[] = [];
+	const parts = raw.split("\0");
+	let i = 0;
+	while (i < parts.length) {
+		const token = parts[i];
+		if (!token) {
+			i += 1;
+			continue;
+		}
+		const letter = token[0] ?? "";
+		if (letter === "R" || letter === "C") {
+			const newPath = parts[i + 2];
+			if (newPath) files.push({ path: newPath, code: letter });
+			i += 3;
+			continue;
+		}
+		const p = parts[i + 1];
+		if (p) files.push({ path: p, code: letter || token });
+		i += 2;
+	}
+	return files;
 }
 
 export type SessionDiffScope = "session" | "staged" | "unstaged" | "commit";

@@ -5,6 +5,7 @@ import path from "node:path";
 import type { SelectTodoSession } from "@superset/local-db";
 import { getCurrentHeadSha } from "./git-status";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
+import { getTodoSettings } from "./settings";
 import type { TodoStreamEventKind } from "./types";
 import { TODO_ARTIFACT_SUBDIR } from "./types";
 
@@ -46,7 +47,13 @@ interface ActiveRun {
 }
 
 class TodoSupervisor {
-	private active: ActiveRun | undefined;
+	/**
+	 * Currently executing sessions keyed by sessionId. The size of this map
+	 * is compared against `maxConcurrentTasks` in `drain()` to decide whether
+	 * the next pending session can start. Keyed storage (as opposed to a
+	 * single slot) lets `abort()` target a specific run without scanning.
+	 */
+	private readonly active = new Map<string, ActiveRun>();
 	private readonly queue: string[] = [];
 
 	/**
@@ -81,12 +88,47 @@ class TodoSupervisor {
 	}
 
 	async start(sessionId: string): Promise<void> {
-		if (this.active) {
-			if (!this.queue.includes(sessionId)) this.queue.push(sessionId);
-			return;
-		}
-		await this.runSession(sessionId);
-		while (this.queue.length > 0) {
+		// Already pending another launch — coalesce repeat clicks.
+		if (this.queue.includes(sessionId)) return;
+		// If a previous run is still active AND has not been aborted,
+		// ignore — repeated start clicks should not duplicate work.
+		const active = this.active.get(sessionId);
+		if (active && !active.abortController.signal.aborted) return;
+		// Either no active run, or the active run has already been
+		// aborted and is just tearing down (typical right after abort:
+		// the trpc-router flips status to `preparing` and calls us, but
+		// `runSession`'s finally has not yet removed the entry from
+		// `active`). Queue the restart so drain() picks it up the
+		// moment the slot frees — returning early here would silently
+		// drop the request and leave the session stuck in `preparing`.
+		this.queue.push(sessionId);
+		this.drain();
+	}
+
+	/**
+	 * Called by the settings mutation after `maxConcurrentTasks` changes.
+	 * When the user raises the concurrency cap we need to pull the next
+	 * pending sessions from the queue immediately — otherwise they sit
+	 * idle until the currently active session completes, which is the
+	 * exact symptom reported in issue #220. Lowering the cap is handled
+	 * passively (new starts are blocked until capacity frees up; already
+	 * running sessions keep running).
+	 */
+	handleSettingsChanged(): void {
+		this.drain();
+	}
+
+	/**
+	 * Launch as many queued sessions as `maxConcurrentTasks` permits.
+	 * Synchronous: each launch kicks off `runSession` as a fire-and-
+	 * forget Promise whose `finally` loops back into `drain()` so the
+	 * next slot fills as soon as a session finishes. The settings value
+	 * is re-read on every call so live setting updates take effect
+	 * without restart.
+	 */
+	private drain(): void {
+		const capacity = getTodoSettings().maxConcurrentTasks;
+		while (this.active.size < capacity && this.queue.length > 0) {
 			const next = this.queue.shift();
 			if (!next) continue;
 			// A session can be aborted / deleted / rerun while still
@@ -103,7 +145,20 @@ class TodoSupervisor {
 			) {
 				continue;
 			}
-			await this.runSession(next);
+			// `runSession` sets `this.active[sessionId]` synchronously
+			// before its first `await`, so by the time control returns
+			// here the slot count reflects the new run and the while
+			// loop's capacity check stays accurate.
+			void this.runSession(next)
+				.catch((err) => {
+					console.warn(
+						`[todo-supervisor] runSession crashed for ${next}:`,
+						err,
+					);
+				})
+				.finally(() => {
+					this.drain();
+				});
 		}
 	}
 
@@ -116,8 +171,9 @@ class TodoSupervisor {
 		if (queueIdx !== -1) {
 			this.queue.splice(queueIdx, 1);
 		}
-		if (this.active?.sessionId === sessionId) {
-			this.active.abortController.abort();
+		const activeRun = this.active.get(sessionId);
+		if (activeRun) {
+			activeRun.abortController.abort();
 			// Kill the whole process group, not just the direct child.
 			// `claude -p` spawns its own children (the Node-side agent
 			// loop, MCP servers, tool helpers). A plain `child.kill()`
@@ -127,7 +183,7 @@ class TodoSupervisor {
 			// actually stop. We `spawn` with `detached: true` so the
 			// child becomes a session leader; here we signal the
 			// negative PID to reach every descendant.
-			const child = this.active.currentChild;
+			const child = activeRun.currentChild;
 			if (child?.pid) {
 				const pid = child.pid;
 				killProcessTree(pid, "SIGINT");
@@ -211,7 +267,7 @@ class TodoSupervisor {
 			startedAt: Date.now(),
 			currentChild: null,
 		};
-		this.active = run;
+		this.active.set(sessionId, run);
 
 		try {
 			appendSetupEvent(
@@ -224,12 +280,16 @@ class TodoSupervisor {
 			// sidebar can show exactly what this session produced via
 			// `git log <startHeadSha>..HEAD` — user commits made before
 			// the session are excluded from attribution.
+			//
+			// On resume (follow-up intervention), keep the ORIGINAL
+			// starting point. Overwriting it on every run moved the
+			// goalpost forward and hid earlier commits from the sidebar.
 			if (worktreePath) {
 				appendSetupEvent(sessionId, "worktree", worktreePath);
 			}
-			const startHeadSha = worktreePath
-				? await getCurrentHeadSha(worktreePath)
-				: null;
+			const startHeadSha =
+				session0.startHeadSha ??
+				(worktreePath ? await getCurrentHeadSha(worktreePath) : null);
 			if (startHeadSha) {
 				appendSetupEvent(
 					sessionId,
@@ -295,6 +355,11 @@ class TodoSupervisor {
 					: null,
 				iteration: 0,
 				startHeadSha,
+				// Clear any prior ScheduleWakeup parking fields — we are
+				// actively running again, whether this run was kicked off
+				// by the scheduler waking us up or by a manual resume.
+				waitingUntil: null,
+				waitingReason: null,
 			});
 
 			if (!worktreePath) {
@@ -453,6 +518,43 @@ class TodoSupervisor {
 						});
 						continue;
 					}
+					// Claude parked itself via `ScheduleWakeup` — park the
+					// session in `waiting` instead of declaring it done, and
+					// let the scheduler tick wake it back up when the deadline
+					// passes. `completedAt` stays null so cleanup / retention
+					// never deletes a paused session, and the scheduler keeps
+					// counting it against the concurrency budget.
+					if (turnResult.scheduledWakeup) {
+						const waitingUntil =
+							Date.now() + turnResult.scheduledWakeup.delayMs;
+						store.update(sessionId, {
+							status: "waiting",
+							phase: "waiting",
+							verdictPassed: null,
+							verdictReason: null,
+							finalAssistantText: lastAssistantText,
+							claudeSessionId,
+							totalCostUsd: aggregatedCostUsd || null,
+							totalNumTurns: aggregatedNumTurns || null,
+							waitingUntil,
+							waitingReason: turnResult.scheduledWakeup.reason,
+							completedAt: null,
+						});
+						appendRawEvent(
+							sessionId,
+							iteration,
+							"system_init",
+							"waiting",
+							`ScheduleWakeup を検知。${Math.round(
+								turnResult.scheduledWakeup.delayMs / 1000,
+							)}秒後に再開します${
+								turnResult.scheduledWakeup.reason
+									? ` (${turnResult.scheduledWakeup.reason})`
+									: ""
+							}`,
+						);
+						return;
+					}
 					store.update(sessionId, {
 						status: "done",
 						phase: "done",
@@ -550,7 +652,7 @@ class TodoSupervisor {
 				});
 			}
 		} finally {
-			this.active = undefined;
+			this.active.delete(sessionId);
 		}
 	}
 
@@ -572,6 +674,13 @@ class TodoSupervisor {
 		/** True when the turn was interrupted because the user queued
 		 *  a mid-turn intervention, NOT because of an external abort. */
 		interrupted: boolean;
+		/**
+		 * Latest `ScheduleWakeup` (or equivalent self-pacing) call observed
+		 * during the turn. Null when Claude never asked to wait. The
+		 * supervisor uses this to park the session in the `waiting`
+		 * status instead of treating `child exit` as completion.
+		 */
+		scheduledWakeup: { delayMs: number; reason: string | null } | null;
 	}> {
 		return new Promise((resolve) => {
 			const args = [
@@ -624,6 +733,7 @@ class TodoSupervisor {
 							? `claude を起動できませんでした: ${error.message}`
 							: "claude を起動できませんでした",
 					interrupted: false,
+					scheduledWakeup: null,
 				});
 				return;
 			}
@@ -639,6 +749,10 @@ class TodoSupervisor {
 			let stderrBuffer = "";
 			let settled = false;
 			let interruptedForIntervention = false;
+			let scheduledWakeup: {
+				delayMs: number;
+				reason: string | null;
+			} | null = null;
 
 			const onAbort = () => {
 				if (child.pid) {
@@ -699,6 +813,7 @@ class TodoSupervisor {
 					numTurns,
 					error: interruptedForIntervention ? null : errorText,
 					interrupted: interruptedForIntervention,
+					scheduledWakeup,
 				});
 			};
 
@@ -742,6 +857,9 @@ class TodoSupervisor {
 				if (parsed.numTurns != null) {
 					numTurns = parsed.numTurns;
 				}
+				if (parsed.scheduledWakeup) {
+					scheduledWakeup = parsed.scheduledWakeup;
+				}
 				if (parsed.event) {
 					getTodoSessionStore().appendStreamEvents(params.sessionId, [
 						{
@@ -751,6 +869,8 @@ class TodoSupervisor {
 							kind: parsed.event.kind,
 							label: parsed.event.label,
 							text: parsed.event.text,
+							toolUseId: parsed.event.toolUseId,
+							parentToolUseId: parsed.event.parentToolUseId,
 						},
 					]);
 				}
@@ -1008,6 +1128,18 @@ interface ClassifiedEvent {
 	kind: TodoStreamEventKind;
 	label: string;
 	text: string;
+	/**
+	 * For `tool_use` events this is the tool_use block id.
+	 * For `tool_result` events this is the `tool_use_id` the result
+	 * targets. Undefined for non-tool events.
+	 */
+	toolUseId?: string;
+	/**
+	 * Set when the NDJSON record has a top-level `parent_tool_use_id`,
+	 * i.e. the message was emitted from inside a subagent (Agent/Task
+	 * tool) context.
+	 */
+	parentToolUseId?: string;
 }
 
 interface ClassifiedLine {
@@ -1016,6 +1148,14 @@ interface ClassifiedLine {
 	costUsd: number | null;
 	numTurns: number | null;
 	event: ClassifiedEvent | null;
+	/**
+	 * Non-null when this line carried a Claude self-pacing call — currently
+	 * `ScheduleWakeup`, the /loop dynamic-mode primitive. The supervisor
+	 * propagates this out of the turn so a subsequent `child exit` event
+	 * parks the session in the `waiting` status instead of flipping it to
+	 * `done` and losing it from the concurrency count.
+	 */
+	scheduledWakeup: { delayMs: number; reason: string | null } | null;
 }
 
 /**
@@ -1031,12 +1171,20 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 		costUsd: null,
 		numTurns: null,
 		event: null,
+		scheduledWakeup: null,
 	};
 	if (typeof payload !== "object" || payload === null) return empty;
 	const rec = payload as Record<string, unknown>;
 	const type = typeof rec.type === "string" ? (rec.type as string) : "";
 	const sessionId =
 		typeof rec.session_id === "string" ? (rec.session_id as string) : null;
+	// Claude Code sets `parent_tool_use_id` on the top-level NDJSON
+	// record whenever the message was emitted inside a subagent
+	// context (i.e. the main session invoked the Task/Agent tool).
+	const parentToolUseId =
+		typeof rec.parent_tool_use_id === "string"
+			? (rec.parent_tool_use_id as string)
+			: undefined;
 
 	if (type === "system" && rec.subtype === "init") {
 		return {
@@ -1051,35 +1199,58 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 	}
 
 	if (type === "assistant") {
+		// Extract text, tool_use, and scheduled wakeup up front so a
+		// message that carries both "here's what I'm doing" text AND a
+		// `ScheduleWakeup` tool_use in the same content array still
+		// propagates the wakeup. The previous early-return on text
+		// silently dropped ScheduleWakeup in the mixed case, which made
+		// the supervisor mark the session as `done` the moment the
+		// child exited instead of parking it in `waiting`.
 		const text = extractAssistantText(rec.message);
+		const tool = extractToolUseSummary(rec.message);
+		const wakeup = extractScheduledWakeup(rec.message);
 		if (text) {
 			return {
 				...empty,
 				sessionId,
-				event: { kind: "assistant_text", label: "Claude", text },
+				event: {
+					kind: "assistant_text",
+					label: "Claude",
+					text,
+					parentToolUseId,
+				},
+				scheduledWakeup: wakeup,
 			};
 		}
-		const tool = extractToolUseSummary(rec.message);
 		if (tool) {
 			return {
 				...empty,
 				sessionId,
-				event: { kind: "tool_use", label: tool.label, text: tool.text },
+				event: {
+					kind: "tool_use",
+					label: tool.label,
+					text: tool.text,
+					toolUseId: tool.id,
+					parentToolUseId,
+				},
+				scheduledWakeup: wakeup,
 			};
 		}
 		return empty;
 	}
 
 	if (type === "user") {
-		const text = extractToolResultText(rec.message);
-		if (text) {
+		const result = extractToolResultDetails(rec.message);
+		if (result) {
 			return {
 				...empty,
 				sessionId,
 				event: {
 					kind: "tool_result",
 					label: "tool result",
-					text: truncate(text, 400),
+					text: truncate(result.text, 400),
+					toolUseId: result.toolUseId,
+					parentToolUseId,
 				},
 			};
 		}
@@ -1105,6 +1276,7 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 				label: "result",
 				text: resultText ?? "（空の結果）",
 			},
+			scheduledWakeup: null,
 		};
 	}
 
@@ -1144,7 +1316,7 @@ function extractAssistantText(message: unknown): string | null {
 
 function extractToolUseSummary(
 	message: unknown,
-): { label: string; text: string } | null {
+): { label: string; text: string; id: string | undefined } | null {
 	if (typeof message !== "object" || message === null) return null;
 	const content = (message as { content?: unknown }).content;
 	if (!Array.isArray(content)) return null;
@@ -1153,22 +1325,70 @@ function extractToolUseSummary(
 		const rec = part as Record<string, unknown>;
 		if (rec.type !== "tool_use") continue;
 		const name = typeof rec.name === "string" ? (rec.name as string) : "tool";
+		const id = typeof rec.id === "string" ? (rec.id as string) : undefined;
 		const input = rec.input;
 		const inputSummary = summarizeToolInput(name, input);
-		return { label: name, text: inputSummary };
+		return { label: name, text: inputSummary, id };
 	}
 	return null;
 }
 
-function extractToolResultText(message: unknown): string | null {
+/**
+ * Look for a `ScheduleWakeup` tool_use in the assistant message. This is
+ * the /loop-mode primitive Claude uses to park itself until a deadline
+ * (e.g. "re-check CI in 5 minutes"). In headless mode Claude still
+ * surfaces the same tool_use in the stream and then exits, so detecting
+ * the call here is what lets the supervisor distinguish "work really
+ * finished" from "work paused itself" — without this, the session flips
+ * to `done` on child exit and disappears from the concurrency count.
+ */
+function extractScheduledWakeup(
+	message: unknown,
+): { delayMs: number; reason: string | null } | null {
+	if (typeof message !== "object" || message === null) return null;
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return null;
+	for (const part of content) {
+		if (typeof part !== "object" || part === null) continue;
+		const rec = part as Record<string, unknown>;
+		if (rec.type !== "tool_use") continue;
+		if (rec.name !== "ScheduleWakeup") continue;
+		const input = rec.input;
+		if (typeof input !== "object" || input === null) continue;
+		const inp = input as Record<string, unknown>;
+		const delaySeconds =
+			typeof inp.delaySeconds === "number"
+				? (inp.delaySeconds as number)
+				: null;
+		if (delaySeconds == null || !Number.isFinite(delaySeconds)) continue;
+		// ScheduleWakeup の契約値は [60, 3600]s。範囲外は malformed と
+		// して扱い wait には遷移させない。silently clamp すると Claude
+		// が想定する再開タイミングと実際の再開がずれて挙動が読めなく
+		// なるため、その時点で done の通常終了に倒す方が安全。
+		const seconds = Math.floor(delaySeconds);
+		if (seconds < 60 || seconds > 3600) continue;
+		const reason =
+			typeof inp.reason === "string" ? (inp.reason as string) : null;
+		return { delayMs: seconds * 1000, reason };
+	}
+	return null;
+}
+
+function extractToolResultDetails(
+	message: unknown,
+): { text: string; toolUseId: string | undefined } | null {
 	if (typeof message !== "object" || message === null) return null;
 	const content = (message as { content?: unknown }).content;
 	if (!Array.isArray(content)) return null;
 	const parts: string[] = [];
+	let toolUseId: string | undefined;
 	for (const part of content) {
 		if (typeof part !== "object" || part === null) continue;
 		const rec = part as Record<string, unknown>;
 		if (rec.type === "tool_result") {
+			if (!toolUseId && typeof rec.tool_use_id === "string") {
+				toolUseId = rec.tool_use_id as string;
+			}
 			const inner = rec.content;
 			if (typeof inner === "string") {
 				parts.push(inner);
@@ -1184,7 +1404,8 @@ function extractToolResultText(message: unknown): string | null {
 		}
 	}
 	const joined = parts.join("\n").trim();
-	return joined.length > 0 ? joined : null;
+	if (joined.length === 0) return null;
+	return { text: joined, toolUseId };
 }
 
 function summarizeToolInput(name: string, input: unknown): string {
