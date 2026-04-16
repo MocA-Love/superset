@@ -493,7 +493,10 @@ export function TodoManager({
 														key={session.id}
 														session={session}
 														isSelected={selected?.id === session.id}
-														onSelect={() => setSelectedId(session.id)}
+														onSelect={() => {
+															setSelectedId(session.id);
+															setComposerOpen(false);
+														}}
 														onDeleted={() => {
 															if (selectedId === session.id)
 																setSelectedId(null);
