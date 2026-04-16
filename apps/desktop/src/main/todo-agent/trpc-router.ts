@@ -103,34 +103,18 @@ export const createTodoAgentRouter = () => {
 					workspaceId: input.workspaceId,
 				});
 
-				const session = store.insert({
+				const session = store.insertQueuedFromTemplate({
 					id: sessionId,
 					projectId: input.projectId ?? null,
 					workspaceId: input.workspaceId,
 					title: input.title,
 					description: input.description,
-					goal: input.goal ?? null,
-					verifyCommand: input.verifyCommand ?? null,
+					goal: input.goal,
+					verifyCommand: input.verifyCommand,
 					maxIterations: input.maxIterations,
 					maxWallClockSec: input.maxWallClockSec,
-					status: "queued",
-					phase: "queued",
-					iteration: 0,
-					attachedPaneId: null,
-					attachedTabId: null,
-					claudeSessionId: null,
-					finalAssistantText: null,
-					totalCostUsd: null,
-					totalNumTurns: null,
-					pendingIntervention: null,
-					startHeadSha: null,
-					customSystemPrompt: input.customSystemPrompt ?? null,
-					verdictPassed: null,
-					verdictReason: null,
-					verdictFailingTest: null,
+					customSystemPrompt: input.customSystemPrompt,
 					artifactPath,
-					startedAt: null,
-					completedAt: null,
 				});
 
 				// Materialize the directory + goal.md. If this throws after

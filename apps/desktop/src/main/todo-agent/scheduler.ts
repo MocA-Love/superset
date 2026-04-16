@@ -248,7 +248,7 @@ class TodoScheduler {
 				sessionId,
 				workspaceId: schedule.workspaceId,
 			});
-			const inserted = sessionStore.insert({
+			const inserted = sessionStore.insertQueuedFromTemplate({
 				id: sessionId,
 				projectId: schedule.projectId,
 				workspaceId: schedule.workspaceId,
@@ -258,24 +258,8 @@ class TodoScheduler {
 				verifyCommand: schedule.verifyCommand,
 				maxIterations: schedule.maxIterations,
 				maxWallClockSec: schedule.maxWallClockSec,
-				status: "queued",
-				phase: "queued",
-				iteration: 0,
-				attachedPaneId: null,
-				attachedTabId: null,
-				claudeSessionId: null,
-				finalAssistantText: null,
-				totalCostUsd: null,
-				totalNumTurns: null,
-				pendingIntervention: null,
-				startHeadSha: null,
 				customSystemPrompt: schedule.customSystemPrompt,
-				verdictPassed: null,
-				verdictReason: null,
-				verdictFailingTest: null,
 				artifactPath,
-				startedAt: null,
-				completedAt: null,
 			});
 			supervisor.prepareArtifacts(inserted);
 			void supervisor.start(inserted.id).catch((err) => {

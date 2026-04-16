@@ -233,6 +233,57 @@ class TodoSessionStore {
 		return inserted;
 	}
 
+	/**
+	 * Insert a fresh `queued` session from a user-authored template (TODO
+	 * composer, schedule fire, or anywhere else that starts a new session
+	 * from scratch). Centralizing this here keeps the full TodoSession row
+	 * shape in one place — otherwise any new field on `todo_sessions` has
+	 * to be remembered in every call site.
+	 */
+	insertQueuedFromTemplate(template: {
+		id: string;
+		projectId: string | null | undefined;
+		workspaceId: string;
+		title: string;
+		description: string;
+		goal?: string | null;
+		verifyCommand?: string | null;
+		maxIterations: number;
+		maxWallClockSec: number;
+		customSystemPrompt?: string | null;
+		artifactPath: string;
+	}): SelectTodoSession {
+		return this.insert({
+			id: template.id,
+			projectId: template.projectId ?? null,
+			workspaceId: template.workspaceId,
+			title: template.title,
+			description: template.description,
+			goal: template.goal ?? null,
+			verifyCommand: template.verifyCommand ?? null,
+			maxIterations: template.maxIterations,
+			maxWallClockSec: template.maxWallClockSec,
+			status: "queued",
+			phase: "queued",
+			iteration: 0,
+			attachedPaneId: null,
+			attachedTabId: null,
+			claudeSessionId: null,
+			finalAssistantText: null,
+			totalCostUsd: null,
+			totalNumTurns: null,
+			pendingIntervention: null,
+			startHeadSha: null,
+			customSystemPrompt: template.customSystemPrompt ?? null,
+			verdictPassed: null,
+			verdictReason: null,
+			verdictFailingTest: null,
+			artifactPath: template.artifactPath,
+			startedAt: null,
+			completedAt: null,
+		});
+	}
+
 	get(sessionId: string): SelectTodoSession | undefined {
 		return localDb
 			.select()
