@@ -41,7 +41,13 @@ export const TodoButton = memo(function TodoButton({
 	const queuedCount = (allSessions ?? []).filter(
 		(s) => s.status === "queued",
 	).length;
-	const activeCount = runningCount + queuedCount;
+	// `waiting` is a ScheduleWakeup-paused session that the scheduler will
+	// resume automatically. Surface it alongside queued in the badge so the
+	// user sees at-a-glance that slots are still spoken for.
+	const waitingCount = (allSessions ?? []).filter(
+		(s) => s.status === "waiting",
+	).length;
+	const activeCount = runningCount + queuedCount + waitingCount;
 
 	const handleRequestNewTodo = useCallback(() => {
 		setModalOpen(true);
@@ -71,9 +77,9 @@ export const TodoButton = memo(function TodoButton({
 						{runningCount}
 					</span>
 				)}
-				{queuedCount > 0 && (
+				{queuedCount + waitingCount > 0 && (
 					<span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-semibold tabular-nums text-muted-foreground">
-						+{queuedCount}
+						+{queuedCount + waitingCount}
 					</span>
 				)}
 			</Button>

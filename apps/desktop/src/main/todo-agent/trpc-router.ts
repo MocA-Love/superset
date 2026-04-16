@@ -175,7 +175,11 @@ export const createTodoAgentRouter = () => {
 					session.status !== "queued" &&
 					session.status !== "failed" &&
 					session.status !== "aborted" &&
-					session.status !== "escalated"
+					session.status !== "escalated" &&
+					// Allow manual "wake now" on a ScheduleWakeup-paused
+					// session — the user should not have to wait out the
+					// delay if they already have the context they wanted.
+					session.status !== "waiting"
 				) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
@@ -185,6 +189,10 @@ export const createTodoAgentRouter = () => {
 				store.update(input.sessionId, {
 					status: "preparing",
 					phase: "preparing",
+					// Clear the ScheduleWakeup parking fields so the row
+					// reflects an active run rather than a pending wake.
+					waitingUntil: null,
+					waitingReason: null,
 				});
 				// Fire-and-forget: the supervisor drives the rest of the loop.
 				void getTodoSupervisor().start(input.sessionId);
@@ -385,6 +393,8 @@ export const createTodoAgentRouter = () => {
 					verdictReason: null,
 					verdictFailingTest: null,
 					artifactPath,
+					waitingUntil: null,
+					waitingReason: null,
 					startedAt: null,
 					completedAt: null,
 				});
