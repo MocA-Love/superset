@@ -365,6 +365,8 @@ class TodoScheduler {
 				maxIterations: schedule.maxIterations,
 				maxWallClockSec: schedule.maxWallClockSec,
 				customSystemPrompt: schedule.customSystemPrompt,
+				claudeModel: schedule.claudeModel,
+				claudeEffort: schedule.claudeEffort,
 				artifactPath,
 			});
 			supervisor.prepareArtifacts(inserted);

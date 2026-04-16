@@ -22,6 +22,16 @@ import { Textarea } from "@superset/ui/textarea";
 import { useEffect, useMemo, useState } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type ClaudeEffortPick,
+	type ClaudeModelPick,
+	ClaudeRuntimePicker,
+	DEFAULT_SENTINEL,
+	fromPersistedEffort,
+	fromPersistedModel,
+	toPersistedEffort,
+	toPersistedModel,
+} from "../../../../ClaudeRuntimePicker";
 import { describeSchedule } from "../../utils/describeSchedule";
 import { formatNextRun } from "../../utils/formatNextRun";
 import { FrequencyPicker, type FrequencyValue } from "../FrequencyPicker";
@@ -74,6 +84,10 @@ export function ScheduleEditorDialog({
 	const [autoSyncBeforeFire, setAutoSyncBeforeFire] = useState(false);
 	const [enabled, setEnabled] = useState(true);
 	const [freq, setFreq] = useState<FrequencyValue>(DEFAULT_FREQUENCY);
+	const [claudeModel, setClaudeModel] =
+		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
+	const [claudeEffort, setClaudeEffort] =
+		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
 	const [submitting, setSubmitting] = useState(false);
 
 	useEffect(() => {
@@ -100,6 +114,8 @@ export function ScheduleEditorDialog({
 				monthday: initial.monthday,
 				cronExpr: initial.cronExpr,
 			});
+			setClaudeModel(fromPersistedModel(initial.claudeModel));
+			setClaudeEffort(fromPersistedEffort(initial.claudeEffort));
 		} else {
 			setName("");
 			setProjectId("");
@@ -115,6 +131,8 @@ export function ScheduleEditorDialog({
 			setAutoSyncBeforeFire(false);
 			setEnabled(true);
 			setFreq(DEFAULT_FREQUENCY);
+			setClaudeModel(DEFAULT_SENTINEL);
+			setClaudeEffort(DEFAULT_SENTINEL);
 		}
 	}, [open, initial]);
 
@@ -184,6 +202,8 @@ export function ScheduleEditorDialog({
 					customSystemPrompt.trim().length > 0
 						? customSystemPrompt.trim()
 						: null,
+				claudeModel: toPersistedModel(claudeModel),
+				claudeEffort: toPersistedEffort(claudeEffort),
 				maxIterations,
 				maxWallClockSec: maxWallClockMin * 60,
 				overlapMode,
@@ -469,6 +489,14 @@ export function ScheduleEditorDialog({
 								disabled={submitting}
 							/>
 						</div>
+
+						<ClaudeRuntimePicker
+							model={claudeModel}
+							effort={claudeEffort}
+							onModelChange={setClaudeModel}
+							onEffortChange={setClaudeEffort}
+							disabled={submitting}
+						/>
 					</div>
 				</div>
 

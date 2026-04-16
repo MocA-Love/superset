@@ -318,6 +318,13 @@ class TodoSupervisor {
 					`${preview}${session0.customSystemPrompt.trim().length > 200 ? "…" : ""}`,
 				);
 			}
+			if (session0.claudeModel || session0.claudeEffort) {
+				const parts: string[] = [];
+				if (session0.claudeModel) parts.push(`model: ${session0.claudeModel}`);
+				if (session0.claudeEffort)
+					parts.push(`effort: ${session0.claudeEffort}`);
+				appendSetupEvent(sessionId, "Claude 設定", parts.join(" / "));
+			}
 			appendSetupEvent(
 				sessionId,
 				"Claude",
@@ -436,6 +443,8 @@ class TodoSupervisor {
 					prompt,
 					resumeSessionId: claudeSessionId,
 					customSystemPrompt: currentSession.customSystemPrompt ?? null,
+					claudeModel: currentSession.claudeModel ?? null,
+					claudeEffort: currentSession.claudeEffort ?? null,
 					signal: ac.signal,
 					onChild: (child) => {
 						run.currentChild = child;
@@ -663,6 +672,8 @@ class TodoSupervisor {
 		prompt: string;
 		resumeSessionId: string | null;
 		customSystemPrompt: string | null;
+		claudeModel: string | null;
+		claudeEffort: string | null;
 		signal: AbortSignal;
 		onChild: (child: ChildProcess) => void;
 	}): Promise<{
@@ -703,6 +714,15 @@ class TodoSupervisor {
 			];
 			if (params.customSystemPrompt) {
 				args.push("--append-system-prompt", params.customSystemPrompt);
+			}
+			// Per-session Claude Code overrides. Passing `--model` /
+			// `--effort` only when set keeps Claude Code's own default
+			// resolution path intact for users who haven't picked one.
+			if (params.claudeModel) {
+				args.push("--model", params.claudeModel);
+			}
+			if (params.claudeEffort) {
+				args.push("--effort", params.claudeEffort);
 			}
 			if (params.resumeSessionId) {
 				args.push("--resume", params.resumeSessionId);

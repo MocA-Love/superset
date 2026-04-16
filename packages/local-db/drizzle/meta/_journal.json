@@ -407,6 +407,13 @@
       "when": 1776362216006,
       "tag": "0057_todo_session_waiting",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1776378635928,
+      "tag": "0058_todo_claude_model_effort",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,16 @@ import {
 	HiMiniXMark,
 } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type ClaudeEffortPick,
+	type ClaudeModelPick,
+	ClaudeRuntimePicker,
+	DEFAULT_SENTINEL,
+	fromPersistedEffort,
+	fromPersistedModel,
+	toPersistedEffort,
+	toPersistedModel,
+} from "../../ClaudeRuntimePicker";
 
 interface PresetsDialogProps {
 	open: boolean;
@@ -101,6 +111,10 @@ function SettingsTab() {
 	const [maxMin, setMaxMin] = useState(30);
 	const [maxConcurrent, setMaxConcurrent] = useState(1);
 	const [retentionDays, setRetentionDays] = useState(0);
+	const [defaultModel, setDefaultModel] =
+		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
+	const [defaultEffort, setDefaultEffort] =
+		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
 
 	useEffect(() => {
 		if (settings) {
@@ -108,6 +122,10 @@ function SettingsTab() {
 			setMaxMin(settings.defaultMaxWallClockMin);
 			setMaxConcurrent(settings.maxConcurrentTasks);
 			setRetentionDays(settings.sessionRetentionDays);
+			setDefaultModel(fromPersistedModel(settings.defaultClaudeModel ?? null));
+			setDefaultEffort(
+				fromPersistedEffort(settings.defaultClaudeEffort ?? null),
+			);
 		}
 	}, [settings]);
 
@@ -116,7 +134,11 @@ function SettingsTab() {
 		(maxIter !== settings.defaultMaxIterations ||
 			maxMin !== settings.defaultMaxWallClockMin ||
 			maxConcurrent !== settings.maxConcurrentTasks ||
-			retentionDays !== settings.sessionRetentionDays);
+			retentionDays !== settings.sessionRetentionDays ||
+			toPersistedModel(defaultModel) !==
+				(settings.defaultClaudeModel ?? null) ||
+			toPersistedEffort(defaultEffort) !==
+				(settings.defaultClaudeEffort ?? null));
 
 	const handleSave = useCallback(async () => {
 		try {
@@ -125,6 +147,8 @@ function SettingsTab() {
 				defaultMaxWallClockMin: maxMin,
 				maxConcurrentTasks: maxConcurrent,
 				sessionRetentionDays: retentionDays,
+				defaultClaudeModel: toPersistedModel(defaultModel),
+				defaultClaudeEffort: toPersistedEffort(defaultEffort),
 			});
 			await utils.todoAgent.settings.get.invalidate();
 			toast.success("設定を保存しました");
@@ -133,7 +157,16 @@ function SettingsTab() {
 				error instanceof Error ? error.message : "保存に失敗しました",
 			);
 		}
-	}, [maxIter, maxMin, maxConcurrent, retentionDays, updateMut, utils]);
+	}, [
+		defaultEffort,
+		defaultModel,
+		maxIter,
+		maxMin,
+		maxConcurrent,
+		retentionDays,
+		updateMut,
+		utils,
+	]);
 
 	return (
 		<div className="flex-1 p-6 overflow-y-auto">
@@ -200,6 +233,21 @@ function SettingsTab() {
 						この日数より古い終了済みセッション (done / failed / aborted /
 						escalated) をアプリ起動時に自動削除する。0
 						で無効（手動削除のみ）。実行中・キュー中のセッションは対象外。
+					</p>
+				</div>
+				<div className="flex flex-col gap-1.5">
+					<Label>新規 TODO / スケジュールの Claude 既定値</Label>
+					<ClaudeRuntimePicker
+						model={defaultModel}
+						effort={defaultEffort}
+						onModelChange={setDefaultModel}
+						onEffortChange={setDefaultEffort}
+						compact={false}
+					/>
+					<p className="text-[10px] text-muted-foreground">
+						新規に作る TODO
+						やスケジュールのフォームに初期値として反映される。個別に上書き可。既存の
+						TODO / スケジュールには影響しない。
 					</p>
 				</div>
 				<div className="pt-2 border-t">

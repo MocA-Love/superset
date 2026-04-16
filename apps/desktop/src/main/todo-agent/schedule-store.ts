@@ -71,6 +71,8 @@ class TodoScheduleStore {
 			maxIterations: input.maxIterations,
 			maxWallClockSec: input.maxWallClockSec,
 			customSystemPrompt: input.customSystemPrompt ?? null,
+			claudeModel: input.claudeModel ?? null,
+			claudeEffort: input.claudeEffort ?? null,
 			overlapMode: input.overlapMode,
 			autoSyncBeforeFire: input.autoSyncBeforeFire,
 			nextRunAt: input.nextRunAt,
@@ -103,6 +105,10 @@ class TodoScheduleStore {
 			patch.maxWallClockSec = rest.maxWallClockSec;
 		if (rest.customSystemPrompt !== undefined)
 			patch.customSystemPrompt = rest.customSystemPrompt ?? null;
+		if (rest.claudeModel !== undefined)
+			patch.claudeModel = rest.claudeModel ?? null;
+		if (rest.claudeEffort !== undefined)
+			patch.claudeEffort = rest.claudeEffort ?? null;
 		if (rest.overlapMode !== undefined) patch.overlapMode = rest.overlapMode;
 		if (rest.autoSyncBeforeFire !== undefined)
 			patch.autoSyncBeforeFire = rest.autoSyncBeforeFire;
