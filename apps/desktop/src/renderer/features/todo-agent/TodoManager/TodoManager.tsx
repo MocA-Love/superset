@@ -977,7 +977,10 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		session.status === "aborted" ||
 		session.status === "escalated" ||
 		// Manual "wake now" overrides the remaining ScheduleWakeup delay.
-		session.status === "waiting";
+		session.status === "waiting" ||
+		// Resume a completed session — supervisor issues `--resume` so the
+		// next turn continues the same Claude conversation.
+		(session.status === "done" && session.claudeSessionId != null);
 	const isRunning =
 		session.status === "preparing" ||
 		session.status === "running" ||
@@ -1581,7 +1584,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 						) : (
 							<>
 								ヒント:
-								実行中でもメッセージを送ると、現在のターンを中断して即座に割り込みます。
+								実行中でもメッセージを送ると、現在のターンを中断して即座に割り込みます。完了済み/失敗のタスクに送ると、過去のセッションを再開して続きから対話します。
 							</>
 						)}
 					</p>
