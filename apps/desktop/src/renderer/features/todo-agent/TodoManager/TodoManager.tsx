@@ -1030,7 +1030,25 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		}
 	}, [invalidate, rerunMut, session.id]);
 
-	const canEditFields = canStart && !isRunning;
+	// `preparing` is still editable: the supervisor has not spawned
+	// Claude yet, and prepareArtifacts rewrites goal.md before Claude
+	// reads it, so an edit during preparing still takes effect.
+	const canEditFields = canStart || session.status === "preparing";
+
+	// Bail out of any in-flight edit the moment the session starts
+	// actually running — e.g. a queued session whose turn arrived
+	// mid-edit — so the user doesn't hit Save only to get rejected by
+	// the backend guard. Only cancel on running/verifying; terminal
+	// states stay editable (rerun path).
+	useEffect(() => {
+		if (!editingField) return;
+		if (session.status !== "running" && session.status !== "verifying") return;
+		setEditingField(null);
+		setEditDraft("");
+		toast.warning(
+			"タスクの実行が開始されたため編集を中止しました。中断してから再度編集してください。",
+		);
+	}, [editingField, session.status]);
 
 	const startEditField = useCallback(
 		(field: "description" | "goal") => {

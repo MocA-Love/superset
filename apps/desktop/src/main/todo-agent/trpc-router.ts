@@ -220,11 +220,12 @@ export const createTodoAgentRouter = () => {
 
 		/**
 		 * Edit the user-authored fields (description / goal) of a TODO
-		 * session that has not started yet. Allowed only in pre-start
-		 * states (queued / failed / aborted / escalated) so a running
-		 * worker's prompt can never mutate under its feet. When the
-		 * description / goal changes we rewrite the session's goal.md
-		 * so the next run picks up the edit.
+		 * session. Allowed in queued / preparing / failed / aborted /
+		 * escalated. `preparing` is safe because the supervisor has
+		 * not spawned Claude yet and `prepareArtifacts` will rewrite
+		 * goal.md before it is read. Refused once the session is
+		 * running / verifying so the worker's prompt never mutates
+		 * under its feet.
 		 */
 		updateFields: publicProcedure
 			.input(
@@ -251,6 +252,7 @@ export const createTodoAgentRouter = () => {
 				}
 				if (
 					session.status !== "queued" &&
+					session.status !== "preparing" &&
 					session.status !== "failed" &&
 					session.status !== "aborted" &&
 					session.status !== "escalated"
@@ -258,7 +260,7 @@ export const createTodoAgentRouter = () => {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
 						message:
-							"実行中またはキュー済みでないセッションは編集できません。中断してから再度お試しください。",
+							"実行中のセッションは編集できません。中断してから再度お試しください。",
 					});
 				}
 				const patch: {
