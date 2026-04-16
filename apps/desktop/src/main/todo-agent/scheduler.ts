@@ -172,14 +172,19 @@ class TodoScheduler {
 		this.inFlight = true;
 		try {
 			const store = getTodoScheduleStore();
-			const now = Date.now();
-			const due = store.listDue(now);
+			// Snapshot "due" using tick start time, but compute each
+			// schedule's firedAt from the actual moment fire() runs.
+			// Otherwise a slow fire leaves the next schedule in the loop
+			// advancing `nextRunAt` from a stale tick-start timestamp —
+			// for minute-level cron that can emit a "next run" already
+			// in the past and trigger duplicate fires on the next tick.
+			const due = store.listDue(Date.now());
 			for (const schedule of due) {
 				// Abort mid-iteration if a shutdown came in while we were
 				// awaiting a previous fire. Prevents inserting a session
 				// row after closeLocalDb() has torn down SQLite.
 				if (this.isStopped) break;
-				await this.fire(schedule, now);
+				await this.fire(schedule, Date.now());
 			}
 		} catch (error) {
 			console.warn("[todo-scheduler] tick failed:", error);

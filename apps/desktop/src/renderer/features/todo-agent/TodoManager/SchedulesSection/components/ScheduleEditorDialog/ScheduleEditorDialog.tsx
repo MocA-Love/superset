@@ -191,7 +191,15 @@ export function ScheduleEditorDialog({
 			};
 
 			if (initial) {
-				await updateMut.mutateAsync({ id: initial.id, ...payload });
+				// projectId is immutable server-side and the Select is
+				// disabled while editing; strip it here too so a stale
+				// local state can't ever silently request a project
+				// change that the backend would ignore.
+				const { projectId: _omitProjectId, ...updatePayload } = payload;
+				await updateMut.mutateAsync({
+					id: initial.id,
+					...updatePayload,
+				});
 				toast.success("スケジュールを更新しました");
 			} else {
 				await createMut.mutateAsync(payload);
@@ -239,7 +247,7 @@ export function ScheduleEditorDialog({
 							<Select
 								value={projectId}
 								onValueChange={setProjectId}
-								disabled={submitting}
+								disabled={submitting || initial !== null}
 							>
 								<SelectTrigger className="h-8 text-xs">
 									<SelectValue placeholder="プロジェクトを選択" />
@@ -252,6 +260,11 @@ export function ScheduleEditorDialog({
 									))}
 								</SelectContent>
 							</Select>
+							{initial !== null && (
+								<p className="text-[10px] text-muted-foreground">
+									プロジェクトは編集できません。変更したい場合はスケジュールを作り直してください。
+								</p>
+							)}
 						</div>
 
 						<div className="flex flex-col gap-1.5">
