@@ -540,13 +540,14 @@
 	}
 	.animate-shine {
 		--shine-peak: rgba(255, 255, 255, 0.92);
+
 		background-image: linear-gradient(
 			110deg,
-			currentColor 0%,
-			currentColor 35%,
+			currentcolor 0%,
+			currentcolor 35%,
 			var(--shine-peak) 50%,
-			currentColor 65%,
-			currentColor 100%
+			currentcolor 65%,
+			currentcolor 100%
 		);
 		background-size: 200% auto;
 		-webkit-background-clip: text;

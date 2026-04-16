@@ -1361,12 +1361,15 @@ function extractScheduledWakeup(
 				? (inp.delaySeconds as number)
 				: null;
 		if (delaySeconds == null || !Number.isFinite(delaySeconds)) continue;
-		// Clamp to match the ScheduleWakeup contract [60, 3600]s — a stray
-		// value outside this range is a malformed call, not a wait request.
-		const clamped = Math.max(60, Math.min(3600, Math.floor(delaySeconds)));
+		// ScheduleWakeup の契約値は [60, 3600]s。範囲外は malformed と
+		// して扱い wait には遷移させない。silently clamp すると Claude
+		// が想定する再開タイミングと実際の再開がずれて挙動が読めなく
+		// なるため、その時点で done の通常終了に倒す方が安全。
+		const seconds = Math.floor(delaySeconds);
+		if (seconds < 60 || seconds > 3600) continue;
 		const reason =
 			typeof inp.reason === "string" ? (inp.reason as string) : null;
-		return { delayMs: clamped * 1000, reason };
+		return { delayMs: seconds * 1000, reason };
 	}
 	return null;
 }
