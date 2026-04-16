@@ -367,15 +367,16 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 												<TooltipTrigger asChild>
 													<button
 														type="button"
-														disabled={!canDiff}
-														onClick={() =>
+														aria-disabled={!canDiff}
+														onClick={() => {
+															if (!canDiff) return;
 															setSelected({
 																key,
 																path: file.path,
 																scope,
 																label: file.path,
-															})
-														}
+															});
+														}}
 														className={cn(
 															"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2 min-w-0",
 															selected?.key === key &&
