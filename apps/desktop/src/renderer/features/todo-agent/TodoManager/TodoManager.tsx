@@ -84,29 +84,85 @@ function fileToBase64(file: File): Promise<string> {
 	});
 }
 
+export interface ImageAttachment {
+	token: string;
+	path: string;
+	name: string;
+}
+
+/**
+ * Expand `[imageN]` tokens embedded in a textarea value into the
+ * full markdown image references (`![](abs-path)`) that Claude's
+ * Read tool can open. Called at submit time so the user sees the
+ * short tokens in the UI while Claude still receives the real
+ * paths.
+ */
+export function resolveAttachmentTokens(
+	text: string,
+	attachments: ImageAttachment[],
+): string {
+	let out = text;
+	for (const a of attachments) {
+		out = out.split(a.token).join(`![](${a.path})`);
+	}
+	return out;
+}
+
 type ImagePasteTextareaProps = Omit<
 	React.ComponentProps<typeof Textarea>,
 	"onPaste" | "onDrop" | "onDragOver"
 > & {
 	value: string;
 	onValueChange: (next: string) => void;
+	attachments: ImageAttachment[];
+	onAttachmentsChange: (next: ImageAttachment[]) => void;
 };
 
 /**
- * Drop-in replacement for `<Textarea>` that also accepts pasted or
- * dropped images. Images are uploaded to the main process via
- * `todoAgent.saveAttachment` and a markdown reference
- * (`![](abs-path)`) is inserted at the caret. Claude reads the file
- * with its Read tool (image support is built in) so the attachment
- * ends up part of the next turn's context.
+ * Drop-in replacement for `<Textarea>` that accepts pasted or
+ * dropped images. The image is uploaded via `todoAgent.saveAttachment`
+ * and a short `[imageN]` token is inserted at the caret instead of
+ * the long absolute path. At submit time the caller resolves the
+ * tokens back to `![](abs-path)` markdown via
+ * `resolveAttachmentTokens()`. Claude's Read tool opens the real
+ * path and picks up the image content.
+ *
+ * Also tracks attachments as chips above the textarea so the user
+ * can see what they have attached, and orphan-prunes the list if
+ * the user manually deletes a token from the text.
  */
 function ImagePasteTextarea({
 	value,
 	onValueChange,
+	attachments,
+	onAttachmentsChange,
 	...rest
 }: ImagePasteTextareaProps) {
 	const saveMut = electronTrpc.todoAgent.saveAttachment.useMutation();
 	const [dropHighlight, setDropHighlight] = useState(false);
+
+	const nextTokenName = useCallback((): string => {
+		let max = 0;
+		for (const a of attachments) {
+			const m = /^\[image(\d+)\]$/.exec(a.token);
+			if (m?.[1]) max = Math.max(max, Number(m[1]));
+		}
+		return `[image${max + 1}]`;
+	}, [attachments]);
+
+	// Orphan-prune: when the user edits the textarea text directly
+	// and removes a token by hand, drop that attachment from the
+	// sidebar chip list so state stays consistent.
+	const handleTextChange = useCallback(
+		(next: string) => {
+			onValueChange(next);
+			const stillReferenced = attachments.filter((a) => next.includes(a.token));
+			if (stillReferenced.length !== attachments.length) {
+				onAttachmentsChange(stillReferenced);
+			}
+		},
+		[attachments, onAttachmentsChange, onValueChange],
+	);
 
 	const processFile = useCallback(
 		async (file: File, target: HTMLTextAreaElement | null) => {
@@ -126,14 +182,13 @@ function ImagePasteTextarea({
 					mimeType: file.type || "image/png",
 					dataBase64,
 				});
-				const ref = `![](${absPath})`;
-				const insert = `\n${ref}\n`;
+				const token = nextTokenName();
+				const insert = token;
 				if (target) {
 					const start = target.selectionStart ?? value.length;
 					const end = target.selectionEnd ?? value.length;
 					const next = value.slice(0, start) + insert + value.slice(end);
 					onValueChange(next);
-					// Restore caret position after React re-renders.
 					requestAnimationFrame(() => {
 						const pos = start + insert.length;
 						target.setSelectionRange(pos, pos);
@@ -142,53 +197,103 @@ function ImagePasteTextarea({
 				} else {
 					onValueChange(`${value}${insert}`);
 				}
-				toast.success("画像を添付しました");
+				onAttachmentsChange([
+					...attachments,
+					{ token, path: absPath, name: file.name || "image.png" },
+				]);
+				toast.success(`画像を添付しました: ${token}`);
 			} catch (error) {
 				toast.error(
 					error instanceof Error ? error.message : "画像の保存に失敗しました",
 				);
 			}
 		},
-		[saveMut, value, onValueChange],
+		[
+			attachments,
+			nextTokenName,
+			onAttachmentsChange,
+			onValueChange,
+			saveMut,
+			value,
+		],
+	);
+
+	const removeAttachment = useCallback(
+		(token: string) => {
+			// Drop every occurrence of the token from the text, then the
+			// attachment itself.
+			const nextText = value.split(token).join("");
+			onValueChange(nextText);
+			onAttachmentsChange(attachments.filter((a) => a.token !== token));
+		},
+		[attachments, onAttachmentsChange, onValueChange, value],
 	);
 
 	return (
-		<Textarea
-			{...rest}
-			value={value}
-			onChange={(e) => onValueChange(e.target.value)}
-			className={cn(
-				rest.className,
-				"transition",
-				dropHighlight && "ring-2 ring-primary/50 ring-offset-1",
+		<div className="flex flex-col gap-1.5">
+			{attachments.length > 0 && (
+				<div className="flex flex-wrap gap-1">
+					{attachments.map((a) => (
+						<span
+							key={a.token}
+							className="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono"
+							title={a.path}
+						>
+							🖼<span>{a.token}</span>
+							<span className="text-muted-foreground/70 text-[9px] truncate max-w-[120px]">
+								{a.name}
+							</span>
+							<button
+								type="button"
+								onClick={() => removeAttachment(a.token)}
+								className="ml-0.5 text-muted-foreground hover:text-destructive"
+								title="添付を解除"
+							>
+								<HiMiniXMark className="size-3" />
+							</button>
+						</span>
+					))}
+				</div>
 			)}
-			onPaste={(e) => {
-				const items = Array.from(e.clipboardData?.items ?? []);
-				const imgItem = items.find((i) => i.type.startsWith("image/"));
-				if (!imgItem) return;
-				const file = imgItem.getAsFile();
-				if (!file) return;
-				e.preventDefault();
-				void processFile(file, e.currentTarget);
-			}}
-			onDrop={(e) => {
-				setDropHighlight(false);
-				const file = e.dataTransfer.files?.[0];
-				if (!file) return;
-				if (!file.type.startsWith("image/")) return;
-				e.preventDefault();
-				void processFile(file, e.currentTarget);
-			}}
-			onDragOver={(e) => {
-				if (
-					Array.from(e.dataTransfer.items ?? []).some((i) => i.kind === "file")
-				) {
+			<Textarea
+				{...rest}
+				value={value}
+				onChange={(e) => handleTextChange(e.target.value)}
+				className={cn(
+					rest.className,
+					"transition",
+					dropHighlight && "ring-2 ring-primary/50 ring-offset-1",
+				)}
+				onPaste={(e) => {
+					const items = Array.from(e.clipboardData?.items ?? []);
+					const imgItem = items.find((i) => i.type.startsWith("image/"));
+					if (!imgItem) return;
+					const file = imgItem.getAsFile();
+					if (!file) return;
 					e.preventDefault();
-					setDropHighlight(true);
-				}
-			}}
-			onDragLeave={() => setDropHighlight(false)}
-		/>
+					void processFile(file, e.currentTarget);
+				}}
+				onDrop={(e) => {
+					setDropHighlight(false);
+					const file = e.dataTransfer.files?.[0];
+					if (!file) return;
+					if (!file.type.startsWith("image/")) return;
+					e.preventDefault();
+					void processFile(file, e.currentTarget);
+				}}
+				onDragOver={(e) => {
+					if (
+						Array.from(e.dataTransfer.items ?? []).some(
+							(i) => i.kind === "file",
+						)
+					) {
+						e.preventDefault();
+						setDropHighlight(true);
+					}
+				}}
+				onDragLeave={() => setDropHighlight(false)}
+			/>
+		</div>
 	);
 }
 
@@ -708,6 +813,9 @@ interface SessionDetailProps {
 
 function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	const [intervention, setIntervention] = useState("");
+	const [interventionAttachments, setInterventionAttachments] = useState<
+		ImageAttachment[]
+	>([]);
 	const [starting, setStarting] = useState(false);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [streamEvents, setStreamEvents] = useState<TodoStreamEvent[]>([]);
@@ -833,18 +941,23 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	const handleSendInput = useCallback(async () => {
 		if (!intervention.trim()) return;
 		try {
+			const resolved = resolveAttachmentTokens(
+				intervention.trim(),
+				interventionAttachments,
+			);
 			await sendInputMut.mutateAsync({
 				sessionId: session.id,
-				data: intervention.trim(),
+				data: resolved,
 			});
 			setIntervention("");
+			setInterventionAttachments([]);
 			toast.success("メッセージを送信しました");
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "送信に失敗しました",
 			);
 		}
-	}, [intervention, sendInputMut, session.id]);
+	}, [intervention, interventionAttachments, sendInputMut, session.id]);
 
 	const handleDelete = useCallback(async () => {
 		try {
@@ -1247,19 +1360,23 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 			{/* Footer: intervention input, pinned. Always reachable. */}
 			<div className="shrink-0 border-t px-6 py-3 bg-background">
 				<div className="flex items-end gap-2">
-					<ImagePasteTextarea
-						value={intervention}
-						onValueChange={setIntervention}
-						placeholder="メッセージを送信（Enter で送信、Shift+Enter で改行、画像は貼り付け/ドロップ可）"
-						rows={2}
-						className="resize-none min-h-[44px] max-h-40 text-xs leading-relaxed"
-						onKeyDown={(e) => {
-							if (e.key === "Enter" && !e.shiftKey) {
-								e.preventDefault();
-								void handleSendInput();
-							}
-						}}
-					/>
+					<div className="flex-1">
+						<ImagePasteTextarea
+							value={intervention}
+							onValueChange={setIntervention}
+							attachments={interventionAttachments}
+							onAttachmentsChange={setInterventionAttachments}
+							placeholder="メッセージを送信（Enter で送信、Shift+Enter で改行、画像は貼り付け/ドロップ可）"
+							rows={2}
+							className="resize-none min-h-[44px] max-h-40 text-xs leading-relaxed"
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
+									void handleSendInput();
+								}
+							}}
+						/>
+					</div>
 					<Button
 						type="button"
 						size="sm"
@@ -1688,7 +1805,9 @@ function TodoComposer({
 	const [workspaceId, setWorkspaceId] = useState<string>("");
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
+	const [descAttachments, setDescAttachments] = useState<ImageAttachment[]>([]);
 	const [goal, setGoal] = useState("");
+	const [goalAttachments, setGoalAttachments] = useState<ImageAttachment[]>([]);
 	const [verifyCommand, setVerifyCommand] = useState("");
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
@@ -1780,12 +1899,23 @@ function TodoComposer({
 			const selected = scopedPresets.system.find(
 				(p) => p.id === selectedPresetId,
 			);
+			// Expand [imageN] tokens → ![](abs-path) markdown right before
+			// sending so Claude's Read tool can open the attachment while
+			// the UI kept the short token for readability.
+			const resolvedDescription = resolveAttachmentTokens(
+				description.trim(),
+				descAttachments,
+			);
+			const resolvedGoal = resolveAttachmentTokens(
+				goal.trim(),
+				goalAttachments,
+			);
 			const res = await createMut.mutateAsync({
 				workspaceId: targetWorkspaceId,
 				projectId,
 				title: title.trim(),
-				description: description.trim(),
-				goal: goal.trim() || undefined,
+				description: resolvedDescription,
+				goal: resolvedGoal || undefined,
 				verifyCommand: verifyCommand.trim() || undefined,
 				maxIterations,
 				maxWallClockSec,
@@ -1810,7 +1940,9 @@ function TodoComposer({
 		createWorkspaceMut,
 		createWorktree,
 		description,
+		descAttachments,
 		goal,
+		goalAttachments,
 		maxIterations,
 		maxWallClockSec,
 		onCreated,
@@ -1930,6 +2062,8 @@ function TodoComposer({
 								id="composer-desc"
 								value={description}
 								onValueChange={setDescription}
+								attachments={descAttachments}
+								onAttachmentsChange={setDescAttachments}
 								placeholder="やってほしい作業を書く（右のテンプレートから挿入可・画像貼り付け可）"
 								rows={5}
 							/>
@@ -1944,6 +2078,8 @@ function TodoComposer({
 								id="composer-goal"
 								value={goal}
 								onValueChange={setGoal}
+								attachments={goalAttachments}
+								onAttachmentsChange={setGoalAttachments}
 								placeholder="完了条件（空欄可、画像貼り付け可）"
 								rows={3}
 							/>
