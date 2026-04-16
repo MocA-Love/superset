@@ -990,6 +990,34 @@ function renderGoalDoc(session: SelectTodoSession): string {
 	return lines.join("\n");
 }
 
+/**
+ * Pull attachment file paths out of description/goal markdown. Mirrors
+ * the renderer regex in `TodoManager/utils/attachmentRefs` so the same
+ * `todo-agent/attachments/` references the UI renders as chips are the
+ * ones we surface to Claude as "please Read this". The regex is
+ * duplicated intentionally — the renderer module lives in the web
+ * bundle and we don't want a cross-bundle import here in main.
+ */
+const ATTACHMENT_PATH_RE =
+	/!\[[^\]]*\]\(([^()\s]*[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
+
+function extractAttachmentPaths(
+	texts: (string | null | undefined)[],
+): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const text of texts) {
+		if (!text) continue;
+		for (const m of text.matchAll(ATTACHMENT_PATH_RE)) {
+			const p = m[1];
+			if (!p || seen.has(p)) continue;
+			seen.add(p);
+			out.push(p);
+		}
+	}
+	return out;
+}
+
 function buildIterationPrompt(params: {
 	session: SelectTodoSession;
 	iteration: number;
@@ -1023,6 +1051,24 @@ function buildIterationPrompt(params: {
 		);
 		if (session.goal?.trim()) {
 			sections.push(`ゴール:\n${session.goal.trim()}`);
+		}
+		// Hoist attachment file paths out of the markdown so Claude
+		// doesn't have to decide on its own whether `![](…)` inside the
+		// description is decorative or a real artifact it should load.
+		// Before this nudge, image attachments were frequently ignored —
+		// the file was saved and the path was correct, but Claude would
+		// proceed without ever calling Read on it. See #247.
+		const attachments = extractAttachmentPaths([
+			session.description,
+			session.goal,
+		]);
+		if (attachments.length > 0) {
+			sections.push(
+				[
+					"添付ファイル（作業開始前に Read で内容を確認してください）:",
+					...attachments.map((p) => `- ${p}`),
+				].join("\n"),
+			);
 		}
 	} else {
 		sections.push(
@@ -1382,10 +1428,14 @@ function extractToolResultDetails(
 	if (!Array.isArray(content)) return null;
 	const parts: string[] = [];
 	let toolUseId: string | undefined;
+	let sawToolResult = false;
+	let imageCount = 0;
+	let otherBlockCount = 0;
 	for (const part of content) {
 		if (typeof part !== "object" || part === null) continue;
 		const rec = part as Record<string, unknown>;
 		if (rec.type === "tool_result") {
+			sawToolResult = true;
 			if (!toolUseId && typeof rec.tool_use_id === "string") {
 				toolUseId = rec.tool_use_id as string;
 			}
@@ -1398,14 +1448,35 @@ function extractToolResultDetails(
 					const pr = p as Record<string, unknown>;
 					if (pr.type === "text" && typeof pr.text === "string") {
 						parts.push(pr.text as string);
+					} else if (pr.type === "image") {
+						imageCount += 1;
+					} else if (typeof pr.type === "string") {
+						otherBlockCount += 1;
 					}
 				}
 			}
 		}
 	}
+	// Bail only when the message didn't contain a tool_result block at
+	// all. If it did, emit the result even when it carried no text so
+	// the UI can pair it with its tool_use — otherwise e.g. Read on an
+	// image file (which returns only `image` blocks) leaves the card
+	// spinning "実行中…" forever even though Claude already processed
+	// the result and moved on to subsequent tool calls. See #247.
+	if (!sawToolResult) return null;
 	const joined = parts.join("\n").trim();
-	if (joined.length === 0) return null;
-	return { text: joined, toolUseId };
+	if (joined.length > 0) return { text: joined, toolUseId };
+	const summary: string[] = [];
+	if (imageCount > 0) {
+		summary.push(imageCount === 1 ? "[画像 1 件]" : `[画像 ${imageCount} 件]`);
+	}
+	if (otherBlockCount > 0) {
+		summary.push(`[非テキストブロック ${otherBlockCount} 件]`);
+	}
+	return {
+		text: summary.length > 0 ? summary.join(" ") : "(空の結果)",
+		toolUseId,
+	};
 }
 
 function summarizeToolInput(name: string, input: unknown): string {
