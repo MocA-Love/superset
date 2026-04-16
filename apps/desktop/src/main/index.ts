@@ -529,6 +529,14 @@ if (!gotTheLock) {
 		requestAppleEventsAccess();
 		initializeBrowserIdentityManager();
 		browserSitePermissionManager.initialize();
+		// One-shot sweep of 30-day-old pasted attachments so userData
+		// doesn't grow forever from screenshots dropped into TODOs.
+		try {
+			const { cleanupOldAttachments } = await import("./todo-agent");
+			cleanupOldAttachments();
+		} catch (error) {
+			console.warn("[main] todo-agent attachment cleanup skipped", error);
+		}
 
 		// Must register on both default session and the app's custom partition
 		const iconProtocolHandler = (request: Request) => {

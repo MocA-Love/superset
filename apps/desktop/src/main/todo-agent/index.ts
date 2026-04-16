@@ -1,3 +1,4 @@
+export { cleanupOldAttachments } from "./attachments-cleanup";
 export { getTodoSessionStore } from "./session-store";
 export { getTodoSupervisor } from "./supervisor";
 export type { TodoAgentRouter } from "./trpc-router";
