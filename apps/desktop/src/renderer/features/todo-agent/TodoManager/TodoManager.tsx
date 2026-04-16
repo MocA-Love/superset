@@ -1194,33 +1194,72 @@ type StreamItem =
 			id: string;
 			toolUse: TodoStreamEvent;
 			toolResult: TodoStreamEvent | null;
+			children: StreamItem[];
 	  };
 
+/**
+ * Pair tool_use with its tool_result AND nest sub-agent (Task tool)
+ * children via `parentToolUseId` — matching the VSCode Claude Code
+ * extension, which renders child tool calls *inside* the parent
+ * Agent/Task card instead of interleaving them at the top level.
+ */
 function pairStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
-	const items: StreamItem[] = [];
+	const consumed = new Set<string>();
+	const byToolUseId = new Map<string, Extract<StreamItem, { type: "tool" }>>();
+	const pending: Array<{ item: StreamItem; parentId: string | null }> = [];
+
 	for (let i = 0; i < events.length; i++) {
 		const ev = events[i];
 		if (!ev) continue;
+		if (ev.kind === "tool_result" && consumed.has(ev.id)) continue;
+
 		if (ev.kind === "tool_use") {
-			const next = events[i + 1];
-			if (next?.kind === "tool_result") {
-				items.push({
-					type: "tool",
-					id: ev.id,
-					toolUse: ev,
-					toolResult: next,
-				});
-				i++;
+			// Find matching tool_result by tool_use id; sub-agent results
+			// may not be adjacent once children stream between them.
+			let result: TodoStreamEvent | null = null;
+			if (ev.toolUseId) {
+				for (let j = i + 1; j < events.length; j++) {
+					const c = events[j];
+					if (c?.kind === "tool_result" && c.toolUseId === ev.toolUseId) {
+						result = c;
+						consumed.add(c.id);
+						break;
+					}
+				}
 			} else {
-				items.push({ type: "tool", id: ev.id, toolUse: ev, toolResult: null });
+				const next = events[i + 1];
+				if (next?.kind === "tool_result") {
+					result = next;
+					consumed.add(next.id);
+				}
 			}
-		} else if (ev.kind === "tool_result") {
-			items.push({ type: "message", id: ev.id, event: ev });
+			const node: Extract<StreamItem, { type: "tool" }> = {
+				type: "tool",
+				id: ev.id,
+				toolUse: ev,
+				toolResult: result,
+				children: [],
+			};
+			if (ev.toolUseId) byToolUseId.set(ev.toolUseId, node);
+			pending.push({ item: node, parentId: ev.parentToolUseId ?? null });
 		} else {
-			items.push({ type: "message", id: ev.id, event: ev });
+			pending.push({
+				item: { type: "message", id: ev.id, event: ev },
+				parentId: ev.parentToolUseId ?? null,
+			});
 		}
 	}
-	return items;
+
+	const roots: StreamItem[] = [];
+	for (const { item, parentId } of pending) {
+		const parent = parentId ? byToolUseId.get(parentId) : null;
+		if (parent) {
+			parent.children.push(item);
+		} else {
+			roots.push(item);
+		}
+	}
+	return roots;
 }
 
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
@@ -1283,21 +1322,29 @@ function ToolCallCard({
 }: {
 	item: Extract<StreamItem, { type: "tool" }>;
 }) {
-	const { toolUse, toolResult } = item;
+	const { toolUse, toolResult, children } = item;
 	const toolName = toolUse.label;
 	const secondary = extractSecondaryInfo(toolName, toolUse.text);
 	const hasResult = toolResult != null;
+	const isAgentCall = toolName === "Task" || children.length > 0;
 
 	return (
-		<details className="group text-xs">
+		<details className="group text-xs" open={isAgentCall}>
 			<summary className="list-none cursor-pointer select-none flex items-baseline gap-1 py-0.5 hover:bg-accent/30 rounded px-1 -mx-1 overflow-hidden">
 				<span className="shrink-0 text-muted-foreground/50 group-open:rotate-90 transition-transform text-[10px]">
 					▶
 				</span>
-				<span className="font-bold shrink-0">{toolName}</span>
+				<span className="font-bold shrink-0">
+					{toolName === "Task" ? "Agent" : toolName}
+				</span>
 				{secondary && (
 					<span className="font-mono text-[0.85em] text-primary/70 break-all line-clamp-2 min-w-0 flex-1">
 						{secondary}
+					</span>
+				)}
+				{children.length > 0 && (
+					<span className="shrink-0 text-[10px] text-muted-foreground">
+						({children.length})
 					</span>
 				)}
 				{!hasResult && (
@@ -1306,35 +1353,58 @@ function ToolCallCard({
 					</span>
 				)}
 			</summary>
-			<div className="my-1.5 ml-3 border border-border/40 rounded-md bg-muted/20 overflow-hidden">
-				<div className="grid grid-cols-[max-content_1fr] text-[11px]">
-					<div className="col-span-2 grid grid-cols-subgrid border-b border-border/30">
-						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
-							IN
-						</div>
-						<div className="py-1 pr-2 overflow-hidden">
-							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
-								{toolUse.text}
-							</pre>
+			<div
+				className={cn(
+					"my-1.5 border-l-2 pl-3",
+					isAgentCall ? "border-amber-500/50 ml-2" : "border-border/40 ml-3",
+				)}
+			>
+				<details className="text-[11px]">
+					<summary className="list-none cursor-pointer text-muted-foreground/70 hover:text-foreground py-0.5">
+						<span className="text-[10px]">▶ IN / OUT</span>
+					</summary>
+					<div className="mt-1 border border-border/40 rounded-md bg-muted/20 overflow-hidden">
+						<div className="grid grid-cols-[max-content_1fr] text-[11px]">
+							<div className="col-span-2 grid grid-cols-subgrid border-b border-border/30">
+								<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+									IN
+								</div>
+								<div className="py-1 pr-2 overflow-hidden">
+									<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
+										{toolUse.text}
+									</pre>
+								</div>
+							</div>
+							<div className="col-span-2 grid grid-cols-subgrid">
+								<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+									OUT
+								</div>
+								<div className="py-1 pr-2 overflow-hidden">
+									{toolResult ? (
+										<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
+											{toolResult.text}
+										</pre>
+									) : (
+										<span className="text-muted-foreground animate-pulse">
+											実行中…
+										</span>
+									)}
+								</div>
+							</div>
 						</div>
 					</div>
-					<div className="col-span-2 grid grid-cols-subgrid">
-						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
-							OUT
-						</div>
-						<div className="py-1 pr-2 overflow-hidden">
-							{toolResult ? (
-								<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
-									{toolResult.text}
-								</pre>
+				</details>
+				{children.length > 0 && (
+					<div className="mt-1 flex flex-col gap-1">
+						{children.map((child) =>
+							child.type === "tool" ? (
+								<ToolCallCard key={child.id} item={child} />
 							) : (
-								<span className="text-muted-foreground animate-pulse">
-									実行中…
-								</span>
-							)}
-						</div>
+								<MessageRow key={child.id} event={child.event} />
+							),
+						)}
 					</div>
-				</div>
+				)}
 			</div>
 		</details>
 	);

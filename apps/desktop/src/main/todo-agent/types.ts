@@ -164,6 +164,19 @@ export interface TodoStreamEvent {
 	text: string;
 	/** Optional raw payload for the "raw" / debug kind. */
 	raw?: unknown;
+	/**
+	 * Claude's own tool-use id (`toolu_…`) for tool_use events. Used as
+	 * the anchor that child events reference via `parentToolUseId`.
+	 */
+	toolUseId?: string;
+	/**
+	 * When a sub-agent (Task tool) makes its own tool calls, each stream
+	 * event carries a `parent_tool_use_id` pointing back at the parent
+	 * Task's tool_use id. The VSCode Claude Code extension uses this to
+	 * render children *inside* the parent Agent card instead of
+	 * interleaving them at the top level — we do the same.
+	 */
+	parentToolUseId?: string;
 }
 
 export interface TodoStreamUpdate {
