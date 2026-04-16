@@ -8,10 +8,12 @@ import {
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { Input } from "@superset/ui/input";
+import { Label } from "@superset/ui/label";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
+import { useNavigate } from "@tanstack/react-router";
 import type {
 	TodoSessionListEntry,
 	TodoStreamEvent,
@@ -26,6 +28,7 @@ import {
 } from "react";
 import {
 	HiMiniArrowPath,
+	HiMiniArrowTopRightOnSquare,
 	HiMiniChevronDown,
 	HiMiniChevronRight,
 	HiMiniCog6Tooth,
@@ -91,6 +94,10 @@ export function TodoManager({
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(false);
 	const [presetsDialogOpen, setPresetsDialogOpen] = useState(false);
+	// When true, the detail pane shows the inline "new TODO" composer
+	// instead of a selected session. Matches Antigravity IDE's behaviour
+	// where creating a new conversation replaces the main area.
+	const [composerOpen, setComposerOpen] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.listAll.useQuery(
 		undefined,
@@ -128,7 +135,7 @@ export function TodoManager({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
-				className="w-[2040px] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] h-[92vh] max-h-[1290px] p-0 gap-0 overflow-hidden flex flex-col rounded-xl"
+				className="w-[2040px] max-w-[calc(100vw-4rem)] sm:max-w-[calc(100vw-4rem)] h-[88vh] max-h-[1280px] p-0 gap-0 overflow-hidden flex flex-col rounded-xl shadow-2xl"
 				showCloseButton={false}
 			>
 				<DialogTitle className="sr-only">TODO Agent Manager</DialogTitle>
@@ -160,7 +167,10 @@ export function TodoManager({
 							type="button"
 							size="sm"
 							className="h-7 gap-1 px-2.5 text-xs rounded-md"
-							onClick={onRequestNewTodo}
+							onClick={() => {
+								setComposerOpen(true);
+								setSelectedId(null);
+							}}
 						>
 							<HiMiniPlus className="size-4" />
 							新しい TODO
@@ -278,14 +288,34 @@ export function TodoManager({
 					</div>
 
 					<div className="flex-1 min-w-0 min-h-0 flex flex-col">
-						{selected ? (
+						{composerOpen ? (
+							<TodoComposer
+								onCreated={(id) => {
+									setComposerOpen(false);
+									setSelectedId(id);
+								}}
+								onCancel={() => setComposerOpen(false)}
+							/>
+						) : selected ? (
 							<SessionDetail
 								session={selected}
 								onDeleted={() => setSelectedId(null)}
+								onClose={() => onOpenChange(false)}
 							/>
 						) : (
-							<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
-								セッションを選択すると詳細が表示されます。
+							<div className="flex flex-col h-full items-center justify-center gap-3 p-8">
+								<p className="text-sm text-muted-foreground">
+									セッションを選択すると詳細が表示されます。
+								</p>
+								<Button
+									type="button"
+									size="sm"
+									className="gap-1 h-8"
+									onClick={() => setComposerOpen(true)}
+								>
+									<HiMiniPlus className="size-4" />
+									新しい TODO を作成
+								</Button>
 							</div>
 						)}
 					</div>
@@ -548,9 +578,21 @@ function StatusDot({ status }: { status: string }) {
 interface SessionDetailProps {
 	session: TodoSession;
 	onDeleted: () => void;
+	onClose: () => void;
 }
 
-function SessionDetail({ session, onDeleted }: SessionDetailProps) {
+function SessionDetail({ session, onDeleted, onClose }: SessionDetailProps) {
+	const navigate = useNavigate();
+	const openWorkspace = useCallback(() => {
+		// Closing the AgentManager dialog first keeps focus behaviour sane:
+		// the router navigate + dialog unmount in one tick can drop focus
+		// traps into a weird state otherwise.
+		onClose();
+		void navigate({
+			to: "/v2-workspace/$workspaceId",
+			params: { workspaceId: session.workspaceId },
+		});
+	}, [navigate, onClose, session.workspaceId]);
 	const [intervention, setIntervention] = useState("");
 	const [starting, setStarting] = useState(false);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -819,6 +861,17 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 								中断
 							</Button>
 						)}
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							className="gap-1 h-7 text-xs"
+							onClick={openWorkspace}
+							title="このワークスペースを開く"
+						>
+							<HiMiniArrowTopRightOnSquare className="size-3.5" />
+							ワークスペース
+						</Button>
 						{isFinal && (
 							<Button
 								type="button"
@@ -1546,4 +1599,288 @@ function groupByWorkspace(sessions: TodoSession[]): SessionGroup[] {
 		groups.set(key, { key, label, sessions: [session] });
 	}
 	return Array.from(groups.values());
+}
+
+interface TodoComposerProps {
+	onCreated: (sessionId: string) => void;
+	onCancel: () => void;
+}
+
+/**
+ * Inline TODO creation form rendered inside the AgentManager's detail
+ * pane (mirrors Antigravity IDE's "New Conversation" UX where creating
+ * a new task stays inside the manager instead of opening a separate
+ * dialog). Replaces the old TodoModal flow when the user clicks
+ * "新しい TODO" from inside the AgentManager itself.
+ */
+function TodoComposer({ onCreated, onCancel }: TodoComposerProps) {
+	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
+	const { data: todoSettings } = electronTrpc.todoAgent.settings.get.useQuery();
+	const { data: presets } = electronTrpc.todoAgent.presets.list.useQuery();
+
+	const [workspaceId, setWorkspaceId] = useState<string>("");
+	const [title, setTitle] = useState("");
+	const [description, setDescription] = useState("");
+	const [goal, setGoal] = useState("");
+	const [verifyCommand, setVerifyCommand] = useState("");
+	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+
+	useEffect(() => {
+		if (!workspaceId && workspaces && workspaces.length > 0) {
+			setWorkspaceId(workspaces[0]?.id ?? "");
+		}
+	}, [workspaces, workspaceId]);
+
+	const maxIterations = todoSettings?.defaultMaxIterations ?? 10;
+	const maxWallClockSec = (todoSettings?.defaultMaxWallClockMin ?? 30) * 60;
+
+	const scopedPresets = useMemo(() => {
+		const all = presets ?? [];
+		const matches = (p: { workspaceId?: string | null }): boolean =>
+			p.workspaceId == null || p.workspaceId === workspaceId;
+		return {
+			system: all.filter(
+				(p) =>
+					((p as typeof p & { kind?: string }).kind ?? "system") === "system" &&
+					matches(p),
+			),
+			description: all.filter(
+				(p) =>
+					(p as typeof p & { kind?: string }).kind === "description" &&
+					matches(p),
+			),
+			goal: all.filter(
+				(p) =>
+					(p as typeof p & { kind?: string }).kind === "goal" && matches(p),
+			),
+		};
+	}, [presets, workspaceId]);
+
+	const createMut = electronTrpc.todoAgent.create.useMutation();
+	const utils = electronTrpc.useUtils();
+
+	const activeProject = useMemo(() => {
+		const ws = (workspaces ?? []).find((w) => w.id === workspaceId);
+		return ws
+			? (ws as typeof ws & { projectId?: string }).projectId
+			: undefined;
+	}, [workspaces, workspaceId]);
+
+	const canSubmit =
+		workspaceId.length > 0 &&
+		title.trim().length > 0 &&
+		description.trim().length > 0 &&
+		!submitting;
+
+	const handleCreate = useCallback(async () => {
+		if (!canSubmit) return;
+		setSubmitting(true);
+		try {
+			const selected = scopedPresets.system.find(
+				(p) => p.id === selectedPresetId,
+			);
+			const res = await createMut.mutateAsync({
+				workspaceId,
+				projectId: activeProject,
+				title: title.trim(),
+				description: description.trim(),
+				goal: goal.trim() || undefined,
+				verifyCommand: verifyCommand.trim() || undefined,
+				maxIterations,
+				maxWallClockSec,
+				customSystemPrompt: selected?.content ?? undefined,
+			});
+			await utils.todoAgent.listAll.invalidate();
+			toast.success("TODO を作成しました");
+			onCreated(res.sessionId);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "作成に失敗しました",
+			);
+			setSubmitting(false);
+		}
+	}, [
+		canSubmit,
+		createMut,
+		activeProject,
+		description,
+		goal,
+		maxIterations,
+		maxWallClockSec,
+		onCreated,
+		scopedPresets.system,
+		selectedPresetId,
+		title,
+		utils,
+		verifyCommand,
+		workspaceId,
+	]);
+
+	return (
+		<div className="flex flex-col h-full min-h-0 overflow-hidden">
+			<div className="shrink-0 border-b px-6 py-3 flex items-center justify-between">
+				<div>
+					<h2 className="text-sm font-semibold">新しい TODO</h2>
+					<p className="text-[11px] text-muted-foreground">
+						作成後、すぐに Start できます。
+					</p>
+				</div>
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					onClick={onCancel}
+					className="h-7 text-xs"
+				>
+					キャンセル
+				</Button>
+			</div>
+			<div className="flex-1 min-h-0 overflow-y-auto p-6">
+				<div className="max-w-2xl flex flex-col gap-4">
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-ws">対象ワークスペース</Label>
+						<select
+							id="composer-ws"
+							value={workspaceId}
+							onChange={(e) => setWorkspaceId(e.target.value)}
+							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+						>
+							{(workspaces ?? []).map((w) => (
+								<option key={w.id} value={w.id}>
+									{w.name}
+								</option>
+							))}
+						</select>
+					</div>
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-title">タイトル</Label>
+						<Input
+							id="composer-title"
+							value={title}
+							onChange={(e) => setTitle(e.target.value)}
+							placeholder="例: Issue #123 を修正"
+							maxLength={200}
+							autoFocus
+						/>
+					</div>
+					<div className="flex flex-col gap-1.5">
+						<div className="flex items-center justify-between">
+							<Label htmlFor="composer-desc">やって欲しいこと</Label>
+							{scopedPresets.description.length > 0 && (
+								<select
+									onChange={(e) => {
+										const p = scopedPresets.description.find(
+											(x) => x.id === e.target.value,
+										);
+										if (p) setDescription(p.content);
+										e.target.value = "";
+									}}
+									className="h-6 text-[10px] rounded bg-background border border-input px-1"
+									defaultValue=""
+								>
+									<option value="">テンプレから挿入</option>
+									{scopedPresets.description.map((p) => (
+										<option key={p.id} value={p.id}>
+											{p.name}
+										</option>
+									))}
+								</select>
+							)}
+						</div>
+						<Textarea
+							id="composer-desc"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="やってほしい作業を書く"
+							rows={4}
+						/>
+					</div>
+					<div className="flex flex-col gap-1.5">
+						<div className="flex items-center justify-between">
+							<Label htmlFor="composer-goal">
+								ゴール{" "}
+								<span className="text-[10px] text-muted-foreground">任意</span>
+							</Label>
+							{scopedPresets.goal.length > 0 && (
+								<select
+									onChange={(e) => {
+										const p = scopedPresets.goal.find(
+											(x) => x.id === e.target.value,
+										);
+										if (p) setGoal(p.content);
+										e.target.value = "";
+									}}
+									className="h-6 text-[10px] rounded bg-background border border-input px-1"
+									defaultValue=""
+								>
+									<option value="">テンプレから挿入</option>
+									{scopedPresets.goal.map((p) => (
+										<option key={p.id} value={p.id}>
+											{p.name}
+										</option>
+									))}
+								</select>
+							)}
+						</div>
+						<Textarea
+							id="composer-goal"
+							value={goal}
+							onChange={(e) => setGoal(e.target.value)}
+							placeholder="完了条件（空欄可）"
+							rows={2}
+						/>
+					</div>
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-verify">
+							Verify{" "}
+							<span className="text-[10px] text-muted-foreground">任意</span>
+						</Label>
+						<Input
+							id="composer-verify"
+							value={verifyCommand}
+							onChange={(e) => setVerifyCommand(e.target.value)}
+							placeholder="例: bun test"
+						/>
+					</div>
+					{scopedPresets.system.length > 0 && (
+						<div className="flex flex-col gap-1.5">
+							<Label>システムプロンプトプリセット</Label>
+							<select
+								value={selectedPresetId ?? ""}
+								onChange={(e) => setSelectedPresetId(e.target.value || null)}
+								className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+							>
+								<option value="">（未選択）</option>
+								{scopedPresets.system.map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.name}
+									</option>
+								))}
+							</select>
+						</div>
+					)}
+				</div>
+			</div>
+			<div className="shrink-0 border-t px-6 py-3 flex items-center justify-end gap-2">
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					onClick={onCancel}
+					disabled={submitting}
+				>
+					キャンセル
+				</Button>
+				<Button
+					type="button"
+					size="sm"
+					onClick={handleCreate}
+					disabled={!canSubmit}
+				>
+					{submitting ? "作成中…" : "作成"}
+				</Button>
+			</div>
+		</div>
+	);
 }

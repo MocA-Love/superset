@@ -162,9 +162,19 @@ class TodoSupervisor {
 	}
 
 	/**
-	 * Queue a free-form user intervention that will be prepended to the
-	 * next turn's prompt. In the headless architecture we cannot inject
-	 * mid-stream, so interventions land at the next turn boundary.
+	 * Queue a free-form user intervention. Behaviour by session state:
+	 *
+	 *   - Running (queued / preparing / running / verifying): append to
+	 *     `pendingIntervention`; the active loop picks it up on the next
+	 *     iteration boundary (or the 500ms poll interrupts the turn mid-stream).
+	 *   - Terminal (done / failed / aborted / escalated) with a known
+	 *     `claudeSessionId`: revive the session by flipping it back to
+	 *     `queued`, storing the intervention, and relaunching `start()`.
+	 *     The next iteration resumes the same Claude session via
+	 *     `--resume <claudeSessionId>` so the previous context is intact
+	 *     and the intervention is the user's new turn message.
+	 *   - Terminal without a `claudeSessionId`: silently no-op — there
+	 *     is no session to resume.
 	 */
 	queueIntervention(sessionId: string, data: string): void {
 		const store = getTodoSessionStore();
@@ -172,6 +182,26 @@ class TodoSupervisor {
 		if (!existing) return;
 		const previous = existing.pendingIntervention?.trim();
 		const next = [previous, data.trim()].filter(Boolean).join("\n\n");
+		const terminal =
+			existing.status === "done" ||
+			existing.status === "failed" ||
+			existing.status === "aborted" ||
+			existing.status === "escalated";
+		if (terminal) {
+			if (!existing.claudeSessionId) {
+				// Cannot revive — no Claude session to resume into. Drop
+				// silently per spec.
+				return;
+			}
+			store.update(sessionId, {
+				pendingIntervention: next,
+				status: "queued",
+				phase: "queued",
+				completedAt: null,
+			});
+			void this.start(sessionId);
+			return;
+		}
 		store.update(sessionId, { pendingIntervention: next });
 	}
 
