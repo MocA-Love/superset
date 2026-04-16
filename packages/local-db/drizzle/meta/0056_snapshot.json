@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "291476c4-5235-4628-b159-d2e09043728d",
+  "id": "7fb6bb1c-1573-409b-ab09-670bfff160a7",
   "prevId": "b96cd168-974e-4c4f-9eae-54dc1ffc1cd6",
   "tables": {
     "browser_history": {
@@ -1778,6 +1778,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'skip'"
+        },
+        "auto_sync_before_fire": {
+          "name": "auto_sync_before_fire",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "last_run_at": {
           "name": "last_run_at",

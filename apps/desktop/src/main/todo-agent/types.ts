@@ -90,6 +90,9 @@ export const todoSettingsSchema = z.object({
 	defaultMaxIterations: z.number().int().min(1).max(100).default(10),
 	defaultMaxWallClockMin: z.number().int().min(1).max(240).default(30),
 	maxConcurrentTasks: z.number().int().min(1).max(10).default(1),
+	// 0 = 無制限 (手動削除のみ). 1-365 = その日数より古い終了済み
+	// セッションを起動時に自動削除する (queued / running / paused は対象外)。
+	sessionRetentionDays: z.number().int().min(0).max(365).default(0),
 });
 
 export type TodoSettings = z.infer<typeof todoSettingsSchema>;
@@ -216,6 +219,7 @@ export const todoScheduleCreateInputSchema = z
 			.default(1800),
 		customSystemPrompt: z.string().trim().max(20_000).nullish(),
 		overlapMode: todoScheduleOverlapModeSchema.default("skip"),
+		autoSyncBeforeFire: z.boolean().default(false),
 	})
 	.refine(
 		(v) =>
@@ -254,6 +258,7 @@ const todoScheduleBaseSchema = z.object({
 		.max(60 * 60 * 4),
 	customSystemPrompt: z.string().trim().max(20_000).nullish(),
 	overlapMode: todoScheduleOverlapModeSchema,
+	autoSyncBeforeFire: z.boolean(),
 });
 
 // projectId is intentionally omitted from the update surface: a schedule's

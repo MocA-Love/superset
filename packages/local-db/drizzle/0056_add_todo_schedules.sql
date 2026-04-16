@@ -18,6 +18,7 @@ CREATE TABLE `todo_schedules` (
 	`max_wall_clock_sec` integer DEFAULT 1800 NOT NULL,
 	`custom_system_prompt` text,
 	`overlap_mode` text DEFAULT 'skip' NOT NULL,
+	`auto_sync_before_fire` integer DEFAULT false NOT NULL,
 	`last_run_at` integer,
 	`last_run_session_id` text,
 	`next_run_at` integer,

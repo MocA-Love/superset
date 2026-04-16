@@ -21,13 +21,30 @@ import type {
  */
 class TodoScheduleStore {
 	private readonly emitter = new EventEmitter();
+	/**
+	 * Cached init failure (kind="failed", scheduleId="__scheduler_init__").
+	 * The renderer subscribes after it mounts, which is well after the
+	 * main-process bootstrap emits the failure. Replaying it on first
+	 * subscription ensures the user still sees the toast.
+	 */
+	private pendingInitFailure: TodoScheduleFireEvent | null = null;
 
 	emitFire(event: TodoScheduleFireEvent): void {
+		if (event.kind === "failed" && event.scheduleId === "__scheduler_init__") {
+			this.pendingInitFailure = event;
+		}
 		this.emitter.emit("fire", event);
 	}
 
 	onFire(handler: (event: TodoScheduleFireEvent) => void): () => void {
 		this.emitter.on("fire", handler);
+		if (this.pendingInitFailure) {
+			const replayed = this.pendingInitFailure;
+			this.pendingInitFailure = null;
+			// Replay asynchronously so the subscriber is fully wired up
+			// before its handler runs, matching ordinary emit timing.
+			queueMicrotask(() => handler(replayed));
+		}
 		return () => {
 			this.emitter.off("fire", handler);
 		};
@@ -55,6 +72,7 @@ class TodoScheduleStore {
 			maxWallClockSec: input.maxWallClockSec,
 			customSystemPrompt: input.customSystemPrompt ?? null,
 			overlapMode: input.overlapMode,
+			autoSyncBeforeFire: input.autoSyncBeforeFire,
 			nextRunAt: input.nextRunAt,
 		};
 
@@ -86,6 +104,8 @@ class TodoScheduleStore {
 		if (rest.customSystemPrompt !== undefined)
 			patch.customSystemPrompt = rest.customSystemPrompt ?? null;
 		if (rest.overlapMode !== undefined) patch.overlapMode = rest.overlapMode;
+		if (rest.autoSyncBeforeFire !== undefined)
+			patch.autoSyncBeforeFire = rest.autoSyncBeforeFire;
 		if (rest.workspaceId !== undefined)
 			patch.workspaceId = rest.workspaceId ?? null;
 		// projectId is intentionally not patched here — it is immutable

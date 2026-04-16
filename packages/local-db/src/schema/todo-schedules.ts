@@ -61,6 +61,16 @@ export const todoSchedules = sqliteTable(
 			.notNull()
 			.default("skip"),
 
+		// Opt-in: before firing on the project's main repo path, do
+		// `git fetch && git checkout <defaultBranch> && git pull
+		// --ff-only`. If the working tree has uncommitted changes the
+		// scheduler skips the fire rather than risk destroying the
+		// user's work. Only applies when workspaceId is null (project
+		// main repo mode); worktree workspaces are unaffected.
+		autoSyncBeforeFire: integer("auto_sync_before_fire", { mode: "boolean" })
+			.notNull()
+			.default(false),
+
 		lastRunAt: integer("last_run_at"),
 		lastRunSessionId: text("last_run_session_id"),
 		// Cached next fire time so the scheduler can cheaply scan "due"

@@ -71,6 +71,7 @@ export function ScheduleEditorDialog({
 	const [maxIterations, setMaxIterations] = useState(10);
 	const [maxWallClockMin, setMaxWallClockMin] = useState(30);
 	const [overlapMode, setOverlapMode] = useState<"skip" | "queue">("skip");
+	const [autoSyncBeforeFire, setAutoSyncBeforeFire] = useState(false);
 	const [enabled, setEnabled] = useState(true);
 	const [freq, setFreq] = useState<FrequencyValue>(DEFAULT_FREQUENCY);
 	const [submitting, setSubmitting] = useState(false);
@@ -89,6 +90,7 @@ export function ScheduleEditorDialog({
 			setMaxIterations(initial.maxIterations);
 			setMaxWallClockMin(Math.round(initial.maxWallClockSec / 60));
 			setOverlapMode(initial.overlapMode);
+			setAutoSyncBeforeFire(initial.autoSyncBeforeFire);
 			setEnabled(initial.enabled);
 			setFreq({
 				frequency: initial.frequency,
@@ -110,6 +112,7 @@ export function ScheduleEditorDialog({
 			setMaxIterations(10);
 			setMaxWallClockMin(30);
 			setOverlapMode("skip");
+			setAutoSyncBeforeFire(false);
 			setEnabled(true);
 			setFreq(DEFAULT_FREQUENCY);
 		}
@@ -184,6 +187,7 @@ export function ScheduleEditorDialog({
 				maxIterations,
 				maxWallClockSec: maxWallClockMin * 60,
 				overlapMode,
+				autoSyncBeforeFire,
 			};
 
 			if (initial) {
@@ -312,6 +316,29 @@ export function ScheduleEditorDialog({
 								</SelectContent>
 							</Select>
 						</div>
+
+						{!workspaceId && (
+							<div className="flex items-start gap-2 mt-1">
+								<input
+									id="schedule-auto-sync"
+									type="checkbox"
+									checked={autoSyncBeforeFire}
+									onChange={(e) => setAutoSyncBeforeFire(e.target.checked)}
+									disabled={submitting}
+									className="size-4 mt-0.5"
+								/>
+								<Label
+									htmlFor="schedule-auto-sync"
+									className="text-xs cursor-pointer leading-4"
+								>
+									実行前に main ブランチを最新化する
+									<span className="block text-[10px] text-muted-foreground mt-0.5">
+										git fetch / checkout / pull --ff-only を実行。
+										未コミット変更があるときはその回の実行をスキップします。
+									</span>
+								</Label>
+							</div>
+						)}
 
 						<div className="flex items-center gap-2 mt-1">
 							<input

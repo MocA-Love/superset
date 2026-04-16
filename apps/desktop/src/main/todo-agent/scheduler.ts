@@ -1,6 +1,7 @@
 import type { SelectTodoSchedule, SelectTodoSession } from "@superset/local-db";
 import { CronExpressionParser } from "cron-parser";
 import { getTodoScheduleStore } from "./schedule-store";
+import { autoSyncProjectMain } from "./schedule-sync";
 import {
 	ensureProjectBranchWorkspaceId,
 	getTodoSessionStore,
@@ -271,6 +272,32 @@ class TodoScheduler {
 				firedAt,
 			});
 			return;
+		}
+
+		// Opt-in: freshen the project main repo before firing. Applies
+		// only when the schedule itself has no workspaceId (we refuse to
+		// yank HEAD on a worktree workspace — that would rewrite someone
+		// else's working branch). If the tree is dirty we deliberately
+		// skip the fire rather than stash the user's work.
+		if (schedule.autoSyncBeforeFire && schedule.workspaceId === null) {
+			const syncResult = await autoSyncProjectMain(worktreePath);
+			if (syncResult.kind !== "ok") {
+				store.recordRun({
+					id: schedule.id,
+					sessionId: null,
+					firedAt,
+					nextRunAt,
+				});
+				this.emit({
+					scheduleId: schedule.id,
+					scheduleName: schedule.name,
+					kind: syncResult.kind === "dirty" ? "skipped" : "failed",
+					sessionId: null,
+					message: syncResult.message,
+					firedAt,
+				});
+				return;
+			}
 		}
 
 		try {
