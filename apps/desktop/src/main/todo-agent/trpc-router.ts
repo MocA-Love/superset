@@ -7,6 +7,7 @@ import { observable } from "@trpc/server/observable";
 import { desc, eq } from "drizzle-orm";
 import { publicProcedure, router } from "lib/trpc";
 import { localDb } from "main/lib/local-db";
+import { workspaceInitManager } from "main/lib/workspace-init-manager";
 import { z } from "zod";
 import { describeEnhanceFailure, enhanceTodoText } from "./enhance-text";
 import {
@@ -37,6 +38,44 @@ export const createTodoAgentRouter = () => {
 		create: publicProcedure
 			.input(todoCreateInputSchema)
 			.mutation(async ({ input }) => {
+				// When the UI creates a fresh workspace+worktree immediately
+				// before creating the TODO (the "新しい worktree を作成して実行"
+				// checkbox), `workspaces.create` returns while `git worktree
+				// add` is still running in the background. Materializing the
+				// artifact directory now would mkdir inside the future
+				// worktree path, leaving it non-empty and causing the
+				// subsequent `git worktree add` to fail — the symptom users
+				// see as the sidebar error + "ブランチ取得中…" that never
+				// resolves. Block until init is done (or already no-op) so
+				// prepareArtifacts runs against a real worktree.
+				//
+				// `waitForInit` has a 30s internal timeout that resolves
+				// silently even if init is still running, so a slow
+				// fetch/clone path could still slip through. Loop on the
+				// `isInitializing` flag so we really block until the job
+				// reaches a terminal state, up to a generous ceiling.
+				const INIT_WAIT_STEP_MS = 30_000;
+				const INIT_WAIT_CEILING_MS = 10 * 60_000;
+				const waitStartedAt = Date.now();
+				while (workspaceInitManager.isInitializing(input.workspaceId)) {
+					if (Date.now() - waitStartedAt > INIT_WAIT_CEILING_MS) {
+						throw new TRPCError({
+							code: "TIMEOUT",
+							message: `todo-agent: workspace ${input.workspaceId} の初期化が時間内に終わりませんでした`,
+						});
+					}
+					await workspaceInitManager.waitForInit(
+						input.workspaceId,
+						INIT_WAIT_STEP_MS,
+					);
+				}
+				if (workspaceInitManager.hasFailed(input.workspaceId)) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: `todo-agent: workspace ${input.workspaceId} の初期化に失敗しました`,
+					});
+				}
+
 				const store = getTodoSessionStore();
 				const worktreePath = resolveWorktreePath(input.workspaceId);
 				if (!worktreePath) {
