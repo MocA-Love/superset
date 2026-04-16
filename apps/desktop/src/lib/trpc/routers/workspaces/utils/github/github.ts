@@ -19,7 +19,12 @@ import {
 	readCachedGitHubStatus,
 	readCachedPullRequestComments,
 } from "./cache";
-import { fetchPullRequestComments, resolveReviewThread } from "./comments";
+import {
+	addPullRequestConversationComment,
+	fetchPullRequestComments,
+	replyToReviewThread,
+	resolveReviewThread,
+} from "./comments";
 import {
 	trackGitHubOperation,
 	trackGitHubOperationEvent,
@@ -49,7 +54,12 @@ export interface PullRequestCommentsTarget {
 	prUrl?: string | null;
 }
 
-export { clearGitHubCachesForWorktree, resolveReviewThread };
+export {
+	addPullRequestConversationComment,
+	clearGitHubCachesForWorktree,
+	replyToReviewThread,
+	resolveReviewThread,
+};
 
 function getPullRequestCommentsRepoNameWithOwner(
 	target: PullRequestCommentsTarget,

@@ -24,6 +24,7 @@ import {
 	refreshDefaultBranch,
 } from "../utils/git";
 import {
+	addPullRequestConversationComment,
 	clearGitHubCachesForWorktree,
 	extractNwoFromUrl,
 	fetchCheckJobSteps,
@@ -34,6 +35,7 @@ import {
 	fetchStructuredJobLogs,
 	getRepoContext,
 	type PullRequestCommentsTarget,
+	replyToReviewThread,
 } from "../utils/github";
 import { githubSyncService } from "../utils/github/github-sync-service";
 import { GHIdentityCandidatesResponseSchema } from "../utils/github/types";
@@ -1648,6 +1650,72 @@ export const createGitStatusProcedures = () => {
 					],
 					{ cwd: repoPath },
 				);
+
+				clearGitHubCachesForWorktree(repoPath);
+				if (worktree) {
+					localDb
+						.update(worktrees)
+						.set({ githubStatus: null })
+						.where(eq(worktrees.id, worktree.id))
+						.run();
+				}
+
+				return { success: true };
+			}),
+
+		replyToPullRequestComment: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					body: z.string().trim().min(1),
+					threadId: z.string().min(1).optional(),
+					pullRequestNumber: z.number().int().positive().optional(),
+					pullRequestUrl: z.string().optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const { repoPath, worktree } = resolveRepoPathForWorkspace(
+					input.workspaceId,
+				);
+
+				if (input.threadId) {
+					await replyToReviewThread({
+						worktreePath: repoPath,
+						threadId: input.threadId,
+						body: input.body,
+					});
+				} else {
+					const githubStatus = await fetchGitHubPRStatus(repoPath);
+					const pullRequestNumber =
+						input.pullRequestNumber ?? githubStatus?.pr?.number;
+					if (!pullRequestNumber) {
+						throw new TRPCError({
+							code: "PRECONDITION_FAILED",
+							message: "No pull request found for this workspace.",
+						});
+					}
+
+					const prUrl = input.pullRequestUrl ?? githubStatus?.pr?.url;
+					const repoNameWithOwner = prUrl
+						? extractNwoFromUrl(prUrl)
+						: githubStatus?.repoUrl
+							? extractNwoFromUrl(githubStatus.repoUrl)
+							: null;
+					if (!repoNameWithOwner) {
+						throw new TRPCError({
+							code: "PRECONDITION_FAILED",
+							message:
+								"Could not determine the repository for this pull request.",
+						});
+					}
+
+					await addPullRequestConversationComment({
+						worktreePath: repoPath,
+						repoNameWithOwner,
+						pullRequestNumber,
+						body: input.body,
+					});
+				}
 
 				clearGitHubCachesForWorktree(repoPath);
 				if (worktree) {

@@ -164,6 +164,86 @@ export async function resolveReviewThread({
 	}
 }
 
+const ADD_REVIEW_THREAD_REPLY_MUTATION = `
+mutation AddPullRequestReviewThreadReply($threadId: ID!, $body: String!) {
+	addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) {
+		comment {
+			id
+		}
+	}
+}
+`;
+
+export async function replyToReviewThread({
+	worktreePath,
+	threadId,
+	body,
+}: {
+	worktreePath: string;
+	threadId: string;
+	body: string;
+}): Promise<void> {
+	const { stdout } = await trackGitHubOperation({
+		name: "gh_graphql_reply_review_thread",
+		category: "gh",
+		worktreePath,
+		fn: () =>
+			execWithShellEnv(
+				"gh",
+				[
+					"api",
+					"graphql",
+					"-f",
+					`query=${ADD_REVIEW_THREAD_REPLY_MUTATION}`,
+					"-F",
+					`threadId=${threadId}`,
+					"-f",
+					`body=${body}`,
+				],
+				{ cwd: worktreePath },
+			),
+	});
+
+	const json = JSON.parse(stdout.trim());
+	if (Array.isArray(json.errors) && json.errors.length > 0) {
+		const msg = json.errors
+			.map((e: { message?: string }) => e.message)
+			.join("; ");
+		throw new Error(msg || "GraphQL mutation failed");
+	}
+}
+
+export async function addPullRequestConversationComment({
+	worktreePath,
+	repoNameWithOwner,
+	pullRequestNumber,
+	body,
+}: {
+	worktreePath: string;
+	repoNameWithOwner: string;
+	pullRequestNumber: number;
+	body: string;
+}): Promise<void> {
+	await trackGitHubOperation({
+		name: "gh_api_add_issue_comment",
+		category: "gh",
+		worktreePath,
+		fn: () =>
+			execWithShellEnv(
+				"gh",
+				[
+					"api",
+					"--method",
+					"POST",
+					`repos/${repoNameWithOwner}/issues/${pullRequestNumber}/comments`,
+					"-f",
+					`body=${body}`,
+				],
+				{ cwd: worktreePath },
+			),
+	});
+}
+
 function getReviewThreadCommentId(
 	comment: ReviewThreadCommentNode,
 ): string | null {

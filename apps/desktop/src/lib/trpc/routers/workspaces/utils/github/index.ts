@@ -1,5 +1,6 @@
 export type { PullRequestCommentsTarget } from "./github";
 export {
+	addPullRequestConversationComment,
 	clearGitHubCachesForWorktree,
 	fetchCheckJobSteps,
 	fetchGitHubPRComments,
@@ -7,6 +8,7 @@ export {
 	fetchGitHubPreviewUrl,
 	fetchJobStatuses,
 	fetchStructuredJobLogs,
+	replyToReviewThread,
 	resolveReviewThread,
 } from "./github";
 export { isRateLimited } from "./github-rate-limiter";

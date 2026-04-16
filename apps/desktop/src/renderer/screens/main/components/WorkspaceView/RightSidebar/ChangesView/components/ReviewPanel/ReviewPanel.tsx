@@ -29,6 +29,7 @@ import {
 	LuExternalLink,
 	LuLoaderCircle,
 	LuRefreshCw,
+	LuReply,
 	LuX,
 } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
@@ -44,6 +45,7 @@ import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs";
 import { CheckSteps } from "./components/CheckSteps";
+import { ReplyDialog } from "./components/ReplyDialog";
 import {
 	ALL_COMMENTS_COPY_ACTION_KEY,
 	buildAllCommentsClipboardText,
@@ -172,6 +174,9 @@ export function ReviewPanel({
 	const [assigneeSearch, setAssigneeSearch] = useState("");
 	const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
 	const [isDraftTogglePending, setIsDraftTogglePending] = useState(false);
+	const [replyTargetComment, setReplyTargetComment] =
+		useState<PullRequestComment | null>(null);
+	const [isReplySubmitting, setIsReplySubmitting] = useState(false);
 	const [identityPopoverOpen, setIdentityPopoverOpen] = useState<
 		"reviewers" | "assignees" | null
 	>(null);
@@ -186,6 +191,8 @@ export function ReviewPanel({
 		electronTrpc.workspaces.setPullRequestDraftState.useMutation();
 	const setPullRequestThreadResolutionMutation =
 		electronTrpc.workspaces.setPullRequestThreadResolution.useMutation();
+	const replyToPullRequestCommentMutation =
+		electronTrpc.workspaces.replyToPullRequestComment.useMutation();
 	const updatePullRequestReviewersMutation =
 		electronTrpc.workspaces.updatePullRequestReviewers.useMutation();
 	const updatePullRequestAssigneesMutation =
@@ -280,6 +287,44 @@ export function ReviewPanel({
 			actionKey: getCommentCopyActionKey(comment.id),
 			errorLabel: "Failed to copy comment",
 		});
+	};
+
+	const handleOpenReplyDialog = (comment: PullRequestComment) => {
+		setReplyTargetComment(comment);
+	};
+
+	const handleReplyDialogOpenChange = (open: boolean) => {
+		if (isReplySubmitting) {
+			return;
+		}
+		if (!open) {
+			setReplyTargetComment(null);
+		}
+	};
+
+	const handleSubmitReply = async (body: string) => {
+		if (!resolvedWorkspaceId || !replyTargetComment) {
+			return;
+		}
+
+		setIsReplySubmitting(true);
+		try {
+			await replyToPullRequestCommentMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				body,
+				threadId: replyTargetComment.threadId,
+				pullRequestNumber: pr?.number,
+				pullRequestUrl: pr?.url,
+			});
+			toast.success("Reply posted");
+			setReplyTargetComment(null);
+			void refreshReview("full");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to post reply: ${message}`);
+		} finally {
+			setIsReplySubmitting(false);
+		}
 	};
 
 	const refreshReview = async (scope: "full" | "status" = "full") => {
@@ -1035,22 +1080,43 @@ export function ReviewPanel({
 								</TooltipContent>
 							</Tooltip>
 						) : null}
-						<button
-							type="button"
-							className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-							onClick={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-								handleCopySingleComment(comment);
-							}}
-							aria-label={isCopied ? "Copied comment" : "Copy comment"}
-						>
-							{isCopied ? (
-								<LuCheck className="size-3" />
-							) : (
-								<LuCopy className="size-3" />
-							)}
-						</button>
+						<div className="flex items-center gap-1">
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										type="button"
+										className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+										onClick={(event) => {
+											event.preventDefault();
+											event.stopPropagation();
+											handleOpenReplyDialog(comment);
+										}}
+										aria-label="Reply to comment"
+									>
+										<LuReply className="size-3" />
+									</button>
+								</TooltipTrigger>
+								<TooltipContent side="left" showArrow={false}>
+									Reply
+								</TooltipContent>
+							</Tooltip>
+							<button
+								type="button"
+								className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+								onClick={(event) => {
+									event.preventDefault();
+									event.stopPropagation();
+									handleCopySingleComment(comment);
+								}}
+								aria-label={isCopied ? "Copied comment" : "Copy comment"}
+							>
+								{isCopied ? (
+									<LuCheck className="size-3" />
+								) : (
+									<LuCopy className="size-3" />
+								)}
+							</button>
+						</div>
 					</div>
 				</div>
 			);
@@ -1391,6 +1457,14 @@ export function ReviewPanel({
 					</CollapsibleContent>
 				</Collapsible>
 			)}
+
+			<ReplyDialog
+				comment={replyTargetComment}
+				open={replyTargetComment !== null}
+				onOpenChange={handleReplyDialogOpenChange}
+				onSubmit={handleSubmitReply}
+				isSubmitting={isReplySubmitting}
+			/>
 		</div>
 	);
 }
