@@ -190,7 +190,7 @@ export function TodoModal({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-xl rounded-xl">
+			<DialogContent className="max-w-xl sm:max-w-xl rounded-xl">
 				<DialogHeader>
 					<DialogTitle>新しい自律 TODO</DialogTitle>
 				</DialogHeader>
