@@ -107,6 +107,9 @@ export default defineConfig({
 					"terminal-host": resolve("src/main/terminal-host/index.ts"),
 					// PTY subprocess - spawned by terminal-host for each terminal
 					"pty-subprocess": resolve("src/main/terminal-host/pty-subprocess.ts"),
+					// TODO agent daemon - owns `claude -p` children so autonomous
+					// TODO sessions survive app restarts (issue #237).
+					"todo-daemon": resolve("src/main/todo-daemon/index.ts"),
 					// Worker-thread entrypoint for heavy git/status computations
 					"git-task-worker": resolve("src/main/git-task-worker.ts"),
 					// Workspace service - local HTTP/tRPC server per org

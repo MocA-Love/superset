@@ -415,6 +415,16 @@ app.on("before-quit", async (event) => {
 	} catch (error) {
 		console.warn("[main] todo-agent scheduler stop skipped", error);
 	}
+	// Disconnect from the todo-agent daemon but leave it running so
+	// `claude -p` child processes survive the app restart (issue #237).
+	try {
+		const { stopTodoAgentDaemonBridge } = await import(
+			"./todo-agent/daemon-bridge"
+		);
+		stopTodoAgentDaemonBridge();
+	} catch (error) {
+		console.warn("[main] todo-agent daemon bridge stop skipped", error);
+	}
 	try {
 		const mod = await loadVscodeShim();
 		await mod.shutdownExtensionHost();
@@ -558,6 +568,18 @@ if (!gotTheLock) {
 			cleanupOldSessions();
 		} catch (error) {
 			console.warn("[main] todo-agent session cleanup skipped", error);
+		}
+
+		// Fork-local: connect to the todo-agent daemon (spawning it if
+		// necessary). The daemon owns `claude -p` child processes so
+		// running TODO sessions survive app restarts — issue #237.
+		try {
+			const { startTodoAgentDaemonBridge } = await import(
+				"./todo-agent/daemon-bridge"
+			);
+			await startTodoAgentDaemonBridge();
+		} catch (error) {
+			console.warn("[main] todo-agent daemon bridge failed", error);
 		}
 
 		// Fork-local: start the todo-agent schedule scheduler so cron-like
