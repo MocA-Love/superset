@@ -88,7 +88,8 @@ class TodoScheduleStore {
 		if (rest.overlapMode !== undefined) patch.overlapMode = rest.overlapMode;
 		if (rest.workspaceId !== undefined)
 			patch.workspaceId = rest.workspaceId ?? null;
-		if (rest.projectId !== undefined) patch.projectId = rest.projectId;
+		// projectId is intentionally not patched here — it is immutable
+		// once the schedule is created.
 
 		return localDb
 			.update(todoSchedules)
@@ -152,15 +153,6 @@ class TodoScheduleStore {
 			.where(eq(todoSchedules.id, id))
 			.run();
 		return result.changes > 0;
-	}
-
-	listForWorkspace(workspaceId: string): SelectTodoSchedule[] {
-		return localDb
-			.select()
-			.from(todoSchedules)
-			.where(eq(todoSchedules.workspaceId, workspaceId))
-			.orderBy(desc(todoSchedules.createdAt))
-			.all();
 	}
 
 	listForProject(projectId: string): SelectTodoSchedule[] {

@@ -9,7 +9,7 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, not } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
@@ -452,7 +452,32 @@ export function ensureProjectBranchWorkspaceId(
 		.returning({ id: workspaces.id })
 		.get();
 
-	if (inserted) return inserted.id;
+	if (inserted) {
+		// Mirror the standard workspace-create flow: bump every other
+		// workspace in the project by +1 so the new branch workspace
+		// lands uniquely at tabOrder 0 instead of colliding with an
+		// existing 0-ordered worktree (which would yield a
+		// non-deterministic sort in the sidebar).
+		const siblings = localDb
+			.select({ id: workspaces.id, tabOrder: workspaces.tabOrder })
+			.from(workspaces)
+			.where(
+				and(
+					eq(workspaces.projectId, projectId),
+					not(eq(workspaces.id, inserted.id)),
+					isNull(workspaces.deletingAt),
+				),
+			)
+			.all();
+		for (const sibling of siblings) {
+			localDb
+				.update(workspaces)
+				.set({ tabOrder: (sibling.tabOrder ?? 0) + 1 })
+				.where(eq(workspaces.id, sibling.id))
+				.run();
+		}
+		return inserted.id;
+	}
 
 	// Race: another path materialized it between our check and insert.
 	const raced = localDb

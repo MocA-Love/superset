@@ -42,6 +42,12 @@ const DEFAULT_FREQUENCY: FrequencyValue = {
 	cronExpr: null,
 };
 
+// Sentinel for the "run on the project's main repo (no specific worktree)"
+// option in the 実行対象 Select. Kept out of the persisted workspaceId
+// space — translated to null when saving, and back to empty string when
+// loading an initial row with workspaceId = null.
+const MAIN_REPO_SENTINEL = "__main__";
+
 export function ScheduleEditorDialog({
 	open,
 	onOpenChange,
@@ -247,15 +253,17 @@ export function ScheduleEditorDialog({
 						<div className="flex flex-col gap-1.5">
 							<Label className="text-xs">実行対象</Label>
 							<Select
-								value={workspaceId || "__main__"}
-								onValueChange={(v) => setWorkspaceId(v === "__main__" ? "" : v)}
+								value={workspaceId || MAIN_REPO_SENTINEL}
+								onValueChange={(v) =>
+									setWorkspaceId(v === MAIN_REPO_SENTINEL ? "" : v)
+								}
 								disabled={submitting || !projectId}
 							>
 								<SelectTrigger className="h-8 text-xs">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="__main__">
+									<SelectItem value={MAIN_REPO_SENTINEL}>
 										プロジェクト本体 (main)
 									</SelectItem>
 									{(workspaces ?? [])

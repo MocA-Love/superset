@@ -256,7 +256,12 @@ const todoScheduleBaseSchema = z.object({
 	overlapMode: todoScheduleOverlapModeSchema,
 });
 
+// projectId is intentionally omitted from the update surface: a schedule's
+// project is immutable, otherwise `lastRunSessionId` could point at a
+// session from a different project than the schedule currently belongs to.
+// Users who want to move a schedule to another project should recreate it.
 export const todoScheduleUpdateInputSchema = todoScheduleBaseSchema
+	.omit({ projectId: true })
 	.partial()
 	.extend({ id: z.string().min(1) });
 
