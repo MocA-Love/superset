@@ -15,7 +15,15 @@ async function gitOut(args: string[], cwd: string): Promise<string> {
 	try {
 		const { stdout } = await execGitWithShellPath(args, { cwd });
 		return stdout;
-	} catch {
+	} catch (err) {
+		// Log instead of swallowing silently so broken git queries surface
+		// in the main-process log. The caller still treats empty stdout as
+		// "no data", so the UX is unchanged on real failures.
+		console.warn("[todo-agent/git-status] git command failed", {
+			args,
+			cwd,
+			err: err instanceof Error ? err.message : String(err),
+		});
 		return "";
 	}
 }
@@ -58,8 +66,15 @@ const COMMIT_FORMAT = ["%H", "%h", "%s", "%an", "%aI"].join(COMMIT_DELIM);
 export async function getSessionGitSnapshot(params: {
 	cwd: string;
 	startHeadSha: string | null;
+	/** Millisecond timestamp of when the supervisor started this run.
+	 *  Used as a last-resort fallback when `startHeadSha..HEAD` returns
+	 *  no commits despite HEAD having moved (happens when Claude rebased
+	 *  or switched branches so the original SHA is no longer an
+	 *  ancestor). In that case we surface recent commits by time instead
+	 *  of showing an empty history. */
+	startedAt?: number | null;
 }): Promise<SessionGitSnapshot> {
-	const { cwd, startHeadSha } = params;
+	const { cwd, startHeadSha, startedAt } = params;
 
 	const [branchOut, currentOut] = await Promise.all([
 		gitOut(["rev-parse", "--abbrev-ref", "HEAD"], cwd),
@@ -71,16 +86,8 @@ export async function getSessionGitSnapshot(params: {
 	// Commits produced since the session started. If start and current
 	// are the same (no new commits yet) this returns an empty list.
 	let commits: SessionGitCommit[] = [];
-	if (startHeadSha && currentHeadSha && startHeadSha !== currentHeadSha) {
-		const logOut = await gitOut(
-			[
-				"log",
-				`${startHeadSha}..${currentHeadSha}`,
-				`--format=${COMMIT_FORMAT}`,
-			],
-			cwd,
-		);
-		commits = logOut
+	const parseLog = (logOut: string): SessionGitCommit[] =>
+		logOut
 			.split("\n")
 			.filter((l) => l.length > 0)
 			.map((line) => {
@@ -94,6 +101,43 @@ export async function getSessionGitSnapshot(params: {
 					authorDate: authorDate ?? "",
 				};
 			});
+
+	if (startHeadSha && currentHeadSha && startHeadSha !== currentHeadSha) {
+		const logOut = await gitOut(
+			[
+				"log",
+				`${startHeadSha}..${currentHeadSha}`,
+				`--format=${COMMIT_FORMAT}`,
+			],
+			cwd,
+		);
+		commits = parseLog(logOut);
+	}
+
+	// Fallback: HEAD moved but `startHeadSha..HEAD` returned nothing. This
+	// happens when the original SHA is no longer an ancestor of HEAD —
+	// e.g. Claude rebased, amended, or switched to a divergent branch.
+	// Fall back to "all commits on HEAD since the session started" so the
+	// user still sees the work that was done. Use a small buffer (1s)
+	// to avoid race conditions on the boundary.
+	if (
+		commits.length === 0 &&
+		startHeadSha &&
+		currentHeadSha &&
+		startHeadSha !== currentHeadSha &&
+		startedAt
+	) {
+		const sinceIso = new Date(startedAt - 1000).toISOString();
+		const logOut = await gitOut(
+			[
+				"log",
+				currentHeadSha,
+				`--since=${sinceIso}`,
+				`--format=${COMMIT_FORMAT}`,
+			],
+			cwd,
+		);
+		commits = parseLog(logOut);
 	}
 
 	// Working tree state via porcelain v1 for stable parsing.

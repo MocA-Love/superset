@@ -458,6 +458,7 @@ export const createTodoAgentRouter = () => {
 				return getSessionGitSnapshot({
 					cwd: worktreePath,
 					startHeadSha: session.startHeadSha ?? null,
+					startedAt: session.startedAt ?? null,
 				});
 			}),
 
