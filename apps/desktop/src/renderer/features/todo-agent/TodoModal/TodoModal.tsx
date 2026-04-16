@@ -77,9 +77,34 @@ export function TodoModal({
 			enabled: open,
 		},
 	);
+
+	// Presets are split by `kind`. System-prompt presets flow through
+	// --append-system-prompt; description/goal presets are one-shot
+	// inserts into the corresponding textarea at creation time.
+	const scopedPresets = useMemo(() => {
+		const all = presets ?? [];
+		const matches = (p: { workspaceId?: string | null }): boolean =>
+			p.workspaceId == null || p.workspaceId === workspaceId;
+		return {
+			system: all.filter(
+				(p) =>
+					((p as typeof p & { kind?: string }).kind ?? "system") === "system" &&
+					matches(p),
+			),
+			description: all.filter(
+				(p) =>
+					(p as typeof p & { kind?: string }).kind === "description" &&
+					matches(p),
+			),
+			goal: all.filter(
+				(p) =>
+					(p as typeof p & { kind?: string }).kind === "goal" && matches(p),
+			),
+		};
+	}, [presets, workspaceId]);
 	const selectedPreset = useMemo(
-		() => (presets ?? []).find((p) => p.id === selectedPresetId) ?? null,
-		[presets, selectedPresetId],
+		() => scopedPresets.system.find((p) => p.id === selectedPresetId) ?? null,
+		[scopedPresets.system, selectedPresetId],
 	);
 
 	const reset = useCallback(() => {
@@ -234,11 +259,17 @@ export function TodoModal({
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
 							<Label htmlFor="todo-description">やって欲しいこと</Label>
-							<EnhanceButton
-								value={description}
-								onEnhanced={setDescription}
-								kind="description"
-							/>
+							<div className="flex items-center gap-1.5">
+								<TemplateInsertButton
+									presets={scopedPresets.description}
+									onInsert={(text) => setDescription(text)}
+								/>
+								<EnhanceButton
+									value={description}
+									onEnhanced={setDescription}
+									kind="description"
+								/>
+							</div>
 						</div>
 						<Textarea
 							id="todo-description"
@@ -258,7 +289,13 @@ export function TodoModal({
 									任意
 								</span>
 							</Label>
-							<EnhanceButton value={goal} onEnhanced={setGoal} kind="goal" />
+							<div className="flex items-center gap-1.5">
+								<TemplateInsertButton
+									presets={scopedPresets.goal}
+									onInsert={(text) => setGoal(text)}
+								/>
+								<EnhanceButton value={goal} onEnhanced={setGoal} kind="goal" />
+							</div>
 						</div>
 						<Textarea
 							id="todo-goal"
@@ -295,7 +332,7 @@ export function TodoModal({
 						</Label>
 						<PresetPicker
 							selected={selectedPreset}
-							presets={presets ?? []}
+							presets={scopedPresets.system}
 							onSelect={setSelectedPresetId}
 						/>
 					</div>
@@ -429,6 +466,53 @@ function PresetPicker({ selected, presets, onSelect }: PresetPickerProps) {
 						</DropdownMenuItem>
 					</>
 				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+interface TemplateInsertButtonProps {
+	presets: Array<{ id: string; name: string; content: string }>;
+	onInsert: (text: string) => void;
+}
+
+function TemplateInsertButton({
+	presets,
+	onInsert,
+}: TemplateInsertButtonProps) {
+	const [open, setOpen] = useState(false);
+	if (presets.length === 0) return null;
+	return (
+		<DropdownMenu open={open} onOpenChange={setOpen}>
+			<DropdownMenuTrigger asChild>
+				<button
+					type="button"
+					className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/50 transition"
+					title="テンプレートから挿入"
+				>
+					<HiMiniSparkles className="size-2.5" />
+					テンプレ
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-80 max-w-md">
+				<DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+					テンプレートから挿入
+				</DropdownMenuLabel>
+				{presets.map((preset) => (
+					<DropdownMenuItem
+						key={preset.id}
+						onClick={() => {
+							onInsert(preset.content);
+							setOpen(false);
+						}}
+						className="flex flex-col items-start gap-0.5"
+					>
+						<span className="text-xs font-medium">{preset.name}</span>
+						<span className="text-[10px] text-muted-foreground line-clamp-2">
+							{preset.content}
+						</span>
+					</DropdownMenuItem>
+				))}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
