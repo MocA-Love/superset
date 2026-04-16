@@ -126,6 +126,8 @@ export const AGENT_PRESET_FIELDS = [
 	"promptCommand",
 	"promptCommandSuffix",
 	"taskPromptTemplate",
+	"contextPromptTemplateSystem",
+	"contextPromptTemplateUser",
 	"model",
 ] as const;
 
@@ -144,6 +146,8 @@ export const agentPresetOverrideSchema = z.object({
 	promptCommand: z.string().optional(),
 	promptCommandSuffix: z.string().nullable().optional(),
 	taskPromptTemplate: z.string().optional(),
+	contextPromptTemplateSystem: z.string().optional(),
+	contextPromptTemplateUser: z.string().optional(),
 	model: z.string().optional(),
 });
 
@@ -168,6 +172,8 @@ export const agentCustomDefinitionSchema = z.object({
 	promptCommandSuffix: z.string().optional(),
 	promptTransport: z.enum(PROMPT_TRANSPORTS).optional(),
 	taskPromptTemplate: z.string(),
+	contextPromptTemplateSystem: z.string().optional(),
+	contextPromptTemplateUser: z.string().optional(),
 	enabled: z.boolean().optional(),
 });
 

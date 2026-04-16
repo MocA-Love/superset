@@ -93,3 +93,6 @@ superset-dev-data/
 .serena/
 test-conflict-repo/
 .amp/*
+
+# Claude Code session lock (runtime artifact)
+.claude/scheduled_tasks.lock
