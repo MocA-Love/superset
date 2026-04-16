@@ -1,4 +1,5 @@
 import { ScrollArea } from "@superset/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { useMemo, useState } from "react";
 import {
@@ -94,13 +95,22 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 					<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
 						変更
 					</div>
-					<div className="text-xs truncate">
-						{data?.branch ? (
-							<span className="font-mono">{data.branch}</span>
-						) : (
+					{data?.branch ? (
+						<Tooltip delayDuration={300}>
+							<TooltipTrigger asChild>
+								<div className="text-xs truncate">
+									<span className="font-mono">{data.branch}</span>
+								</div>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" align="start">
+								<span className="font-mono text-xs">{data.branch}</span>
+							</TooltipContent>
+						</Tooltip>
+					) : (
+						<div className="text-xs truncate">
 							<span className="text-muted-foreground">（ブランチ取得中…）</span>
-						)}
-					</div>
+						</div>
+					)}
 				</div>
 				<button
 					type="button"
@@ -195,28 +205,36 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 										// rightly disables `D`, because there the file
 										// is already gone from the worktree.
 										return (
-											<button
-												key={key}
-												type="button"
-												onClick={() =>
-													setSelected({
-														key,
-														path: file.path,
-														scope: "session",
-														label: file.path,
-													})
-												}
-												className={cn(
-													"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2",
-													selected?.key === key &&
-														"bg-accent border-primary/40",
-												)}
-											>
-												<StatusBadge code={file.code} stage="session" />
-												<span className="text-[11px] font-mono truncate flex-1">
-													{file.path}
-												</span>
-											</button>
+											<Tooltip key={key} delayDuration={300}>
+												<TooltipTrigger asChild>
+													<button
+														type="button"
+														onClick={() =>
+															setSelected({
+																key,
+																path: file.path,
+																scope: "session",
+																label: file.path,
+															})
+														}
+														className={cn(
+															"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2 min-w-0",
+															selected?.key === key &&
+																"bg-accent border-primary/40",
+														)}
+													>
+														<StatusBadge code={file.code} stage="session" />
+														<span className="text-[11px] font-mono truncate flex-1">
+															{file.path}
+														</span>
+													</button>
+												</TooltipTrigger>
+												<TooltipContent side="left" align="start">
+													<span className="font-mono text-[11px] break-all">
+														{file.path}
+													</span>
+												</TooltipContent>
+											</Tooltip>
 										);
 									})
 								)}
@@ -249,39 +267,59 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 									</p>
 								) : (
 									commits.map((commit) => (
-										<button
-											key={commit.sha}
-											type="button"
-											onClick={() =>
-												setSelected({
-													key: `commit:${commit.sha}`,
-													path: "",
-													scope: "commit",
-													commitSha: commit.sha,
-													label: commit.shortSha,
-												})
-											}
-											className={cn(
-												"text-left rounded-md px-2 py-1.5 border border-border/30 hover:bg-accent/50 transition",
-												selected?.key === `commit:${commit.sha}` &&
-													"bg-accent border-primary/40",
-											)}
-										>
-											<div className="flex items-center gap-2">
-												<span className="font-mono text-[10px] text-muted-foreground shrink-0">
-													{commit.shortSha}
-												</span>
-												<span className="line-clamp-1 flex-1 text-[11px]">
-													{commit.subject}
-												</span>
-											</div>
-											<div className="text-[10px] text-muted-foreground pl-[3.25rem] mt-0.5">
-												{commit.authorName}
-												{commit.authorDate
-													? ` · ${formatShortDate(commit.authorDate)}`
-													: ""}
-											</div>
-										</button>
+										<Tooltip key={commit.sha} delayDuration={300}>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													onClick={() =>
+														setSelected({
+															key: `commit:${commit.sha}`,
+															path: "",
+															scope: "commit",
+															commitSha: commit.sha,
+															label: commit.shortSha,
+														})
+													}
+													className={cn(
+														"text-left rounded-md px-2 py-1.5 border border-border/30 hover:bg-accent/50 transition min-w-0",
+														selected?.key === `commit:${commit.sha}` &&
+															"bg-accent border-primary/40",
+													)}
+												>
+													<div className="flex items-center gap-2">
+														<span className="font-mono text-[10px] text-muted-foreground shrink-0">
+															{commit.shortSha}
+														</span>
+														<span className="line-clamp-1 flex-1 text-[11px]">
+															{commit.subject}
+														</span>
+													</div>
+													<div className="text-[10px] text-muted-foreground pl-[3.25rem] mt-0.5 truncate">
+														{commit.authorName}
+														{commit.authorDate
+															? ` · ${formatShortDate(commit.authorDate)}`
+															: ""}
+													</div>
+												</button>
+											</TooltipTrigger>
+											<TooltipContent
+												side="left"
+												align="start"
+												className="max-w-[360px]"
+											>
+												<div className="flex flex-col gap-0.5">
+													<span className="text-[11px] break-words">
+														{commit.subject}
+													</span>
+													<span className="text-[10px] opacity-70">
+														{commit.shortSha} · {commit.authorName}
+														{commit.authorDate
+															? ` · ${formatShortDate(commit.authorDate)}`
+															: ""}
+													</span>
+												</div>
+											</TooltipContent>
+										</Tooltip>
 									))
 								)}
 							</div>
@@ -325,30 +363,38 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 										const canDiff =
 											file.stage !== "untracked" && file.code !== "D";
 										return (
-											<button
-												key={key}
-												type="button"
-												disabled={!canDiff}
-												onClick={() =>
-													setSelected({
-														key,
-														path: file.path,
-														scope,
-														label: file.path,
-													})
-												}
-												className={cn(
-													"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2",
-													selected?.key === key &&
-														"bg-accent border-primary/40",
-													!canDiff && "opacity-60 cursor-default",
-												)}
-											>
-												<StatusBadge code={file.code} stage={file.stage} />
-												<span className="text-[11px] font-mono truncate flex-1">
-													{file.path}
-												</span>
-											</button>
+											<Tooltip key={key} delayDuration={300}>
+												<TooltipTrigger asChild>
+													<button
+														type="button"
+														disabled={!canDiff}
+														onClick={() =>
+															setSelected({
+																key,
+																path: file.path,
+																scope,
+																label: file.path,
+															})
+														}
+														className={cn(
+															"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2 min-w-0",
+															selected?.key === key &&
+																"bg-accent border-primary/40",
+															!canDiff && "opacity-60 cursor-default",
+														)}
+													>
+														<StatusBadge code={file.code} stage={file.stage} />
+														<span className="text-[11px] font-mono truncate flex-1">
+															{file.path}
+														</span>
+													</button>
+												</TooltipTrigger>
+												<TooltipContent side="left" align="start">
+													<span className="font-mono text-[11px] break-all">
+														{file.path}
+													</span>
+												</TooltipContent>
+											</Tooltip>
 										);
 									})
 								)}
@@ -359,12 +405,27 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 					{/* Diff viewer for the currently selected file/commit */}
 					{selected && (
 						<section className="rounded-lg border border-border/40 bg-muted/20 overflow-hidden">
-							<div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border/30">
-								<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold truncate">
-									{selected.scope === "commit"
-										? `コミット ${selected.label}`
-										: `${scopeLabel(selected.scope)} · ${selected.label}`}
-								</div>
+							<div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border/30 gap-2">
+								<Tooltip delayDuration={300}>
+									<TooltipTrigger asChild>
+										<div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold truncate min-w-0 flex-1">
+											{selected.scope === "commit"
+												? `コミット ${selected.label}`
+												: `${scopeLabel(selected.scope)} · ${selected.label}`}
+										</div>
+									</TooltipTrigger>
+									<TooltipContent
+										side="top"
+										align="start"
+										className="max-w-[360px]"
+									>
+										<span className="text-[11px] break-all">
+											{selected.scope === "commit"
+												? `コミット ${selected.label}`
+												: `${scopeLabel(selected.scope)} · ${selected.label}`}
+										</span>
+									</TooltipContent>
+								</Tooltip>
 								<button
 									type="button"
 									className="text-[10px] text-muted-foreground hover:text-foreground transition"
