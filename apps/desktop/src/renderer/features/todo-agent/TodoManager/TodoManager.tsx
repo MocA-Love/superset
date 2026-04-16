@@ -539,7 +539,7 @@ export function TodoManager({
 										className="h-8 text-xs rounded-md"
 									/>
 								</div>
-								<ScrollArea className="flex-1">
+								<ScrollArea className="flex-1 min-h-0">
 									{grouped.length === 0 && (
 										<p className="text-xs text-muted-foreground px-3 py-6">
 											{(sessions?.length ?? 0) === 0
