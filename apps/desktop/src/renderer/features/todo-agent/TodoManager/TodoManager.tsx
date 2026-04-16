@@ -1699,6 +1699,7 @@ function TodoComposer({
 					size="sm"
 					variant="ghost"
 					onClick={onCancel}
+					disabled={submitting}
 					className="h-7 text-xs"
 				>
 					キャンセル
