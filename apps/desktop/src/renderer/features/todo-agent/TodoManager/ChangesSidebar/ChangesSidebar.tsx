@@ -188,12 +188,16 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 								) : (
 									sessionFiles.map((file) => {
 										const key = `session:${file.path}`;
-										const canDiff = file.code !== "D";
+										// Deletions ARE the diff at session scope —
+										// `git diff <start>..HEAD -- <path>` still emits
+										// a valid deletion patch, so keep every entry
+										// clickable. The working-tree section below
+										// rightly disables `D`, because there the file
+										// is already gone from the worktree.
 										return (
 											<button
 												key={key}
 												type="button"
-												disabled={!canDiff}
 												onClick={() =>
 													setSelected({
 														key,
@@ -206,7 +210,6 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 													"text-left rounded-md px-2 py-1 border border-transparent hover:bg-accent/50 hover:border-border/40 transition flex items-center gap-2",
 													selected?.key === key &&
 														"bg-accent border-primary/40",
-													!canDiff && "opacity-60 cursor-default",
 												)}
 											>
 												<StatusBadge code={file.code} stage="session" />
