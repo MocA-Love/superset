@@ -61,6 +61,137 @@ async function copyToClipboard(text: string, label = "コピーしました") {
 	}
 }
 
+/**
+ * Read a File into a base64 string (without the `data:*;base64,` prefix)
+ * using the browser's FileReader — Node's Buffer is not available in the
+ * sandboxed Electron renderer.
+ */
+function fileToBase64(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = reader.result;
+			if (typeof result !== "string") {
+				reject(new Error("FileReader returned non-string"));
+				return;
+			}
+			const idx = result.indexOf("base64,");
+			resolve(idx >= 0 ? result.slice(idx + "base64,".length) : result);
+		};
+		reader.onerror = () =>
+			reject(reader.error ?? new Error("FileReader failed"));
+		reader.readAsDataURL(file);
+	});
+}
+
+type ImagePasteTextareaProps = Omit<
+	React.ComponentProps<typeof Textarea>,
+	"onPaste" | "onDrop" | "onDragOver"
+> & {
+	value: string;
+	onValueChange: (next: string) => void;
+};
+
+/**
+ * Drop-in replacement for `<Textarea>` that also accepts pasted or
+ * dropped images. Images are uploaded to the main process via
+ * `todoAgent.saveAttachment` and a markdown reference
+ * (`![](abs-path)`) is inserted at the caret. Claude reads the file
+ * with its Read tool (image support is built in) so the attachment
+ * ends up part of the next turn's context.
+ */
+function ImagePasteTextarea({
+	value,
+	onValueChange,
+	...rest
+}: ImagePasteTextareaProps) {
+	const saveMut = electronTrpc.todoAgent.saveAttachment.useMutation();
+	const [dropHighlight, setDropHighlight] = useState(false);
+
+	const processFile = useCallback(
+		async (file: File, target: HTMLTextAreaElement | null) => {
+			if (!file.type.startsWith("image/")) {
+				toast.error("画像ファイルのみ添付できます");
+				return;
+			}
+			const MAX = 10 * 1024 * 1024;
+			if (file.size > MAX) {
+				toast.error("画像サイズが大きすぎます（10MB まで）");
+				return;
+			}
+			try {
+				const dataBase64 = await fileToBase64(file);
+				const { path: absPath } = await saveMut.mutateAsync({
+					fileName: file.name || "image.png",
+					mimeType: file.type || "image/png",
+					dataBase64,
+				});
+				const ref = `![](${absPath})`;
+				const insert = `\n${ref}\n`;
+				if (target) {
+					const start = target.selectionStart ?? value.length;
+					const end = target.selectionEnd ?? value.length;
+					const next = value.slice(0, start) + insert + value.slice(end);
+					onValueChange(next);
+					// Restore caret position after React re-renders.
+					requestAnimationFrame(() => {
+						const pos = start + insert.length;
+						target.setSelectionRange(pos, pos);
+						target.focus();
+					});
+				} else {
+					onValueChange(`${value}${insert}`);
+				}
+				toast.success("画像を添付しました");
+			} catch (error) {
+				toast.error(
+					error instanceof Error ? error.message : "画像の保存に失敗しました",
+				);
+			}
+		},
+		[saveMut, value, onValueChange],
+	);
+
+	return (
+		<Textarea
+			{...rest}
+			value={value}
+			onChange={(e) => onValueChange(e.target.value)}
+			className={cn(
+				rest.className,
+				"transition",
+				dropHighlight && "ring-2 ring-primary/50 ring-offset-1",
+			)}
+			onPaste={(e) => {
+				const items = Array.from(e.clipboardData?.items ?? []);
+				const imgItem = items.find((i) => i.type.startsWith("image/"));
+				if (!imgItem) return;
+				const file = imgItem.getAsFile();
+				if (!file) return;
+				e.preventDefault();
+				void processFile(file, e.currentTarget);
+			}}
+			onDrop={(e) => {
+				setDropHighlight(false);
+				const file = e.dataTransfer.files?.[0];
+				if (!file) return;
+				if (!file.type.startsWith("image/")) return;
+				e.preventDefault();
+				void processFile(file, e.currentTarget);
+			}}
+			onDragOver={(e) => {
+				if (
+					Array.from(e.dataTransfer.items ?? []).some((i) => i.kind === "file")
+				) {
+					e.preventDefault();
+					setDropHighlight(true);
+				}
+			}}
+			onDragLeave={() => setDropHighlight(false)}
+		/>
+	);
+}
+
 interface TodoManagerProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -1116,10 +1247,10 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 			{/* Footer: intervention input, pinned. Always reachable. */}
 			<div className="shrink-0 border-t px-6 py-3 bg-background">
 				<div className="flex items-end gap-2">
-					<Textarea
+					<ImagePasteTextarea
 						value={intervention}
-						onChange={(e) => setIntervention(e.target.value)}
-						placeholder="メッセージを送信（Enter で送信、Shift+Enter で改行）"
+						onValueChange={setIntervention}
+						placeholder="メッセージを送信（Enter で送信、Shift+Enter で改行、画像は貼り付け/ドロップ可）"
 						rows={2}
 						className="resize-none min-h-[44px] max-h-40 text-xs leading-relaxed"
 						onKeyDown={(e) => {
@@ -1789,12 +1920,17 @@ function TodoComposer({
 						</div>
 
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="composer-desc">タスク</Label>
-							<Textarea
+							<Label htmlFor="composer-desc">
+								タスク{" "}
+								<span className="text-[10px] text-muted-foreground">
+									（画像貼り付け・ドロップ可）
+								</span>
+							</Label>
+							<ImagePasteTextarea
 								id="composer-desc"
 								value={description}
-								onChange={(e) => setDescription(e.target.value)}
-								placeholder="やってほしい作業を書く（右のテンプレートから挿入可）"
+								onValueChange={setDescription}
+								placeholder="やってほしい作業を書く（右のテンプレートから挿入可・画像貼り付け可）"
 								rows={5}
 							/>
 						</div>
@@ -1804,11 +1940,11 @@ function TodoComposer({
 								ゴール{" "}
 								<span className="text-[10px] text-muted-foreground">任意</span>
 							</Label>
-							<Textarea
+							<ImagePasteTextarea
 								id="composer-goal"
 								value={goal}
-								onChange={(e) => setGoal(e.target.value)}
-								placeholder="完了条件（空欄可、右のテンプレートから挿入可）"
+								onValueChange={setGoal}
+								placeholder="完了条件（空欄可、画像貼り付け可）"
 								rows={3}
 							/>
 						</div>
