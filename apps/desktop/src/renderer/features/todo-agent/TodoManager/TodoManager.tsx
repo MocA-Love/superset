@@ -650,7 +650,8 @@ function SessionRow({
 	const isActive =
 		session.status === "preparing" ||
 		session.status === "running" ||
-		session.status === "verifying";
+		session.status === "verifying" ||
+		session.status === "waiting";
 
 	const invalidate = useCallback(async () => {
 		await utils.todoAgent.listAll.invalidate();
@@ -847,7 +848,9 @@ function StatusDot({ status }: { status: string }) {
 					? "bg-rose-500"
 					: status === "aborted"
 						? "bg-muted-foreground/50"
-						: "bg-muted-foreground/40";
+						: status === "waiting"
+							? "bg-sky-500 animate-pulse"
+							: "bg-muted-foreground/40";
 	return <span className={cn("size-2 rounded-full shrink-0", color)} />;
 }
 
@@ -881,13 +884,19 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		session.status === "queued" ||
 		session.status === "preparing" ||
 		session.status === "running" ||
-		session.status === "verifying";
+		session.status === "verifying" ||
+		// `waiting` is a ScheduleWakeup-paused session the scheduler will
+		// resume automatically — treat it as active UX-wise so intervene
+		// / abort remain reachable during the pause.
+		session.status === "waiting";
 
 	const canStart =
 		session.status === "queued" ||
 		session.status === "failed" ||
 		session.status === "aborted" ||
-		session.status === "escalated";
+		session.status === "escalated" ||
+		// Manual "wake now" overrides the remaining ScheduleWakeup delay.
+		session.status === "waiting";
 	const isRunning =
 		session.status === "preparing" ||
 		session.status === "running" ||
@@ -1778,7 +1787,26 @@ function statusLabel(session: TodoSession): string {
 	//     the retry loop has actually advanced
 	const showIter = !!session.verifyCommand && session.iteration > 1;
 	const iter = showIter ? ` · iter ${session.iteration}` : "";
+	if (session.status === "waiting" && session.waitingUntil) {
+		return `waiting${iter} · ${formatWaitingRemaining(session.waitingUntil)}`;
+	}
 	return `${session.status}${iter}`;
+}
+
+/**
+ * Human-friendly "N秒後" / "N分後" hint for a ScheduleWakeup-paused
+ * session. Called from the session row label, so it is cheap and has
+ * no side effects beyond reading the timestamp.
+ */
+function formatWaitingRemaining(waitingUntil: number): string {
+	const remainingMs = waitingUntil - Date.now();
+	if (remainingMs <= 0) return "wake soon";
+	const remainingSec = Math.round(remainingMs / 1000);
+	if (remainingSec < 60) return `${remainingSec}秒後`;
+	const remainingMin = Math.round(remainingSec / 60);
+	if (remainingMin < 60) return `${remainingMin}分後`;
+	const remainingHr = Math.round(remainingMin / 60);
+	return `${remainingHr}時間後`;
 }
 
 interface SessionGroup {

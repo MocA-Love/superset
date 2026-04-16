@@ -295,6 +295,11 @@ class TodoSupervisor {
 					: null,
 				iteration: 0,
 				startHeadSha,
+				// Clear any prior ScheduleWakeup parking fields — we are
+				// actively running again, whether this run was kicked off
+				// by the scheduler waking us up or by a manual resume.
+				waitingUntil: null,
+				waitingReason: null,
 			});
 
 			if (!worktreePath) {
@@ -453,6 +458,43 @@ class TodoSupervisor {
 						});
 						continue;
 					}
+					// Claude parked itself via `ScheduleWakeup` — park the
+					// session in `waiting` instead of declaring it done, and
+					// let the scheduler tick wake it back up when the deadline
+					// passes. `completedAt` stays null so cleanup / retention
+					// never deletes a paused session, and the scheduler keeps
+					// counting it against the concurrency budget.
+					if (turnResult.scheduledWakeup) {
+						const waitingUntil =
+							Date.now() + turnResult.scheduledWakeup.delayMs;
+						store.update(sessionId, {
+							status: "waiting",
+							phase: "waiting",
+							verdictPassed: null,
+							verdictReason: null,
+							finalAssistantText: lastAssistantText,
+							claudeSessionId,
+							totalCostUsd: aggregatedCostUsd || null,
+							totalNumTurns: aggregatedNumTurns || null,
+							waitingUntil,
+							waitingReason: turnResult.scheduledWakeup.reason,
+							completedAt: null,
+						});
+						appendRawEvent(
+							sessionId,
+							iteration,
+							"system_init",
+							"waiting",
+							`ScheduleWakeup を検知。${Math.round(
+								turnResult.scheduledWakeup.delayMs / 1000,
+							)}秒後に再開します${
+								turnResult.scheduledWakeup.reason
+									? ` (${turnResult.scheduledWakeup.reason})`
+									: ""
+							}`,
+						);
+						return;
+					}
 					store.update(sessionId, {
 						status: "done",
 						phase: "done",
@@ -572,6 +614,13 @@ class TodoSupervisor {
 		/** True when the turn was interrupted because the user queued
 		 *  a mid-turn intervention, NOT because of an external abort. */
 		interrupted: boolean;
+		/**
+		 * Latest `ScheduleWakeup` (or equivalent self-pacing) call observed
+		 * during the turn. Null when Claude never asked to wait. The
+		 * supervisor uses this to park the session in the `waiting`
+		 * status instead of treating `child exit` as completion.
+		 */
+		scheduledWakeup: { delayMs: number; reason: string | null } | null;
 	}> {
 		return new Promise((resolve) => {
 			const args = [
@@ -624,6 +673,7 @@ class TodoSupervisor {
 							? `claude を起動できませんでした: ${error.message}`
 							: "claude を起動できませんでした",
 					interrupted: false,
+					scheduledWakeup: null,
 				});
 				return;
 			}
@@ -639,6 +689,10 @@ class TodoSupervisor {
 			let stderrBuffer = "";
 			let settled = false;
 			let interruptedForIntervention = false;
+			let scheduledWakeup: {
+				delayMs: number;
+				reason: string | null;
+			} | null = null;
 
 			const onAbort = () => {
 				if (child.pid) {
@@ -699,6 +753,7 @@ class TodoSupervisor {
 					numTurns,
 					error: interruptedForIntervention ? null : errorText,
 					interrupted: interruptedForIntervention,
+					scheduledWakeup,
 				});
 			};
 
@@ -741,6 +796,9 @@ class TodoSupervisor {
 				}
 				if (parsed.numTurns != null) {
 					numTurns = parsed.numTurns;
+				}
+				if (parsed.scheduledWakeup) {
+					scheduledWakeup = parsed.scheduledWakeup;
 				}
 				if (parsed.event) {
 					getTodoSessionStore().appendStreamEvents(params.sessionId, [
@@ -1016,6 +1074,14 @@ interface ClassifiedLine {
 	costUsd: number | null;
 	numTurns: number | null;
 	event: ClassifiedEvent | null;
+	/**
+	 * Non-null when this line carried a Claude self-pacing call — currently
+	 * `ScheduleWakeup`, the /loop dynamic-mode primitive. The supervisor
+	 * propagates this out of the turn so a subsequent `child exit` event
+	 * parks the session in the `waiting` status instead of flipping it to
+	 * `done` and losing it from the concurrency count.
+	 */
+	scheduledWakeup: { delayMs: number; reason: string | null } | null;
 }
 
 /**
@@ -1031,6 +1097,7 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 		costUsd: null,
 		numTurns: null,
 		event: null,
+		scheduledWakeup: null,
 	};
 	if (typeof payload !== "object" || payload === null) return empty;
 	const rec = payload as Record<string, unknown>;
@@ -1061,10 +1128,12 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 		}
 		const tool = extractToolUseSummary(rec.message);
 		if (tool) {
+			const wakeup = extractScheduledWakeup(rec.message);
 			return {
 				...empty,
 				sessionId,
 				event: { kind: "tool_use", label: tool.label, text: tool.text },
+				scheduledWakeup: wakeup,
 			};
 		}
 		return empty;
@@ -1105,6 +1174,7 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 				label: "result",
 				text: resultText ?? "（空の結果）",
 			},
+			scheduledWakeup: null,
 		};
 	}
 
@@ -1156,6 +1226,44 @@ function extractToolUseSummary(
 		const input = rec.input;
 		const inputSummary = summarizeToolInput(name, input);
 		return { label: name, text: inputSummary };
+	}
+	return null;
+}
+
+/**
+ * Look for a `ScheduleWakeup` tool_use in the assistant message. This is
+ * the /loop-mode primitive Claude uses to park itself until a deadline
+ * (e.g. "re-check CI in 5 minutes"). In headless mode Claude still
+ * surfaces the same tool_use in the stream and then exits, so detecting
+ * the call here is what lets the supervisor distinguish "work really
+ * finished" from "work paused itself" — without this, the session flips
+ * to `done` on child exit and disappears from the concurrency count.
+ */
+function extractScheduledWakeup(
+	message: unknown,
+): { delayMs: number; reason: string | null } | null {
+	if (typeof message !== "object" || message === null) return null;
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return null;
+	for (const part of content) {
+		if (typeof part !== "object" || part === null) continue;
+		const rec = part as Record<string, unknown>;
+		if (rec.type !== "tool_use") continue;
+		if (rec.name !== "ScheduleWakeup") continue;
+		const input = rec.input;
+		if (typeof input !== "object" || input === null) continue;
+		const inp = input as Record<string, unknown>;
+		const delaySeconds =
+			typeof inp.delaySeconds === "number"
+				? (inp.delaySeconds as number)
+				: null;
+		if (delaySeconds == null || !Number.isFinite(delaySeconds)) continue;
+		// Clamp to match the ScheduleWakeup contract [60, 3600]s — a stray
+		// value outside this range is a malformed call, not a wait request.
+		const clamped = Math.max(60, Math.min(3600, Math.floor(delaySeconds)));
+		const reason =
+			typeof inp.reason === "string" ? (inp.reason as string) : null;
+		return { delayMs: clamped * 1000, reason };
 	}
 	return null;
 }

@@ -92,6 +92,15 @@ export const todoSessions = sqliteTable(
 
 		artifactPath: text("artifact_path").notNull(),
 
+		// Populated when the session is in the `waiting` state — i.e. the
+		// underlying Claude Code worker called `ScheduleWakeup` (or another
+		// self-pacing primitive) to pause itself until a specific wall-clock
+		// time. The scheduler tick flips the session back into the run queue
+		// once this timestamp has passed. Null whenever the session is not
+		// waiting. Paired with `waitingReason` for the rationale Claude gave.
+		waitingUntil: integer("waiting_until"),
+		waitingReason: text("waiting_reason"),
+
 		createdAt: integer("created_at")
 			.notNull()
 			.$defaultFn(() => Date.now()),
@@ -121,6 +130,7 @@ export const todoSessionStatusValues = [
 	"escalated",
 	"aborted",
 	"paused",
+	"waiting",
 ] as const;
 
 export type TodoSessionStatus = (typeof todoSessionStatusValues)[number];

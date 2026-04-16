@@ -132,7 +132,8 @@ export type TodoSessionPhase =
 	| "failed"
 	| "escalated"
 	| "aborted"
-	| "paused";
+	| "paused"
+	| "waiting";
 
 export const TODO_ARTIFACT_SUBDIR = ".superset/todo";
 
