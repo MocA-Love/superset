@@ -20,7 +20,7 @@ import { Label } from "@superset/ui/label";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -77,30 +77,29 @@ export function TodoModal({
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
 	const [claudeEffort, setClaudeEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
-
-	// When the user opens the composer and the global defaults come in,
-	// seed the picker with those so a newly-authored TODO inherits the
-	// currently-configured default model/effort. The user can still
-	// override per-TODO. We deliberately only sync while the modal is
-	// open so re-opening after the user changes the global default
-	// picks up the new value — without stomping an in-progress edit.
+	// Seed the picker from the global defaults only once per modal
+	// opening. Without this guard, a React Query background refetch or
+	// a settings update fired while the user is picking would overwrite
+	// a deliberate "デフォルト" (DEFAULT_SENTINEL) selection — flipping
+	// it back to the global default and silently changing what CLI flags
+	// the next run gets.
+	const seededRef = useRef(false);
 	useEffect(() => {
-		if (!open) return;
-		setClaudeModel((current) =>
-			current === DEFAULT_SENTINEL
-				? fromPersistedModel(todoSettings?.defaultClaudeModel ?? null)
-				: current,
+		if (!open) {
+			seededRef.current = false;
+			return;
+		}
+		if (seededRef.current) return;
+		// Wait until the settings query resolves so we actually have a
+		// default to seed with. `todoSettings` is undefined on first
+		// render; seeding too early would lock us into the sentinel.
+		if (!todoSettings) return;
+		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
+		setClaudeEffort(
+			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
 		);
-		setClaudeEffort((current) =>
-			current === DEFAULT_SENTINEL
-				? fromPersistedEffort(todoSettings?.defaultClaudeEffort ?? null)
-				: current,
-		);
-	}, [
-		open,
-		todoSettings?.defaultClaudeModel,
-		todoSettings?.defaultClaudeEffort,
-	]);
+		seededRef.current = true;
+	}, [open, todoSettings]);
 
 	const utils = electronTrpc.useUtils();
 	const create = electronTrpc.todoAgent.create.useMutation({

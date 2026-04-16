@@ -129,22 +129,35 @@ export function toPersistedEffort(
  * Narrow a DB-side `string | null` back into the picker's discriminated
  * value space. Unknown strings (persisted from an older build with a
  * wider allowed set) fall back to the sentinel so the Select stays on
- * "デフォルト" instead of rendering as empty.
+ * "デフォルト" instead of rendering as empty. We log a warning so a
+ * silent data regression is at least visible in DevTools — users who
+ * had a now-retired model selected will notice the reset when they
+ * next save the TODO / schedule.
  */
 export function fromPersistedModel(
 	persisted: string | null | undefined,
 ): ClaudeModelPick {
 	if (persisted == null) return DEFAULT_SENTINEL;
-	return (CLAUDE_MODEL_OPTIONS as readonly string[]).includes(persisted)
-		? (persisted as TodoClaudeModel)
-		: DEFAULT_SENTINEL;
+	if ((CLAUDE_MODEL_OPTIONS as readonly string[]).includes(persisted)) {
+		return persisted as TodoClaudeModel;
+	}
+	console.warn(
+		"[ClaudeRuntimePicker] unknown persisted model, falling back to default:",
+		persisted,
+	);
+	return DEFAULT_SENTINEL;
 }
 
 export function fromPersistedEffort(
 	persisted: string | null | undefined,
 ): ClaudeEffortPick {
 	if (persisted == null) return DEFAULT_SENTINEL;
-	return (CLAUDE_EFFORT_OPTIONS as readonly string[]).includes(persisted)
-		? (persisted as TodoClaudeEffort)
-		: DEFAULT_SENTINEL;
+	if ((CLAUDE_EFFORT_OPTIONS as readonly string[]).includes(persisted)) {
+		return persisted as TodoClaudeEffort;
+	}
+	console.warn(
+		"[ClaudeRuntimePicker] unknown persisted effort, falling back to default:",
+		persisted,
+	);
+	return DEFAULT_SENTINEL;
 }

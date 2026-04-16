@@ -7,7 +7,7 @@ import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	HiMiniCog6Tooth,
 	HiMiniPlus,
@@ -116,17 +116,23 @@ function SettingsTab() {
 	const [defaultEffort, setDefaultEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
 
+	// Hydrate form state the first time settings arrive from the main
+	// process. A React Query background refetch (window focus, etc.)
+	// re-fires the query even when no persisted data changed; without
+	// this guard it would silently clobber in-progress edits in the
+	// form, reverting the user's dirty state and erasing their changes
+	// the moment the window regained focus.
+	const hydratedRef = useRef(false);
 	useEffect(() => {
-		if (settings) {
-			setMaxIter(settings.defaultMaxIterations);
-			setMaxMin(settings.defaultMaxWallClockMin);
-			setMaxConcurrent(settings.maxConcurrentTasks);
-			setRetentionDays(settings.sessionRetentionDays);
-			setDefaultModel(fromPersistedModel(settings.defaultClaudeModel ?? null));
-			setDefaultEffort(
-				fromPersistedEffort(settings.defaultClaudeEffort ?? null),
-			);
-		}
+		if (!settings) return;
+		if (hydratedRef.current) return;
+		setMaxIter(settings.defaultMaxIterations);
+		setMaxMin(settings.defaultMaxWallClockMin);
+		setMaxConcurrent(settings.maxConcurrentTasks);
+		setRetentionDays(settings.sessionRetentionDays);
+		setDefaultModel(fromPersistedModel(settings.defaultClaudeModel ?? null));
+		setDefaultEffort(fromPersistedEffort(settings.defaultClaudeEffort ?? null));
+		hydratedRef.current = true;
 	}, [settings]);
 
 	const dirty =
