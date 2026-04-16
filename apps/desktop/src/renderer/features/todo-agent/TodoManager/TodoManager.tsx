@@ -709,7 +709,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 				data: intervention.trim(),
 			});
 			setIntervention("");
-			toast.success("次のターンに介入指示を注入します");
+			toast.success("メッセージを送信しました");
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "送信に失敗しました",
@@ -1121,7 +1121,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 					<Input
 						value={intervention}
 						onChange={(e) => setIntervention(e.target.value)}
-						placeholder="次のターンに注入する介入指示（Enter で送信）"
+						placeholder="メッセージを送信（Enter で送信）"
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && !e.shiftKey) {
 								e.preventDefault();
@@ -1136,7 +1136,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 						onClick={handleSendInput}
 						disabled={!intervention.trim()}
 					>
-						キュー
+						送信
 					</Button>
 				</div>
 				<div className="flex items-center justify-between gap-3 mt-1.5">
