@@ -87,6 +87,10 @@ export const TodoButton = memo(function TodoButton({
 					acc.running += 1;
 					break;
 				case "queued":
+				case "waiting":
+					// `waiting` は ScheduleWakeup で一時停止中のセッション。
+					// scheduler が waitingUntil 経過後に自動で queued に戻すため、
+					// slot を占有している扱いとして queued と同じバッジで集計する。
 					acc.queued += 1;
 					break;
 				case "failed":
