@@ -1,7 +1,11 @@
 import type { SelectTodoSchedule, SelectTodoSession } from "@superset/local-db";
 import { CronExpressionParser } from "cron-parser";
 import { getTodoScheduleStore } from "./schedule-store";
-import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
+import {
+	ensureProjectBranchWorkspaceId,
+	getTodoSessionStore,
+	resolveWorktreePath,
+} from "./session-store";
 import { getTodoSupervisor } from "./supervisor";
 import type { TodoScheduleFireEvent } from "./types";
 
@@ -223,7 +227,34 @@ class TodoScheduler {
 			}
 		}
 
-		const worktreePath = resolveWorktreePath(schedule.workspaceId);
+		// Resolve the workspace to attach the fired session to. If the
+		// schedule was saved project-only (workspaceId = null), fall back
+		// to the project's branch-type workspace, materializing one if the
+		// project doesn't already have it. That keeps `todo_sessions`
+		// workspaceId NOT NULL intact while letting the UI expose the
+		// "run on project main repo" mental model.
+		const fireWorkspaceId =
+			schedule.workspaceId ??
+			ensureProjectBranchWorkspaceId(schedule.projectId);
+		if (!fireWorkspaceId) {
+			store.recordRun({
+				id: schedule.id,
+				sessionId: null,
+				firedAt,
+				nextRunAt,
+			});
+			this.emit({
+				scheduleId: schedule.id,
+				scheduleName: schedule.name,
+				kind: "failed",
+				sessionId: null,
+				message: "プロジェクトのワークスペースを用意できませんでした",
+				firedAt,
+			});
+			return;
+		}
+
+		const worktreePath = resolveWorktreePath(fireWorkspaceId);
 		if (!worktreePath) {
 			store.recordRun({
 				id: schedule.id,
@@ -246,12 +277,12 @@ class TodoScheduler {
 			const sessionId = crypto.randomUUID();
 			const artifactPath = supervisor.computeArtifactPath({
 				sessionId,
-				workspaceId: schedule.workspaceId,
+				workspaceId: fireWorkspaceId,
 			});
 			const inserted = sessionStore.insertQueuedFromTemplate({
 				id: sessionId,
 				projectId: schedule.projectId,
-				workspaceId: schedule.workspaceId,
+				workspaceId: fireWorkspaceId,
 				title: schedule.title,
 				description: schedule.description,
 				goal: schedule.goal,

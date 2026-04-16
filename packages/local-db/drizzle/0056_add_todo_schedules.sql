@@ -1,7 +1,7 @@
 CREATE TABLE `todo_schedules` (
 	`id` text PRIMARY KEY NOT NULL,
-	`project_id` text,
-	`workspace_id` text NOT NULL,
+	`project_id` text NOT NULL,
+	`workspace_id` text,
 	`name` text NOT NULL,
 	`enabled` integer DEFAULT true NOT NULL,
 	`frequency` text NOT NULL,
@@ -23,9 +23,10 @@ CREATE TABLE `todo_schedules` (
 	`next_run_at` integer,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
-	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE set null,
-	FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
+CREATE INDEX `todo_schedules_project_idx` ON `todo_schedules` (`project_id`);--> statement-breakpoint
 CREATE INDEX `todo_schedules_workspace_idx` ON `todo_schedules` (`workspace_id`);--> statement-breakpoint
 CREATE INDEX `todo_schedules_enabled_next_run_idx` ON `todo_schedules` (`enabled`,`next_run_at`);

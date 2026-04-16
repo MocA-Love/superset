@@ -20,12 +20,14 @@ import { formatNextRun } from "../../utils/formatNextRun";
 
 interface ScheduleListRowProps {
 	schedule: SelectTodoSchedule;
+	projectName: string | null;
 	workspaceName: string | null;
 	onEdit: () => void;
 }
 
 export function ScheduleListRow({
 	schedule,
+	projectName,
 	workspaceName,
 	onEdit,
 }: ScheduleListRowProps) {
@@ -80,7 +82,10 @@ export function ScheduleListRow({
 				<div className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
 					<span>{describeSchedule(schedule)}</span>
 					<span>→ {formatNextRun(schedule.nextRunAt)}</span>
-					{workspaceName && <span className="truncate">{workspaceName}</span>}
+					<span className="truncate">
+						{projectName ?? "(不明なプロジェクト)"}
+						{workspaceName ? ` / ${workspaceName}` : " / main"}
+					</span>
 				</div>
 				{schedule.lastRunAt && (
 					<div className="text-[10px] text-muted-foreground mt-0.5">

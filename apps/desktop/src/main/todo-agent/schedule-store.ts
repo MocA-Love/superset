@@ -37,8 +37,8 @@ class TodoScheduleStore {
 		input: TodoScheduleCreateInput & { nextRunAt: number | null },
 	): SelectTodoSchedule {
 		const row: InsertTodoSchedule = {
-			workspaceId: input.workspaceId,
-			projectId: input.projectId ?? null,
+			projectId: input.projectId,
+			workspaceId: input.workspaceId ?? null,
 			name: input.name,
 			enabled: input.enabled,
 			frequency: input.frequency,
@@ -86,8 +86,9 @@ class TodoScheduleStore {
 		if (rest.customSystemPrompt !== undefined)
 			patch.customSystemPrompt = rest.customSystemPrompt ?? null;
 		if (rest.overlapMode !== undefined) patch.overlapMode = rest.overlapMode;
-		if (rest.workspaceId !== undefined) patch.workspaceId = rest.workspaceId;
-		if (rest.projectId !== undefined) patch.projectId = rest.projectId ?? null;
+		if (rest.workspaceId !== undefined)
+			patch.workspaceId = rest.workspaceId ?? null;
+		if (rest.projectId !== undefined) patch.projectId = rest.projectId;
 
 		return localDb
 			.update(todoSchedules)
@@ -158,6 +159,15 @@ class TodoScheduleStore {
 			.select()
 			.from(todoSchedules)
 			.where(eq(todoSchedules.workspaceId, workspaceId))
+			.orderBy(desc(todoSchedules.createdAt))
+			.all();
+	}
+
+	listForProject(projectId: string): SelectTodoSchedule[] {
+		return localDb
+			.select()
+			.from(todoSchedules)
+			.where(eq(todoSchedules.projectId, projectId))
 			.orderBy(desc(todoSchedules.createdAt))
 			.all();
 	}

@@ -9,7 +9,7 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
@@ -405,4 +405,66 @@ export function resolveWorktreePath(workspaceId: string): string | undefined {
 		.where(eq(workspaces.id, workspaceId))
 		.get();
 	return row?.worktreePath ?? row?.mainRepoPath ?? undefined;
+}
+
+/**
+ * Ensure a project has its `type="branch"` workspace (the row that maps
+ * to `mainRepoPath`). Creates one lazily if missing so schedules with
+ * no explicit workspaceId can attach their sessions to something real.
+ * Returns the workspace id, or undefined if the project itself is gone.
+ */
+export function ensureProjectBranchWorkspaceId(
+	projectId: string,
+): string | undefined {
+	const existing = localDb
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, projectId),
+				eq(workspaces.type, "branch"),
+				isNull(workspaces.deletingAt),
+			),
+		)
+		.get();
+	if (existing) return existing.id;
+
+	const project = localDb
+		.select({
+			defaultBranch: projects.defaultBranch,
+		})
+		.from(projects)
+		.where(eq(projects.id, projectId))
+		.get();
+	if (!project) return undefined;
+
+	const branchName = project.defaultBranch ?? "main";
+	const inserted = localDb
+		.insert(workspaces)
+		.values({
+			projectId,
+			type: "branch",
+			branch: branchName,
+			name: branchName,
+			tabOrder: 0,
+		})
+		.onConflictDoNothing()
+		.returning({ id: workspaces.id })
+		.get();
+
+	if (inserted) return inserted.id;
+
+	// Race: another path materialized it between our check and insert.
+	const raced = localDb
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, projectId),
+				eq(workspaces.type, "branch"),
+				isNull(workspaces.deletingAt),
+			),
+		)
+		.get();
+	return raced?.id;
 }

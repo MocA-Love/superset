@@ -17,12 +17,18 @@ export const todoSchedules = sqliteTable(
 		id: text("id")
 			.primaryKey()
 			.$defaultFn(() => uuidv4()),
-		projectId: text("project_id").references(() => projects.id, {
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, {
+				onDelete: "cascade",
+			}),
+		// Optional: when null, the schedule fires against the project's
+		// main repo path (`projects.mainRepoPath`) instead of a specific
+		// worktree. Needed for "run on main every day" use cases where
+		// the user doesn't want to maintain a dedicated workspace row.
+		workspaceId: text("workspace_id").references(() => workspaces.id, {
 			onDelete: "set null",
 		}),
-		workspaceId: text("workspace_id")
-			.notNull()
-			.references(() => workspaces.id, { onDelete: "cascade" }),
 
 		name: text("name").notNull(),
 		enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
@@ -70,6 +76,7 @@ export const todoSchedules = sqliteTable(
 			.$defaultFn(() => Date.now()),
 	},
 	(table) => [
+		index("todo_schedules_project_idx").on(table.projectId),
 		index("todo_schedules_workspace_idx").on(table.workspaceId),
 		index("todo_schedules_enabled_next_run_idx").on(
 			table.enabled,

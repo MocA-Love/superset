@@ -654,9 +654,9 @@ export const createTodoAgentRouter = () => {
 
 		schedule: router({
 			list: publicProcedure
-				.input(z.object({ workspaceId: z.string().min(1) }))
+				.input(z.object({ projectId: z.string().min(1) }))
 				.query(({ input }) =>
-					getTodoScheduleStore().listForWorkspace(input.workspaceId),
+					getTodoScheduleStore().listForProject(input.projectId),
 				),
 			listAll: publicProcedure.query(() => getTodoScheduleStore().listAll()),
 			create: publicProcedure

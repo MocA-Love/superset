@@ -23,12 +23,19 @@ export function SchedulesSection() {
 		},
 	);
 	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
+	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
 
 	const workspaceNameById = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const w of workspaces ?? []) map.set(w.id, w.name);
 		return map;
 	}, [workspaces]);
+
+	const projectNameById = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const p of projects ?? []) map.set(p.id, p.name);
+		return map;
+	}, [projects]);
 
 	const openNew = () => {
 		setEditing(null);
@@ -73,8 +80,11 @@ export function SchedulesSection() {
 						<ScheduleListRow
 							key={schedule.id}
 							schedule={schedule}
+							projectName={projectNameById.get(schedule.projectId) ?? null}
 							workspaceName={
-								workspaceNameById.get(schedule.workspaceId) ?? null
+								schedule.workspaceId
+									? (workspaceNameById.get(schedule.workspaceId) ?? null)
+									: null
 							}
 							onEdit={() => openEdit(schedule)}
 						/>

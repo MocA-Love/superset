@@ -49,8 +49,13 @@ export function ScheduleEditorDialog({
 	onSaved,
 }: ScheduleEditorDialogProps) {
 	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
+	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
 
 	const [name, setName] = useState("");
+	const [projectId, setProjectId] = useState<string>("");
+	// Empty string = "プロジェクト本体 (main repo)" — resolved to the
+	// project's branch workspace at fire time. Otherwise a specific
+	// worktree workspace id.
 	const [workspaceId, setWorkspaceId] = useState<string>("");
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
@@ -68,7 +73,8 @@ export function ScheduleEditorDialog({
 		if (!open) return;
 		if (initial) {
 			setName(initial.name);
-			setWorkspaceId(initial.workspaceId);
+			setProjectId(initial.projectId);
+			setWorkspaceId(initial.workspaceId ?? "");
 			setTitle(initial.title);
 			setDescription(initial.description);
 			setGoal(initial.goal ?? "");
@@ -88,6 +94,7 @@ export function ScheduleEditorDialog({
 			});
 		} else {
 			setName("");
+			setProjectId("");
 			setWorkspaceId("");
 			setTitle("");
 			setDescription("");
@@ -102,12 +109,23 @@ export function ScheduleEditorDialog({
 		}
 	}, [open, initial]);
 
-	// Pre-select first workspace if creating fresh.
+	// Pre-select first project when creating a brand-new schedule.
 	useEffect(() => {
-		if (!open || initial || workspaceId) return;
-		const first = (workspaces ?? [])[0];
-		if (first) setWorkspaceId(first.id);
-	}, [open, initial, workspaceId, workspaces]);
+		if (!open || initial || projectId) return;
+		const first = (projects ?? [])[0];
+		if (first) setProjectId(first.id);
+	}, [open, initial, projectId, projects]);
+
+	// Whenever the chosen project changes, drop a stale workspaceId that
+	// no longer belongs to this project so we don't save a cross-project
+	// mismatch.
+	useEffect(() => {
+		if (!workspaceId) return;
+		const ws = (workspaces ?? []).find((w) => w.id === workspaceId);
+		if (ws && ws.projectId !== projectId) {
+			setWorkspaceId("");
+		}
+	}, [projectId, workspaceId, workspaces]);
 
 	const { data: nextRunPreview } =
 		electronTrpc.todoAgent.schedule.previewNextRun.useQuery({
@@ -126,7 +144,7 @@ export function ScheduleEditorDialog({
 
 	const canSubmit =
 		name.trim().length > 0 &&
-		workspaceId.length > 0 &&
+		projectId.length > 0 &&
 		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		(freq.frequency !== "custom" ||
@@ -138,7 +156,8 @@ export function ScheduleEditorDialog({
 		setSubmitting(true);
 		try {
 			const payload = {
-				workspaceId,
+				projectId,
+				workspaceId: workspaceId.length > 0 ? workspaceId : null,
 				name: name.trim(),
 				enabled,
 				frequency: freq.frequency,
@@ -206,21 +225,48 @@ export function ScheduleEditorDialog({
 						</div>
 
 						<div className="flex flex-col gap-1.5">
-							<Label className="text-xs">ワークスペース</Label>
+							<Label className="text-xs">プロジェクト</Label>
 							<Select
-								value={workspaceId}
-								onValueChange={setWorkspaceId}
+								value={projectId}
+								onValueChange={setProjectId}
 								disabled={submitting}
 							>
 								<SelectTrigger className="h-8 text-xs">
-									<SelectValue placeholder="ワークスペースを選択" />
+									<SelectValue placeholder="プロジェクトを選択" />
 								</SelectTrigger>
 								<SelectContent>
-									{(workspaces ?? []).map((w) => (
-										<SelectItem key={w.id} value={w.id}>
-											{w.name}
+									{(projects ?? []).map((p) => (
+										<SelectItem key={p.id} value={p.id}>
+											{p.name}
 										</SelectItem>
 									))}
+								</SelectContent>
+							</Select>
+						</div>
+
+						<div className="flex flex-col gap-1.5">
+							<Label className="text-xs">実行対象</Label>
+							<Select
+								value={workspaceId || "__main__"}
+								onValueChange={(v) => setWorkspaceId(v === "__main__" ? "" : v)}
+								disabled={submitting || !projectId}
+							>
+								<SelectTrigger className="h-8 text-xs">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="__main__">
+										プロジェクト本体 (main)
+									</SelectItem>
+									{(workspaces ?? [])
+										.filter(
+											(w) => w.projectId === projectId && w.type === "worktree",
+										)
+										.map((w) => (
+											<SelectItem key={w.id} value={w.id}>
+												{w.name}
+											</SelectItem>
+										))}
 								</SelectContent>
 							</Select>
 						</div>

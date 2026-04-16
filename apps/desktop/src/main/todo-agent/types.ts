@@ -190,8 +190,11 @@ export const todoScheduleOverlapModeSchema = z.enum(["skip", "queue"]);
 
 export const todoScheduleCreateInputSchema = z
 	.object({
-		workspaceId: z.string().min(1),
-		projectId: z.string().min(1).nullish(),
+		projectId: z.string().min(1),
+		// Null/omitted means "run on the project's main repo path" (the
+		// non-worktree source tree). Set to a workspace id to bind the
+		// schedule to a specific worktree instead.
+		workspaceId: z.string().min(1).nullish(),
 		name: z.string().trim().min(1).max(120),
 		enabled: z.boolean().default(true),
 		frequency: todoScheduleFrequencySchema,
@@ -229,8 +232,8 @@ export type TodoScheduleCreateInput = z.infer<
 >;
 
 const todoScheduleBaseSchema = z.object({
-	workspaceId: z.string().min(1),
-	projectId: z.string().min(1).nullish(),
+	projectId: z.string().min(1),
+	workspaceId: z.string().min(1).nullish(),
 	name: z.string().trim().min(1).max(120),
 	enabled: z.boolean(),
 	frequency: todoScheduleFrequencySchema,
