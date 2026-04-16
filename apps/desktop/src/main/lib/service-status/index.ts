@@ -99,17 +99,11 @@ class ServiceStatusService extends EventEmitter {
 	}
 
 	private updateSnapshot(next: ServiceStatusSnapshot): void {
-		const prev = this.snapshots.get(next.id);
 		this.snapshots.set(next.id, next);
-		if (
-			!prev ||
-			prev.level !== next.level ||
-			prev.indicator !== next.indicator ||
-			prev.description !== next.description ||
-			Boolean(prev.fetchError) !== Boolean(next.fetchError)
-		) {
-			this.emit("change", next);
-		}
+		// Emit on every poll so the renderer's "last checked" timestamp stays
+		// fresh — the initial getAll query is cached with staleTime: Infinity,
+		// so without an emit here the tooltip would freeze on the first value.
+		this.emit("change", next);
 	}
 
 	private unknownFor(def: ServiceStatusDefinition): ServiceStatusSnapshot {
