@@ -72,18 +72,28 @@ class ServiceStatusService extends EventEmitter {
 	}
 
 	async refreshAll(): Promise<void> {
-		// Skip when offline. net.isOnline() reflects Chromium's connectivity
-		// state which is accurate enough to avoid guaranteed-failure polls on
+		// Skip fetching when offline, but still push an "offline" snapshot so
+		// the UI doesn't keep rendering a stale green dot from the last
+		// successful poll. net.isOnline() reflects Chromium's connectivity
+		// state — accurate enough to avoid guaranteed-failure polls on
 		// planes / disconnected laptops while still running when the OS is
-		// merely on a captive-portal / proxy.
-		if (!net.isOnline()) return;
-		this.lastRefreshAt = Date.now();
-		await Promise.allSettled(
+		// on a captive-portal / proxy.
+		if (!net.isOnline()) {
+			this.markAllOffline();
+			return;
+		}
+		const results = await Promise.all(
 			SERVICE_STATUS_DEFINITIONS.map((def) => this.refreshOne(def)),
 		);
+		// Only record a "successful refresh" when at least one fetch actually
+		// worked, so a transient failure doesn't lock the 30-second debounce
+		// window in refreshIfStale() and prevent a quick recovery.
+		if (results.some(Boolean)) {
+			this.lastRefreshAt = Date.now();
+		}
 	}
 
-	private async refreshOne(def: ServiceStatusDefinition): Promise<void> {
+	private async refreshOne(def: ServiceStatusDefinition): Promise<boolean> {
 		try {
 			const json = await this.fetchJson(def.apiUrl);
 			const indicator = json.status?.indicator ?? null;
@@ -100,6 +110,7 @@ class ServiceStatusService extends EventEmitter {
 				checkedAt: Date.now(),
 				fetchError: null,
 			});
+			return true;
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error ?? "unknown");
@@ -112,6 +123,22 @@ class ServiceStatusService extends EventEmitter {
 				description: "ステータスを取得できませんでした",
 				checkedAt: Date.now(),
 				fetchError: message,
+			});
+			return false;
+		}
+	}
+
+	private markAllOffline(): void {
+		for (const def of SERVICE_STATUS_DEFINITIONS) {
+			this.updateSnapshot({
+				id: def.id,
+				label: def.label,
+				statusUrl: def.statusUrl,
+				level: "unknown",
+				indicator: null,
+				description: "オフラインのため取得できません",
+				checkedAt: Date.now(),
+				fetchError: "offline",
 			});
 		}
 	}
@@ -186,7 +213,14 @@ class ServiceStatusService extends EventEmitter {
 
 export const serviceStatusService = new ServiceStatusService();
 
+let pollingWired = false;
+
 export function setupServiceStatusPolling(): void {
+	// Guard against duplicate wiring on HMR / re-init — the inner `start()`
+	// is already idempotent via its `started` flag, but `app.on(...)` would
+	// otherwise accumulate focus listeners across reloads.
+	if (pollingWired) return;
+	pollingWired = true;
 	serviceStatusService.start();
 	const onFocus = () => {
 		// Debounced refresh — protects the poller from rapid window switches.

@@ -11,14 +11,16 @@ export const createServiceStatusRouter = () => {
 		// race where the query would later clobber fresh subscription data).
 		onChange: publicProcedure.subscription(() => {
 			return observable<ServiceStatusSnapshot>((emit) => {
-				for (const snapshot of serviceStatusService.getAll()) {
-					emit.next(snapshot);
-				}
-
+				// Register the listener BEFORE emitting the initial snapshots so
+				// that a `change` fired between the two steps (e.g. a polling
+				// cycle completing while we iterate) isn't lost.
 				const onChange = (snapshot: ServiceStatusSnapshot) => {
 					emit.next(snapshot);
 				};
 				serviceStatusService.on("change", onChange);
+				for (const snapshot of serviceStatusService.getAll()) {
+					emit.next(snapshot);
+				}
 				return () => {
 					serviceStatusService.off("change", onChange);
 				};
