@@ -12,6 +12,9 @@ export function ScheduleFireToasts() {
 	const utils = electronTrpc.useUtils();
 
 	electronTrpc.todoAgent.schedule.onFire.useSubscription(undefined, {
+		onError: (err) => {
+			console.warn("[schedule-toasts] subscription error", err);
+		},
 		onData: (event) => {
 			if (event.kind === "triggered") {
 				toast.success(`📅 ${event.scheduleName} を実行しました`, {

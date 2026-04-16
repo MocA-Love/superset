@@ -67,11 +67,25 @@ export function computeNextRunAt(
 		}
 		case "monthly": {
 			const targetMonthday = schedule.monthday ?? 1;
-			next.setDate(targetMonthday);
-			next.setHours(hour, minute, 0, 0);
+			// Snap the target to the last valid day of each month so
+			// e.g. "every 31st" doesn't overflow Feb to Mar 3 — users
+			// who pick 31 expect "last day of every month" on short
+			// months.
+			const placeOnMonth = (base: Date) => {
+				const lastDay = new Date(
+					base.getFullYear(),
+					base.getMonth() + 1,
+					0,
+				).getDate();
+				base.setDate(Math.min(targetMonthday, lastDay));
+				base.setHours(hour, minute, 0, 0);
+			};
+			next.setDate(1);
+			placeOnMonth(next);
 			if (next.getTime() <= from.getTime()) {
+				next.setDate(1);
 				next.setMonth(next.getMonth() + 1);
-				next.setDate(targetMonthday);
+				placeOnMonth(next);
 			}
 			return next.getTime();
 		}
@@ -94,9 +108,11 @@ function isSessionActive(session: SelectTodoSession | undefined): boolean {
 class TodoScheduler {
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private inFlight = false;
+	private isStopped = false;
 
 	start(): void {
 		if (this.timer) return;
+		this.isStopped = false;
 		// Re-seed nextRunAt for any schedule that lost its value (e.g. migration
 		// from schedules inserted before this field got populated). Safe to
 		// re-run on every boot because `lastRunAt` is respected.
@@ -110,6 +126,7 @@ class TodoScheduler {
 	}
 
 	stop(): void {
+		this.isStopped = true;
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
@@ -146,13 +163,17 @@ class TodoScheduler {
 	}
 
 	private async tick(): Promise<void> {
-		if (this.inFlight) return;
+		if (this.inFlight || this.isStopped) return;
 		this.inFlight = true;
 		try {
 			const store = getTodoScheduleStore();
 			const now = Date.now();
 			const due = store.listDue(now);
 			for (const schedule of due) {
+				// Abort mid-iteration if a shutdown came in while we were
+				// awaiting a previous fire. Prevents inserting a session
+				// row after closeLocalDb() has torn down SQLite.
+				if (this.isStopped) break;
 				await this.fire(schedule, now);
 			}
 		} catch (error) {
@@ -176,6 +197,11 @@ class TodoScheduler {
 		// active and the user asked us to skip, short-circuit without
 		// creating a new session. Still advance nextRunAt so we don't busy
 		// loop on the same tick.
+		//
+		// `overlapMode === "queue"` is intentionally handled by the existing
+		// TodoSupervisor queue: we always insert the new session and call
+		// supervisor.start(), which enqueues when another session is already
+		// running instead of spawning in parallel. No extra branch needed here.
 		if (schedule.overlapMode === "skip" && schedule.lastRunSessionId) {
 			const prev = sessionStore.get(schedule.lastRunSessionId);
 			if (isSessionActive(prev)) {
@@ -253,10 +279,23 @@ class TodoScheduler {
 			});
 			supervisor.prepareArtifacts(inserted);
 			void supervisor.start(inserted.id).catch((err) => {
+				const failureMessage =
+					err instanceof Error ? err.message : "Unknown error";
 				console.warn(
 					`[todo-scheduler] supervisor.start failed for ${inserted.id}:`,
 					err,
 				);
+				// The triggered toast has already fired, so publish a
+				// follow-up failed event. Otherwise the UI would claim the
+				// fire succeeded even though the supervisor never ran.
+				this.emit({
+					scheduleId: schedule.id,
+					scheduleName: schedule.name,
+					kind: "failed",
+					sessionId: inserted.id,
+					message: `実行開始に失敗しました: ${failureMessage}`,
+					firedAt,
+				});
 			});
 			store.recordRun({
 				id: schedule.id,

@@ -406,6 +406,14 @@ app.on("before-quit", async (event) => {
 	isQuitting = true;
 	// FORK NOTE: cleanup window resources before exit to prevent port conflicts
 	cleanupMainWindowResources();
+	// Fork-local: stop the todo-agent scheduler before closing local-db so an
+	// in-flight tick can't insert a session into a closed SQLite handle.
+	try {
+		const { getTodoScheduler } = await import("./todo-agent/scheduler");
+		getTodoScheduler().stop();
+	} catch (error) {
+		console.warn("[main] todo-agent scheduler stop skipped", error);
+	}
 	try {
 		const mod = await loadVscodeShim();
 		await mod.shutdownExtensionHost();

@@ -1,4 +1,7 @@
-import cronstrue from "cronstrue/i18n";
+// Load only the ja locale instead of cronstrue/i18n, which pulls every
+// locale (~200KB) into the renderer bundle even though we only render ja.
+import cronstrue from "cronstrue";
+import "cronstrue/locales/ja";
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 

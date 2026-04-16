@@ -4,7 +4,7 @@ import {
 	type SelectTodoSchedule,
 	todoSchedules,
 } from "@superset/local-db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull, lte } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoScheduleCreateInput,
@@ -174,9 +174,14 @@ class TodoScheduleStore {
 		return localDb
 			.select()
 			.from(todoSchedules)
-			.where(and(eq(todoSchedules.enabled, true)))
-			.all()
-			.filter((row) => row.nextRunAt !== null && (row.nextRunAt ?? 0) <= now);
+			.where(
+				and(
+					eq(todoSchedules.enabled, true),
+					isNotNull(todoSchedules.nextRunAt),
+					lte(todoSchedules.nextRunAt, now),
+				),
+			)
+			.all();
 	}
 }
 
