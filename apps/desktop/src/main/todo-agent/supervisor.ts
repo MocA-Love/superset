@@ -324,6 +324,30 @@ class TodoSupervisor {
 
 				if (ac.signal.aborted) return;
 
+				// The turn was interrupted because the user queued a
+				// mid-turn intervention. Preserve whatever session_id
+				// we already captured and loop back so the next
+				// iteration picks up the intervention via the normal
+				// read-then-clear path. No error, no status change —
+				// the session stays running.
+				if (turnResult.interrupted) {
+					if (turnResult.sessionId) {
+						claudeSessionId = turnResult.sessionId;
+					}
+					if (turnResult.result) {
+						lastAssistantText = turnResult.result;
+						aggregatedCostUsd += turnResult.costUsd ?? 0;
+						aggregatedNumTurns += turnResult.numTurns ?? 0;
+					}
+					store.update(sessionId, {
+						claudeSessionId,
+						finalAssistantText: lastAssistantText,
+						totalCostUsd: aggregatedCostUsd || null,
+						totalNumTurns: aggregatedNumTurns || null,
+					});
+					continue;
+				}
+
 				if (turnResult.error && !turnResult.result) {
 					store.update(sessionId, {
 						status: "failed",
@@ -353,8 +377,26 @@ class TodoSupervisor {
 					});
 				}
 
-				// No verify → single-turn mode. Claude is done, we are done.
+				// No verify → single-turn mode by default. But if the user
+				// queued an intervention between "Claude finished iteration
+				// N" and "we decide to end", we must not declare done —
+				// otherwise the intervention sits in `pendingIntervention`
+				// forever and the UI shows "予約済み" while Claude never
+				// sees it. Loop another iteration so the next turn picks it
+				// up (same mechanism verify-mode already uses).
 				if (!currentSession.verifyCommand) {
+					const postTurn = store.get(sessionId);
+					const hasFollowUp =
+						(postTurn?.pendingIntervention ?? "").trim().length > 0;
+					if (hasFollowUp) {
+						store.update(sessionId, {
+							claudeSessionId,
+							finalAssistantText: lastAssistantText,
+							totalCostUsd: aggregatedCostUsd || null,
+							totalNumTurns: aggregatedNumTurns || null,
+						});
+						continue;
+					}
 					store.update(sessionId, {
 						status: "done",
 						phase: "done",
@@ -471,6 +513,9 @@ class TodoSupervisor {
 		costUsd: number | null;
 		numTurns: number | null;
 		error: string | null;
+		/** True when the turn was interrupted because the user queued
+		 *  a mid-turn intervention, NOT because of an external abort. */
+		interrupted: boolean;
 	}> {
 		return new Promise((resolve) => {
 			const args = [
@@ -515,6 +560,7 @@ class TodoSupervisor {
 						error instanceof Error
 							? `claude を起動できませんでした: ${error.message}`
 							: "claude を起動できませんでした",
+					interrupted: false,
 				});
 				return;
 			}
@@ -529,6 +575,7 @@ class TodoSupervisor {
 			let stdoutBuffer = "";
 			let stderrBuffer = "";
 			let settled = false;
+			let interruptedForIntervention = false;
 
 			const onAbort = () => {
 				try {
@@ -539,6 +586,36 @@ class TodoSupervisor {
 			};
 			params.signal.addEventListener("abort", onAbort);
 
+			// Poll for mid-turn interventions every 500ms. When the
+			// user queues a message while Claude is mid-stream, we
+			// SIGINT the child immediately so the while loop can
+			// resume the same session with the intervention as the
+			// next user prompt — giving "interrupt anytime" UX
+			// instead of waiting for the full turn to finish.
+			const interventionPoll = setInterval(() => {
+				if (settled || params.signal.aborted) {
+					clearInterval(interventionPoll);
+					return;
+				}
+				const live = getTodoSessionStore().get(params.sessionId);
+				if (live?.pendingIntervention?.trim()) {
+					interruptedForIntervention = true;
+					clearInterval(interventionPoll);
+					appendRawEvent(
+						params.sessionId,
+						params.iteration,
+						"system_init",
+						"介入",
+						"ユーザ介入を検知。現在のターンを中断して介入内容で再開します…",
+					);
+					try {
+						child.kill("SIGINT");
+					} catch {
+						// ignore
+					}
+				}
+			}, 500);
+
 			// Single-shot settlement. `child.on("error", ...)` can fire
 			// WITHOUT a subsequent `close` (e.g. ENOENT when the claude
 			// binary is missing from PATH), and without this guard the
@@ -548,6 +625,7 @@ class TodoSupervisor {
 			const settle = () => {
 				if (settled) return;
 				settled = true;
+				clearInterval(interventionPoll);
 				params.signal.removeEventListener("abort", onAbort);
 				if (stdoutBuffer.trim().length > 0) {
 					handleLine(stdoutBuffer.trim());
@@ -558,7 +636,8 @@ class TodoSupervisor {
 					sessionId: claudeSessionId,
 					costUsd,
 					numTurns,
-					error: errorText,
+					error: interruptedForIntervention ? null : errorText,
+					interrupted: interruptedForIntervention,
 				});
 			};
 

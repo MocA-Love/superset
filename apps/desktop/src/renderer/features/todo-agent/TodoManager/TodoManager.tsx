@@ -949,11 +949,14 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 				<div className="flex items-center justify-between gap-3 mt-1.5">
 					<p className="text-[10px] text-muted-foreground line-clamp-1">
 						{session.pendingIntervention ? (
-							<>予約済み: {session.pendingIntervention}</>
+							<>
+								送信予定（数秒以内に自動割り込み）:{" "}
+								{session.pendingIntervention}
+							</>
 						) : (
 							<>
-								ヒント: 介入指示は次のイテレーション開始時に Claude
-								に渡されます。
+								ヒント:
+								実行中でもメッセージを送ると、現在のターンを中断して即座に割り込みます。
 							</>
 						)}
 					</p>
