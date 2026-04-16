@@ -31,6 +31,7 @@ import { createProjectsRouter } from "./projects";
 import { createReferenceGraphRouter } from "./reference-graph";
 import { createResourceMetricsRouter } from "./resource-metrics";
 import { createRingtoneRouter } from "./ringtone";
+import { createServiceStatusRouter } from "./service-status";
 import { createSettingsRouter } from "./settings";
 import { createTabTearoffRouter } from "./tab-tearoff";
 import { createTerminalRouter } from "./terminal";
@@ -76,6 +77,7 @@ export const createAppRouter = (
 		docker: createDockerRouter(),
 		uiState: createUiStateRouter(),
 		ringtone: createRingtoneRouter(getWindow),
+		serviceStatus: createServiceStatusRouter(),
 		hostServiceCoordinator: createHostServiceCoordinatorRouter(),
 		tabTearoff: createTabTearoffRouter(wm),
 		extensions: createExtensionsRouter(getWindow),
