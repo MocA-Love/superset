@@ -540,7 +540,6 @@ export function WorkspacePage({
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useHotkey("OPEN_IN_APP", handleOpenInApp, { enabled: isActive });
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
