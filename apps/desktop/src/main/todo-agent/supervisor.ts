@@ -234,6 +234,17 @@ class TodoSupervisor {
 				"予算",
 				`${session0.maxIterations} iter · ${Math.round(session0.maxWallClockSec / 60)} 分`,
 			);
+			if (session0.customSystemPrompt?.trim()) {
+				const preview = session0.customSystemPrompt
+					.trim()
+					.replace(/\s+/g, " ")
+					.slice(0, 200);
+				appendSetupEvent(
+					sessionId,
+					"システムプロンプト",
+					`${preview}${session0.customSystemPrompt.trim().length > 200 ? "…" : ""}`,
+				);
+			}
 			appendSetupEvent(
 				sessionId,
 				"Claude",
@@ -835,6 +846,17 @@ function buildIterationPrompt(params: {
 
 	const sections: string[] = [];
 	if (iteration === 1) {
+		// Mirror the preset / custom system prompt into the first turn's
+		// user message. `--append-system-prompt` alone was not always
+		// visibly honored (users reported "気がする" that Claude never
+		// read the template). Duplicating it as explicit steering at the
+		// top of the prompt guarantees delivery and is cheap — Claude
+		// tolerates the same guidance appearing twice.
+		if (session.customSystemPrompt?.trim()) {
+			sections.push(
+				`ユーザー設定のシステム指示（最優先で遵守）:\n${session.customSystemPrompt.trim()}`,
+			);
+		}
 		sections.push(
 			`${goalPath} を読んで、${goalClause}。作業ディレクトリは worktree のルートです。`,
 		);
