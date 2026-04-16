@@ -10,7 +10,7 @@ import {
 	DialogTitle,
 } from "@superset/ui/dialog";
 import { Textarea } from "@superset/ui/textarea";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 import { getCommentAvatarFallback, getCommentPreviewText } from "../../utils";
 
@@ -30,10 +30,12 @@ export function ReplyDialog({
 	isSubmitting,
 }: ReplyDialogProps) {
 	const [body, setBody] = useState("");
+	const inFlightRef = useRef(false);
 
 	useEffect(() => {
 		if (!open) {
 			setBody("");
+			inFlightRef.current = false;
 		}
 	}, [open]);
 
@@ -45,20 +47,27 @@ export function ReplyDialog({
 	const trimmed = body.trim();
 	const canSubmit = trimmed.length > 0 && !isSubmitting;
 
-	const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		if (!canSubmit) {
+	const runSubmit = async () => {
+		if (!canSubmit || inFlightRef.current) {
 			return;
 		}
-		await onSubmit(trimmed);
+		inFlightRef.current = true;
+		try {
+			await onSubmit(trimmed);
+		} finally {
+			inFlightRef.current = false;
+		}
+	};
+
+	const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		void runSubmit();
 	};
 
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
 			event.preventDefault();
-			if (canSubmit) {
-				void onSubmit(trimmed);
-			}
+			void runSubmit();
 		}
 	};
 
