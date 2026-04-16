@@ -1,4 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
+import { Fragment } from "react";
 import { getSidebarHeaderTabButtonClassName } from "renderer/screens/main/components/WorkspaceView/RightSidebar/headerTabStyles";
 import type { SidebarTabDefinition } from "../../types";
 
@@ -47,17 +48,7 @@ export function SidebarHeader({
 						);
 					}
 
-					return (
-						<button
-							key={tab.id}
-							type="button"
-							onClick={() => onTabChange(tab.id)}
-							className={getSidebarHeaderTabButtonClassName({ isActive })}
-						>
-							{tab.icon && <tab.icon className="size-3.5" />}
-							{tab.label}
-						</button>
-					);
+					return <Fragment key={tab.id}>{btn}</Fragment>;
 				})}
 			</div>
 			<div className="flex-1" />

@@ -623,7 +623,9 @@ function WorkspaceContent({
 				onScopeChange={commandPalette.setScope}
 				onSelectFile={commandPalette.selectFile}
 				open={commandPalette.open}
+				openFilePaths={openFilePaths}
 				query={commandPalette.query}
+				recentlyViewedFiles={recentFiles}
 				scope={commandPalette.scope}
 				searchResults={commandPalette.searchResults}
 				workspaceName={workspaceName}
