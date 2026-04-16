@@ -20,7 +20,6 @@ export function initializeBrowserWebviewCompat(): void {
 	if (initialized) {
 		return;
 	}
-	initialized = true;
 
 	const preloadPath = join(__dirname, "../preload/webview-compat.js");
 	const browserSession = session.fromPartition(APP_BROWSER_PARTITION);
@@ -28,4 +27,5 @@ export function initializeBrowserWebviewCompat(): void {
 	if (!existing.includes(preloadPath)) {
 		browserSession.setPreloads([...existing, preloadPath]);
 	}
+	initialized = true;
 }
