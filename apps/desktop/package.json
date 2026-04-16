@@ -171,7 +171,7 @@
 		"dockerfile-utils": "0.16.3",
 		"dotenv": "^17.3.1",
 		"drizzle-orm": "0.45.1",
-		"electron-updater": "^6.7.3",
+		"electron-updater": "^6.8.3",
 		"elkjs": "^0.11.1",
 		"exceljs": "^4.4.0",
 		"execa": "^9.6.0",
