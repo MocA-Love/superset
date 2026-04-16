@@ -1492,13 +1492,32 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							</DetailBlock>
 						)}
 
+						{session.status === "waiting" && session.waitingUntil != null && (
+							<DetailBlock label="待機終了まで">
+								<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40 flex flex-col gap-1">
+									<div className="font-mono text-sm">
+										{formatWaitingCountdown(session.waitingUntil)}
+									</div>
+									{session.waitingReason && (
+										<div className="text-[11px] text-muted-foreground break-words">
+											{session.waitingReason}
+										</div>
+									)}
+								</div>
+							</DetailBlock>
+						)}
+
 						{session.finalAssistantText && (
 							<DetailBlock
-								label="最終回答"
+								label={session.status === "waiting" ? "待機中" : "最終回答"}
 								action={
 									<CopyIconButton
 										value={session.finalAssistantText}
-										title="最終回答をコピー"
+										title={
+											session.status === "waiting"
+												? "待機前の応答をコピー"
+												: "最終回答をコピー"
+										}
 									/>
 								}
 							>
@@ -2251,6 +2270,24 @@ function formatWaitingRemaining(waitingUntil: number): string {
 	if (remainingMin < 60) return `${remainingMin}分後`;
 	const remainingHr = Math.round(remainingMin / 60);
 	return `${remainingHr}時間後`;
+}
+
+/**
+ * HH:MM:SS-ish countdown for the detail pane's "待機終了まで" block.
+ * More granular than `formatWaitingRemaining` because the detail view
+ * has room for a live-ticking clock, while the session list label
+ * only has room for a coarse "N分後" hint.
+ */
+function formatWaitingCountdown(waitingUntil: number): string {
+	const remainingMs = waitingUntil - Date.now();
+	if (remainingMs <= 0) return "まもなく再開します";
+	const totalSec = Math.floor(remainingMs / 1000);
+	const hours = Math.floor(totalSec / 3600);
+	const minutes = Math.floor((totalSec % 3600) / 60);
+	const seconds = totalSec % 60;
+	const pad = (n: number) => n.toString().padStart(2, "0");
+	if (hours > 0) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+	return `${pad(minutes)}:${pad(seconds)}`;
 }
 
 interface SessionGroup {
