@@ -615,11 +615,17 @@ export function TodoManager({
 						)}
 					</div>
 				</div>
+				{/*
+				  Rendered inside DialogContent (same pattern as
+				  ScheduleEditorDialog in SchedulesSection) so the
+				  settings dialog stacks on top of the Manager without
+				  causing the outer Dialog to close. See Issue #217.
+				*/}
+				<PresetsDialog
+					open={presetsDialogOpen}
+					onOpenChange={setPresetsDialogOpen}
+				/>
 			</DialogContent>
-			<PresetsDialog
-				open={presetsDialogOpen}
-				onOpenChange={setPresetsDialogOpen}
-			/>
 		</Dialog>
 	);
 }
