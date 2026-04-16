@@ -595,6 +595,53 @@ describe("applyFileViewerOpenOptionsToPane", () => {
 			initialColumn: 7,
 		});
 	});
+
+	it("forces conflict viewer for conflicted files when no explicit viewMode is provided", () => {
+		const pane: Pane = {
+			id: "pane-a",
+			tabId: "tab-a",
+			type: "file-viewer",
+			name: "file.ts",
+			fileViewer: {
+				filePath: "/repo/file.ts",
+				viewMode: "raw",
+				isPinned: false,
+				diffLayout: "inline",
+				diffCategory: "conflicted",
+			},
+		};
+
+		const result = applyFileViewerOpenOptionsToPane(pane, {
+			filePath: "/repo/file.ts",
+			diffCategory: "conflicted",
+		});
+
+		expect(result.fileViewer?.viewMode).toBe("conflict");
+	});
+
+	it("preserves explicit viewMode for conflicted files", () => {
+		const pane: Pane = {
+			id: "pane-a",
+			tabId: "tab-a",
+			type: "file-viewer",
+			name: "file.ts",
+			fileViewer: {
+				filePath: "/repo/file.ts",
+				viewMode: "raw",
+				isPinned: false,
+				diffLayout: "inline",
+				diffCategory: "conflicted",
+			},
+		};
+
+		const result = applyFileViewerOpenOptionsToPane(pane, {
+			filePath: "/repo/file.ts",
+			diffCategory: "conflicted",
+			viewMode: "raw",
+		});
+
+		expect(result.fileViewer?.viewMode).toBe("raw");
+	});
 });
 
 describe("activatePaneInWorkspace", () => {

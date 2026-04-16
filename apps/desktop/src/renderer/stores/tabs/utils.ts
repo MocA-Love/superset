@@ -980,9 +980,17 @@ export const applyFileViewerOpenOptionsToPane = (
 		return pane;
 	}
 
+	// Conflicted files must render in the conflict viewer. If the reused pane
+	// has a stale non-conflict viewMode (e.g. was opened as raw before the
+	// merge marked the file as conflicted), force it back to "conflict" when
+	// no explicit override is provided.
+	const fallbackViewMode =
+		options.diffCategory === "conflicted"
+			? "conflict"
+			: pane.fileViewer.viewMode;
 	const nextFileViewer: FileViewerState = {
 		...pane.fileViewer,
-		viewMode: options.viewMode ?? pane.fileViewer.viewMode,
+		viewMode: options.viewMode ?? fallbackViewMode,
 		isPinned: pane.fileViewer.isPinned || (options.isPinned ?? false),
 		oldPath: options.oldPath ?? pane.fileViewer.oldPath,
 		initialLine: options.line ?? pane.fileViewer.initialLine,
