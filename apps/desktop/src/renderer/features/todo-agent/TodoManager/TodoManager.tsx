@@ -1082,7 +1082,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							Claude の応答 / ライブストリーム
 						</div>
 					</div>
-					<div className="flex-1 min-h-0 px-5 pb-5 overflow-hidden">
+					<div className="flex-1 min-h-0 px-5 pb-5 relative">
 						<StreamView events={streamEvents} />
 					</div>
 				</div>
@@ -1181,12 +1181,49 @@ function formatDuration(startMs: number | null, endMs: number | null): string {
 	return `${h}時間${m}分`;
 }
 
+/**
+ * Pair consecutive tool_use → tool_result events into a single card
+ * (matching VSCode Claude Code extension's IN / OUT grid layout).
+ * Non-tool events stay as singles. Unpaired tool_use (still streaming)
+ * appears as a card with empty OUT row.
+ */
+type StreamItem =
+	| { type: "message"; id: string; event: TodoStreamEvent }
+	| {
+			type: "tool";
+			id: string;
+			toolUse: TodoStreamEvent;
+			toolResult: TodoStreamEvent | null;
+	  };
+
+function pairStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
+	const items: StreamItem[] = [];
+	for (let i = 0; i < events.length; i++) {
+		const ev = events[i];
+		if (!ev) continue;
+		if (ev.kind === "tool_use") {
+			const next = events[i + 1];
+			if (next?.kind === "tool_result") {
+				items.push({
+					type: "tool",
+					id: ev.id,
+					toolUse: ev,
+					toolResult: next,
+				});
+				i++;
+			} else {
+				items.push({ type: "tool", id: ev.id, toolUse: ev, toolResult: null });
+			}
+		} else if (ev.kind === "tool_result") {
+			items.push({ type: "message", id: ev.id, event: ev });
+		} else {
+			items.push({ type: "message", id: ev.id, event: ev });
+		}
+	}
+	return items;
+}
+
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
-	// Auto-scroll to the bottom whenever a new event arrives, but only
-	// if the user hadn't scrolled up to read older output. Tracked via
-	// a `pinnedToBottom` ref that flips to false the moment the user
-	// manually scrolls up, and back to true when they scroll near the
-	// bottom again.
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const pinnedToBottomRef = useRef(true);
 
@@ -1198,7 +1235,7 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		pinnedToBottomRef.current = distanceFromBottom < 40;
 	}, []);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: events.length intentional — we want to scroll on new events, not on identity changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: events.length intentional
 	useEffect(() => {
 		if (!pinnedToBottomRef.current) return;
 		const el = scrollRef.current;
@@ -1206,11 +1243,13 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		el.scrollTop = el.scrollHeight;
 	}, [events.length]);
 
+	const items = useMemo(() => pairStreamEvents(events), [events]);
+
 	return (
 		<div
 			ref={scrollRef}
 			onScroll={handleScroll}
-			className="h-full overflow-auto bg-muted/30 rounded p-3 flex flex-col gap-2"
+			className="absolute inset-0 overflow-y-auto overflow-x-hidden bg-muted/30 rounded px-3 py-2"
 		>
 			{events.length === 0 ? (
 				<div className="text-xs text-muted-foreground p-2">
@@ -1218,58 +1257,147 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 					Claude の応答・ツール使用・verify 結果が流れます。
 				</div>
 			) : (
-				events.map((event) => <StreamEventRow key={event.id} event={event} />)
+				<div className="flex flex-col gap-1">
+					{items.map((item) =>
+						item.type === "tool" ? (
+							<ToolCallCard key={item.id} item={item} />
+						) : (
+							<MessageRow key={item.id} event={item.event} />
+						),
+					)}
+				</div>
 			)}
 		</div>
 	);
 }
 
-function StreamEventRow({ event }: { event: TodoStreamEvent }) {
-	const color =
-		event.kind === "assistant_text"
-			? "border-primary/40 bg-primary/5"
-			: event.kind === "tool_use"
-				? "border-amber-500/40 bg-amber-500/5"
-				: event.kind === "tool_result"
-					? "border-emerald-500/30 bg-emerald-500/5"
-					: event.kind === "result"
-						? "border-emerald-600/50 bg-emerald-600/10"
-						: event.kind === "error"
-							? "border-rose-500/50 bg-rose-500/5"
-							: "border-border/40 bg-background";
-	// Markdown rendering for the two kinds where authoring is natural
-	// (Claude's prose assistant messages + the final `result` text).
-	// Tool calls, tool results, and raw log lines stay plain text so
-	// their monospace / short-label nature is preserved.
-	const useMarkdown =
-		event.kind === "assistant_text" || event.kind === "result";
+/**
+ * VSCode Claude Code extension faithful reproduction: uses `<details>` so
+ * the tool call folds by default, showing only a 2-line summary (bold tool
+ * name + monospace secondary info). Expanded body shows an IN/OUT grid.
+ * This matches the extension's `.Ze/._e/.or/.D/.rr/.ir/.lo/.tr` CSS
+ * classes we reverse-engineered from webview/index.css.
+ */
+function ToolCallCard({
+	item,
+}: {
+	item: Extract<StreamItem, { type: "tool" }>;
+}) {
+	const { toolUse, toolResult } = item;
+	const toolName = toolUse.label;
+	const secondary = extractSecondaryInfo(toolName, toolUse.text);
+	const hasResult = toolResult != null;
+
 	return (
-		<div className={cn("group border rounded-lg px-3 py-2 text-xs", color)}>
-			<div className="flex items-center justify-between gap-2 mb-1">
-				<span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-					[iter {event.iteration}] {event.label}
+		<details className="group text-xs">
+			<summary className="list-none cursor-pointer select-none flex items-baseline gap-1 py-0.5 hover:bg-accent/30 rounded px-1 -mx-1 overflow-hidden">
+				<span className="shrink-0 text-muted-foreground/50 group-open:rotate-90 transition-transform text-[10px]">
+					▶
 				</span>
-				<div className="flex items-center gap-1">
-					<span className="text-[10px] text-muted-foreground tabular-nums">
-						{formatClock(event.ts)}
+				<span className="font-bold shrink-0">{toolName}</span>
+				{secondary && (
+					<span className="font-mono text-[0.85em] text-primary/70 break-all line-clamp-2 min-w-0 flex-1">
+						{secondary}
 					</span>
-					<div className="opacity-0 group-hover:opacity-100 transition">
-						<CopyIconButton value={event.text} title="このイベントをコピー" />
+				)}
+				{!hasResult && (
+					<span className="shrink-0 text-[10px] text-muted-foreground animate-pulse">
+						…
+					</span>
+				)}
+			</summary>
+			<div className="my-1.5 ml-3 border border-border/40 rounded-md bg-muted/20 overflow-hidden">
+				<div className="grid grid-cols-[max-content_1fr] text-[11px]">
+					<div className="col-span-2 grid grid-cols-subgrid border-b border-border/30">
+						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+							IN
+						</div>
+						<div className="py-1 pr-2 overflow-hidden">
+							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
+								{toolUse.text}
+							</pre>
+						</div>
+					</div>
+					<div className="col-span-2 grid grid-cols-subgrid">
+						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+							OUT
+						</div>
+						<div className="py-1 pr-2 overflow-hidden">
+							{toolResult ? (
+								<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
+									{toolResult.text}
+								</pre>
+							) : (
+								<span className="text-muted-foreground animate-pulse">
+									実行中…
+								</span>
+							)}
+						</div>
 					</div>
 				</div>
 			</div>
-			{useMarkdown ? (
-				<MarkdownRenderer content={event.text} scrollable={false} />
-			) : (
-				<div className="whitespace-pre-wrap leading-relaxed font-mono text-[11px]">
-					{event.text}
-				</div>
-			)}
-		</div>
+		</details>
 	);
 }
 
-function formatClock(ms: number): string {
+function extractSecondaryInfo(_toolName: string, text: string): string | null {
+	const colonIdx = text.indexOf(": ");
+	if (colonIdx > 0 && colonIdx < 60) {
+		return text.slice(colonIdx + 2, colonIdx + 120).trim();
+	}
+	if (text.length <= 120) return text;
+	return text.slice(0, 80);
+}
+
+function MessageRow({ event }: { event: TodoStreamEvent }) {
+	if (event.kind === "assistant_text") {
+		return (
+			<div className="group text-xs py-1">
+				<MarkdownRenderer content={event.text} scrollable={false} />
+			</div>
+		);
+	}
+	if (event.kind === "result") {
+		return (
+			<div className="group border-l-2 border-emerald-600/40 bg-emerald-600/5 pl-2 py-1 text-xs my-1">
+				<MarkdownRenderer content={event.text} scrollable={false} />
+			</div>
+		);
+	}
+	if (event.kind === "error") {
+		return (
+			<div className="border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400">
+				{event.text}
+			</div>
+		);
+	}
+	if (event.kind === "system_init") {
+		return (
+			<div className="flex items-baseline gap-2 text-[10px] text-muted-foreground py-0.5">
+				<span className="font-semibold shrink-0">{event.label}</span>
+				<span className="truncate font-mono opacity-70">{event.text}</span>
+			</div>
+		);
+	}
+	return (
+		<details className="text-xs py-0.5">
+			<summary className="list-none cursor-pointer flex items-baseline gap-1 text-muted-foreground hover:text-foreground">
+				<span className="text-[10px] opacity-50">▶</span>
+				<span className="text-[10px] font-semibold uppercase">
+					{event.label}
+				</span>
+				<span className="text-[10px] truncate font-mono opacity-70">
+					{event.text.slice(0, 100)}
+				</span>
+			</summary>
+			<pre className="ml-3 mt-1 whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80 max-h-40 overflow-y-auto">
+				{event.text}
+			</pre>
+		</details>
+	);
+}
+
+function _formatClock(ms: number): string {
 	const d = new Date(ms);
 	const pad = (n: number) => n.toString().padStart(2, "0");
 	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;

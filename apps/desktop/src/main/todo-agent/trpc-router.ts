@@ -16,6 +16,7 @@ import {
 	type SessionDiffScope,
 } from "./git-status";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
+import { getTodoSettings, updateTodoSettings } from "./settings";
 import { getTodoSupervisor } from "./supervisor";
 import {
 	TODO_ARTIFACT_SUBDIR,
@@ -26,6 +27,7 @@ import {
 	todoPresetCreateInputSchema,
 	todoPresetUpdateInputSchema,
 	todoSendInputSchema,
+	todoSettingsUpdateSchema,
 } from "./types";
 
 /**
@@ -550,6 +552,8 @@ export const createTodoAgentRouter = () => {
 						.values({
 							name: input.name,
 							content: input.content,
+							kind: input.kind,
+							workspaceId: input.workspaceId ?? null,
 							createdAt: now,
 							updatedAt: now,
 						})
@@ -560,13 +564,23 @@ export const createTodoAgentRouter = () => {
 			update: publicProcedure
 				.input(todoPresetUpdateInputSchema)
 				.mutation(({ input }) => {
+					const patch: {
+						name: string;
+						content: string;
+						updatedAt: number;
+						kind?: "system" | "description" | "goal";
+						workspaceId?: string | null;
+					} = {
+						name: input.name,
+						content: input.content,
+						updatedAt: Date.now(),
+					};
+					if (input.kind !== undefined) patch.kind = input.kind;
+					if (input.workspaceId !== undefined)
+						patch.workspaceId = input.workspaceId;
 					const row = localDb
 						.update(todoPromptPresets)
-						.set({
-							name: input.name,
-							content: input.content,
-							updatedAt: Date.now(),
-						})
+						.set(patch)
 						.where(eq(todoPromptPresets.id, input.id))
 						.returning()
 						.get();
@@ -587,6 +601,13 @@ export const createTodoAgentRouter = () => {
 						.run();
 					return { ok: result.changes > 0 };
 				}),
+		}),
+
+		settings: router({
+			get: publicProcedure.query(() => getTodoSettings()),
+			update: publicProcedure
+				.input(todoSettingsUpdateSchema)
+				.mutation(({ input }) => updateTodoSettings(input)),
 		}),
 	});
 };

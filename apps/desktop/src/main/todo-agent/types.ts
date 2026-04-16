@@ -54,15 +54,22 @@ export const todoCreateInputSchema = z.object({
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
 });
 
+export const todoPresetKindSchema = z.enum(["system", "description", "goal"]);
+export type TodoPresetKind = z.infer<typeof todoPresetKindSchema>;
+
 export const todoPresetCreateInputSchema = z.object({
 	name: z.string().trim().min(1).max(120),
 	content: z.string().trim().min(1).max(20_000),
+	kind: todoPresetKindSchema.default("system"),
+	workspaceId: z.string().min(1).optional(),
 });
 
 export const todoPresetUpdateInputSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().trim().min(1).max(120),
 	content: z.string().trim().min(1).max(20_000),
+	kind: todoPresetKindSchema.optional(),
+	workspaceId: z.string().min(1).nullable().optional(),
 });
 
 export const todoEnhanceTextInputSchema = z.object({
@@ -73,6 +80,16 @@ export const todoEnhanceTextInputSchema = z.object({
 export type TodoEnhanceTextInput = z.infer<typeof todoEnhanceTextInputSchema>;
 
 export type TodoCreateInput = z.infer<typeof todoCreateInputSchema>;
+
+export const todoSettingsSchema = z.object({
+	defaultMaxIterations: z.number().int().min(1).max(100).default(10),
+	defaultMaxWallClockMin: z.number().int().min(1).max(240).default(30),
+	maxConcurrentTasks: z.number().int().min(1).max(10).default(1),
+});
+
+export type TodoSettings = z.infer<typeof todoSettingsSchema>;
+
+export const todoSettingsUpdateSchema = todoSettingsSchema.partial();
 
 export const todoAttachPaneInputSchema = z.object({
 	sessionId: z.string().min(1),

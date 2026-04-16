@@ -14,6 +14,22 @@ export const todoPromptPresets = sqliteTable(
 			.$defaultFn(() => uuidv4()),
 		name: text("name").notNull(),
 		content: text("content").notNull(),
+		/**
+		 * What the preset is meant to fill in:
+		 * - "system": appended to the Claude system prompt (--append-system-prompt)
+		 * - "description": templates the "やって欲しいこと" field at TODO creation
+		 * - "goal": templates the "ゴール" field at TODO creation
+		 * Defaults to "system" so existing rows keep their previous semantics.
+		 */
+		kind: text("kind", { enum: ["system", "description", "goal"] })
+			.notNull()
+			.default("system"),
+		/**
+		 * Optional scoping to a specific workspace. NULL = global preset
+		 * (available across every workspace). Used by the UI to fold
+		 * presets into per-workspace folders.
+		 */
+		workspaceId: text("workspace_id"),
 		createdAt: integer("created_at")
 			.notNull()
 			.$defaultFn(() => Date.now()),
@@ -24,6 +40,8 @@ export const todoPromptPresets = sqliteTable(
 	(table) => [
 		index("todo_prompt_presets_name_idx").on(table.name),
 		index("todo_prompt_presets_updated_at_idx").on(table.updatedAt),
+		index("todo_prompt_presets_kind_idx").on(table.kind),
+		index("todo_prompt_presets_workspace_idx").on(table.workspaceId),
 	],
 );
 
