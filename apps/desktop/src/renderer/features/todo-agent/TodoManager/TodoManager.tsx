@@ -1076,7 +1076,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 									/>
 								}
 							>
-								<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40">
+								<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40 overflow-hidden [&_*]:break-words [&_*]:min-w-0 [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-all [&_a]:break-all">
 									<MarkdownRenderer
 										content={session.finalAssistantText}
 										scrollable={false}
