@@ -10,6 +10,7 @@ import { OrganizationDropdown } from "./components/OrganizationDropdown";
 import { ResourceConsumption } from "./components/ResourceConsumption";
 import { RightSidebarToggle } from "./components/RightSidebarToggle";
 import { SearchBarTrigger } from "./components/SearchBarTrigger";
+import { ServiceStatusIndicators } from "./components/ServiceStatusIndicators";
 import { SidebarToggle } from "./components/SidebarToggle";
 import { V2WorkspaceOpenInButton } from "./components/V2WorkspaceOpenInButton";
 import { V2WorkspaceSearchBarTrigger } from "./components/V2WorkspaceSearchBarTrigger";
@@ -72,6 +73,7 @@ export function TopBar() {
 			)}
 
 			<div className="flex items-center gap-3 h-full pr-4 shrink-0">
+				<ServiceStatusIndicators />
 				{!isOnline && (
 					<div className="no-drag flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
 						<HiOutlineWifi className="size-3.5" />

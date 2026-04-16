@@ -43,6 +43,7 @@ import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-s
 import { closeLocalDb, localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";
+import { setupServiceStatusPolling } from "./lib/service-status";
 import {
 	prewarmTerminalRuntime,
 	reconcileDaemonSessions,
@@ -624,6 +625,7 @@ if (!gotTheLock) {
 
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
+		setupServiceStatusPolling();
 		initTray();
 
 		// Initialize VS Code extension host (registers protocols, starts webview server)
