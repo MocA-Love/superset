@@ -159,7 +159,6 @@ export function TodoManager({
 						</Button>
 						<span className="text-sm font-semibold">TODO Agent Manager</span>
 						<span className="text-xs text-muted-foreground">
-							自律 TODO セッションを横断表示
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
@@ -1780,7 +1779,7 @@ function TodoComposer({
 
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
-							<Label htmlFor="composer-desc">やって欲しいこと</Label>
+							<Label htmlFor="composer-desc">タスク</Label>
 							<ComposerTemplatePicker
 								presets={scopedPresets.description}
 								onInsert={setDescription}
