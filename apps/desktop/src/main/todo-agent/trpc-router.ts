@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { todoPromptPresets } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
@@ -653,6 +653,58 @@ export const createTodoAgentRouter = () => {
 				const buf = Buffer.from(input.dataBase64, "base64");
 				writeFileSync(filePath, buf);
 				return { path: filePath };
+			}),
+
+		/**
+		 * Read an image attachment back from disk so the renderer can
+		 * preview it inline. Restricted to the saveAttachment output
+		 * directory to prevent the renderer from coercing the main
+		 * process into reading arbitrary user files via this channel.
+		 */
+		readAttachment: publicProcedure
+			.input(z.object({ path: z.string().min(1).max(4096) }))
+			.query(({ input }) => {
+				const dir = path.resolve(
+					path.join(app.getPath("userData"), "todo-agent", "attachments"),
+				);
+				const resolved = path.resolve(input.path);
+				const dirPrefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+				if (!resolved.startsWith(dirPrefix)) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "添付ディレクトリ外のパスは読み取れません",
+					});
+				}
+				let buf: Buffer;
+				try {
+					buf = readFileSync(resolved);
+				} catch (error) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message:
+							error instanceof Error
+								? `添付ファイルを読めませんでした: ${error.message}`
+								: "添付ファイルを読めませんでした",
+					});
+				}
+				const ext = path.extname(resolved).toLowerCase();
+				const mimeType =
+					ext === ".png"
+						? "image/png"
+						: ext === ".jpg" || ext === ".jpeg"
+							? "image/jpeg"
+							: ext === ".gif"
+								? "image/gif"
+								: ext === ".webp"
+									? "image/webp"
+									: ext === ".svg"
+										? "image/svg+xml"
+										: "application/octet-stream";
+				return {
+					mimeType,
+					dataBase64: buf.toString("base64"),
+					byteLength: buf.byteLength,
+				};
 			}),
 
 		settings: router({
