@@ -9,7 +9,7 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, not } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
@@ -233,6 +233,57 @@ class TodoSessionStore {
 		return inserted;
 	}
 
+	/**
+	 * Insert a fresh `queued` session from a user-authored template (TODO
+	 * composer, schedule fire, or anywhere else that starts a new session
+	 * from scratch). Centralizing this here keeps the full TodoSession row
+	 * shape in one place — otherwise any new field on `todo_sessions` has
+	 * to be remembered in every call site.
+	 */
+	insertQueuedFromTemplate(template: {
+		id: string;
+		projectId: string | null | undefined;
+		workspaceId: string;
+		title: string;
+		description: string;
+		goal?: string | null;
+		verifyCommand?: string | null;
+		maxIterations: number;
+		maxWallClockSec: number;
+		customSystemPrompt?: string | null;
+		artifactPath: string;
+	}): SelectTodoSession {
+		return this.insert({
+			id: template.id,
+			projectId: template.projectId ?? null,
+			workspaceId: template.workspaceId,
+			title: template.title,
+			description: template.description,
+			goal: template.goal ?? null,
+			verifyCommand: template.verifyCommand ?? null,
+			maxIterations: template.maxIterations,
+			maxWallClockSec: template.maxWallClockSec,
+			status: "queued",
+			phase: "queued",
+			iteration: 0,
+			attachedPaneId: null,
+			attachedTabId: null,
+			claudeSessionId: null,
+			finalAssistantText: null,
+			totalCostUsd: null,
+			totalNumTurns: null,
+			pendingIntervention: null,
+			startHeadSha: null,
+			customSystemPrompt: template.customSystemPrompt ?? null,
+			verdictPassed: null,
+			verdictReason: null,
+			verdictFailingTest: null,
+			artifactPath: template.artifactPath,
+			startedAt: null,
+			completedAt: null,
+		});
+	}
+
 	get(sessionId: string): SelectTodoSession | undefined {
 		return localDb
 			.select()
@@ -354,4 +405,91 @@ export function resolveWorktreePath(workspaceId: string): string | undefined {
 		.where(eq(workspaces.id, workspaceId))
 		.get();
 	return row?.worktreePath ?? row?.mainRepoPath ?? undefined;
+}
+
+/**
+ * Ensure a project has its `type="branch"` workspace (the row that maps
+ * to `mainRepoPath`). Creates one lazily if missing so schedules with
+ * no explicit workspaceId can attach their sessions to something real.
+ * Returns the workspace id, or undefined if the project itself is gone.
+ */
+export function ensureProjectBranchWorkspaceId(
+	projectId: string,
+): string | undefined {
+	const existing = localDb
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, projectId),
+				eq(workspaces.type, "branch"),
+				isNull(workspaces.deletingAt),
+			),
+		)
+		.get();
+	if (existing) return existing.id;
+
+	const project = localDb
+		.select({
+			defaultBranch: projects.defaultBranch,
+		})
+		.from(projects)
+		.where(eq(projects.id, projectId))
+		.get();
+	if (!project) return undefined;
+
+	const branchName = project.defaultBranch ?? "main";
+	const inserted = localDb
+		.insert(workspaces)
+		.values({
+			projectId,
+			type: "branch",
+			branch: branchName,
+			name: branchName,
+			tabOrder: 0,
+		})
+		.onConflictDoNothing()
+		.returning({ id: workspaces.id })
+		.get();
+
+	if (inserted) {
+		// Mirror the standard workspace-create flow: bump every other
+		// workspace in the project by +1 so the new branch workspace
+		// lands uniquely at tabOrder 0 instead of colliding with an
+		// existing 0-ordered worktree (which would yield a
+		// non-deterministic sort in the sidebar).
+		const siblings = localDb
+			.select({ id: workspaces.id, tabOrder: workspaces.tabOrder })
+			.from(workspaces)
+			.where(
+				and(
+					eq(workspaces.projectId, projectId),
+					not(eq(workspaces.id, inserted.id)),
+					isNull(workspaces.deletingAt),
+				),
+			)
+			.all();
+		for (const sibling of siblings) {
+			localDb
+				.update(workspaces)
+				.set({ tabOrder: (sibling.tabOrder ?? 0) + 1 })
+				.where(eq(workspaces.id, sibling.id))
+				.run();
+		}
+		return inserted.id;
+	}
+
+	// Race: another path materialized it between our check and insert.
+	const raced = localDb
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, projectId),
+				eq(workspaces.type, "branch"),
+				isNull(workspaces.deletingAt),
+			),
+		)
+		.get();
+	return raced?.id;
 }

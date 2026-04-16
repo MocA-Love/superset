@@ -15,6 +15,7 @@ import { NewWorkspaceModal } from "renderer/components/NewWorkspaceModal";
 import { Paywall } from "renderer/components/Paywall";
 import { useUpdateListener } from "renderer/components/UpdateToast";
 import { env } from "renderer/env.renderer";
+import { ScheduleFireToasts } from "renderer/features/todo-agent/ScheduleFireToasts";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { migrateHotkeyOverrides } from "renderer/hotkeys/migrate";
@@ -214,6 +215,7 @@ function AuthenticatedLayout() {
 						highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
 					>
 						<AgentHooks />
+						<ScheduleFireToasts />
 						<Outlet />
 						<WorkspaceInitEffects />
 						{isV2CloudEnabled ? (

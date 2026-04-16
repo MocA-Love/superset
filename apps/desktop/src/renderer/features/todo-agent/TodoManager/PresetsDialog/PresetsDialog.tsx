@@ -100,12 +100,14 @@ function SettingsTab() {
 	const [maxIter, setMaxIter] = useState(10);
 	const [maxMin, setMaxMin] = useState(30);
 	const [maxConcurrent, setMaxConcurrent] = useState(1);
+	const [retentionDays, setRetentionDays] = useState(0);
 
 	useEffect(() => {
 		if (settings) {
 			setMaxIter(settings.defaultMaxIterations);
 			setMaxMin(settings.defaultMaxWallClockMin);
 			setMaxConcurrent(settings.maxConcurrentTasks);
+			setRetentionDays(settings.sessionRetentionDays);
 		}
 	}, [settings]);
 
@@ -113,7 +115,8 @@ function SettingsTab() {
 		settings != null &&
 		(maxIter !== settings.defaultMaxIterations ||
 			maxMin !== settings.defaultMaxWallClockMin ||
-			maxConcurrent !== settings.maxConcurrentTasks);
+			maxConcurrent !== settings.maxConcurrentTasks ||
+			retentionDays !== settings.sessionRetentionDays);
 
 	const handleSave = useCallback(async () => {
 		try {
@@ -121,6 +124,7 @@ function SettingsTab() {
 				defaultMaxIterations: maxIter,
 				defaultMaxWallClockMin: maxMin,
 				maxConcurrentTasks: maxConcurrent,
+				sessionRetentionDays: retentionDays,
 			});
 			await utils.todoAgent.settings.get.invalidate();
 			toast.success("設定を保存しました");
@@ -129,7 +133,7 @@ function SettingsTab() {
 				error instanceof Error ? error.message : "保存に失敗しました",
 			);
 		}
-	}, [maxIter, maxMin, maxConcurrent, updateMut, utils]);
+	}, [maxIter, maxMin, maxConcurrent, retentionDays, updateMut, utils]);
 
 	return (
 		<div className="flex-1 p-6 overflow-y-auto">
@@ -177,6 +181,25 @@ function SettingsTab() {
 					/>
 					<p className="text-[10px] text-muted-foreground">
 						同時に実行する TODO セッションの上限。超えた分はキューで待機。
+					</p>
+				</div>
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="set-retention-days">セッション自動削除 (日)</Label>
+					<Input
+						id="set-retention-days"
+						type="number"
+						min={0}
+						max={365}
+						value={retentionDays}
+						onChange={(e) =>
+							setRetentionDays(Math.max(0, Number(e.target.value) || 0))
+						}
+						className="w-32"
+					/>
+					<p className="text-[10px] text-muted-foreground">
+						この日数より古い終了済みセッション (done / failed / aborted /
+						escalated) をアプリ起動時に自動削除する。0
+						で無効（手動削除のみ）。実行中・キュー中のセッションは対象外。
 					</p>
 				</div>
 				<div className="pt-2 border-t">

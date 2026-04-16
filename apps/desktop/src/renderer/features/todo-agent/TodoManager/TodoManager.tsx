@@ -50,6 +50,7 @@ import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { ChangesSidebar } from "./ChangesSidebar";
 import { PresetsDialog } from "./PresetsDialog";
+import { SchedulesSection } from "./SchedulesSection";
 
 async function copyToClipboard(text: string, label = "コピーしました") {
 	try {
@@ -338,6 +339,7 @@ export function TodoManager({
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(false);
 	const [presetsDialogOpen, setPresetsDialogOpen] = useState(false);
+	const [sidebarTab, setSidebarTab] = useState<"tasks" | "schedules">("tasks");
 	// Inline TODO composer (replaces the old separate modal). Matches
 	// Antigravity IDE's "new conversation inside manager" UX.
 	const [composerOpen, setComposerOpen] = useState(false);
@@ -458,66 +460,98 @@ export function TodoManager({
 							sidebarCollapsed ? "w-0 border-r-0" : "w-[320px]",
 						)}
 					>
-						<div className="p-2 border-b shrink-0">
-							<Input
-								value={filter}
-								onChange={(e) => setFilter(e.target.value)}
-								placeholder="絞り込み（タイトル / ワークスペース）"
-								className="h-8 text-xs rounded-md"
-							/>
+						<div className="p-1.5 border-b shrink-0 flex gap-1">
+							<button
+								type="button"
+								onClick={() => setSidebarTab("tasks")}
+								className={cn(
+									"flex-1 text-xs py-1 rounded-md transition-colors",
+									sidebarTab === "tasks"
+										? "bg-accent text-foreground"
+										: "text-muted-foreground hover:bg-accent/40",
+								)}
+							>
+								タスク
+							</button>
+							<button
+								type="button"
+								onClick={() => setSidebarTab("schedules")}
+								className={cn(
+									"flex-1 text-xs py-1 rounded-md transition-colors",
+									sidebarTab === "schedules"
+										? "bg-accent text-foreground"
+										: "text-muted-foreground hover:bg-accent/40",
+								)}
+							>
+								スケジュール
+							</button>
 						</div>
-						<ScrollArea className="flex-1">
-							{grouped.length === 0 && (
-								<p className="text-xs text-muted-foreground px-3 py-6">
-									{(sessions?.length ?? 0) === 0
-										? "まだ TODO セッションはありません。右上の『新しい TODO』から作成してください。"
-										: "条件に一致するセッションがありません。"}
-								</p>
-							)}
-							{grouped.map((group) => {
-								const collapsed = collapsedGroups.has(group.key);
-								return (
-									<div key={group.key} className="pb-1">
-										<button
-											type="button"
-											onClick={() => toggleGroup(group.key)}
-											className="sticky top-0 z-10 bg-background/95 backdrop-blur w-full flex items-center gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b hover:bg-accent/40 transition"
-										>
-											{collapsed ? (
-												<HiMiniChevronRight className="size-3" />
-											) : (
-												<HiMiniChevronDown className="size-3" />
-											)}
-											<span className="flex-1 text-left truncate">
-												{group.label}
-											</span>
-											<span className="text-muted-foreground/60">
-												{group.sessions.length}
-											</span>
-										</button>
-										{!collapsed && (
-											<div className="flex flex-col px-1.5 py-1 gap-0.5">
-												{group.sessions.map((session) => (
-													<SessionRow
-														key={session.id}
-														session={session}
-														isSelected={selected?.id === session.id}
-														onSelect={() => {
-															setSelectedId(session.id);
-															setComposerOpen(false);
-														}}
-														onDeleted={() => {
-															if (selectedId === session.id)
-																setSelectedId(null);
-														}}
-													/>
-												))}
+						{sidebarTab === "schedules" ? (
+							<SchedulesSection />
+						) : (
+							<>
+								<div className="p-2 border-b shrink-0">
+									<Input
+										value={filter}
+										onChange={(e) => setFilter(e.target.value)}
+										placeholder="絞り込み（タイトル / ワークスペース）"
+										className="h-8 text-xs rounded-md"
+									/>
+								</div>
+								<ScrollArea className="flex-1">
+									{grouped.length === 0 && (
+										<p className="text-xs text-muted-foreground px-3 py-6">
+											{(sessions?.length ?? 0) === 0
+												? "まだ TODO セッションはありません。右上の『新しい TODO』から作成してください。"
+												: "条件に一致するセッションがありません。"}
+										</p>
+									)}
+									{grouped.map((group) => {
+										const collapsed = collapsedGroups.has(group.key);
+										return (
+											<div key={group.key} className="pb-1">
+												<button
+													type="button"
+													onClick={() => toggleGroup(group.key)}
+													className="sticky top-0 z-10 bg-background/95 backdrop-blur w-full flex items-center gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b hover:bg-accent/40 transition"
+												>
+													{collapsed ? (
+														<HiMiniChevronRight className="size-3" />
+													) : (
+														<HiMiniChevronDown className="size-3" />
+													)}
+													<span className="flex-1 text-left truncate">
+														{group.label}
+													</span>
+													<span className="text-muted-foreground/60">
+														{group.sessions.length}
+													</span>
+												</button>
+												{!collapsed && (
+													<div className="flex flex-col px-1.5 py-1 gap-0.5">
+														{group.sessions.map((session) => (
+															<SessionRow
+																key={session.id}
+																session={session}
+																isSelected={selected?.id === session.id}
+																onSelect={() => {
+																	setSelectedId(session.id);
+																	setComposerOpen(false);
+																}}
+																onDeleted={() => {
+																	if (selectedId === session.id)
+																		setSelectedId(null);
+																}}
+															/>
+														))}
+													</div>
+												)}
 											</div>
-										)}
-									</div>
-								);
-							})}
-						</ScrollArea>
+										);
+									})}
+								</ScrollArea>
+							</>
+						)}
 						<div className="shrink-0 border-t p-1.5">
 							<button
 								type="button"

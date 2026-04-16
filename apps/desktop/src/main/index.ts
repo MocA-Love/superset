@@ -407,6 +407,14 @@ app.on("before-quit", async (event) => {
 	isQuitting = true;
 	// FORK NOTE: cleanup window resources before exit to prevent port conflicts
 	cleanupMainWindowResources();
+	// Fork-local: stop the todo-agent scheduler before closing local-db so an
+	// in-flight tick can't insert a session into a closed SQLite handle.
+	try {
+		const { getTodoScheduler } = await import("./todo-agent/scheduler");
+		getTodoScheduler().stop();
+	} catch (error) {
+		console.warn("[main] todo-agent scheduler stop skipped", error);
+	}
 	try {
 		const mod = await loadVscodeShim();
 		await mod.shutdownExtensionHost();
@@ -539,6 +547,51 @@ if (!gotTheLock) {
 			cleanupOldAttachments();
 		} catch (error) {
 			console.warn("[main] todo-agent attachment cleanup skipped", error);
+		}
+
+		// Fork-local: prune terminal TODO sessions older than the
+		// user-configured retention (0 = off). Runs after the attachment
+		// sweep so deleted sessions' images also drop out of the
+		// attachment reference set on the next run.
+		try {
+			const { cleanupOldSessions } = await import("./todo-agent");
+			cleanupOldSessions();
+		} catch (error) {
+			console.warn("[main] todo-agent session cleanup skipped", error);
+		}
+
+		// Fork-local: start the todo-agent schedule scheduler so cron-like
+		// recurring TODOs fire while the app is running. Scheduler is a
+		// noop until a user creates at least one schedule.
+		try {
+			const { getTodoScheduler } = await import("./todo-agent/scheduler");
+			getTodoScheduler().start();
+		} catch (error) {
+			console.warn("[main] todo-agent scheduler start skipped", error);
+			// Surface the failure via the existing schedule-fire event
+			// bus so ScheduleFireToasts shows a one-off toast. Without
+			// this the feature dies silently and the user keeps waiting
+			// for fires that will never come.
+			try {
+				const { getTodoScheduleStore } = await import(
+					"./todo-agent/schedule-store"
+				);
+				getTodoScheduleStore().emitFire({
+					scheduleId: "__scheduler_init__",
+					scheduleName: "スケジューラ",
+					kind: "failed",
+					sessionId: null,
+					message:
+						error instanceof Error
+							? `起動に失敗しました: ${error.message}`
+							: "起動に失敗しました",
+					firedAt: Date.now(),
+				});
+			} catch {
+				// If schedule-store itself failed to load there's
+				// nothing we can surface — console.warn above is our
+				// last resort.
+			}
 		}
 
 		// Must register on both default session and the app's custom partition

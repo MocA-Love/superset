@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: TodoSettings = {
 	defaultMaxIterations: 10,
 	defaultMaxWallClockMin: 30,
 	maxConcurrentTasks: 1,
+	sessionRetentionDays: 0,
 };
 
 let cached: TodoSettings | null = null;

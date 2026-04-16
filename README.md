@@ -89,6 +89,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **安定性・パフォーマンス改善** | LSP language services の安定性修正、拡張機能ホストのメモリリーク修正、ターミナル再表示遅延改善、認証切れ時の無限ループ防止、git status タイムアウト追加、ブラウザリダイレクトループ修正、ポップアウトウィンドウの認証修正、エラーの正規化と Sentry フィルタリング | [#88](https://github.com/MocA-Love/superset/pull/88) [#123](https://github.com/MocA-Love/superset/pull/123) [#121](https://github.com/MocA-Love/superset/pull/121) [#67](https://github.com/MocA-Love/superset/pull/67) [#66](https://github.com/MocA-Love/superset/pull/66) [#158](https://github.com/MocA-Love/superset/pull/158) [#146](https://github.com/MocA-Love/superset/pull/146) [#98](https://github.com/MocA-Love/superset/pull/98) | 2026-04-04〜14 |
 | **内部ブラウザの File System Access API 拒否回避** | 内部ブラウザで react-dropzone 系サイトを開くと `FileSystemFileHandle.getFile()` が NotAllowedError で落ちる問題を修正。`persist:superset` セッションに preload を追加し `DataTransferItem.getAsFileSystemHandle()` を null 返却に差し替えて legacy D&D パスへフォールバック | [#207](https://github.com/MocA-Love/superset/pull/207) | 2026-04-16 |
 | **PR コメント返信** | Review タブのコメント右上に Reply ボタンを追加。ダイアログから直接返信を投稿できる。レビュースレッドへの返信と通常 PR コメントの両方に対応 | [#206](https://github.com/MocA-Love/superset/pull/206) | 2026-04-16 |
+| **TODO Agent スケジュール実行** | 毎日デプロイ / 毎時 lint のような定型 TODO を UI ビルダー (毎時/毎日/毎週/毎月/cron) で登録可能。アプリ起動中に時刻が来ると TODO セッションが自動作成され発火トーストを表示。前回未完了時は skip / queue 選択可 | [#211](https://github.com/MocA-Love/superset/pull/211) | 2026-04-16 |
 
 ## Fork のビルド方法 (macOS)
 
