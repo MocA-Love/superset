@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SelectTodoSession } from "@superset/local-db";
 import { getTodoDaemonClient } from "main/lib/todo-daemon/client";
-import { resolveWorktreePath } from "./session-store";
+import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { TODO_ARTIFACT_SUBDIR } from "./types";
 
 /**
@@ -41,7 +41,37 @@ class TodoSupervisor {
 		try {
 			await getTodoDaemonClient().start({ sessionId });
 		} catch (error) {
+			// The tRPC router flips the session to `preparing` before
+			// fire-and-forgetting us, so a daemon spawn/connect/auth
+			// failure here would otherwise leave the row stuck in
+			// `preparing` with no way for the UI to recover. Persist a
+			// terminal failure state so the user sees the problem and
+			// can retry or delete the session.
+			const reason = error instanceof Error ? error.message : String(error);
 			console.warn("[todo-supervisor] daemon start failed", error);
+			try {
+				const store = getTodoSessionStore();
+				const current = store.get(sessionId);
+				if (
+					current &&
+					(current.status === "preparing" ||
+						current.status === "queued" ||
+						current.status === "waiting")
+				) {
+					store.update(sessionId, {
+						status: "failed",
+						phase: "failed",
+						verdictPassed: false,
+						verdictReason: `todo-daemon を起動できませんでした: ${reason}`,
+						completedAt: Date.now(),
+					});
+				}
+			} catch (persistError) {
+				console.warn(
+					"[todo-supervisor] failed to persist daemon failure state",
+					persistError,
+				);
+			}
 			throw error;
 		}
 	}

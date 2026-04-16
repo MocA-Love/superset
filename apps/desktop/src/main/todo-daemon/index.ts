@@ -155,11 +155,17 @@ interface ClientState {
 	authenticated: boolean;
 }
 
-const clients = new Set<Socket>();
+/**
+ * Sockets eligible for event broadcasts. A socket is inserted into this
+ * set ONLY after it successfully authenticates via `hello` — otherwise
+ * any local process that can open the socket path could read session
+ * prompts and output without presenting the auth token.
+ */
+const authenticatedClients = new Set<Socket>();
 
 function broadcastEvent(event: IpcEvent): void {
 	const msg = `${JSON.stringify(event)}\n`;
-	for (const socket of clients) {
+	for (const socket of authenticatedClients) {
 		try {
 			socket.write(msg);
 		} catch {
@@ -247,6 +253,10 @@ const handlers: Record<string, Handler> = {
 			return;
 		}
 		clientState.authenticated = true;
+		// Only now is this socket eligible to receive broadcast events.
+		// Adding it earlier would leak session data to any process that
+		// can open the socket path without presenting the token.
+		authenticatedClients.add(socket);
 		const response: HelloResponse = {
 			protocolVersion: TODO_DAEMON_PROTOCOL_VERSION,
 			daemonVersion: DAEMON_VERSION,
@@ -400,7 +410,6 @@ let server: Server | null = null;
 function handleConnection(socket: Socket): void {
 	const parser = new NdjsonParser();
 	const clientState: ClientState = { authenticated: false };
-	clients.add(socket);
 	socket.setEncoding("utf-8");
 
 	socket.on("data", (data: string) => {
@@ -417,12 +426,12 @@ function handleConnection(socket: Socket): void {
 	});
 
 	socket.on("close", () => {
-		clients.delete(socket);
+		authenticatedClients.delete(socket);
 	});
 
 	socket.on("error", (error) => {
 		log("warn", `Socket error`, error.message);
-		clients.delete(socket);
+		authenticatedClients.delete(socket);
 	});
 }
 
@@ -515,14 +524,14 @@ async function startServer(): Promise<void> {
 }
 
 async function stopServer(): Promise<void> {
-	for (const socket of clients) {
+	for (const socket of authenticatedClients) {
 		try {
 			socket.destroy();
 		} catch {
 			// ignore
 		}
 	}
-	clients.clear();
+	authenticatedClients.clear();
 	await new Promise<void>((resolve) => {
 		if (server) {
 			server.close(() => resolve());
