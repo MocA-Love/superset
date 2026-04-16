@@ -1635,10 +1635,20 @@ function TodoComposer({ onCreated, onCancel }: TodoComposerProps) {
 	const maxIterations = todoSettings?.defaultMaxIterations ?? 10;
 	const maxWallClockSec = (todoSettings?.defaultMaxWallClockMin ?? 30) * 60;
 
+	const activeProject = useMemo(() => {
+		const ws = (workspaces ?? []).find((w) => w.id === workspaceId);
+		return ws
+			? (ws as typeof ws & { projectId?: string }).projectId
+			: undefined;
+	}, [workspaces, workspaceId]);
+
 	const scopedPresets = useMemo(() => {
 		const all = presets ?? [];
+		// Preset.workspaceId holds a projectId (see PresetsDialog) so
+		// scoping matches across all worktrees of the same project.
 		const matches = (p: { workspaceId?: string | null }): boolean =>
-			p.workspaceId == null || p.workspaceId === workspaceId;
+			p.workspaceId == null ||
+			(activeProject != null && p.workspaceId === activeProject);
 		return {
 			system: all.filter(
 				(p) =>
@@ -1655,17 +1665,10 @@ function TodoComposer({ onCreated, onCancel }: TodoComposerProps) {
 					(p as typeof p & { kind?: string }).kind === "goal" && matches(p),
 			),
 		};
-	}, [presets, workspaceId]);
+	}, [presets, activeProject]);
 
 	const createMut = electronTrpc.todoAgent.create.useMutation();
 	const utils = electronTrpc.useUtils();
-
-	const activeProject = useMemo(() => {
-		const ws = (workspaces ?? []).find((w) => w.id === workspaceId);
-		return ws
-			? (ws as typeof ws & { projectId?: string }).projectId
-			: undefined;
-	}, [workspaces, workspaceId]);
 
 	const canSubmit =
 		workspaceId.length > 0 &&

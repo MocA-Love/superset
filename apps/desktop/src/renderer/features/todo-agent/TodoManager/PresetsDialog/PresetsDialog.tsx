@@ -199,7 +199,7 @@ function PresetsTab({ open }: { open: boolean }) {
 		goal: "ゴール",
 	};
 
-	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
+	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
 
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [draft, setDraft] = useState<{
@@ -240,9 +240,11 @@ function PresetsTab({ open }: { open: boolean }) {
 		}
 		const workspaceName = (id: string | null) => {
 			if (id == null) return "グローバル";
+			// `workspaceId` on presets is repurposed to mean projectId so
+			// we only show project-level groups (not every worktree).
 			return (
-				(workspaces ?? []).find((w) => w.id === id)?.name ??
-				`workspace ${id.slice(0, 6)}`
+				(projects ?? []).find((p) => p.id === id)?.name ??
+				`project ${id.slice(0, 6)}`
 			);
 		};
 		return Array.from(byWorkspace.entries())
@@ -256,7 +258,7 @@ function PresetsTab({ open }: { open: boolean }) {
 				label: workspaceName(wsId),
 				items: list,
 			}));
-	}, [presets, workspaces]);
+	}, [presets, projects]);
 
 	// Sync draft with selection changes.
 	useEffect(() => {
@@ -461,7 +463,7 @@ function PresetsTab({ open }: { open: boolean }) {
 							htmlFor="preset-workspace"
 							className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold"
 						>
-							対象ワークスペース
+							対象プロジェクト
 						</Label>
 						<select
 							id="preset-workspace"
@@ -474,10 +476,10 @@ function PresetsTab({ open }: { open: boolean }) {
 							}
 							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
 						>
-							<option value="">全ワークスペース（グローバル）</option>
-							{(workspaces ?? []).map((w) => (
-								<option key={w.id} value={w.id}>
-									{w.name}
+							<option value="">全プロジェクト（グローバル）</option>
+							{(projects ?? []).map((p) => (
+								<option key={p.id} value={p.id}>
+									{p.name}
 								</option>
 							))}
 						</select>

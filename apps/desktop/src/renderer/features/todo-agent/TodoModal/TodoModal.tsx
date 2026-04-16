@@ -81,10 +81,12 @@ export function TodoModal({
 	// Presets are split by `kind`. System-prompt presets flow through
 	// --append-system-prompt; description/goal presets are one-shot
 	// inserts into the corresponding textarea at creation time.
+	// The preset's `workspaceId` column is repurposed to hold a
+	// projectId (so scoping works across all worktrees of a project).
 	const scopedPresets = useMemo(() => {
 		const all = presets ?? [];
 		const matches = (p: { workspaceId?: string | null }): boolean =>
-			p.workspaceId == null || p.workspaceId === workspaceId;
+			p.workspaceId == null || p.workspaceId === projectId;
 		return {
 			system: all.filter(
 				(p) =>
@@ -101,7 +103,7 @@ export function TodoModal({
 					(p as typeof p & { kind?: string }).kind === "goal" && matches(p),
 			),
 		};
-	}, [presets, workspaceId]);
+	}, [presets, projectId]);
 	const selectedPreset = useMemo(
 		() => scopedPresets.system.find((p) => p.id === selectedPresetId) ?? null,
 		[scopedPresets.system, selectedPresetId],
