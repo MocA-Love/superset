@@ -226,6 +226,76 @@ export const createTodoAgentRouter = () => {
 				return { ok: true };
 			}),
 
+		/**
+		 * Edit the user-authored fields (description / goal) of a TODO
+		 * session that has not started yet. Allowed only in pre-start
+		 * states (queued / failed / aborted / escalated) so a running
+		 * worker's prompt can never mutate under its feet. When the
+		 * description / goal changes we rewrite the session's goal.md
+		 * so the next run picks up the edit.
+		 */
+		updateFields: publicProcedure
+			.input(
+				z.object({
+					sessionId: z.string().min(1),
+					description: z.string().trim().min(1).max(10_000).optional(),
+					goal: z
+						.string()
+						.trim()
+						.max(10_000)
+						.optional()
+						.transform((v) => (v && v.length > 0 ? v : undefined)),
+					clearGoal: z.boolean().optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const store = getTodoSessionStore();
+				const session = store.get(input.sessionId);
+				if (!session) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "セッションが見つかりません",
+					});
+				}
+				if (
+					session.status !== "queued" &&
+					session.status !== "failed" &&
+					session.status !== "aborted" &&
+					session.status !== "escalated"
+				) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message:
+							"実行中またはキュー済みでないセッションは編集できません。中断してから再度お試しください。",
+					});
+				}
+				const patch: {
+					description?: string;
+					goal?: string | null;
+				} = {};
+				if (input.description !== undefined) {
+					patch.description = input.description;
+				}
+				if (input.clearGoal) {
+					patch.goal = null;
+				} else if (input.goal !== undefined) {
+					patch.goal = input.goal;
+				}
+				const updated = store.update(input.sessionId, patch);
+				// Rewrite goal.md so a subsequent Start reads the edited
+				// content from disk (the iteration prompt tells Claude to
+				// read that file first, so stale on-disk content would
+				// silently shadow the edit).
+				if (updated) {
+					try {
+						getTodoSupervisor().prepareArtifacts(updated);
+					} catch (error) {
+						console.warn("[todo-agent] goal.md rewrite failed", error);
+					}
+				}
+				return { ok: true };
+			}),
+
 		delete: publicProcedure
 			.input(z.object({ sessionId: z.string().min(1) }))
 			.mutation(({ input }) => {
