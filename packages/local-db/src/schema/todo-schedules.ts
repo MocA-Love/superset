@@ -1,0 +1,98 @@
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { v4 as uuidv4 } from "uuid";
+
+import { projects, workspaces } from "./schema";
+
+/**
+ * TODO autonomous agent schedules.
+ *
+ * Each row defines a recurring trigger that creates a new todoSessions row
+ * (based on the template fields here) at its configured cadence. The runtime
+ * scheduler lives in the main process; this table is just persistent state.
+ * Fork-local feature; see apps/desktop/plans/20260416-todo-schedule.md.
+ */
+export const todoSchedules = sqliteTable(
+	"todo_schedules",
+	{
+		id: text("id")
+			.primaryKey()
+			.$defaultFn(() => uuidv4()),
+		projectId: text("project_id").references(() => projects.id, {
+			onDelete: "set null",
+		}),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+
+		name: text("name").notNull(),
+		enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+
+		// Frequency definition. For hourly/daily/weekly/monthly the scheduler
+		// derives the next fire from `minute`/`hour`/`weekday`/`monthday`
+		// without touching a cron parser. `custom` delegates to `cronExpr`.
+		frequency: text("frequency", {
+			enum: ["hourly", "daily", "weekly", "monthly", "custom"],
+		}).notNull(),
+		minute: integer("minute"),
+		hour: integer("hour"),
+		weekday: integer("weekday"),
+		monthday: integer("monthday"),
+		cronExpr: text("cron_expr"),
+
+		// TODO session template. Mirrors the session's own schema so that
+		// creating a session from a schedule is a straight copy.
+		title: text("title").notNull(),
+		description: text("description").notNull(),
+		goal: text("goal"),
+		verifyCommand: text("verify_command"),
+		maxIterations: integer("max_iterations").notNull().default(10),
+		maxWallClockSec: integer("max_wall_clock_sec").notNull().default(1800),
+		customSystemPrompt: text("custom_system_prompt"),
+
+		// How to behave when the previous session from this schedule is
+		// still running at fire time.
+		overlapMode: text("overlap_mode", { enum: ["skip", "queue"] })
+			.notNull()
+			.default("skip"),
+
+		lastRunAt: integer("last_run_at"),
+		lastRunSessionId: text("last_run_session_id"),
+		// Cached next fire time so the scheduler can cheaply scan "due"
+		// schedules in a single query instead of recomputing cadence on
+		// every tick.
+		nextRunAt: integer("next_run_at"),
+
+		createdAt: integer("created_at")
+			.notNull()
+			.$defaultFn(() => Date.now()),
+		updatedAt: integer("updated_at")
+			.notNull()
+			.$defaultFn(() => Date.now()),
+	},
+	(table) => [
+		index("todo_schedules_workspace_idx").on(table.workspaceId),
+		index("todo_schedules_enabled_next_run_idx").on(
+			table.enabled,
+			table.nextRunAt,
+		),
+	],
+);
+
+export type InsertTodoSchedule = typeof todoSchedules.$inferInsert;
+export type SelectTodoSchedule = typeof todoSchedules.$inferSelect;
+
+export const todoScheduleFrequencyValues = [
+	"hourly",
+	"daily",
+	"weekly",
+	"monthly",
+	"custom",
+] as const;
+
+export type TodoScheduleFrequency =
+	(typeof todoScheduleFrequencyValues)[number];
+
+export const todoScheduleOverlapModeValues = ["skip", "queue"] as const;
+
+export type TodoScheduleOverlapMode =
+	(typeof todoScheduleOverlapModeValues)[number];

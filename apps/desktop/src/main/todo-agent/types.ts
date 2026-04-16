@@ -1,4 +1,9 @@
-import type { SelectTodoSession } from "@superset/local-db";
+import type {
+	SelectTodoSchedule,
+	SelectTodoSession,
+	TodoScheduleFrequency,
+	TodoScheduleOverlapMode,
+} from "@superset/local-db";
 import { z } from "zod";
 
 /**
@@ -170,3 +175,110 @@ export interface TodoStreamUpdate {
 	sessionId: string;
 	events: TodoStreamEvent[];
 }
+
+// ---- Schedules ----
+
+export const todoScheduleFrequencySchema = z.enum([
+	"hourly",
+	"daily",
+	"weekly",
+	"monthly",
+	"custom",
+]);
+
+export const todoScheduleOverlapModeSchema = z.enum(["skip", "queue"]);
+
+export const todoScheduleCreateInputSchema = z
+	.object({
+		workspaceId: z.string().min(1),
+		projectId: z.string().min(1).nullish(),
+		name: z.string().trim().min(1).max(120),
+		enabled: z.boolean().default(true),
+		frequency: todoScheduleFrequencySchema,
+		minute: z.number().int().min(0).max(59).nullish(),
+		hour: z.number().int().min(0).max(23).nullish(),
+		weekday: z.number().int().min(0).max(6).nullish(),
+		monthday: z.number().int().min(1).max(31).nullish(),
+		cronExpr: z.string().trim().min(1).max(200).nullish(),
+		title: z.string().trim().min(1).max(200),
+		description: z.string().trim().min(1).max(10_000),
+		goal: z.string().trim().max(10_000).nullish(),
+		verifyCommand: z.string().trim().max(10_000).nullish(),
+		maxIterations: z.number().int().min(1).max(100).default(10),
+		maxWallClockSec: z
+			.number()
+			.int()
+			.min(60)
+			.max(60 * 60 * 4)
+			.default(1800),
+		customSystemPrompt: z.string().trim().max(20_000).nullish(),
+		overlapMode: todoScheduleOverlapModeSchema.default("skip"),
+	})
+	.refine(
+		(v) =>
+			v.frequency !== "custom" ||
+			(typeof v.cronExpr === "string" && v.cronExpr.length > 0),
+		{
+			message: "cronExpr is required when frequency is 'custom'",
+			path: ["cronExpr"],
+		},
+	);
+
+export type TodoScheduleCreateInput = z.infer<
+	typeof todoScheduleCreateInputSchema
+>;
+
+const todoScheduleBaseSchema = z.object({
+	workspaceId: z.string().min(1),
+	projectId: z.string().min(1).nullish(),
+	name: z.string().trim().min(1).max(120),
+	enabled: z.boolean(),
+	frequency: todoScheduleFrequencySchema,
+	minute: z.number().int().min(0).max(59).nullish(),
+	hour: z.number().int().min(0).max(23).nullish(),
+	weekday: z.number().int().min(0).max(6).nullish(),
+	monthday: z.number().int().min(1).max(31).nullish(),
+	cronExpr: z.string().trim().min(1).max(200).nullish(),
+	title: z.string().trim().min(1).max(200),
+	description: z.string().trim().min(1).max(10_000),
+	goal: z.string().trim().max(10_000).nullish(),
+	verifyCommand: z.string().trim().max(10_000).nullish(),
+	maxIterations: z.number().int().min(1).max(100),
+	maxWallClockSec: z
+		.number()
+		.int()
+		.min(60)
+		.max(60 * 60 * 4),
+	customSystemPrompt: z.string().trim().max(20_000).nullish(),
+	overlapMode: todoScheduleOverlapModeSchema,
+});
+
+export const todoScheduleUpdateInputSchema = todoScheduleBaseSchema
+	.partial()
+	.extend({ id: z.string().min(1) });
+
+export type TodoScheduleUpdateInput = z.infer<
+	typeof todoScheduleUpdateInputSchema
+>;
+
+/**
+ * Event emitted by the scheduler when a schedule fires. The renderer uses
+ * this to show a toast and, when `sessionId` is non-null, deep-link to the
+ * freshly-created session.
+ */
+export type TodoScheduleFireKind = "triggered" | "skipped" | "failed";
+
+export interface TodoScheduleFireEvent {
+	scheduleId: string;
+	scheduleName: string;
+	kind: TodoScheduleFireKind;
+	sessionId: string | null;
+	message: string | null;
+	firedAt: number;
+}
+
+export type {
+	SelectTodoSchedule,
+	TodoScheduleFrequency,
+	TodoScheduleOverlapMode,
+};

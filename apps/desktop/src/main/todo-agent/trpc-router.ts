@@ -16,17 +16,22 @@ import {
 	getSessionGitSnapshot,
 	type SessionDiffScope,
 } from "./git-status";
+import { getTodoScheduleStore } from "./schedule-store";
+import { computeNextRunAt, getTodoScheduler } from "./scheduler";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSettings, updateTodoSettings } from "./settings";
 import { getTodoSupervisor } from "./supervisor";
 import {
 	TODO_ARTIFACT_SUBDIR,
+	type TodoScheduleFireEvent,
 	type TodoSessionStateEvent,
 	type TodoStreamUpdate,
 	todoCreateInputSchema,
 	todoEnhanceTextInputSchema,
 	todoPresetCreateInputSchema,
 	todoPresetUpdateInputSchema,
+	todoScheduleCreateInputSchema,
+	todoScheduleUpdateInputSchema,
 	todoSendInputSchema,
 	todoSettingsUpdateSchema,
 } from "./types";
@@ -661,6 +666,109 @@ export const createTodoAgentRouter = () => {
 			update: publicProcedure
 				.input(todoSettingsUpdateSchema)
 				.mutation(({ input }) => updateTodoSettings(input)),
+		}),
+
+		schedule: router({
+			list: publicProcedure
+				.input(z.object({ workspaceId: z.string().min(1) }))
+				.query(({ input }) =>
+					getTodoScheduleStore().listForWorkspace(input.workspaceId),
+				),
+			listAll: publicProcedure.query(() => getTodoScheduleStore().listAll()),
+			create: publicProcedure
+				.input(todoScheduleCreateInputSchema)
+				.mutation(({ input }) => {
+					const nextRunAt = input.enabled
+						? computeNextRunAt(
+								{
+									frequency: input.frequency,
+									minute: input.minute ?? null,
+									hour: input.hour ?? null,
+									weekday: input.weekday ?? null,
+									monthday: input.monthday ?? null,
+									cronExpr: input.cronExpr ?? null,
+								},
+								new Date(),
+							)
+						: null;
+					const row = getTodoScheduleStore().insert({
+						...input,
+						nextRunAt,
+					});
+					return row;
+				}),
+			update: publicProcedure
+				.input(todoScheduleUpdateInputSchema)
+				.mutation(({ input }) => {
+					const row = getTodoScheduleStore().update(input);
+					if (row) {
+						getTodoScheduler().refreshNextRunAt(row.id);
+					}
+					return row ?? null;
+				}),
+			setEnabled: publicProcedure
+				.input(
+					z.object({
+						id: z.string().min(1),
+						enabled: z.boolean(),
+					}),
+				)
+				.mutation(({ input }) => {
+					const row = getTodoScheduleStore().setEnabled(
+						input.id,
+						input.enabled,
+					);
+					if (row) {
+						getTodoScheduler().refreshNextRunAt(row.id);
+					}
+					return row ?? null;
+				}),
+			delete: publicProcedure
+				.input(z.object({ id: z.string().min(1) }))
+				.mutation(({ input }) => {
+					const ok = getTodoScheduleStore().delete(input.id);
+					return { ok };
+				}),
+			previewNextRun: publicProcedure
+				.input(
+					z.object({
+						frequency: z.enum([
+							"hourly",
+							"daily",
+							"weekly",
+							"monthly",
+							"custom",
+						]),
+						minute: z.number().int().min(0).max(59).nullish(),
+						hour: z.number().int().min(0).max(23).nullish(),
+						weekday: z.number().int().min(0).max(6).nullish(),
+						monthday: z.number().int().min(1).max(31).nullish(),
+						cronExpr: z.string().trim().max(200).nullish(),
+					}),
+				)
+				.query(({ input }) =>
+					computeNextRunAt(
+						{
+							frequency: input.frequency,
+							minute: input.minute ?? null,
+							hour: input.hour ?? null,
+							weekday: input.weekday ?? null,
+							monthday: input.monthday ?? null,
+							cronExpr: input.cronExpr ?? null,
+						},
+						new Date(),
+					),
+				),
+			onFire: publicProcedure.subscription(() =>
+				observable<TodoScheduleFireEvent>((emit) => {
+					const off = getTodoScheduleStore().onFire((event) => {
+						emit.next(event);
+					});
+					return () => {
+						off();
+					};
+				}),
+			),
 		}),
 	});
 };

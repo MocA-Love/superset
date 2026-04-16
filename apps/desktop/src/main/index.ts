@@ -540,6 +540,16 @@ if (!gotTheLock) {
 			console.warn("[main] todo-agent attachment cleanup skipped", error);
 		}
 
+		// Fork-local: start the todo-agent schedule scheduler so cron-like
+		// recurring TODOs fire while the app is running. Scheduler is a
+		// noop until a user creates at least one schedule.
+		try {
+			const { getTodoScheduler } = await import("./todo-agent/scheduler");
+			getTodoScheduler().start();
+		} catch (error) {
+			console.warn("[main] todo-agent scheduler start skipped", error);
+		}
+
 		// Must register on both default session and the app's custom partition
 		const iconProtocolHandler = (request: Request) => {
 			const url = new URL(request.url);
