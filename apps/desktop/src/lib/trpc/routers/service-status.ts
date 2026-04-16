@@ -5,12 +5,12 @@ import { publicProcedure, router } from "..";
 
 export const createServiceStatusRouter = () => {
 	return router({
-		getAll: publicProcedure.query(() => serviceStatusService.getAll()),
-
+		// No `getAll` query: the subscription emits the current state for every
+		// snapshot on connect, so the client gets the initial value without a
+		// separate round-trip (and we avoid the staleTime-Infinity / subscription
+		// race where the query would later clobber fresh subscription data).
 		onChange: publicProcedure.subscription(() => {
 			return observable<ServiceStatusSnapshot>((emit) => {
-				// Emit the current state immediately so late subscribers don't
-				// have to wait for the next poll tick.
 				for (const snapshot of serviceStatusService.getAll()) {
 					emit.next(snapshot);
 				}

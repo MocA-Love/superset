@@ -1,8 +1,10 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
+	createUnknownSnapshot,
 	SERVICE_STATUS_DEFINITIONS,
+	type ServiceStatusId,
 	type ServiceStatusLevel,
 	type ServiceStatusSnapshot,
 } from "shared/service-status-types";
@@ -34,19 +36,18 @@ function formatCheckedAt(checkedAt: number): string {
 	return new Date(checkedAt).toLocaleString();
 }
 
-function placeholderFor(
-	def: (typeof SERVICE_STATUS_DEFINITIONS)[number],
-): ServiceStatusSnapshot {
-	return {
-		id: def.id,
-		label: def.label,
-		statusUrl: def.statusUrl,
-		level: "unknown",
-		indicator: null,
-		description: "Checking…",
-		checkedAt: 0,
-		fetchError: null,
-	};
+/**
+ * Safely pick a host string for the tooltip footer. `new URL` throws on
+ * malformed input — rare for the hardcoded statusUrls, but guarding here
+ * keeps a bad upstream value from taking down the whole TopBar via React's
+ * render-error boundary.
+ */
+function hostOrFallback(statusUrl: string, fallback: string): string {
+	try {
+		return new URL(statusUrl).host;
+	} catch {
+		return fallback;
+	}
 }
 
 interface ServiceStatusDotProps {
@@ -57,6 +58,7 @@ interface ServiceStatusDotProps {
 function ServiceStatusDot({ snapshot, onClick }: ServiceStatusDotProps) {
 	const colorClass = LEVEL_CLASS[snapshot.level];
 	const levelLabel = LEVEL_LABEL[snapshot.level];
+	const displayHost = hostOrFallback(snapshot.statusUrl, snapshot.label);
 
 	return (
 		<Tooltip delayDuration={300}>
@@ -82,30 +84,23 @@ function ServiceStatusDot({ snapshot, onClick }: ServiceStatusDotProps) {
 					{snapshot.fetchError ? ` · ${snapshot.fetchError}` : ""}
 				</div>
 				<div className="text-muted-foreground/60 mt-0.5">
-					クリックで {new URL(snapshot.statusUrl).host} を開く
+					クリックで {displayHost} を開く
 				</div>
 			</TooltipContent>
 		</Tooltip>
 	);
 }
 
-export function ServiceStatusIndicators() {
-	const { data: initialAll } = electronTrpc.serviceStatus.getAll.useQuery(
-		undefined,
-		{ staleTime: Number.POSITIVE_INFINITY },
-	);
-	const [snapshots, setSnapshots] = useState<
-		Map<string, ServiceStatusSnapshot>
-	>(() => new Map());
+function initialSnapshots(): Map<ServiceStatusId, ServiceStatusSnapshot> {
+	const map = new Map<ServiceStatusId, ServiceStatusSnapshot>();
+	for (const def of SERVICE_STATUS_DEFINITIONS) {
+		map.set(def.id, createUnknownSnapshot(def));
+	}
+	return map;
+}
 
-	useEffect(() => {
-		if (!initialAll) return;
-		setSnapshots((prev) => {
-			const next = new Map(prev);
-			for (const snapshot of initialAll) next.set(snapshot.id, snapshot);
-			return next;
-		});
-	}, [initialAll]);
+export function ServiceStatusIndicators() {
+	const [snapshots, setSnapshots] = useState(initialSnapshots);
 
 	electronTrpc.serviceStatus.onChange.useSubscription(undefined, {
 		onData: (snapshot: ServiceStatusSnapshot) => {
@@ -122,7 +117,7 @@ export function ServiceStatusIndicators() {
 	const ordered = useMemo(
 		() =>
 			SERVICE_STATUS_DEFINITIONS.map(
-				(def) => snapshots.get(def.id) ?? placeholderFor(def),
+				(def) => snapshots.get(def.id) ?? createUnknownSnapshot(def),
 			),
 		[snapshots],
 	);

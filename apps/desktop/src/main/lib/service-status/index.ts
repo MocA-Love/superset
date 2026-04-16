@@ -1,38 +1,40 @@
 import { EventEmitter } from "node:events";
 import { app, net } from "electron";
 import {
+	createUnknownSnapshot,
 	indicatorToLevel,
 	SERVICE_STATUS_DEFINITIONS,
 	type ServiceStatusDefinition,
+	type ServiceStatusId,
 	type ServiceStatusSnapshot,
 	type StatuspageIndicator,
 } from "shared/service-status-types";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
+// Focus-driven refresh is debounced: if the last successful refresh attempt
+// was within this window we skip rather than hammering the API on every
+// window/tab switch.
+const FOCUS_REFRESH_MIN_INTERVAL_MS = 30_000;
 
 type StatuspageResponse = {
 	status?: { indicator?: StatuspageIndicator; description?: string };
 };
 
 class ServiceStatusService extends EventEmitter {
-	private snapshots = new Map<string, ServiceStatusSnapshot>();
+	private snapshots = new Map<ServiceStatusId, ServiceStatusSnapshot>();
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private started = false;
+	private lastRefreshAt = 0;
 
 	constructor() {
 		super();
+		// Multiple renderers (main window + any tearoff) can each subscribe to
+		// the emitter via tRPC; bump the default cap so dev HMR and StrictMode
+		// remounts don't trip the listener-warning heuristic.
+		this.setMaxListeners(20);
 		for (const def of SERVICE_STATUS_DEFINITIONS) {
-			this.snapshots.set(def.id, {
-				id: def.id,
-				label: def.label,
-				statusUrl: def.statusUrl,
-				level: "unknown",
-				indicator: null,
-				description: "Checking…",
-				checkedAt: 0,
-				fetchError: null,
-			});
+			this.snapshots.set(def.id, createUnknownSnapshot(def));
 		}
 	}
 
@@ -43,6 +45,8 @@ class ServiceStatusService extends EventEmitter {
 		this.pollTimer = setInterval(() => {
 			void this.refreshAll();
 		}, POLL_INTERVAL_MS);
+		// Don't keep the event loop alive just for status polling.
+		this.pollTimer.unref();
 	}
 
 	stop(): void {
@@ -53,14 +57,30 @@ class ServiceStatusService extends EventEmitter {
 
 	getAll(): ServiceStatusSnapshot[] {
 		return SERVICE_STATUS_DEFINITIONS.map(
-			(def) => this.snapshots.get(def.id) ?? this.unknownFor(def),
+			(def) => this.snapshots.get(def.id) ?? createUnknownSnapshot(def),
 		);
 	}
 
-	refreshAll(): Promise<void> {
-		return Promise.all(
+	/**
+	 * Refresh only when the last refresh is older than the given threshold.
+	 * Used for focus-driven refreshes so rapid window switches don't produce
+	 * a fetch storm.
+	 */
+	refreshIfStale(thresholdMs = FOCUS_REFRESH_MIN_INTERVAL_MS): void {
+		if (Date.now() - this.lastRefreshAt < thresholdMs) return;
+		void this.refreshAll();
+	}
+
+	async refreshAll(): Promise<void> {
+		// Skip when offline. net.isOnline() reflects Chromium's connectivity
+		// state which is accurate enough to avoid guaranteed-failure polls on
+		// planes / disconnected laptops while still running when the OS is
+		// merely on a captive-portal / proxy.
+		if (!net.isOnline()) return;
+		this.lastRefreshAt = Date.now();
+		await Promise.allSettled(
 			SERVICE_STATUS_DEFINITIONS.map((def) => this.refreshOne(def)),
-		).then(() => undefined);
+		);
 	}
 
 	private async refreshOne(def: ServiceStatusDefinition): Promise<void> {
@@ -69,9 +89,7 @@ class ServiceStatusService extends EventEmitter {
 			const indicator = json.status?.indicator ?? null;
 			const description =
 				json.status?.description ||
-				(indicator === "none"
-					? "All Systems Operational"
-					: "Status unavailable");
+				(indicator === "none" ? "全システム正常" : "ステータス不明");
 			this.updateSnapshot({
 				id: def.id,
 				label: def.label,
@@ -99,24 +117,20 @@ class ServiceStatusService extends EventEmitter {
 	}
 
 	private updateSnapshot(next: ServiceStatusSnapshot): void {
+		const prev = this.snapshots.get(next.id);
 		this.snapshots.set(next.id, next);
-		// Emit on every poll so the renderer's "last checked" timestamp stays
-		// fresh — the initial getAll query is cached with staleTime: Infinity,
-		// so without an emit here the tooltip would freeze on the first value.
-		this.emit("change", next);
-	}
-
-	private unknownFor(def: ServiceStatusDefinition): ServiceStatusSnapshot {
-		return {
-			id: def.id,
-			label: def.label,
-			statusUrl: def.statusUrl,
-			level: "unknown",
-			indicator: null,
-			description: "Checking…",
-			checkedAt: 0,
-			fetchError: null,
-		};
+		// Only emit when user-visible state actually changes. checkedAt isn't
+		// directly rendered — the tooltip uses a relative formatter on
+		// Date.now() so it auto-refreshes whenever the Tooltip remounts.
+		if (
+			!prev ||
+			prev.level !== next.level ||
+			prev.indicator !== next.indicator ||
+			prev.description !== next.description ||
+			Boolean(prev.fetchError) !== Boolean(next.fetchError)
+		) {
+			this.emit("change", next);
+		}
 	}
 
 	// Use Electron's net module so fetch uses Chromium's network stack and
@@ -156,6 +170,7 @@ class ServiceStatusService extends EventEmitter {
 				});
 				response.on("error", (err: Error) => {
 					clearTimeout(timeout);
+					if (timedOut) return;
 					reject(err);
 				});
 			});
@@ -173,12 +188,13 @@ export const serviceStatusService = new ServiceStatusService();
 
 export function setupServiceStatusPolling(): void {
 	serviceStatusService.start();
-	app.on("browser-window-focus", () => {
-		// Refresh on focus so users returning to the app see fresh state
-		// without waiting for the 5-minute interval.
-		void serviceStatusService.refreshAll();
-	});
+	const onFocus = () => {
+		// Debounced refresh — protects the poller from rapid window switches.
+		serviceStatusService.refreshIfStale();
+	};
+	app.on("browser-window-focus", onFocus);
 	app.on("before-quit", () => {
+		app.off("browser-window-focus", onFocus);
 		serviceStatusService.stop();
 	});
 }
