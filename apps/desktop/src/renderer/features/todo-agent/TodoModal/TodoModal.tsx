@@ -54,6 +54,10 @@ export function TodoModal({
 	const [description, setDescription] = useState("");
 	const [goal, setGoal] = useState("");
 	const [verifyCommand, setVerifyCommand] = useState(DEFAULT_VERIFY_COMMAND);
+	const { data: todoSettings } = electronTrpc.todoAgent.settings.get.useQuery(
+		undefined,
+		{ enabled: open },
+	);
 	const [maxIterations, setMaxIterations] = useState(DEFAULT_MAX_ITERATIONS);
 	const [maxMinutes, setMaxMinutes] = useState(DEFAULT_MAX_MINUTES);
 	const [submitting, setSubmitting] = useState(false);
@@ -83,12 +87,14 @@ export function TodoModal({
 		setDescription("");
 		setGoal("");
 		setVerifyCommand(DEFAULT_VERIFY_COMMAND);
-		setMaxIterations(DEFAULT_MAX_ITERATIONS);
-		setMaxMinutes(DEFAULT_MAX_MINUTES);
+		setMaxIterations(
+			todoSettings?.defaultMaxIterations ?? DEFAULT_MAX_ITERATIONS,
+		);
+		setMaxMinutes(todoSettings?.defaultMaxWallClockMin ?? DEFAULT_MAX_MINUTES);
 		setCreateWorktree(DEFAULT_CREATE_WORKTREE);
 		setSelectedPresetId(null);
 		setSubmitting(false);
-	}, []);
+	}, [todoSettings]);
 
 	const handleOpenChange = useCallback(
 		(next: boolean) => {

@@ -16,6 +16,7 @@ import {
 	type SessionDiffScope,
 } from "./git-status";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
+import { getTodoSettings, updateTodoSettings } from "./settings";
 import { getTodoSupervisor } from "./supervisor";
 import {
 	TODO_ARTIFACT_SUBDIR,
@@ -26,6 +27,7 @@ import {
 	todoPresetCreateInputSchema,
 	todoPresetUpdateInputSchema,
 	todoSendInputSchema,
+	todoSettingsUpdateSchema,
 } from "./types";
 
 /**
@@ -587,6 +589,13 @@ export const createTodoAgentRouter = () => {
 						.run();
 					return { ok: result.changes > 0 };
 				}),
+		}),
+
+		settings: router({
+			get: publicProcedure.query(() => getTodoSettings()),
+			update: publicProcedure
+				.input(todoSettingsUpdateSchema)
+				.mutation(({ input }) => updateTodoSettings(input)),
 		}),
 	});
 };

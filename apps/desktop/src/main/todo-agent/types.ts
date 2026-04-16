@@ -74,6 +74,16 @@ export type TodoEnhanceTextInput = z.infer<typeof todoEnhanceTextInputSchema>;
 
 export type TodoCreateInput = z.infer<typeof todoCreateInputSchema>;
 
+export const todoSettingsSchema = z.object({
+	defaultMaxIterations: z.number().int().min(1).max(100).default(10),
+	defaultMaxWallClockMin: z.number().int().min(1).max(240).default(30),
+	maxConcurrentTasks: z.number().int().min(1).max(10).default(1),
+});
+
+export type TodoSettings = z.infer<typeof todoSettingsSchema>;
+
+export const todoSettingsUpdateSchema = todoSettingsSchema.partial();
+
 export const todoAttachPaneInputSchema = z.object({
 	sessionId: z.string().min(1),
 	tabId: z.string().min(1),
