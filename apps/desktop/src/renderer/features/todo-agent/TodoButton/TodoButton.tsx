@@ -27,18 +27,21 @@ export const TodoButton = memo(function TodoButton({
 	const [managerOpen, setManagerOpen] = useState(false);
 	const [modalOpen, setModalOpen] = useState(false);
 
-	const { data: sessions } = electronTrpc.todoAgent.list.useQuery(
-		{ workspaceId },
-		{ enabled: !!workspaceId, refetchInterval: 3000 },
+	const { data: allSessions } = electronTrpc.todoAgent.listAll.useQuery(
+		undefined,
+		{ refetchInterval: 3000 },
 	);
 
-	const activeCount = (sessions ?? []).filter(
-		(session) =>
-			session.status === "queued" ||
-			session.status === "preparing" ||
-			session.status === "running" ||
-			session.status === "verifying",
+	const runningCount = (allSessions ?? []).filter(
+		(s) =>
+			s.status === "preparing" ||
+			s.status === "running" ||
+			s.status === "verifying",
 	).length;
+	const queuedCount = (allSessions ?? []).filter(
+		(s) => s.status === "queued",
+	).length;
+	const activeCount = runningCount + queuedCount;
 
 	const handleRequestNewTodo = useCallback(() => {
 		setModalOpen(true);
@@ -59,9 +62,18 @@ export const TodoButton = memo(function TodoButton({
 			>
 				<HiMiniListBullet className="size-4" />
 				<span className="font-medium">TODO</span>
-				{activeCount > 0 && (
-					<span className="ml-1 rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-semibold tabular-nums">
-						{activeCount}
+				{runningCount > 0 && (
+					<span className="relative ml-1 flex items-center gap-1 rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-semibold tabular-nums">
+						<span className="relative flex size-1.5">
+							<span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/60" />
+							<span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+						</span>
+						{runningCount}
+					</span>
+				)}
+				{queuedCount > 0 && (
+					<span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-semibold tabular-nums text-muted-foreground">
+						+{queuedCount}
 					</span>
 				)}
 			</Button>

@@ -1012,64 +1012,49 @@ function formatDuration(startMs: number | null, endMs: number | null): string {
 	return `${h}時間${m}分`;
 }
 
+/**
+ * Pair consecutive tool_use → tool_result events into a single card
+ * (matching VSCode Claude Code extension's IN / OUT grid layout).
+ * Non-tool events stay as singles. Unpaired tool_use (still streaming)
+ * appears as a card with empty OUT row.
+ */
 type StreamItem =
-	| { type: "single"; id: string; event: TodoStreamEvent }
+	| { type: "message"; id: string; event: TodoStreamEvent }
 	| {
-			type: "tools";
+			type: "tool";
 			id: string;
-			events: TodoStreamEvent[];
-			iteration: number;
+			toolUse: TodoStreamEvent;
+			toolResult: TodoStreamEvent | null;
 	  };
 
-/**
- * Collapse consecutive tool_use / tool_result events into a
- * single grouped item so the live stream reads like VS Code's
- * Claude Code extension — a tall, dense list of N tool calls
- * becomes one compact row you can expand when you actually care.
- * assistant_text / result / error / system_init / raw stay as
- * their own rows because they are the narrative checkpoints
- * users scan for (user prompts are emitted as `raw` via
- * appendUserEvent, so grouping them would hide iteration
- * boundaries inside collapsed tool blocks).
- */
-function groupStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
+function pairStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
 	const items: StreamItem[] = [];
-	let toolBucket: TodoStreamEvent[] = [];
-	const flushBucket = () => {
-		if (toolBucket.length === 0) return;
-		const first = toolBucket[0];
-		// Key on the id of the first event in the bucket and the
-		// iteration, NOT the bucket length. Otherwise every newly
-		// streamed event forces a remount of StreamToolGroup and
-		// its local `open` state resets to collapsed — users who
-		// expanded the group to read live output would see it
-		// close on them on every new chunk.
-		items.push({
-			type: "tools",
-			id: `tools:${first?.id ?? ""}`,
-			events: toolBucket,
-			iteration: first?.iteration ?? 0,
-		});
-		toolBucket = [];
-	};
-	for (const ev of events) {
-		if (ev.kind === "tool_use" || ev.kind === "tool_result") {
-			toolBucket.push(ev);
-			continue;
+	for (let i = 0; i < events.length; i++) {
+		const ev = events[i];
+		if (!ev) continue;
+		if (ev.kind === "tool_use") {
+			const next = events[i + 1];
+			if (next?.kind === "tool_result") {
+				items.push({
+					type: "tool",
+					id: ev.id,
+					toolUse: ev,
+					toolResult: next,
+				});
+				i++;
+			} else {
+				items.push({ type: "tool", id: ev.id, toolUse: ev, toolResult: null });
+			}
+		} else if (ev.kind === "tool_result") {
+			items.push({ type: "message", id: ev.id, event: ev });
+		} else {
+			items.push({ type: "message", id: ev.id, event: ev });
 		}
-		flushBucket();
-		items.push({ type: "single", id: ev.id, event: ev });
 	}
-	flushBucket();
 	return items;
 }
 
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
-	// Auto-scroll to the bottom whenever a new event arrives, but only
-	// if the user hadn't scrolled up to read older output. Tracked via
-	// a `pinnedToBottom` ref that flips to false the moment the user
-	// manually scrolls up, and back to true when they scroll near the
-	// bottom again.
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const pinnedToBottomRef = useRef(true);
 
@@ -1081,7 +1066,7 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		pinnedToBottomRef.current = distanceFromBottom < 40;
 	}, []);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: events.length intentional — we want to scroll on new events, not on identity changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: events.length intentional
 	useEffect(() => {
 		if (!pinnedToBottomRef.current) return;
 		const el = scrollRef.current;
@@ -1089,13 +1074,13 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		el.scrollTop = el.scrollHeight;
 	}, [events.length]);
 
-	const items = useMemo(() => groupStreamEvents(events), [events]);
+	const items = useMemo(() => pairStreamEvents(events), [events]);
 
 	return (
 		<div
 			ref={scrollRef}
 			onScroll={handleScroll}
-			className="h-full overflow-auto bg-muted/30 rounded p-3 flex flex-col gap-2"
+			className="h-full overflow-auto bg-muted/30 rounded p-3 flex flex-col gap-1.5"
 		>
 			{events.length === 0 ? (
 				<div className="text-xs text-muted-foreground p-2">
@@ -1104,10 +1089,10 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 				</div>
 			) : (
 				items.map((item) =>
-					item.type === "single" ? (
-						<StreamEventRow key={item.id} event={item.event} />
+					item.type === "tool" ? (
+						<ToolCallCard key={item.id} item={item} />
 					) : (
-						<StreamToolGroup key={item.id} item={item} />
+						<MessageRow key={item.id} event={item.event} />
 					),
 				)
 			)}
@@ -1115,101 +1100,156 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 	);
 }
 
-function StreamToolGroup({
+/**
+ * VSCode Claude Code style tool card: compact header with tool name +
+ * secondary info, then an IN/OUT grid body. No folding — always visible.
+ */
+function ToolCallCard({
 	item,
 }: {
-	item: Extract<StreamItem, { type: "tools" }>;
+	item: Extract<StreamItem, { type: "tool" }>;
 }) {
-	const [open, setOpen] = useState(false);
-	const toolUseCount = item.events.filter((e) => e.kind === "tool_use").length;
-	const resultCount = item.events.filter(
-		(e) => e.kind === "tool_result",
-	).length;
-	const lastTool = [...item.events]
-		.reverse()
-		.find((e) => e.kind === "tool_use");
-	const summary = lastTool
-		? `${lastTool.label}: ${lastTool.text.replace(/\s+/g, " ").slice(0, 80)}`
-		: "ツール実行";
+	const { toolUse, toolResult } = item;
+	const toolName = toolUse.label;
+	const secondary = extractSecondaryInfo(toolName, toolUse.text);
+
 	return (
-		<div className="border border-border/40 rounded-lg bg-background/40">
-			<button
-				type="button"
-				onClick={() => setOpen((v) => !v)}
-				className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-accent/30 transition rounded-lg"
-			>
-				{open ? (
-					<HiMiniChevronDown className="size-3 text-muted-foreground shrink-0" />
-				) : (
-					<HiMiniChevronRight className="size-3 text-muted-foreground shrink-0" />
-				)}
-				<span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">
-					[iter {item.iteration}]
+		<div className="border border-border/40 rounded-lg bg-background/50 text-xs overflow-hidden">
+			<div className="flex items-center gap-2 px-3 py-1.5 bg-muted/40 border-b border-border/30">
+				<span className="font-semibold text-amber-600 shrink-0">
+					{toolName}
 				</span>
-				<span className="text-[10px] font-semibold text-amber-600 shrink-0">
-					🔧 {toolUseCount}件
-				</span>
-				{resultCount > 0 && (
-					<span className="text-[10px] text-emerald-600 shrink-0">
-						✓ {resultCount}
+				{secondary && (
+					<span className="text-muted-foreground truncate font-mono text-[11px]">
+						{secondary}
 					</span>
 				)}
-				<span className="text-[11px] text-muted-foreground truncate flex-1 font-mono">
-					{summary}
+				<span className="ml-auto text-[10px] text-muted-foreground tabular-nums shrink-0">
+					{formatClock(toolUse.ts)}
 				</span>
-			</button>
-			{open && (
-				<div className="flex flex-col gap-1.5 px-2 pb-2 pt-1">
-					{item.events.map((ev) => (
-						<StreamEventRow key={ev.id} event={ev} />
-					))}
+			</div>
+			<div className="divide-y divide-border/20">
+				<div className="flex min-h-0">
+					<div className="shrink-0 w-10 flex items-start justify-center py-1.5 text-[10px] font-semibold text-muted-foreground/70">
+						IN
+					</div>
+					<div className="flex-1 py-1.5 pr-3 overflow-hidden">
+						<pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-24 overflow-y-auto text-foreground/80">
+							{toolUse.text.slice(0, 500)}
+							{toolUse.text.length > 500 ? "…" : ""}
+						</pre>
+					</div>
 				</div>
-			)}
+				<div className="flex min-h-0">
+					<div className="shrink-0 w-10 flex items-start justify-center py-1.5 text-[10px] font-semibold text-emerald-600/70">
+						OUT
+					</div>
+					<div className="flex-1 py-1.5 pr-3 overflow-hidden">
+						{toolResult ? (
+							<pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-24 overflow-y-auto text-foreground/80">
+								{toolResult.text.slice(0, 500)}
+								{toolResult.text.length > 500 ? "…" : ""}
+							</pre>
+						) : (
+							<span className="text-[11px] text-muted-foreground animate-pulse">
+								実行中…
+							</span>
+						)}
+					</div>
+				</div>
+			</div>
 		</div>
 	);
 }
 
-function StreamEventRow({ event }: { event: TodoStreamEvent }) {
-	const color =
-		event.kind === "assistant_text"
-			? "border-primary/40 bg-primary/5"
-			: event.kind === "tool_use"
-				? "border-amber-500/40 bg-amber-500/5"
-				: event.kind === "tool_result"
-					? "border-emerald-500/30 bg-emerald-500/5"
-					: event.kind === "result"
-						? "border-emerald-600/50 bg-emerald-600/10"
-						: event.kind === "error"
-							? "border-rose-500/50 bg-rose-500/5"
-							: "border-border/40 bg-background";
-	// Markdown rendering for the two kinds where authoring is natural
-	// (Claude's prose assistant messages + the final `result` text).
-	// Tool calls, tool results, and raw log lines stay plain text so
-	// their monospace / short-label nature is preserved.
-	const useMarkdown =
-		event.kind === "assistant_text" || event.kind === "result";
-	return (
-		<div className={cn("group border rounded-lg px-3 py-2 text-xs", color)}>
-			<div className="flex items-center justify-between gap-2 mb-1">
-				<span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-					[iter {event.iteration}] {event.label}
-				</span>
-				<div className="flex items-center gap-1">
+function extractSecondaryInfo(_toolName: string, text: string): string | null {
+	const colonIdx = text.indexOf(": ");
+	if (colonIdx > 0 && colonIdx < 60) {
+		return text.slice(colonIdx + 2, colonIdx + 120).trim();
+	}
+	if (text.length <= 120) return text;
+	return text.slice(0, 80);
+}
+
+function MessageRow({ event }: { event: TodoStreamEvent }) {
+	if (event.kind === "assistant_text") {
+		return (
+			<div className="group border border-primary/30 bg-primary/5 rounded-lg px-3 py-2 text-xs">
+				<div className="flex items-center justify-between gap-2 mb-1">
+					<span className="text-[10px] font-semibold text-primary/80">
+						Claude
+					</span>
+					<div className="flex items-center gap-1">
+						<span className="text-[10px] text-muted-foreground tabular-nums">
+							{formatClock(event.ts)}
+						</span>
+						<div className="opacity-0 group-hover:opacity-100 transition">
+							<CopyIconButton value={event.text} title="コピー" />
+						</div>
+					</div>
+				</div>
+				<MarkdownRenderer content={event.text} scrollable={false} />
+			</div>
+		);
+	}
+	if (event.kind === "result") {
+		return (
+			<div className="group border border-emerald-600/40 bg-emerald-600/10 rounded-lg px-3 py-2 text-xs">
+				<div className="flex items-center justify-between gap-2 mb-1">
+					<span className="text-[10px] font-semibold text-emerald-600">
+						Result
+					</span>
+					<div className="flex items-center gap-1">
+						<span className="text-[10px] text-muted-foreground tabular-nums">
+							{formatClock(event.ts)}
+						</span>
+						<div className="opacity-0 group-hover:opacity-100 transition">
+							<CopyIconButton value={event.text} title="コピー" />
+						</div>
+					</div>
+				</div>
+				<MarkdownRenderer content={event.text} scrollable={false} />
+			</div>
+		);
+	}
+	if (event.kind === "error") {
+		return (
+			<div className="border border-rose-500/40 bg-rose-500/5 rounded-lg px-3 py-2 text-xs">
+				<div className="flex items-center gap-2 mb-1">
+					<span className="text-[10px] font-semibold text-rose-500">Error</span>
 					<span className="text-[10px] text-muted-foreground tabular-nums">
 						{formatClock(event.ts)}
 					</span>
-					<div className="opacity-0 group-hover:opacity-100 transition">
-						<CopyIconButton value={event.text} title="このイベントをコピー" />
-					</div>
 				</div>
-			</div>
-			{useMarkdown ? (
-				<MarkdownRenderer content={event.text} scrollable={false} />
-			) : (
-				<div className="whitespace-pre-wrap leading-relaxed font-mono text-[11px]">
+				<div className="whitespace-pre-wrap font-mono text-[11px] text-rose-400">
 					{event.text}
 				</div>
-			)}
+			</div>
+		);
+	}
+	if (event.kind === "system_init") {
+		return (
+			<div className="flex items-center gap-2 px-2 py-1 text-[10px] text-muted-foreground">
+				<span className="font-semibold uppercase tracking-wide">
+					{event.label}
+				</span>
+				<span className="truncate">{event.text}</span>
+			</div>
+		);
+	}
+	return (
+		<div className="border border-border/40 bg-background rounded-lg px-3 py-2 text-xs">
+			<div className="flex items-center gap-2 mb-1">
+				<span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+					{event.label}
+				</span>
+				<span className="text-[10px] text-muted-foreground tabular-nums">
+					{formatClock(event.ts)}
+				</span>
+			</div>
+			<div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
+				{event.text}
+			</div>
 		</div>
 	);
 }
