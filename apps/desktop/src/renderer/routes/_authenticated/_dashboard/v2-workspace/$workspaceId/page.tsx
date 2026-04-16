@@ -11,6 +11,7 @@ import {
 	ResizablePanelGroup,
 } from "@superset/ui/resizable";
 import { toast } from "@superset/ui/sonner";
+import { workspaceTrpc } from "@superset/workspace-client";
 import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -30,15 +31,20 @@ import {
 	CommandPalette,
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
+import {
+	toAbsoluteWorkspacePath,
+	toRelativeWorkspacePath,
+} from "shared/absolute-paths";
 import { useStore } from "zustand";
+import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
-import { WorkspaceNotFoundState } from "./components/WorkspaceNotFoundState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
+import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
@@ -165,6 +171,24 @@ function WorkspaceContent({
 		},
 	);
 
+	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
+		id: workspaceId,
+	});
+	const worktreePath = workspaceQuery.data?.worktreePath ?? "";
+
+	const { recentFiles, recordView } = useRecentlyViewedFiles(workspaceId);
+
+	const recordRecentlyViewed = useCallback(
+		(filePath: string) => {
+			if (!worktreePath) return;
+			const absolutePath = toAbsoluteWorkspacePath(worktreePath, filePath);
+			const relativePath = toRelativeWorkspacePath(worktreePath, filePath);
+			if (!relativePath || relativePath === ".") return;
+			recordView({ relativePath, absolutePath });
+		},
+		[recordView, worktreePath],
+	);
+
 	const selectedFilePath = useStore(store, (s) => {
 		const tab = s.tabs.find((t) => t.id === s.activeTabId);
 		if (!tab?.activePaneId) return undefined;
@@ -173,8 +197,23 @@ function WorkspaceContent({
 		return undefined;
 	});
 
+	const openFilePathsKey = useStore(store, (s) =>
+		s.tabs
+			.flatMap((t) =>
+				Object.values(t.panes)
+					.filter((p) => p.kind === "file")
+					.map((p) => (p.data as FilePaneData).filePath),
+			)
+			.join("\u0000"),
+	);
+	const openFilePaths = useMemo(
+		() => new Set(openFilePathsKey ? openFilePathsKey.split("\u0000") : []),
+		[openFilePathsKey],
+	);
+
 	const openFilePane = useCallback(
 		(filePath: string, displayName?: string) => {
+			recordRecentlyViewed(filePath);
 			const state = store.getState();
 			const active = state.getActivePane();
 			if (
@@ -208,11 +247,12 @@ function WorkspaceContent({
 				},
 			});
 		},
-		[store],
+		[recordRecentlyViewed, store],
 	);
 
 	const openSidebarFilePane = useCallback(
 		(filePath: string, openInNewTab?: boolean) => {
+			recordRecentlyViewed(filePath);
 			const state = store.getState();
 			if (openInNewTab) {
 				state.addTab({
@@ -280,7 +320,7 @@ function WorkspaceContent({
 				splitPercentage: 100 - rightSidebarOpenViewWidth,
 			});
 		},
-		[rightSidebarOpenViewWidth, store],
+		[rightSidebarOpenViewWidth, store, recordRecentlyViewed],
 	);
 
 	const openDiffPane = useCallback(
@@ -589,7 +629,9 @@ function WorkspaceContent({
 				onScopeChange={commandPalette.setScope}
 				onSelectFile={commandPalette.selectFile}
 				open={commandPalette.open}
+				openFilePaths={openFilePaths}
 				query={commandPalette.query}
+				recentlyViewedFiles={recentFiles}
 				scope={commandPalette.scope}
 				searchResults={commandPalette.searchResults}
 				workspaceName={workspaceName}

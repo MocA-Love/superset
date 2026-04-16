@@ -36,6 +36,8 @@ interface SearchDialogProps<TItem extends SearchDialogItem> {
 	onSelectItem: (item: TItem) => void;
 	renderItem: (item: TItem) => ReactNode;
 	headerExtra?: ReactNode;
+	preResultsSection?: ReactNode;
+	hasPreResults?: boolean;
 }
 
 export function SearchDialog<TItem extends SearchDialogItem>({
@@ -59,6 +61,8 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 	onSelectItem,
 	renderItem,
 	headerExtra,
+	preResultsSection,
+	hasPreResults,
 }: SearchDialogProps<TItem>) {
 	return (
 		<CommandDialog
@@ -118,9 +122,11 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 			) : null}
 			{headerExtra}
 			<CommandList>
-				{query.trim().length > 0 && !isLoading && results.length === 0 && (
-					<CommandEmpty>{emptyMessage}</CommandEmpty>
-				)}
+				{query.trim().length > 0 &&
+					!isLoading &&
+					results.length === 0 &&
+					!hasPreResults && <CommandEmpty>{emptyMessage}</CommandEmpty>}
+				{preResultsSection}
 				{results.map((item) => (
 					<CommandItem
 						key={item.id}

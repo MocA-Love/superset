@@ -1,10 +1,22 @@
+import { CommandSeparator } from "@superset/ui/command";
+import { useMemo } from "react";
+import {
+	RECENT_DISPLAY_LIMIT,
+	type RecentFile,
+} from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useRecentlyViewedFiles";
 import {
 	SearchDialog,
 	type SearchDialogItem,
 } from "renderer/screens/main/components/SearchDialog";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import type { SearchScope } from "renderer/stores/search-dialog-state";
+import { FileResultItem } from "./components/FileResultItem";
 import { ScopeToggle } from "./components/ScopeToggle";
+
+function getFileName(relativePath: string): string {
+	const segments = relativePath.split("/");
+	return segments[segments.length - 1] ?? relativePath;
+}
 
 interface CommandPaletteResult extends SearchDialogItem {
 	name: string;
@@ -33,6 +45,8 @@ interface CommandPaletteProps {
 	scope: SearchScope;
 	onScopeChange: (scope: SearchScope) => void;
 	workspaceName?: string;
+	recentlyViewedFiles?: RecentFile[];
+	openFilePaths?: Set<string>;
 }
 
 export function CommandPalette({
@@ -52,7 +66,68 @@ export function CommandPalette({
 	scope,
 	onScopeChange,
 	workspaceName,
+	recentlyViewedFiles,
+	openFilePaths,
 }: CommandPaletteProps) {
+	const trimmedQuery = query.trim();
+	const hasQuery = trimmedQuery.length > 0;
+	const showRecentSection =
+		scope === "workspace" && Boolean(recentlyViewedFiles);
+
+	const orderedRecent = useMemo<RecentFile[]>(() => {
+		if (!showRecentSection || !recentlyViewedFiles) return [];
+		const openSet = openFilePaths ?? new Set<string>();
+		const openFiles: RecentFile[] = [];
+		const rest: RecentFile[] = [];
+		for (const file of recentlyViewedFiles) {
+			if (openSet.has(file.absolutePath)) {
+				openFiles.push(file);
+			} else {
+				rest.push(file);
+			}
+		}
+		return [...openFiles, ...rest].slice(0, RECENT_DISPLAY_LIMIT);
+	}, [showRecentSection, recentlyViewedFiles, openFilePaths]);
+
+	const filteredRecent = useMemo<RecentFile[]>(() => {
+		if (!showRecentSection) return [];
+		if (!hasQuery) return orderedRecent;
+		const needle = trimmedQuery.toLowerCase();
+		return orderedRecent.filter((file) =>
+			file.relativePath.toLowerCase().includes(needle),
+		);
+	}, [showRecentSection, hasQuery, trimmedQuery, orderedRecent]);
+
+	const recentAbsSet = useMemo(
+		() => new Set(filteredRecent.map((f) => f.absolutePath)),
+		[filteredRecent],
+	);
+
+	const dedupedResults = useMemo(() => {
+		if (!showRecentSection) return searchResults;
+		return searchResults.filter((r) => !recentAbsSet.has(r.path));
+	}, [showRecentSection, searchResults, recentAbsSet]);
+
+	const preResultsSection = showRecentSection && filteredRecent.length > 0 && (
+		<>
+			<div className="px-2 pt-2 pb-1 text-muted-foreground text-xs">
+				Recently Viewed
+			</div>
+			{filteredRecent.map((file) => (
+				<FileResultItem
+					key={`recent:${file.absolutePath}`}
+					value={`recent:${file.absolutePath}`}
+					fileName={getFileName(file.relativePath)}
+					relativePath={file.relativePath}
+					onSelect={() => onSelectFile(file.absolutePath)}
+				/>
+			))}
+			{dedupedResults.length > 0 && (
+				<CommandSeparator alwaysRender className="my-1" />
+			)}
+		</>
+	);
+
 	return (
 		<SearchDialog
 			open={open}
@@ -76,9 +151,11 @@ export function CommandPalette({
 			onExcludePatternChange={onExcludePatternChange}
 			emptyMessage="No files found."
 			isLoading={isLoading}
-			results={searchResults}
+			results={dedupedResults}
 			getItemValue={(file) => file.path}
 			onSelectItem={(file) => onSelectFile(file.path, file.workspaceId)}
+			preResultsSection={preResultsSection}
+			hasPreResults={filteredRecent.length > 0}
 			headerExtra={
 				<ScopeToggle
 					scope={scope}
