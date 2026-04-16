@@ -10,6 +10,7 @@ import {
 import { Input } from "@superset/ui/input";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
+import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
 import type {
 	TodoSessionListEntry,
@@ -554,6 +555,10 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	const [starting, setStarting] = useState(false);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [streamEvents, setStreamEvents] = useState<TodoStreamEvent[]>([]);
+	const [editingField, setEditingField] = useState<
+		"description" | "goal" | null
+	>(null);
+	const [editDraft, setEditDraft] = useState("");
 
 	const utils = electronTrpc.useUtils();
 	const startMut = electronTrpc.todoAgent.start.useMutation();
@@ -561,6 +566,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	const sendInputMut = electronTrpc.todoAgent.sendInput.useMutation();
 	const deleteMut = electronTrpc.todoAgent.delete.useMutation();
 	const rerunMut = electronTrpc.todoAgent.rerun.useMutation();
+	const updateFieldsMut = electronTrpc.todoAgent.updateFields.useMutation();
 
 	const isActive =
 		session.status === "queued" ||
@@ -593,6 +599,13 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset-on-change dep
 	useEffect(() => {
 		setStreamEvents([]);
+		// Also drop any in-progress description/goal edit state from
+		// the previously selected session — SessionDetail is reused
+		// across selections, so leaving stale edit state would let
+		// the user "save" into whichever session happens to be picked
+		// next.
+		setEditingField(null);
+		setEditDraft("");
 	}, [session.id]);
 
 	// Force a re-render once per second while the session is still
@@ -702,6 +715,62 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 			);
 		}
 	}, [invalidate, rerunMut, session.id]);
+
+	const canEditFields = canStart && !isRunning;
+
+	const startEditField = useCallback(
+		(field: "description" | "goal") => {
+			setEditingField(field);
+			setEditDraft(
+				field === "description" ? session.description : (session.goal ?? ""),
+			);
+		},
+		[session.description, session.goal],
+	);
+
+	const cancelEditField = useCallback(() => {
+		setEditingField(null);
+		setEditDraft("");
+	}, []);
+
+	const commitEditField = useCallback(async () => {
+		if (!editingField) return;
+		const trimmed = editDraft.trim();
+		if (editingField === "description") {
+			if (trimmed.length === 0) {
+				toast.error("『やって欲しいこと』は空にできません");
+				return;
+			}
+			try {
+				await updateFieldsMut.mutateAsync({
+					sessionId: session.id,
+					description: trimmed,
+				});
+			} catch (error) {
+				toast.error(
+					error instanceof Error ? error.message : "更新に失敗しました",
+				);
+				return;
+			}
+		} else {
+			try {
+				await updateFieldsMut.mutateAsync({
+					sessionId: session.id,
+					goal: trimmed.length > 0 ? trimmed : undefined,
+					clearGoal: trimmed.length === 0,
+				});
+			} catch (error) {
+				toast.error(
+					error instanceof Error ? error.message : "更新に失敗しました",
+				);
+				return;
+			}
+		}
+		await invalidate();
+		setEditingField(null);
+		setEditDraft("");
+		toast.success("保存しました");
+	}, [editingField, editDraft, updateFieldsMut, session.id, invalidate]);
 
 	return (
 		<div className="flex flex-col h-full min-h-0 overflow-hidden text-sm">
@@ -819,14 +888,103 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 			<div className="flex flex-1 min-h-0 overflow-hidden">
 				<div className="w-[34%] min-w-[360px] max-w-[520px] border-r min-h-0 overflow-y-auto">
 					<div className="flex flex-col gap-5 p-5">
-						<DetailBlock label="やって欲しいこと">
-							<div className="whitespace-pre-wrap text-xs leading-relaxed">
-								{session.description}
-							</div>
+						<DetailBlock
+							label="やって欲しいこと"
+							action={
+								canEditFields && editingField !== "description" ? (
+									<button
+										type="button"
+										className="text-[10px] text-muted-foreground hover:text-foreground transition"
+										onClick={() => startEditField("description")}
+									>
+										編集
+									</button>
+								) : null
+							}
+						>
+							{editingField === "description" ? (
+								<div className="flex flex-col gap-1.5">
+									<Textarea
+										value={editDraft}
+										onChange={(e) => setEditDraft(e.target.value)}
+										rows={5}
+										className="text-xs"
+										autoFocus
+									/>
+									<div className="flex items-center gap-1.5">
+										<Button
+											type="button"
+											size="sm"
+											className="h-6 px-2 text-[11px]"
+											onClick={commitEditField}
+											disabled={updateFieldsMut.isPending}
+										>
+											保存
+										</Button>
+										<Button
+											type="button"
+											size="sm"
+											variant="ghost"
+											className="h-6 px-2 text-[11px]"
+											onClick={cancelEditField}
+										>
+											キャンセル
+										</Button>
+									</div>
+								</div>
+							) : (
+								<div className="whitespace-pre-wrap text-xs leading-relaxed">
+									{session.description}
+								</div>
+							)}
 						</DetailBlock>
 
-						<DetailBlock label="ゴール">
-							{session.goal?.trim() ? (
+						<DetailBlock
+							label="ゴール"
+							action={
+								canEditFields && editingField !== "goal" ? (
+									<button
+										type="button"
+										className="text-[10px] text-muted-foreground hover:text-foreground transition"
+										onClick={() => startEditField("goal")}
+									>
+										編集
+									</button>
+								) : null
+							}
+						>
+							{editingField === "goal" ? (
+								<div className="flex flex-col gap-1.5">
+									<Textarea
+										value={editDraft}
+										onChange={(e) => setEditDraft(e.target.value)}
+										rows={3}
+										className="text-xs"
+										placeholder="完了条件（空欄可）"
+										autoFocus
+									/>
+									<div className="flex items-center gap-1.5">
+										<Button
+											type="button"
+											size="sm"
+											className="h-6 px-2 text-[11px]"
+											onClick={commitEditField}
+											disabled={updateFieldsMut.isPending}
+										>
+											保存
+										</Button>
+										<Button
+											type="button"
+											size="sm"
+											variant="ghost"
+											className="h-6 px-2 text-[11px]"
+											onClick={cancelEditField}
+										>
+											キャンセル
+										</Button>
+									</div>
+								</div>
+							) : session.goal?.trim() ? (
 								<div className="whitespace-pre-wrap text-xs leading-relaxed">
 									{session.goal}
 								</div>
