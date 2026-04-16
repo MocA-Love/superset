@@ -472,8 +472,15 @@ class TodoSupervisor {
 					// Only the very first turn after the scheduler wakes us
 					// up is a "continuation" — subsequent iterations within
 					// the same runSession are normal verify-retry loops.
+					// Require an actual resumable session: if the parked
+					// turn never produced a parseable `session_id`,
+					// claudeSessionId is null and `--resume` will not be
+					// passed. In that edge case the continuation-only
+					// prompt would strand Claude in a fresh conversation
+					// with no task context — fall back to the full
+					// iteration-1 prompt instead.
 					isScheduledWakeupContinuation:
-						isFromScheduledWakeup && iteration === 1,
+						isFromScheduledWakeup && iteration === 1 && claudeSessionId != null,
 				});
 
 				appendUserEvent(sessionId, iteration, prompt);
