@@ -179,7 +179,12 @@ export const createTodoAgentRouter = () => {
 					// Allow manual "wake now" on a ScheduleWakeup-paused
 					// session — the user should not have to wait out the
 					// delay if they already have the context they wanted.
-					session.status !== "waiting"
+					session.status !== "waiting" &&
+					// Allow resuming a completed session so the user can send
+					// follow-up messages. The supervisor detects the existing
+					// `claudeSessionId` and issues `--resume` to continue the
+					// prior conversation rather than starting fresh.
+					session.status !== "done"
 				) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
@@ -410,11 +415,43 @@ export const createTodoAgentRouter = () => {
 		 * Queue a user intervention for the next turn. Headless mode
 		 * cannot inject text mid-stream, so interventions land at the
 		 * next iteration boundary.
+		 *
+		 * Sending a message to a terminal session (done/failed/aborted/
+		 * escalated) that still has a `claudeSessionId` auto-resumes the
+		 * conversation: the message is buffered, the row flips to
+		 * `preparing`, and the supervisor reruns with `--resume <id>`.
+		 * Without this, the queued message would sit unread until the
+		 * user manually clicked Start — the exact friction #241 called
+		 * out for the `done` case.
 		 */
 		sendInput: publicProcedure
 			.input(todoSendInputSchema)
 			.mutation(({ input }) => {
-				getTodoSupervisor().queueIntervention(input.sessionId, input.data);
+				const store = getTodoSessionStore();
+				const session = store.get(input.sessionId);
+				if (!session) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "セッションが見つかりません",
+					});
+				}
+				const supervisor = getTodoSupervisor();
+				supervisor.queueIntervention(input.sessionId, input.data);
+
+				const isTerminal =
+					session.status === "done" ||
+					session.status === "failed" ||
+					session.status === "aborted" ||
+					session.status === "escalated";
+				if (isTerminal && session.claudeSessionId) {
+					store.update(input.sessionId, {
+						status: "preparing",
+						phase: "preparing",
+						waitingUntil: null,
+						waitingReason: null,
+					});
+					void supervisor.start(input.sessionId);
+				}
 				return { ok: true };
 			}),
 
