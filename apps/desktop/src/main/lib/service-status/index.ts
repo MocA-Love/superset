@@ -26,6 +26,9 @@ class ServiceStatusService extends EventEmitter {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private started = false;
 	private lastRefreshAt = 0;
+	// Re-entry guard: ensures start()'s initial refresh and a concurrent
+	// focus-driven refresh share a single fetch round instead of racing.
+	private inflightRefresh: Promise<void> | null = null;
 
 	constructor() {
 		super();
@@ -71,7 +74,20 @@ class ServiceStatusService extends EventEmitter {
 		void this.refreshAll();
 	}
 
-	async refreshAll(): Promise<void> {
+	refreshAll(): Promise<void> {
+		// Collapse concurrent callers onto the same fetch round. The initial
+		// start() refresh is async and can overlap with a focus-driven
+		// refreshIfStale() that passes the 30-second check because
+		// lastRefreshAt is still 0 — without this guard we'd fire the full
+		// fetch twice on every cold start.
+		if (this.inflightRefresh) return this.inflightRefresh;
+		this.inflightRefresh = this.doRefreshAll().finally(() => {
+			this.inflightRefresh = null;
+		});
+		return this.inflightRefresh;
+	}
+
+	private async doRefreshAll(): Promise<void> {
 		// Skip fetching when offline, but still push an "offline" snapshot so
 		// the UI doesn't keep rendering a stale green dot from the last
 		// successful poll. net.isOnline() reflects Chromium's connectivity
@@ -136,9 +152,11 @@ class ServiceStatusService extends EventEmitter {
 				statusUrl: def.statusUrl,
 				level: "unknown",
 				indicator: null,
-				description: "オフラインのため取得できません",
+				description: "Offline",
+				// Leave fetchError null so the tooltip just shows "Offline"
+				// instead of the redundant "… · offline" suffix.
 				checkedAt: Date.now(),
-				fetchError: "offline",
+				fetchError: null,
 			});
 		}
 	}
