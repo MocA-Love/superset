@@ -31,6 +31,7 @@ import { requestAppleEventsAccess } from "./lib/apple-events-permission";
 import { setupAutoUpdater } from "./lib/auto-updater";
 import { initializeBrowserIdentityManager } from "./lib/browser/browser-identity-manager";
 import { browserSitePermissionManager } from "./lib/browser/browser-site-permission-manager";
+import { initializeBrowserWebviewCompat } from "./lib/browser/browser-webview-compat";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
@@ -528,6 +529,7 @@ if (!gotTheLock) {
 		registerWithMacOSNotificationCenter();
 		requestAppleEventsAccess();
 		initializeBrowserIdentityManager();
+		initializeBrowserWebviewCompat();
 		browserSitePermissionManager.initialize();
 		// One-shot sweep of 30-day-old pasted attachments so userData
 		// doesn't grow forever from screenshots dropped into TODOs.

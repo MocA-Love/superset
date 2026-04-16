@@ -158,6 +158,7 @@ export default defineConfig({
 			rollupOptions: {
 				input: {
 					index: resolve("src/preload/index.ts"),
+					"webview-compat": resolve("src/preload/webview-compat.ts"),
 				},
 			},
 		},
