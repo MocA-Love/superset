@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import { todoSessions } from "@superset/local-db";
-import { and, inArray, lt } from "drizzle-orm";
+import { and, inArray, sql } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import { getTodoSettings } from "./settings";
 
@@ -26,6 +26,11 @@ export function cleanupOldSessions(): void {
 
 		const cutoffMs = Date.now() - sessionRetentionDays * 24 * 60 * 60 * 1000;
 
+		// The retention cutoff must be based on when the session finished,
+		// not when it started. A session created weeks ago but completed
+		// today is still "fresh" from the user's perspective. Fall back
+		// to createdAt only for the rare terminal row with no
+		// completedAt timestamp.
 		const candidates = localDb
 			.select({
 				id: todoSessions.id,
@@ -35,7 +40,7 @@ export function cleanupOldSessions(): void {
 			.where(
 				and(
 					inArray(todoSessions.status, [...TERMINAL_STATUSES]),
-					lt(todoSessions.createdAt, cutoffMs),
+					sql`COALESCE(${todoSessions.completedAt}, ${todoSessions.createdAt}) < ${cutoffMs}`,
 				),
 			)
 			.all();
