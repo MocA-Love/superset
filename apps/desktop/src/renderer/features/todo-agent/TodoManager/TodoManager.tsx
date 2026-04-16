@@ -490,6 +490,22 @@ export function TodoManager({
 							<SchedulesSection />
 						) : (
 							<>
+								<div className="p-2 border-b shrink-0 flex items-center justify-between gap-2">
+									<span className="text-xs text-muted-foreground">
+										{(sessions?.length ?? 0) > 0
+											? `${sessions?.length} 件のタスク`
+											: "タスクなし"}
+									</span>
+									<Button
+										type="button"
+										size="sm"
+										className="h-7 gap-1 px-2.5 text-xs rounded-md"
+										onClick={() => setComposerOpen(true)}
+									>
+										<HiMiniPlus className="size-4" />
+										新規
+									</Button>
+								</div>
 								<div className="p-2 border-b shrink-0">
 									<Input
 										value={filter}
@@ -502,7 +518,7 @@ export function TodoManager({
 									{grouped.length === 0 && (
 										<p className="text-xs text-muted-foreground px-3 py-6">
 											{(sessions?.length ?? 0) === 0
-												? "まだ TODO セッションはありません。右上の『新しい TODO』から作成してください。"
+												? "まだ TODO セッションはありません。『新規』から作成してください。"
 												: "条件に一致するセッションがありません。"}
 										</p>
 									)}
@@ -566,16 +582,7 @@ export function TodoManager({
 					</div>
 
 					<div className="flex-1 min-w-0 min-h-0 flex flex-col">
-						{composerOpen ? (
-							<TodoComposer
-								currentWorkspaceId={currentWorkspaceId}
-								onCreated={(id) => {
-									setComposerOpen(false);
-									setSelectedId(id);
-								}}
-								onCancel={() => setComposerOpen(false)}
-							/>
-						) : selected ? (
+						{selected ? (
 							<SessionDetail
 								session={selected}
 								onDeleted={() => setSelectedId(null)}
@@ -625,6 +632,24 @@ export function TodoManager({
 					open={presetsDialogOpen}
 					onOpenChange={setPresetsDialogOpen}
 				/>
+				<Dialog open={composerOpen} onOpenChange={setComposerOpen}>
+					<DialogContent
+						className="w-[1080px] max-w-[calc(100vw-3rem)] h-[84vh] max-h-[900px] p-0 gap-0 overflow-hidden flex flex-col rounded-xl"
+						showCloseButton={false}
+					>
+						<DialogTitle className="sr-only">新しい TODO</DialogTitle>
+						{composerOpen && (
+							<TodoComposer
+								currentWorkspaceId={currentWorkspaceId}
+								onCreated={(id) => {
+									setComposerOpen(false);
+									setSelectedId(id);
+								}}
+								onCancel={() => setComposerOpen(false)}
+							/>
+						)}
+					</DialogContent>
+				</Dialog>
 			</DialogContent>
 		</Dialog>
 	);
