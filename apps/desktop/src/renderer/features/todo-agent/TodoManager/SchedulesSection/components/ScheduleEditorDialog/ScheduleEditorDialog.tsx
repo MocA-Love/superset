@@ -19,7 +19,7 @@ import {
 } from "@superset/ui/select";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -66,6 +66,10 @@ export function ScheduleEditorDialog({
 }: ScheduleEditorDialogProps) {
 	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
 	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
+	const { data: todoSettings } = electronTrpc.todoAgent.settings.get.useQuery(
+		undefined,
+		{ enabled: open },
+	);
 
 	const [name, setName] = useState("");
 	const [projectId, setProjectId] = useState<string>("");
@@ -135,6 +139,28 @@ export function ScheduleEditorDialog({
 			setClaudeEffort(DEFAULT_SENTINEL);
 		}
 	}, [open, initial]);
+
+	// Seed the model/effort pickers from the user's global defaults when
+	// creating a brand-new schedule (initial === null). Runs at most once
+	// per dialog opening so a React Query refetch later can't stomp a
+	// manual "デフォルト" pick. When editing an existing schedule, the
+	// row's own values are already applied in the reset effect above;
+	// this block is intentionally a no-op in that case.
+	const claudeSeededRef = useRef(false);
+	useEffect(() => {
+		if (!open) {
+			claudeSeededRef.current = false;
+			return;
+		}
+		if (initial) return;
+		if (claudeSeededRef.current) return;
+		if (!todoSettings) return;
+		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
+		setClaudeEffort(
+			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		claudeSeededRef.current = true;
+	}, [open, initial, todoSettings]);
 
 	// Pre-select first project when creating a brand-new schedule.
 	useEffect(() => {
