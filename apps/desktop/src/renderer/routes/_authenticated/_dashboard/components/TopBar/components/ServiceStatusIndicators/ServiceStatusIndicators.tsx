@@ -80,26 +80,29 @@ function ServiceStatusIndicator({
 					/>
 				</button>
 			</TooltipTrigger>
-			{/* Tooltip inherits `text-[var(--background)]` from TooltipContent —
-			 *  keep overrides in the same token space (use opacity, not
-			 *  `text-foreground`) or the text disappears against the
-			 *  inverted background. */}
+			{/* Project's TooltipContent defaults to an inverted color pair
+			 *  (`bg-foreground` + `text-[var(--background)]`). For this
+			 *  multi-line status card we want the regular popover surface
+			 *  instead so description / meta colors (muted-foreground, etc.)
+			 *  work normally. `!` prefix forces the override past the
+			 *  component defaults. */}
 			<TooltipContent
 				side="bottom"
-				className="text-sm p-3 max-w-[280px] space-y-1.5"
+				showArrow={false}
+				className="!bg-popover !text-popover-foreground border shadow-md p-3 max-w-[280px] space-y-1.5 text-sm"
 			>
 				<div className="flex items-center gap-1.5 font-semibold">
 					<Icon className="size-3.5 shrink-0" />
 					<span>{snapshot.label}</span>
-					<span className="opacity-60">—</span>
+					<span className="text-muted-foreground">—</span>
 					<span>{levelLabel}</span>
 				</div>
 				<div>{snapshot.description}</div>
-				<div className="text-xs opacity-70">
+				<div className="text-xs text-muted-foreground">
 					{formatCheckedAt(snapshot.checkedAt)}
 					{snapshot.fetchError ? ` · ${snapshot.fetchError}` : ""}
 				</div>
-				<div className="text-xs opacity-60">
+				<div className="text-xs text-muted-foreground">
 					クリックで {displayHost} を開く
 				</div>
 			</TooltipContent>
