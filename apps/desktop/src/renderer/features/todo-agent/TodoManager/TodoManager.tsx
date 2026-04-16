@@ -33,8 +33,8 @@ import {
 	HiMiniCog6Tooth,
 	HiMiniDocumentDuplicate,
 	HiMiniEllipsisVertical,
+	HiMiniPaperClip,
 	HiMiniPencil,
-	HiMiniPhoto,
 	HiMiniPlus,
 	HiMiniSparkles,
 	HiMiniTrash,
@@ -240,7 +240,7 @@ function ImagePasteTextarea({
 							className="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5"
 							title={`${a.token} · ${a.path}`}
 						>
-							<HiMiniPhoto className="size-3 text-muted-foreground/80" />
+							<HiMiniPaperClip className="size-3 text-muted-foreground/80" />
 							<span className="truncate max-w-[160px]">{a.name}</span>
 							<button
 								type="button"
