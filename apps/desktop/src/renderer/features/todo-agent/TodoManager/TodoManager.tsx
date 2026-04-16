@@ -5,7 +5,6 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
@@ -158,8 +157,7 @@ export function TodoManager({
 							)}
 						</Button>
 						<span className="text-sm font-semibold">TODO Agent Manager</span>
-						<span className="text-xs text-muted-foreground">
-						</span>
+						<span className="text-xs text-muted-foreground"></span>
 					</div>
 					<div className="flex items-center gap-2">
 						<Button
@@ -278,7 +276,7 @@ export function TodoManager({
 								type="button"
 								onClick={() => setPresetsDialogOpen(true)}
 								className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/60 transition"
-								title="システムプロンプトテンプレートを管理"
+								title="テンプレート / 設定を管理"
 							>
 								<HiMiniCog6Tooth className="size-3.5" />
 								<span>設定 / プリセット</span>
@@ -1117,11 +1115,13 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 
 			{/* Footer: intervention input, pinned. Always reachable. */}
 			<div className="shrink-0 border-t px-6 py-3 bg-background">
-				<div className="flex items-center gap-2">
-					<Input
+				<div className="flex items-end gap-2">
+					<Textarea
 						value={intervention}
 						onChange={(e) => setIntervention(e.target.value)}
-						placeholder="メッセージを送信（Enter で送信）"
+						placeholder="メッセージを送信（Enter で送信、Shift+Enter で改行）"
+						rows={2}
+						className="resize-none min-h-[44px] max-h-40 text-xs leading-relaxed"
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && !e.shiftKey) {
 								e.preventDefault();
@@ -1477,7 +1477,14 @@ function CopyIconButton({
 }
 
 function statusLabel(session: TodoSession): string {
-	const iter = session.iteration ? ` · iter ${session.iteration}` : "";
+	// Hide the iter suffix for:
+	//   - single-turn mode (no verifyCommand) — there is never more than
+	//     one iteration inside a single run; the counter is implementation
+	//     detail, not something users care about
+	//   - iteration === 1 in verify mode — same reason, only show when
+	//     the retry loop has actually advanced
+	const showIter = !!session.verifyCommand && session.iteration > 1;
+	const iter = showIter ? ` · iter ${session.iteration}` : "";
 	return `${session.status}${iter}`;
 }
 
@@ -1705,149 +1712,152 @@ function TodoComposer({
 					キャンセル
 				</Button>
 			</div>
-			<div className="flex-1 min-h-0 overflow-y-auto p-6">
-				<div className="max-w-2xl flex flex-col gap-4">
-					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="composer-project">対象プロジェクト</Label>
-						<select
-							id="composer-project"
-							value={projectId}
-							onChange={(e) => setProjectId(e.target.value)}
-							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
-						>
-							{(projects ?? []).map((p) => (
-								<option key={p.id} value={p.id}>
-									{p.name}
-								</option>
-							))}
-						</select>
-					</div>
-
-					<label
-						htmlFor="composer-new-worktree"
-						className={cn(
-							"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
-							createWorktree
-								? "border-primary/40 bg-primary/5"
-								: "border-border/40 hover:bg-muted/40",
-						)}
-					>
-						<Checkbox
-							id="composer-new-worktree"
-							checked={createWorktree}
-							onCheckedChange={(checked) => setCreateWorktree(checked === true)}
-						/>
-						<span className="text-xs font-medium flex-1">
-							新しい worktree を作成して実行
-						</span>
-						<HiMiniSparkles className="size-3 text-primary/70" />
-					</label>
-
-					{!createWorktree && (
+			<div className="flex-1 min-h-0 flex overflow-hidden">
+				<div className="flex-1 min-w-0 overflow-y-auto p-6 border-r">
+					<div className="max-w-2xl flex flex-col gap-4">
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="composer-ws">実行先ワークスペース</Label>
+							<Label htmlFor="composer-project">対象プロジェクト</Label>
 							<select
-								id="composer-ws"
-								value={workspaceId}
-								onChange={(e) => setWorkspaceId(e.target.value)}
+								id="composer-project"
+								value={projectId}
+								onChange={(e) => setProjectId(e.target.value)}
 								className="h-9 rounded-md border border-input bg-background px-2 text-xs"
 							>
-								{projectWorkspaces.length === 0 && (
-									<option value="">
-										（このプロジェクトには worktree がありません）
-									</option>
-								)}
-								{projectWorkspaces.map((w) => (
-									<option key={w.id} value={w.id}>
-										{w.name} ({w.branch})
+								{(projects ?? []).map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.name}
 									</option>
 								))}
 							</select>
 						</div>
-					)}
 
-					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="composer-title">タイトル</Label>
-						<Input
-							id="composer-title"
-							value={title}
-							onChange={(e) => setTitle(e.target.value)}
-							placeholder="例: Issue #123 を修正"
-							maxLength={200}
-							autoFocus
-						/>
-					</div>
+						<label
+							htmlFor="composer-new-worktree"
+							className={cn(
+								"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
+								createWorktree
+									? "border-primary/40 bg-primary/5"
+									: "border-border/40 hover:bg-muted/40",
+							)}
+						>
+							<Checkbox
+								id="composer-new-worktree"
+								checked={createWorktree}
+								onCheckedChange={(checked) =>
+									setCreateWorktree(checked === true)
+								}
+							/>
+							<span className="text-xs font-medium flex-1">
+								新しい worktree を作成して実行
+							</span>
+							<HiMiniSparkles className="size-3 text-primary/70" />
+						</label>
 
-					<div className="flex flex-col gap-1.5">
-						<div className="flex items-center justify-between">
-							<Label htmlFor="composer-desc">タスク</Label>
-							<ComposerTemplatePicker
-								presets={scopedPresets.description}
-								onInsert={setDescription}
+						{!createWorktree && (
+							<div className="flex flex-col gap-1.5">
+								<Label htmlFor="composer-ws">実行先ワークスペース</Label>
+								<select
+									id="composer-ws"
+									value={workspaceId}
+									onChange={(e) => setWorkspaceId(e.target.value)}
+									className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+								>
+									{projectWorkspaces.length === 0 && (
+										<option value="">
+											（このプロジェクトには worktree がありません）
+										</option>
+									)}
+									{projectWorkspaces.map((w) => (
+										<option key={w.id} value={w.id}>
+											{w.name} ({w.branch})
+										</option>
+									))}
+								</select>
+							</div>
+						)}
+
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="composer-title">タイトル</Label>
+							<Input
+								id="composer-title"
+								value={title}
+								onChange={(e) => setTitle(e.target.value)}
+								placeholder="例: Issue #123 を修正"
+								maxLength={200}
+								autoFocus
 							/>
 						</div>
-						<Textarea
-							id="composer-desc"
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							placeholder="やってほしい作業を書く"
-							rows={4}
-						/>
-					</div>
 
-					<div className="flex flex-col gap-1.5">
-						<div className="flex items-center justify-between">
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="composer-desc">タスク</Label>
+							<Textarea
+								id="composer-desc"
+								value={description}
+								onChange={(e) => setDescription(e.target.value)}
+								placeholder="やってほしい作業を書く（右のテンプレートから挿入可）"
+								rows={5}
+							/>
+						</div>
+
+						<div className="flex flex-col gap-1.5">
 							<Label htmlFor="composer-goal">
 								ゴール{" "}
 								<span className="text-[10px] text-muted-foreground">任意</span>
 							</Label>
-							<ComposerTemplatePicker
-								presets={scopedPresets.goal}
-								onInsert={setGoal}
+							<Textarea
+								id="composer-goal"
+								value={goal}
+								onChange={(e) => setGoal(e.target.value)}
+								placeholder="完了条件（空欄可、右のテンプレートから挿入可）"
+								rows={3}
 							/>
 						</div>
-						<Textarea
-							id="composer-goal"
-							value={goal}
-							onChange={(e) => setGoal(e.target.value)}
-							placeholder="完了条件（空欄可）"
-							rows={2}
-						/>
-					</div>
 
-					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="composer-verify">
-							Verify{" "}
-							<span className="text-[10px] text-muted-foreground">任意</span>
-						</Label>
-						<Input
-							id="composer-verify"
-							value={verifyCommand}
-							onChange={(e) => setVerifyCommand(e.target.value)}
-							placeholder="例: bun test"
-						/>
-					</div>
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="composer-verify">
+								Verify{" "}
+								<span className="text-[10px] text-muted-foreground">任意</span>
+							</Label>
+							<Input
+								id="composer-verify"
+								value={verifyCommand}
+								onChange={(e) => setVerifyCommand(e.target.value)}
+								placeholder="例: bun test"
+							/>
+						</div>
 
-					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="composer-preset">
-							システムプロンプトプリセット{" "}
-							<span className="text-[10px] text-muted-foreground">任意</span>
-						</Label>
-						<select
-							id="composer-preset"
-							value={selectedPresetId ?? ""}
-							onChange={(e) => setSelectedPresetId(e.target.value || null)}
-							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
-						>
-							<option value="">（未選択）</option>
-							{scopedPresets.system.map((p) => (
-								<option key={p.id} value={p.id}>
-									{p.name}
-								</option>
-							))}
-						</select>
+						{selectedPresetId && (
+							<div className="flex flex-col gap-1.5">
+								<div className="flex items-center justify-between">
+									<Label>適用中のテンプレート（システム）</Label>
+									<button
+										type="button"
+										onClick={() => setSelectedPresetId(null)}
+										className="text-[10px] text-muted-foreground hover:text-destructive"
+									>
+										解除
+									</button>
+								</div>
+								<div className="text-[11px] rounded-md border border-primary/30 bg-primary/5 p-2 font-mono whitespace-pre-wrap break-words max-h-24 overflow-auto">
+									{
+										scopedPresets.system.find((p) => p.id === selectedPresetId)
+											?.content
+									}
+								</div>
+							</div>
+						)}
 					</div>
 				</div>
+
+				<TemplateBrowser
+					presets={presets ?? []}
+					projects={projects ?? []}
+					activeProjectId={projectId}
+					onApplyDescription={(text) => setDescription(text)}
+					onApplyGoal={(text) => setGoal(text)}
+					onApplySystem={(id) => setSelectedPresetId(id)}
+					activeSystemId={selectedPresetId}
+				/>
 			</div>
 			<div className="shrink-0 border-t px-6 py-3 flex items-center justify-end gap-2">
 				<Button
@@ -1872,47 +1882,232 @@ function TodoComposer({
 	);
 }
 
-function ComposerTemplatePicker({
+interface BrowserPreset {
+	id: string;
+	name: string;
+	content: string;
+	kind?: "system" | "description" | "goal";
+	workspaceId?: string | null;
+}
+
+interface BrowserProject {
+	id: string;
+	name: string;
+}
+
+interface TemplateBrowserProps {
+	presets: BrowserPreset[];
+	projects: BrowserProject[];
+	activeProjectId: string;
+	activeSystemId: string | null;
+	onApplyDescription: (text: string) => void;
+	onApplyGoal: (text: string) => void;
+	onApplySystem: (id: string) => void;
+}
+
+type KindFilter = "all" | "system" | "description" | "goal";
+
+const KIND_META: Record<
+	"system" | "description" | "goal",
+	{ label: string; badge: string }
+> = {
+	system: { label: "システム", badge: "bg-primary/15 text-primary" },
+	description: {
+		label: "タスク",
+		badge: "bg-amber-500/15 text-amber-600",
+	},
+	goal: { label: "ゴール", badge: "bg-emerald-500/15 text-emerald-600" },
+};
+
+/**
+ * Rich template browser shown on the right side of the TodoComposer.
+ * Groups templates by project (folder) then lets the user filter by
+ * kind and free-text search. Clicking applies based on kind — system
+ * templates wire up the Claude system prompt, description/goal
+ * templates inject into the corresponding textarea.
+ */
+function TemplateBrowser({
 	presets,
-	onInsert,
-}: {
-	presets: Array<{ id: string; name: string; content: string }>;
-	onInsert: (text: string) => void;
-}) {
-	const [open, setOpen] = useState(false);
-	if (presets.length === 0) return null;
+	projects,
+	activeProjectId,
+	activeSystemId,
+	onApplyDescription,
+	onApplyGoal,
+	onApplySystem,
+}: TemplateBrowserProps) {
+	const [query, setQuery] = useState("");
+	const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+	const [onlyCurrentProject, setOnlyCurrentProject] = useState(true);
+
+	const filtered = useMemo(() => {
+		const needle = query.trim().toLowerCase();
+		return presets.filter((p) => {
+			const kind = p.kind ?? "system";
+			if (kindFilter !== "all" && kind !== kindFilter) return false;
+			if (onlyCurrentProject) {
+				if (p.workspaceId != null && p.workspaceId !== activeProjectId) {
+					return false;
+				}
+			}
+			if (!needle) return true;
+			return (
+				p.name.toLowerCase().includes(needle) ||
+				p.content.toLowerCase().includes(needle)
+			);
+		});
+	}, [presets, query, kindFilter, onlyCurrentProject, activeProjectId]);
+
+	const grouped = useMemo(() => {
+		const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+		const groups = new Map<string | null, BrowserPreset[]>();
+		for (const p of filtered) {
+			const key = p.workspaceId ?? null;
+			const arr = groups.get(key) ?? [];
+			arr.push(p);
+			groups.set(key, arr);
+		}
+		return Array.from(groups.entries())
+			.sort(([a], [b]) => {
+				// Global first, then current project, then alphabetical.
+				if (a === null) return -1;
+				if (b === null) return 1;
+				if (a === activeProjectId) return -1;
+				if (b === activeProjectId) return 1;
+				return 0;
+			})
+			.map(([id, items]) => ({
+				id,
+				label:
+					id == null ? "グローバル" : (projectNameById.get(id) ?? "project"),
+				items,
+			}));
+	}, [filtered, projects, activeProjectId]);
+
+	const handleApply = useCallback(
+		(preset: BrowserPreset) => {
+			const kind = preset.kind ?? "system";
+			if (kind === "system") {
+				onApplySystem(preset.id);
+				toast.success(`テンプレートを適用: ${preset.name}`);
+			} else if (kind === "description") {
+				onApplyDescription(preset.content);
+				toast.success(`タスク欄に挿入: ${preset.name}`);
+			} else {
+				onApplyGoal(preset.content);
+				toast.success(`ゴール欄に挿入: ${preset.name}`);
+			}
+		},
+		[onApplyDescription, onApplyGoal, onApplySystem],
+	);
+
 	return (
-		<DropdownMenu open={open} onOpenChange={setOpen}>
-			<DropdownMenuTrigger asChild>
-				<button
-					type="button"
-					className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/50 transition"
-					title="テンプレートから挿入"
+		<aside className="w-[400px] shrink-0 flex flex-col min-h-0 bg-muted/10">
+			<div className="shrink-0 border-b px-4 py-3 flex flex-col gap-2">
+				<div className="flex items-center justify-between">
+					<h3 className="text-sm font-semibold">テンプレート</h3>
+					<span className="text-[10px] text-muted-foreground">
+						{filtered.length} 件
+					</span>
+				</div>
+				<Input
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder="名前・内容で検索"
+					className="h-8 text-xs"
+				/>
+				<div className="flex items-center gap-1">
+					{(["all", "system", "description", "goal"] as const).map((k) => (
+						<button
+							key={k}
+							type="button"
+							onClick={() => setKindFilter(k)}
+							className={cn(
+								"px-2 py-0.5 rounded text-[10px] transition",
+								kindFilter === k
+									? "bg-primary text-primary-foreground"
+									: "bg-muted text-muted-foreground hover:bg-accent",
+							)}
+						>
+							{k === "all" ? "全て" : KIND_META[k].label}
+						</button>
+					))}
+				</div>
+				<label
+					htmlFor="template-browser-only-current"
+					className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer"
 				>
-					<HiMiniSparkles className="size-2.5" />
-					テンプレ
-				</button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-80 max-w-md">
-				<DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-					テンプレートから挿入
-				</DropdownMenuLabel>
-				{presets.map((preset) => (
-					<DropdownMenuItem
-						key={preset.id}
-						onClick={() => {
-							onInsert(preset.content);
-							setOpen(false);
-						}}
-						className="flex flex-col items-start gap-0.5"
-					>
-						<span className="text-xs font-medium">{preset.name}</span>
-						<span className="text-[10px] text-muted-foreground line-clamp-2">
-							{preset.content}
-						</span>
-					</DropdownMenuItem>
-				))}
-			</DropdownMenuContent>
-		</DropdownMenu>
+					<Checkbox
+						id="template-browser-only-current"
+						checked={onlyCurrentProject}
+						onCheckedChange={(v) => setOnlyCurrentProject(v === true)}
+						className="size-3"
+					/>
+					<span>このプロジェクトのみ（+ グローバル）</span>
+				</label>
+			</div>
+
+			<ScrollArea className="flex-1">
+				<div className="p-2 flex flex-col gap-3">
+					{grouped.length === 0 && (
+						<p className="text-[11px] text-muted-foreground px-2 py-6 text-center">
+							条件に一致するテンプレートがありません。
+						</p>
+					)}
+					{grouped.map((group) => (
+						<div key={group.id ?? "global"}>
+							<div className="sticky top-0 z-10 bg-background/95 backdrop-blur px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b flex items-center gap-1">
+								📁 {group.label}
+								<span className="text-muted-foreground/60 normal-case tracking-normal">
+									({group.items.length})
+								</span>
+							</div>
+							<div className="flex flex-col gap-1 mt-1">
+								{group.items.map((preset) => {
+									const kind = preset.kind ?? "system";
+									const isActive =
+										kind === "system" && preset.id === activeSystemId;
+									return (
+										<button
+											key={preset.id}
+											type="button"
+											onClick={() => handleApply(preset)}
+											className={cn(
+												"text-left rounded-md px-2.5 py-1.5 border transition",
+												isActive
+													? "border-primary/50 bg-primary/10"
+													: "border-transparent hover:border-border/60 hover:bg-accent/30",
+											)}
+											title="クリックで適用"
+										>
+											<div className="flex items-center gap-1.5 mb-0.5">
+												<span
+													className={cn(
+														"text-[9px] font-semibold px-1 py-0.5 rounded shrink-0",
+														KIND_META[kind].badge,
+													)}
+												>
+													{KIND_META[kind].label}
+												</span>
+												<span className="font-medium text-xs line-clamp-1 flex-1 min-w-0">
+													{preset.name}
+												</span>
+												{isActive && (
+													<span className="text-[9px] font-semibold text-primary shrink-0">
+														適用中
+													</span>
+												)}
+											</div>
+											<div className="text-[10px] text-muted-foreground line-clamp-2">
+												{preset.content.replace(/\s+/g, " ")}
+											</div>
+										</button>
+									);
+								})}
+							</div>
+						</div>
+					))}
+				</div>
+			</ScrollArea>
+		</aside>
 	);
 }

@@ -182,13 +182,26 @@ class TodoSupervisor {
 		const session0 = store.get(sessionId);
 		if (!session0) return;
 
-		// Fresh in-memory buffer for this run. Old events from previous
-		// runs of the same session are cleared so the UI sees just the
-		// current attempt.
-		store.clearStreamEvents(sessionId);
+		// A session that already completed at least one run keeps its
+		// previous stream events so the user can scroll back to the
+		// prior turns after sending a follow-up message (done→resume).
+		// Without a `claudeSessionId` this is the very first run of
+		// this session, so wipe the (probably stale) buffer to match
+		// a clean-slate UX.
+		const isResumingPastRun = !!session0.claudeSessionId;
+		if (!isResumingPastRun) {
+			store.clearStreamEvents(sessionId);
+		}
 		// Prime the artifact-path cache so the hot stream-persist path
 		// does not need to do a synchronous SQLite read per event.
 		store.setArtifactPathCache(sessionId, session0.artifactPath);
+		if (isResumingPastRun) {
+			appendSetupEvent(
+				sessionId,
+				"再開",
+				"セッションを再開します。これより下が新しいターンのストリームです。",
+			);
+		}
 
 		const ac = new AbortController();
 		const run: ActiveRun = {
