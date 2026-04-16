@@ -173,6 +173,23 @@ export interface TodoStreamEvent {
 	text: string;
 	/** Optional raw payload for the "raw" / debug kind. */
 	raw?: unknown;
+	/**
+	 * The Anthropic tool-use block id this event corresponds to.
+	 * - For `tool_use` events: the id of the tool_use content block.
+	 * - For `tool_result` events: the `tool_use_id` the result answers.
+	 * Lets the UI pair tool_use ↔ tool_result by id instead of position,
+	 * which is robust to concurrent / out-of-order SDK emissions.
+	 */
+	toolUseId?: string;
+	/**
+	 * Set on messages emitted from inside a subagent's context (i.e. when
+	 * the main session invoked the `Task`/`Agent` tool). Its value is the
+	 * tool_use id of the parent Agent tool call. The UI uses this to nest
+	 * sub-tool activity under the parent Agent card, matching the VSCode
+	 * Claude Code extension's presentation.
+	 * See: https://docs.claude.com/en/docs/agent-sdk/ (Subagents)
+	 */
+	parentToolUseId?: string;
 }
 
 export interface TodoStreamUpdate {

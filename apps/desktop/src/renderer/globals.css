@@ -522,4 +522,39 @@
 	.animate-clone-indeterminate {
 		animation: clone-indeterminate 1.4s ease-in-out infinite;
 	}
+
+	/*
+	 * Pure-CSS shimmer used by <ShinyText>. A two-stop gradient built from
+	 * `currentColor` and a theme-aware `--shine-peak` slides horizontally
+	 * across the text. `-webkit-text-fill-color: transparent` keeps the
+	 * `color` declaration intact so `currentColor` in the gradient still
+	 * reflects whatever text color the surrounding class set.
+	 */
+	@keyframes shine {
+		0% {
+			background-position: 150% center;
+		}
+		100% {
+			background-position: -50% center;
+		}
+	}
+	.animate-shine {
+		--shine-peak: rgba(255, 255, 255, 0.92);
+		background-image: linear-gradient(
+			110deg,
+			currentColor 0%,
+			currentColor 35%,
+			var(--shine-peak) 50%,
+			currentColor 65%,
+			currentColor 100%
+		);
+		background-size: 200% auto;
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		animation: shine 2.4s linear infinite;
+	}
+	:root.light .animate-shine {
+		--shine-peak: rgba(0, 0, 0, 0.55);
+	}
 }
