@@ -243,12 +243,8 @@ function PresetsTab({ open }: { open: boolean }) {
 				id: selected.id,
 				name: selected.name,
 				content: selected.content,
-				kind:
-					(selected as SelectTodoPromptPreset & { kind?: PresetKind }).kind ??
-					"system",
-				workspaceId:
-					(selected as SelectTodoPromptPreset & { workspaceId?: string | null })
-						.workspaceId ?? null,
+				kind: selected.kind ?? "system",
+				workspaceId: selected.workspaceId ?? null,
 			});
 		} else {
 			setDraft({
@@ -268,12 +264,8 @@ function PresetsTab({ open }: { open: boolean }) {
 		(!selected ||
 			draft.name !== selected.name ||
 			draft.content !== selected.content ||
-			draft.kind !==
-				((selected as SelectTodoPromptPreset & { kind?: PresetKind }).kind ??
-					"system") ||
-			draft.workspaceId !==
-				((selected as SelectTodoPromptPreset & { workspaceId?: string | null })
-					.workspaceId ?? null));
+			draft.kind !== (selected.kind ?? "system") ||
+			draft.workspaceId !== (selected.workspaceId ?? null));
 
 	const handleNew = useCallback(() => {
 		setSelectedId(null);
@@ -353,9 +345,7 @@ function PresetsTab({ open }: { open: boolean }) {
 							</p>
 						)}
 						{(presets ?? []).map((preset: SelectTodoPromptPreset) => {
-							const kind =
-								(preset as SelectTodoPromptPreset & { kind?: PresetKind })
-									.kind ?? "system";
+							const kind = preset.kind ?? "system";
 							return (
 								<button
 									key={preset.id}

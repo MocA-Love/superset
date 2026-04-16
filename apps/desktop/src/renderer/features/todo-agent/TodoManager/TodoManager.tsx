@@ -116,7 +116,12 @@ type ImagePasteTextareaProps = Omit<
 	value: string;
 	onValueChange: (next: string) => void;
 	attachments: ImageAttachment[];
-	onAttachmentsChange: (next: ImageAttachment[]) => void;
+	/**
+	 * Accepts either a next array or a functional updater so rapid
+	 * consecutive pastes apply sequentially instead of colliding on a
+	 * stale snapshot (React state updates are batched).
+	 */
+	onAttachmentsChange: React.Dispatch<React.SetStateAction<ImageAttachment[]>>;
 };
 
 /**
@@ -142,14 +147,25 @@ function ImagePasteTextarea({
 	const saveMut = electronTrpc.todoAgent.saveAttachment.useMutation();
 	const [dropHighlight, setDropHighlight] = useState(false);
 
-	const nextTokenName = useCallback((): string => {
+	// Counter stored in a ref so rapid consecutive pastes don't collide
+	// on a stale `attachments` snapshot — useState updates are batched,
+	// so reading `attachments.length` inside two paste handlers fired
+	// within the same render would hand out the same token.
+	const tokenSeqRef = useRef(0);
+	useEffect(() => {
+		// Re-sync the seq with the highest existing [imageN] in the
+		// attachments list so renumbering stays sensible after removes.
 		let max = 0;
 		for (const a of attachments) {
 			const m = /^\[image(\d+)\]$/.exec(a.token);
 			if (m?.[1]) max = Math.max(max, Number(m[1]));
 		}
-		return `[image${max + 1}]`;
+		if (max > tokenSeqRef.current) tokenSeqRef.current = max;
 	}, [attachments]);
+	const nextTokenName = useCallback((): string => {
+		tokenSeqRef.current += 1;
+		return `[image${tokenSeqRef.current}]`;
+	}, []);
 
 	// Orphan-prune: when the user edits the textarea text directly
 	// and removes a token by hand, drop that attachment from the
@@ -157,12 +173,12 @@ function ImagePasteTextarea({
 	const handleTextChange = useCallback(
 		(next: string) => {
 			onValueChange(next);
-			const stillReferenced = attachments.filter((a) => next.includes(a.token));
-			if (stillReferenced.length !== attachments.length) {
-				onAttachmentsChange(stillReferenced);
-			}
+			onAttachmentsChange((prev) => {
+				const stillReferenced = prev.filter((a) => next.includes(a.token));
+				return stillReferenced.length === prev.length ? prev : stillReferenced;
+			});
 		},
-		[attachments, onAttachmentsChange, onValueChange],
+		[onAttachmentsChange, onValueChange],
 	);
 
 	const processFile = useCallback(
@@ -198,8 +214,8 @@ function ImagePasteTextarea({
 				} else {
 					onValueChange(`${value}${insert}`);
 				}
-				onAttachmentsChange([
-					...attachments,
+				onAttachmentsChange((prev) => [
+					...prev,
 					{ token, path: absPath, name: file.name || "image.png" },
 				]);
 				toast.success(`画像を添付しました: ${token}`);
@@ -209,14 +225,7 @@ function ImagePasteTextarea({
 				);
 			}
 		},
-		[
-			attachments,
-			nextTokenName,
-			onAttachmentsChange,
-			onValueChange,
-			saveMut,
-			value,
-		],
+		[nextTokenName, onAttachmentsChange, onValueChange, saveMut, value],
 	);
 
 	const removeAttachment = useCallback(
@@ -225,9 +234,9 @@ function ImagePasteTextarea({
 			// attachment itself.
 			const nextText = value.split(token).join("");
 			onValueChange(nextText);
-			onAttachmentsChange(attachments.filter((a) => a.token !== token));
+			onAttachmentsChange((prev) => prev.filter((a) => a.token !== token));
 		},
-		[attachments, onAttachmentsChange, onValueChange, value],
+		[onAttachmentsChange, onValueChange, value],
 	);
 
 	return (
@@ -1852,23 +1861,14 @@ function TodoComposer({
 
 	const scopedPresets = useMemo(() => {
 		const all = presets ?? [];
-		const matches = (p: { workspaceId?: string | null }): boolean =>
+		const matches = (p: { workspaceId: string | null }): boolean =>
 			p.workspaceId == null || p.workspaceId === projectId;
 		return {
 			system: all.filter(
-				(p) =>
-					((p as typeof p & { kind?: string }).kind ?? "system") === "system" &&
-					matches(p),
+				(p) => (p.kind ?? "system") === "system" && matches(p),
 			),
-			description: all.filter(
-				(p) =>
-					(p as typeof p & { kind?: string }).kind === "description" &&
-					matches(p),
-			),
-			goal: all.filter(
-				(p) =>
-					(p as typeof p & { kind?: string }).kind === "goal" && matches(p),
-			),
+			description: all.filter((p) => p.kind === "description" && matches(p)),
+			goal: all.filter((p) => p.kind === "goal" && matches(p)),
 		};
 	}, [presets, projectId]);
 
@@ -1930,10 +1930,16 @@ function TodoComposer({
 					: "TODO を作成しました",
 			);
 			onCreated(res.sessionId);
+			// Success path: leave submitting=true — the composer is about
+			// to unmount via onCreated → re-enabling the button would
+			// flicker. The finally below only runs on error / throw.
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "作成に失敗しました",
 			);
+		} finally {
+			// Even if onCreated itself throws synchronously, make sure the
+			// button can be retried instead of being permanently disabled.
 			setSubmitting(false);
 		}
 	}, [

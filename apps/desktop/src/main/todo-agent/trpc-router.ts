@@ -616,8 +616,11 @@ export const createTodoAgentRouter = () => {
 				z.object({
 					fileName: z.string().min(1).max(200),
 					mimeType: z.string().min(1).max(120),
-					// ~15MB file cap (base64 inflates ×4/3). Block absurd
-					// paste payloads before they hit the tRPC channel.
+					// Hard cap ~15MB raw binary (= ~20MB base64 chars).
+					// Client-side paste handler enforces a 10MB ceiling;
+					// this larger server bound absorbs rounding + encoding
+					// overhead while still blocking absurd paste payloads
+					// before they hit the tRPC channel.
 					dataBase64: z
 						.string()
 						.min(1)

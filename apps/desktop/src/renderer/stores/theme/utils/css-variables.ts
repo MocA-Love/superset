@@ -86,4 +86,7 @@ export function clearThemeVariables(): void {
 	for (const cssVar of Object.values(UI_COLOR_TO_CSS_VAR)) {
 		root.style.removeProperty(cssVar);
 	}
+	// Sibling of `--background` that `applyUIColors` mirrors — reset it
+	// here too or a stale opaque color lingers after vibrancy toggles.
+	root.style.removeProperty("--background-solid");
 }

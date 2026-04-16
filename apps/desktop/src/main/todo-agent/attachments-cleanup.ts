@@ -49,7 +49,13 @@ export function cleanupOldAttachments(): void {
 				})
 				.from(todoSessions)
 				.all();
-			const attachmentsDirName = `${path.sep}attachments${path.sep}`;
+			// Match only our own attachment filenames — the save path
+			// always prefixes a UUID, so the pattern is narrow enough
+			// to avoid false positives from unrelated paths that happen
+			// to contain "attachments" in prompt text. Works across
+			// POSIX / Windows by allowing either separator.
+			const filenameRe =
+				/[/\\]attachments[/\\]([0-9a-f-]{36}-[^\s"'<>()\]]+)/gi;
 			for (const row of rows) {
 				for (const text of [
 					row.description,
@@ -60,34 +66,8 @@ export function cleanupOldAttachments(): void {
 					row.verdictReason,
 				]) {
 					if (!text) continue;
-					// Find every `attachments/<filename>` occurrence in the
-					// text (the paths we insert look like
-					// `/…/todo-agent/attachments/<uuid>-<name>.png`).
-					let idx = text.indexOf(attachmentsDirName);
-					while (idx !== -1) {
-						const start = idx + attachmentsDirName.length;
-						// Consume up to the next whitespace / ), / ] / " / '.
-						let end = start;
-						while (end < text.length) {
-							const c = text[end];
-							if (
-								!c ||
-								c === ")" ||
-								c === "]" ||
-								c === " " ||
-								c === "\n" ||
-								c === "\r" ||
-								c === "\t" ||
-								c === '"' ||
-								c === "'"
-							) {
-								break;
-							}
-							end += 1;
-						}
-						const name = text.slice(start, end);
-						if (name) referenced.add(name);
-						idx = text.indexOf(attachmentsDirName, end);
+					for (const m of text.matchAll(filenameRe)) {
+						if (m[1]) referenced.add(m[1]);
 					}
 				}
 			}
