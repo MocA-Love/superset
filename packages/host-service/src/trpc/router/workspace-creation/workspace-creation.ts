@@ -692,10 +692,16 @@ export const workspaceCreationRouter = router({
 				});
 
 			// Record the base branch in git config so the Changes tab knows what
-			// to compare against on first open. startPoint.shortName is the ref
-			// we actually forked from (user selection, resolved against local /
-			// remote). Skipped for "head" start point — no meaningful base.
-			if (startPoint.kind !== "head") {
+			// to compare against on first open.
+			//
+			// FORK NOTE: only write for remote-tracking start points. Downstream
+			// (git.getStatus / listCommits / getDiff) always rebuilds the compare
+			// ref as `origin/${baseBranch}`, so a local-only branch name would
+			// resolve to a non-existent `origin/<local-name>` and the Changes tab
+			// would silently break (upstream bug reported in PR #204 review).
+			// Skipping the write leaves baseBranch null for local-only bases —
+			// downstream falls back to the default branch behavior.
+			if (startPoint.kind === "remote-tracking") {
 				await git
 					.raw(["config", `branch.${branchName}.base`, startPoint.shortName])
 					.catch((err) => {

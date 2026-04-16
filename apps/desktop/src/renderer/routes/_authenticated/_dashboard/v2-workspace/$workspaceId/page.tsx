@@ -178,6 +178,17 @@ function WorkspaceContent({
 
 	const { recentFiles, recordView } = useRecentlyViewedFiles(workspaceId);
 
+	const recordRecentlyViewed = useCallback(
+		(filePath: string) => {
+			if (!worktreePath) return;
+			const absolutePath = toAbsoluteWorkspacePath(worktreePath, filePath);
+			const relativePath = toRelativeWorkspacePath(worktreePath, filePath);
+			if (!relativePath || relativePath === ".") return;
+			recordView({ relativePath, absolutePath });
+		},
+		[recordView, worktreePath],
+	);
+
 	const selectedFilePath = useStore(store, (s) => {
 		const tab = s.tabs.find((t) => t.id === s.activeTabId);
 		if (!tab?.activePaneId) return undefined;
@@ -202,6 +213,7 @@ function WorkspaceContent({
 
 	const openFilePane = useCallback(
 		(filePath: string, displayName?: string) => {
+			recordRecentlyViewed(filePath);
 			const state = store.getState();
 			const active = state.getActivePane();
 			if (
@@ -235,18 +247,12 @@ function WorkspaceContent({
 				},
 			});
 		},
-		[store],
+		[recordRecentlyViewed, store],
 	);
 
 	const openSidebarFilePane = useCallback(
 		(filePath: string, openInNewTab?: boolean) => {
-			if (worktreePath) {
-				const absolutePath = toAbsoluteWorkspacePath(worktreePath, filePath);
-				const relativePath = toRelativeWorkspacePath(worktreePath, filePath);
-				if (relativePath && relativePath !== ".") {
-					recordView({ relativePath, absolutePath });
-				}
-			}
+			recordRecentlyViewed(filePath);
 			const state = store.getState();
 			if (openInNewTab) {
 				state.addTab({
@@ -314,7 +320,7 @@ function WorkspaceContent({
 				splitPercentage: 100 - rightSidebarOpenViewWidth,
 			});
 		},
-		[rightSidebarOpenViewWidth, store, worktreePath, recordView],
+		[rightSidebarOpenViewWidth, store, recordRecentlyViewed],
 	);
 
 	const openDiffPane = useCallback(

@@ -56,6 +56,11 @@ export function useChangesTab({
 			void utils.git.listCommits.invalidate({ workspaceId });
 			void utils.git.getDiff.invalidate({ workspaceId });
 		},
+		onError: (error) => {
+			toast.error(
+				error instanceof Error ? error.message : "Failed to update base branch",
+			);
+		},
 	});
 
 	const setBaseBranch = useCallback(

@@ -27,6 +27,7 @@ export function SidebarHeader({
 						<button
 							type="button"
 							onClick={() => onTabChange(tab.id)}
+							aria-label={tab.label}
 							className={getSidebarHeaderTabButtonClassName({
 								isActive,
 								compact,
