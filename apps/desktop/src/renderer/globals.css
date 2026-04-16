@@ -141,8 +141,9 @@
 
 /*
  * Overlay components (dialog, sheet, drawer, alert-dialog) use bg-background,
- * which becomes semi-transparent under vibrancy. Override them to use the
- * near-opaque --popover value so content remains legible.
+ * which becomes transparent under vibrancy. Force them to the opaque
+ * --background-solid so dialogs stay fully readable regardless of the
+ * window transparency setting — matches how they look with vibrancy OFF.
  */
 :root[data-vibrancy="on"]
 	:is(
@@ -151,7 +152,7 @@
 		[data-slot="sheet-content"],
 		[data-slot="drawer-content"]
 	) {
-	background-color: var(--popover);
+	background-color: var(--background-solid);
 }
 
 :root[data-vibrancy="on"].light {
