@@ -1,13 +1,16 @@
 import { Button } from "@superset/ui/button";
+import { Checkbox } from "@superset/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@superset/ui/dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
 import { Input } from "@superset/ui/input";
+import { Label } from "@superset/ui/label";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
@@ -33,6 +36,7 @@ import {
 	HiMiniEllipsisVertical,
 	HiMiniPencil,
 	HiMiniPlus,
+	HiMiniSparkles,
 	HiMiniTrash,
 	HiMiniXMark,
 } from "react-icons/hi2";
@@ -80,8 +84,8 @@ type TodoSession = TodoSessionListEntry;
 export function TodoManager({
 	open,
 	onOpenChange,
-	currentWorkspaceId: _currentWorkspaceId,
-	onRequestNewTodo,
+	currentWorkspaceId,
+	onRequestNewTodo: _onRequestNewTodo,
 }: TodoManagerProps) {
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [filter, setFilter] = useState("");
@@ -91,6 +95,9 @@ export function TodoManager({
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [changesSidebarCollapsed, setChangesSidebarCollapsed] = useState(false);
 	const [presetsDialogOpen, setPresetsDialogOpen] = useState(false);
+	// Inline TODO composer (replaces the old separate modal). Matches
+	// Antigravity IDE's "new conversation inside manager" UX.
+	const [composerOpen, setComposerOpen] = useState(false);
 
 	const { data: sessions } = electronTrpc.todoAgent.listAll.useQuery(
 		undefined,
@@ -160,7 +167,10 @@ export function TodoManager({
 							type="button"
 							size="sm"
 							className="h-7 gap-1 px-2.5 text-xs rounded-md"
-							onClick={onRequestNewTodo}
+							onClick={() => {
+								setComposerOpen(true);
+								setSelectedId(null);
+							}}
 						>
 							<HiMiniPlus className="size-4" />
 							新しい TODO
@@ -278,14 +288,32 @@ export function TodoManager({
 					</div>
 
 					<div className="flex-1 min-w-0 min-h-0 flex flex-col">
-						{selected ? (
+						{composerOpen ? (
+							<TodoComposer
+								currentWorkspaceId={currentWorkspaceId}
+								onCreated={(id) => {
+									setComposerOpen(false);
+									setSelectedId(id);
+								}}
+								onCancel={() => setComposerOpen(false)}
+							/>
+						) : selected ? (
 							<SessionDetail
 								session={selected}
 								onDeleted={() => setSelectedId(null)}
 							/>
 						) : (
-							<div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
-								セッションを選択すると詳細が表示されます。
+							<div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-sm text-muted-foreground">
+								<p>セッションを選択すると詳細が表示されます。</p>
+								<Button
+									type="button"
+									size="sm"
+									className="gap-1 h-8"
+									onClick={() => setComposerOpen(true)}
+								>
+									<HiMiniPlus className="size-4" />
+									新しい TODO を作成
+								</Button>
 							</div>
 						)}
 					</div>
@@ -1476,4 +1504,415 @@ function groupByWorkspace(sessions: TodoSession[]): SessionGroup[] {
 		groups.set(key, { key, label, sessions: [session] });
 	}
 	return Array.from(groups.values());
+}
+
+interface TodoComposerProps {
+	currentWorkspaceId?: string;
+	onCreated: (sessionId: string) => void;
+	onCancel: () => void;
+}
+
+/**
+ * Inline TODO creation form rendered inside the AgentManager's detail
+ * pane (mirrors Antigravity IDE's "New Conversation" UX).
+ *
+ * Scope is **project-based** so the same form works across all of a
+ * project's worktrees:
+ *   - Pick project
+ *   - Either create a brand-new worktree (AI-named from title/desc),
+ *     or pick an existing workspace of that project
+ *
+ * Preset pickers for `description`, `goal`, and system-prompt are
+ * filtered by project (preset.workspaceId is repurposed to hold a
+ * projectId — global presets have workspaceId=null).
+ */
+function TodoComposer({
+	currentWorkspaceId,
+	onCreated,
+	onCancel,
+}: TodoComposerProps) {
+	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
+	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
+	const { data: todoSettings } = electronTrpc.todoAgent.settings.get.useQuery();
+	const { data: presets } = electronTrpc.todoAgent.presets.list.useQuery();
+
+	// Project-first: auto-pick the current workspace's project if we can
+	// infer one, otherwise the first project in the list.
+	const defaultProjectId = useMemo(() => {
+		if (currentWorkspaceId) {
+			const ws = (workspaces ?? []).find((w) => w.id === currentWorkspaceId);
+			if (ws) return ws.projectId;
+		}
+		return (projects ?? [])[0]?.id ?? "";
+	}, [projects, workspaces, currentWorkspaceId]);
+
+	const [projectId, setProjectId] = useState<string>("");
+	const [createWorktree, setCreateWorktree] = useState(true);
+	const [workspaceId, setWorkspaceId] = useState<string>("");
+	const [title, setTitle] = useState("");
+	const [description, setDescription] = useState("");
+	const [goal, setGoal] = useState("");
+	const [verifyCommand, setVerifyCommand] = useState("");
+	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+
+	useEffect(() => {
+		if (!projectId && defaultProjectId) setProjectId(defaultProjectId);
+	}, [projectId, defaultProjectId]);
+
+	// Workspaces scoped to the picked project, excluding the ones
+	// scheduled for deletion.
+	const projectWorkspaces = useMemo(
+		() => (workspaces ?? []).filter((w) => w.projectId === projectId),
+		[workspaces, projectId],
+	);
+
+	// Keep the workspace picker consistent: if the selected workspace
+	// doesn't belong to the current project any more, reset it.
+	useEffect(() => {
+		if (
+			!createWorktree &&
+			workspaceId &&
+			!projectWorkspaces.some((w) => w.id === workspaceId)
+		) {
+			setWorkspaceId(projectWorkspaces[0]?.id ?? "");
+		}
+	}, [createWorktree, workspaceId, projectWorkspaces]);
+
+	useEffect(() => {
+		if (!createWorktree && !workspaceId && projectWorkspaces.length > 0) {
+			// Prefer the current workspace if it belongs to this project.
+			const preferred =
+				projectWorkspaces.find((w) => w.id === currentWorkspaceId) ??
+				projectWorkspaces[0];
+			setWorkspaceId(preferred?.id ?? "");
+		}
+	}, [createWorktree, workspaceId, projectWorkspaces, currentWorkspaceId]);
+
+	const maxIterations = todoSettings?.defaultMaxIterations ?? 10;
+	const maxWallClockSec = (todoSettings?.defaultMaxWallClockMin ?? 30) * 60;
+
+	const scopedPresets = useMemo(() => {
+		const all = presets ?? [];
+		const matches = (p: { workspaceId?: string | null }): boolean =>
+			p.workspaceId == null || p.workspaceId === projectId;
+		return {
+			system: all.filter(
+				(p) =>
+					((p as typeof p & { kind?: string }).kind ?? "system") === "system" &&
+					matches(p),
+			),
+			description: all.filter(
+				(p) =>
+					(p as typeof p & { kind?: string }).kind === "description" &&
+					matches(p),
+			),
+			goal: all.filter(
+				(p) =>
+					(p as typeof p & { kind?: string }).kind === "goal" && matches(p),
+			),
+		};
+	}, [presets, projectId]);
+
+	const createMut = electronTrpc.todoAgent.create.useMutation();
+	const createWorkspaceMut = electronTrpc.workspaces.create.useMutation();
+	const utils = electronTrpc.useUtils();
+
+	const canSubmit =
+		projectId.length > 0 &&
+		title.trim().length > 0 &&
+		description.trim().length > 0 &&
+		!submitting &&
+		(createWorktree || workspaceId.length > 0);
+
+	const handleCreate = useCallback(async () => {
+		if (!canSubmit) return;
+		setSubmitting(true);
+		try {
+			let targetWorkspaceId = workspaceId;
+			if (createWorktree) {
+				const namingPrompt = [title.trim(), description.trim()]
+					.filter(Boolean)
+					.join("\n\n");
+				const result = await createWorkspaceMut.mutateAsync({
+					projectId,
+					prompt: namingPrompt || title.trim(),
+				});
+				targetWorkspaceId = result.workspace.id;
+			}
+			const selected = scopedPresets.system.find(
+				(p) => p.id === selectedPresetId,
+			);
+			const res = await createMut.mutateAsync({
+				workspaceId: targetWorkspaceId,
+				projectId,
+				title: title.trim(),
+				description: description.trim(),
+				goal: goal.trim() || undefined,
+				verifyCommand: verifyCommand.trim() || undefined,
+				maxIterations,
+				maxWallClockSec,
+				customSystemPrompt: selected?.content ?? undefined,
+			});
+			await utils.todoAgent.listAll.invalidate();
+			toast.success(
+				createWorktree
+					? "新しい worktree と TODO を作成しました"
+					: "TODO を作成しました",
+			);
+			onCreated(res.sessionId);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "作成に失敗しました",
+			);
+			setSubmitting(false);
+		}
+	}, [
+		canSubmit,
+		createMut,
+		createWorkspaceMut,
+		createWorktree,
+		description,
+		goal,
+		maxIterations,
+		maxWallClockSec,
+		onCreated,
+		projectId,
+		scopedPresets.system,
+		selectedPresetId,
+		title,
+		utils,
+		verifyCommand,
+		workspaceId,
+	]);
+
+	return (
+		<div className="flex flex-col h-full min-h-0 overflow-hidden">
+			<div className="shrink-0 border-b px-6 py-3 flex items-center justify-between">
+				<div>
+					<h2 className="text-sm font-semibold">新しい TODO</h2>
+					<p className="text-[11px] text-muted-foreground">
+						作成後、すぐに Start できます。
+					</p>
+				</div>
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					onClick={onCancel}
+					className="h-7 text-xs"
+				>
+					キャンセル
+				</Button>
+			</div>
+			<div className="flex-1 min-h-0 overflow-y-auto p-6">
+				<div className="max-w-2xl flex flex-col gap-4">
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-project">対象プロジェクト</Label>
+						<select
+							id="composer-project"
+							value={projectId}
+							onChange={(e) => setProjectId(e.target.value)}
+							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+						>
+							{(projects ?? []).map((p) => (
+								<option key={p.id} value={p.id}>
+									{p.name}
+								</option>
+							))}
+						</select>
+					</div>
+
+					<label
+						htmlFor="composer-new-worktree"
+						className={cn(
+							"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
+							createWorktree
+								? "border-primary/40 bg-primary/5"
+								: "border-border/40 hover:bg-muted/40",
+						)}
+					>
+						<Checkbox
+							id="composer-new-worktree"
+							checked={createWorktree}
+							onCheckedChange={(checked) => setCreateWorktree(checked === true)}
+						/>
+						<span className="text-xs font-medium flex-1">
+							新しい worktree を作成して実行
+						</span>
+						<HiMiniSparkles className="size-3 text-primary/70" />
+					</label>
+
+					{!createWorktree && (
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="composer-ws">実行先ワークスペース</Label>
+							<select
+								id="composer-ws"
+								value={workspaceId}
+								onChange={(e) => setWorkspaceId(e.target.value)}
+								className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+							>
+								{projectWorkspaces.length === 0 && (
+									<option value="">
+										（このプロジェクトには worktree がありません）
+									</option>
+								)}
+								{projectWorkspaces.map((w) => (
+									<option key={w.id} value={w.id}>
+										{w.name} ({w.branch})
+									</option>
+								))}
+							</select>
+						</div>
+					)}
+
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-title">タイトル</Label>
+						<Input
+							id="composer-title"
+							value={title}
+							onChange={(e) => setTitle(e.target.value)}
+							placeholder="例: Issue #123 を修正"
+							maxLength={200}
+							autoFocus
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<div className="flex items-center justify-between">
+							<Label htmlFor="composer-desc">やって欲しいこと</Label>
+							<ComposerTemplatePicker
+								presets={scopedPresets.description}
+								onInsert={setDescription}
+							/>
+						</div>
+						<Textarea
+							id="composer-desc"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="やってほしい作業を書く"
+							rows={4}
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<div className="flex items-center justify-between">
+							<Label htmlFor="composer-goal">
+								ゴール{" "}
+								<span className="text-[10px] text-muted-foreground">任意</span>
+							</Label>
+							<ComposerTemplatePicker
+								presets={scopedPresets.goal}
+								onInsert={setGoal}
+							/>
+						</div>
+						<Textarea
+							id="composer-goal"
+							value={goal}
+							onChange={(e) => setGoal(e.target.value)}
+							placeholder="完了条件（空欄可）"
+							rows={2}
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-verify">
+							Verify{" "}
+							<span className="text-[10px] text-muted-foreground">任意</span>
+						</Label>
+						<Input
+							id="composer-verify"
+							value={verifyCommand}
+							onChange={(e) => setVerifyCommand(e.target.value)}
+							placeholder="例: bun test"
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="composer-preset">
+							システムプロンプトプリセット{" "}
+							<span className="text-[10px] text-muted-foreground">任意</span>
+						</Label>
+						<select
+							id="composer-preset"
+							value={selectedPresetId ?? ""}
+							onChange={(e) => setSelectedPresetId(e.target.value || null)}
+							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+						>
+							<option value="">（未選択）</option>
+							{scopedPresets.system.map((p) => (
+								<option key={p.id} value={p.id}>
+									{p.name}
+								</option>
+							))}
+						</select>
+					</div>
+				</div>
+			</div>
+			<div className="shrink-0 border-t px-6 py-3 flex items-center justify-end gap-2">
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					onClick={onCancel}
+					disabled={submitting}
+				>
+					キャンセル
+				</Button>
+				<Button
+					type="button"
+					size="sm"
+					onClick={handleCreate}
+					disabled={!canSubmit}
+				>
+					{submitting ? "作成中…" : "作成"}
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+function ComposerTemplatePicker({
+	presets,
+	onInsert,
+}: {
+	presets: Array<{ id: string; name: string; content: string }>;
+	onInsert: (text: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	if (presets.length === 0) return null;
+	return (
+		<DropdownMenu open={open} onOpenChange={setOpen}>
+			<DropdownMenuTrigger asChild>
+				<button
+					type="button"
+					className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/50 transition"
+					title="テンプレートから挿入"
+				>
+					<HiMiniSparkles className="size-2.5" />
+					テンプレ
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-80 max-w-md">
+				<DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+					テンプレートから挿入
+				</DropdownMenuLabel>
+				{presets.map((preset) => (
+					<DropdownMenuItem
+						key={preset.id}
+						onClick={() => {
+							onInsert(preset.content);
+							setOpen(false);
+						}}
+						className="flex flex-col items-start gap-0.5"
+					>
+						<span className="text-xs font-medium">{preset.name}</span>
+						<span className="text-[10px] text-muted-foreground line-clamp-2">
+							{preset.content}
+						</span>
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
 }
