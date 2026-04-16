@@ -225,18 +225,16 @@ export function getInitialWindowOptions(
 		};
 	}
 
-	const vibrancyType = resolveVibrancyType(state);
 	const backgroundColor = computeBackgroundColor(state, isDark);
-
-	if (vibrancyType === null) {
-		// Vibrancy disabled: still opt into transparent so we can toggle later
-		// without recreating the window. Background color is fully opaque.
-		return {
-			transparent: true,
-			visualEffectState: "active",
-			backgroundColor,
-		};
-	}
+	// Always attach NSVisualEffectView at construction time, even when the
+	// user has vibrancy disabled. The opaque backgroundColor fully covers
+	// the vibrancy layer while it's off, but having it already mounted
+	// means the first OFF→ON toggle can just change setBackgroundColor's
+	// alpha — no window recreation / restart required. Previously we only
+	// attached vibrancy when enabled, which meant `setVibrancy` first-time
+	// attachment wouldn't fully take effect until next launch.
+	const vibrancyType =
+		resolveVibrancyType(state) ?? BLUR_TO_ELECTRON_VIBRANCY[state.blurLevel];
 
 	return {
 		transparent: true,
