@@ -49,8 +49,15 @@ import {
 import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { ChangesSidebar } from "./ChangesSidebar";
+import { AttachmentChips } from "./components/AttachmentChips";
+import { AttachmentPreviewDialog } from "./components/AttachmentPreviewDialog";
 import { PresetsDialog } from "./PresetsDialog";
 import { SchedulesSection } from "./SchedulesSection";
+import {
+	type AttachmentRef,
+	extractAttachmentRefs,
+	stripAttachmentRefs,
+} from "./utils/attachmentRefs";
 
 async function copyToClipboard(text: string, label = "コピーしました") {
 	try {
@@ -868,6 +875,31 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		"description" | "goal" | null
 	>(null);
 	const [editDraft, setEditDraft] = useState("");
+	const [previewAttachment, setPreviewAttachment] =
+		useState<AttachmentRef | null>(null);
+
+	const descriptionAttachments = useMemo(
+		() => extractAttachmentRefs(session.description),
+		[session.description],
+	);
+	const descriptionBody = useMemo(
+		() =>
+			descriptionAttachments.length > 0
+				? stripAttachmentRefs(session.description)
+				: session.description,
+		[session.description, descriptionAttachments.length],
+	);
+	const goalAttachments = useMemo(
+		() => extractAttachmentRefs(session.goal ?? ""),
+		[session.goal],
+	);
+	const goalBody = useMemo(
+		() =>
+			goalAttachments.length > 0
+				? stripAttachmentRefs(session.goal ?? "")
+				: (session.goal ?? ""),
+		[session.goal, goalAttachments.length],
+	);
 
 	const utils = electronTrpc.useUtils();
 	const startMut = electronTrpc.todoAgent.start.useMutation();
@@ -915,6 +947,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		// next.
 		setEditingField(null);
 		setEditDraft("");
+		setPreviewAttachment(null);
 	}, [session.id]);
 
 	// Force a re-render once per second while the session is still
@@ -1247,8 +1280,20 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 									</div>
 								</div>
 							) : (
-								<div className="whitespace-pre-wrap text-xs leading-relaxed">
-									{session.description}
+								<div>
+									{descriptionBody.length > 0 ? (
+										<div className="whitespace-pre-wrap text-xs leading-relaxed">
+											{descriptionBody}
+										</div>
+									) : descriptionAttachments.length > 0 ? (
+										<div className="text-xs text-muted-foreground">
+											（添付のみ）
+										</div>
+									) : null}
+									<AttachmentChips
+										attachments={descriptionAttachments}
+										onSelect={setPreviewAttachment}
+									/>
 								</div>
 							)}
 						</DetailBlock>
@@ -1299,8 +1344,20 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 									</div>
 								</div>
 							) : session.goal?.trim() ? (
-								<div className="whitespace-pre-wrap text-xs leading-relaxed">
-									{session.goal}
+								<div>
+									{goalBody.length > 0 ? (
+										<div className="whitespace-pre-wrap text-xs leading-relaxed">
+											{goalBody}
+										</div>
+									) : goalAttachments.length > 0 ? (
+										<div className="text-xs text-muted-foreground">
+											（添付のみ）
+										</div>
+									) : null}
+									<AttachmentChips
+										attachments={goalAttachments}
+										onSelect={setPreviewAttachment}
+									/>
 								</div>
 							) : (
 								<div className="text-xs text-muted-foreground">
@@ -1448,6 +1505,13 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 					</p>
 				</div>
 			</div>
+			<AttachmentPreviewDialog
+				attachment={previewAttachment}
+				open={previewAttachment != null}
+				onOpenChange={(o) => {
+					if (!o) setPreviewAttachment(null);
+				}}
+			/>
 		</div>
 	);
 }
