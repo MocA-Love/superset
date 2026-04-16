@@ -916,7 +916,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							Claude の応答 / ライブストリーム
 						</div>
 					</div>
-					<div className="flex-1 min-h-0 px-5 pb-5 overflow-hidden">
+					<div className="flex-1 min-h-0 px-5 pb-5 relative">
 						<StreamView events={streamEvents} />
 					</div>
 				</div>
@@ -1080,7 +1080,7 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		<div
 			ref={scrollRef}
 			onScroll={handleScroll}
-			className="h-full overflow-auto bg-muted/30 rounded p-3 flex flex-col gap-1.5"
+			className="absolute inset-0 overflow-y-auto overflow-x-hidden bg-muted/30 rounded px-3 py-2"
 		>
 			{events.length === 0 ? (
 				<div className="text-xs text-muted-foreground p-2">
@@ -1088,21 +1088,26 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 					Claude の応答・ツール使用・verify 結果が流れます。
 				</div>
 			) : (
-				items.map((item) =>
-					item.type === "tool" ? (
-						<ToolCallCard key={item.id} item={item} />
-					) : (
-						<MessageRow key={item.id} event={item.event} />
-					),
-				)
+				<div className="flex flex-col gap-1">
+					{items.map((item) =>
+						item.type === "tool" ? (
+							<ToolCallCard key={item.id} item={item} />
+						) : (
+							<MessageRow key={item.id} event={item.event} />
+						),
+					)}
+				</div>
 			)}
 		</div>
 	);
 }
 
 /**
- * VSCode Claude Code style tool card: compact header with tool name +
- * secondary info, then an IN/OUT grid body. No folding — always visible.
+ * VSCode Claude Code extension faithful reproduction: uses `<details>` so
+ * the tool call folds by default, showing only a 2-line summary (bold tool
+ * name + monospace secondary info). Expanded body shows an IN/OUT grid.
+ * This matches the extension's `.Ze/._e/.or/.D/.rr/.ir/.lo/.tr` CSS
+ * classes we reverse-engineered from webview/index.css.
  */
 function ToolCallCard({
 	item,
@@ -1112,53 +1117,57 @@ function ToolCallCard({
 	const { toolUse, toolResult } = item;
 	const toolName = toolUse.label;
 	const secondary = extractSecondaryInfo(toolName, toolUse.text);
+	const hasResult = toolResult != null;
 
 	return (
-		<div className="border border-border/40 rounded-lg bg-background/50 text-xs overflow-hidden">
-			<div className="flex items-center gap-2 px-3 py-1.5 bg-muted/40 border-b border-border/30">
-				<span className="font-semibold text-amber-600 shrink-0">
-					{toolName}
+		<details className="group text-xs">
+			<summary className="list-none cursor-pointer select-none flex items-baseline gap-1 py-0.5 hover:bg-accent/30 rounded px-1 -mx-1 overflow-hidden">
+				<span className="shrink-0 text-muted-foreground/50 group-open:rotate-90 transition-transform text-[10px]">
+					▶
 				</span>
+				<span className="font-bold shrink-0">{toolName}</span>
 				{secondary && (
-					<span className="text-muted-foreground truncate font-mono text-[11px]">
+					<span className="font-mono text-[0.85em] text-primary/70 break-all line-clamp-2 min-w-0 flex-1">
 						{secondary}
 					</span>
 				)}
-				<span className="ml-auto text-[10px] text-muted-foreground tabular-nums shrink-0">
-					{formatClock(toolUse.ts)}
-				</span>
-			</div>
-			<div className="divide-y divide-border/20">
-				<div className="flex min-h-0">
-					<div className="shrink-0 w-10 flex items-start justify-center py-1.5 text-[10px] font-semibold text-muted-foreground/70">
-						IN
-					</div>
-					<div className="flex-1 py-1.5 pr-3 overflow-hidden">
-						<pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-24 overflow-y-auto text-foreground/80">
-							{toolUse.text.slice(0, 500)}
-							{toolUse.text.length > 500 ? "…" : ""}
-						</pre>
-					</div>
-				</div>
-				<div className="flex min-h-0">
-					<div className="shrink-0 w-10 flex items-start justify-center py-1.5 text-[10px] font-semibold text-emerald-600/70">
-						OUT
-					</div>
-					<div className="flex-1 py-1.5 pr-3 overflow-hidden">
-						{toolResult ? (
-							<pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed max-h-24 overflow-y-auto text-foreground/80">
-								{toolResult.text.slice(0, 500)}
-								{toolResult.text.length > 500 ? "…" : ""}
+				{!hasResult && (
+					<span className="shrink-0 text-[10px] text-muted-foreground animate-pulse">
+						…
+					</span>
+				)}
+			</summary>
+			<div className="my-1.5 ml-3 border border-border/40 rounded-md bg-muted/20 overflow-hidden">
+				<div className="grid grid-cols-[max-content_1fr] text-[11px]">
+					<div className="col-span-2 grid grid-cols-subgrid border-b border-border/30">
+						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+							IN
+						</div>
+						<div className="py-1 pr-2 overflow-hidden">
+							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
+								{toolUse.text}
 							</pre>
-						) : (
-							<span className="text-[11px] text-muted-foreground animate-pulse">
-								実行中…
-							</span>
-						)}
+						</div>
+					</div>
+					<div className="col-span-2 grid grid-cols-subgrid">
+						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+							OUT
+						</div>
+						<div className="py-1 pr-2 overflow-hidden">
+							{toolResult ? (
+								<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
+									{toolResult.text}
+								</pre>
+							) : (
+								<span className="text-muted-foreground animate-pulse">
+									実行中…
+								</span>
+							)}
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 	);
 }
 
@@ -1174,87 +1183,52 @@ function extractSecondaryInfo(_toolName: string, text: string): string | null {
 function MessageRow({ event }: { event: TodoStreamEvent }) {
 	if (event.kind === "assistant_text") {
 		return (
-			<div className="group border border-primary/30 bg-primary/5 rounded-lg px-3 py-2 text-xs">
-				<div className="flex items-center justify-between gap-2 mb-1">
-					<span className="text-[10px] font-semibold text-primary/80">
-						Claude
-					</span>
-					<div className="flex items-center gap-1">
-						<span className="text-[10px] text-muted-foreground tabular-nums">
-							{formatClock(event.ts)}
-						</span>
-						<div className="opacity-0 group-hover:opacity-100 transition">
-							<CopyIconButton value={event.text} title="コピー" />
-						</div>
-					</div>
-				</div>
+			<div className="group text-xs py-1">
 				<MarkdownRenderer content={event.text} scrollable={false} />
 			</div>
 		);
 	}
 	if (event.kind === "result") {
 		return (
-			<div className="group border border-emerald-600/40 bg-emerald-600/10 rounded-lg px-3 py-2 text-xs">
-				<div className="flex items-center justify-between gap-2 mb-1">
-					<span className="text-[10px] font-semibold text-emerald-600">
-						Result
-					</span>
-					<div className="flex items-center gap-1">
-						<span className="text-[10px] text-muted-foreground tabular-nums">
-							{formatClock(event.ts)}
-						</span>
-						<div className="opacity-0 group-hover:opacity-100 transition">
-							<CopyIconButton value={event.text} title="コピー" />
-						</div>
-					</div>
-				</div>
+			<div className="group border-l-2 border-emerald-600/40 bg-emerald-600/5 pl-2 py-1 text-xs my-1">
 				<MarkdownRenderer content={event.text} scrollable={false} />
 			</div>
 		);
 	}
 	if (event.kind === "error") {
 		return (
-			<div className="border border-rose-500/40 bg-rose-500/5 rounded-lg px-3 py-2 text-xs">
-				<div className="flex items-center gap-2 mb-1">
-					<span className="text-[10px] font-semibold text-rose-500">Error</span>
-					<span className="text-[10px] text-muted-foreground tabular-nums">
-						{formatClock(event.ts)}
-					</span>
-				</div>
-				<div className="whitespace-pre-wrap font-mono text-[11px] text-rose-400">
-					{event.text}
-				</div>
+			<div className="border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400">
+				{event.text}
 			</div>
 		);
 	}
 	if (event.kind === "system_init") {
 		return (
-			<div className="flex items-center gap-2 px-2 py-1 text-[10px] text-muted-foreground">
-				<span className="font-semibold uppercase tracking-wide">
-					{event.label}
-				</span>
-				<span className="truncate">{event.text}</span>
+			<div className="flex items-baseline gap-2 text-[10px] text-muted-foreground py-0.5">
+				<span className="font-semibold shrink-0">{event.label}</span>
+				<span className="truncate font-mono opacity-70">{event.text}</span>
 			</div>
 		);
 	}
 	return (
-		<div className="border border-border/40 bg-background rounded-lg px-3 py-2 text-xs">
-			<div className="flex items-center gap-2 mb-1">
-				<span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+		<details className="text-xs py-0.5">
+			<summary className="list-none cursor-pointer flex items-baseline gap-1 text-muted-foreground hover:text-foreground">
+				<span className="text-[10px] opacity-50">▶</span>
+				<span className="text-[10px] font-semibold uppercase">
 					{event.label}
 				</span>
-				<span className="text-[10px] text-muted-foreground tabular-nums">
-					{formatClock(event.ts)}
+				<span className="text-[10px] truncate font-mono opacity-70">
+					{event.text.slice(0, 100)}
 				</span>
-			</div>
-			<div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
+			</summary>
+			<pre className="ml-3 mt-1 whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80 max-h-40 overflow-y-auto">
 				{event.text}
-			</div>
-		</div>
+			</pre>
+		</details>
 	);
 }
 
-function formatClock(ms: number): string {
+function _formatClock(ms: number): string {
 	const d = new Date(ms);
 	const pad = (n: number) => n.toString().padStart(2, "0");
 	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
