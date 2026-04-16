@@ -1118,17 +1118,25 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 	}
 
 	if (type === "assistant") {
+		// Extract text, tool_use, and scheduled wakeup up front so a
+		// message that carries both "here's what I'm doing" text AND a
+		// `ScheduleWakeup` tool_use in the same content array still
+		// propagates the wakeup. The previous early-return on text
+		// silently dropped ScheduleWakeup in the mixed case, which made
+		// the supervisor mark the session as `done` the moment the
+		// child exited instead of parking it in `waiting`.
 		const text = extractAssistantText(rec.message);
+		const tool = extractToolUseSummary(rec.message);
+		const wakeup = extractScheduledWakeup(rec.message);
 		if (text) {
 			return {
 				...empty,
 				sessionId,
 				event: { kind: "assistant_text", label: "Claude", text },
+				scheduledWakeup: wakeup,
 			};
 		}
-		const tool = extractToolUseSummary(rec.message);
 		if (tool) {
-			const wakeup = extractScheduledWakeup(rec.message);
 			return {
 				...empty,
 				sessionId,
