@@ -275,15 +275,28 @@ export async function MainWindow() {
 			},
 		);
 
-	// macOS Sequoia+: occluded/minimized windows can lose compositor layers
+	// macOS Sequoia+: occluded/minimized windows can lose compositor layers,
+	// and NSVisualEffectView's vibrancy/native blur can detach while the
+	// window is in the Dock — restoring without re-applying leaves the
+	// window opaque even though the user still has vibrancy enabled.
 	if (PLATFORM.IS_MAC) {
+		const reapplyVibrancyOnReshow = () => {
+			if (window.isDestroyed()) return;
+			applyVibrancy(
+				window,
+				appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE,
+				nativeTheme.shouldUseDarkColors,
+			);
+		};
 		window.on("restore", () => {
 			addWindowLifecycleBreadcrumb("main window restored");
 			window.webContents.invalidate();
+			reapplyVibrancyOnReshow();
 		});
 		window.on("show", () => {
 			addWindowLifecycleBreadcrumb("main window shown");
 			window.webContents.invalidate();
+			reapplyVibrancyOnReshow();
 		});
 	}
 

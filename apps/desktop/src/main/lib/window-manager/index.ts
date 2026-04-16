@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { type BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
+import { PLATFORM } from "shared/constants";
 import { appState } from "../app-state";
 import {
 	applyVibrancy,
@@ -157,6 +158,22 @@ export class WindowManager {
 		window.on("closed", () => {
 			this.windows.delete(windowId);
 		});
+
+		// macOS Sequoia+: NSVisualEffectView can detach while the window is
+		// minimized in the Dock — the tearoff needs the same reshow guard as
+		// the main window or it restores opaque.
+		if (PLATFORM.IS_MAC) {
+			const reapplyVibrancyOnReshow = () => {
+				if (window.isDestroyed()) return;
+				applyVibrancy(
+					window,
+					appState.data?.vibrancyState ?? DEFAULT_VIBRANCY_STATE,
+					nativeTheme.shouldUseDarkColors,
+				);
+			};
+			window.on("restore", reapplyVibrancyOnReshow);
+			window.on("show", reapplyVibrancyOnReshow);
+		}
 
 		window.webContents.once("did-finish-load", () => {
 			// Re-apply vibrancy now that the tearoff is on-screen so the
