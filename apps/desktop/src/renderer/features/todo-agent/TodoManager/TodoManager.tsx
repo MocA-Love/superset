@@ -14,12 +14,30 @@ import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
+import {
+	Bot,
+	CheckSquare,
+	Cog,
+	FileEdit,
+	FilePen,
+	FilePlus,
+	FileText,
+	FolderSearch,
+	Globe,
+	ListTree,
+	type LucideIcon,
+	Search,
+	Sparkles,
+	SquareTerminal,
+	Wrench,
+} from "lucide-react";
 import type {
 	TodoSessionListEntry,
 	TodoStreamEvent,
 } from "main/todo-agent/types";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
+	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -1502,10 +1520,18 @@ function formatDuration(startMs: number | null, endMs: number | null): string {
 }
 
 /**
- * Pair consecutive tool_use → tool_result events into a single card
- * (matching VSCode Claude Code extension's IN / OUT grid layout).
- * Non-tool events stay as singles. Unpaired tool_use (still streaming)
- * appears as a card with empty OUT row.
+ * Tree node for the live stream UI.
+ *
+ * `tool` nodes pair a `tool_use` with its `tool_result` (matched by
+ * `toolUseId`, NOT by positional proximity) and may contain `children`
+ * — sub-agent activity that Claude Code emits with `parent_tool_use_id`
+ * pointing at the parent Agent/Task tool call. This matches the VSCode
+ * Claude Code extension's presentation: a Task tool folds all of its
+ * subagent's tool calls underneath itself.
+ *
+ * `message` nodes are anything non-tool (assistant text, result, error,
+ * system_init, raw). They can also appear as `children` of a tool when
+ * they were emitted inside a subagent context.
  */
 type StreamItem =
 	| { type: "message"; id: string; event: TodoStreamEvent }
@@ -1514,33 +1540,94 @@ type StreamItem =
 			id: string;
 			toolUse: TodoStreamEvent;
 			toolResult: TodoStreamEvent | null;
+			children: StreamItem[];
 	  };
 
-function pairStreamEvents(events: TodoStreamEvent[]): StreamItem[] {
-	const items: StreamItem[] = [];
-	for (let i = 0; i < events.length; i++) {
-		const ev = events[i];
-		if (!ev) continue;
-		if (ev.kind === "tool_use") {
-			const next = events[i + 1];
-			if (next?.kind === "tool_result") {
-				items.push({
-					type: "tool",
-					id: ev.id,
-					toolUse: ev,
-					toolResult: next,
-				});
-				i++;
-			} else {
-				items.push({ type: "tool", id: ev.id, toolUse: ev, toolResult: null });
-			}
-		} else if (ev.kind === "tool_result") {
-			items.push({ type: "message", id: ev.id, event: ev });
-		} else {
-			items.push({ type: "message", id: ev.id, event: ev });
+/**
+ * Build the render tree from the flat event buffer.
+ *
+ * Step 1: Pair tool_use ↔ tool_result by `toolUseId` (not position).
+ *         Unpaired `tool_result` events fall back to a standalone
+ *         message row so we never silently drop data. Legacy events
+ *         in `stream.jsonl` from before this field existed are paired
+ *         positionally (the original heuristic) to keep replay of
+ *         historical sessions intact.
+ * Step 2: Nest items under their `parentToolUseId` when it points at a
+ *         known tool node. Items whose parent is unknown stay at the
+ *         top level — that preserves visibility during a mid-session
+ *         restart where we replayed the jsonl without the Agent frame
+ *         that spawned them.
+ */
+function buildStreamTree(events: TodoStreamEvent[]): StreamItem[] {
+	const toolNodeById = new Map<string, Extract<StreamItem, { type: "tool" }>>();
+	const resultByUseId = new Map<string, TodoStreamEvent>();
+	const allItems: StreamItem[] = [];
+
+	// Index tool_results with ids up front so we can attach them to
+	// their tool_use even if the events were appended out of order.
+	for (const ev of events) {
+		if (ev.kind === "tool_result" && ev.toolUseId) {
+			resultByUseId.set(ev.toolUseId, ev);
 		}
 	}
-	return items;
+
+	// Most-recent tool_use node that lacks a toolUseId and is still
+	// awaiting its result. Used only for legacy positional pairing.
+	let pendingLegacyTool: Extract<StreamItem, { type: "tool" }> | null = null;
+
+	for (const ev of events) {
+		if (!ev) continue;
+		if (ev.kind === "tool_use") {
+			const matchedResult = ev.toolUseId
+				? (resultByUseId.get(ev.toolUseId) ?? null)
+				: null;
+			const node: Extract<StreamItem, { type: "tool" }> = {
+				type: "tool",
+				id: ev.id,
+				toolUse: ev,
+				toolResult: matchedResult,
+				children: [],
+			};
+			if (ev.toolUseId) toolNodeById.set(ev.toolUseId, node);
+			allItems.push(node);
+			pendingLegacyTool = !ev.toolUseId && !matchedResult ? node : null;
+			continue;
+		}
+		if (ev.kind === "tool_result") {
+			// Modern path: already attached via resultByUseId.
+			if (ev.toolUseId && toolNodeById.has(ev.toolUseId)) continue;
+			// Legacy fallback: attach to the most recent dangling
+			// tool_use without a toolUseId (same positional heuristic
+			// the old impl used). Keeps replay of pre-upgrade sessions
+			// from losing pairs.
+			if (!ev.toolUseId && pendingLegacyTool) {
+				pendingLegacyTool.toolResult = ev;
+				pendingLegacyTool = null;
+				continue;
+			}
+			allItems.push({ type: "message", id: ev.id, event: ev });
+			continue;
+		}
+		allItems.push({ type: "message", id: ev.id, event: ev });
+	}
+
+	// Nest items under their parent Agent/Task tool node.
+	const roots: StreamItem[] = [];
+	for (const item of allItems) {
+		const parentId =
+			item.type === "tool"
+				? item.toolUse.parentToolUseId
+				: item.event.parentToolUseId;
+		if (parentId) {
+			const parent = toolNodeById.get(parentId);
+			if (parent) {
+				parent.children.push(item);
+				continue;
+			}
+		}
+		roots.push(item);
+	}
+	return roots;
 }
 
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
@@ -1563,13 +1650,13 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 		el.scrollTop = el.scrollHeight;
 	}, [events.length]);
 
-	const items = useMemo(() => pairStreamEvents(events), [events]);
+	const items = useMemo(() => buildStreamTree(events), [events]);
 
 	return (
 		<div
 			ref={scrollRef}
 			onScroll={handleScroll}
-			className="absolute inset-0 overflow-y-auto overflow-x-hidden bg-muted/30 rounded px-3 py-2"
+			className="absolute inset-0 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-muted/10 to-muted/30 rounded px-3 py-2"
 		>
 			{events.length === 0 ? (
 				<div className="text-xs text-muted-foreground p-2">
@@ -1578,83 +1665,144 @@ function StreamView({ events }: { events: TodoStreamEvent[] }) {
 				</div>
 			) : (
 				<div className="flex flex-col gap-1">
-					{items.map((item) =>
-						item.type === "tool" ? (
-							<ToolCallCard key={item.id} item={item} />
-						) : (
-							<MessageRow key={item.id} event={item.event} />
-						),
-					)}
+					{items.map((item) => (
+						<StreamNode key={item.id} item={item} />
+					))}
 				</div>
 			)}
 		</div>
 	);
 }
 
+function StreamNode({ item }: { item: StreamItem }) {
+	if (item.type === "tool") {
+		return <ToolCallCard item={item} />;
+	}
+	return <MessageRow event={item.event} />;
+}
+
 /**
- * VSCode Claude Code extension faithful reproduction: uses `<details>` so
- * the tool call folds by default, showing only a 2-line summary (bold tool
- * name + monospace secondary info). Expanded body shows an IN/OUT grid.
- * This matches the extension's `.Ze/._e/.or/.D/.rr/.ir/.lo/.tr` CSS
- * classes we reverse-engineered from webview/index.css.
+ * Styling intent:
+ * - Tool name gets a distinct subtle color tied to the tool kind (Bash,
+ *   Read, Edit, Task/Agent, …) so scanning the stream is fast.
+ * - When the tool is still running (no tool_result yet) the name shimmers
+ *   with a pure-CSS `ShinyText` so the user sees it as "live".
+ * - Expanding the card reveals IN / OUT panes plus — for Agent/Task calls
+ *   — the nested subagent activity tree. Matches the VSCode extension.
  */
 function ToolCallCard({
 	item,
 }: {
 	item: Extract<StreamItem, { type: "tool" }>;
 }) {
-	const { toolUse, toolResult } = item;
+	const { toolUse, toolResult, children } = item;
 	const toolName = toolUse.label;
 	const secondary = extractSecondaryInfo(toolName, toolUse.text);
 	const hasResult = toolResult != null;
+	const isRunning = !hasResult;
+	const palette = getToolPalette(toolName);
+	const Icon = palette.icon;
+	const hasChildren = children.length > 0;
+	// Controlled `open` so React does not clobber the user's toggles on
+	// re-render (streaming events cause frequent re-renders). Initial
+	// value auto-expands Agent/Task cards that already have children so
+	// the user can see the subagent's nested activity without clicking.
+	const [open, setOpen] = useState(hasChildren);
+	// Auto-open the card the first time a child arrives in this tool
+	// (i.e. the subagent just started doing something). The user can
+	// still close it back down; we only nudge on the 0 → 1 transition.
+	const prevHadChildren = useRef(hasChildren);
+	useEffect(() => {
+		if (!prevHadChildren.current && hasChildren) setOpen(true);
+		prevHadChildren.current = hasChildren;
+	}, [hasChildren]);
 
 	return (
-		<details className="group text-xs">
-			<summary className="list-none cursor-pointer select-none flex items-baseline gap-1 py-0.5 hover:bg-accent/30 rounded px-1 -mx-1 overflow-hidden">
-				<span className="shrink-0 text-muted-foreground/50 group-open:rotate-90 transition-transform text-[10px]">
+		<details
+			className="group text-xs rounded-md border border-border/40 bg-muted/20 hover:bg-muted/30 transition-colors overflow-hidden"
+			open={open}
+			onToggle={(e) => setOpen(e.currentTarget.open)}
+		>
+			<summary
+				className={cn(
+					"list-none cursor-pointer select-none flex items-center gap-2 py-1 px-2 overflow-hidden",
+					palette.accent,
+				)}
+			>
+				<span className="shrink-0 text-muted-foreground/60 group-open:rotate-90 transition-transform text-[10px]">
 					▶
 				</span>
-				<span className="font-bold shrink-0">{toolName}</span>
+				<span
+					className={cn(
+						"shrink-0 grid place-items-center w-4 h-4 rounded-sm",
+						palette.iconBg,
+					)}
+				>
+					<Icon className={cn("w-3 h-3", palette.iconColor)} />
+				</span>
+				{isRunning ? (
+					<ShinyText className={cn("font-semibold shrink-0", palette.name)}>
+						{toolName}
+					</ShinyText>
+				) : (
+					<span className={cn("font-semibold shrink-0", palette.name)}>
+						{toolName}
+					</span>
+				)}
 				{secondary && (
-					<span className="font-mono text-[0.85em] text-primary/70 break-all line-clamp-2 min-w-0 flex-1">
+					<span className="font-mono text-[0.85em] text-foreground/70 break-all line-clamp-1 min-w-0 flex-1">
 						{secondary}
 					</span>
 				)}
-				{!hasResult && (
-					<span className="shrink-0 text-[10px] text-muted-foreground animate-pulse">
-						…
+				{hasChildren && (
+					<span className="shrink-0 text-[10px] font-mono text-muted-foreground/80 px-1 rounded bg-muted/50 border border-border/40">
+						{children.length}
 					</span>
 				)}
+				{isRunning && (
+					<span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+				)}
 			</summary>
-			<div className="my-1.5 ml-3 border border-border/40 rounded-md bg-muted/20 overflow-hidden">
+			<div className="border-t border-border/30 bg-background/40">
 				<div className="grid grid-cols-[max-content_1fr] text-[11px]">
 					<div className="col-span-2 grid grid-cols-subgrid border-b border-border/30">
-						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+						<div className="text-muted-foreground/60 font-mono text-[0.85em] py-1 px-2 bg-muted/30">
 							IN
 						</div>
-						<div className="py-1 pr-2 overflow-hidden">
+						<div className="py-1 px-2 overflow-hidden">
 							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
 								{toolUse.text}
 							</pre>
 						</div>
 					</div>
 					<div className="col-span-2 grid grid-cols-subgrid">
-						<div className="text-muted-foreground/50 font-mono text-[0.85em] py-1 px-2">
+						<div className="text-muted-foreground/60 font-mono text-[0.85em] py-1 px-2 bg-muted/30">
 							OUT
 						</div>
-						<div className="py-1 pr-2 overflow-hidden">
+						<div className="py-1 px-2 overflow-hidden">
 							{toolResult ? (
 								<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
 									{toolResult.text}
 								</pre>
 							) : (
-								<span className="text-muted-foreground animate-pulse">
-									実行中…
-								</span>
+								<ShinyText className="text-muted-foreground">実行中…</ShinyText>
 							)}
 						</div>
 					</div>
 				</div>
+				{hasChildren && (
+					<div className="relative pl-4 pr-2 py-1.5 border-t border-border/30 bg-muted/10">
+						<div
+							className="absolute left-2 top-0 bottom-0 w-px bg-border/40"
+							aria-hidden
+						/>
+						<div className="flex flex-col gap-1">
+							{children.map((child) => (
+								<StreamNode key={child.id} item={child} />
+							))}
+						</div>
+					</div>
+				)}
 			</div>
 		</details>
 	);
@@ -1669,32 +1817,196 @@ function extractSecondaryInfo(_toolName: string, text: string): string | null {
 	return text.slice(0, 80);
 }
 
+/**
+ * Lightweight, dependency-free shimmering text. A pure-CSS animated
+ * linear-gradient clipped to the text serves as the "currently running"
+ * affordance for tool names and the OUT-pending label. The actual
+ * animation lives in `globals.css` under `.animate-shine` — this
+ * component is just a small wrapper so callers don't have to remember
+ * the class name.
+ */
+function ShinyText({
+	children,
+	className,
+}: {
+	children: ReactNode;
+	className?: string;
+}) {
+	return (
+		<span className={cn("inline-block animate-shine", className)}>
+			{children}
+		</span>
+	);
+}
+
+interface ToolPalette {
+	icon: LucideIcon;
+	iconBg: string;
+	iconColor: string;
+	name: string;
+	accent: string;
+}
+
+/**
+ * Map Claude Code tool names to a small accent palette. The defaults are
+ * intentionally low-saturation so a flood of tool calls in the stream
+ * doesn't turn into a rainbow. Unknown tools fall through to the
+ * generic wrench icon. Keep keys here aligned with the actual tool
+ * names Claude Code emits in the NDJSON stream.
+ */
+function getToolPalette(toolName: string): ToolPalette {
+	const fallback: ToolPalette = {
+		icon: Wrench,
+		iconBg: "bg-muted",
+		iconColor: "text-muted-foreground",
+		name: "text-foreground",
+		accent: "hover:bg-accent/20",
+	};
+	const palettes: Record<string, ToolPalette> = {
+		Agent: {
+			icon: Bot,
+			iconBg: "bg-violet-500/15",
+			iconColor: "text-violet-400",
+			name: "text-violet-300",
+			accent: "hover:bg-violet-500/10",
+		},
+		Task: {
+			icon: Bot,
+			iconBg: "bg-violet-500/15",
+			iconColor: "text-violet-400",
+			name: "text-violet-300",
+			accent: "hover:bg-violet-500/10",
+		},
+		Bash: {
+			icon: SquareTerminal,
+			iconBg: "bg-emerald-500/15",
+			iconColor: "text-emerald-400",
+			name: "text-emerald-300",
+			accent: "hover:bg-emerald-500/10",
+		},
+		Read: {
+			icon: FileText,
+			iconBg: "bg-sky-500/15",
+			iconColor: "text-sky-400",
+			name: "text-sky-300",
+			accent: "hover:bg-sky-500/10",
+		},
+		Edit: {
+			icon: FileEdit,
+			iconBg: "bg-amber-500/15",
+			iconColor: "text-amber-400",
+			name: "text-amber-300",
+			accent: "hover:bg-amber-500/10",
+		},
+		MultiEdit: {
+			icon: FilePen,
+			iconBg: "bg-amber-500/15",
+			iconColor: "text-amber-400",
+			name: "text-amber-300",
+			accent: "hover:bg-amber-500/10",
+		},
+		Write: {
+			icon: FilePlus,
+			iconBg: "bg-orange-500/15",
+			iconColor: "text-orange-400",
+			name: "text-orange-300",
+			accent: "hover:bg-orange-500/10",
+		},
+		Grep: {
+			icon: Search,
+			iconBg: "bg-indigo-500/15",
+			iconColor: "text-indigo-400",
+			name: "text-indigo-300",
+			accent: "hover:bg-indigo-500/10",
+		},
+		Glob: {
+			icon: FolderSearch,
+			iconBg: "bg-indigo-500/15",
+			iconColor: "text-indigo-400",
+			name: "text-indigo-300",
+			accent: "hover:bg-indigo-500/10",
+		},
+		WebFetch: {
+			icon: Globe,
+			iconBg: "bg-cyan-500/15",
+			iconColor: "text-cyan-400",
+			name: "text-cyan-300",
+			accent: "hover:bg-cyan-500/10",
+		},
+		WebSearch: {
+			icon: Globe,
+			iconBg: "bg-cyan-500/15",
+			iconColor: "text-cyan-400",
+			name: "text-cyan-300",
+			accent: "hover:bg-cyan-500/10",
+		},
+		TodoWrite: {
+			icon: CheckSquare,
+			iconBg: "bg-pink-500/15",
+			iconColor: "text-pink-400",
+			name: "text-pink-300",
+			accent: "hover:bg-pink-500/10",
+		},
+		NotebookEdit: {
+			icon: FilePen,
+			iconBg: "bg-amber-500/15",
+			iconColor: "text-amber-400",
+			name: "text-amber-300",
+			accent: "hover:bg-amber-500/10",
+		},
+		SlashCommand: {
+			icon: Sparkles,
+			iconBg: "bg-fuchsia-500/15",
+			iconColor: "text-fuchsia-400",
+			name: "text-fuchsia-300",
+			accent: "hover:bg-fuchsia-500/10",
+		},
+		ExitPlanMode: {
+			icon: ListTree,
+			iconBg: "bg-teal-500/15",
+			iconColor: "text-teal-400",
+			name: "text-teal-300",
+			accent: "hover:bg-teal-500/10",
+		},
+		ToolSearch: {
+			icon: Cog,
+			iconBg: "bg-slate-500/15",
+			iconColor: "text-slate-400",
+			name: "text-slate-300",
+			accent: "hover:bg-slate-500/10",
+		},
+	};
+	return palettes[toolName] ?? fallback;
+}
+
 function MessageRow({ event }: { event: TodoStreamEvent }) {
 	if (event.kind === "assistant_text") {
 		return (
-			<div className="group text-xs py-1">
+			<div className="group text-xs py-1 px-1">
 				<MarkdownRenderer content={event.text} scrollable={false} />
 			</div>
 		);
 	}
 	if (event.kind === "result") {
 		return (
-			<div className="group border-l-2 border-emerald-600/40 bg-emerald-600/5 pl-2 py-1 text-xs my-1">
+			<div className="group border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 py-1 text-xs my-1 rounded-r">
 				<MarkdownRenderer content={event.text} scrollable={false} />
 			</div>
 		);
 	}
 	if (event.kind === "error") {
 		return (
-			<div className="border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400">
+			<div className="border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400 rounded-r">
 				{event.text}
 			</div>
 		);
 	}
 	if (event.kind === "system_init") {
 		return (
-			<div className="flex items-baseline gap-2 text-[10px] text-muted-foreground py-0.5">
-				<span className="font-semibold shrink-0">{event.label}</span>
+			<div className="flex items-baseline gap-2 text-[10px] text-muted-foreground py-0.5 px-1">
+				<span className="font-semibold shrink-0 uppercase tracking-wide">
+					{event.label}
+				</span>
 				<span className="truncate font-mono opacity-70">{event.text}</span>
 			</div>
 		);

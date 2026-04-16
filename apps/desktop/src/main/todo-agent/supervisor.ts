@@ -751,6 +751,8 @@ class TodoSupervisor {
 							kind: parsed.event.kind,
 							label: parsed.event.label,
 							text: parsed.event.text,
+							toolUseId: parsed.event.toolUseId,
+							parentToolUseId: parsed.event.parentToolUseId,
 						},
 					]);
 				}
@@ -1008,6 +1010,18 @@ interface ClassifiedEvent {
 	kind: TodoStreamEventKind;
 	label: string;
 	text: string;
+	/**
+	 * For `tool_use` events this is the tool_use block id.
+	 * For `tool_result` events this is the `tool_use_id` the result
+	 * targets. Undefined for non-tool events.
+	 */
+	toolUseId?: string;
+	/**
+	 * Set when the NDJSON record has a top-level `parent_tool_use_id`,
+	 * i.e. the message was emitted from inside a subagent (Agent/Task
+	 * tool) context.
+	 */
+	parentToolUseId?: string;
 }
 
 interface ClassifiedLine {
@@ -1037,6 +1051,13 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 	const type = typeof rec.type === "string" ? (rec.type as string) : "";
 	const sessionId =
 		typeof rec.session_id === "string" ? (rec.session_id as string) : null;
+	// Claude Code sets `parent_tool_use_id` on the top-level NDJSON
+	// record whenever the message was emitted inside a subagent
+	// context (i.e. the main session invoked the Task/Agent tool).
+	const parentToolUseId =
+		typeof rec.parent_tool_use_id === "string"
+			? (rec.parent_tool_use_id as string)
+			: undefined;
 
 	if (type === "system" && rec.subtype === "init") {
 		return {
@@ -1056,7 +1077,12 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 			return {
 				...empty,
 				sessionId,
-				event: { kind: "assistant_text", label: "Claude", text },
+				event: {
+					kind: "assistant_text",
+					label: "Claude",
+					text,
+					parentToolUseId,
+				},
 			};
 		}
 		const tool = extractToolUseSummary(rec.message);
@@ -1064,22 +1090,30 @@ function classifyStreamJson(payload: unknown): ClassifiedLine {
 			return {
 				...empty,
 				sessionId,
-				event: { kind: "tool_use", label: tool.label, text: tool.text },
+				event: {
+					kind: "tool_use",
+					label: tool.label,
+					text: tool.text,
+					toolUseId: tool.id,
+					parentToolUseId,
+				},
 			};
 		}
 		return empty;
 	}
 
 	if (type === "user") {
-		const text = extractToolResultText(rec.message);
-		if (text) {
+		const result = extractToolResultDetails(rec.message);
+		if (result) {
 			return {
 				...empty,
 				sessionId,
 				event: {
 					kind: "tool_result",
 					label: "tool result",
-					text: truncate(text, 400),
+					text: truncate(result.text, 400),
+					toolUseId: result.toolUseId,
+					parentToolUseId,
 				},
 			};
 		}
@@ -1144,7 +1178,7 @@ function extractAssistantText(message: unknown): string | null {
 
 function extractToolUseSummary(
 	message: unknown,
-): { label: string; text: string } | null {
+): { label: string; text: string; id: string | undefined } | null {
 	if (typeof message !== "object" || message === null) return null;
 	const content = (message as { content?: unknown }).content;
 	if (!Array.isArray(content)) return null;
@@ -1153,22 +1187,29 @@ function extractToolUseSummary(
 		const rec = part as Record<string, unknown>;
 		if (rec.type !== "tool_use") continue;
 		const name = typeof rec.name === "string" ? (rec.name as string) : "tool";
+		const id = typeof rec.id === "string" ? (rec.id as string) : undefined;
 		const input = rec.input;
 		const inputSummary = summarizeToolInput(name, input);
-		return { label: name, text: inputSummary };
+		return { label: name, text: inputSummary, id };
 	}
 	return null;
 }
 
-function extractToolResultText(message: unknown): string | null {
+function extractToolResultDetails(
+	message: unknown,
+): { text: string; toolUseId: string | undefined } | null {
 	if (typeof message !== "object" || message === null) return null;
 	const content = (message as { content?: unknown }).content;
 	if (!Array.isArray(content)) return null;
 	const parts: string[] = [];
+	let toolUseId: string | undefined;
 	for (const part of content) {
 		if (typeof part !== "object" || part === null) continue;
 		const rec = part as Record<string, unknown>;
 		if (rec.type === "tool_result") {
+			if (!toolUseId && typeof rec.tool_use_id === "string") {
+				toolUseId = rec.tool_use_id as string;
+			}
 			const inner = rec.content;
 			if (typeof inner === "string") {
 				parts.push(inner);
@@ -1184,7 +1225,8 @@ function extractToolResultText(message: unknown): string | null {
 		}
 	}
 	const joined = parts.join("\n").trim();
-	return joined.length > 0 ? joined : null;
+	if (joined.length === 0) return null;
+	return { text: joined, toolUseId };
 }
 
 function summarizeToolInput(name: string, input: unknown): string {
