@@ -649,7 +649,15 @@ export const createTodoAgentRouter = () => {
 			get: publicProcedure.query(() => getTodoSettings()),
 			update: publicProcedure
 				.input(todoSettingsUpdateSchema)
-				.mutation(({ input }) => updateTodoSettings(input)),
+				.mutation(({ input }) => {
+					const next = updateTodoSettings(input);
+					// Nudge the supervisor so a raised `maxConcurrentTasks`
+					// immediately releases queued sessions. Without this, a
+					// bump from 1 → N leaves already-pending tasks waiting
+					// until the currently running session finishes.
+					getTodoSupervisor().handleSettingsChanged();
+					return next;
+				}),
 		}),
 
 		schedule: router({
