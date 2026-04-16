@@ -1124,7 +1124,13 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	// `preparing` is still editable: the supervisor has not spawned
 	// Claude yet, and prepareArtifacts rewrites goal.md before Claude
 	// reads it, so an edit during preparing still takes effect.
-	const canEditFields = canStart || session.status === "preparing";
+	// `waiting` (ScheduleWakeup-paused) is intentionally excluded —
+	// the backend `updateFields` mutation does not allow that status,
+	// so saving would deterministically fail with PRECONDITION_FAILED.
+	// Users who want to edit a waiting session abort it first.
+	const canEditFields =
+		(canStart && session.status !== "waiting") ||
+		session.status === "preparing";
 
 	// Bail out of any in-flight edit the moment the session starts
 	// actually running — e.g. a queued session whose turn arrived
@@ -1683,11 +1689,20 @@ type StreamItem =
 function buildStreamTree(events: TodoStreamEvent[]): StreamItem[] {
 	const toolNodeById = new Map<string, Extract<StreamItem, { type: "tool" }>>();
 	const resultByUseId = new Map<string, TodoStreamEvent>();
+	const knownToolUseIds = new Set<string>();
 	const allItems: StreamItem[] = [];
 
 	// Index tool_results with ids up front so we can attach them to
 	// their tool_use even if the events were appended out of order.
+	// We also collect the set of tool_use ids that exist anywhere in
+	// the stream so a tool_result encountered BEFORE its matching
+	// tool_use can be skipped — otherwise it gets rendered as a
+	// standalone message AND later attached to the tool card via
+	// resultByUseId, producing duplicate output for the same result.
 	for (const ev of events) {
+		if (ev.kind === "tool_use" && ev.toolUseId) {
+			knownToolUseIds.add(ev.toolUseId);
+		}
 		if (ev.kind === "tool_result" && ev.toolUseId) {
 			resultByUseId.set(ev.toolUseId, ev);
 		}
@@ -1716,8 +1731,12 @@ function buildStreamTree(events: TodoStreamEvent[]): StreamItem[] {
 			continue;
 		}
 		if (ev.kind === "tool_result") {
-			// Modern path: already attached via resultByUseId.
-			if (ev.toolUseId && toolNodeById.has(ev.toolUseId)) continue;
+			// Modern path: a matching tool_use exists in the stream
+			// somewhere and will (or already did) attach this result
+			// via resultByUseId. Skip the standalone render either
+			// way to avoid duplication when events arrive out of
+			// order (tool_result before tool_use).
+			if (ev.toolUseId && knownToolUseIds.has(ev.toolUseId)) continue;
 			// Legacy fallback: attach to the most recent dangling
 			// tool_use without a toolUseId (same positional heuristic
 			// the old impl used). Keeps replay of pre-upgrade sessions

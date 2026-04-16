@@ -88,10 +88,19 @@ class TodoSupervisor {
 	}
 
 	async start(sessionId: string): Promise<void> {
-		// Already executing or queued — no-op so repeated `start` calls
-		// from the UI do not create duplicate work.
-		if (this.active.has(sessionId)) return;
+		// Already pending another launch — coalesce repeat clicks.
 		if (this.queue.includes(sessionId)) return;
+		// If a previous run is still active AND has not been aborted,
+		// ignore — repeated start clicks should not duplicate work.
+		const active = this.active.get(sessionId);
+		if (active && !active.abortController.signal.aborted) return;
+		// Either no active run, or the active run has already been
+		// aborted and is just tearing down (typical right after abort:
+		// the trpc-router flips status to `preparing` and calls us, but
+		// `runSession`'s finally has not yet removed the entry from
+		// `active`). Queue the restart so drain() picks it up the
+		// moment the slot frees — returning early here would silently
+		// drop the request and leave the session stuck in `preparing`.
 		this.queue.push(sessionId);
 		this.drain();
 	}
