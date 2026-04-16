@@ -182,13 +182,26 @@ class TodoSupervisor {
 		const session0 = store.get(sessionId);
 		if (!session0) return;
 
-		// Fresh in-memory buffer for this run. Old events from previous
-		// runs of the same session are cleared so the UI sees just the
-		// current attempt.
-		store.clearStreamEvents(sessionId);
+		// A session that already completed at least one run keeps its
+		// previous stream events so the user can scroll back to the
+		// prior turns after sending a follow-up message (done→resume).
+		// Without a `claudeSessionId` this is the very first run of
+		// this session, so wipe the (probably stale) buffer to match
+		// a clean-slate UX.
+		const isResumingPastRun = !!session0.claudeSessionId;
+		if (!isResumingPastRun) {
+			store.clearStreamEvents(sessionId);
+		}
 		// Prime the artifact-path cache so the hot stream-persist path
 		// does not need to do a synchronous SQLite read per event.
 		store.setArtifactPathCache(sessionId, session0.artifactPath);
+		if (isResumingPastRun) {
+			appendSetupEvent(
+				sessionId,
+				"再開",
+				"セッションを再開します。これより下が新しいターンのストリームです。",
+			);
+		}
 
 		const ac = new AbortController();
 		const run: ActiveRun = {
@@ -251,6 +264,15 @@ class TodoSupervisor {
 				"claude -p --output-format stream-json を起動します",
 			);
 
+			// When resuming a previously-completed session (done/failed/
+			// aborted/escalated + follow-up message), keep the existing
+			// Claude session id so the next iteration issues
+			// `--resume <id>` and actually continues the conversation.
+			// Wiping it to null here made the UI label it "再開" while
+			// Claude silently started fresh.
+			const preservedClaudeSessionId = isResumingPastRun
+				? (session0.claudeSessionId ?? null)
+				: null;
 			store.update(sessionId, {
 				status: "running",
 				phase: "running",
@@ -259,10 +281,18 @@ class TodoSupervisor {
 				verdictPassed: null,
 				verdictReason: null,
 				verdictFailingTest: null,
-				finalAssistantText: null,
-				claudeSessionId: null,
-				totalCostUsd: null,
-				totalNumTurns: null,
+				// Keep the prior assistant text on resume so the Manager
+				// shows the last known answer while the new turn streams.
+				finalAssistantText: isResumingPastRun
+					? (session0.finalAssistantText ?? null)
+					: null,
+				claudeSessionId: preservedClaudeSessionId,
+				totalCostUsd: isResumingPastRun
+					? (session0.totalCostUsd ?? null)
+					: null,
+				totalNumTurns: isResumingPastRun
+					? (session0.totalNumTurns ?? null)
+					: null,
 				iteration: 0,
 				startHeadSha,
 			});
@@ -278,10 +308,18 @@ class TodoSupervisor {
 				return;
 			}
 
-			let claudeSessionId: string | null = null;
-			let lastAssistantText: string | null = null;
-			let aggregatedCostUsd = 0;
-			let aggregatedNumTurns = 0;
+			// Same resume reasoning as above — seed the loop-local vars
+			// from the persisted row so `--resume` is actually issued.
+			let claudeSessionId: string | null = preservedClaudeSessionId;
+			let lastAssistantText: string | null = isResumingPastRun
+				? (session0.finalAssistantText ?? null)
+				: null;
+			let aggregatedCostUsd = isResumingPastRun
+				? (session0.totalCostUsd ?? 0)
+				: 0;
+			let aggregatedNumTurns = isResumingPastRun
+				? (session0.totalNumTurns ?? 0)
+				: 0;
 			let iteration = 0;
 
 			while (iteration < session0.maxIterations) {

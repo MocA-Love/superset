@@ -101,7 +101,7 @@ export const ExploringGroup = ({
 					{/* Top gradient fade when streaming and many items */}
 					<div
 						className={cn(
-							"pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-background to-transparent transition-opacity duration-200",
+							"pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-[var(--background-solid,var(--background))] to-transparent transition-opacity duration-200",
 							isStreaming && items.length > MAX_VISIBLE_TOOLS
 								? "opacity-100"
 								: "opacity-0",

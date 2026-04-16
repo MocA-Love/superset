@@ -54,6 +54,14 @@ export function applyUIColors(colors: UIColors): void {
 			root.style.setProperty(cssVar, value);
 		}
 	}
+
+	// `--background-solid` always mirrors the theme's opaque background so
+	// non-surface consumers (text color, ring color, SVG fill, gradients)
+	// can reference a reliably opaque value even when vibrancy forces
+	// `--background` to `transparent` for pass-through surfaces.
+	if (colors.background) {
+		root.style.setProperty("--background-solid", colors.background);
+	}
 }
 
 /**
@@ -78,4 +86,7 @@ export function clearThemeVariables(): void {
 	for (const cssVar of Object.values(UI_COLOR_TO_CSS_VAR)) {
 		root.style.removeProperty(cssVar);
 	}
+	// Sibling of `--background` that `applyUIColors` mirrors — reset it
+	// here too or a stale opaque color lingers after vibrancy toggles.
+	root.style.removeProperty("--background-solid");
 }

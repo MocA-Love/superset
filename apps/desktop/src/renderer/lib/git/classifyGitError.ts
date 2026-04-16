@@ -206,7 +206,13 @@ function classifyPullError(message: string): GitErrorKind | null {
 		) ||
 		lower.includes("would be overwritten by merge") ||
 		lower.includes("would be overwritten by checkout") ||
-		lower.includes("please commit your changes or stash")
+		lower.includes("please commit your changes or stash") ||
+		// `git pull --rebase` variant: "cannot pull with rebase: You have
+		// unstaged changes. Please commit or stash them." — different
+		// wording from the merge path above, so it needs its own match.
+		lower.includes("cannot pull with rebase") ||
+		lower.includes("please commit or stash them") ||
+		lower.includes("you have unstaged changes")
 	) {
 		return "pull-overwrite";
 	}

@@ -22,11 +22,20 @@ interface PresetsDialogProps {
 }
 
 /**
- * Manager for reusable TODO system-prompt templates. Entered from the
- * "設定" row at the bottom of the Agent Manager's left sidebar.
- * Two-pane layout: list of presets on the left, edit form on the right.
+ * Manager for reusable TODO templates (system prompts, task templates,
+ * goal templates). Entered from the "設定" row at the bottom of the
+ * Agent Manager's left sidebar. Two-pane layout: list on the left,
+ * edit form on the right.
  */
 type Tab = "presets" | "settings";
+
+type PresetKind = "system" | "description" | "goal";
+
+const KIND_LABEL: Record<PresetKind, string> = {
+	system: "システム",
+	description: "タスク",
+	goal: "ゴール",
+};
 
 export function PresetsDialog({ open, onOpenChange }: PresetsDialogProps) {
 	const [tab, setTab] = useState<Tab>("presets");
@@ -50,7 +59,7 @@ export function PresetsDialog({ open, onOpenChange }: PresetsDialogProps) {
 									: "text-muted-foreground hover:text-foreground",
 							)}
 						>
-							プリセット
+							テンプレート
 						</button>
 						<button
 							type="button"
@@ -192,12 +201,22 @@ function PresetsTab({ open }: { open: boolean }) {
 		{ enabled: open },
 	);
 
+	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
+
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [draft, setDraft] = useState<{
 		id: string | null;
 		name: string;
 		content: string;
-	}>({ id: null, name: "", content: "" });
+		kind: PresetKind;
+		workspaceId: string | null;
+	}>({
+		id: null,
+		name: "",
+		content: "",
+		kind: "system",
+		workspaceId: null,
+	});
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 
 	const createMut = electronTrpc.todoAgent.presets.create.useMutation();
@@ -224,9 +243,17 @@ function PresetsTab({ open }: { open: boolean }) {
 				id: selected.id,
 				name: selected.name,
 				content: selected.content,
+				kind: selected.kind ?? "system",
+				workspaceId: selected.workspaceId ?? null,
 			});
 		} else {
-			setDraft({ id: null, name: "", content: "" });
+			setDraft({
+				id: null,
+				name: "",
+				content: "",
+				kind: "system",
+				workspaceId: null,
+			});
 		}
 		setConfirmingDelete(false);
 	}, [selected]);
@@ -236,11 +263,19 @@ function PresetsTab({ open }: { open: boolean }) {
 		!!draft.content.trim() &&
 		(!selected ||
 			draft.name !== selected.name ||
-			draft.content !== selected.content);
+			draft.content !== selected.content ||
+			draft.kind !== (selected.kind ?? "system") ||
+			draft.workspaceId !== (selected.workspaceId ?? null));
 
 	const handleNew = useCallback(() => {
 		setSelectedId(null);
-		setDraft({ id: null, name: "", content: "" });
+		setDraft({
+			id: null,
+			name: "",
+			content: "",
+			kind: "system",
+			workspaceId: null,
+		});
 	}, []);
 
 	const handleSave = useCallback(async () => {
@@ -250,16 +285,20 @@ function PresetsTab({ open }: { open: boolean }) {
 					id: draft.id,
 					name: draft.name.trim(),
 					content: draft.content.trim(),
+					kind: draft.kind,
+					workspaceId: draft.workspaceId,
 				});
 				setSelectedId(row.id);
-				toast.success("プリセットを更新しました");
+				toast.success("テンプレートを更新しました");
 			} else {
 				const row = await createMut.mutateAsync({
 					name: draft.name.trim(),
 					content: draft.content.trim(),
+					kind: draft.kind,
+					workspaceId: draft.workspaceId ?? undefined,
 				});
 				setSelectedId(row.id);
-				toast.success("プリセットを作成しました");
+				toast.success("テンプレートを作成しました");
 			}
 			await invalidate();
 		} catch (error) {
@@ -276,7 +315,7 @@ function PresetsTab({ open }: { open: boolean }) {
 			await invalidate();
 			setSelectedId(null);
 			setConfirmingDelete(false);
-			toast.success("プリセットを削除しました");
+			toast.success("テンプレートを削除しました");
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "削除に失敗しました",
@@ -295,37 +334,98 @@ function PresetsTab({ open }: { open: boolean }) {
 						onClick={handleNew}
 					>
 						<HiMiniPlus className="size-4" />
-						新規プリセット
+						新規テンプレート
 					</Button>
 				</div>
 				<ScrollArea className="flex-1">
 					<div className="flex flex-col p-1.5 gap-0.5">
 						{(presets ?? []).length === 0 && (
 							<p className="text-[11px] text-muted-foreground px-2 py-4">
-								まだプリセットはありません。右上から新規作成してください。
+								まだテンプレートはありません。右上から新規作成してください。
 							</p>
 						)}
-						{(presets ?? []).map((preset: SelectTodoPromptPreset) => (
-							<button
-								key={preset.id}
-								type="button"
-								onClick={() => setSelectedId(preset.id)}
-								className={cn(
-									"text-left rounded-md px-2.5 py-1.5 text-xs transition",
-									selectedId === preset.id ? "bg-accent" : "hover:bg-accent/50",
-								)}
-							>
-								<div className="font-medium line-clamp-1">{preset.name}</div>
-								<div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
-									{preset.content.replace(/\s+/g, " ")}
-								</div>
-							</button>
-						))}
+						{(presets ?? []).map((preset: SelectTodoPromptPreset) => {
+							const kind = preset.kind ?? "system";
+							return (
+								<button
+									key={preset.id}
+									type="button"
+									onClick={() => setSelectedId(preset.id)}
+									className={cn(
+										"text-left rounded-md px-2.5 py-1.5 text-xs transition",
+										selectedId === preset.id
+											? "bg-accent"
+											: "hover:bg-accent/50",
+									)}
+								>
+									<div className="flex items-center gap-1.5">
+										<span
+											className={cn(
+												"text-[9px] font-semibold px-1 py-0.5 rounded shrink-0",
+												kind === "system" && "bg-primary/15 text-primary",
+												kind === "description" &&
+													"bg-amber-500/15 text-amber-600",
+												kind === "goal" && "bg-emerald-500/15 text-emerald-600",
+											)}
+										>
+											{KIND_LABEL[kind]}
+										</span>
+										<span className="font-medium line-clamp-1 flex-1 min-w-0">
+											{preset.name}
+										</span>
+									</div>
+									<div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+										{preset.content.replace(/\s+/g, " ")}
+									</div>
+								</button>
+							);
+						})}
 					</div>
 				</ScrollArea>
 			</div>
 
 			<div className="flex-1 min-w-0 flex flex-col p-5 gap-4 overflow-y-auto">
+				<div className="grid grid-cols-2 gap-3">
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="preset-kind">種別</Label>
+						<select
+							id="preset-kind"
+							value={draft.kind}
+							onChange={(e) =>
+								setDraft((d) => ({
+									...d,
+									kind: e.target.value as PresetKind,
+								}))
+							}
+							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+						>
+							<option value="system">システム（Claudeに常時渡される）</option>
+							<option value="description">タスク（本文に挿入）</option>
+							<option value="goal">ゴール（受け入れ条件に挿入）</option>
+						</select>
+					</div>
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="preset-project">対象プロジェクト</Label>
+						<select
+							id="preset-project"
+							value={draft.workspaceId ?? ""}
+							onChange={(e) =>
+								setDraft((d) => ({
+									...d,
+									workspaceId: e.target.value || null,
+								}))
+							}
+							className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+						>
+							<option value="">全プロジェクト（グローバル）</option>
+							{(projects ?? []).map((p) => (
+								<option key={p.id} value={p.id}>
+									{p.name}
+								</option>
+							))}
+						</select>
+					</div>
+				</div>
 				<div className="flex flex-col gap-1.5">
 					<label
 						htmlFor="preset-name"
@@ -347,7 +447,7 @@ function PresetsTab({ open }: { open: boolean }) {
 						htmlFor="preset-content"
 						className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold"
 					>
-						システムプロンプト
+						内容（{KIND_LABEL[draft.kind]}テンプレート）
 					</label>
 					<Textarea
 						id="preset-content"

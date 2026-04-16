@@ -47,7 +47,7 @@ export function WorkspaceRunIndicator({
 		return (
 			<span
 				className={cn(
-					"flex size-3 items-center justify-center rounded-full text-white ring-1 ring-background shadow-sm",
+					"flex size-3 items-center justify-center rounded-full text-white ring-1 ring-background-solid shadow-sm",
 					colorClasses,
 					className,
 				)}

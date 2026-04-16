@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { todoPromptPresets } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { desc, eq } from "drizzle-orm";
+import { app } from "electron";
 import { publicProcedure, router } from "lib/trpc";
 import { localDb } from "main/lib/local-db";
 import { workspaceInitManager } from "main/lib/workspace-init-manager";
@@ -602,6 +603,58 @@ export const createTodoAgentRouter = () => {
 					return { ok: result.changes > 0 };
 				}),
 		}),
+
+		/**
+		 * Save a pasted/dropped image (or any binary) to disk and return
+		 * its absolute path. Used by the composer/intervention textareas
+		 * to let the user embed screenshots via paste or drag-and-drop.
+		 * The returned path can be referenced from the Claude prompt as
+		 * a markdown image (`![](path)`) — Claude's Read tool opens it.
+		 */
+		saveAttachment: publicProcedure
+			.input(
+				z.object({
+					fileName: z.string().min(1).max(200),
+					mimeType: z.string().min(1).max(120),
+					// Hard cap ~15MB raw binary (= ~20MB base64 chars).
+					// Client-side paste handler enforces a 10MB ceiling;
+					// this larger server bound absorbs rounding + encoding
+					// overhead while still blocking absurd paste payloads
+					// before they hit the tRPC channel.
+					dataBase64: z
+						.string()
+						.min(1)
+						.max(20 * 1024 * 1024),
+				}),
+			)
+			.mutation(({ input }) => {
+				const dir = path.join(
+					app.getPath("userData"),
+					"todo-agent",
+					"attachments",
+				);
+				mkdirSync(dir, { recursive: true });
+				const extFromName = path.extname(input.fileName).toLowerCase();
+				const extFromMime =
+					input.mimeType === "image/png"
+						? ".png"
+						: input.mimeType === "image/jpeg" || input.mimeType === "image/jpg"
+							? ".jpg"
+							: input.mimeType === "image/gif"
+								? ".gif"
+								: input.mimeType === "image/webp"
+									? ".webp"
+									: "";
+				const ext = extFromName || extFromMime || ".bin";
+				const safeName = input.fileName.replace(/[^\w.-]/g, "_").slice(0, 80);
+				const filename = `${randomUUID()}-${safeName}${
+					safeName.toLowerCase().endsWith(ext) ? "" : ext
+				}`;
+				const filePath = path.join(dir, filename);
+				const buf = Buffer.from(input.dataBase64, "base64");
+				writeFileSync(filePath, buf);
+				return { path: filePath };
+			}),
 
 		settings: router({
 			get: publicProcedure.query(() => getTodoSettings()),

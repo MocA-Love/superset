@@ -29,47 +29,21 @@ function toAlphaColor(base: string, alpha: number): string {
 	return `color-mix(in srgb, ${base} ${pct.toFixed(2)}%, transparent)`;
 }
 
-function hexToRgba(hex: string, alpha: number): string | null {
-	const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
-	if (!match) return null;
-	const digits = match[1];
-	if (!digits) return null;
-	let r: number;
-	let g: number;
-	let b: number;
-	if (digits.length === 3) {
-		r = Number.parseInt(`${digits[0]}${digits[0]}`, 16);
-		g = Number.parseInt(`${digits[1]}${digits[1]}`, 16);
-		b = Number.parseInt(`${digits[2]}${digits[2]}`, 16);
-	} else {
-		r = Number.parseInt(digits.slice(0, 2), 16);
-		g = Number.parseInt(digits.slice(2, 4), 16);
-		b = Number.parseInt(digits.slice(4, 6), 16);
-	}
-	return `rgba(${r}, ${g}, ${b}, ${clampAlpha(alpha).toFixed(3)})`;
-}
-
 /**
  * Hook consumed by the terminal pane. Returns the theme as-is when
- * vibrancy is off, and a translucent-background variant when vibrancy
- * is on so the xterm canvas blends into the window's vibrancy layer.
+ * vibrancy is off. When vibrancy is on, the xterm background is forced
+ * to fully transparent so the window's vibrancy layer is the single
+ * source of tint — matching how `--background` is handled for the rest
+ * of the app. Any non-zero alpha here would stack on top of the window
+ * tint and make the terminal pane visibly darker than surrounding UI.
  */
 export function useEffectiveTerminalTheme(): ITheme | null {
 	const base = useThemeStore((s) => s.terminalTheme);
 	const enabled = useVibrancyStore((s) => s.enabled);
-	const opacity = useVibrancyStore((s) => s.opacity);
-	// Memoize so the returned object is stable across unrelated renders.
-	// Terminal.tsx applies the theme inside an effect keyed on the theme
-	// identity, so returning a fresh `{ ...base, background: rgba }` on
-	// every render would force xterm to reconfigure itself on each tick.
 	return useMemo(() => {
 		if (!base || !enabled) return base;
-		const bg = base.background;
-		if (typeof bg !== "string") return base;
-		const rgba = hexToRgba(bg, opacity / 100);
-		if (!rgba) return base;
-		return { ...base, background: rgba };
-	}, [base, enabled, opacity]);
+		return { ...base, background: "rgba(0, 0, 0, 0)" };
+	}, [base, enabled]);
 }
 
 /**
