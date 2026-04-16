@@ -80,22 +80,26 @@ function ServiceStatusIndicator({
 					/>
 				</button>
 			</TooltipTrigger>
+			{/* Tooltip inherits `text-[var(--background)]` from TooltipContent —
+			 *  keep overrides in the same token space (use opacity, not
+			 *  `text-foreground`) or the text disappears against the
+			 *  inverted background. */}
 			<TooltipContent
 				side="bottom"
 				className="text-sm p-3 max-w-[280px] space-y-1.5"
 			>
-				<div className="flex items-center gap-1.5 font-semibold text-foreground">
+				<div className="flex items-center gap-1.5 font-semibold">
 					<Icon className="size-3.5 shrink-0" />
 					<span>{snapshot.label}</span>
-					<span className="text-muted-foreground">—</span>
+					<span className="opacity-60">—</span>
 					<span>{levelLabel}</span>
 				</div>
-				<div className="text-foreground/90">{snapshot.description}</div>
-				<div className="text-muted-foreground text-xs">
+				<div>{snapshot.description}</div>
+				<div className="text-xs opacity-70">
 					{formatCheckedAt(snapshot.checkedAt)}
 					{snapshot.fetchError ? ` · ${snapshot.fetchError}` : ""}
 				</div>
-				<div className="text-muted-foreground text-xs">
+				<div className="text-xs opacity-60">
 					クリックで {displayHost} を開く
 				</div>
 			</TooltipContent>
