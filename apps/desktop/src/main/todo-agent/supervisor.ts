@@ -118,24 +118,31 @@ class TodoSupervisor {
 		}
 		if (this.active?.sessionId === sessionId) {
 			this.active.abortController.abort();
-			// Send SIGINT first (clean shutdown), then SIGKILL as a safety
-			// net via a short timer so we never leak a runaway child.
+			// Kill the whole process group, not just the direct child.
+			// `claude -p` spawns its own children (the Node-side agent
+			// loop, MCP servers, tool helpers). A plain `child.kill()`
+			// on the wrapper only signals the wrapper, leaving the
+			// grandchildren alive and still talking to the Anthropic
+			// API — the exact symptom users hit when Stop doesn't
+			// actually stop. We `spawn` with `detached: true` so the
+			// child becomes a session leader; here we signal the
+			// negative PID to reach every descendant.
 			const child = this.active.currentChild;
-			if (child && !child.killed) {
-				try {
-					child.kill("SIGINT");
-				} catch {
-					// ignore
-				}
-				setTimeout(() => {
-					if (child && !child.killed) {
-						try {
-							child.kill("SIGKILL");
-						} catch {
-							// ignore
-						}
+			if (child?.pid) {
+				const pid = child.pid;
+				killProcessTree(pid, "SIGINT");
+				// Use an exit-aware guard instead of `child.killed`.
+				// `killProcessTree` signals via `process.kill(-pid, ...)`
+				// so the node `ChildProcess` never flips its `killed`
+				// flag and `child.killed` alone would make us blindly
+				// SIGKILL 1.5s later even if the process already exited
+				// cleanly — a reused pid could then receive the signal.
+				const kill = setTimeout(() => {
+					if (child.exitCode == null && child.signalCode == null) {
+						killProcessTree(pid, "SIGKILL");
 					}
 				}, 1500);
+				child.once("close", () => clearTimeout(kill));
 			}
 		}
 		const session = store.get(sessionId);
@@ -549,6 +556,13 @@ class TodoSupervisor {
 				child = spawn("claude", args, {
 					cwd: params.cwd,
 					env: process.env,
+					// Make the child a session / process-group leader so
+					// `abort()` can signal the whole tree via negative PID.
+					// Without this, killing only the direct child leaves
+					// claude's own subprocesses (MCP servers, tool
+					// helpers) alive, which is exactly the "Stop doesn't
+					// stop" bug users hit.
+					detached: process.platform !== "win32",
 				});
 			} catch (error) {
 				resolve({
@@ -578,10 +592,8 @@ class TodoSupervisor {
 			let interruptedForIntervention = false;
 
 			const onAbort = () => {
-				try {
-					child.kill("SIGINT");
-				} catch {
-					// ignore
+				if (child.pid) {
+					killProcessTree(child.pid, "SIGINT");
 				}
 			};
 			params.signal.addEventListener("abort", onAbort);
@@ -735,6 +747,47 @@ export function getTodoSupervisor(): TodoSupervisor {
 }
 
 // ---- helpers ----
+
+/**
+ * Kill a process and every descendant it spawned. On POSIX this
+ * uses the negative PID trick to signal the whole process group
+ * (requires the child to have been spawned with `detached: true`
+ * so it is a session leader). On Windows we fall back to
+ * `taskkill /T /F` via the synchronous child_process API.
+ */
+function killProcessTree(pid: number, signal: NodeJS.Signals): void {
+	if (process.platform === "win32") {
+		try {
+			// Async spawn so we never block Electron's main thread on a
+			// slow taskkill (large tool trees can take noticeable time
+			// to unwind). Detach + unref so node does not wait on it.
+			const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+				stdio: "ignore",
+				detached: true,
+			});
+			killer.on("error", () => {
+				/* ignore — best-effort */
+			});
+			killer.unref();
+		} catch {
+			// ignore — best-effort
+		}
+		return;
+	}
+	try {
+		process.kill(-pid, signal);
+	} catch {
+		// Process group might already be gone (e.g. the child exited
+		// on its own between the check and the signal). Try the
+		// direct pid as a fallback so we still kill the wrapper if it
+		// is the only thing still alive.
+		try {
+			process.kill(pid, signal);
+		} catch {
+			// ignore
+		}
+	}
+}
 
 function renderGoalDoc(session: SelectTodoSession): string {
 	const lines: string[] = [
