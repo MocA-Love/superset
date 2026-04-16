@@ -74,7 +74,7 @@ function ServiceStatusIndicator({
 					aria-label={`${snapshot.label} status: ${levelLabel}`}
 					className="no-drag relative flex items-center justify-center size-7 rounded-md text-foreground/80 hover:text-foreground hover:bg-accent/60 transition-colors"
 				>
-					<Icon className="size-4" />
+					<Icon className="size-[15px]" />
 					<span
 						className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background ${dotClass}`}
 					/>
