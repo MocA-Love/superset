@@ -208,7 +208,11 @@ class TodoScheduler {
 	 * hand them back to the supervisor. The status flip is gated on the
 	 * row still being `waiting` at claim time so a race with the user
 	 * clicking Abort (which writes `aborted`) between `listWaitingDue`
-	 * and the update cannot resurrect an abort into a fresh run.
+	 * and the update cannot resurrect an abort into a fresh run. If
+	 * `supervisor.start` rejects after we've claimed, we mark the
+	 * session `failed` with a clear reason — the alternative (leaving
+	 * it stuck at `queued` with no timer) would silently strand a
+	 * `ScheduleWakeup` session forever.
 	 */
 	private resumeDueWaitingSessions(): void {
 		const sessionStore = getTodoSessionStore();
@@ -220,10 +224,23 @@ class TodoScheduler {
 			const claimed = sessionStore.claimWaitingForResume(session.id);
 			if (!claimed) continue;
 			void supervisor.start(session.id).catch((err) => {
+				const message = err instanceof Error ? err.message : String(err);
 				console.warn(
 					`[todo-scheduler] resume waiting failed for ${session.id}:`,
 					err,
 				);
+				// Only mark `failed` if the row is still the row we claimed —
+				// the user may have aborted or deleted the session between
+				// claim and the rejection, and we must not overwrite that.
+				const current = sessionStore.get(session.id);
+				if (!current || current.status !== "queued") return;
+				sessionStore.update(session.id, {
+					status: "failed",
+					phase: "failed",
+					verdictPassed: false,
+					verdictReason: `ScheduleWakeup 再開時に supervisor.start が失敗しました: ${message}`,
+					completedAt: Date.now(),
+				});
 			});
 		}
 	}
