@@ -431,7 +431,7 @@ export function PresetEditorSheet({
 								type="button"
 								size="sm"
 								onClick={() => onOpenChange(false)}
-								className="bg-foreground text-background hover:bg-foreground/90"
+								className="bg-foreground text-background-solid hover:bg-foreground/90"
 							>
 								Done
 							</Button>

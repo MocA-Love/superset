@@ -18,7 +18,7 @@ export function VersionToggle() {
 						className={cn(
 							"px-2 py-0.5 rounded-full transition-colors",
 							activeVersion === "v1"
-								? "bg-foreground text-background"
+								? "bg-foreground text-background-solid"
 								: "text-muted-foreground hover:text-foreground",
 						)}
 					>
@@ -28,7 +28,7 @@ export function VersionToggle() {
 						className={cn(
 							"px-2 py-0.5 rounded-full transition-colors",
 							activeVersion === "v2"
-								? "bg-foreground text-background"
+								? "bg-foreground text-background-solid"
 								: "text-muted-foreground hover:text-foreground",
 						)}
 					>
