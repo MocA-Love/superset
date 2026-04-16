@@ -271,12 +271,16 @@ class TodoSupervisor {
 			// sidebar can show exactly what this session produced via
 			// `git log <startHeadSha>..HEAD` — user commits made before
 			// the session are excluded from attribution.
+			//
+			// On resume (follow-up intervention), keep the ORIGINAL
+			// starting point. Overwriting it on every run moved the
+			// goalpost forward and hid earlier commits from the sidebar.
 			if (worktreePath) {
 				appendSetupEvent(sessionId, "worktree", worktreePath);
 			}
-			const startHeadSha = worktreePath
-				? await getCurrentHeadSha(worktreePath)
-				: null;
+			const startHeadSha =
+				session0.startHeadSha ??
+				(worktreePath ? await getCurrentHeadSha(worktreePath) : null);
 			if (startHeadSha) {
 				appendSetupEvent(
 					sessionId,
