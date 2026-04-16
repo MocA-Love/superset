@@ -2,598 +2,182 @@
 <html lang="ja">
 	<head>
 		<meta charset="utf-8" />
-		<meta
-			name="viewport"
-			content="width=device-width, initial-scale=1, viewport-fit=cover"
-		/>
-		<title>Color Controls Mock</title>
+		<title>画像添付アイコン候補</title>
+		<script src="https://cdn.tailwindcss.com"></script>
 		<style>
 			:root {
-				color-scheme: dark;
-				--bg: #0a0d14;
-				--panel: #131722;
-				--panel-2: #0f1420;
-				--border: #242b3a;
-				--border-strong: #334155;
-				--text: #e5e7eb;
-				--muted: #94a3b8;
-				--accent: #60a5fa;
-				--accent-soft: rgba(96, 165, 250, 0.14);
-				--success: #4ade80;
-				--shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
-				--radius: 18px;
+				--background: 0 0% 3.9%;
+				--foreground: 0 0% 98%;
+				--muted: 0 0% 14.9%;
+				--muted-foreground: 0 0% 63.9%;
+				--border: 0 0% 14.9%;
+				--destructive: 0 62.8% 30.6%;
 			}
-
-			* {
-				box-sizing: border-box;
-			}
-
 			body {
-				margin: 0;
-				min-height: 100vh;
-				font-family:
-					Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-					"Segoe UI", sans-serif;
-				background:
-					radial-gradient(circle at top, rgba(96, 165, 250, 0.12), transparent 28%),
-					radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.08), transparent 28%),
-					linear-gradient(180deg, #0b0f17 0%, #070a11 100%);
-				color: var(--text);
-				padding: 48px 24px;
+				background: hsl(var(--background));
+				color: hsl(var(--foreground));
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+					sans-serif;
 			}
-
-			.shell {
-				max-width: 980px;
-				margin: 0 auto;
-				padding: 28px;
-				border: 1px solid rgba(148, 163, 184, 0.14);
-				border-radius: 28px;
-				background: rgba(8, 12, 20, 0.72);
-				backdrop-filter: blur(24px);
-				box-shadow: var(--shadow);
-			}
-
-			.header {
-				display: flex;
-				align-items: end;
-				justify-content: space-between;
-				gap: 24px;
-				margin-bottom: 28px;
-			}
-
-			.header h1 {
-				margin: 0 0 6px;
-				font-size: 28px;
-				font-weight: 700;
-				letter-spacing: -0.03em;
-			}
-
-			.header p {
-				margin: 0;
-				color: var(--muted);
-				font-size: 14px;
-			}
-
-			.mock-badge {
-				padding: 8px 12px;
-				border: 1px solid rgba(96, 165, 250, 0.3);
-				border-radius: 999px;
-				background: var(--accent-soft);
-				color: #bfdbfe;
-				font-size: 12px;
-				font-weight: 600;
-				letter-spacing: 0.04em;
-				text-transform: uppercase;
-			}
-
-			.stack {
-				display: grid;
-				gap: 18px;
-			}
-
-			.card {
-				border: 1px solid var(--border);
-				border-radius: var(--radius);
-				background:
-					linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
-					var(--panel);
-				overflow: hidden;
-			}
-
-			.card-head {
-				display: grid;
-				grid-template-columns: auto 1fr auto;
-				gap: 16px;
-				padding: 18px;
-			}
-
-			.icon {
-				width: 40px;
-				height: 40px;
-				border-radius: 12px;
-				display: grid;
-				place-items: center;
-				background: rgba(148, 163, 184, 0.08);
-				border: 1px solid rgba(148, 163, 184, 0.08);
-				color: #cbd5e1;
-				font-size: 18px;
-			}
-
-			.title-row {
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				flex-wrap: wrap;
-				margin-bottom: 6px;
-			}
-
-			.title-row h2 {
-				margin: 0;
-				font-size: 15px;
-				font-weight: 650;
-			}
-
-			.active-pill {
-				padding: 2px 8px;
-				border-radius: 999px;
-				background: rgba(74, 222, 128, 0.12);
-				color: var(--success);
-				font-size: 11px;
-				font-weight: 600;
-			}
-
-			.description {
-				margin: 0;
-				color: var(--muted);
-				font-size: 13px;
-				line-height: 1.45;
-			}
-
-			.toggle {
-				width: 46px;
-				height: 26px;
-				border-radius: 999px;
-				padding: 3px;
-				border: 1px solid rgba(96, 165, 250, 0.4);
-				background: rgba(96, 165, 250, 0.2);
-				display: flex;
-				justify-content: end;
-			}
-
-			.toggle::after {
-				content: "";
-				width: 18px;
-				height: 18px;
-				border-radius: 999px;
-				background: #f8fafc;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
-			}
-
-			.card-body {
-				padding: 18px;
-				border-top: 1px solid var(--border);
-				background: var(--panel-2);
-			}
-
-			.toolbar {
-				display: flex;
-				align-items: center;
-				justify-content: space-between;
-				gap: 16px;
-				margin-bottom: 14px;
-			}
-
-			.toolbar h3 {
-				margin: 0;
-				font-size: 14px;
-				font-weight: 600;
-			}
-
-			.actions {
-				display: flex;
-				gap: 8px;
-				flex-wrap: wrap;
-			}
-
-			.button {
-				border: 1px solid transparent;
-				background: transparent;
-				color: var(--muted);
-				font-size: 12px;
-				font-weight: 600;
-				padding: 6px 10px;
-				border-radius: 10px;
-			}
-
-			.button:hover {
-				color: var(--text);
-				background: rgba(148, 163, 184, 0.08);
-			}
-
-			.rows {
-				display: grid;
-				gap: 10px;
-			}
-
-			.row {
-				display: grid;
-				grid-template-columns: 32px minmax(120px, 1fr) minmax(180px, 260px) 88px 64px;
-				align-items: center;
-				gap: 10px;
-				padding: 10px 12px;
-				border: 1px solid rgba(148, 163, 184, 0.08);
-				border-radius: 14px;
-				background: rgba(255, 255, 255, 0.015);
-			}
-
-			.index {
-				font-size: 12px;
-				color: var(--muted);
-				text-align: center;
-				font-variant-numeric: tabular-nums;
-			}
-
-			.color-control {
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				min-width: 0;
-			}
-
-			.swatch {
-				position: relative;
-				width: 28px;
-				height: 28px;
-				flex: 0 0 auto;
-				border-radius: 10px;
-				border: 1px solid rgba(255, 255, 255, 0.16);
-				overflow: hidden;
-				cursor: pointer;
-				background:
-					linear-gradient(45deg, #111827 25%, transparent 25%),
-					linear-gradient(-45deg, #111827 25%, transparent 25%),
-					linear-gradient(45deg, transparent 75%, #111827 75%),
-					linear-gradient(-45deg, transparent 75%, #111827 75%);
-				background-size: 10px 10px;
-				background-position:
-					0 0,
-					0 5px,
-					5px -5px,
-					-5px 0;
-			}
-
-			.swatch-fill {
-				position: absolute;
-				inset: 0;
-			}
-
-			.sr-only {
-				position: absolute;
-				width: 1px;
-				height: 1px;
-				padding: 0;
-				margin: -1px;
-				overflow: hidden;
-				clip: rect(0, 0, 0, 0);
-				white-space: nowrap;
-				border: 0;
-			}
-
-			.hex-input,
-			.percent {
-				width: 100%;
-				height: 34px;
-				border-radius: 10px;
-				border: 1px solid var(--border-strong);
-				background: rgba(15, 23, 42, 0.76);
-				color: var(--text);
-				padding: 0 10px;
-				font: 12px/1.2 "SFMono-Regular", ui-monospace, monospace;
-			}
-
-			.hex-input:focus,
-			.opacity-slider:focus-visible,
-			.swatch:focus-visible {
-				outline: none;
-				box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.22);
-			}
-
-			.opacity-wrap {
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				min-width: 0;
-			}
-
-			.opacity-slider {
-				width: 100%;
-				appearance: none;
-				height: 6px;
-				border-radius: 999px;
-				background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.88));
-			}
-
-			.opacity-slider::-webkit-slider-thumb {
-				appearance: none;
-				width: 16px;
-				height: 16px;
-				border-radius: 50%;
-				border: 0;
-				background: #f8fafc;
-				box-shadow: 0 2px 12px rgba(0, 0, 0, 0.36);
-			}
-
-			.percent {
-				text-align: right;
-				padding-right: 8px;
-			}
-
-			.delete {
-				width: 36px;
-				height: 36px;
-				border: 1px solid rgba(148, 163, 184, 0.16);
-				border-radius: 10px;
-				background: transparent;
-				color: var(--muted);
-				font-size: 15px;
-			}
-
-			.delete:hover {
-				background: rgba(239, 68, 68, 0.1);
-				color: #fca5a5;
-				border-color: rgba(239, 68, 68, 0.24);
-			}
-
-			.legend {
-				margin-top: 22px;
-				padding: 16px 18px;
-				border-radius: 16px;
-				background: rgba(96, 165, 250, 0.08);
-				border: 1px solid rgba(96, 165, 250, 0.16);
-			}
-
-			.legend strong {
-				display: block;
-				margin-bottom: 8px;
-				font-size: 13px;
-			}
-
-			.legend p {
-				margin: 0;
-				color: #cbd5e1;
-				font-size: 13px;
-				line-height: 1.55;
-			}
-
-			@media (max-width: 820px) {
-				body {
-					padding: 20px;
-				}
-
-				.shell {
-					padding: 18px;
-				}
-
-				.header {
-					align-items: start;
-					flex-direction: column;
-				}
-
-				.row {
-					grid-template-columns: 28px 1fr;
-				}
-
-				.opacity-wrap,
-				.percent,
-				.delete {
-					grid-column: 2;
-				}
-			}
+			.bg-background { background: hsl(var(--background)); }
+			.bg-muted\/50 { background: hsl(var(--muted) / 0.5); }
+			.text-muted-foreground\/80 { color: hsl(var(--muted-foreground) / 0.8); }
+			.text-muted-foreground { color: hsl(var(--muted-foreground)); }
+			.border-border\/60 { border-color: hsl(var(--border) / 0.6); }
 		</style>
 	</head>
-	<body>
-		<div class="shell">
-			<div class="header">
-				<div>
-					<h1>Editor Features</h1>
-					<p>
-						Mock for color controls with a native picker, hex input, and a
-						dedicated opacity slider.
-					</p>
-				</div>
-				<div class="mock-badge">a.html mock</div>
-			</div>
-
-			<div class="stack">
-				<section class="card">
-					<div class="card-head">
-						<div class="icon">🎨</div>
-						<div>
-							<div class="title-row">
-								<h2>Indent Rainbow</h2>
-								<span class="active-pill">Active</span>
-							</div>
-							<p class="description">
-								Colorize indentation levels in the code editor with a swatch,
-								hex input, and opacity control.
-							</p>
-						</div>
-						<div class="toggle" aria-hidden="true"></div>
-					</div>
-					<div class="card-body">
-						<div class="toolbar">
-							<h3>Colors</h3>
-							<div class="actions">
-								<button class="button" type="button">Reset</button>
-								<button class="button" type="button">Add</button>
-							</div>
-						</div>
-						<div class="rows" id="indent-rows"></div>
-					</div>
-				</section>
-
-				<section class="card">
-					<div class="card-head">
-						<div class="icon">⌫</div>
-						<div>
-							<div class="title-row">
-								<h2>Trailing Spaces</h2>
-								<span class="active-pill">Active</span>
-							</div>
-							<p class="description">
-								Single highlight color using the same control shape for
-								consistency.
-							</p>
-						</div>
-						<div class="toggle" aria-hidden="true"></div>
-					</div>
-					<div class="card-body">
-						<div class="toolbar">
-							<h3>Highlight Color</h3>
-						</div>
-						<div class="rows" id="trailing-rows"></div>
-					</div>
-				</section>
-			</div>
-
-			<div class="legend">
-				<strong>Intent</strong>
-				<p>
-					Left: click the swatch to open the native picker. Middle: edit
-					<code>#RRGGBB</code>. Right: adjust opacity with a simple slider.
-					Internal storage can still stay <code>#RRGGBBAA</code> while the UI
-					shows a cleaner split.
+	<body class="min-h-screen p-10">
+		<div class="max-w-3xl mx-auto">
+			<header class="mb-8">
+				<h1 class="text-lg font-semibold mb-1">画像添付チップ・アイコン候補</h1>
+				<p class="text-xs text-muted-foreground">
+					Superset(shadcn/tailwind ベース) のダークテーマに合わせた候補。
+					実アプリで使われている react-icons hi2 / lu 系統から選定。
 				</p>
+			</header>
+
+			<div class="flex flex-col gap-3">
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">HiMiniPaperClip</div>
+						<div class="text-[10px] text-muted-foreground">
+							Heroicons · 「添付」の普遍的表現<br />(PlusMenuで既に使用中)
+						</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M15.621 4.379a3 3 0 0 0-4.242 0l-7 7a3 3 0 0 0 4.241 4.243h.001l.497-.5a.75.75 0 0 1 1.064 1.057l-.498.501-.002.002a4.5 4.5 0 0 1-6.364-6.364l7-7a4.5 4.5 0 0 1 6.368 6.36l-3.455 3.553A2.625 2.625 0 1 1 8.89 9.57l3.474-3.473a.75.75 0 1 1 1.06 1.06l-3.473 3.474a1.125 1.125 0 0 0 1.587 1.595l3.456-3.553A3 3 0 0 0 15.62 4.38Z" clip-rule="evenodd" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">HiMiniPhoto</div>
+						<div class="text-[10px] text-muted-foreground">
+							Heroicons · 画像固有(山+太陽)。現在の実装
+						</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 0 1 3.25 3h13.5A2.25 2.25 0 0 1 19 5.25v9.5A2.25 2.25 0 0 1 16.75 17H3.25A2.25 2.25 0 0 1 1 14.75v-9.5Zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 0 0 .75-.75v-2.69l-2.22-2.219a.75.75 0 0 0-1.06 0l-1.91 1.909.47.47a.75.75 0 1 1-1.06 1.06L6.53 8.091a.75.75 0 0 0-1.06 0l-2.97 2.97ZM12 7a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" clip-rule="evenodd" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">HiMiniCamera</div>
+						<div class="text-[10px] text-muted-foreground">Heroicons · スクショ感</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M1 8a2 2 0 0 1 2-2h1.382a1 1 0 0 0 .894-.553l.894-1.789A1 1 0 0 1 7.064 3H12.936a1 1 0 0 1 .894.553l.894 1.789A1 1 0 0 0 15.618 6H17a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8Zm9 8a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" clip-rule="evenodd" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">LuPaperclip</div>
+						<div class="text-[10px] text-muted-foreground">Lucide · 線画の軽快さ</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.57 8.57a2 2 0 0 1-2.83-2.83l6.56-6.58" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">LuImage</div>
+						<div class="text-[10px] text-muted-foreground">
+							Lucide · 枠+山+円。outlineでシャープ<br />(RepositoryPanelで使用中)
+						</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+							<circle cx="9" cy="9" r="2" />
+							<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">LuFileImage</div>
+						<div class="text-[10px] text-muted-foreground">
+							Lucide · ファイル+画像。「画像ファイル」を明示
+						</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+							<path d="M14 2v4a2 2 0 0 0 2 2h4" />
+							<circle cx="10" cy="13" r="2" />
+							<path d="m20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">LuImageUp</div>
+						<div class="text-[10px] text-muted-foreground">Lucide · 画像+上向き矢印(アップロード)</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5.3" />
+							<path d="m14 19 3-3 3 3" />
+							<path d="M17 22v-6" />
+							<circle cx="9" cy="9" r="2" />
+							<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
+
+				<div class="rounded-lg border border-border/60 bg-muted/50 p-3 flex items-center gap-6">
+					<div class="w-48 shrink-0">
+						<div class="text-sm font-medium">LuImages</div>
+						<div class="text-[10px] text-muted-foreground">Lucide · 画像スタック、複数枚感</div>
+					</div>
+					<span class="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
+						<svg aria-hidden="true" class="size-3 text-muted-foreground/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M18 22H4a2 2 0 0 1-2-2V6" />
+							<path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18" />
+							<circle cx="12" cy="8" r="2" />
+							<rect width="16" height="16" x="6" y="2" rx="2" />
+						</svg>
+						<span>screenshot-2026.png</span>
+						<span class="text-muted-foreground ml-0.5">×</span>
+					</span>
+				</div>
 			</div>
+
+			<footer class="mt-10 text-xs text-muted-foreground">
+				<p class="mb-1 font-medium">推奨順:</p>
+				<ol class="list-decimal list-inside space-y-0.5">
+					<li><strong>HiMiniPaperClip</strong> — Chat PlusMenuで「添付」として既に使用中。一貫性◎</li>
+					<li><strong>LuPaperclip</strong> — 同じ意味で線画ベース、軽い印象</li>
+					<li><strong>HiMiniPhoto</strong> — 画像固有、他UIと系統が合う (現実装)</li>
+				</ol>
+			</footer>
 		</div>
-
-		<script>
-			const indentColors = [
-				{ hex: "#03045e", opacity: 15 },
-				{ hex: "#023e8a", opacity: 15 },
-				{ hex: "#0077b6", opacity: 15 },
-				{ hex: "#0096c7", opacity: 15 },
-				{ hex: "#00b4d8", opacity: 15 },
-				{ hex: "#48cae4", opacity: 15 },
-			];
-
-			const trailingColor = [{ hex: "#ff0000", opacity: 30 }];
-
-			function hexToRgb(hex) {
-				const value = hex.replace("#", "");
-				return {
-					r: Number.parseInt(value.slice(0, 2), 16),
-					g: Number.parseInt(value.slice(2, 4), 16),
-					b: Number.parseInt(value.slice(4, 6), 16),
-				};
-			}
-
-			function rgbaString(hex, opacity) {
-				const { r, g, b } = hexToRgb(hex);
-				return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
-			}
-
-			function createRow(item, index) {
-				const row = document.createElement("div");
-				row.className = "row";
-
-				const indexEl = document.createElement("div");
-				indexEl.className = "index";
-				indexEl.textContent = String(index + 1);
-
-				const colorControl = document.createElement("div");
-				colorControl.className = "color-control";
-
-				const swatch = document.createElement("button");
-				swatch.className = "swatch";
-				swatch.type = "button";
-				swatch.setAttribute("aria-label", `pick color ${index + 1}`);
-
-				const swatchFill = document.createElement("div");
-				swatchFill.className = "swatch-fill";
-				swatchFill.style.backgroundColor = rgbaString(item.hex, item.opacity);
-				swatch.appendChild(swatchFill);
-
-				const picker = document.createElement("input");
-				picker.type = "color";
-				picker.className = "sr-only";
-				picker.value = item.hex;
-				swatch.addEventListener("click", () => picker.click());
-
-				const hexInput = document.createElement("input");
-				hexInput.className = "hex-input";
-				hexInput.value = item.hex;
-				hexInput.spellcheck = false;
-
-				const opacityWrap = document.createElement("div");
-				opacityWrap.className = "opacity-wrap";
-
-				const opacity = document.createElement("input");
-				opacity.className = "opacity-slider";
-				opacity.type = "range";
-				opacity.min = "0";
-				opacity.max = "100";
-				opacity.value = String(item.opacity);
-
-				const percent = document.createElement("input");
-				percent.className = "percent";
-				percent.value = `${item.opacity}%`;
-				percent.readOnly = true;
-
-				const deleteButton = document.createElement("button");
-				deleteButton.className = "delete";
-				deleteButton.type = "button";
-				deleteButton.textContent = "×";
-
-				function sync() {
-					swatchFill.style.backgroundColor = rgbaString(item.hex, item.opacity);
-					picker.value = item.hex;
-					hexInput.value = item.hex;
-					opacity.value = String(item.opacity);
-					percent.value = `${item.opacity}%`;
-				}
-
-				picker.addEventListener("input", () => {
-					item.hex = picker.value.toLowerCase();
-					sync();
-				});
-
-				hexInput.addEventListener("blur", () => {
-					const value = hexInput.value.trim();
-					if (/^#[0-9a-f]{6}$/i.test(value)) {
-						item.hex = value.toLowerCase();
-					}
-					sync();
-				});
-
-				hexInput.addEventListener("keydown", (event) => {
-					if (event.key === "Enter") {
-						hexInput.blur();
-					}
-				});
-
-				opacity.addEventListener("input", () => {
-					item.opacity = Number(opacity.value);
-					sync();
-				});
-
-				colorControl.append(swatch, picker, hexInput);
-				opacityWrap.append(opacity);
-
-				row.append(indexEl, colorControl, opacityWrap, percent, deleteButton);
-				sync();
-				return row;
-			}
-
-			function renderRows(targetId, items) {
-				const target = document.getElementById(targetId);
-				items.forEach((item, index) => {
-					target.appendChild(createRow(item, index));
-				});
-			}
-
-			renderRows("indent-rows", indentColors);
-			renderRows("trailing-rows", trailingColor);
-		</script>
 	</body>
 </html>

@@ -34,6 +34,7 @@ import {
 	HiMiniDocumentDuplicate,
 	HiMiniEllipsisVertical,
 	HiMiniPencil,
+	HiMiniPhoto,
 	HiMiniPlus,
 	HiMiniSparkles,
 	HiMiniTrash,
@@ -236,13 +237,11 @@ function ImagePasteTextarea({
 					{attachments.map((a) => (
 						<span
 							key={a.token}
-							className="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono"
-							title={a.path}
+							className="inline-flex items-center gap-1 text-[10px] rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5"
+							title={`${a.token} · ${a.path}`}
 						>
-							🖼<span>{a.token}</span>
-							<span className="text-muted-foreground/70 text-[9px] truncate max-w-[120px]">
-								{a.name}
-							</span>
+							<HiMiniPhoto className="size-3 text-muted-foreground/80" />
+							<span className="truncate max-w-[160px]">{a.name}</span>
 							<button
 								type="button"
 								onClick={() => removeAttachment(a.token)}
