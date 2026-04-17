@@ -7,7 +7,11 @@ import { getCurrentHeadSha } from "./git-status";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSettings } from "./settings";
 import type { TodoStreamEventKind } from "./types";
-import { TODO_ARTIFACT_SUBDIR } from "./types";
+import {
+	CLAUDE_EFFORT_OPTIONS,
+	CLAUDE_MODEL_OPTIONS,
+	TODO_ARTIFACT_SUBDIR,
+} from "./types";
 
 /**
  * Headless Claude Code driver for TODO autonomous sessions.
@@ -352,6 +356,13 @@ class TodoSupervisor {
 					`${preview}${session0.customSystemPrompt.trim().length > 200 ? "…" : ""}`,
 				);
 			}
+			if (session0.claudeModel || session0.claudeEffort) {
+				const parts: string[] = [];
+				if (session0.claudeModel) parts.push(`model: ${session0.claudeModel}`);
+				if (session0.claudeEffort)
+					parts.push(`effort: ${session0.claudeEffort}`);
+				appendSetupEvent(sessionId, "Claude 設定", parts.join(" / "));
+			}
 			appendSetupEvent(
 				sessionId,
 				"Claude",
@@ -492,6 +503,8 @@ class TodoSupervisor {
 					prompt,
 					resumeSessionId: claudeSessionId,
 					customSystemPrompt: currentSession.customSystemPrompt ?? null,
+					claudeModel: currentSession.claudeModel ?? null,
+					claudeEffort: currentSession.claudeEffort ?? null,
 					signal: ac.signal,
 					onChild: (child) => {
 						run.currentChild = child;
@@ -719,6 +732,8 @@ class TodoSupervisor {
 		prompt: string;
 		resumeSessionId: string | null;
 		customSystemPrompt: string | null;
+		claudeModel: string | null;
+		claudeEffort: string | null;
 		signal: AbortSignal;
 		onChild: (child: ChildProcess) => void;
 	}): Promise<{
@@ -759,6 +774,40 @@ class TodoSupervisor {
 			];
 			if (params.customSystemPrompt) {
 				args.push("--append-system-prompt", params.customSystemPrompt);
+			}
+			// Per-session Claude Code overrides. Passing `--model` /
+			// `--effort` only when set keeps Claude Code's own default
+			// resolution path intact for users who haven't picked one.
+			//
+			// Defense-in-depth whitelist: the UI already constrains
+			// values via `CLAUDE_*_OPTIONS`, but that validation happens
+			// on the render side. A corrupted / migrated row could still
+			// persist an unexpected string. We refuse to forward anything
+			// that isn't in the allow-list so the spawn call can't be
+			// steered by a malformed DB value.
+			if (
+				params.claudeModel &&
+				(CLAUDE_MODEL_OPTIONS as readonly string[]).includes(params.claudeModel)
+			) {
+				args.push("--model", params.claudeModel);
+			} else if (params.claudeModel) {
+				console.warn(
+					"[todo-supervisor] ignoring unknown claudeModel:",
+					params.claudeModel,
+				);
+			}
+			if (
+				params.claudeEffort &&
+				(CLAUDE_EFFORT_OPTIONS as readonly string[]).includes(
+					params.claudeEffort,
+				)
+			) {
+				args.push("--effort", params.claudeEffort);
+			} else if (params.claudeEffort) {
+				console.warn(
+					"[todo-supervisor] ignoring unknown claudeEffort:",
+					params.claudeEffort,
+				);
 			}
 			if (params.resumeSessionId) {
 				args.push("--resume", params.resumeSessionId);

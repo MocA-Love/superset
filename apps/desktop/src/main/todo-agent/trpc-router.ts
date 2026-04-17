@@ -103,6 +103,20 @@ export const createTodoAgentRouter = () => {
 					workspaceId: input.workspaceId,
 				});
 
+				// Fall through to the user's configured defaults when the
+				// composer did not pick an explicit model / effort. Null
+				// at both levels means "use Claude Code's own default"
+				// (we simply omit the CLI flag at spawn time).
+				const settings = getTodoSettings();
+				const resolvedModel =
+					input.claudeModel !== undefined
+						? input.claudeModel
+						: (settings.defaultClaudeModel ?? null);
+				const resolvedEffort =
+					input.claudeEffort !== undefined
+						? input.claudeEffort
+						: (settings.defaultClaudeEffort ?? null);
+
 				const session = store.insertQueuedFromTemplate({
 					id: sessionId,
 					projectId: input.projectId ?? null,
@@ -114,6 +128,8 @@ export const createTodoAgentRouter = () => {
 					maxIterations: input.maxIterations,
 					maxWallClockSec: input.maxWallClockSec,
 					customSystemPrompt: input.customSystemPrompt,
+					claudeModel: resolvedModel,
+					claudeEffort: resolvedEffort,
 					artifactPath,
 				});
 
@@ -396,6 +412,8 @@ export const createTodoAgentRouter = () => {
 					pendingIntervention: null,
 					startHeadSha: null,
 					customSystemPrompt: source.customSystemPrompt,
+					claudeModel: source.claudeModel,
+					claudeEffort: source.claudeEffort,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,

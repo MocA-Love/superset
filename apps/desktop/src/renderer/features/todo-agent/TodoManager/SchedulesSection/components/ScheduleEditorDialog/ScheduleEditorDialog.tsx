@@ -19,9 +19,19 @@ import {
 } from "@superset/ui/select";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type ClaudeEffortPick,
+	type ClaudeModelPick,
+	ClaudeRuntimePicker,
+	DEFAULT_SENTINEL,
+	fromPersistedEffort,
+	fromPersistedModel,
+	toPersistedEffort,
+	toPersistedModel,
+} from "../../../../ClaudeRuntimePicker";
 import { describeSchedule } from "../../utils/describeSchedule";
 import { formatNextRun } from "../../utils/formatNextRun";
 import { FrequencyPicker, type FrequencyValue } from "../FrequencyPicker";
@@ -56,6 +66,10 @@ export function ScheduleEditorDialog({
 }: ScheduleEditorDialogProps) {
 	const { data: workspaces } = electronTrpc.workspaces.getAll.useQuery();
 	const { data: projects } = electronTrpc.projects.getRecents.useQuery();
+	const { data: todoSettings } = electronTrpc.todoAgent.settings.get.useQuery(
+		undefined,
+		{ enabled: open },
+	);
 
 	const [name, setName] = useState("");
 	const [projectId, setProjectId] = useState<string>("");
@@ -74,6 +88,10 @@ export function ScheduleEditorDialog({
 	const [autoSyncBeforeFire, setAutoSyncBeforeFire] = useState(false);
 	const [enabled, setEnabled] = useState(true);
 	const [freq, setFreq] = useState<FrequencyValue>(DEFAULT_FREQUENCY);
+	const [claudeModel, setClaudeModel] =
+		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
+	const [claudeEffort, setClaudeEffort] =
+		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
 	const [submitting, setSubmitting] = useState(false);
 
 	useEffect(() => {
@@ -100,6 +118,8 @@ export function ScheduleEditorDialog({
 				monthday: initial.monthday,
 				cronExpr: initial.cronExpr,
 			});
+			setClaudeModel(fromPersistedModel(initial.claudeModel));
+			setClaudeEffort(fromPersistedEffort(initial.claudeEffort));
 		} else {
 			setName("");
 			setProjectId("");
@@ -115,8 +135,32 @@ export function ScheduleEditorDialog({
 			setAutoSyncBeforeFire(false);
 			setEnabled(true);
 			setFreq(DEFAULT_FREQUENCY);
+			setClaudeModel(DEFAULT_SENTINEL);
+			setClaudeEffort(DEFAULT_SENTINEL);
 		}
 	}, [open, initial]);
+
+	// Seed the model/effort pickers from the user's global defaults when
+	// creating a brand-new schedule (initial === null). Runs at most once
+	// per dialog opening so a React Query refetch later can't stomp a
+	// manual "デフォルト" pick. When editing an existing schedule, the
+	// row's own values are already applied in the reset effect above;
+	// this block is intentionally a no-op in that case.
+	const claudeSeededRef = useRef(false);
+	useEffect(() => {
+		if (!open) {
+			claudeSeededRef.current = false;
+			return;
+		}
+		if (initial) return;
+		if (claudeSeededRef.current) return;
+		if (!todoSettings) return;
+		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
+		setClaudeEffort(
+			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		claudeSeededRef.current = true;
+	}, [open, initial, todoSettings]);
 
 	// Pre-select first project when creating a brand-new schedule.
 	useEffect(() => {
@@ -184,6 +228,8 @@ export function ScheduleEditorDialog({
 					customSystemPrompt.trim().length > 0
 						? customSystemPrompt.trim()
 						: null,
+				claudeModel: toPersistedModel(claudeModel),
+				claudeEffort: toPersistedEffort(claudeEffort),
 				maxIterations,
 				maxWallClockSec: maxWallClockMin * 60,
 				overlapMode,
@@ -469,6 +515,14 @@ export function ScheduleEditorDialog({
 								disabled={submitting}
 							/>
 						</div>
+
+						<ClaudeRuntimePicker
+							model={claudeModel}
+							effort={claudeEffort}
+							onModelChange={setClaudeModel}
+							onEffortChange={setClaudeEffort}
+							disabled={submitting}
+						/>
 					</div>
 				</div>
 
