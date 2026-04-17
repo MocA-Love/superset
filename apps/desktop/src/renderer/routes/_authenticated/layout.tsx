@@ -18,6 +18,7 @@ import { env } from "renderer/env.renderer";
 import { ScheduleFireToasts } from "renderer/features/todo-agent/ScheduleFireToasts";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit/useTearoffInit";
 import { migrateHotkeyOverrides } from "renderer/hotkeys/migrate";
 import { authClient, getAuthToken } from "renderer/lib/auth-client";
 import { dispatchBrowserShortcutEvent } from "renderer/lib/browser-shortcut-events";
@@ -81,6 +82,7 @@ function AuthenticatedLayout() {
 	// Update workspace-run pane state on terminal exit
 	electronTrpc.notifications.subscribe.useSubscription(undefined, {
 		onData: (event) => {
+			if (isTearoffWindow()) return;
 			if (
 				event.type !== NOTIFICATION_EVENTS.TERMINAL_EXIT ||
 				!event.data?.paneId
@@ -108,6 +110,7 @@ function AuthenticatedLayout() {
 	const updateInitProgress = useWorkspaceInitStore((s) => s.updateProgress);
 	electronTrpc.workspaces.onInitProgress.useSubscription(undefined, {
 		onData: (progress) => {
+			if (isTearoffWindow()) return;
 			updateInitProgress(progress);
 			if (
 				progress.warning &&
@@ -135,6 +138,7 @@ function AuthenticatedLayout() {
 	// Menu navigation subscription
 	electronTrpc.menu.subscribe.useSubscription(undefined, {
 		onData: (event) => {
+			if (isTearoffWindow()) return;
 			if (event.type === "open-settings") {
 				const section = event.data.section || "account";
 				navigate({ to: `/settings/${section}` as "/settings/account" });
