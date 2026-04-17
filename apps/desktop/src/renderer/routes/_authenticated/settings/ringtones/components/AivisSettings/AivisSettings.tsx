@@ -23,6 +23,7 @@ const PLACEHOLDERS = [
 	{ key: "branch", label: "ブランチ" },
 	{ key: "workspace", label: "ワークスペース" },
 	{ key: "worktree", label: "ワークツリー" },
+	{ key: "project", label: "プロジェクト" },
 	{ key: "tab", label: "タブ" },
 	{ key: "pane", label: "ペーン" },
 	{ key: "event", label: "イベント" },
@@ -106,6 +107,7 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 			.replace(/\{\{\s*branch\s*\}\}/g, "サンプルブランチ")
 			.replace(/\{\{\s*workspace\s*\}\}/g, "サンプルワークスペース")
 			.replace(/\{\{\s*worktree\s*\}\}/g, "サンプルワークツリー")
+			.replace(/\{\{\s*project\s*\}\}/g, "サンプルプロジェクト")
 			.replace(/\{\{\s*tab\s*\}\}/g, "ターミナル")
 			.replace(/\{\{\s*pane\s*\}\}/g, "ペーン1")
 			.replace(
