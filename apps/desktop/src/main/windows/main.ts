@@ -19,6 +19,7 @@ import { appState } from "../lib/app-state";
 import { browserManager } from "../lib/browser/browser-manager";
 import { createApplicationMenu } from "../lib/menu";
 import { playNotificationSound } from "../lib/notification-sound";
+import { playAivisNotification } from "../lib/notifications/aivis-tts";
 import { NotificationManager } from "../lib/notifications/notification-manager";
 import {
 	notificationsApp,
@@ -46,26 +47,50 @@ import { getWorkspaceRuntimeRegistry } from "../lib/workspace-runtime";
 // Singleton IPC handler to prevent duplicate handlers on window reopen (macOS)
 let ipcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
-function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
-	if (!workspaceId) return "Workspace";
+function getWorkspaceRecords(workspaceId: string | undefined) {
+	if (!workspaceId) return { workspace: null, worktree: null };
 	try {
-		const workspace = localDb
-			.select()
-			.from(workspaces)
-			.where(eq(workspaces.id, workspaceId))
-			.get();
+		const workspace =
+			localDb
+				.select()
+				.from(workspaces)
+				.where(eq(workspaces.id, workspaceId))
+				.get() ?? null;
 		const worktree = workspace?.worktreeId
-			? localDb
+			? (localDb
 					.select()
 					.from(worktrees)
 					.where(eq(worktrees.id, workspace.worktreeId))
-					.get()
-			: undefined;
-		return getWorkspaceName({ workspace, worktree });
+					.get() ?? null)
+			: null;
+		return { workspace, worktree };
 	} catch (error) {
-		console.error("[notifications] Failed to get workspace name:", error);
-		return "Workspace";
+		console.error("[notifications] Failed to read workspace records:", error);
+		return { workspace: null, worktree: null };
 	}
+}
+
+function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
+	const { workspace, worktree } = getWorkspaceRecords(workspaceId);
+	return getWorkspaceName({ workspace, worktree });
+}
+
+function buildAivisVars(event: AgentLifecycleEvent) {
+	const { workspace, worktree } = getWorkspaceRecords(event.workspaceId);
+	const tabs = appState.data?.tabsState?.tabs;
+	const panes = appState.data?.tabsState?.panes;
+	const tab = event.tabId ? tabs?.find((t) => t.id === event.tabId) : undefined;
+	const pane = event.paneId ? panes?.[event.paneId] : undefined;
+	const branch = worktree?.branch ?? "";
+	const worktreeName = branch || "";
+	return {
+		branch,
+		workspace: workspace?.name || branch || "",
+		worktree: worktreeName,
+		tab: (tab?.userTitle?.trim() || tab?.name) ?? "",
+		pane: pane?.name ?? "",
+		event: event.eventType,
+	};
 }
 
 let currentWindow: BrowserWindow | null = null;
@@ -223,6 +248,11 @@ export async function MainWindow() {
 		isSupported: () => Notification.isSupported(),
 		createNotification: (opts) => new Notification(opts),
 		playSound: playNotificationSound,
+		playAivis: (event) => {
+			const kind =
+				event.eventType === "PermissionRequest" ? "permission" : "complete";
+			void playAivisNotification(kind, buildAivisVars(event));
+		},
 		onNotificationClick: (ids) => {
 			window.show();
 			window.focus();

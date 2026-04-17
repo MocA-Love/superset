@@ -21,7 +21,8 @@ export interface NotificationManagerDeps {
 		body: string;
 		silent: boolean;
 	}) => NativeNotification;
-	playSound: () => void;
+	playSound: (onComplete?: () => void) => void;
+	playAivis?: (event: AgentLifecycleEvent) => void;
 	onNotificationClick: (ids: NotificationIds) => void;
 	getVisibilityContext: () => {
 		isFocused: boolean;
@@ -77,7 +78,9 @@ export class NotificationManager {
 		const key = event.sessionId ?? event.paneId ?? `_anon_${this.counter++}`;
 		this.track(key, notification);
 
-		this.deps.playSound();
+		// Chain Aivis after the ringtone so the voice announcement plays
+		// once the notification sound finishes rather than in parallel.
+		this.deps.playSound(() => this.deps.playAivis?.(event));
 
 		notification.on("click", () => {
 			this.deps.onNotificationClick({

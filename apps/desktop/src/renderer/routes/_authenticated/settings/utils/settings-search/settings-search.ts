@@ -21,6 +21,7 @@ export const SETTING_ITEM_ID = {
 	APPEARANCE_VIBRANCY: "appearance-vibrancy",
 
 	RINGTONES_NOTIFICATION: "ringtones-notification",
+	RINGTONES_AIVIS: "ringtones-aivis",
 
 	KEYBOARD_SHORTCUTS: "keyboard-shortcuts",
 	BEHAVIOR_CONFIRM_QUIT: "behavior-confirm-quit",
@@ -369,6 +370,23 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"chime",
 			"mute",
 			"volume",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.RINGTONES_AIVIS,
+		section: "ringtones",
+		title: "Aivis Voice Announcement",
+		description:
+			"Speak the workspace/branch via Aivis API after the notification sound",
+		keywords: [
+			"aivis",
+			"tts",
+			"voice",
+			"speech",
+			"announce",
+			"読み上げ",
+			"音声合成",
+			"アイビス",
 		],
 	},
 	{
