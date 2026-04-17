@@ -55,6 +55,15 @@ class TodoSupervisor {
 	 */
 	private readonly active = new Map<string, ActiveRun>();
 	private readonly queue: string[] = [];
+	/**
+	 * Sessions whose next queued start was triggered by `ScheduleWakeup`
+	 * firing (scheduler.resumeDueWaitingSessions), not by a user click or
+	 * a follow-up intervention. `runSession` consumes the marker to skip
+	 * the "セッションを再開します" banner and to send a short continuation
+	 * prompt instead of re-replaying the original goal — which Claude
+	 * has already been working on in the same `--resume`d session.
+	 */
+	private readonly wakeupResumeMarkers = new Set<string>();
 
 	/**
 	 * Pre-compute the artifact directory path for a not-yet-inserted
@@ -87,7 +96,19 @@ class TodoSupervisor {
 		return dir;
 	}
 
-	async start(sessionId: string): Promise<void> {
+	async start(
+		sessionId: string,
+		options?: { fromScheduledWakeup?: boolean },
+	): Promise<void> {
+		if (options?.fromScheduledWakeup) {
+			this.wakeupResumeMarkers.add(sessionId);
+		} else {
+			// A manual start (user click / follow-up intervention) always
+			// overrides a stale scheduler marker. Prevents a prior wakeup
+			// that never actually ran (e.g. abort landed between claim and
+			// drain) from silently relabeling the next manual resume.
+			this.wakeupResumeMarkers.delete(sessionId);
+		}
 		// Already pending another launch — coalesce repeat clicks.
 		if (this.queue.includes(sessionId)) return;
 		// If a previous run is still active AND has not been aborted,
@@ -171,6 +192,9 @@ class TodoSupervisor {
 		if (queueIdx !== -1) {
 			this.queue.splice(queueIdx, 1);
 		}
+		// Clear any wakeup-resume marker so a subsequent manual start
+		// cannot misinterpret this session as a scheduler wakeup.
+		this.wakeupResumeMarkers.delete(sessionId);
 		const activeRun = this.active.get(sessionId);
 		if (activeRun) {
 			activeRun.abortController.abort();
@@ -238,6 +262,13 @@ class TodoSupervisor {
 		const session0 = store.get(sessionId);
 		if (!session0) return;
 
+		// Consume the wakeup-resume marker (if any). A scheduler-driven
+		// resume from a `ScheduleWakeup`-paused session is not a new
+		// turn from Claude's perspective — Claude asked to be paged
+		// back later and is now continuing the same reasoning. Treat
+		// it differently from the user-driven done→follow-up resume.
+		const isFromScheduledWakeup = this.wakeupResumeMarkers.delete(sessionId);
+
 		// A session that already completed at least one run keeps its
 		// previous stream events so the user can scroll back to the
 		// prior turns after sending a follow-up message (done→resume).
@@ -251,7 +282,10 @@ class TodoSupervisor {
 		// Prime the artifact-path cache so the hot stream-persist path
 		// does not need to do a synchronous SQLite read per event.
 		store.setArtifactPathCache(sessionId, session0.artifactPath);
-		if (isResumingPastRun) {
+		// Scheduler-driven wakeup resumes skip the "再開" banner —
+		// Claude requested the pause itself, so the pause+wakeup is a
+		// single logical turn and does not warrant a new-session marker.
+		if (isResumingPastRun && !isFromScheduledWakeup) {
 			appendSetupEvent(
 				sessionId,
 				"再開",
@@ -341,11 +375,17 @@ class TodoSupervisor {
 				verdictPassed: null,
 				verdictReason: null,
 				verdictFailingTest: null,
-				// Keep the prior assistant text on resume so the Manager
-				// shows the last known answer while the new turn streams.
-				finalAssistantText: isResumingPastRun
-					? (session0.finalAssistantText ?? null)
-					: null,
+				// Keep the prior assistant text on a user-driven resume
+				// so the Manager shows the last known answer while the
+				// new turn streams. On a scheduler wakeup, clear it —
+				// the stale response has been visible the whole time
+				// under the "待機中" label and the user wants a clean
+				// slate under the "最終回答" label once the new turn
+				// starts producing output (issue #240).
+				finalAssistantText:
+					isResumingPastRun && !isFromScheduledWakeup
+						? (session0.finalAssistantText ?? null)
+						: null,
 				claudeSessionId: preservedClaudeSessionId,
 				totalCostUsd: isResumingPastRun
 					? (session0.totalCostUsd ?? null)
@@ -375,10 +415,14 @@ class TodoSupervisor {
 
 			// Same resume reasoning as above — seed the loop-local vars
 			// from the persisted row so `--resume` is actually issued.
+			// Wakeup resumes intentionally drop the prior assistant text
+			// so mid-turn failures do not resurface a stale answer as
+			// if it were the new turn's output.
 			let claudeSessionId: string | null = preservedClaudeSessionId;
-			let lastAssistantText: string | null = isResumingPastRun
-				? (session0.finalAssistantText ?? null)
-				: null;
+			let lastAssistantText: string | null =
+				isResumingPastRun && !isFromScheduledWakeup
+					? (session0.finalAssistantText ?? null)
+					: null;
 			let aggregatedCostUsd = isResumingPastRun
 				? (session0.totalCostUsd ?? 0)
 				: 0;
@@ -425,6 +469,18 @@ class TodoSupervisor {
 					iteration,
 					previousVerdictReason: currentSession.verdictReason ?? null,
 					intervention: pendingIntervention,
+					// Only the very first turn after the scheduler wakes us
+					// up is a "continuation" — subsequent iterations within
+					// the same runSession are normal verify-retry loops.
+					// Require an actual resumable session: if the parked
+					// turn never produced a parseable `session_id`,
+					// claudeSessionId is null and `--resume` will not be
+					// passed. In that edge case the continuation-only
+					// prompt would strand Claude in a fresh conversation
+					// with no task context — fall back to the full
+					// iteration-1 prompt instead.
+					isScheduledWakeupContinuation:
+						isFromScheduledWakeup && iteration === 1 && claudeSessionId != null,
 				});
 
 				appendUserEvent(sessionId, iteration, prompt);
@@ -995,15 +1051,33 @@ function buildIterationPrompt(params: {
 	iteration: number;
 	previousVerdictReason: string | null;
 	intervention: string | null;
+	isScheduledWakeupContinuation?: boolean;
 }): string {
-	const { session, iteration, previousVerdictReason, intervention } = params;
+	const {
+		session,
+		iteration,
+		previousVerdictReason,
+		intervention,
+		isScheduledWakeupContinuation,
+	} = params;
 	const goalPath = `.superset/todo/${session.id}/goal.md`;
 	const goalClause = session.goal?.trim()
 		? "ゴール（受け入れ条件）を達成することを目指してください"
 		: "『やって欲しいこと』が完了した時点で完了とみなしてください";
 
 	const sections: string[] = [];
-	if (iteration === 1) {
+	if (isScheduledWakeupContinuation) {
+		// Claude paused itself via `ScheduleWakeup` and the scheduler
+		// has now woken it up. The original goal and custom system
+		// prompt are already present in the resumed conversation — do
+		// not re-send them verbatim, that duplicate prompt is the
+		// "ゴリ押し" complaint in issue #240. A short continuation cue
+		// is enough; the user-visible intervention (if any) is still
+		// routed through the normal channel below.
+		sections.push(
+			"(予定時刻になりました。前回の続きから作業を再開してください。)",
+		);
+	} else if (iteration === 1) {
 		// Mirror the preset / custom system prompt into the first turn's
 		// user message. `--append-system-prompt` alone was not always
 		// visibly honored (users reported "気がする" that Claude never
@@ -1036,7 +1110,7 @@ function buildIterationPrompt(params: {
 	if (intervention) {
 		sections.push(`ユーザーからの介入指示（優先度: 高）:\n${intervention}`);
 	}
-	if (session.verifyCommand) {
+	if (session.verifyCommand && !isScheduledWakeupContinuation) {
 		sections.push(
 			`完了判定: 作業が終わったら、セッション終了後に supervisor が \`${session.verifyCommand}\` を実行して exit 0 を要求します。`,
 		);
