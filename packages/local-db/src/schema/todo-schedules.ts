@@ -55,6 +55,13 @@ export const todoSchedules = sqliteTable(
 		maxWallClockSec: integer("max_wall_clock_sec").notNull().default(1800),
 		customSystemPrompt: text("custom_system_prompt"),
 
+		// Optional Claude Code model + effort overrides applied to every
+		// session this schedule creates. Null = fall back to whatever the
+		// supervisor would pick for an unconfigured TODO (Claude Code's
+		// own default).
+		claudeModel: text("claude_model"),
+		claudeEffort: text("claude_effort"),
+
 		// How to behave when the previous session from this schedule is
 		// still running at fire time.
 		overlapMode: text("overlap_mode", { enum: ["skip", "queue"] })

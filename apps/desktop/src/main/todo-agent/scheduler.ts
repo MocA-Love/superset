@@ -227,12 +227,18 @@ class TodoScheduler {
 			if (this.isStopped) return;
 			const claimed = sessionStore.claimWaitingForResume(session.id);
 			if (!claimed) continue;
-			void supervisor.start(session.id).catch((err) => {
-				console.warn(
-					`[todo-scheduler] supervisor.start unexpectedly rejected for ${session.id}:`,
-					err,
-				);
-			});
+			// Tag this start as a scheduler-driven wakeup so the
+			// supervisor can skip the "再開" banner and use a short
+			// continuation prompt instead of re-replaying the goal
+			// (issue #240).
+			void supervisor
+				.start(session.id, { fromScheduledWakeup: true })
+				.catch((err) => {
+					console.warn(
+						`[todo-scheduler] supervisor.start unexpectedly rejected for ${session.id}:`,
+						err,
+					);
+				});
 		}
 	}
 
@@ -365,6 +371,8 @@ class TodoScheduler {
 				maxIterations: schedule.maxIterations,
 				maxWallClockSec: schedule.maxWallClockSec,
 				customSystemPrompt: schedule.customSystemPrompt,
+				claudeModel: schedule.claudeModel,
+				claudeEffort: schedule.claudeEffort,
 				artifactPath,
 			});
 			supervisor.prepareArtifacts(inserted);

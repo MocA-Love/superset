@@ -20,9 +20,19 @@ import { Label } from "@superset/ui/label";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type ClaudeEffortPick,
+	type ClaudeModelPick,
+	ClaudeRuntimePicker,
+	DEFAULT_SENTINEL,
+	fromPersistedEffort,
+	fromPersistedModel,
+	toPersistedEffort,
+	toPersistedModel,
+} from "../ClaudeRuntimePicker";
 import { EnhanceButton } from "./components/EnhanceButton";
 
 interface TodoModalProps {
@@ -63,6 +73,33 @@ export function TodoModal({
 	const [submitting, setSubmitting] = useState(false);
 	const [createWorktree, setCreateWorktree] = useState(DEFAULT_CREATE_WORKTREE);
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+	const [claudeModel, setClaudeModel] =
+		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
+	const [claudeEffort, setClaudeEffort] =
+		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
+	// Seed the picker from the global defaults only once per modal
+	// opening. Without this guard, a React Query background refetch or
+	// a settings update fired while the user is picking would overwrite
+	// a deliberate "デフォルト" (DEFAULT_SENTINEL) selection — flipping
+	// it back to the global default and silently changing what CLI flags
+	// the next run gets.
+	const seededRef = useRef(false);
+	useEffect(() => {
+		if (!open) {
+			seededRef.current = false;
+			return;
+		}
+		if (seededRef.current) return;
+		// Wait until the settings query resolves so we actually have a
+		// default to seed with. `todoSettings` is undefined on first
+		// render; seeding too early would lock us into the sentinel.
+		if (!todoSettings) return;
+		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
+		setClaudeEffort(
+			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		seededRef.current = true;
+	}, [open, todoSettings]);
 
 	const utils = electronTrpc.useUtils();
 	const create = electronTrpc.todoAgent.create.useMutation({
@@ -93,6 +130,12 @@ export function TodoModal({
 		setMaxMinutes(todoSettings?.defaultMaxWallClockMin ?? DEFAULT_MAX_MINUTES);
 		setCreateWorktree(DEFAULT_CREATE_WORKTREE);
 		setSelectedPresetId(null);
+		setClaudeModel(
+			fromPersistedModel(todoSettings?.defaultClaudeModel ?? null),
+		);
+		setClaudeEffort(
+			fromPersistedEffort(todoSettings?.defaultClaudeEffort ?? null),
+		);
 		setSubmitting(false);
 	}, [todoSettings]);
 
@@ -153,6 +196,8 @@ export function TodoModal({
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
 				customSystemPrompt: selectedPreset?.content ?? undefined,
+				claudeModel: toPersistedModel(claudeModel),
+				claudeEffort: toPersistedEffort(claudeEffort),
 			});
 			if (createWorktree) {
 				toast.success(
@@ -173,6 +218,8 @@ export function TodoModal({
 		hasGoal,
 		hasVerify,
 		canSubmit,
+		claudeEffort,
+		claudeModel,
 		create,
 		createWorkspaceMut,
 		createWorktree,
@@ -190,7 +237,7 @@ export function TodoModal({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-xl rounded-xl">
+			<DialogContent className="max-w-xl sm:max-w-xl rounded-xl">
 				<DialogHeader>
 					<DialogTitle>新しい自律 TODO</DialogTitle>
 				</DialogHeader>
@@ -299,6 +346,14 @@ export function TodoModal({
 							onSelect={setSelectedPresetId}
 						/>
 					</div>
+
+					<ClaudeRuntimePicker
+						model={claudeModel}
+						effort={claudeEffort}
+						onModelChange={setClaudeModel}
+						onEffortChange={setClaudeEffort}
+						disabled={submitting}
+					/>
 
 					{hasVerify && (
 						<div className="grid grid-cols-2 gap-4">

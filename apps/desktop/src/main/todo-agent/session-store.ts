@@ -282,6 +282,8 @@ class TodoSessionStore {
 		maxIterations: number;
 		maxWallClockSec: number;
 		customSystemPrompt?: string | null;
+		claudeModel?: string | null;
+		claudeEffort?: string | null;
 		artifactPath: string;
 	}): SelectTodoSession {
 		return this.insert({
@@ -306,6 +308,8 @@ class TodoSessionStore {
 			pendingIntervention: null,
 			startHeadSha: null,
 			customSystemPrompt: template.customSystemPrompt ?? null,
+			claudeModel: template.claudeModel ?? null,
+			claudeEffort: template.claudeEffort ?? null,
 			verdictPassed: null,
 			verdictReason: null,
 			verdictFailingTest: null,

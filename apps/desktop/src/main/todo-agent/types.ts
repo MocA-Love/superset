@@ -17,6 +17,50 @@ export interface TodoSessionListEntry extends SelectTodoSession {
 	projectName: string | null;
 }
 
+/**
+ * Claude Code `--model` values we allow the user to pick from the UI.
+ * Aliases cover "latest of this tier"; full model names pin a specific
+ * release. Kept open-ended (plus a default `null` in the storage layer)
+ * so new models do not require a migration. `default` is the UI-side
+ * sentinel that maps to `null` (don't pass `--model` at all; let Claude
+ * Code use whatever the user's own config / ~/.claude.json chose).
+ */
+export const CLAUDE_MODEL_OPTIONS = [
+	"opus",
+	"sonnet",
+	"haiku",
+	"claude-opus-4-7",
+	"claude-sonnet-4-6",
+	"claude-haiku-4-5-20251001",
+] as const;
+
+export type TodoClaudeModel = (typeof CLAUDE_MODEL_OPTIONS)[number];
+
+export const todoClaudeModelSchema = z.enum(CLAUDE_MODEL_OPTIONS);
+
+/**
+ * Claude Code `--effort` levels. `default` is the UI-side sentinel for
+ * "don't pass the flag"; actual persisted values are `low`..`max` or
+ * null.
+ *
+ * Thinking support is model-gated in Claude Code; the CLI rejects an
+ * incompatible effort level at launch. We intentionally don't duplicate
+ * that matrix here so adding a new model tier on the CLI side doesn't
+ * require a fork update. The UI surfaces a warning but allows the
+ * combination; the supervisor forwards whatever the user picked.
+ */
+export const CLAUDE_EFFORT_OPTIONS = [
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
+
+export type TodoClaudeEffort = (typeof CLAUDE_EFFORT_OPTIONS)[number];
+
+export const todoClaudeEffortSchema = z.enum(CLAUDE_EFFORT_OPTIONS);
+
 export const todoCreateInputSchema = z.object({
 	workspaceId: z.string().min(1),
 	projectId: z.string().optional(),
@@ -57,6 +101,10 @@ export const todoCreateInputSchema = z.object({
 		.max(20_000)
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
+	// Optional per-session Claude Code CLI overrides. Null / undefined
+	// means "use the user's configured default" (see todoSettingsSchema).
+	claudeModel: todoClaudeModelSchema.nullish(),
+	claudeEffort: todoClaudeEffortSchema.nullish(),
 });
 
 export const todoPresetKindSchema = z.enum(["system", "description", "goal"]);
@@ -93,6 +141,12 @@ export const todoSettingsSchema = z.object({
 	// 0 = 無制限 (手動削除のみ). 1-365 = その日数より古い終了済み
 	// セッションを起動時に自動削除する (queued / running / paused は対象外)。
 	sessionRetentionDays: z.number().int().min(0).max(365).default(0),
+	// Global defaults used when the TODO composer / ScheduleEditor does
+	// not override them. Null = let Claude Code resolve its own default
+	// (user config cascade). Stored as nullable so the user can pick
+	// "default" in the settings UI.
+	defaultClaudeModel: todoClaudeModelSchema.nullish().default(null),
+	defaultClaudeEffort: todoClaudeEffortSchema.nullish().default(null),
 });
 
 export type TodoSettings = z.infer<typeof todoSettingsSchema>;
@@ -236,6 +290,8 @@ export const todoScheduleCreateInputSchema = z
 			.max(60 * 60 * 4)
 			.default(1800),
 		customSystemPrompt: z.string().trim().max(20_000).nullish(),
+		claudeModel: todoClaudeModelSchema.nullish(),
+		claudeEffort: todoClaudeEffortSchema.nullish(),
 		overlapMode: todoScheduleOverlapModeSchema.default("skip"),
 		autoSyncBeforeFire: z.boolean().default(false),
 	})
@@ -275,6 +331,8 @@ const todoScheduleBaseSchema = z.object({
 		.min(60)
 		.max(60 * 60 * 4),
 	customSystemPrompt: z.string().trim().max(20_000).nullish(),
+	claudeModel: todoClaudeModelSchema.nullish(),
+	claudeEffort: todoClaudeEffortSchema.nullish(),
 	overlapMode: todoScheduleOverlapModeSchema,
 	autoSyncBeforeFire: z.boolean(),
 });

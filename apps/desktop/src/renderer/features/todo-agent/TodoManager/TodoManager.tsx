@@ -13,6 +13,7 @@ import { Label } from "@superset/ui/label";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import {
 	Bot,
@@ -539,7 +540,7 @@ export function TodoManager({
 										className="h-8 text-xs rounded-md"
 									/>
 								</div>
-								<ScrollArea className="flex-1">
+								<ScrollArea className="flex-1 min-h-0">
 									{grouped.length === 0 && (
 										<p className="text-xs text-muted-foreground px-3 py-6">
 											{(sessions?.length ?? 0) === 0
@@ -551,23 +552,36 @@ export function TodoManager({
 										const collapsed = collapsedGroups.has(group.key);
 										return (
 											<div key={group.key} className="pb-1">
-												<button
-													type="button"
-													onClick={() => toggleGroup(group.key)}
-													className="sticky top-0 z-10 bg-background/95 backdrop-blur w-full flex items-center gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b hover:bg-accent/40 transition"
-												>
-													{collapsed ? (
-														<HiMiniChevronRight className="size-3" />
-													) : (
-														<HiMiniChevronDown className="size-3" />
-													)}
-													<span className="flex-1 text-left truncate">
-														{group.label}
-													</span>
-													<span className="text-muted-foreground/60">
-														{group.sessions.length}
-													</span>
-												</button>
+												<Tooltip delayDuration={300}>
+													<TooltipTrigger asChild>
+														<button
+															type="button"
+															onClick={() => toggleGroup(group.key)}
+															className="sticky top-0 z-10 bg-background/95 backdrop-blur w-full flex items-center gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b hover:bg-accent/40 transition min-w-0"
+														>
+															{collapsed ? (
+																<HiMiniChevronRight className="size-3 shrink-0" />
+															) : (
+																<HiMiniChevronDown className="size-3 shrink-0" />
+															)}
+															<span className="flex-1 text-left truncate min-w-0">
+																{group.label}
+															</span>
+															<span className="text-muted-foreground/60 shrink-0">
+																{group.sessions.length}
+															</span>
+														</button>
+													</TooltipTrigger>
+													<TooltipContent
+														side="right"
+														align="start"
+														className="max-w-[360px]"
+													>
+														<span className="text-[11px] break-all">
+															{group.label}
+														</span>
+													</TooltipContent>
+												</Tooltip>
 												{!collapsed && (
 													<div className="flex flex-col px-1.5 py-1 gap-0.5">
 														{group.sessions.map((session) => (
@@ -797,6 +811,8 @@ function SessionRow({
 		void copyToClipboard(session.title, "タイトルをコピーしました");
 	}, [session.title]);
 
+	const status = statusLabel(session);
+
 	return (
 		<div
 			className={cn(
@@ -804,38 +820,54 @@ function SessionRow({
 				isSelected ? "bg-accent" : "hover:bg-accent/50",
 			)}
 		>
-			<button
-				type="button"
-				onClick={onSelect}
-				className="text-left flex-1 min-w-0 pl-2.5 pr-1 py-2"
-			>
-				<div className="flex items-center gap-2">
-					<StatusDot status={session.status} />
-					{renaming ? (
-						<Input
-							autoFocus
-							value={renameValue}
-							onChange={(e) => setRenameValue(e.target.value)}
-							onKeyDown={handleRenameKey}
-							onBlur={() => void commitRename()}
-							onClick={(e) => e.stopPropagation()}
-							className="h-6 text-xs rounded-md"
-						/>
-					) : (
-						<span className="text-xs font-medium line-clamp-1 flex-1">
-							{session.title}
-						</span>
-					)}
-				</div>
-				<div className="flex items-center justify-between gap-2 pl-4 mt-0.5">
-					<span className="text-[10px] text-muted-foreground line-clamp-1 flex-1">
-						{statusLabel(session)}
-					</span>
-					<span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-						{formatRelativeTime(session.createdAt)}
-					</span>
-				</div>
-			</button>
+			<Tooltip delayDuration={500}>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						onClick={onSelect}
+						className="text-left flex-1 min-w-0 pl-2.5 pr-1 py-2"
+					>
+						<div className="flex items-center gap-2 min-w-0">
+							<StatusDot status={session.status} />
+							{renaming ? (
+								<Input
+									autoFocus
+									value={renameValue}
+									onChange={(e) => setRenameValue(e.target.value)}
+									onKeyDown={handleRenameKey}
+									onBlur={() => void commitRename()}
+									onClick={(e) => e.stopPropagation()}
+									className="h-6 text-xs rounded-md"
+								/>
+							) : (
+								<span className="text-xs font-medium line-clamp-1 flex-1 min-w-0">
+									{session.title}
+								</span>
+							)}
+						</div>
+						<div className="flex items-center justify-between gap-2 pl-4 mt-0.5 min-w-0">
+							<span className="text-[10px] text-muted-foreground line-clamp-1 flex-1 min-w-0">
+								{status}
+							</span>
+							<span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+								{formatRelativeTime(session.createdAt)}
+							</span>
+						</div>
+					</button>
+				</TooltipTrigger>
+				{!renaming && (
+					<TooltipContent side="right" align="start" className="max-w-[360px]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[11px] font-medium break-words">
+								{session.title}
+							</span>
+							<span className="text-[10px] opacity-70 break-words">
+								{status}
+							</span>
+						</div>
+					</TooltipContent>
+				)}
+			</Tooltip>
 			<div className="flex items-center pr-1">
 				<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
 					<DropdownMenuTrigger asChild>
@@ -977,7 +1009,10 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 		session.status === "aborted" ||
 		session.status === "escalated" ||
 		// Manual "wake now" overrides the remaining ScheduleWakeup delay.
-		session.status === "waiting";
+		session.status === "waiting" ||
+		// Resume a completed session — supervisor issues `--resume` so the
+		// next turn continues the same Claude conversation.
+		(session.status === "done" && session.claudeSessionId != null);
 	const isRunning =
 		session.status === "preparing" ||
 		session.status === "running" ||
@@ -1492,13 +1527,32 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							</DetailBlock>
 						)}
 
+						{session.status === "waiting" && session.waitingUntil != null && (
+							<DetailBlock label="待機終了まで">
+								<div className="text-xs bg-muted/40 rounded-lg p-3 border border-border/40 flex flex-col gap-1">
+									<div className="font-mono text-sm">
+										{formatWaitingCountdown(session.waitingUntil)}
+									</div>
+									{session.waitingReason && (
+										<div className="text-[11px] text-muted-foreground break-words">
+											{session.waitingReason}
+										</div>
+									)}
+								</div>
+							</DetailBlock>
+						)}
+
 						{session.finalAssistantText && (
 							<DetailBlock
-								label="最終回答"
+								label={session.status === "waiting" ? "待機中" : "最終回答"}
 								action={
 									<CopyIconButton
 										value={session.finalAssistantText}
-										title="最終回答をコピー"
+										title={
+											session.status === "waiting"
+												? "待機前の応答をコピー"
+												: "最終回答をコピー"
+										}
 									/>
 								}
 							>
@@ -1581,7 +1635,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 						) : (
 							<>
 								ヒント:
-								実行中でもメッセージを送ると、現在のターンを中断して即座に割り込みます。
+								実行中でもメッセージを送ると、現在のターンを中断して即座に割り込みます。完了済み/失敗のタスクに送ると、過去のセッションを再開して続きから対話します。
 							</>
 						)}
 					</p>
@@ -2251,6 +2305,24 @@ function formatWaitingRemaining(waitingUntil: number): string {
 	if (remainingMin < 60) return `${remainingMin}分後`;
 	const remainingHr = Math.round(remainingMin / 60);
 	return `${remainingHr}時間後`;
+}
+
+/**
+ * HH:MM:SS-ish countdown for the detail pane's "待機終了まで" block.
+ * More granular than `formatWaitingRemaining` because the detail view
+ * has room for a live-ticking clock, while the session list label
+ * only has room for a coarse "N分後" hint.
+ */
+function formatWaitingCountdown(waitingUntil: number): string {
+	const remainingMs = waitingUntil - Date.now();
+	if (remainingMs <= 0) return "まもなく再開します";
+	const totalSec = Math.floor(remainingMs / 1000);
+	const hours = Math.floor(totalSec / 3600);
+	const minutes = Math.floor((totalSec % 3600) / 60);
+	const seconds = totalSec % 60;
+	const pad = (n: number) => n.toString().padStart(2, "0");
+	if (hours > 0) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+	return `${pad(minutes)}:${pad(seconds)}`;
 }
 
 interface SessionGroup {

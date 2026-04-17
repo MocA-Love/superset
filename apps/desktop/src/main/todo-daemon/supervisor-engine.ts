@@ -7,7 +7,11 @@ import {
 	resolveWorktreePath,
 } from "main/todo-agent/session-store";
 import { getTodoSettings } from "main/todo-agent/settings";
-import type { TodoStreamEventKind } from "main/todo-agent/types";
+import {
+	CLAUDE_EFFORT_OPTIONS,
+	CLAUDE_MODEL_OPTIONS,
+	type TodoStreamEventKind,
+} from "main/todo-agent/types";
 
 /**
  * Daemon-side supervisor engine. Spawns `claude -p` children for TODO
@@ -35,12 +39,34 @@ interface ActiveRun {
 export class TodoSupervisorEngine {
 	private readonly active = new Map<string, ActiveRun>();
 	private readonly queue: string[] = [];
+	/**
+	 * Sessions whose next queued start was triggered by `ScheduleWakeup`
+	 * firing (scheduler.resumeDueWaitingSessions), not by a user click or
+	 * a follow-up intervention. `runSession` consumes the marker to skip
+	 * the "セッションを再開します" banner and to send a short continuation
+	 * prompt instead of re-replaying the original goal — which Claude
+	 * has already been working on in the same `--resume`d session. See
+	 * issue #240.
+	 */
+	private readonly wakeupResumeMarkers = new Set<string>();
 
 	listActiveSessionIds(): string[] {
 		return Array.from(this.active.keys());
 	}
 
-	async start(sessionId: string): Promise<void> {
+	async start(
+		sessionId: string,
+		options?: { fromScheduledWakeup?: boolean },
+	): Promise<void> {
+		if (options?.fromScheduledWakeup) {
+			this.wakeupResumeMarkers.add(sessionId);
+		} else {
+			// A manual start (user click / follow-up intervention) always
+			// overrides a stale scheduler marker. Prevents a prior wakeup
+			// that never actually ran (e.g. abort landed between claim and
+			// drain) from silently relabeling the next manual resume.
+			this.wakeupResumeMarkers.delete(sessionId);
+		}
 		if (this.queue.includes(sessionId)) return;
 		const active = this.active.get(sessionId);
 		if (active && !active.abortController.signal.aborted) return;
@@ -83,6 +109,9 @@ export class TodoSupervisorEngine {
 		if (queueIdx !== -1) {
 			this.queue.splice(queueIdx, 1);
 		}
+		// Clear any wakeup-resume marker so a subsequent manual start
+		// cannot misinterpret this session as a scheduler wakeup.
+		this.wakeupResumeMarkers.delete(sessionId);
 		const activeRun = this.active.get(sessionId);
 		if (activeRun) {
 			activeRun.abortController.abort();
@@ -143,12 +172,22 @@ export class TodoSupervisorEngine {
 		const session0 = store.get(sessionId);
 		if (!session0) return;
 
+		// Consume the wakeup-resume marker (if any). A scheduler-driven
+		// resume from a `ScheduleWakeup`-paused session is not a new
+		// turn from Claude's perspective — Claude asked to be paged
+		// back later and is now continuing the same reasoning. Treat
+		// it differently from the user-driven done→follow-up resume.
+		const isFromScheduledWakeup = this.wakeupResumeMarkers.delete(sessionId);
+
 		const isResumingPastRun = !!session0.claudeSessionId;
 		if (!isResumingPastRun) {
 			store.clearStreamEvents(sessionId);
 		}
 		store.setArtifactPathCache(sessionId, session0.artifactPath);
-		if (isResumingPastRun) {
+		// Scheduler-driven wakeup resumes skip the "再開" banner —
+		// Claude requested the pause itself, so the pause+wakeup is a
+		// single logical turn and does not warrant a new-session marker.
+		if (isResumingPastRun && !isFromScheduledWakeup) {
 			appendSetupEvent(
 				sessionId,
 				"再開",
@@ -207,6 +246,13 @@ export class TodoSupervisorEngine {
 					`${preview}${session0.customSystemPrompt.trim().length > 200 ? "…" : ""}`,
 				);
 			}
+			if (session0.claudeModel || session0.claudeEffort) {
+				const parts: string[] = [];
+				if (session0.claudeModel) parts.push(`model: ${session0.claudeModel}`);
+				if (session0.claudeEffort)
+					parts.push(`effort: ${session0.claudeEffort}`);
+				appendSetupEvent(sessionId, "Claude 設定", parts.join(" / "));
+			}
 			appendSetupEvent(
 				sessionId,
 				"Claude",
@@ -224,9 +270,17 @@ export class TodoSupervisorEngine {
 				verdictPassed: null,
 				verdictReason: null,
 				verdictFailingTest: null,
-				finalAssistantText: isResumingPastRun
-					? (session0.finalAssistantText ?? null)
-					: null,
+				// Keep the prior assistant text on a user-driven resume
+				// so the Manager shows the last known answer while the
+				// new turn streams. On a scheduler wakeup, clear it —
+				// the stale response has been visible the whole time
+				// under the "待機中" label and the user wants a clean
+				// slate under the "最終回答" label once the new turn
+				// starts producing output (issue #240).
+				finalAssistantText:
+					isResumingPastRun && !isFromScheduledWakeup
+						? (session0.finalAssistantText ?? null)
+						: null,
 				claudeSessionId: preservedClaudeSessionId,
 				totalCostUsd: isResumingPastRun
 					? (session0.totalCostUsd ?? null)
@@ -251,10 +305,14 @@ export class TodoSupervisorEngine {
 				return;
 			}
 
+			// Wakeup resumes intentionally drop the prior assistant text
+			// so mid-turn failures do not resurface a stale answer as
+			// if it were the new turn's output.
 			let claudeSessionId: string | null = preservedClaudeSessionId;
-			let lastAssistantText: string | null = isResumingPastRun
-				? (session0.finalAssistantText ?? null)
-				: null;
+			let lastAssistantText: string | null =
+				isResumingPastRun && !isFromScheduledWakeup
+					? (session0.finalAssistantText ?? null)
+					: null;
 			let aggregatedCostUsd = isResumingPastRun
 				? (session0.totalCostUsd ?? 0)
 				: 0;
@@ -299,6 +357,18 @@ export class TodoSupervisorEngine {
 					iteration,
 					previousVerdictReason: currentSession.verdictReason ?? null,
 					intervention: pendingIntervention,
+					// Only the very first turn after the scheduler wakes us
+					// up is a "continuation" — subsequent iterations within
+					// the same runSession are normal verify-retry loops.
+					// Require an actual resumable session: if the parked
+					// turn never produced a parseable `session_id`,
+					// claudeSessionId is null and `--resume` will not be
+					// passed. In that edge case the continuation-only
+					// prompt would strand Claude in a fresh conversation
+					// with no task context — fall back to the full
+					// iteration-1 prompt instead.
+					isScheduledWakeupContinuation:
+						isFromScheduledWakeup && iteration === 1 && claudeSessionId != null,
 				});
 
 				appendUserEvent(sessionId, iteration, prompt);
@@ -310,6 +380,8 @@ export class TodoSupervisorEngine {
 					prompt,
 					resumeSessionId: claudeSessionId,
 					customSystemPrompt: currentSession.customSystemPrompt ?? null,
+					claudeModel: currentSession.claudeModel ?? null,
+					claudeEffort: currentSession.claudeEffort ?? null,
 					signal: ac.signal,
 					onChild: (child) => {
 						run.currentChild = child;
@@ -507,6 +579,8 @@ export class TodoSupervisorEngine {
 		prompt: string;
 		resumeSessionId: string | null;
 		customSystemPrompt: string | null;
+		claudeModel: string | null;
+		claudeEffort: string | null;
 		signal: AbortSignal;
 		onChild: (child: ChildProcess) => void;
 	}): Promise<{
@@ -530,6 +604,40 @@ export class TodoSupervisorEngine {
 			];
 			if (params.customSystemPrompt) {
 				args.push("--append-system-prompt", params.customSystemPrompt);
+			}
+			// Per-session Claude Code overrides. Passing `--model` /
+			// `--effort` only when set keeps Claude Code's own default
+			// resolution path intact for users who haven't picked one.
+			//
+			// Defense-in-depth whitelist: the UI already constrains
+			// values via `CLAUDE_*_OPTIONS`, but that validation happens
+			// on the render side. A corrupted / migrated row could still
+			// persist an unexpected string. We refuse to forward anything
+			// that isn't in the allow-list so the spawn call can't be
+			// steered by a malformed DB value.
+			if (
+				params.claudeModel &&
+				(CLAUDE_MODEL_OPTIONS as readonly string[]).includes(params.claudeModel)
+			) {
+				args.push("--model", params.claudeModel);
+			} else if (params.claudeModel) {
+				console.warn(
+					"[todo-daemon] ignoring unknown claudeModel:",
+					params.claudeModel,
+				);
+			}
+			if (
+				params.claudeEffort &&
+				(CLAUDE_EFFORT_OPTIONS as readonly string[]).includes(
+					params.claudeEffort,
+				)
+			) {
+				args.push("--effort", params.claudeEffort);
+			} else if (params.claudeEffort) {
+				console.warn(
+					"[todo-daemon] ignoring unknown claudeEffort:",
+					params.claudeEffort,
+				);
 			}
 			if (params.resumeSessionId) {
 				args.push("--resume", params.resumeSessionId);
@@ -747,20 +855,66 @@ function killProcessTree(pid: number, signal: NodeJS.Signals): void {
 	}
 }
 
+/**
+ * Pull attachment file paths out of description/goal markdown. Mirrors
+ * the renderer regex in `TodoManager/utils/attachmentRefs` so the same
+ * `todo-agent/attachments/` references the UI renders as chips are the
+ * ones we surface to Claude as "please Read this". The regex is
+ * duplicated intentionally — the renderer module lives in the web
+ * bundle and we don't want a cross-bundle import here in the daemon.
+ */
+const ATTACHMENT_PATH_RE =
+	/!\[[^\]]*\]\(([^()\s]*[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
+
+function extractAttachmentPaths(
+	texts: (string | null | undefined)[],
+): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const text of texts) {
+		if (!text) continue;
+		for (const m of text.matchAll(ATTACHMENT_PATH_RE)) {
+			const p = m[1];
+			if (!p || seen.has(p)) continue;
+			seen.add(p);
+			out.push(p);
+		}
+	}
+	return out;
+}
+
 function buildIterationPrompt(params: {
 	session: SelectTodoSession;
 	iteration: number;
 	previousVerdictReason: string | null;
 	intervention: string | null;
+	isScheduledWakeupContinuation?: boolean;
 }): string {
-	const { session, iteration, previousVerdictReason, intervention } = params;
+	const {
+		session,
+		iteration,
+		previousVerdictReason,
+		intervention,
+		isScheduledWakeupContinuation,
+	} = params;
 	const goalPath = `.superset/todo/${session.id}/goal.md`;
 	const goalClause = session.goal?.trim()
 		? "ゴール（受け入れ条件）を達成することを目指してください"
 		: "『やって欲しいこと』が完了した時点で完了とみなしてください";
 
 	const sections: string[] = [];
-	if (iteration === 1) {
+	if (isScheduledWakeupContinuation) {
+		// Claude paused itself via `ScheduleWakeup` and the scheduler
+		// has now woken it up. The original goal and custom system
+		// prompt are already present in the resumed conversation — do
+		// not re-send them verbatim, that duplicate prompt is the
+		// "ゴリ押し" complaint in issue #240. A short continuation cue
+		// is enough; the user-visible intervention (if any) is still
+		// routed through the normal channel below.
+		sections.push(
+			"(予定時刻になりました。前回の続きから作業を再開してください。)",
+		);
+	} else if (iteration === 1) {
 		if (session.customSystemPrompt?.trim()) {
 			sections.push(
 				`ユーザー設定のシステム指示（最優先で遵守）:\n${session.customSystemPrompt.trim()}`,
@@ -775,6 +929,24 @@ function buildIterationPrompt(params: {
 		if (session.goal?.trim()) {
 			sections.push(`ゴール:\n${session.goal.trim()}`);
 		}
+		// Hoist attachment file paths out of the markdown so Claude
+		// doesn't have to decide on its own whether `![](…)` inside the
+		// description is decorative or a real artifact it should load.
+		// Before this nudge, image attachments were frequently ignored —
+		// the file was saved and the path was correct, but Claude would
+		// proceed without ever calling Read on it. See #247.
+		const attachments = extractAttachmentPaths([
+			session.description,
+			session.goal,
+		]);
+		if (attachments.length > 0) {
+			sections.push(
+				[
+					"添付ファイル（作業開始前に Read で内容を確認してください）:",
+					...attachments.map((p) => `- ${p}`),
+				].join("\n"),
+			);
+		}
 	} else {
 		sections.push(
 			`イテレーション ${iteration} です。前回の verify は失敗しました。`,
@@ -787,7 +959,7 @@ function buildIterationPrompt(params: {
 	if (intervention) {
 		sections.push(`ユーザーからの介入指示（優先度: 高）:\n${intervention}`);
 	}
-	if (session.verifyCommand) {
+	if (session.verifyCommand && !isScheduledWakeupContinuation) {
 		sections.push(
 			`完了判定: 作業が終わったら、セッション終了後に supervisor が \`${session.verifyCommand}\` を実行して exit 0 を要求します。`,
 		);
@@ -1087,10 +1259,14 @@ function extractToolResultDetails(
 	if (!Array.isArray(content)) return null;
 	const parts: string[] = [];
 	let toolUseId: string | undefined;
+	let sawToolResult = false;
+	let imageCount = 0;
+	let otherBlockCount = 0;
 	for (const part of content) {
 		if (typeof part !== "object" || part === null) continue;
 		const rec = part as Record<string, unknown>;
 		if (rec.type === "tool_result") {
+			sawToolResult = true;
 			if (!toolUseId && typeof rec.tool_use_id === "string") {
 				toolUseId = rec.tool_use_id as string;
 			}
@@ -1103,14 +1279,35 @@ function extractToolResultDetails(
 					const pr = p as Record<string, unknown>;
 					if (pr.type === "text" && typeof pr.text === "string") {
 						parts.push(pr.text as string);
+					} else if (pr.type === "image") {
+						imageCount += 1;
+					} else if (typeof pr.type === "string") {
+						otherBlockCount += 1;
 					}
 				}
 			}
 		}
 	}
+	// Bail only when the message didn't contain a tool_result block at
+	// all. If it did, emit the result even when it carried no text so
+	// the UI can pair it with its tool_use — otherwise e.g. Read on an
+	// image file (which returns only `image` blocks) leaves the card
+	// spinning "実行中…" forever even though Claude already processed
+	// the result and moved on to subsequent tool calls. See #247.
+	if (!sawToolResult) return null;
 	const joined = parts.join("\n").trim();
-	if (joined.length === 0) return null;
-	return { text: joined, toolUseId };
+	if (joined.length > 0) return { text: joined, toolUseId };
+	const summary: string[] = [];
+	if (imageCount > 0) {
+		summary.push(imageCount === 1 ? "[画像 1 件]" : `[画像 ${imageCount} 件]`);
+	}
+	if (otherBlockCount > 0) {
+		summary.push(`[非テキストブロック ${otherBlockCount} 件]`);
+	}
+	return {
+		text: summary.length > 0 ? summary.join(" ") : "(空の結果)",
+		toolUseId,
+	};
 }
 
 function summarizeToolInput(name: string, input: unknown): string {

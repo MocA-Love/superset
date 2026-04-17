@@ -65,6 +65,13 @@ export interface HelloResponse {
 
 export interface StartRequest {
 	sessionId: string;
+	/**
+	 * True when the caller is the scheduler waking a `ScheduleWakeup`-
+	 * paused session back up. The engine consumes this marker to skip
+	 * the "再開" banner and to send a short continuation prompt instead
+	 * of replaying the original goal — see issue #240.
+	 */
+	fromScheduledWakeup?: boolean;
 }
 
 export interface AbortRequest {

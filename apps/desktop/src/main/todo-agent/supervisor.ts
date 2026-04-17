@@ -37,9 +37,15 @@ class TodoSupervisor {
 		return dir;
 	}
 
-	async start(sessionId: string): Promise<void> {
+	async start(
+		sessionId: string,
+		options?: { fromScheduledWakeup?: boolean },
+	): Promise<void> {
 		try {
-			await getTodoDaemonClient().start({ sessionId });
+			await getTodoDaemonClient().start({
+				sessionId,
+				fromScheduledWakeup: options?.fromScheduledWakeup,
+			});
 		} catch (error) {
 			// The tRPC router flips the session to `preparing` before
 			// fire-and-forgetting us, so a daemon spawn/connect/auth

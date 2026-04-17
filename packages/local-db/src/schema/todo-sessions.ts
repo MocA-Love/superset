@@ -86,6 +86,17 @@ export const todoSessions = sqliteTable(
 		// CLAUDE.md / workspace context already applies.
 		customSystemPrompt: text("custom_system_prompt"),
 
+		// Optional per-session Claude Code model + effort overrides. When
+		// null, the supervisor omits the corresponding `--model` /
+		// `--effort` flag and lets Claude Code use its resolved default
+		// (user config + upstream default cascade). Values are free-form
+		// strings so we can persist either an alias (`opus`, `sonnet`)
+		// or a full model name (`claude-opus-4-7`) without a migration
+		// every time Anthropic ships a new tier. The UI constrains the
+		// allowed values.
+		claudeModel: text("claude_model"),
+		claudeEffort: text("claude_effort"),
+
 		verdictPassed: integer("verdict_passed", { mode: "boolean" }),
 		verdictReason: text("verdict_reason"),
 		verdictFailingTest: text("verdict_failing_test"),

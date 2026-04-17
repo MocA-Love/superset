@@ -273,7 +273,9 @@ const handlers: Record<string, Handler> = {
 		const request = payload as StartRequest;
 		try {
 			listenSession(request.sessionId);
-			await engine.start(request.sessionId);
+			await engine.start(request.sessionId, {
+				fromScheduledWakeup: request.fromScheduledWakeup,
+			});
 			sendSuccess(socket, id, { success: true });
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
