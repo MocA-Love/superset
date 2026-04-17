@@ -237,7 +237,7 @@ export function TodoModal({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-xl sm:max-w-xl rounded-xl">
+			<DialogContent className="!max-w-[min(640px,calc(100vw-2rem))] sm:!max-w-[min(640px,calc(100vw-2rem))] rounded-xl">
 				<DialogHeader>
 					<DialogTitle>新しい自律 TODO</DialogTitle>
 				</DialogHeader>
