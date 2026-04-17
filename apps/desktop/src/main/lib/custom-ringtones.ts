@@ -163,6 +163,20 @@ export function getCustomRingtonePath(): string | null {
 	return join(RINGTONES_ASSETS_DIR, filename);
 }
 
+export function deleteCustomRingtone(): void {
+	if (!existsSync(RINGTONES_ASSETS_DIR)) {
+		return;
+	}
+	removeExistingCustomRingtoneFiles();
+	if (existsSync(CUSTOM_RINGTONE_METADATA_PATH)) {
+		try {
+			unlinkSync(CUSTOM_RINGTONE_METADATA_PATH);
+		} catch {
+			// Best effort.
+		}
+	}
+}
+
 export function setCustomRingtoneDisplayName(name: string): void {
 	if (!hasCustomRingtone()) {
 		return;
