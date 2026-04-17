@@ -46,6 +46,7 @@ const DEFAULT_VERIFY_COMMAND = "";
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_MINUTES = 30;
 const DEFAULT_CREATE_WORKTREE = false;
+const DEFAULT_PTY = false;
 const DEFAULT_REMOTE_CONTROL = false;
 
 /**
@@ -73,6 +74,7 @@ export function TodoModal({
 	const [maxMinutes, setMaxMinutes] = useState(DEFAULT_MAX_MINUTES);
 	const [submitting, setSubmitting] = useState(false);
 	const [createWorktree, setCreateWorktree] = useState(DEFAULT_CREATE_WORKTREE);
+	const [ptyEnabled, setPtyEnabled] = useState(DEFAULT_PTY);
 	const [remoteControlEnabled, setRemoteControlEnabled] = useState(
 		DEFAULT_REMOTE_CONTROL,
 	);
@@ -133,6 +135,7 @@ export function TodoModal({
 		);
 		setMaxMinutes(todoSettings?.defaultMaxWallClockMin ?? DEFAULT_MAX_MINUTES);
 		setCreateWorktree(DEFAULT_CREATE_WORKTREE);
+		setPtyEnabled(DEFAULT_PTY);
 		setRemoteControlEnabled(DEFAULT_REMOTE_CONTROL);
 		setSelectedPresetId(null);
 		setClaudeModel(
@@ -162,6 +165,12 @@ export function TodoModal({
 
 	const hasVerify = verifyCommand.trim().length > 0;
 	const hasGoal = goal.trim().length > 0;
+
+	useEffect(() => {
+		if (!ptyEnabled && remoteControlEnabled) {
+			setRemoteControlEnabled(false);
+		}
+	}, [ptyEnabled, remoteControlEnabled]);
 
 	const handleSubmit = useCallback(async () => {
 		if (!canSubmit) return;
@@ -202,6 +211,7 @@ export function TodoModal({
 				customSystemPrompt: selectedPreset?.content ?? undefined,
 				claudeModel: toPersistedModel(claudeModel),
 				claudeEffort: toPersistedEffort(claudeEffort),
+				ptyEnabled,
 				remoteControlEnabled,
 			});
 			if (createWorktree) {
@@ -234,6 +244,7 @@ export function TodoModal({
 		maxIterations,
 		maxMinutes,
 		projectId,
+		ptyEnabled,
 		remoteControlEnabled,
 		selectedPreset,
 		title,
@@ -284,18 +295,47 @@ export function TodoModal({
 					</label>
 
 					<label
+						htmlFor="todo-pty-mode"
+						className={cn(
+							"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
+							ptyEnabled
+								? "border-emerald-400/50 bg-emerald-500/5"
+								: "border-border/40 hover:bg-muted/40",
+						)}
+						title="beta 機能です。Claude を interactive PTY で起動し、headless より実環境に近い経路で実行します。"
+					>
+						<Checkbox
+							id="todo-pty-mode"
+							checked={ptyEnabled}
+							onCheckedChange={(checked) => setPtyEnabled(checked === true)}
+						/>
+						<div className="flex-1 flex flex-col gap-0.5">
+							<span className="text-xs font-medium">PTY モードで実行</span>
+							<span className="text-[10px] text-muted-foreground">
+								beta: interactive Claude を使う
+							</span>
+						</div>
+					</label>
+
+					<label
 						htmlFor="todo-remote-control"
 						className={cn(
 							"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
 							remoteControlEnabled
 								? "border-indigo-400/50 bg-indigo-500/5"
 								: "border-border/40 hover:bg-muted/40",
+							!ptyEnabled && "opacity-60 cursor-not-allowed",
 						)}
-						title="claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+						title={
+							ptyEnabled
+								? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+								: "Remote Control は PTY モード時のみ有効です。"
+						}
 					>
 						<Checkbox
 							id="todo-remote-control"
 							checked={remoteControlEnabled}
+							disabled={!ptyEnabled}
 							onCheckedChange={(checked) =>
 								setRemoteControlEnabled(checked === true)
 							}
@@ -305,7 +345,7 @@ export function TodoModal({
 								Remote Control を有効化
 							</span>
 							<span className="text-[10px] text-muted-foreground">
-								claude.ai / Claude アプリから接続できる (Pro/Max プラン必須)
+								PTY 時のみ。claude.ai / Claude アプリから接続できる
 							</span>
 						</div>
 					</label>

@@ -16,6 +16,10 @@ import {
 	getSessionGitSnapshot,
 	type SessionDiffScope,
 } from "./git-status";
+import {
+	readTodoSessionRuntimeConfig,
+	writeTodoSessionRuntimeConfig,
+} from "./runtime-config";
 import { getTodoScheduleStore } from "./schedule-store";
 import { computeNextRunAt, getTodoScheduler } from "./scheduler";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
@@ -138,6 +142,10 @@ export const createTodoAgentRouter = () => {
 				// the row exists the user can delete the broken session
 				// from the Manager — same as any other filesystem error.
 				supervisor.prepareArtifacts(session);
+				writeTodoSessionRuntimeConfig(session.artifactPath, {
+					ptyEnabled: input.ptyEnabled,
+					remoteControlEnabled: input.remoteControlEnabled,
+				});
 
 				return { sessionId: session.id };
 			}),
@@ -427,6 +435,11 @@ export const createTodoAgentRouter = () => {
 				});
 
 				supervisor.prepareArtifacts(next);
+				const runtimeConfig = readTodoSessionRuntimeConfig({
+					artifactPath: source.artifactPath,
+					fallbackRemoteControlEnabled: source.remoteControlEnabled ?? false,
+				});
+				writeTodoSessionRuntimeConfig(next.artifactPath, runtimeConfig);
 
 				return { sessionId: next.id };
 			}),

@@ -105,12 +105,13 @@ export const todoCreateInputSchema = z.object({
 	// means "use the user's configured default" (see todoSettingsSchema).
 	claudeModel: todoClaudeModelSchema.nullish(),
 	claudeEffort: todoClaudeEffortSchema.nullish(),
-	// When true, the daemon starts the session under the PTY engine
-	// and sends `/remote-control` after spawn so it is reachable from
-	// claude.ai/code and the Claude mobile app. Requires the daemon to
-	// be running in PTY mode (`TODO_ENGINE=pty`) and a claude.ai
-	// subscription (Pro/Max). See
-	// apps/desktop/plans/20260417-todo-agent-remote-control.md.
+	// Beta escape hatch: opt a single TODO into the interactive PTY
+	// engine without flipping the whole app over from headless `-p`.
+	// Persisted in the artifact runtime config, not the DB row.
+	ptyEnabled: z.boolean().optional().default(false),
+	// When true, the PTY runner sends `/remote-control` after spawn so
+	// the session becomes reachable from claude.ai/code / Claude mobile.
+	// Requires `ptyEnabled=true`; the UI prevents invalid combinations.
 	remoteControlEnabled: z.boolean().optional().default(false),
 });
 

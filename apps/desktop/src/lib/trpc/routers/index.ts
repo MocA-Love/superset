@@ -1,7 +1,7 @@
 import type { BrowserWindow } from "electron";
 import type { WindowManager } from "main/lib/window-manager";
 // Fork-local: TODO autonomous agent feature.
-import { createTodoAgentRouter } from "main/todo-agent";
+import { createTodoAgentRouter } from "main/todo-agent/trpc-router";
 import { router } from "..";
 import { createAivisRouter } from "./aivis";
 import { createAnalyticsRouter } from "./analytics";

@@ -6,7 +6,6 @@ import * as schema from "@superset/local-db";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { app } from "electron";
 import { validate as uuidValidate, version as uuidVersion } from "uuid";
 import { env } from "../../env.main";
 import {
@@ -19,6 +18,20 @@ const DB_PATH = join(SUPERSET_HOME_DIR, "local.db");
 
 ensureSupersetHomeDirExists();
 
+type ElectronAppLike = Pick<
+	typeof import("electron").app,
+	"getAppPath" | "isPackaged"
+>;
+
+function getElectronApp(): ElectronAppLike | null {
+	try {
+		const electron = require("electron") as typeof import("electron");
+		return electron.app;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Gets the migrations directory path.
  *
@@ -29,12 +42,19 @@ ensureSupersetHomeDirExists();
  * - Test environment: Use monorepo path relative to __dirname
  */
 function getMigrationsDirectory(): string {
+	const electronApp = getElectronApp();
+	const packagedResourcesPath = process.resourcesPath
+		? join(process.resourcesPath, "resources/migrations")
+		: null;
+	if (packagedResourcesPath && existsSync(packagedResourcesPath)) {
+		return packagedResourcesPath;
+	}
 	// Check if running in Electron (app.getAppPath exists)
 	const isElectron =
-		typeof app?.getAppPath === "function" &&
-		typeof app?.isPackaged === "boolean";
+		typeof electronApp?.getAppPath === "function" &&
+		typeof electronApp?.isPackaged === "boolean";
 
-	if (isElectron && app.isPackaged) {
+	if (isElectron && electronApp.isPackaged) {
 		return join(process.resourcesPath, "resources/migrations");
 	}
 
@@ -42,7 +62,7 @@ function getMigrationsDirectory(): string {
 
 	if (isElectron && isDev) {
 		// Development: source files in monorepo
-		return join(app.getAppPath(), "../../packages/local-db/drizzle");
+		return join(electronApp.getAppPath(), "../../packages/local-db/drizzle");
 	}
 
 	// Preview mode or test: __dirname is dist/main, so go up one level to dist/resources/migrations
@@ -63,7 +83,10 @@ function getMigrationsDirectory(): string {
 
 	// Try Electron app path if available
 	if (isElectron) {
-		const srcPath = join(app.getAppPath(), "../../packages/local-db/drizzle");
+		const srcPath = join(
+			electronApp.getAppPath(),
+			"../../packages/local-db/drizzle",
+		);
 		if (existsSync(srcPath)) {
 			return srcPath;
 		}
