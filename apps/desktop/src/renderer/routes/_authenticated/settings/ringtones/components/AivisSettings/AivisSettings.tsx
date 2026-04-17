@@ -47,9 +47,11 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 	const [activeField, setActiveField] = useState<"format" | "permission">(
 		"format",
 	);
+	const hydratedRef = useRef(false);
 
 	useEffect(() => {
-		if (!data) return;
+		if (!data || hydratedRef.current) return;
+		hydratedRef.current = true;
 		setEnabled(data.enabled);
 		setApiKey(data.apiKey);
 		setModelUuid(data.modelUuid);

@@ -53,10 +53,15 @@ function getSelectedRingtonePath(): string | null {
 /**
  * Plays the notification sound based on user's selected ringtone.
  * Uses platform-specific commands to play the audio file.
+ *
+ * `onComplete` fires when playback finishes, or immediately when playback
+ * is skipped (muted / no ringtone). Callers can chain follow-up audio
+ * (e.g. Aivis TTS) so it plays after the ringtone instead of overlapping.
  */
-export function playNotificationSound(): void {
+export function playNotificationSound(onComplete?: () => void): void {
 	// Check if sounds are muted
 	if (areNotificationSoundsMuted()) {
+		onComplete?.();
 		return;
 	}
 
@@ -64,6 +69,7 @@ export function playNotificationSound(): void {
 
 	// No sound if "none" is selected
 	if (!soundPath) {
+		onComplete?.();
 		return;
 	}
 
@@ -84,5 +90,12 @@ export function playNotificationSound(): void {
 		volume = 100;
 	}
 
-	playSoundFile(soundPath, volume);
+	let done = false;
+	const finish = () => {
+		if (done) return;
+		done = true;
+		onComplete?.();
+	};
+	const proc = playSoundFile(soundPath, volume, { onComplete: finish });
+	if (!proc) finish();
 }
