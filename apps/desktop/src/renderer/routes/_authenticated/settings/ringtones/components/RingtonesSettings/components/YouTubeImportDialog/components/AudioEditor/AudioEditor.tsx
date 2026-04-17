@@ -301,9 +301,12 @@ export function AudioEditor({
 	}, [isPlaying, startSeconds, endSeconds, playbackRate, stopPreview]);
 
 	// Stop preview when selection changes
+	const isPlayingRef = useRef(isPlaying);
+	isPlayingRef.current = isPlaying;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: isPlaying tracked via ref to avoid stopping on play-start
 	useEffect(() => {
-		if (isPlaying) stopPreview();
-	}, [isPlaying, stopPreview]);
+		if (isPlayingRef.current) stopPreview();
+	}, [startSeconds, endSeconds, stopPreview]);
 
 	const handleCanvasMouseDown = useCallback(
 		(e: React.MouseEvent<HTMLCanvasElement>) => {
