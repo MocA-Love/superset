@@ -10,6 +10,11 @@ import {
 import { playSoundFile } from "main/lib/play-sound";
 import { getSoundPath } from "main/lib/sound-paths";
 import {
+	importRingtoneFromYouTube,
+	YOUTUBE_RINGTONE_LIMITS,
+	YouTubeRingtoneError,
+} from "main/lib/youtube-ringtone";
+import {
 	CUSTOM_RINGTONE_ID,
 	getRingtoneFilename,
 	isBuiltInRingtoneId,
@@ -170,6 +175,49 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 				});
 			}
 		}),
+
+		/**
+		 * Imports a custom ringtone by clipping a section of a YouTube video.
+		 * Requires `yt-dlp` and `ffmpeg` to be installed on the user's machine.
+		 */
+		importFromYouTube: publicProcedure
+			.input(
+				z.object({
+					url: z.string().min(1),
+					startSeconds: z
+						.number()
+						.min(0)
+						.max(60 * 60 * 12),
+					durationSeconds: z
+						.number()
+						.min(1)
+						.max(YOUTUBE_RINGTONE_LIMITS.maxDurationSeconds),
+					displayName: z.string().max(120).optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				try {
+					const ringtone = await importRingtoneFromYouTube(input);
+					return { ringtone };
+				} catch (error) {
+					if (error instanceof YouTubeRingtoneError) {
+						throw new TRPCError({
+							code:
+								error.code === "BINARY_MISSING" || error.code === "TIMEOUT"
+									? "PRECONDITION_FAILED"
+									: "BAD_REQUEST",
+							message: error.message,
+						});
+					}
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message:
+							error instanceof Error
+								? error.message
+								: "Failed to import YouTube ringtone",
+					});
+				}
+			}),
 	});
 };
 
