@@ -12,6 +12,7 @@ export interface AivisPlaceholders {
 	branch?: string;
 	workspace?: string;
 	worktree?: string;
+	project?: string;
 	tab?: string;
 	pane?: string;
 	event?: string;
@@ -23,6 +24,7 @@ export const AIVIS_PLACEHOLDER_KEYS = [
 	"branch",
 	"workspace",
 	"worktree",
+	"project",
 	"tab",
 	"pane",
 	"event",

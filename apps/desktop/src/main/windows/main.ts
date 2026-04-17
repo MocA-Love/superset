@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import * as Sentry from "@sentry/electron/main";
-import { workspaces, worktrees } from "@superset/local-db";
+import { projects, workspaces, worktrees } from "@superset/local-db";
 import { eq } from "drizzle-orm";
 import type { BrowserWindow } from "electron";
 import { app, Notification, nativeTheme, webContents } from "electron";
@@ -48,7 +48,8 @@ import { getWorkspaceRuntimeRegistry } from "../lib/workspace-runtime";
 let ipcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
 function getWorkspaceRecords(workspaceId: string | undefined) {
-	if (!workspaceId) return { workspace: null, worktree: null };
+	if (!workspaceId)
+		return { workspace: null, worktree: null, project: null };
 	try {
 		const workspace =
 			localDb
@@ -63,10 +64,17 @@ function getWorkspaceRecords(workspaceId: string | undefined) {
 					.where(eq(worktrees.id, workspace.worktreeId))
 					.get() ?? null)
 			: null;
-		return { workspace, worktree };
+		const project = workspace?.projectId
+			? (localDb
+					.select()
+					.from(projects)
+					.where(eq(projects.id, workspace.projectId))
+					.get() ?? null)
+			: null;
+		return { workspace, worktree, project };
 	} catch (error) {
 		console.error("[notifications] Failed to read workspace records:", error);
-		return { workspace: null, worktree: null };
+		return { workspace: null, worktree: null, project: null };
 	}
 }
 
@@ -76,17 +84,20 @@ function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
 }
 
 function buildAivisVars(event: AgentLifecycleEvent) {
-	const { workspace, worktree } = getWorkspaceRecords(event.workspaceId);
+	const { workspace, worktree, project } = getWorkspaceRecords(
+		event.workspaceId,
+	);
 	const tabs = appState.data?.tabsState?.tabs;
 	const panes = appState.data?.tabsState?.panes;
 	const tab = event.tabId ? tabs?.find((t) => t.id === event.tabId) : undefined;
 	const pane = event.paneId ? panes?.[event.paneId] : undefined;
-	const branch = worktree?.branch ?? "";
-	const worktreeName = branch || "";
+	const branch = workspace?.branch ?? worktree?.branch ?? "";
+	const worktreeName = worktree?.branch ?? "";
 	return {
 		branch,
 		workspace: workspace?.name || branch || "",
 		worktree: worktreeName,
+		project: project?.name ?? "",
 		tab: (tab?.userTitle?.trim() || tab?.name) ?? "",
 		pane: pane?.name ?? "",
 		event: event.eventType,
