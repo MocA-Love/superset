@@ -161,3 +161,44 @@ export function fromPersistedEffort(
 	);
 	return DEFAULT_SENTINEL;
 }
+
+/**
+ * Resolve a DB-persisted model/effort value to the human-readable label
+ * the picker shows. Used by read-only views (session detail, schedule
+ * list) so the label matches what the user originally selected.
+ *
+ * null/undefined → "デフォルト" (matches the sentinel's label).
+ * Unknown values (persisted from an older build with a wider allowed set)
+ * surface the raw string so detail views don't silently lie about what is
+ * actually configured — we fall back to `fromPersisted*` only for the
+ * `DEFAULT_SENTINEL` case.
+ */
+export function getClaudeModelLabel(
+	persisted: string | null | undefined,
+): string {
+	if (persisted == null) {
+		return (
+			CLAUDE_MODEL_SELECT_OPTIONS.find((o) => o.value === DEFAULT_SENTINEL)
+				?.label ?? "デフォルト"
+		);
+	}
+	return (
+		CLAUDE_MODEL_SELECT_OPTIONS.find((o) => o.value === persisted)?.label ??
+		persisted
+	);
+}
+
+export function getClaudeEffortLabel(
+	persisted: string | null | undefined,
+): string {
+	if (persisted == null) {
+		return (
+			CLAUDE_EFFORT_SELECT_OPTIONS.find((o) => o.value === DEFAULT_SENTINEL)
+				?.label ?? "デフォルト"
+		);
+	}
+	return (
+		CLAUDE_EFFORT_SELECT_OPTIONS.find((o) => o.value === persisted)?.label ??
+		persisted
+	);
+}

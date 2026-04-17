@@ -75,6 +75,8 @@ import {
 	DEFAULT_SENTINEL,
 	fromPersistedEffort,
 	fromPersistedModel,
+	getClaudeEffortLabel,
+	getClaudeModelLabel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../ClaudeRuntimePicker";
@@ -1519,6 +1521,19 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 									{session.verifyCommand
 										? `${session.iteration}/${session.maxIterations} iter · ${Math.round(session.maxWallClockSec / 60)}分`
 										: `${Math.round(session.maxWallClockSec / 60)}分`}
+								</div>
+							</DetailBlock>
+						</div>
+
+						<div className="grid grid-cols-2 gap-4">
+							<DetailBlock label="Claude モデル">
+								<div className="text-xs">
+									{getClaudeModelLabel(session.claudeModel)}
+								</div>
+							</DetailBlock>
+							<DetailBlock label="思考 effort">
+								<div className="text-xs">
+									{getClaudeEffortLabel(session.claudeEffort)}
 								</div>
 							</DetailBlock>
 						</div>
