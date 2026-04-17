@@ -162,20 +162,14 @@ class ServiceStatusService extends EventEmitter {
 	}
 
 	private updateSnapshot(next: ServiceStatusSnapshot): void {
-		const prev = this.snapshots.get(next.id);
 		this.snapshots.set(next.id, next);
-		// Only emit when user-visible state actually changes. checkedAt isn't
-		// directly rendered — the tooltip uses a relative formatter on
-		// Date.now() so it auto-refreshes whenever the Tooltip remounts.
-		if (
-			!prev ||
-			prev.level !== next.level ||
-			prev.indicator !== next.indicator ||
-			prev.description !== next.description ||
-			Boolean(prev.fetchError) !== Boolean(next.fetchError)
-		) {
-			this.emit("change", next);
-		}
+		// Always emit so renderers receive the latest checkedAt. The tooltip
+		// renders "N分前に確認" from snapshot.checkedAt against Date.now(); if
+		// we skip emit when level/description are unchanged, the renderer's
+		// checkedAt stays pinned to the first snapshot it received and the
+		// label drifts (e.g. "45分前") while polling keeps running every 5
+		// minutes.
+		this.emit("change", next);
 	}
 
 	// Use Electron's net module so fetch uses Chromium's network stack and
