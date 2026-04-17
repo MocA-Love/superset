@@ -33,6 +33,7 @@ import {
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
+import { DeleteRingtoneDialog } from "./components/DeleteRingtoneDialog";
 import { RenameRingtoneDialog } from "./components/RenameRingtoneDialog";
 import { VolumeDropdown } from "./components/VolumeDropdown";
 import { YouTubeImportDialog } from "./components/YouTubeImportDialog";
@@ -273,15 +274,19 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 		},
 	});
 
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const deleteCustomRingtone = electronTrpc.ringtone.deleteCustom.useMutation({
 		onSuccess: async () => {
 			if (selectedRingtoneId === CUSTOM_RINGTONE_ID) {
 				setRingtone(AVAILABLE_RINGTONES[0]?.id ?? "");
 			}
+			setDeleteError(null);
+			setDeleteDialogOpen(false);
 			await utils.ringtone.getCustom.invalidate();
 		},
 		onError: (error) => {
-			console.error("Failed to delete custom ringtone:", error);
+			setDeleteError(error.message);
 		},
 	});
 
@@ -299,11 +304,14 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 	}, []);
 
 	const handleDeleteCustom = useCallback(() => {
-		const confirmed = window.confirm(
-			"Delete the custom notification sound? This cannot be undone.",
-		);
-		if (!confirmed) return;
-		deleteCustomRingtone.mutate();
+		setDeleteError(null);
+		setDeleteDialogOpen(true);
+	}, []);
+
+	const handleConfirmDelete = useCallback(async () => {
+		await deleteCustomRingtone.mutateAsync().catch(() => {
+			// Error surfaced via deleteError state.
+		});
 	}, [deleteCustomRingtone]);
 
 	// Clean up timer and stop any playing sound on unmount
@@ -487,6 +495,18 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 				}}
 				isSubmitting={importFromYouTube.isPending}
 				errorMessage={youtubeError}
+			/>
+
+			<DeleteRingtoneDialog
+				open={deleteDialogOpen}
+				onOpenChange={(open) => {
+					setDeleteDialogOpen(open);
+					if (!open) setDeleteError(null);
+				}}
+				ringtoneName={customRingtone?.name ?? ""}
+				onConfirm={handleConfirmDelete}
+				isSubmitting={deleteCustomRingtone.isPending}
+				errorMessage={deleteError}
 			/>
 
 			<RenameRingtoneDialog
