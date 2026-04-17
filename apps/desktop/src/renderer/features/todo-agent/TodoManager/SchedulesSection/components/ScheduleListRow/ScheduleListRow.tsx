@@ -101,7 +101,7 @@ export function ScheduleListRow({
 					</div>
 				)}
 			</button>
-			<DropdownMenu>
+			<DropdownMenu modal={false}>
 				<DropdownMenuTrigger asChild>
 					<Button
 						type="button"
@@ -113,12 +113,23 @@ export function ScheduleListRow({
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					<DropdownMenuItem onClick={onEdit}>
+					<DropdownMenuItem
+						onSelect={(e) => {
+							// Defer opening the editor Dialog so the dropdown's own
+							// pointer-up / focus-return doesn't race with Dialog's
+							// outside-click detection and immediately close it.
+							e.preventDefault();
+							setTimeout(onEdit, 0);
+						}}
+					>
 						<HiMiniPencil className="mr-2 size-4" />
 						編集
 					</DropdownMenuItem>
 					<DropdownMenuItem
-						onClick={() => void handleDelete()}
+						onSelect={(e) => {
+							e.preventDefault();
+							setTimeout(() => void handleDelete(), 0);
+						}}
 						className="text-destructive focus:text-destructive"
 					>
 						<HiMiniTrash className="mr-2 size-4" />
