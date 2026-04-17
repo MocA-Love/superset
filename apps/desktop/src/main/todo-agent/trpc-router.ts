@@ -30,6 +30,8 @@ import {
 	type TodoScheduleFireEvent,
 	type TodoSessionStateEvent,
 	type TodoStreamUpdate,
+	todoClaudeEffortSchema,
+	todoClaudeModelSchema,
 	todoCreateInputSchema,
 	todoEnhanceTextInputSchema,
 	todoPresetCreateInputSchema,
@@ -277,6 +279,10 @@ export const createTodoAgentRouter = () => {
 						.optional()
 						.transform((v) => (v && v.length > 0 ? v : undefined)),
 					clearGoal: z.boolean().optional(),
+					claudeModel: todoClaudeModelSchema.optional(),
+					clearClaudeModel: z.boolean().optional(),
+					claudeEffort: todoClaudeEffortSchema.optional(),
+					clearClaudeEffort: z.boolean().optional(),
 				}),
 			)
 			.mutation(({ input }) => {
@@ -304,6 +310,8 @@ export const createTodoAgentRouter = () => {
 				const patch: {
 					description?: string;
 					goal?: string | null;
+					claudeModel?: string | null;
+					claudeEffort?: string | null;
 				} = {};
 				if (input.description !== undefined) {
 					patch.description = input.description;
@@ -312,6 +320,16 @@ export const createTodoAgentRouter = () => {
 					patch.goal = null;
 				} else if (input.goal !== undefined) {
 					patch.goal = input.goal;
+				}
+				if (input.clearClaudeModel) {
+					patch.claudeModel = null;
+				} else if (input.claudeModel !== undefined) {
+					patch.claudeModel = input.claudeModel;
+				}
+				if (input.clearClaudeEffort) {
+					patch.claudeEffort = null;
+				} else if (input.claudeEffort !== undefined) {
+					patch.claudeEffort = input.claudeEffort;
 				}
 				const updated = store.update(input.sessionId, patch);
 				// Rewrite goal.md so a subsequent Start reads the edited
