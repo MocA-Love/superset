@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
+import { getProcessEnvWithShellPath } from "lib/trpc/routers/workspaces/utils/shell-env";
 import {
 	type CustomRingtoneInfo,
 	importCustomRingtoneFromPath,
@@ -12,6 +13,8 @@ import {
 
 const MAX_CLIP_DURATION_SECONDS = 30;
 const YT_DLP_TIMEOUT_MS = 120_000;
+const REQUIRED_BINARIES = ["yt-dlp", "ffmpeg", "ffprobe"] as const;
+const ALLOWED_OUTPUT_EXTENSIONS = new Set([".mp3", ".wav", ".ogg"]);
 
 export interface ImportFromYouTubeOptions {
 	url: string;
@@ -42,35 +45,39 @@ export function isLikelyYouTubeUrl(url: string): boolean {
 	return YOUTUBE_URL_PATTERN.test(url.trim());
 }
 
-function checkBinary(binary: string): Promise<boolean> {
+function checkBinary(binary: string, env: NodeJS.ProcessEnv): Promise<boolean> {
 	return new Promise((resolve) => {
-		const proc = spawn(binary, ["--version"], { stdio: "ignore" });
+		const proc = spawn(binary, ["--version"], { stdio: "ignore", env });
 		proc.on("error", () => resolve(false));
 		proc.on("exit", (code) => resolve(code === 0));
 	});
 }
 
-async function ensureBinariesInstalled(): Promise<void> {
-	const [hasYtDlp, hasFfmpeg] = await Promise.all([
-		checkBinary("yt-dlp"),
-		checkBinary("ffmpeg"),
-	]);
+async function ensureBinariesInstalled(env: NodeJS.ProcessEnv): Promise<void> {
+	const results = await Promise.all(
+		REQUIRED_BINARIES.map((bin) => checkBinary(bin, env)),
+	);
+	const missing = REQUIRED_BINARIES.filter((_, idx) => !results[idx]);
 
-	if (!hasYtDlp || !hasFfmpeg) {
-		const missing: string[] = [];
-		if (!hasYtDlp) missing.push("yt-dlp");
-		if (!hasFfmpeg) missing.push("ffmpeg");
+	if (missing.length > 0) {
 		throw new YouTubeRingtoneError(
-			`Missing required tool(s): ${missing.join(", ")}. Install with \`brew install ${missing.join(" ")}\` (macOS) or your platform's package manager.`,
+			`Missing required tool(s): ${missing.join(", ")}. Install with \`brew install ${
+				missing.filter((b) => b !== "ffprobe").join(" ") || "yt-dlp ffmpeg"
+			}\` (macOS, ffprobe ships with ffmpeg) or your platform's package manager.`,
 			"BINARY_MISSING",
 		);
 	}
 }
 
-function runYtDlp(args: string[], cwd: string): Promise<void> {
+function runYtDlp(
+	args: string[],
+	cwd: string,
+	env: NodeJS.ProcessEnv,
+): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const proc = spawn("yt-dlp", args, {
 			cwd,
+			env,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
@@ -116,6 +123,26 @@ function runYtDlp(args: string[], cwd: string): Promise<void> {
 	});
 }
 
+function findProducedAudio(workDir: string): string | null {
+	if (!existsSync(workDir)) return null;
+	const candidates = readdirSync(workDir)
+		.filter((name) =>
+			ALLOWED_OUTPUT_EXTENSIONS.has(extname(name).toLowerCase()),
+		)
+		.map((name) => join(workDir, name))
+		.filter((p) => {
+			try {
+				return statSync(p).isFile() && statSync(p).size > 0;
+			} catch {
+				return false;
+			}
+		});
+
+	if (candidates.length === 0) return null;
+	candidates.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+	return candidates[0] ?? null;
+}
+
 export async function importRingtoneFromYouTube(
 	options: ImportFromYouTubeOptions,
 ): Promise<CustomRingtoneInfo> {
@@ -142,11 +169,12 @@ export async function importRingtoneFromYouTube(
 		);
 	}
 
-	await ensureBinariesInstalled();
+	const env = await getProcessEnvWithShellPath();
+	await ensureBinariesInstalled(env);
 
 	const workDir = join(tmpdir(), `superset-yt-${randomUUID()}`);
 	mkdirSync(workDir, { recursive: true });
-	const outputPath = join(workDir, "clip.mp3");
+	const outputTemplate = join(workDir, "clip.%(ext)s");
 
 	const endSeconds = startSeconds + durationSeconds;
 	const sectionSpec = `*${startSeconds}-${endSeconds}`;
@@ -164,21 +192,22 @@ export async function importRingtoneFromYouTube(
 		sectionSpec,
 		"--force-keyframes-at-cuts",
 		"-o",
-		outputPath,
+		outputTemplate,
 		url,
 	];
 
 	try {
-		await runYtDlp(args, workDir);
+		await runYtDlp(args, workDir, env);
 
-		if (!existsSync(outputPath) || statSync(outputPath).size === 0) {
+		const producedPath = findProducedAudio(workDir);
+		if (!producedPath) {
 			throw new YouTubeRingtoneError(
 				"yt-dlp did not produce an audio file. The video may be unavailable or restricted.",
 				"DOWNLOAD_FAILED",
 			);
 		}
 
-		const info = await importCustomRingtoneFromPath(outputPath);
+		const info = await importCustomRingtoneFromPath(producedPath);
 
 		const displayName = options.displayName?.trim();
 		if (displayName) {
@@ -188,7 +217,7 @@ export async function importRingtoneFromYouTube(
 
 		return info;
 	} finally {
-		await safeUnlink(outputPath);
+		await safeUnlink(join(workDir, "clip.mp3"));
 		await rm(workDir, { recursive: true, force: true }).catch(() => {
 			// Best-effort cleanup.
 		});

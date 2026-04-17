@@ -116,12 +116,15 @@ function readCustomRingtoneMetadata(): CustomRingtoneMetadata {
 	}
 }
 
-function writeCustomRingtoneMetadata(name: string): void {
+function writeCustomRingtoneMetadata(
+	name: string,
+	importedAt: number = Date.now(),
+): void {
 	writeFileSync(
 		CUSTOM_RINGTONE_METADATA_PATH,
 		JSON.stringify({
 			name,
-			importedAt: Date.now(),
+			importedAt,
 		}),
 		"utf-8",
 	);
@@ -165,7 +168,9 @@ export function setCustomRingtoneDisplayName(name: string): void {
 		return;
 	}
 	ensureCustomRingtonesDir();
-	writeCustomRingtoneMetadata(name.trim().slice(0, 80) || "Custom Audio");
+	const displayName = name.trim().slice(0, 80) || "Custom Audio";
+	const existing = readCustomRingtoneMetadata();
+	writeCustomRingtoneMetadata(displayName, existing.importedAt ?? Date.now());
 }
 
 export function getCustomRingtoneInfo(): CustomRingtoneInfo | null {

@@ -30,10 +30,10 @@ interface YouTubeImportDialogProps {
 const YOUTUBE_URL_HINT =
 	/^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i;
 
-function clampNonNegativeInt(value: string): number {
+function clampNonNegativeInt(value: string, max?: number): number {
 	const parsed = Number.parseInt(value, 10);
 	if (!Number.isFinite(parsed) || parsed < 0) return 0;
-	return parsed;
+	return max !== undefined ? Math.min(parsed, max) : parsed;
 }
 
 export function YouTubeImportDialog({
@@ -65,8 +65,8 @@ export function YouTubeImportDialog({
 	}, [open]);
 
 	const startSeconds =
-		clampNonNegativeInt(startMin) * 60 + clampNonNegativeInt(startSec);
-	const durationSeconds = clampNonNegativeInt(duration);
+		clampNonNegativeInt(startMin) * 60 + clampNonNegativeInt(startSec, 59);
+	const durationSeconds = clampNonNegativeInt(duration, MAX_DURATION_SECONDS);
 
 	const urlLooksValid = useMemo(() => YOUTUBE_URL_HINT.test(url.trim()), [url]);
 	const durationValid =
