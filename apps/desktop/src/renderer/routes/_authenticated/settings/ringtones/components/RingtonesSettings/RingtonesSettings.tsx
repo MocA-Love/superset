@@ -256,6 +256,16 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 	const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
 
 	const handleYouTubeImportSuccess = useCallback(async () => {
+		if (previewTimerRef.current) {
+			clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = null;
+		}
+		try {
+			await electronTrpcClient.ringtone.stop.mutate();
+		} catch (error) {
+			console.error("Failed to stop ringtone before import:", error);
+		}
+		setPlayingId(null);
 		await utils.ringtone.getCustom.invalidate();
 		setRingtone(CUSTOM_RINGTONE_ID);
 	}, [utils, setRingtone]);
