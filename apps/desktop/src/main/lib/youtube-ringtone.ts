@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
 	existsSync,
 	constants as fsConstants,
@@ -158,54 +159,200 @@ export async function checkMissingBinaries(): Promise<string[]> {
 	return entries.filter(([, p]) => !p).map(([name]) => name);
 }
 
-export async function installMissingBinaries(): Promise<void> {
+interface InstallEventBase {
+	installId: string;
+	seq: number;
+	time: number;
+}
+
+export type InstallProgressEvent =
+	| (InstallEventBase & {
+			type: "log";
+			message: string;
+			level: "info" | "warn" | "error";
+			stream: "stdout" | "stderr" | "system";
+	  })
+	| (InstallEventBase & { type: "done" })
+	| (InstallEventBase & { type: "error"; message: string });
+
+const installEventBus = new EventEmitter();
+installEventBus.setMaxListeners(0);
+
+const installEventBuffers = new Map<string, InstallProgressEvent[]>();
+const installBufferEvictTimers = new Map<string, NodeJS.Timeout>();
+const installSeqCounters = new Map<string, number>();
+const INSTALL_MAX_BUFFERED_EVENTS = 1000;
+const INSTALL_TERMINAL_EVICT_MS = 30_000;
+
+function isTerminalInstallEvent(event: InstallProgressEvent): boolean {
+	return event.type === "done" || event.type === "error";
+}
+
+function nextInstallSeq(installId: string): number {
+	const next = (installSeqCounters.get(installId) ?? 0) + 1;
+	installSeqCounters.set(installId, next);
+	return next;
+}
+
+type DistributiveOmit<
+	T,
+	K extends keyof InstallProgressEvent,
+> = T extends unknown ? Omit<T, K> : never;
+type InstallEventInput = DistributiveOmit<InstallProgressEvent, "seq">;
+
+function emitInstallEvent(input: InstallEventInput): void {
+	const event = {
+		...input,
+		seq: nextInstallSeq(input.installId),
+	} as InstallProgressEvent;
+	let buffer = installEventBuffers.get(event.installId);
+	if (!buffer) {
+		buffer = [];
+		installEventBuffers.set(event.installId, buffer);
+	}
+	buffer.push(event);
+	if (buffer.length > INSTALL_MAX_BUFFERED_EVENTS) {
+		buffer.splice(0, buffer.length - INSTALL_MAX_BUFFERED_EVENTS);
+	}
+	installEventBus.emit(event.installId, event);
+
+	if (isTerminalInstallEvent(event)) {
+		const existing = installBufferEvictTimers.get(event.installId);
+		if (existing) clearTimeout(existing);
+		const timer = setTimeout(() => {
+			installEventBuffers.delete(event.installId);
+			installBufferEvictTimers.delete(event.installId);
+			installSeqCounters.delete(event.installId);
+		}, INSTALL_TERMINAL_EVICT_MS);
+		installBufferEvictTimers.set(event.installId, timer);
+	}
+}
+
+function emitInstallLog(
+	installId: string,
+	message: string,
+	level: "info" | "warn" | "error",
+	stream: "stdout" | "stderr" | "system",
+): void {
+	for (const line of message.split(/\r?\n/)) {
+		const trimmed = line.trimEnd();
+		if (!trimmed) continue;
+		emitInstallEvent({
+			type: "log",
+			installId,
+			time: Date.now(),
+			message: trimmed,
+			level,
+			stream,
+		});
+	}
+}
+
+export function subscribeInstallEvents(
+	installId: string,
+	listener: (event: InstallProgressEvent) => void,
+): () => void {
+	installEventBus.on(installId, listener);
+	return () => installEventBus.off(installId, listener);
+}
+
+export function getBufferedInstallEvents(
+	installId: string,
+): InstallProgressEvent[] {
+	return installEventBuffers.get(installId)?.slice() ?? [];
+}
+
+export async function installMissingBinaries(installId: string): Promise<void> {
 	if (process.platform !== "darwin") {
-		throw new Error(
-			"Auto-install is only supported on macOS. Please install yt-dlp and ffmpeg manually.",
-		);
+		const msg =
+			"Auto-install is only supported on macOS. Please install yt-dlp and ffmpeg manually.";
+		emitInstallLog(installId, msg, "error", "system");
+		emitInstallEvent({
+			type: "error",
+			installId,
+			time: Date.now(),
+			message: msg,
+		});
+		throw new Error(msg);
 	}
 
+	emitInstallLog(installId, "Resolving Homebrew path…", "info", "system");
 	const shellEnv = await getProcessEnvWithShellPath();
 	const brewPath = await resolveBinaryPath("brew", shellEnv);
 	if (!brewPath) {
-		throw new Error(
-			"Homebrew is not installed. Please install it from https://brew.sh and then install yt-dlp and ffmpeg.",
-		);
+		const msg =
+			"Homebrew is not installed. Please install it from https://brew.sh and then install yt-dlp and ffmpeg.";
+		emitInstallLog(installId, msg, "error", "system");
+		emitInstallEvent({
+			type: "error",
+			installId,
+			time: Date.now(),
+			message: msg,
+		});
+		throw new Error(msg);
 	}
 
-	await new Promise<void>((resolve, reject) => {
-		const proc = spawn(brewPath, ["install", "yt-dlp", "ffmpeg"], {
-			env: shellEnv,
-			stdio: ["ignore", "pipe", "pipe"],
+	emitInstallLog(
+		installId,
+		`$ ${brewPath} install yt-dlp ffmpeg`,
+		"info",
+		"system",
+	);
+
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const proc = spawn(brewPath, ["install", "yt-dlp", "ffmpeg"], {
+				env: shellEnv,
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+
+			const timer = setTimeout(() => {
+				proc.kill("SIGKILL");
+				reject(new Error("Installation timed out after 10 minutes."));
+			}, 600_000);
+
+			let stderrTail = "";
+			proc.stdout?.on("data", (chunk: Buffer) => {
+				emitInstallLog(installId, chunk.toString(), "info", "stdout");
+			});
+			proc.stderr?.on("data", (chunk: Buffer) => {
+				const text = chunk.toString();
+				stderrTail = (stderrTail + text).split("\n").slice(-20).join("\n");
+				// brew writes progress banners to stderr; show as info by default
+				emitInstallLog(installId, text, "info", "stderr");
+			});
+
+			proc.on("error", (err) => {
+				clearTimeout(timer);
+				reject(new Error(`Failed to run brew: ${err.message}`));
+			});
+
+			proc.on("exit", (code) => {
+				clearTimeout(timer);
+				if (code === 0) {
+					resolve();
+				} else {
+					const msg = stderrTail.trim().split("\n").slice(-3).join("\n");
+					reject(
+						new Error(msg || `brew install exited with code ${code ?? "?"}`),
+					);
+				}
+			});
 		});
 
-		const timer = setTimeout(() => {
-			proc.kill("SIGKILL");
-			reject(new Error("Installation timed out after 10 minutes."));
-		}, 600_000);
-
-		let stderr = "";
-		proc.stderr?.on("data", (chunk: Buffer) => {
-			stderr += chunk.toString();
+		emitInstallLog(installId, "Installation complete.", "info", "system");
+		emitInstallEvent({ type: "done", installId, time: Date.now() });
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		emitInstallLog(installId, message, "error", "system");
+		emitInstallEvent({
+			type: "error",
+			installId,
+			time: Date.now(),
+			message,
 		});
-
-		proc.on("error", (err) => {
-			clearTimeout(timer);
-			reject(new Error(`Failed to run brew: ${err.message}`));
-		});
-
-		proc.on("exit", (code) => {
-			clearTimeout(timer);
-			if (code === 0) {
-				resolve();
-			} else {
-				const msg = stderr.trim().split("\n").slice(-3).join("\n");
-				reject(
-					new Error(msg || `brew install exited with code ${code ?? "?"}`),
-				);
-			}
-		});
-	});
+		throw err;
+	}
 }
 
 function runProcess(

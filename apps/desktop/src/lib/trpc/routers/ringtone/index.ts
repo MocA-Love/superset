@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { TRPCError } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import type { BrowserWindow, OpenDialogOptions } from "electron";
 import { dialog } from "electron";
 import {
@@ -16,8 +17,11 @@ import {
 	checkMissingBinaries,
 	cleanupTempAudio,
 	downloadFullYouTubeAudio,
+	getBufferedInstallEvents,
+	type InstallProgressEvent,
 	importRingtoneFromYouTube,
 	installMissingBinaries,
+	subscribeInstallEvents,
 	YouTubeRingtoneError,
 } from "main/lib/youtube-ringtone";
 import {
@@ -229,21 +233,48 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 
 		/**
 		 * Install yt-dlp and ffmpeg via Homebrew (macOS only).
+		 * Log events are streamed via `installProgress` subscription keyed on installId.
 		 */
-		installBinaries: publicProcedure.mutation(async () => {
-			try {
-				await installMissingBinaries();
-				return { success: true as const };
-			} catch (error) {
-				throw new TRPCError({
-					code: "INTERNAL_SERVER_ERROR",
-					message:
-						error instanceof Error
-							? error.message
-							: "Failed to install dependencies",
+		installBinaries: publicProcedure
+			.input(z.object({ installId: z.string().min(1) }))
+			.mutation(async ({ input }) => {
+				try {
+					await installMissingBinaries(input.installId);
+					return { success: true as const };
+				} catch (error) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message:
+							error instanceof Error
+								? error.message
+								: "Failed to install dependencies",
+					});
+				}
+			}),
+
+		/**
+		 * Subscribe to install progress events for a given installId.
+		 * Emits buffered events on connect (replay) plus live events.
+		 */
+		installProgress: publicProcedure
+			.input(z.object({ installId: z.string().min(1) }))
+			.subscription(({ input }) => {
+				return observable<InstallProgressEvent>((emit) => {
+					let lastSeq = 0;
+					const deliver = (event: InstallProgressEvent) => {
+						if (event.seq <= lastSeq) return;
+						lastSeq = event.seq;
+						emit.next(event);
+					};
+					const unsubscribe = subscribeInstallEvents(input.installId, deliver);
+					for (const event of getBufferedInstallEvents(input.installId)) {
+						deliver(event);
+					}
+					return () => {
+						unsubscribe();
+					};
 				});
-			}
-		}),
+			}),
 
 		/**
 		 * Download the full audio from a YouTube URL to a temp file.

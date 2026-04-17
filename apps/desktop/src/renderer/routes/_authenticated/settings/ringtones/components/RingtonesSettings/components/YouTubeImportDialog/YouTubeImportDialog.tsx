@@ -9,7 +9,14 @@ import {
 } from "@superset/ui/dialog";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 import { SiYoutube } from "react-icons/si";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -19,6 +26,21 @@ const YOUTUBE_URL_HINT =
 	/^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i;
 
 type Step = "url" | "installing" | "downloading" | "editor";
+
+interface InstallLogLine {
+	id: number;
+	time: string;
+	message: string;
+	level: "info" | "warn" | "error";
+}
+
+function formatInstallTime(ts: number): string {
+	const d = new Date(ts);
+	const hh = String(d.getHours()).padStart(2, "0");
+	const mm = String(d.getMinutes()).padStart(2, "0");
+	const ss = String(d.getSeconds()).padStart(2, "0");
+	return `${hh}:${mm}:${ss}`;
+}
 
 interface DownloadedAudioState {
 	tempId: string;
@@ -33,7 +55,7 @@ interface DownloadedAudioState {
 interface YouTubeImportDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onImportSuccess: () => void;
+	onImportSuccess: () => void | Promise<void>;
 }
 
 export function YouTubeImportDialog({
@@ -51,6 +73,11 @@ export function YouTubeImportDialog({
 	);
 	const [displayName, setDisplayName] = useState("");
 
+	const [installId, setInstallId] = useState<string | null>(null);
+	const [installLogs, setInstallLogs] = useState<InstallLogLine[]>([]);
+	const installLogIdRef = useRef(0);
+	const installLogContainerRef = useRef<HTMLDivElement | null>(null);
+
 	// Binary check
 	const { data: binariesData, refetch: refetchBinaries } =
 		electronTrpc.ringtone.checkBinaries.useQuery(undefined, {
@@ -65,12 +92,60 @@ export function YouTubeImportDialog({
 			await refetchBinaries();
 			setStep("url");
 			setErrorMessage(null);
+			setInstallId(null);
 		},
 		onError: (err) => {
 			setErrorMessage(err.message);
-			setStep("url");
 		},
 	});
+
+	electronTrpc.ringtone.installProgress.useSubscription(
+		{ installId: installId ?? "" },
+		{
+			enabled: installId !== null,
+			onData: (event) => {
+				if (event.type === "log") {
+					setInstallLogs((prev) => {
+						installLogIdRef.current += 1;
+						return [
+							...prev,
+							{
+								id: installLogIdRef.current,
+								time: formatInstallTime(event.time),
+								message: event.message,
+								level: event.level,
+							},
+						];
+					});
+				} else if (event.type === "error") {
+					setInstallLogs((prev) => {
+						installLogIdRef.current += 1;
+						return [
+							...prev,
+							{
+								id: installLogIdRef.current,
+								time: formatInstallTime(event.time),
+								message: event.message,
+								level: "error",
+							},
+						];
+					});
+				}
+			},
+			onError: (err) => {
+				// Subscription transport errors shouldn't block the install mutation result.
+				console.error("install progress subscription error:", err);
+			},
+		},
+	);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll on new log lines
+	useEffect(() => {
+		const el = installLogContainerRef.current;
+		if (el) {
+			el.scrollTop = el.scrollHeight;
+		}
+	}, [installLogs]);
 
 	const downloadAudio = electronTrpc.ringtone.downloadYouTubeAudio.useMutation({
 		onSuccess: (result) => {
@@ -98,7 +173,7 @@ export function YouTubeImportDialog({
 					cleanupTempAudio.mutate({ tempId: downloaded.tempId });
 				}
 				setErrorMessage(null);
-				onImportSuccess();
+				await onImportSuccess();
 				onOpenChange(false);
 			},
 			onError: (err) => {
@@ -127,9 +202,13 @@ export function YouTubeImportDialog({
 	const urlLooksValid = useMemo(() => YOUTUBE_URL_HINT.test(url.trim()), [url]);
 
 	const handleInstall = () => {
+		const newInstallId = crypto.randomUUID();
 		setStep("installing");
 		setErrorMessage(null);
-		installBinaries.mutate();
+		setInstallLogs([]);
+		installLogIdRef.current = 0;
+		setInstallId(newInstallId);
+		installBinaries.mutate({ installId: newInstallId });
 	};
 
 	const handleLoad = () => {
@@ -187,7 +266,7 @@ export function YouTubeImportDialog({
 				if (!isLoading && !importFromYouTube.isPending) onOpenChange(o);
 			}}
 		>
-			<DialogContent className="!max-w-lg sm:!max-w-2xl">
+			<DialogContent className="!max-w-lg sm:!max-w-4xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<SiYoutube className="h-4 w-4 text-red-500" />
@@ -198,21 +277,75 @@ export function YouTubeImportDialog({
 
 				{/* Step: installing */}
 				{step === "installing" && (
-					<div className="flex flex-col items-center gap-4 py-6">
-						<LuLoaderCircle className="h-8 w-8 animate-spin text-muted-foreground" />
-						<p className="text-sm text-center text-muted-foreground">
-							Running{" "}
-							<code className="rounded bg-muted px-1">
-								brew install yt-dlp ffmpeg
-							</code>
-							<br />
-							This may take a few minutes…
-						</p>
+					<div className="space-y-3 py-2">
+						<div className="flex items-center gap-3">
+							{installBinaries.isPending ? (
+								<LuLoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" />
+							) : errorMessage ? (
+								<span className="h-2 w-2 rounded-full bg-destructive" />
+							) : (
+								<span className="h-2 w-2 rounded-full bg-emerald-500" />
+							)}
+							<p className="text-sm text-muted-foreground">
+								{installBinaries.isPending
+									? "Running brew install yt-dlp ffmpeg…"
+									: errorMessage
+										? "Installation failed."
+										: "Installation complete."}
+							</p>
+						</div>
+
+						<div className="rounded-md border border-border bg-muted/20 overflow-hidden">
+							<div
+								ref={installLogContainerRef}
+								className="max-h-56 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-[1.55]"
+							>
+								{installLogs.length === 0 ? (
+									<div className="text-muted-foreground/60">
+										Waiting for output…
+									</div>
+								) : (
+									installLogs.map((line) => (
+										<div
+											key={line.id}
+											className={
+												line.level === "error"
+													? "text-red-400"
+													: line.level === "warn"
+														? "text-amber-400"
+														: "text-muted-foreground"
+											}
+										>
+											<span className="text-muted-foreground/60">
+												{line.time}
+											</span>{" "}
+											{line.message}
+										</div>
+									))
+								)}
+							</div>
+						</div>
+
 						{errorMessage && (
-							<p className="text-sm text-destructive break-words text-center">
+							<p className="text-sm text-destructive break-words">
 								{errorMessage}
 							</p>
 						)}
+
+						<DialogFooter>
+							{!installBinaries.isPending && (
+								<Button
+									type="button"
+									variant="ghost"
+									onClick={() => {
+										setStep("url");
+										setErrorMessage(null);
+									}}
+								>
+									Back
+								</Button>
+							)}
+						</DialogFooter>
 					</div>
 				)}
 
