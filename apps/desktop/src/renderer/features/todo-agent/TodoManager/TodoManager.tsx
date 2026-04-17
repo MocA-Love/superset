@@ -2535,7 +2535,6 @@ function TodoComposer({
 
 	const canSubmit =
 		projectId.length > 0 &&
-		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		!submitting &&
 		(createWorktree || workspaceId.length > 0);
@@ -2709,14 +2708,13 @@ function TodoComposer({
 						)}
 
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="composer-title">タイトル</Label>
+							<Label htmlFor="composer-title">タイトル（省略可）</Label>
 							<Input
 								id="composer-title"
 								value={title}
 								onChange={(e) => setTitle(e.target.value)}
 								placeholder="例: Issue #123 を修正"
 								maxLength={200}
-								autoFocus
 							/>
 						</div>
 
@@ -2735,6 +2733,7 @@ function TodoComposer({
 								onAttachmentsChange={setDescAttachments}
 								placeholder="やってほしい作業を書く（右のテンプレートから挿入可・画像貼り付け可）"
 								rows={5}
+								autoFocus
 							/>
 						</div>
 
