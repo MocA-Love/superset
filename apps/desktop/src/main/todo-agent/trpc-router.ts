@@ -299,7 +299,14 @@ export const createTodoAgentRouter = () => {
 					session.status !== "preparing" &&
 					session.status !== "failed" &&
 					session.status !== "aborted" &&
-					session.status !== "escalated"
+					session.status !== "escalated" &&
+					// Allow editing resumable done sessions so a subsequent
+					// `--resume` Start picks up the new description / goal /
+					// model / effort. `done` without a claudeSessionId isn't
+					// resumable, but `canStart` on the frontend already
+					// gates that case, and an accidental save here would
+					// just be a no-op that prepareArtifacts makes durable.
+					session.status !== "done"
 				) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
