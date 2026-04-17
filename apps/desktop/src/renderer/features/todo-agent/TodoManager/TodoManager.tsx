@@ -68,6 +68,16 @@ import {
 } from "react-icons/lu";
 import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type ClaudeEffortPick,
+	type ClaudeModelPick,
+	ClaudeRuntimePicker,
+	DEFAULT_SENTINEL,
+	fromPersistedEffort,
+	fromPersistedModel,
+	toPersistedEffort,
+	toPersistedModel,
+} from "../ClaudeRuntimePicker";
 import { ChangesSidebar } from "./ChangesSidebar";
 import { AttachmentChips } from "./components/AttachmentChips";
 import { AttachmentPreviewDialog } from "./components/AttachmentPreviewDialog";
@@ -552,7 +562,7 @@ export function TodoManager({
 									{grouped.map((group) => {
 										const collapsed = collapsedGroups.has(group.key);
 										return (
-											<div key={group.key} className="pb-1">
+											<div key={group.key} className="pb-1 min-w-0 w-full">
 												<Tooltip delayDuration={300}>
 													<TooltipTrigger asChild>
 														<button
@@ -674,7 +684,7 @@ export function TodoManager({
 				/>
 				<Dialog open={composerOpen} onOpenChange={setComposerOpen}>
 					<DialogContent
-						className="w-[1080px] max-w-[calc(100vw-3rem)] h-[84vh] max-h-[900px] p-0 gap-0 overflow-hidden flex flex-col rounded-xl"
+						className="!w-[min(1080px,calc(100vw-3rem))] !max-w-[min(1080px,calc(100vw-3rem))] sm:!max-w-[min(1080px,calc(100vw-3rem))] h-[84vh] max-h-[900px] p-0 gap-0 overflow-hidden flex flex-col rounded-xl"
 						showCloseButton={false}
 					>
 						<DialogTitle className="sr-only">新しい TODO</DialogTitle>
@@ -2431,11 +2441,29 @@ function TodoComposer({
 	const [goalAttachments, setGoalAttachments] = useState<ImageAttachment[]>([]);
 	const [verifyCommand, setVerifyCommand] = useState("");
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+	const [claudeModel, setClaudeModel] =
+		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
+	const [claudeEffort, setClaudeEffort] =
+		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
 	const [submitting, setSubmitting] = useState(false);
 
 	useEffect(() => {
 		if (!projectId && defaultProjectId) setProjectId(defaultProjectId);
 	}, [projectId, defaultProjectId]);
+
+	// Seed model/effort pickers from the global defaults once the settings
+	// query resolves. Only runs until the user touches a picker — after
+	// that any manual pick is preserved even if a refetch comes in.
+	const claudeSeededRef = useRef(false);
+	useEffect(() => {
+		if (claudeSeededRef.current) return;
+		if (!todoSettings) return;
+		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
+		setClaudeEffort(
+			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		claudeSeededRef.current = true;
+	}, [todoSettings]);
 
 	// Workspaces scoped to the picked project, excluding the ones
 	// scheduled for deletion.
@@ -2532,6 +2560,8 @@ function TodoComposer({
 				maxIterations,
 				maxWallClockSec,
 				customSystemPrompt: selected?.content ?? undefined,
+				claudeModel: toPersistedModel(claudeModel),
+				claudeEffort: toPersistedEffort(claudeEffort),
 			});
 			await utils.todoAgent.listAll.invalidate();
 			toast.success(
@@ -2554,6 +2584,8 @@ function TodoComposer({
 		}
 	}, [
 		canSubmit,
+		claudeEffort,
+		claudeModel,
 		createMut,
 		createWorkspaceMut,
 		createWorktree,
@@ -2715,6 +2747,14 @@ function TodoComposer({
 								placeholder="例: bun test"
 							/>
 						</div>
+
+						<ClaudeRuntimePicker
+							model={claudeModel}
+							effort={claudeEffort}
+							onModelChange={setClaudeModel}
+							onEffortChange={setClaudeEffort}
+							disabled={submitting}
+						/>
 
 						{selectedPresetId && (
 							<div className="flex flex-col gap-1.5">

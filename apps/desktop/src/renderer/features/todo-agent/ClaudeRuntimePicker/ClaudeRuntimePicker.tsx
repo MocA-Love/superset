@@ -20,21 +20,7 @@ interface ClaudeRuntimePickerProps {
 	onModelChange: (value: ClaudeModelPick) => void;
 	onEffortChange: (value: ClaudeEffortPick) => void;
 	disabled?: boolean;
-	/**
-	 * Layout variant. `stacked` labels above, `row` puts model + effort
-	 * side by side. Defaults to `row`.
-	 */
 	layout?: "stacked" | "row";
-	/**
-	 * Shows the "デフォルト = 〜" hint line under the row. Hidden when the
-	 * caller has its own explanation nearby (e.g. the Settings tab).
-	 */
-	showHint?: boolean;
-	/**
-	 * Compact mode shrinks the control height + label size so the picker
-	 * slots into tight dialog grids. Default matches the TodoModal form
-	 * density.
-	 */
 	compact?: boolean;
 }
 
@@ -52,7 +38,6 @@ export function ClaudeRuntimePicker({
 	onEffortChange,
 	disabled,
 	layout = "row",
-	showHint = true,
 	compact = true,
 }: ClaudeRuntimePickerProps) {
 	const labelClass = compact ? "text-xs" : "text-sm";
@@ -79,12 +64,7 @@ export function ClaudeRuntimePicker({
 						<SelectContent>
 							{CLAUDE_MODEL_SELECT_OPTIONS.map((opt) => (
 								<SelectItem key={opt.value} value={opt.value}>
-									<div className="flex flex-col gap-0.5 py-0.5">
-										<span className="text-xs font-medium">{opt.label}</span>
-										<span className="text-[10px] text-muted-foreground leading-tight">
-											{opt.description}
-										</span>
-									</div>
+									<span className="text-xs font-medium">{opt.label}</span>
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -103,26 +83,13 @@ export function ClaudeRuntimePicker({
 						<SelectContent>
 							{CLAUDE_EFFORT_SELECT_OPTIONS.map((opt) => (
 								<SelectItem key={opt.value} value={opt.value}>
-									<div className="flex flex-col gap-0.5 py-0.5">
-										<span className="text-xs font-medium">{opt.label}</span>
-										<span className="text-[10px] text-muted-foreground leading-tight">
-											{opt.description}
-										</span>
-									</div>
+									<span className="text-xs font-medium">{opt.label}</span>
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
 				</div>
 			</div>
-			{showHint && (
-				<p className="text-[10px] text-muted-foreground leading-relaxed">
-					デフォルト は --model / --effort を渡さないため、CLI
-					側の設定（ユーザ設定や既定値）が優先される。 モデルと effort
-					の組み合わせによっては Claude Code
-					が対応していない場合があり、その時はセッションが即座にエラー終了する。
-				</p>
-			)}
 		</div>
 	);
 }
