@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `aivis_user_dictionary_uuid` text;
