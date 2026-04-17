@@ -27,6 +27,7 @@ import {
 	Globe,
 	ListTree,
 	type LucideIcon,
+	Plug,
 	Search,
 	Sparkles,
 	SquareTerminal,
@@ -1892,6 +1893,11 @@ function ToolCallCard({
 }) {
 	const { toolUse, toolResult, children } = item;
 	const toolName = toolUse.label;
+	// Claude Code emits MCP tool names as `mcp__<server>__<tool>`. That
+	// raw form is fine for routing but ugly in the stream UI. Render as
+	// `server tool` instead; the palette also uses a dedicated MCP icon
+	// so it still visually separates from built-in tools.
+	const displayName = formatToolDisplayName(toolName);
 	const secondary = extractSecondaryInfo(toolName, toolUse.text);
 	const hasResult = toolResult != null;
 	const isRunning = !hasResult;
@@ -1937,11 +1943,11 @@ function ToolCallCard({
 				</span>
 				{isRunning ? (
 					<ShinyText className={cn("font-semibold shrink-0", palette.name)}>
-						{toolName}
+						{displayName}
 					</ShinyText>
 				) : (
 					<span className={cn("font-semibold shrink-0", palette.name)}>
-						{toolName}
+						{displayName}
 					</span>
 				)}
 				{secondary && (
@@ -2034,6 +2040,20 @@ function ShinyText({
 	);
 }
 
+/**
+ * Render tool names for the stream UI. Claude Code emits MCP tools as
+ * `mcp__<server>__<tool>`; the `mcp__` prefix is an internal routing
+ * marker that adds no signal for the human reading the stream, so we
+ * strip it and render `<server> <tool>` space-separated. Built-in tools
+ * (Read, Bash, …) fall through untouched.
+ */
+function formatToolDisplayName(rawName: string): string {
+	if (!rawName.startsWith("mcp__")) return rawName;
+	const parts = rawName.slice("mcp__".length).split("__");
+	if (parts.length < 2) return rawName;
+	return parts.join(" ");
+}
+
 interface ToolPalette {
 	icon: LucideIcon;
 	iconBg: string;
@@ -2057,6 +2077,18 @@ function getToolPalette(toolName: string): ToolPalette {
 		name: "text-foreground",
 		accent: "hover:bg-accent/20",
 	};
+	// All MCP tools share one palette so a run that uses a chain of
+	// `mcp__<server>__<tool>` calls doesn't explode into unique colors.
+	// The server name is already surfaced via `formatToolDisplayName`.
+	if (toolName.startsWith("mcp__")) {
+		return {
+			icon: Plug,
+			iconBg: "bg-indigo-500/15",
+			iconColor: "text-indigo-400",
+			name: "text-indigo-300",
+			accent: "hover:bg-indigo-500/10",
+		};
+	}
 	const palettes: Record<string, ToolPalette> = {
 		Agent: {
 			icon: Bot,
