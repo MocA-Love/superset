@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { useHotkey } from "renderer/hotkeys";
 import {
 	addBrowserShortcutListener,
@@ -540,7 +541,13 @@ export function WorkspacePage({
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useHotkey("OPEN_IN_APP", handleOpenInApp, { enabled: isActive });
+	// FORK NOTE: upstream #3511 removed this page-level hotkey to avoid double
+	// firing with OpenInMenuButton. Fork tearoff windows do not render TopBar
+	// (layout.tsx gates it on !isTearoff), so OpenInMenuButton is absent there
+	// — keep the page-level registration alive only in tearoff windows.
+	useHotkey("OPEN_IN_APP", handleOpenInApp, {
+		enabled: isActive && isTearoffWindow(),
+	});
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
