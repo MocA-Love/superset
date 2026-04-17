@@ -92,8 +92,8 @@ export function ScheduleListRow({
 					</span>
 				</div>
 				<div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
-					<span>モデル: {getClaudeModelLabel(schedule.claudeModel)}</span>
-					<span>effort: {getClaudeEffortLabel(schedule.claudeEffort)}</span>
+					<span>Model: {getClaudeModelLabel(schedule.claudeModel)}</span>
+					<span>Effort: {getClaudeEffortLabel(schedule.claudeEffort)}</span>
 				</div>
 				{schedule.lastRunAt && (
 					<div className="text-[10px] text-muted-foreground mt-0.5">
