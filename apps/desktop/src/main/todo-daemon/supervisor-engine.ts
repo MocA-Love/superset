@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { SelectTodoSession } from "@superset/local-db";
 import { getCurrentHeadSha } from "main/todo-agent/git-status";
+import { readTodoSessionRuntimeConfig } from "main/todo-agent/runtime-config";
 import {
 	getTodoSessionStore,
 	resolveWorktreePath,
@@ -266,8 +267,13 @@ export class TodoSupervisorEngine {
 					parts.push(`effort: ${session0.claudeEffort}`);
 				appendSetupEvent(sessionId, "Claude 設定", parts.join(" / "));
 			}
-			const willUsePty =
-				PTY_ENGINE_ENABLED || Boolean(session0.remoteControlEnabled);
+			const runtimeConfig = readTodoSessionRuntimeConfig({
+				artifactPath: session0.artifactPath,
+				fallbackRemoteControlEnabled: session0.remoteControlEnabled ?? false,
+			});
+			const willUsePty = PTY_ENGINE_ENABLED || runtimeConfig.ptyEnabled;
+			const remoteControlEnabled =
+				willUsePty && runtimeConfig.remoteControlEnabled;
 			appendSetupEvent(
 				sessionId,
 				"Claude",
@@ -275,7 +281,7 @@ export class TodoSupervisorEngine {
 					? "claude を PTY (interactive) モードで起動します"
 					: "claude -p --output-format stream-json を起動します",
 			);
-			if (session0.remoteControlEnabled) {
+			if (remoteControlEnabled) {
 				appendSetupEvent(
 					sessionId,
 					"Remote Control",
@@ -418,7 +424,8 @@ export class TodoSupervisorEngine {
 					claudeModel: currentSession.claudeModel ?? null,
 					claudeEffort: currentSession.claudeEffort ?? null,
 					signal: ac.signal,
-					remoteControlEnabled: Boolean(currentSession.remoteControlEnabled),
+					usePty: willUsePty,
+					remoteControlEnabled,
 					onChild: (child) => {
 						run.currentChild = child;
 					},
@@ -618,6 +625,7 @@ export class TodoSupervisorEngine {
 		claudeModel: string | null;
 		claudeEffort: string | null;
 		signal: AbortSignal;
+		usePty: boolean;
 		onChild: (child: ChildProcess) => void;
 		remoteControlEnabled: boolean;
 	}): Promise<{
@@ -629,12 +637,7 @@ export class TodoSupervisorEngine {
 		interrupted: boolean;
 		scheduledWakeup: { delayMs: number; reason: string | null } | null;
 	}> {
-		// The PTY engine is the only path that can drive `/remote-control`.
-		// We therefore dispatch to it whenever the daemon is running in
-		// PTY mode OR the session asked for Remote Control — the latter
-		// is a defensive fallback for when a user checks the box before
-		// the env flag is set, so the feature does not silently no-op.
-		if (PTY_ENGINE_ENABLED || params.remoteControlEnabled) {
+		if (params.usePty) {
 			return runClaudeTurnPty({
 				sessionId: params.sessionId,
 				iteration: params.iteration,

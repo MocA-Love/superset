@@ -597,7 +597,9 @@ if (!gotTheLock) {
 		// One-shot sweep of 30-day-old pasted attachments so userData
 		// doesn't grow forever from screenshots dropped into TODOs.
 		try {
-			const { cleanupOldAttachments } = await import("./todo-agent");
+			const { cleanupOldAttachments } = await import(
+				"./todo-agent/attachments-cleanup"
+			);
 			cleanupOldAttachments();
 		} catch (error) {
 			console.warn("[main] todo-agent attachment cleanup skipped", error);
@@ -608,7 +610,9 @@ if (!gotTheLock) {
 		// sweep so deleted sessions' images also drop out of the
 		// attachment reference set on the next run.
 		try {
-			const { cleanupOldSessions } = await import("./todo-agent");
+			const { cleanupOldSessions } = await import(
+				"./todo-agent/sessions-cleanup"
+			);
 			cleanupOldSessions();
 		} catch (error) {
 			console.warn("[main] todo-agent session cleanup skipped", error);
