@@ -44,6 +44,7 @@ import { closeLocalDb, localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
+import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
 import {
 	prewarmTerminalRuntime,
 	reconcileDaemonSessions,
@@ -667,6 +668,13 @@ if (!gotTheLock) {
 		session
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-ext-icon", extIconHandler);
+
+		// Serve temp audio files (for YouTube import waveform editor)
+		const tempAudioHandler = createTempAudioProtocolHandler();
+		protocol.handle("superset-temp-audio", tempAudioHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-temp-audio", tempAudioHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();

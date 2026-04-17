@@ -30,6 +30,7 @@ const ALLOWED_AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg"]);
 interface CustomRingtoneMetadata {
 	name?: string;
 	importedAt?: number;
+	thumbnailUrl?: string;
 }
 
 export interface CustomRingtoneInfo {
@@ -37,6 +38,7 @@ export interface CustomRingtoneInfo {
 	name: string;
 	description: string;
 	emoji: string;
+	thumbnailUrl?: string;
 }
 
 function isAllowedAudioExtension(filePath: string): boolean {
@@ -119,12 +121,14 @@ function readCustomRingtoneMetadata(): CustomRingtoneMetadata {
 function writeCustomRingtoneMetadata(
 	name: string,
 	importedAt: number = Date.now(),
+	thumbnailUrl?: string,
 ): void {
 	writeFileSync(
 		CUSTOM_RINGTONE_METADATA_PATH,
 		JSON.stringify({
 			name,
 			importedAt,
+			...(thumbnailUrl ? { thumbnailUrl } : {}),
 		}),
 		"utf-8",
 	);
@@ -184,7 +188,11 @@ export function setCustomRingtoneDisplayName(name: string): void {
 	ensureCustomRingtonesDir();
 	const displayName = name.trim().slice(0, 80) || "Custom Audio";
 	const existing = readCustomRingtoneMetadata();
-	writeCustomRingtoneMetadata(displayName, existing.importedAt ?? Date.now());
+	writeCustomRingtoneMetadata(
+		displayName,
+		existing.importedAt ?? Date.now(),
+		existing.thumbnailUrl,
+	);
 }
 
 export function getCustomRingtoneInfo(): CustomRingtoneInfo | null {
@@ -199,11 +207,18 @@ export function getCustomRingtoneInfo(): CustomRingtoneInfo | null {
 		name: metadata.name?.trim() || "Custom Audio",
 		description: "Imported from your local machine",
 		emoji: "SFX",
+		...(metadata.thumbnailUrl ? { thumbnailUrl: metadata.thumbnailUrl } : {}),
 	};
+}
+
+export interface ImportOptions {
+	displayName?: string;
+	thumbnailUrl?: string;
 }
 
 export async function importCustomRingtoneFromPath(
 	sourcePath: string,
+	options?: ImportOptions,
 ): Promise<CustomRingtoneInfo> {
 	if (!isAllowedAudioExtension(sourcePath)) {
 		throw new Error("Only .mp3, .wav, and .ogg files are supported");
@@ -227,7 +242,10 @@ export async function importCustomRingtoneFromPath(
 		RINGTONES_ASSETS_DIR,
 		`${CUSTOM_RINGTONE_FILE_STEM}${ext}`,
 	);
-	const displayName = sanitizeDisplayName(basename(sourcePath));
+	const displayName =
+		options?.displayName?.trim().slice(0, 80) ||
+		sanitizeDisplayName(basename(sourcePath));
+	const thumbnailUrl = options?.thumbnailUrl;
 
 	// Re-importing the same file path should not delete the active ringtone.
 	if (areSamePath(sourcePath, destinationPath) && existsSync(destinationPath)) {
@@ -236,12 +254,13 @@ export async function importCustomRingtoneFromPath(
 		} catch {
 			// Best effort only.
 		}
-		writeCustomRingtoneMetadata(displayName);
+		writeCustomRingtoneMetadata(displayName, Date.now(), thumbnailUrl);
 		return {
 			id: CUSTOM_RINGTONE_ID,
 			name: displayName,
 			description: "Imported from your local machine",
 			emoji: "SFX",
+			...(thumbnailUrl ? { thumbnailUrl } : {}),
 		};
 	}
 
@@ -272,12 +291,13 @@ export async function importCustomRingtoneFromPath(
 		// Best effort only.
 	}
 
-	writeCustomRingtoneMetadata(displayName);
+	writeCustomRingtoneMetadata(displayName, Date.now(), thumbnailUrl);
 
 	return {
 		id: CUSTOM_RINGTONE_ID,
 		name: displayName,
 		description: "Imported from your local machine",
 		emoji: "SFX",
+		...(thumbnailUrl ? { thumbnailUrl } : {}),
 	};
 }
