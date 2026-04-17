@@ -89,12 +89,20 @@ function RingtoneCard({
 					isSelected ? "bg-accent/50" : "bg-muted/30",
 				)}
 			>
-				{/* Emoji */}
-				<span className="text-4xl">{ringtone.emoji}</span>
+				{/* Thumbnail or Emoji */}
+				{ringtone.thumbnailUrl ? (
+					<img
+						src={ringtone.thumbnailUrl}
+						alt=""
+						className="w-full h-full object-cover absolute inset-0"
+					/>
+				) : (
+					<span className="text-4xl">{ringtone.emoji}</span>
+				)}
 
 				{/* Duration badge */}
 				{ringtone.duration && (
-					<span className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-1.5 py-0.5 rounded">
+					<span className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-1.5 py-0.5 rounded z-10">
 						{formatDuration(ringtone.duration)}
 					</span>
 				)}
@@ -103,7 +111,7 @@ function RingtoneCard({
 				{showActions && (
 					// biome-ignore lint/a11y/noStaticElementInteractions: wrapper exists only to stop click bubbling to the outer card button
 					<div
-						className="absolute top-1.5 left-1.5"
+						className="absolute top-1.5 left-1.5 z-10"
 						onClick={(e) => e.stopPropagation()}
 						onKeyDown={(e) => e.stopPropagation()}
 					>
@@ -146,7 +154,7 @@ function RingtoneCard({
 						onTogglePlay();
 					}}
 					className={cn(
-						"absolute bottom-2 right-2 h-8 w-8 rounded-full flex items-center justify-center",
+						"absolute bottom-2 right-2 h-8 w-8 rounded-full flex items-center justify-center z-10",
 						"transition-colors border",
 						isPlaying
 							? "bg-destructive text-destructive-foreground border-destructive hover:bg-destructive/90"
@@ -246,20 +254,11 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 	});
 
 	const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
-	const [youtubeError, setYoutubeError] = useState<string | null>(null);
-	const importFromYouTube = electronTrpc.ringtone.importFromYouTube.useMutation(
-		{
-			onSuccess: async () => {
-				setYoutubeError(null);
-				setYoutubeDialogOpen(false);
-				await utils.ringtone.getCustom.invalidate();
-				setRingtone(CUSTOM_RINGTONE_ID);
-			},
-			onError: (error) => {
-				setYoutubeError(error.message);
-			},
-		},
-	);
+
+	const handleYouTubeImportSuccess = useCallback(async () => {
+		await utils.ringtone.getCustom.invalidate();
+		setRingtone(CUSTOM_RINGTONE_ID);
+	}, [utils, setRingtone]);
 
 	const [renameDialogOpen, setRenameDialogOpen] = useState(false);
 	const [renameError, setRenameError] = useState<string | null>(null);
@@ -429,11 +428,7 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 									type="button"
 									size="sm"
 									variant="outline"
-									onClick={() => {
-										setYoutubeError(null);
-										setYoutubeDialogOpen(true);
-									}}
-									disabled={importFromYouTube.isPending}
+									onClick={() => setYoutubeDialogOpen(true)}
 								>
 									<SiYoutube className="mr-1.5 h-3.5 w-3.5" />
 									From YouTube
@@ -484,17 +479,8 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 
 			<YouTubeImportDialog
 				open={youtubeDialogOpen}
-				onOpenChange={(open) => {
-					setYoutubeDialogOpen(open);
-					if (!open) setYoutubeError(null);
-				}}
-				onSubmit={async (input) => {
-					await importFromYouTube.mutateAsync(input).catch(() => {
-						// Error surfaced via youtubeError state.
-					});
-				}}
-				isSubmitting={importFromYouTube.isPending}
-				errorMessage={youtubeError}
+				onOpenChange={setYoutubeDialogOpen}
+				onImportSuccess={handleYouTubeImportSuccess}
 			/>
 
 			<DeleteRingtoneDialog

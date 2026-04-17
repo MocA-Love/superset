@@ -11,9 +11,13 @@ import {
 } from "main/lib/custom-ringtones";
 import { playSoundFile } from "main/lib/play-sound";
 import { getSoundPath } from "main/lib/sound-paths";
+import { getTempAudioPath } from "main/lib/temp-audio-protocol";
 import {
+	checkMissingBinaries,
+	cleanupTempAudio,
+	downloadFullYouTubeAudio,
 	importRingtoneFromYouTube,
-	YOUTUBE_RINGTONE_LIMITS,
+	installMissingBinaries,
 	YouTubeRingtoneError,
 } from "main/lib/youtube-ringtone";
 import {
@@ -216,6 +220,77 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 			}),
 
 		/**
+		 * Check which required binaries (yt-dlp, ffmpeg) are missing.
+		 */
+		checkBinaries: publicProcedure.query(async () => {
+			const missing = await checkMissingBinaries();
+			return { missing };
+		}),
+
+		/**
+		 * Install yt-dlp and ffmpeg via Homebrew (macOS only).
+		 */
+		installBinaries: publicProcedure.mutation(async () => {
+			try {
+				await installMissingBinaries();
+				return { success: true as const };
+			} catch (error) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message:
+						error instanceof Error
+							? error.message
+							: "Failed to install dependencies",
+				});
+			}
+		}),
+
+		/**
+		 * Download the full audio from a YouTube URL to a temp file.
+		 * Returns a tempId for use with the superset-temp-audio protocol and video metadata.
+		 */
+		downloadYouTubeAudio: publicProcedure
+			.input(z.object({ url: z.string().min(1) }))
+			.mutation(async ({ input }) => {
+				try {
+					const result = await downloadFullYouTubeAudio(input.url);
+					return {
+						tempId: result.tempId,
+						info: result.info,
+					};
+				} catch (error) {
+					if (error instanceof YouTubeRingtoneError) {
+						throw new TRPCError({
+							code:
+								error.code === "BINARY_MISSING" ||
+								error.code === "TIMEOUT" ||
+								error.code === "VIDEO_TOO_LONG"
+									? "PRECONDITION_FAILED"
+									: "BAD_REQUEST",
+							message: error.message,
+						});
+					}
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message:
+							error instanceof Error
+								? error.message
+								: "Failed to download YouTube audio",
+					});
+				}
+			}),
+
+		/**
+		 * Clean up a previously downloaded temp audio file.
+		 */
+		cleanupTempAudio: publicProcedure
+			.input(z.object({ tempId: z.string() }))
+			.mutation(async ({ input }) => {
+				await cleanupTempAudio(input.tempId);
+				return { success: true as const };
+			}),
+
+		/**
 		 * Imports a custom ringtone by clipping a section of a YouTube video.
 		 * Requires `yt-dlp` and `ffmpeg` to be installed on the user's machine.
 		 */
@@ -227,16 +302,28 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 						.number()
 						.min(0)
 						.max(60 * 60 * 12),
-					durationSeconds: z
+					endSeconds: z
 						.number()
-						.min(1)
-						.max(YOUTUBE_RINGTONE_LIMITS.maxDurationSeconds),
+						.min(0)
+						.max(60 * 60 * 12),
 					displayName: z.string().max(120).optional(),
+					thumbnailUrl: z.string().max(2048).optional(),
+					fadeInSeconds: z.number().min(0).max(10).optional(),
+					fadeOutSeconds: z.number().min(0).max(10).optional(),
+					playbackRate: z.number().min(0.5).max(2.0).optional(),
+					/** Client-side tempId from downloadYouTubeAudio – resolved to path server-side */
+					tempId: z.string().optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
 				try {
-					const ringtone = await importRingtoneFromYouTube(input);
+					const tempFilePath = input.tempId
+						? (getTempAudioPath(input.tempId) ?? undefined)
+						: undefined;
+					const ringtone = await importRingtoneFromYouTube({
+						...input,
+						tempFilePath,
+					});
 					return { ringtone };
 				} catch (error) {
 					if (error instanceof YouTubeRingtoneError) {
