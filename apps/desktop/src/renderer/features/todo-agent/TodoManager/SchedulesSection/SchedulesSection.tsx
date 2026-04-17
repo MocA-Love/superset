@@ -69,7 +69,7 @@ export function SchedulesSection() {
 	};
 
 	return (
-		<div className="flex flex-col h-full min-h-0">
+		<div className="flex flex-col flex-1 min-h-0">
 			<div className="p-2 border-b shrink-0 flex items-center justify-between gap-2">
 				<span className="text-xs text-muted-foreground">
 					{(schedules?.length ?? 0) > 0
@@ -94,7 +94,7 @@ export function SchedulesSection() {
 					className="h-8 text-xs rounded-md"
 				/>
 			</div>
-			<ScrollArea className="flex-1">
+			<ScrollArea className="flex-1 min-h-0">
 				<div className="flex flex-col gap-1.5 p-2">
 					{(schedules?.length ?? 0) === 0 ? (
 						<p className="text-xs text-muted-foreground px-1 py-4">
