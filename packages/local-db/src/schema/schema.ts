@@ -224,6 +224,7 @@ export const settings = sqliteTable("settings", {
 	aivisModelUuid: text("aivis_model_uuid"),
 	aivisFormat: text("aivis_format"),
 	aivisFormatPermission: text("aivis_format_permission"),
+	aivisUserDictionaryUuid: text("aivis_user_dictionary_uuid"),
 	preventAgentSleep: integer("prevent_agent_sleep", { mode: "boolean" }),
 	deleteLocalBranch: integer("delete_local_branch", { mode: "boolean" }),
 	fileOpenMode: text("file_open_mode").$type<FileOpenMode>(),

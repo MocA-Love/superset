@@ -45,6 +45,7 @@ function readAivisSettings() {
 			enabled: row?.aivisEnabled ?? false,
 			apiKey: row?.aivisApiKey ?? "",
 			modelUuid: row?.aivisModelUuid ?? "",
+			userDictionaryUuid: row?.aivisUserDictionaryUuid ?? "",
 			format: row?.aivisFormat ?? "ワークスペース、{{workspace}}、です",
 			formatPermission:
 				row?.aivisFormatPermission ?? "{{branch}}で対応が必要です",
@@ -63,7 +64,15 @@ async function synthesize(
 	apiKey: string,
 	modelUuid: string,
 	text: string,
+	userDictionaryUuid?: string,
 ): Promise<Buffer> {
+	const body: Record<string, unknown> = {
+		model_uuid: modelUuid,
+		text,
+		output_format: "mp3",
+	};
+	if (userDictionaryUuid) body.user_dictionary_uuid = userDictionaryUuid;
+
 	const res = await fetch(AIVIS_ENDPOINT, {
 		method: "POST",
 		headers: {
@@ -71,11 +80,7 @@ async function synthesize(
 			"Content-Type": "application/json",
 			Accept: "audio/mpeg",
 		},
-		body: JSON.stringify({
-			model_uuid: modelUuid,
-			text,
-			output_format: "mp3",
-		}),
+		body: JSON.stringify(body),
 	});
 
 	if (!res.ok) {
@@ -112,6 +117,7 @@ export async function playAivisTts(options: {
 	modelUuid: string;
 	text: string;
 	volume?: number;
+	userDictionaryUuid?: string;
 }): Promise<void> {
 	const trimmed = options.text.trim();
 	if (!trimmed) return;
@@ -119,7 +125,12 @@ export async function playAivisTts(options: {
 		throw new Error("Aivis API key and model UUID are required");
 	}
 
-	const audio = await synthesize(options.apiKey, options.modelUuid, trimmed);
+	const audio = await synthesize(
+		options.apiKey,
+		options.modelUuid,
+		trimmed,
+		options.userDictionaryUuid,
+	);
 	const path = uniqueTmpPath();
 	await writeFile(path, audio);
 
@@ -150,6 +161,7 @@ export async function playAivisNotification(
 			modelUuid: cfg.modelUuid,
 			text,
 			volume: cfg.volume,
+			userDictionaryUuid: cfg.userDictionaryUuid || undefined,
 		});
 	} catch (err) {
 		console.warn("[aivis-tts] playback failed", err);

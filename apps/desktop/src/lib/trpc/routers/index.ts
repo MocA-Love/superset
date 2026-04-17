@@ -3,6 +3,7 @@ import type { WindowManager } from "main/lib/window-manager";
 // Fork-local: TODO autonomous agent feature.
 import { createTodoAgentRouter } from "main/todo-agent";
 import { router } from "..";
+import { createAivisRouter } from "./aivis";
 import { createAnalyticsRouter } from "./analytics";
 import { createAuthRouter } from "./auth";
 import { createAutoUpdateRouter } from "./auto-update";
@@ -48,6 +49,7 @@ export const createAppRouter = (
 	return router({
 		chatRuntimeService: createChatRuntimeServiceRouter(),
 		chatService: createChatServiceRouter(),
+		aivis: createAivisRouter(),
 		analytics: createAnalyticsRouter(),
 		browser: createBrowserRouter(),
 		browserHistory: createBrowserHistoryRouter(),
