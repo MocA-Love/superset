@@ -26,12 +26,14 @@ export function DeleteRingtoneDialog({
 	isSubmitting,
 	errorMessage,
 }: DeleteRingtoneDialogProps) {
-	const handleConfirm = async () => {
-		await onConfirm();
-	};
-
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!next && isSubmitting) return;
+				onOpenChange(next);
+			}}
+		>
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
 					<DialogTitle>Delete custom audio</DialogTitle>
@@ -58,7 +60,9 @@ export function DeleteRingtoneDialog({
 					<Button
 						type="button"
 						variant="destructive"
-						onClick={handleConfirm}
+						onClick={() => {
+							void onConfirm();
+						}}
 						disabled={isSubmitting}
 					>
 						{isSubmitting && (
