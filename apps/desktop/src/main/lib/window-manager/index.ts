@@ -192,6 +192,58 @@ export class WindowManager {
 		return { windowId, window };
 	}
 
+	/**
+	 * Collect tabs from all open tearoff windows before the app quits.
+	 * app.exit() bypasses beforeunload in renderers, so we must explicitly
+	 * request state from each tearoff window via IPC.
+	 */
+	async collectAllTearoffTabs(
+		timeoutMs = 1500,
+	): Promise<Array<{ tab: unknown; panes: Record<string, unknown> }>> {
+		const tearoffEntries = Array.from(this.windows.entries()).filter(
+			([id, win]) => id !== "main" && !win.isDestroyed(),
+		);
+
+		if (tearoffEntries.length === 0) return [];
+
+		const promises = tearoffEntries.map(
+			([windowId, win]) =>
+				new Promise<Array<{ tab: unknown; panes: Record<string, unknown> }>>(
+					(resolve) => {
+						const timer = setTimeout(() => {
+							ipcMain.removeAllListeners(`tearoff-state-collected-${windowId}`);
+							resolve([]);
+						}, timeoutMs);
+
+						ipcMain.once(
+							`tearoff-state-collected-${windowId}`,
+							(
+								_event,
+								data: Array<{
+									tab: unknown;
+									panes: Record<string, unknown>;
+								}>,
+							) => {
+								clearTimeout(timer);
+								resolve(Array.isArray(data) ? data : []);
+							},
+						);
+
+						if (!win.isDestroyed()) {
+							win.webContents.send("collect-tearoff-state", windowId);
+						} else {
+							clearTimeout(timer);
+							ipcMain.removeAllListeners(`tearoff-state-collected-${windowId}`);
+							resolve([]);
+						}
+					},
+				),
+		);
+
+		const results = await Promise.all(promises);
+		return results.flat();
+	}
+
 	broadcast(channel: string, ...args: unknown[]): void {
 		for (const window of this.windows.values()) {
 			if (!window.isDestroyed()) {
