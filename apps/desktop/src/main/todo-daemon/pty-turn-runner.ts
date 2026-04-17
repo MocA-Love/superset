@@ -103,11 +103,9 @@ export async function runClaudeTurnPty(
 	const projectDir = path.join(CLAUDE_PROJECTS_ROOT, encodedCwd);
 	ensureDir(projectDir);
 
-	const existingJsonl = new Set(listJsonl(projectDir));
-
 	// Set up the Stop-hook sink before spawning so we never miss events.
 	const hookSink = createHookSink(params.sessionId);
-	const settings = buildSettingsJson(hookSink.scriptPath);
+	const settings = buildSettingsJson(hookSink.hookCommand);
 
 	const args = [
 		"--permission-mode",
@@ -247,27 +245,32 @@ export async function runClaudeTurnPty(
 	};
 
 	try {
-		// Wait for the JSONL file to appear.
+		// Wait for the JSONL file to appear. For non-resume runs we
+		// wait until the SessionStart hook has written the runtime
+		// session id to disk — that is the only way to bind *this*
+		// PTY to *this* JSONL when multiple sessions spawn in the
+		// same cwd. Falling back to "first new jsonl" would make
+		// concurrent sessions tail each other's transcripts
+		// (P1 review finding).
 		const jsonlStartTs = Date.now();
 		while (Date.now() - jsonlStartTs < JSONL_DISCOVERY_TIMEOUT_MS) {
 			if (!pollState()) break;
 			const nowJsonls = listJsonl(projectDir);
-			const added = nowJsonls.filter((f) => !existingJsonl.has(f));
-			// When we are resuming, the JSONL file already exists — find
-			// the one with matching session id, or fall back to the most
-			// recently modified.
 			let discovered: string | null = null;
 			if (params.resumeSessionId) {
 				const expected = `${params.resumeSessionId}.jsonl`;
 				if (nowJsonls.includes(expected)) {
 					discovered = expected;
-				} else if (added.length > 0) {
-					discovered = added[0];
-				} else if (nowJsonls.length > 0) {
-					discovered = mostRecentFile(projectDir, nowJsonls);
 				}
-			} else if (added.length > 0) {
-				discovered = added[0];
+			} else {
+				const runtimeSessionId = hookSink.readRuntimeSessionId();
+				if (runtimeSessionId) {
+					const expected = `${runtimeSessionId}.jsonl`;
+					if (nowJsonls.includes(expected)) {
+						discovered = expected;
+						state.claudeSessionId = runtimeSessionId;
+					}
+				}
 			}
 			if (discovered) {
 				state.jsonlPath = path.join(projectDir, discovered);
@@ -280,10 +283,6 @@ export async function runClaudeTurnPty(
 						state.jsonlReadOffset = 0;
 					}
 				}
-				// Claude Code assigns the JSONL basename as the
-				// session id in -p mode; for interactive mode the
-				// basename *also* matches the runtime session id so
-				// we can lift it out of the filename.
 				if (!state.claudeSessionId) {
 					const base = path.basename(discovered, ".jsonl");
 					if (/^[0-9a-f-]{36}$/.test(base)) {
@@ -296,13 +295,15 @@ export async function runClaudeTurnPty(
 		}
 
 		if (!state.jsonlPath) {
+			const runtimeSid = hookSink.readRuntimeSessionId();
 			return {
 				result: null,
 				sessionId: state.claudeSessionId,
 				costUsd: null,
 				numTurns: null,
-				error:
-					"Claude Code の JSONL ファイルが発見できませんでした (PTY 起動は成功)",
+				error: runtimeSid
+					? `Claude Code のセッション JSONL (${runtimeSid}.jsonl) が発見できませんでした`
+					: "SessionStart hook が発火しなかったため JSONL を同定できませんでした (PTY 起動は成功)",
 				interrupted: false,
 				scheduledWakeup: null,
 			};
@@ -463,23 +464,6 @@ function listJsonl(dir: string): string[] {
 	}
 }
 
-function mostRecentFile(dir: string, files: string[]): string {
-	let pick = files[0];
-	let pickMtime = 0;
-	for (const f of files) {
-		try {
-			const s = fs.statSync(path.join(dir, f));
-			if (s.mtimeMs > pickMtime) {
-				pickMtime = s.mtimeMs;
-				pick = f;
-			}
-		} catch {
-			/* ignore */
-		}
-	}
-	return pick;
-}
-
 function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
 }
@@ -492,13 +476,23 @@ function safeKill(p: IPty): void {
 	}
 }
 
-function buildSettingsJson(hookScriptPath: string): string {
+function buildSettingsJson(hookCommand: (event: string) => string): string {
 	const settings = {
 		hooks: {
 			Stop: [
 				{
 					matcher: "",
-					hooks: [{ type: "command", command: `${hookScriptPath} Stop` }],
+					hooks: [{ type: "command", command: hookCommand("Stop") }],
+				},
+			],
+			// SessionStart captures Claude's runtime `session_id` so the
+			// daemon can unambiguously identify which JSONL file this
+			// spawn owns, even when multiple PTY sessions start
+			// concurrently in the same cwd (P1 review finding).
+			SessionStart: [
+				{
+					matcher: "",
+					hooks: [{ type: "command", command: hookCommand("SessionStart") }],
 				},
 			],
 		},
@@ -507,15 +501,25 @@ function buildSettingsJson(hookScriptPath: string): string {
 }
 
 // -----------------------------------------------------------------------------
-// Hook sink — a tmp file the Stop hook appends to; the tail loop reads
-// it to decide when the turn ended. Using a per-session file (not a
-// socket) keeps the implementation portable across platforms and
-// sidesteps SIGPIPE / nc / socat dependencies.
+// Hook sink — a Node.js helper script the Stop / SessionStart hooks
+// invoke. It appends hook payloads to a per-session event log and
+// records the runtime `session_id` that SessionStart carries. The
+// daemon reads the log to:
+//   1. flip `hasStopEvent()` when Claude finishes a turn
+//   2. look up the authoritative JSONL filename (`<session_id>.jsonl`)
+//      so concurrent PTY sessions in the same cwd never tail each
+//      other's transcripts (was a P1 review finding).
+//
+// Using Node (instead of POSIX `sh`) gives us a single script that
+// works on Windows as well — Claude Code itself is a Node CLI so
+// `node` is always on PATH for any environment where the daemon can
+// launch `claude`.
 // -----------------------------------------------------------------------------
 
 interface HookSink {
-	scriptPath: string;
+	hookCommand: (event: string) => string;
 	hasStopEvent(): boolean;
+	readRuntimeSessionId(): string | null;
 	cleanup(): void;
 }
 
@@ -526,32 +530,58 @@ function createHookSink(sessionId: string): HookSink {
 	} catch {
 		/* ignore */
 	}
-	const eventsPath = path.join(tmpDir, `hook-${sessionId}-${Date.now()}.log`);
-	const scriptPath = path.join(tmpDir, `hook-${sessionId}-${Date.now()}.sh`);
+	const stamp = `${sessionId}-${Date.now()}`;
+	const eventsPath = path.join(tmpDir, `hook-${stamp}.log`);
+	const sessionIdPath = path.join(tmpDir, `hook-${stamp}.session-id`);
+	const scriptPath = path.join(tmpDir, `hook-${stamp}.js`);
 	try {
 		fs.writeFileSync(eventsPath, "");
 	} catch {
 		/* ignore */
 	}
-	// Minimal POSIX shell script; stdin is a JSON object provided by
-	// Claude Code's hook runner, which we echo into the sink file so
-	// the daemon can see it. We intentionally don't require jq.
-	const script = `#!/bin/sh
-set -e
-EVENT="$1"
-INPUT=$(cat)
-printf '{"event":"%s","input":%s}\\n' "$EVENT" "$INPUT" >> ${escapeShell(
-		eventsPath,
-	)}
-exit 0
+
+	// Cross-platform Node hook runner. It reads stdin (the hook
+	// payload JSON), appends an NDJSON line to the events log, and —
+	// when Claude's runtime session_id is in the payload — records it
+	// to a sibling file the daemon polls during JSONL discovery.
+	const script = `#!/usr/bin/env node
+const fs = require('fs');
+const EVENT = process.argv[2] || '';
+const EVENTS_LOG = ${JSON.stringify(eventsPath)};
+const SESSION_ID_FILE = ${JSON.stringify(sessionIdPath)};
+let chunks = [];
+process.stdin.on('data', (c) => { chunks.push(c); });
+process.stdin.on('end', () => {
+  const raw = Buffer.concat(chunks).toString('utf8');
+  try {
+    fs.appendFileSync(EVENTS_LOG, JSON.stringify({ event: EVENT, input: raw }) + '\\n');
+  } catch (_) { /* ignore */ }
+  try {
+    const payload = JSON.parse(raw);
+    const sid = payload && typeof payload === 'object' ? payload.session_id : null;
+    if (typeof sid === 'string' && sid.length > 0) {
+      fs.writeFileSync(SESSION_ID_FILE, sid);
+    }
+  } catch (_) { /* non-JSON payload, ignore */ }
+  process.exit(0);
+});
+process.stdin.on('error', () => process.exit(0));
 `;
 	try {
 		fs.writeFileSync(scriptPath, script, { mode: 0o755 });
 	} catch (err) {
 		console.warn("[todo-daemon:pty] failed to write hook script:", err);
 	}
+
+	// Quote-safe command string accepted by Claude Code hook runner
+	// (spawned through a shell on all platforms). The script path may
+	// contain spaces on macOS ("/Users/x y/..."), so wrap it in
+	// double-quotes and escape embedded quotes.
+	const quotedScript = `"${scriptPath.replace(/"/g, '\\"')}"`;
+	const hookCommand = (event: string) => `node ${quotedScript} ${event}`;
+
 	return {
-		scriptPath,
+		hookCommand,
 		hasStopEvent: () => {
 			try {
 				return fs.readFileSync(eventsPath, "utf8").includes('"event":"Stop"');
@@ -559,23 +589,24 @@ exit 0
 				return false;
 			}
 		},
-		cleanup: () => {
+		readRuntimeSessionId: () => {
 			try {
-				fs.unlinkSync(scriptPath);
+				const raw = fs.readFileSync(sessionIdPath, "utf8").trim();
+				return raw.length > 0 ? raw : null;
 			} catch {
-				/* ignore */
+				return null;
 			}
-			try {
-				fs.unlinkSync(eventsPath);
-			} catch {
-				/* ignore */
+		},
+		cleanup: () => {
+			for (const p of [scriptPath, eventsPath, sessionIdPath]) {
+				try {
+					fs.unlinkSync(p);
+				} catch {
+					/* ignore */
+				}
 			}
 		},
 	};
-}
-
-function escapeShell(p: string): string {
-	return `'${p.replace(/'/g, "'\\''")}'`;
 }
 
 // -----------------------------------------------------------------------------
