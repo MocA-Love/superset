@@ -49,6 +49,10 @@ import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
+import {
+	FileDocumentStoreProvider,
+	getDocument,
+} from "./state/fileDocumentStore";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
@@ -213,6 +217,10 @@ function WorkspaceContent({
 		[openFilePathsKey],
 	);
 
+	// FORK NOTE: quick-open / command-palette path that optionally carries a
+	// memo-derived displayName for the tab title. Upstream unified this with
+	// sidebar open into a single `openFilePane(filePath, openInNewTab)`; the
+	// fork keeps two variants so memo tabs can forward the derived title.
 	const openFilePane = useCallback(
 		(filePath: string, displayName?: string) => {
 			recordRecentlyViewed(filePath);
@@ -243,7 +251,6 @@ function WorkspaceContent({
 					data: {
 						filePath,
 						mode: "editor",
-						hasChanges: false,
 						displayName,
 					} as FilePaneData,
 				},
@@ -252,6 +259,11 @@ function WorkspaceContent({
 		[recordRecentlyViewed, store],
 	);
 
+	// FORK NOTE: opening from the file tree / sidebar adjusts the active
+	// horizontal split so the newly opened file takes
+	// `rightSidebarOpenViewWidth`. Upstream does not have this width
+	// auto-correction because it does not expose a user-configurable
+	// right-sidebar-open width.
 	const openSidebarFilePane = useCallback(
 		(filePath: string, openInNewTab?: boolean) => {
 			recordRecentlyViewed(filePath);
@@ -264,7 +276,6 @@ function WorkspaceContent({
 							data: {
 								filePath,
 								mode: "editor",
-								hasChanges: false,
 							} as FilePaneData,
 						},
 					],
@@ -296,7 +307,6 @@ function WorkspaceContent({
 					data: {
 						filePath,
 						mode: "editor",
-						hasChanges: false,
 					} as FilePaneData,
 				},
 			});
@@ -396,6 +406,9 @@ function WorkspaceContent({
 		});
 	}, [store]);
 
+	// FORK NOTE: Fork-only "New Memo" action from the add-tab menu. Creates
+	// an empty markdown memo in ~/.superset/memos and opens it in the file
+	// pane with its derived title.
 	const addMemoTab = useCallback(() => {
 		void createWorkspaceMemo(workspaceId)
 			.then((memo) => {
@@ -406,9 +419,6 @@ function WorkspaceContent({
 			});
 	}, [openFilePane, workspaceId]);
 
-	// FORK NOTE: upstream #3463 introduces openCommentPane for the new
-	// v2 Review tab. Keep it alongside fork's useCommandPalette-based
-	// quick open (fork uses a hook, upstream uses a simple boolean state).
 	const openCommentPane = useCallback(
 		(comment: CommentPaneData) => {
 			const state = store.getState();
@@ -436,6 +446,9 @@ function WorkspaceContent({
 		[store],
 	);
 
+	// FORK NOTE: fork uses the richer `useCommandPalette` (supports filters,
+	// cross-workspace open, scope switching) instead of upstream's simple
+	// boolean-state palette.
 	const commandPalette = useCommandPalette({
 		workspaceId,
 		navigate,
@@ -481,7 +494,7 @@ function WorkspaceContent({
 			{
 				key: "close",
 				icon: <HiMiniXMark className="size-3.5" />,
-				tooltip: <HotkeyLabel label="Close pane" id="CLOSE_TERMINAL" />,
+				tooltip: <HotkeyLabel label="Close pane" id="CLOSE_PANE" />,
 				onClick: (ctx) => ctx.actions.close(),
 			},
 		],
@@ -490,7 +503,13 @@ function WorkspaceContent({
 
 	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
 
-	useWorkspaceHotkeys({ store, workspaceId, matchedPresets, executePreset });
+	useWorkspaceHotkeys({
+		store,
+		workspaceId,
+		matchedPresets,
+		executePreset,
+		paneRegistry,
+	});
 	useHotkey("QUICK_OPEN", handleQuickOpen);
 	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
 	useHotkey("SEARCH_IN_FILES", handleQuickOpen);
@@ -523,7 +542,7 @@ function WorkspaceContent({
 	}, [store]);
 
 	return (
-		<>
+		<FileDocumentStoreProvider workspaceId={workspaceId}>
 			<ResizablePanelGroup direction="horizontal" className="flex-1">
 				<ResizablePanel defaultSize={80} minSize={30}>
 					<div
@@ -563,19 +582,19 @@ function WorkspaceContent({
 								/>
 							)}
 							onBeforeCloseTab={(tab) => {
-								const dirtyFiles = Object.values(tab.panes)
-									.filter(
-										(p) =>
-											p.kind === "file" && (p.data as FilePaneData).hasChanges,
-									)
-									.map((p) =>
-										(p.data as FilePaneData).filePath.split("/").pop(),
-									);
-								if (dirtyFiles.length === 0) return true;
+								const dirtyPanes = Object.values(tab.panes).filter((p) => {
+									if (p.kind !== "file") return false;
+									const filePath = (p.data as FilePaneData).filePath;
+									return getDocument(workspaceId, filePath)?.dirty === true;
+								});
+								const dirtyFileNames = dirtyPanes.map((p) =>
+									(p.data as FilePaneData).filePath.split("/").pop(),
+								);
+								if (dirtyPanes.length === 0) return true;
 								const title =
-									dirtyFiles.length === 1
-										? `Do you want to save the changes you made to ${dirtyFiles[0]}?`
-										: `Do you want to save changes to ${dirtyFiles.length} files?`;
+									dirtyPanes.length === 1
+										? `Do you want to save the changes you made to ${dirtyFileNames[0]}?`
+										: `Do you want to save changes to ${dirtyPanes.length} files?`;
 								return new Promise<boolean>((resolve) => {
 									alert({
 										title,
@@ -583,17 +602,41 @@ function WorkspaceContent({
 											"Your changes will be lost if you don't save them.",
 										actions: [
 											{
-												label: "Cancel",
-												variant: "outline",
-												onClick: () => resolve(false),
+												label: "Save All",
+												onClick: async () => {
+													for (const pane of dirtyPanes) {
+														const filePath = (pane.data as FilePaneData)
+															.filePath;
+														const doc = getDocument(workspaceId, filePath);
+														if (!doc) continue;
+														const result = await doc.save();
+														if (result.status !== "saved") {
+															resolve(false);
+															return;
+														}
+													}
+													resolve(true);
+												},
 											},
 											{
-												label: "Discard Changes",
-												variant: "destructive",
-												onClick: () => resolve(true),
+												label: "Don't Save",
+												variant: "secondary",
+												onClick: async () => {
+													for (const pane of dirtyPanes) {
+														const filePath = (pane.data as FilePaneData)
+															.filePath;
+														const doc = getDocument(workspaceId, filePath);
+														if (doc) await doc.reload();
+													}
+													resolve(true);
+												},
+											},
+											{
+												label: "Cancel",
+												variant: "ghost",
+												onClick: () => resolve(false),
 											},
 										],
-										onDismiss: () => resolve(false),
 									});
 								});
 							}}
@@ -638,6 +681,6 @@ function WorkspaceContent({
 				searchResults={commandPalette.searchResults}
 				workspaceName={workspaceName}
 			/>
-		</>
+		</FileDocumentStoreProvider>
 	);
 }

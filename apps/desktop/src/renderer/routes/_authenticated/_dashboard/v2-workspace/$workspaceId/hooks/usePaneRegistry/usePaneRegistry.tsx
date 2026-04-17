@@ -28,6 +28,10 @@ import { useHotkeyDisplay } from "renderer/hotkeys";
 import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-registry";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import { useSettings } from "renderer/stores/settings";
+import {
+	getDocument,
+	useSharedFileDocument,
+} from "../../state/fileDocumentStore";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
@@ -46,10 +50,41 @@ import { ChatPane } from "./components/ChatPane";
 import { CommentPane } from "./components/CommentPane";
 import { DiffPane } from "./components/DiffPane";
 import { FilePane } from "./components/FilePane";
+import { FilePaneHeaderExtras } from "./components/FilePane/components/FilePaneHeaderExtras";
 import { TerminalPane } from "./components/TerminalPane";
 
 function getFileName(filePath: string): string {
-	return filePath.split(/[/\\]/).pop() || filePath;
+	return filePath.split("/").pop() ?? filePath;
+}
+
+function FilePaneTabTitle({
+	filePath,
+	displayName,
+	pinned,
+	workspaceId,
+}: {
+	filePath: string;
+	displayName?: string;
+	pinned: boolean;
+	workspaceId: string;
+}) {
+	const document = useSharedFileDocument({
+		workspaceId,
+		absolutePath: filePath,
+	});
+	// FORK NOTE: memo files carry a derived displayName on FilePaneData so the
+	// tab reads as the memo title instead of the random filename. Fall back to
+	// the basename for everything else.
+	const name = displayName ?? getFileName(filePath);
+	return (
+		<div className="flex items-center space-x-2">
+			<FileIcon fileName={getFileName(filePath)} className="size-4 shrink-0" />
+			<span className={pinned ? undefined : "italic"}>{name}</span>
+			{document.dirty && (
+				<Circle className="size-2 shrink-0 fill-current text-muted-foreground" />
+			)}
+		</div>
+	);
 }
 
 const MOD_KEY = navigator.platform.toLowerCase().includes("mac")
@@ -124,29 +159,33 @@ export function usePaneRegistry(
 					const name = getFileName(data.filePath);
 					return <FileIcon fileName={name} className="size-4" />;
 				},
-				getTitle: (pane) => getFileName((pane.data as FilePaneData).filePath),
+				getTitle: (pane) => {
+					const data = pane.data as FilePaneData;
+					return data.displayName ?? getFileName(data.filePath);
+				},
 				renderTitle: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as FilePaneData;
-					const name = data.displayName ?? getFileName(data.filePath);
 					return (
-						<div className="flex items-center space-x-2">
-							<span className={ctx.pane.pinned ? undefined : "italic"}>
-								{name}
-							</span>
-							{data.hasChanges && (
-								<Circle className="size-2 shrink-0 fill-current text-muted-foreground" />
-							)}
-						</div>
+						<FilePaneTabTitle
+							filePath={data.filePath}
+							displayName={data.displayName}
+							pinned={Boolean(ctx.pane.pinned)}
+							workspaceId={workspaceId}
+						/>
 					);
 				},
 				renderPane: (ctx: RendererContext<PaneViewerData>) => (
 					<FilePane context={ctx} workspaceId={workspaceId} />
 				),
+				renderHeaderExtras: (ctx: RendererContext<PaneViewerData>) => (
+					<FilePaneHeaderExtras context={ctx} workspaceId={workspaceId} />
+				),
 				onHeaderClick: (ctx: RendererContext<PaneViewerData>) =>
 					ctx.actions.pin(),
 				onBeforeClose: (pane) => {
 					const data = pane.data as FilePaneData;
-					if (!data.hasChanges) return true;
+					const doc = getDocument(workspaceId, data.filePath);
+					if (!doc?.dirty) return true;
 					const name = data.filePath.split("/").pop();
 					return new Promise<boolean>((resolve) => {
 						alert({
@@ -154,17 +193,32 @@ export function usePaneRegistry(
 							description: "Your changes will be lost if you don't save them.",
 							actions: [
 								{
-									label: "Cancel",
-									variant: "outline",
-									onClick: () => resolve(false),
+									label: "Save",
+									onClick: async () => {
+										const doc = getDocument(workspaceId, data.filePath);
+										if (!doc) {
+											resolve(true);
+											return;
+										}
+										const result = await doc.save();
+										resolve(result.status === "saved");
+									},
 								},
 								{
-									label: "Discard Changes",
-									variant: "destructive",
-									onClick: () => resolve(true),
+									label: "Don't Save",
+									variant: "secondary",
+									onClick: async () => {
+										const doc = getDocument(workspaceId, data.filePath);
+										if (doc) await doc.reload();
+										resolve(true);
+									},
+								},
+								{
+									label: "Cancel",
+									variant: "ghost",
+									onClick: () => resolve(false),
 								},
 							],
-							onDismiss: () => resolve(false),
 						});
 					});
 				},
