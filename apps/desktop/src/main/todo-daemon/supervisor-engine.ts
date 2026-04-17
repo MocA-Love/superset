@@ -923,9 +923,7 @@ function buildIterationPrompt(params: {
 		sections.push(
 			`${goalPath} を読んで、${goalClause}。作業ディレクトリは worktree のルートです。`,
 		);
-		sections.push(
-			`タスクのタイトル: ${session.title}\n説明: ${session.description}`,
-		);
+		sections.push(`説明: ${session.description}`);
 		if (session.goal?.trim()) {
 			sections.push(`ゴール:\n${session.goal.trim()}`);
 		}

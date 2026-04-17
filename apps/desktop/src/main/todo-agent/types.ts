@@ -64,7 +64,7 @@ export const todoClaudeEffortSchema = z.enum(CLAUDE_EFFORT_OPTIONS);
 export const todoCreateInputSchema = z.object({
 	workspaceId: z.string().min(1),
 	projectId: z.string().optional(),
-	title: z.string().min(1).max(200),
+	title: z.string().trim().max(200).optional(),
 	description: z.string().min(1).max(10_000),
 	// Optional: when omitted, the session treats "やって欲しいこと
 	// (description) が完了したとき" as the implicit goal.
