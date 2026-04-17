@@ -114,11 +114,10 @@ export function ScheduleListRow({
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
 					<DropdownMenuItem
-						onSelect={(e) => {
+						onSelect={() => {
 							// Defer opening the editor Dialog so the dropdown's own
 							// pointer-up / focus-return doesn't race with Dialog's
 							// outside-click detection and immediately close it.
-							e.preventDefault();
 							setTimeout(onEdit, 0);
 						}}
 					>
@@ -126,8 +125,7 @@ export function ScheduleListRow({
 						編集
 					</DropdownMenuItem>
 					<DropdownMenuItem
-						onSelect={(e) => {
-							e.preventDefault();
+						onSelect={() => {
 							setTimeout(() => void handleDelete(), 0);
 						}}
 						className="text-destructive focus:text-destructive"
