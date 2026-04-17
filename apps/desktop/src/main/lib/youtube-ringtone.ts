@@ -1,9 +1,15 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { rm, unlink } from "node:fs/promises";
+import {
+	existsSync,
+	constants as fsConstants,
+	mkdirSync,
+	readdirSync,
+	statSync,
+} from "node:fs";
+import { access, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { extname, join } from "node:path";
+import { delimiter, dirname, extname, join } from "node:path";
 import { getProcessEnvWithShellPath } from "lib/trpc/routers/workspaces/utils/shell-env";
 import {
 	type CustomRingtoneInfo,
@@ -14,7 +20,19 @@ import {
 const MAX_CLIP_DURATION_SECONDS = 30;
 const YT_DLP_TIMEOUT_MS = 120_000;
 const REQUIRED_BINARIES = ["yt-dlp", "ffmpeg", "ffprobe"] as const;
+type RequiredBinary = (typeof REQUIRED_BINARIES)[number];
 const ALLOWED_OUTPUT_EXTENSIONS = new Set([".mp3", ".wav", ".ogg"]);
+
+const FALLBACK_SEARCH_DIRS = [
+	"/opt/homebrew/bin",
+	"/opt/homebrew/sbin",
+	"/usr/local/bin",
+	"/usr/local/sbin",
+	"/usr/bin",
+	"/usr/sbin",
+	"/bin",
+	"/sbin",
+];
 
 export interface ImportFromYouTubeOptions {
 	url: string;
@@ -45,37 +63,72 @@ export function isLikelyYouTubeUrl(url: string): boolean {
 	return YOUTUBE_URL_PATTERN.test(url.trim());
 }
 
-function checkBinary(binary: string, env: NodeJS.ProcessEnv): Promise<boolean> {
-	return new Promise((resolve) => {
-		const proc = spawn(binary, ["--version"], { stdio: "ignore", env });
-		proc.on("error", () => resolve(false));
-		proc.on("exit", (code) => resolve(code === 0));
-	});
-}
-
-async function ensureBinariesInstalled(env: NodeJS.ProcessEnv): Promise<void> {
-	const results = await Promise.all(
-		REQUIRED_BINARIES.map((bin) => checkBinary(bin, env)),
-	);
-	const missing = REQUIRED_BINARIES.filter((_, idx) => !results[idx]);
-
-	if (missing.length > 0) {
-		throw new YouTubeRingtoneError(
-			`Missing required tool(s): ${missing.join(", ")}. Install with \`brew install ${
-				missing.filter((b) => b !== "ffprobe").join(" ") || "yt-dlp ffmpeg"
-			}\` (macOS, ffprobe ships with ffmpeg) or your platform's package manager.`,
-			"BINARY_MISSING",
-		);
+async function isExecutable(path: string): Promise<boolean> {
+	try {
+		await access(path, fsConstants.X_OK);
+		return statSync(path).isFile();
+	} catch {
+		return false;
 	}
 }
 
+async function resolveBinaryPath(
+	binary: string,
+	env: NodeJS.ProcessEnv,
+): Promise<string | null> {
+	const searchDirs = new Set<string>();
+	const pathEnv = env.PATH ?? env.Path ?? "";
+	for (const dir of pathEnv.split(delimiter)) {
+		if (dir) searchDirs.add(dir);
+	}
+	if (process.platform === "darwin" || process.platform === "linux") {
+		for (const dir of FALLBACK_SEARCH_DIRS) searchDirs.add(dir);
+	}
+
+	for (const dir of searchDirs) {
+		const candidate = join(dir, binary);
+		if (await isExecutable(candidate)) {
+			return candidate;
+		}
+	}
+	return null;
+}
+
+async function resolveRequiredBinaries(
+	env: NodeJS.ProcessEnv,
+): Promise<Record<RequiredBinary, string>> {
+	const entries = await Promise.all(
+		REQUIRED_BINARIES.map(async (bin) => {
+			const path = await resolveBinaryPath(bin, env);
+			return [bin, path] as const;
+		}),
+	);
+
+	const missing = entries.filter(([, p]) => !p).map(([name]) => name);
+	if (missing.length > 0) {
+		const brewTargets =
+			missing.filter((b) => b !== "ffprobe").join(" ") || "yt-dlp ffmpeg";
+		throw new YouTubeRingtoneError(
+			`Missing required tool(s): ${missing.join(", ")}. Install with \`brew install ${brewTargets}\` (macOS, ffprobe ships with ffmpeg) or your platform's package manager. If already installed, make sure it is on your login-shell PATH.`,
+			"BINARY_MISSING",
+		);
+	}
+
+	const resolved = Object.fromEntries(entries) as Record<
+		RequiredBinary,
+		string
+	>;
+	return resolved;
+}
+
 function runYtDlp(
+	ytDlpPath: string,
 	args: string[],
 	cwd: string,
 	env: NodeJS.ProcessEnv,
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const proc = spawn("yt-dlp", args, {
+		const proc = spawn(ytDlpPath, args, {
 			cwd,
 			env,
 			stdio: ["ignore", "pipe", "pipe"],
@@ -169,8 +222,21 @@ export async function importRingtoneFromYouTube(
 		);
 	}
 
-	const env = await getProcessEnvWithShellPath();
-	await ensureBinariesInstalled(env);
+	const shellEnv = await getProcessEnvWithShellPath();
+	const resolved = await resolveRequiredBinaries(shellEnv);
+
+	// Ensure the directory containing ffmpeg is on PATH for any child lookups
+	// yt-dlp may do internally (defense in depth — we also pass --ffmpeg-location).
+	const ffmpegDir = dirname(resolved.ffmpeg);
+	const existingPath = shellEnv.PATH ?? shellEnv.Path ?? "";
+	const pathEntries = existingPath.split(delimiter).filter(Boolean);
+	if (!pathEntries.includes(ffmpegDir)) {
+		pathEntries.unshift(ffmpegDir);
+	}
+	const spawnEnv: NodeJS.ProcessEnv = {
+		...shellEnv,
+		PATH: pathEntries.join(delimiter),
+	};
 
 	const workDir = join(tmpdir(), `superset-yt-${randomUUID()}`);
 	mkdirSync(workDir, { recursive: true });
@@ -191,13 +257,15 @@ export async function importRingtoneFromYouTube(
 		"--download-sections",
 		sectionSpec,
 		"--force-keyframes-at-cuts",
+		"--ffmpeg-location",
+		ffmpegDir,
 		"-o",
 		outputTemplate,
 		url,
 	];
 
 	try {
-		await runYtDlp(args, workDir, env);
+		await runYtDlp(resolved["yt-dlp"], args, workDir, spawnEnv);
 
 		const producedPath = findProducedAudio(workDir);
 		if (!producedPath) {
