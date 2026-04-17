@@ -511,6 +511,15 @@ protocol.registerSchemesAsPrivileged([
 		},
 	},
 	{
+		scheme: "superset-temp-audio",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
 		scheme: "vscode-webview-resource",
 		privileges: {
 			standard: true,
