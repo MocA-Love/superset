@@ -48,8 +48,7 @@ import { getWorkspaceRuntimeRegistry } from "../lib/workspace-runtime";
 let ipcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
 function getWorkspaceRecords(workspaceId: string | undefined) {
-	if (!workspaceId)
-		return { workspace: null, worktree: null, project: null };
+	if (!workspaceId) return { workspace: null, worktree: null, project: null };
 	try {
 		const workspace =
 			localDb
