@@ -93,7 +93,13 @@ export function ModelPresetTiles({
 	const removeCustom = (uuid: string) => {
 		const next = customPresets.filter((p) => p.uuid !== uuid);
 		save.mutate({ modelPresets: next });
-		if (currentModelUuid === uuid) save.mutate({ modelUuid: "" });
+		if (currentModelUuid === uuid) {
+			// Sync both the persisted setting AND the parent's local form state,
+			// since AivisSettings hydrates once and would otherwise keep showing
+			// the deleted UUID in the Model UUID input / test playback flow.
+			save.mutate({ modelUuid: "" });
+			onSelect("");
+		}
 	};
 
 	const addCustom = (preset: {
