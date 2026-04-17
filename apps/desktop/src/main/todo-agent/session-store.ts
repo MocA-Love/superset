@@ -9,7 +9,16 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { and, desc, eq, inArray, isNull, lte, not } from "drizzle-orm";
+import {
+	and,
+	desc,
+	eq,
+	inArray,
+	isNull,
+	lte,
+	not,
+	notInArray,
+} from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import type {
 	TodoSessionListEntry,
@@ -57,7 +66,10 @@ class TodoSessionStore {
 
 	constructor() {
 		this.emitter.setMaxListeners(0);
-		this.rehydrateStrandedSessions();
+		// Rehydration is now delegated to the todo-agent daemon so sessions
+		// that survive the main process close aren't mistakenly marked
+		// failed. The daemon calls `rehydrateStrandedSessionsExcept` with
+		// the set of sessions it's actively driving.
 	}
 
 	setArtifactPathCache(sessionId: string, artifactPath: string | null): void {
@@ -143,17 +155,33 @@ class TodoSessionStore {
 	}
 
 	/**
-	 * On app startup, any session that was mid-run when the previous
-	 * process died will still have a non-terminal status
-	 * (`preparing` / `running` / `verifying`) in the DB. The
-	 * in-memory supervisor is obviously gone, so those rows would
-	 * otherwise render as "running" forever in the Agent Manager
-	 * with no way to start, stop, or re-run them. Flip them to
-	 * `failed` once with a clear reason so the user can immediately
-	 * delete or re-run from the UI.
+	 * On daemon startup, any session that was mid-run when the previous
+	 * daemon died will still have a non-terminal status
+	 * (`preparing` / `running` / `verifying`) in the DB even though the
+	 * daemon has no record of it. Flip those to `failed` so the user
+	 * can re-run or delete from the UI.
+	 *
+	 * `activeSessionIds` is the set of sessions the daemon is **currently**
+	 * driving (ActiveRun map keys). Those are skipped so a running
+	 * daemon that reconnects doesn't stomp on its own live work.
+	 *
+	 * Safe to call multiple times; behaves as a no-op when nothing is
+	 * stranded. Returns the number of rows rehydrated.
 	 */
-	private rehydrateStrandedSessions(): void {
+	rehydrateStrandedSessionsExcept(activeSessionIds: readonly string[]): number {
 		try {
+			const baseCondition = inArray(todoSessions.status, [
+				"preparing",
+				"running",
+				"verifying",
+			]);
+			const whereClause =
+				activeSessionIds.length > 0
+					? and(
+							baseCondition,
+							notInArray(todoSessions.id, activeSessionIds as string[]),
+						)
+					: baseCondition;
 			const stranded = localDb
 				.update(todoSessions)
 				.set({
@@ -161,22 +189,25 @@ class TodoSessionStore {
 					phase: "failed",
 					verdictPassed: false,
 					verdictReason:
-						"前回の実行が中断されました（アプリ再起動）。再実行するか削除してください。",
+						"前回の実行が中断されました（daemon が停止）。再実行するか削除してください。",
 					completedAt: Date.now(),
 					updatedAt: Date.now(),
 				})
-				.where(
-					inArray(todoSessions.status, ["preparing", "running", "verifying"]),
-				)
+				.where(whereClause)
 				.returning()
 				.all();
+			for (const row of stranded) {
+				this.emit(row);
+			}
 			if (stranded.length > 0) {
 				console.log(
 					`[todo-agent] rehydrated ${stranded.length} stranded session(s)`,
 				);
 			}
+			return stranded.length;
 		} catch (error) {
 			console.warn("[todo-agent] rehydrate on startup failed", error);
+			return 0;
 		}
 	}
 
@@ -425,6 +456,34 @@ class TodoSessionStore {
 			session,
 		};
 		this.emitter.emit(`session:${session.id}`, event);
+	}
+
+	/**
+	 * Bridge hook used by the daemon client in the main process.
+	 * The daemon writes to SQLite in its own process, so this store
+	 * (living in the main process) does not observe those writes
+	 * directly. The client re-emits them via this method so tRPC
+	 * subscribers receive the update just like a local write.
+	 */
+	externalEmit(session: SelectTodoSession): void {
+		this.emit(session);
+	}
+
+	/**
+	 * Same idea as {@link externalEmit} but for stream-event appends:
+	 * updates the in-memory buffer so `getStreamEvents` stays warm,
+	 * then fans the update out to any subscribers.
+	 */
+	externalEmitStream(sessionId: string, events: TodoStreamEvent[]): void {
+		if (events.length === 0) return;
+		const buffer = this.streamBuffers.get(sessionId) ?? [];
+		buffer.push(...events);
+		if (buffer.length > STREAM_EVENT_BUFFER_CAP) {
+			buffer.splice(0, buffer.length - STREAM_EVENT_BUFFER_CAP);
+		}
+		this.streamBuffers.set(sessionId, buffer);
+		const update: TodoStreamUpdate = { sessionId, events };
+		this.emitter.emit(`stream:${sessionId}`, update);
 	}
 }
 
