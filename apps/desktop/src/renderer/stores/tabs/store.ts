@@ -966,8 +966,13 @@ export const useTabsStore = create<TabsStore>()(
 
 						// If clicking the same file that's already in preview, just focus it
 						if (isSameFile) {
-							const nextViewMode =
-								options.viewMode ?? existingFileViewer.viewMode;
+							// Conflicted files must default to the conflict viewer even
+							// when callers do not pass an explicit viewMode.
+							const conflictFallbackViewMode =
+								options.diffCategory === "conflicted"
+									? "conflict"
+									: existingFileViewer.viewMode;
+							const nextViewMode = options.viewMode ?? conflictFallbackViewMode;
 							const shouldUpdateViewerState =
 								nextViewMode !== existingFileViewer.viewMode ||
 								options.line !== undefined ||
