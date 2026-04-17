@@ -1,0 +1,1 @@
+export { DeleteRingtoneDialog } from "./DeleteRingtoneDialog";
