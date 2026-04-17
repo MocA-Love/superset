@@ -52,9 +52,8 @@ function readAivisSettings() {
 			formatPermission:
 				row?.aivisFormatPermission ?? "{{branch}}で対応が必要です",
 			volume:
-				typeof row?.notificationVolume === "number" &&
-				Number.isFinite(row.notificationVolume)
-					? Math.max(0, Math.min(100, row.notificationVolume))
+				typeof row?.aivisVolume === "number" && Number.isFinite(row.aivisVolume)
+					? Math.max(0, Math.min(100, row.aivisVolume))
 					: 100,
 		};
 	} catch {

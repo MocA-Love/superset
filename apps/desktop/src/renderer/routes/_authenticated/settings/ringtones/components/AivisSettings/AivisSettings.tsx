@@ -18,6 +18,8 @@ import {
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
+import { AivisVolumeSlider } from "./components/AivisVolumeSlider";
+import { ModelPresetTiles } from "./components/ModelPresetTiles";
 
 const PLACEHOLDERS = [
 	{ key: "branch", label: "ブランチ" },
@@ -146,6 +148,8 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 				<Switch checked={enabled} onCheckedChange={handleToggle} />
 			</div>
 
+			{enabled && <AivisVolumeSlider disabled={!enabled} />}
+
 			<div className="space-y-2">
 				<Label htmlFor="aivis-api-key">API Key</Label>
 				<Input
@@ -160,6 +164,15 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 				/>
 			</div>
 
+			<ModelPresetTiles
+				currentModelUuid={modelUuid}
+				disabled={!enabled}
+				onSelect={(uuid) => {
+					setModelUuid(uuid);
+					commit({ modelUuid: uuid });
+				}}
+			/>
+
 			<div className="space-y-2">
 				<Label htmlFor="aivis-model-uuid">Model UUID</Label>
 				<Input
@@ -170,6 +183,7 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 					placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 					disabled={!enabled}
 				/>
+				<SelectedModelInfo uuid={modelUuid} />
 			</div>
 
 			<AivisDictionarySelector apiKey={apiKey} enabled={enabled} />
@@ -313,6 +327,59 @@ function AivisDictionarySelector({
 			<p className="text-[11px] text-muted-foreground">
 				下の「ユーザー辞書」セクションで辞書の作成・編集ができます。
 			</p>
+		</div>
+	);
+}
+
+const UUID_RE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function SelectedModelInfo({ uuid }: { uuid: string }) {
+	const trimmed = uuid.trim();
+	const isValid = UUID_RE.test(trimmed);
+	const model = electronTrpc.aivis.model.get.useQuery(
+		{ uuid: trimmed },
+		{ enabled: isValid, retry: false, staleTime: 60 * 60 * 1000 },
+	);
+
+	if (!trimmed) return null;
+	if (!isValid) {
+		return (
+			<p className="text-[11px] text-muted-foreground">
+				UUID 形式 (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) で入力してください。
+			</p>
+		);
+	}
+	if (model.isLoading) {
+		return (
+			<p className="text-[11px] text-muted-foreground">モデル情報を取得中…</p>
+		);
+	}
+	if (model.error) {
+		return (
+			<p className="text-[11px] text-destructive truncate">
+				モデル取得失敗: {model.error.message}
+			</p>
+		);
+	}
+	if (!model.data) return null;
+	return (
+		<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+			{model.data.iconUrl ? (
+				<img
+					src={model.data.iconUrl}
+					alt=""
+					className="h-5 w-5 rounded object-cover"
+				/>
+			) : (
+				<span className="h-5 w-5 rounded bg-muted flex items-center justify-center">
+					🎙️
+				</span>
+			)}
+			<span>
+				選択中: <span className="text-foreground">{model.data.name}</span>
+				{model.data.authorName ? ` / by ${model.data.authorName}` : ""}
+			</span>
 		</div>
 	);
 }

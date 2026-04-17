@@ -435,6 +435,13 @@
       "when": 1776441435095,
       "tag": "0061_add_aivis_user_dictionary",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "6",
+      "when": 1776452055220,
+      "tag": "0062_add_aivis_volume_and_presets",
+      "breakpoints": true
     }
   ]
 }

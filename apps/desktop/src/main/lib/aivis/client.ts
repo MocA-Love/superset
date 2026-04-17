@@ -35,6 +35,8 @@ export interface AivisFetchInit extends Omit<RequestInit, "body"> {
 	json?: unknown;
 	/** Override the stored API key (used for validation from a form). */
 	apiKey?: string | null;
+	/** If true, do not require an API key (for public endpoints like model search). */
+	optionalAuth?: boolean;
 }
 
 /**
@@ -47,7 +49,7 @@ export async function aivisFetch(
 	init: AivisFetchInit = {},
 ): Promise<Response> {
 	const key = init.apiKey ?? readApiKey();
-	if (!key) throw new AivisApiKeyMissingError();
+	if (!key && !init.optionalAuth) throw new AivisApiKeyMissingError();
 
 	const url = new URL(path, BASE_URL);
 	for (const [k, v] of Object.entries(init.query ?? {})) {
@@ -55,10 +57,10 @@ export async function aivisFetch(
 	}
 
 	const headers: Record<string, string> = {
-		Authorization: `Bearer ${key}`,
 		Accept: "application/json",
 		...(init.headers as Record<string, string> | undefined),
 	};
+	if (key) headers.Authorization = `Bearer ${key}`;
 
 	let body: BodyInit | undefined;
 	if (init.json !== undefined) {

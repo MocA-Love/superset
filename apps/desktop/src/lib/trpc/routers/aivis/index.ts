@@ -338,5 +338,78 @@ export const createAivisRouter = () => {
 				}
 			}),
 		}),
+
+		model: router({
+			get: publicProcedure
+				.input(z.object({ uuid: z.string().uuid() }))
+				.query(async ({ input }) => {
+					try {
+						const m = await aivisJson<AivmModelResponse>(
+							`/v1/aivm-models/${input.uuid}`,
+							{ optionalAuth: true },
+						);
+						return summarizeModel(m);
+					} catch (err) {
+						throw wrapApiError(err);
+					}
+				}),
+
+			searchByName: publicProcedure
+				.input(z.object({ name: z.string().min(1).max(100) }))
+				.query(async ({ input }) => {
+					try {
+						const json = await aivisJson<{
+							aivm_models: AivmModelResponse[];
+						}>("/v1/aivm-models/search", {
+							optionalAuth: true,
+							query: { keyword: input.name, limit: 5 },
+						});
+						const models = json.aivm_models ?? [];
+						const exact = models.find((m) => m.name === input.name);
+						const match = exact ?? models[0];
+						return match ? summarizeModel(match) : null;
+					} catch (err) {
+						throw wrapApiError(err);
+					}
+				}),
+		}),
 	});
 };
+
+interface AivmStyle {
+	voice_samples?: Array<{ audio_url?: string | null }>;
+}
+interface AivmSpeaker {
+	aivm_speaker_uuid: string;
+	name: string;
+	icon_url?: string | null;
+	styles?: AivmStyle[];
+}
+interface AivmUser {
+	handle?: string;
+	name?: string;
+	icon_url?: string | null;
+}
+interface AivmModelResponse {
+	aivm_model_uuid: string;
+	name: string;
+	description?: string;
+	user?: AivmUser;
+	speakers?: AivmSpeaker[];
+}
+
+function summarizeModel(m: AivmModelResponse) {
+	const speakerIcon = m.speakers?.[0]?.icon_url ?? null;
+	const userIcon = m.user?.icon_url ?? null;
+	const sampleUrl =
+		m.speakers?.[0]?.styles?.[0]?.voice_samples?.[0]?.audio_url ?? null;
+	return {
+		uuid: m.aivm_model_uuid,
+		name: m.name,
+		description: m.description ?? "",
+		iconUrl: speakerIcon ?? userIcon,
+		sampleUrl,
+		authorName: m.user?.name ?? null,
+		authorHandle: m.user?.handle ?? null,
+	};
+}

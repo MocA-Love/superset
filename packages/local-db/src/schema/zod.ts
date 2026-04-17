@@ -276,3 +276,12 @@ export type SitePermissionKind = (typeof SITE_PERMISSION_KINDS)[number];
 export const SITE_PERMISSION_VALUES = ["ask", "allow", "block"] as const;
 
 export type SitePermissionValue = (typeof SITE_PERMISSION_VALUES)[number];
+
+export const aivisModelPresetSchema = z.object({
+	uuid: z.string().uuid(),
+	name: z.string(),
+	iconUrl: z.string().nullable(),
+	sampleUrl: z.string().nullable().optional(),
+});
+
+export type AivisModelPreset = z.infer<typeof aivisModelPresetSchema>;
