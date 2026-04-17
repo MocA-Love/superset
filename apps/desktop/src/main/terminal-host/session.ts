@@ -1083,12 +1083,11 @@ export class Session {
 		this.emulatorFlushWaiters = [];
 		for (const resolve of waiters) resolve();
 
-		if (this.broadcastCoalesceTimer) {
-			clearTimeout(this.broadcastCoalesceTimer);
-			this.broadcastCoalesceTimer = null;
-		}
-		this.pendingBroadcastChunks = [];
-		this.pendingBroadcastBytes = 0;
+		// Flush before dropping the coalesce buffer — resolveShellReady can
+		// enqueue held scanner bytes during teardown (short-lived shells that
+		// exit before the ready marker completes), and clearing without
+		// flushing would silently drop them.
+		this.flushPendingBroadcastData();
 	}
 
 	/**
