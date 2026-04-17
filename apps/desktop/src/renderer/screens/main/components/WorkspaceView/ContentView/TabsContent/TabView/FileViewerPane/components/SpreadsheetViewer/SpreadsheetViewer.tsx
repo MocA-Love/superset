@@ -343,7 +343,7 @@ export function SpreadsheetViewer({
 			</div>
 			<div
 				ref={containerRef}
-				className="min-h-0 flex-1 overflow-auto bg-background"
+				className="min-h-0 flex-1 overflow-auto bg-background-solid"
 			>
 				{/* Outer wrapper: clips to container width */}
 				<div

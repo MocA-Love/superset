@@ -266,7 +266,7 @@ function DiffTable({
 	return (
 		<div
 			ref={setRefs}
-			className="min-h-0 flex-1 overflow-auto bg-background"
+			className="min-h-0 flex-1 overflow-auto bg-background-solid"
 			onScroll={handleScroll}
 		>
 			<div

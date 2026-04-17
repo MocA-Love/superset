@@ -130,7 +130,9 @@ function HtmlPreviewWebview({
 		}
 	}, [zoomLevel]);
 
-	return <div ref={containerRef} className="h-full w-full bg-background" />;
+	return (
+		<div ref={containerRef} className="h-full w-full bg-background-solid" />
+	);
 }
 
 interface RawFileData {
@@ -838,7 +840,7 @@ export function FileViewerContent({
 		}
 
 		return (
-			<div className="flex h-full items-center justify-center overflow-auto bg-background p-4">
+			<div className="flex h-full items-center justify-center overflow-auto bg-background-solid p-4">
 				<img
 					src={imageData.dataUrl}
 					alt={filePath.split("/").pop() || "Image"}
