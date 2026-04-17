@@ -4,6 +4,7 @@ import { Switch } from "@superset/ui/switch";
 import { cn } from "@superset/ui/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HiCheck, HiPlay, HiPlus, HiStop } from "react-icons/hi2";
+import { SiYoutube } from "react-icons/si";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import {
@@ -19,6 +20,7 @@ import {
 	type SettingItemId,
 } from "../../../utils/settings-search";
 import { VolumeDropdown } from "./components/VolumeDropdown";
+import { YouTubeImportDialog } from "./components/YouTubeImportDialog";
 
 function formatDuration(seconds: number): string {
 	return `${seconds}s`;
@@ -182,6 +184,22 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 		},
 	});
 
+	const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
+	const [youtubeError, setYoutubeError] = useState<string | null>(null);
+	const importFromYouTube = electronTrpc.ringtone.importFromYouTube.useMutation(
+		{
+			onSuccess: async () => {
+				setYoutubeError(null);
+				setYoutubeDialogOpen(false);
+				await utils.ringtone.getCustom.invalidate();
+				setRingtone(CUSTOM_RINGTONE_ID);
+			},
+			onError: (error) => {
+				setYoutubeError(error.message);
+			},
+		},
+	);
+
 	const handleMutedToggle = (enabled: boolean) => {
 		setMuted.mutate({ muted: !enabled });
 	};
@@ -300,16 +318,31 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 					<div>
 						<div className="mb-4 flex items-center justify-between gap-2">
 							<h3 className="text-sm font-medium">Notification Sound</h3>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								onClick={handleImportCustomRingtone}
-								disabled={importCustomRingtone.isPending}
-							>
-								<HiPlus className="mr-1.5 h-3.5 w-3.5" />
-								{customRingtone ? "Replace Custom Audio" : "Add Custom Audio"}
-							</Button>
+							<div className="flex items-center gap-2">
+								<Button
+									type="button"
+									size="sm"
+									variant="outline"
+									onClick={() => {
+										setYoutubeError(null);
+										setYoutubeDialogOpen(true);
+									}}
+									disabled={importFromYouTube.isPending}
+								>
+									<SiYoutube className="mr-1.5 h-3.5 w-3.5" />
+									From YouTube
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									variant="outline"
+									onClick={handleImportCustomRingtone}
+									disabled={importCustomRingtone.isPending}
+								>
+									<HiPlus className="mr-1.5 h-3.5 w-3.5" />
+									{customRingtone ? "Replace Custom Audio" : "Add Custom Audio"}
+								</Button>
+							</div>
 						</div>
 						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
 							{ringtoneOptions.map((ringtone) => (
@@ -331,11 +364,27 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 					<div className="pt-6 border-t">
 						<p className="text-sm text-muted-foreground">
 							Click the play button to preview a sound. Use Add Custom Audio to
-							import your own .mp3, .wav, or .ogg file.
+							import your own .mp3, .wav, or .ogg file, or From YouTube to clip
+							a section from a YouTube video.
 						</p>
 					</div>
 				)}
 			</div>
+
+			<YouTubeImportDialog
+				open={youtubeDialogOpen}
+				onOpenChange={(open) => {
+					setYoutubeDialogOpen(open);
+					if (!open) setYoutubeError(null);
+				}}
+				onSubmit={async (input) => {
+					await importFromYouTube.mutateAsync(input).catch(() => {
+						// Error surfaced via youtubeError state.
+					});
+				}}
+				isSubmitting={importFromYouTube.isPending}
+				errorMessage={youtubeError}
+			/>
 		</div>
 	);
 }

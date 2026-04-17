@@ -160,6 +160,14 @@ export function getCustomRingtonePath(): string | null {
 	return join(RINGTONES_ASSETS_DIR, filename);
 }
 
+export function setCustomRingtoneDisplayName(name: string): void {
+	if (!hasCustomRingtone()) {
+		return;
+	}
+	ensureCustomRingtonesDir();
+	writeCustomRingtoneMetadata(name.trim().slice(0, 80) || "Custom Audio");
+}
+
 export function getCustomRingtoneInfo(): CustomRingtoneInfo | null {
 	if (!hasCustomRingtone()) {
 		return null;
