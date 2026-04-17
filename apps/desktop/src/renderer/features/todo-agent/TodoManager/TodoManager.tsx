@@ -854,7 +854,7 @@ function SessionRow({
 								/>
 							) : (
 								<span className="text-xs font-medium line-clamp-1 flex-1 min-w-0">
-									{session.title}
+									{session.title || session.description}
 								</span>
 							)}
 						</div>
@@ -872,7 +872,7 @@ function SessionRow({
 					<TooltipContent side="right" align="start" className="max-w-[360px]">
 						<div className="flex flex-col gap-0.5">
 							<span className="text-[11px] font-medium break-words">
-								{session.title}
+								{session.title || session.description}
 							</span>
 							<span className="text-[10px] opacity-70 break-words">
 								{status}
@@ -1272,7 +1272,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							)}
 						</div>
 						<h2 className="text-lg font-semibold mt-1 leading-tight break-words">
-							{session.title}
+							{session.title || session.description}
 						</h2>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
@@ -2535,7 +2535,6 @@ function TodoComposer({
 
 	const canSubmit =
 		projectId.length > 0 &&
-		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		!submitting &&
 		(createWorktree || workspaceId.length > 0);
@@ -2709,14 +2708,13 @@ function TodoComposer({
 						)}
 
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="composer-title">タイトル</Label>
+							<Label htmlFor="composer-title">タイトル（省略可）</Label>
 							<Input
 								id="composer-title"
 								value={title}
 								onChange={(e) => setTitle(e.target.value)}
 								placeholder="例: Issue #123 を修正"
 								maxLength={200}
-								autoFocus
 							/>
 						</div>
 
@@ -2735,6 +2733,7 @@ function TodoComposer({
 								onAttachmentsChange={setDescAttachments}
 								placeholder="やってほしい作業を書く（右のテンプレートから挿入可・画像貼り付け可）"
 								rows={5}
+								autoFocus
 							/>
 						</div>
 

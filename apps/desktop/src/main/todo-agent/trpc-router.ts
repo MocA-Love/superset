@@ -121,7 +121,7 @@ export const createTodoAgentRouter = () => {
 					id: sessionId,
 					projectId: input.projectId ?? null,
 					workspaceId: input.workspaceId,
-					title: input.title,
+					title: input.title ?? "",
 					description: input.description,
 					goal: input.goal,
 					verifyCommand: input.verifyCommand,

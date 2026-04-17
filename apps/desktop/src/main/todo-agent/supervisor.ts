@@ -118,7 +118,7 @@ export function getTodoSupervisor(): TodoSupervisor {
 
 function renderGoalDoc(session: SelectTodoSession): string {
 	const lines: string[] = [
-		`# TODO: ${session.title}`,
+		session.title ? `# TODO: ${session.title}` : "# TODO",
 		"",
 		"## やって欲しいこと",
 		session.description,

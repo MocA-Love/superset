@@ -149,7 +149,6 @@ export function TodoModal({
 
 	const canUseNewWorktree = Boolean(projectId);
 	const canSubmit =
-		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		maxIterations >= 1 &&
 		maxMinutes >= 1 &&
@@ -244,14 +243,13 @@ export function TodoModal({
 
 				<div className="flex flex-col gap-4">
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-title">タイトル</Label>
+						<Label htmlFor="todo-title">タイトル（省略可）</Label>
 						<Input
 							id="todo-title"
 							value={title}
 							onChange={(e) => setTitle(e.target.value)}
 							placeholder="例: Issue #123 を修正"
 							maxLength={200}
-							autoFocus
 							className="rounded-md"
 						/>
 					</div>
@@ -293,6 +291,7 @@ export function TodoModal({
 							onChange={(e) => setDescription(e.target.value)}
 							placeholder="やってほしい作業を書く"
 							rows={4}
+							autoFocus
 							className="rounded-md"
 						/>
 					</div>
