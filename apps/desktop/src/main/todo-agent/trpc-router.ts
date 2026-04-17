@@ -130,6 +130,7 @@ export const createTodoAgentRouter = () => {
 					customSystemPrompt: input.customSystemPrompt,
 					claudeModel: resolvedModel,
 					claudeEffort: resolvedEffort,
+					remoteControlEnabled: input.remoteControlEnabled,
 					artifactPath,
 				});
 

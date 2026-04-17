@@ -284,6 +284,7 @@ class TodoSessionStore {
 		customSystemPrompt?: string | null;
 		claudeModel?: string | null;
 		claudeEffort?: string | null;
+		remoteControlEnabled?: boolean;
 		artifactPath: string;
 	}): SelectTodoSession {
 		return this.insert({
@@ -310,6 +311,7 @@ class TodoSessionStore {
 			customSystemPrompt: template.customSystemPrompt ?? null,
 			claudeModel: template.claudeModel ?? null,
 			claudeEffort: template.claudeEffort ?? null,
+			remoteControlEnabled: template.remoteControlEnabled ?? false,
 			verdictPassed: null,
 			verdictReason: null,
 			verdictFailingTest: null,
