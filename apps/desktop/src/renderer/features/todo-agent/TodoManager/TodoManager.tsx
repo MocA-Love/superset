@@ -1999,21 +1999,37 @@ function ToolCallCard({
 						<div className="text-muted-foreground/60 font-mono text-[0.85em] py-1 px-2 bg-muted/30">
 							IN
 						</div>
-						<div className="py-1 px-2 overflow-hidden">
+						<div className="py-1 px-2 overflow-hidden relative group/in">
 							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
 								{toolUse.text}
 							</pre>
+							<div className="absolute top-1 right-1 opacity-0 invisible group-hover/in:opacity-100 group-hover/in:visible transition-opacity">
+								<CopyIconButton
+									value={toolUse.text}
+									title="入力をコピー"
+									label="入力をコピーしました"
+								/>
+							</div>
 						</div>
 					</div>
 					<div className="col-span-2 grid grid-cols-subgrid">
 						<div className="text-muted-foreground/60 font-mono text-[0.85em] py-1 px-2 bg-muted/30">
 							OUT
 						</div>
-						<div className="py-1 px-2 overflow-hidden">
+						<div className="py-1 px-2 overflow-hidden relative group/out">
 							{toolResult ? (
-								<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
-									{toolResult.text}
-								</pre>
+								<>
+									<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
+										{toolResult.text}
+									</pre>
+									<div className="absolute top-1 right-1 opacity-0 invisible group-hover/out:opacity-100 group-hover/out:visible transition-opacity">
+										<CopyIconButton
+											value={toolResult.text}
+											title="出力をコピー"
+											label="出力をコピーしました"
+										/>
+									</div>
+								</>
 							) : (
 								<ShinyText className="text-muted-foreground">実行中…</ShinyText>
 							)}
@@ -2238,22 +2254,43 @@ function getToolPalette(toolName: string): ToolPalette {
 function MessageRow({ event }: { event: TodoStreamEvent }) {
 	if (event.kind === "assistant_text") {
 		return (
-			<div className="group text-xs py-1 px-1">
+			<div className="group/msg text-xs py-1 px-1 relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/msg:opacity-100 group-hover/msg:visible transition-opacity">
+					<CopyIconButton
+						value={event.text}
+						title="テキストをコピー"
+						label="テキストをコピーしました"
+					/>
+				</div>
 			</div>
 		);
 	}
 	if (event.kind === "result") {
 		return (
-			<div className="group border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 py-1 text-xs my-1 rounded-r">
+			<div className="group/result border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 pr-1 py-1 text-xs my-1 rounded-r relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/result:opacity-100 group-hover/result:visible transition-opacity">
+					<CopyIconButton
+						value={event.text}
+						title="結果をコピー"
+						label="結果をコピーしました"
+					/>
+				</div>
 			</div>
 		);
 	}
 	if (event.kind === "error") {
 		return (
-			<div className="border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400 rounded-r">
+			<div className="group/err border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 pr-1 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400 rounded-r relative">
 				{event.text}
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/err:opacity-100 group-hover/err:visible transition-opacity">
+					<CopyIconButton
+						value={event.text}
+						title="エラーをコピー"
+						label="エラーをコピーしました"
+					/>
+				</div>
 			</div>
 		);
 	}
