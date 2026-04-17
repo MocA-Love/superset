@@ -22,6 +22,7 @@ export interface NotificationManagerDeps {
 		silent: boolean;
 	}) => NativeNotification;
 	playSound: () => void;
+	playAivis?: (event: AgentLifecycleEvent) => void;
 	onNotificationClick: (ids: NotificationIds) => void;
 	getVisibilityContext: () => {
 		isFocused: boolean;
@@ -78,6 +79,7 @@ export class NotificationManager {
 		this.track(key, notification);
 
 		this.deps.playSound();
+		this.deps.playAivis?.(event);
 
 		notification.on("click", () => {
 			this.deps.onNotificationClick({

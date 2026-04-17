@@ -414,6 +414,13 @@
       "when": 1776378635928,
       "tag": "0058_todo_claude_model_effort",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1776438419732,
+      "tag": "0059_add_aivis_settings",
+      "breakpoints": true
     }
   ]
 }

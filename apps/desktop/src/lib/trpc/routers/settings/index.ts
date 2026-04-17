@@ -1040,6 +1040,79 @@ export const createSettingsRouter = () => {
 				return { success: true };
 			}),
 
+		getAivisSettings: publicProcedure.query(() => {
+			const row = getSettings();
+			return {
+				enabled: row.aivisEnabled ?? false,
+				apiKey: row.aivisApiKey ?? "",
+				modelUuid: row.aivisModelUuid ?? "",
+				format: row.aivisFormat ?? "ワークスペース、{{workspace}}、です",
+				formatPermission:
+					row.aivisFormatPermission ?? "{{branch}}で対応が必要です",
+			};
+		}),
+
+		setAivisSettings: publicProcedure
+			.input(
+				z.object({
+					enabled: z.boolean().optional(),
+					apiKey: z.string().optional(),
+					modelUuid: z.string().optional(),
+					format: z.string().optional(),
+					formatPermission: z.string().optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const values: Record<string, unknown> = { id: 1 };
+				const set: Record<string, unknown> = {};
+				if (input.enabled !== undefined) {
+					values.aivisEnabled = input.enabled;
+					set.aivisEnabled = input.enabled;
+				}
+				if (input.apiKey !== undefined) {
+					values.aivisApiKey = input.apiKey;
+					set.aivisApiKey = input.apiKey;
+				}
+				if (input.modelUuid !== undefined) {
+					values.aivisModelUuid = input.modelUuid;
+					set.aivisModelUuid = input.modelUuid;
+				}
+				if (input.format !== undefined) {
+					values.aivisFormat = input.format;
+					set.aivisFormat = input.format;
+				}
+				if (input.formatPermission !== undefined) {
+					values.aivisFormatPermission = input.formatPermission;
+					set.aivisFormatPermission = input.formatPermission;
+				}
+				localDb
+					.insert(settings)
+					.values(values)
+					.onConflictDoUpdate({ target: settings.id, set })
+					.run();
+				return { success: true };
+			}),
+
+		testAivisPlayback: publicProcedure
+			.input(
+				z.object({
+					apiKey: z.string(),
+					modelUuid: z.string(),
+					text: z.string().min(1).max(3000),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const { playAivisTts } = await import(
+					"main/lib/notifications/aivis-tts"
+				);
+				await playAivisTts({
+					apiKey: input.apiKey,
+					modelUuid: input.modelUuid,
+					text: input.text,
+				});
+				return { success: true };
+			}),
+
 		getFontSettings: publicProcedure.query(() => {
 			const row = getSettings();
 			return {
