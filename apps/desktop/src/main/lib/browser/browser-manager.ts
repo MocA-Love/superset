@@ -46,6 +46,7 @@ function buildElementPathScript(x: number, y: number): string {
 			if (element.id) return '//*[@id="' + element.id + '"]';
 			var parts = [];
 			var current = element;
+			var truncated = false;
 			while (current && current.nodeType === 1) {
 				var tag = current.tagName.toLowerCase();
 				var parent = current.parentElement;
@@ -57,9 +58,9 @@ function buildElementPathScript(x: number, y: number): string {
 					parts.unshift(tag);
 				}
 				current = parent;
-				if (parts.length >= 8) break;
+				if (parts.length >= 8) { truncated = true; break; }
 			}
-			return '/' + parts.join('/');
+			return (truncated ? '//' : '/') + parts.join('/');
 		}
 		return { cssSelector: getCssSelector(el), xpath: getXPath(el) };
 	})()`;
