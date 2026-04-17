@@ -2003,7 +2003,7 @@ function ToolCallCard({
 							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
 								{toolUse.text}
 							</pre>
-							<div className="absolute top-1 right-1 opacity-0 group-hover/in:opacity-100 transition-opacity">
+							<div className="absolute top-1 right-1 opacity-0 invisible group-hover/in:opacity-100 group-hover/in:visible transition-opacity">
 								<CopyIconButton
 									value={toolUse.text}
 									title="入力をコピー"
@@ -2022,7 +2022,7 @@ function ToolCallCard({
 									<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
 										{toolResult.text}
 									</pre>
-									<div className="absolute top-1 right-1 opacity-0 group-hover/out:opacity-100 transition-opacity">
+									<div className="absolute top-1 right-1 opacity-0 invisible group-hover/out:opacity-100 group-hover/out:visible transition-opacity">
 										<CopyIconButton
 											value={toolResult.text}
 											title="出力をコピー"
@@ -2256,7 +2256,7 @@ function MessageRow({ event }: { event: TodoStreamEvent }) {
 		return (
 			<div className="group/msg text-xs py-1 px-1 relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
-				<div className="absolute top-0 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/msg:opacity-100 group-hover/msg:visible transition-opacity">
 					<CopyIconButton
 						value={event.text}
 						title="テキストをコピー"
@@ -2270,7 +2270,7 @@ function MessageRow({ event }: { event: TodoStreamEvent }) {
 		return (
 			<div className="group/result border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 pr-1 py-1 text-xs my-1 rounded-r relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
-				<div className="absolute top-0 right-0 opacity-0 group-hover/result:opacity-100 transition-opacity">
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/result:opacity-100 group-hover/result:visible transition-opacity">
 					<CopyIconButton
 						value={event.text}
 						title="結果をコピー"
@@ -2284,7 +2284,7 @@ function MessageRow({ event }: { event: TodoStreamEvent }) {
 		return (
 			<div className="group/err border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 pr-1 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400 rounded-r relative">
 				{event.text}
-				<div className="absolute top-0 right-0 opacity-0 group-hover/err:opacity-100 transition-opacity">
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/err:opacity-100 group-hover/err:visible transition-opacity">
 					<CopyIconButton
 						value={event.text}
 						title="エラーをコピー"
