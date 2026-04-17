@@ -163,13 +163,17 @@ export function AivisUsage({ visibleItems }: Props) {
 				</div>
 			)}
 
-			{apiKey && usage.error && (
+			{apiKey && usage.error && !usage.data && (
 				<div className="text-sm text-destructive">
 					使用量の取得に失敗しました: {usage.error.message}
 				</div>
 			)}
 
-			{apiKey && (
+			{apiKey && usage.isLoading && !usage.data && (
+				<div className="text-sm text-muted-foreground">読み込み中…</div>
+			)}
+
+			{apiKey && usage.data && (
 				<>
 					<div className="grid grid-cols-3 gap-3">
 						<StatCard

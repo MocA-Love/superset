@@ -69,8 +69,16 @@ export function AivisDictionary({ visibleItems }: Props) {
 
 	const handleDelete = (uuid: string, name: string) => {
 		if (!confirm(`辞書「${name}」を削除します。よろしいですか？`)) return;
-		remove.mutate({ uuid });
-		if (uuid === activeUuid) saveSettings.mutate({ userDictionaryUuid: "" });
+		remove.mutate(
+			{ uuid },
+			{
+				onSuccess: () => {
+					if (uuid === activeUuid) {
+						saveSettings.mutate({ userDictionaryUuid: "" });
+					}
+				},
+			},
+		);
 	};
 
 	const handleExport = async (uuid: string, name: string) => {
