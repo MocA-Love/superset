@@ -121,7 +121,7 @@ export const createTodoAgentRouter = () => {
 					id: sessionId,
 					projectId: input.projectId ?? null,
 					workspaceId: input.workspaceId,
-					title: input.title,
+					title: input.title ?? "",
 					description: input.description,
 					goal: input.goal,
 					verifyCommand: input.verifyCommand,
@@ -130,6 +130,7 @@ export const createTodoAgentRouter = () => {
 					customSystemPrompt: input.customSystemPrompt,
 					claudeModel: resolvedModel,
 					claudeEffort: resolvedEffort,
+					remoteControlEnabled: input.remoteControlEnabled,
 					artifactPath,
 				});
 
@@ -414,6 +415,7 @@ export const createTodoAgentRouter = () => {
 					customSystemPrompt: source.customSystemPrompt,
 					claudeModel: source.claudeModel,
 					claudeEffort: source.claudeEffort,
+					remoteControlEnabled: source.remoteControlEnabled ?? false,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,

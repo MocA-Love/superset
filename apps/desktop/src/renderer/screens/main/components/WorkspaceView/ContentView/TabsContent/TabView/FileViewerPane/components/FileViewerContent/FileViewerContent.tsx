@@ -105,6 +105,19 @@ function HtmlPreviewWebview({
 			}
 		});
 
+		webview.addEventListener(
+			"context-menu",
+			(event: Electron.ContextMenuEvent) => {
+				event.preventDefault();
+				const { x, y } = event.params;
+				void electronTrpcClient.browser.showElementContextMenu.mutate({
+					webContentsId: webview.getWebContentsId(),
+					x,
+					y,
+				});
+			},
+		);
+
 		container.appendChild(webview);
 
 		return () => {

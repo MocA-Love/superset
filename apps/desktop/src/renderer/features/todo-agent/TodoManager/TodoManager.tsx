@@ -854,7 +854,7 @@ function SessionRow({
 								/>
 							) : (
 								<span className="text-xs font-medium line-clamp-1 flex-1 min-w-0">
-									{session.title}
+									{session.title || session.description}
 								</span>
 							)}
 						</div>
@@ -872,7 +872,7 @@ function SessionRow({
 					<TooltipContent side="right" align="start" className="max-w-[360px]">
 						<div className="flex flex-col gap-0.5">
 							<span className="text-[11px] font-medium break-words">
-								{session.title}
+								{session.title || session.description}
 							</span>
 							<span className="text-[10px] opacity-70 break-words">
 								{status}
@@ -1272,7 +1272,7 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							)}
 						</div>
 						<h2 className="text-lg font-semibold mt-1 leading-tight break-words">
-							{session.title}
+							{session.title || session.description}
 						</h2>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
@@ -1999,21 +1999,37 @@ function ToolCallCard({
 						<div className="text-muted-foreground/60 font-mono text-[0.85em] py-1 px-2 bg-muted/30">
 							IN
 						</div>
-						<div className="py-1 px-2 overflow-hidden">
+						<div className="py-1 px-2 overflow-hidden relative group/in">
 							<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-32 overflow-y-auto">
 								{toolUse.text}
 							</pre>
+							<div className="absolute top-1 right-1 opacity-0 invisible group-hover/in:opacity-100 group-hover/in:visible transition-opacity">
+								<CopyIconButton
+									value={toolUse.text}
+									title="入力をコピー"
+									label="入力をコピーしました"
+								/>
+							</div>
 						</div>
 					</div>
 					<div className="col-span-2 grid grid-cols-subgrid">
 						<div className="text-muted-foreground/60 font-mono text-[0.85em] py-1 px-2 bg-muted/30">
 							OUT
 						</div>
-						<div className="py-1 px-2 overflow-hidden">
+						<div className="py-1 px-2 overflow-hidden relative group/out">
 							{toolResult ? (
-								<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
-									{toolResult.text}
-								</pre>
+								<>
+									<pre className="whitespace-pre-wrap break-all font-mono leading-relaxed text-foreground/80 max-h-64 overflow-y-auto">
+										{toolResult.text}
+									</pre>
+									<div className="absolute top-1 right-1 opacity-0 invisible group-hover/out:opacity-100 group-hover/out:visible transition-opacity">
+										<CopyIconButton
+											value={toolResult.text}
+											title="出力をコピー"
+											label="出力をコピーしました"
+										/>
+									</div>
+								</>
 							) : (
 								<ShinyText className="text-muted-foreground">実行中…</ShinyText>
 							)}
@@ -2238,22 +2254,56 @@ function getToolPalette(toolName: string): ToolPalette {
 function MessageRow({ event }: { event: TodoStreamEvent }) {
 	if (event.kind === "assistant_text") {
 		return (
-			<div className="group text-xs py-1 px-1">
+			<div className="group/msg text-xs py-1 px-1 relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/msg:opacity-100 group-hover/msg:visible transition-opacity">
+					<CopyIconButton
+						value={event.text}
+						title="テキストをコピー"
+						label="テキストをコピーしました"
+					/>
+				</div>
 			</div>
 		);
 	}
 	if (event.kind === "result") {
 		return (
-			<div className="group border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 py-1 text-xs my-1 rounded-r">
+			<div className="group/result border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 pr-1 py-1 text-xs my-1 rounded-r relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/result:opacity-100 group-hover/result:visible transition-opacity">
+					<CopyIconButton
+						value={event.text}
+						title="結果をコピー"
+						label="結果をコピーしました"
+					/>
+				</div>
 			</div>
 		);
 	}
 	if (event.kind === "error") {
 		return (
-			<div className="border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400 rounded-r">
+			<div className="group/err border-l-2 border-rose-500/60 bg-rose-500/5 pl-2 pr-1 py-1 text-xs my-1 whitespace-pre-wrap font-mono text-rose-400 rounded-r relative">
 				{event.text}
+				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/err:opacity-100 group-hover/err:visible transition-opacity">
+					<CopyIconButton
+						value={event.text}
+						title="エラーをコピー"
+						label="エラーをコピーしました"
+					/>
+				</div>
+			</div>
+		);
+	}
+	if (event.kind === "remote_control") {
+		return <RemoteControlBadge event={event} />;
+	}
+	if (event.kind === "remote_control_error") {
+		return (
+			<div className="group flex items-center gap-2 border-l-2 border-amber-500/60 bg-amber-500/5 pl-2 pr-1 py-1 my-1 rounded-r text-xs">
+				<span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+					Remote Control エラー
+				</span>
+				<span className="truncate text-[11px] opacity-80">{event.text}</span>
 			</div>
 		);
 	}
@@ -2282,6 +2332,41 @@ function MessageRow({ event }: { event: TodoStreamEvent }) {
 				{event.text}
 			</pre>
 		</details>
+	);
+}
+
+function RemoteControlBadge({ event }: { event: TodoStreamEvent }) {
+	// `event.text` is `接続 URL: https://claude.ai/code/session_...`
+	const urlMatch = event.text.match(
+		/https:\/\/claude\.ai\/code\/session_[A-Za-z0-9_-]+/,
+	);
+	const url = urlMatch?.[0];
+	// Renderer cannot reach outside the Electron sandbox via
+	// `window.open` (it opens in an internal BrowserWindow or no-ops
+	// depending on the window-open handler). Go through the existing
+	// `external.openUrl` tRPC so the URL hits `shell.openExternal` in
+	// the main process.
+	const openUrl = electronTrpc.external.openUrl.useMutation();
+	return (
+		<div className="group flex items-center gap-2 border-l-2 border-indigo-500/60 bg-indigo-500/5 pl-2 pr-1 py-1 my-1 rounded-r text-xs">
+			<span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+				Remote Control 接続中
+			</span>
+			{url ? (
+				<button
+					type="button"
+					onClick={() => {
+						openUrl.mutate(url);
+					}}
+					className="truncate font-mono text-[11px] text-indigo-200/90 hover:text-indigo-100 underline-offset-2 hover:underline cursor-pointer"
+					title="claude.ai/code で開く"
+				>
+					{url}
+				</button>
+			) : (
+				<span className="truncate text-[11px] opacity-80">{event.text}</span>
+			)}
+		</div>
 	);
 }
 
@@ -2535,7 +2620,6 @@ function TodoComposer({
 
 	const canSubmit =
 		projectId.length > 0 &&
-		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		!submitting &&
 		(createWorktree || workspaceId.length > 0);
@@ -2709,14 +2793,13 @@ function TodoComposer({
 						)}
 
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="composer-title">タイトル</Label>
+							<Label htmlFor="composer-title">タイトル（省略可）</Label>
 							<Input
 								id="composer-title"
 								value={title}
 								onChange={(e) => setTitle(e.target.value)}
 								placeholder="例: Issue #123 を修正"
 								maxLength={200}
-								autoFocus
 							/>
 						</div>
 
@@ -2735,6 +2818,7 @@ function TodoComposer({
 								onAttachmentsChange={setDescAttachments}
 								placeholder="やってほしい作業を書く（右のテンプレートから挿入可・画像貼り付け可）"
 								rows={5}
+								autoFocus
 							/>
 						</div>
 

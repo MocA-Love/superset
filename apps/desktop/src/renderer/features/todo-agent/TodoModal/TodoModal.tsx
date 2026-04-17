@@ -46,6 +46,7 @@ const DEFAULT_VERIFY_COMMAND = "";
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_MINUTES = 30;
 const DEFAULT_CREATE_WORKTREE = false;
+const DEFAULT_REMOTE_CONTROL = false;
 
 /**
  * Creation form for a new TODO autonomous session. Collects the minimum
@@ -72,6 +73,9 @@ export function TodoModal({
 	const [maxMinutes, setMaxMinutes] = useState(DEFAULT_MAX_MINUTES);
 	const [submitting, setSubmitting] = useState(false);
 	const [createWorktree, setCreateWorktree] = useState(DEFAULT_CREATE_WORKTREE);
+	const [remoteControlEnabled, setRemoteControlEnabled] = useState(
+		DEFAULT_REMOTE_CONTROL,
+	);
 	const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 	const [claudeModel, setClaudeModel] =
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
@@ -129,6 +133,7 @@ export function TodoModal({
 		);
 		setMaxMinutes(todoSettings?.defaultMaxWallClockMin ?? DEFAULT_MAX_MINUTES);
 		setCreateWorktree(DEFAULT_CREATE_WORKTREE);
+		setRemoteControlEnabled(DEFAULT_REMOTE_CONTROL);
 		setSelectedPresetId(null);
 		setClaudeModel(
 			fromPersistedModel(todoSettings?.defaultClaudeModel ?? null),
@@ -149,7 +154,6 @@ export function TodoModal({
 
 	const canUseNewWorktree = Boolean(projectId);
 	const canSubmit =
-		title.trim().length > 0 &&
 		description.trim().length > 0 &&
 		maxIterations >= 1 &&
 		maxMinutes >= 1 &&
@@ -198,6 +202,7 @@ export function TodoModal({
 				customSystemPrompt: selectedPreset?.content ?? undefined,
 				claudeModel: toPersistedModel(claudeModel),
 				claudeEffort: toPersistedEffort(claudeEffort),
+				remoteControlEnabled,
 			});
 			if (createWorktree) {
 				toast.success(
@@ -229,6 +234,7 @@ export function TodoModal({
 		maxIterations,
 		maxMinutes,
 		projectId,
+		remoteControlEnabled,
 		selectedPreset,
 		title,
 		verifyCommand,
@@ -244,14 +250,13 @@ export function TodoModal({
 
 				<div className="flex flex-col gap-4">
 					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="todo-title">タイトル</Label>
+						<Label htmlFor="todo-title">タイトル（省略可）</Label>
 						<Input
 							id="todo-title"
 							value={title}
 							onChange={(e) => setTitle(e.target.value)}
 							placeholder="例: Issue #123 を修正"
 							maxLength={200}
-							autoFocus
 							className="rounded-md"
 						/>
 					</div>
@@ -278,6 +283,33 @@ export function TodoModal({
 						<HiMiniSparkles className="size-3 text-primary/70" />
 					</label>
 
+					<label
+						htmlFor="todo-remote-control"
+						className={cn(
+							"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
+							remoteControlEnabled
+								? "border-indigo-400/50 bg-indigo-500/5"
+								: "border-border/40 hover:bg-muted/40",
+						)}
+						title="claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+					>
+						<Checkbox
+							id="todo-remote-control"
+							checked={remoteControlEnabled}
+							onCheckedChange={(checked) =>
+								setRemoteControlEnabled(checked === true)
+							}
+						/>
+						<div className="flex-1 flex flex-col gap-0.5">
+							<span className="text-xs font-medium">
+								Remote Control を有効化
+							</span>
+							<span className="text-[10px] text-muted-foreground">
+								claude.ai / Claude アプリから接続できる (Pro/Max プラン必須)
+							</span>
+						</div>
+					</label>
+
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
 							<Label htmlFor="todo-description">やって欲しいこと</Label>
@@ -293,6 +325,7 @@ export function TodoModal({
 							onChange={(e) => setDescription(e.target.value)}
 							placeholder="やってほしい作業を書く"
 							rows={4}
+							autoFocus
 							className="rounded-md"
 						/>
 					</div>

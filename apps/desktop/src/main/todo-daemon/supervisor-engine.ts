@@ -12,6 +12,19 @@ import {
 	CLAUDE_MODEL_OPTIONS,
 	type TodoStreamEventKind,
 } from "main/todo-agent/types";
+import { runClaudeTurnPty } from "./pty-turn-runner";
+
+/**
+ * Feature flag for the interactive PTY engine. When the daemon process
+ * is launched with `TODO_ENGINE=pty`, `runClaudeTurn` dispatches to the
+ * PTY runner (apps/desktop/src/main/todo-daemon/pty-turn-runner.ts)
+ * which supports Remote Control. Otherwise, the legacy `-p` headless
+ * path is used. The flag is process-wide (not per-session) because it
+ * governs which spawn path the daemon knows how to manage; Remote
+ * Control itself is still opt-in per session via
+ * `todo_sessions.remote_control_enabled`.
+ */
+const PTY_ENGINE_ENABLED = process.env.TODO_ENGINE === "pty";
 
 /**
  * Daemon-side supervisor engine. Spawns `claude -p` children for TODO
@@ -253,11 +266,33 @@ export class TodoSupervisorEngine {
 					parts.push(`effort: ${session0.claudeEffort}`);
 				appendSetupEvent(sessionId, "Claude 設定", parts.join(" / "));
 			}
+			const willUsePty =
+				PTY_ENGINE_ENABLED || Boolean(session0.remoteControlEnabled);
 			appendSetupEvent(
 				sessionId,
 				"Claude",
-				"claude -p --output-format stream-json を起動します",
+				willUsePty
+					? "claude を PTY (interactive) モードで起動します"
+					: "claude -p --output-format stream-json を起動します",
 			);
+			if (session0.remoteControlEnabled) {
+				appendSetupEvent(
+					sessionId,
+					"Remote Control",
+					"有効 (PTY モード)。起動後に接続 URL を発行します。",
+				);
+			}
+			if (willUsePty) {
+				// PTY 経路は Claude Code JSONL に cost_usd が載らない
+				// ため totalCostUsd の集計は当面行われません。ユーザー
+				// 可観測性のためセットアップバナーに明示します
+				// (CodeRabbit review #278)。
+				appendSetupEvent(
+					sessionId,
+					"計測",
+					"PTY モードではコスト (USD) の集計が無効化されます。ターン数は計測されます。",
+				);
+			}
 
 			const preservedClaudeSessionId = isResumingPastRun
 				? (session0.claudeSessionId ?? null)
@@ -383,6 +418,7 @@ export class TodoSupervisorEngine {
 					claudeModel: currentSession.claudeModel ?? null,
 					claudeEffort: currentSession.claudeEffort ?? null,
 					signal: ac.signal,
+					remoteControlEnabled: Boolean(currentSession.remoteControlEnabled),
 					onChild: (child) => {
 						run.currentChild = child;
 					},
@@ -572,7 +608,59 @@ export class TodoSupervisorEngine {
 		}
 	}
 
-	private runClaudeTurn(params: {
+	private async runClaudeTurn(params: {
+		sessionId: string;
+		iteration: number;
+		cwd: string;
+		prompt: string;
+		resumeSessionId: string | null;
+		customSystemPrompt: string | null;
+		claudeModel: string | null;
+		claudeEffort: string | null;
+		signal: AbortSignal;
+		onChild: (child: ChildProcess) => void;
+		remoteControlEnabled: boolean;
+	}): Promise<{
+		result: string | null;
+		sessionId: string | null;
+		costUsd: number | null;
+		numTurns: number | null;
+		error: string | null;
+		interrupted: boolean;
+		scheduledWakeup: { delayMs: number; reason: string | null } | null;
+	}> {
+		// The PTY engine is the only path that can drive `/remote-control`.
+		// We therefore dispatch to it whenever the daemon is running in
+		// PTY mode OR the session asked for Remote Control — the latter
+		// is a defensive fallback for when a user checks the box before
+		// the env flag is set, so the feature does not silently no-op.
+		if (PTY_ENGINE_ENABLED || params.remoteControlEnabled) {
+			return runClaudeTurnPty({
+				sessionId: params.sessionId,
+				iteration: params.iteration,
+				cwd: params.cwd,
+				prompt: params.prompt,
+				resumeSessionId: params.resumeSessionId,
+				customSystemPrompt: params.customSystemPrompt,
+				claudeModel: params.claudeModel,
+				claudeEffort: params.claudeEffort,
+				signal: params.signal,
+				remoteControlEnabled: params.remoteControlEnabled,
+				// The legacy caller only knows how to track a
+				// ChildProcess-shaped handle. The PTY runner hands
+				// back an opaque handle plus an `onExit` subscription;
+				// wrap both into a shim so `abort()` and its
+				// `once("close", ...)` SIGKILL-cancel path keep
+				// working.
+				onChild: (handle) => {
+					params.onChild(buildChildProcessShim(handle));
+				},
+			});
+		}
+		return this.runClaudeTurnHeadless(params);
+	}
+
+	private runClaudeTurnHeadless(params: {
 		sessionId: string;
 		iteration: number;
 		cwd: string;
@@ -828,6 +916,92 @@ export class TodoSupervisorEngine {
 // Helpers
 // ============================================================================
 
+/**
+ * Thin ChildProcess façade over the opaque `{ pid, kill }` handle the
+ * PTY runner hands back. The supervisor only ever touches `.pid`,
+ * `.kill`, and `.exitCode` / `.signalCode` on its recorded child — it
+ * never reads stdout/stderr from this reference (those are consumed
+ * inside the PTY runner itself). The shim stubs out the rest as a
+ * minimal EventEmitter-free façade so TypeScript accepts it in place
+ * of the real ChildProcess.
+ */
+function buildChildProcessShim(handle: {
+	pid: number | null;
+	kill: () => void;
+	/**
+	 * Register a callback the PTY runner invokes on spawn exit. The
+	 * supervisor's abort path records a `once("close", ...)` listener
+	 * to clear its 1.5s SIGKILL fallback timer — without an exit
+	 * notification the timer always fires even when the PTY died
+	 * cleanly, which is a best-effort `kill(-pid, SIGKILL)` against a
+	 * potentially recycled PID (CodeRabbit review).
+	 */
+	onExit: (cb: () => void) => void;
+}): ChildProcess {
+	let killed = false;
+	const closeListeners = new Set<() => void>();
+	const shim = {
+		pid: handle.pid ?? undefined,
+		exitCode: null as number | null,
+		signalCode: null as NodeJS.Signals | null,
+		kill: (_signal?: NodeJS.Signals | number): boolean => {
+			if (killed) return true;
+			killed = true;
+			try {
+				handle.kill();
+				shim.signalCode = "SIGTERM" as NodeJS.Signals;
+			} catch {
+				/* ignore */
+			}
+			return true;
+		},
+		once: (event: string, listener: (...args: unknown[]) => void) => {
+			if (event === "close" || event === "exit") {
+				const wrapped = () => {
+					closeListeners.delete(wrapped);
+					try {
+						listener();
+					} catch {
+						/* ignore */
+					}
+				};
+				closeListeners.add(wrapped);
+			}
+			return shim;
+		},
+		on: (event: string, listener: (...args: unknown[]) => void) => {
+			if (event === "close" || event === "exit") {
+				const wrapped = () => {
+					try {
+						listener();
+					} catch {
+						/* ignore */
+					}
+				};
+				closeListeners.add(wrapped);
+			}
+			return shim;
+		},
+		off: (_event: string, _listener: (...args: unknown[]) => void) => shim,
+		removeListener: (_event: string, _listener: (...args: unknown[]) => void) =>
+			shim,
+		removeAllListeners: (_event?: string) => shim,
+		emit: (_event: string, ..._args: unknown[]) => false,
+	};
+	handle.onExit(() => {
+		// Mark terminated so the supervisor's abort path's check
+		// `child.exitCode == null && child.signalCode == null` stops
+		// being universally true, and fire listeners in-order.
+		if (shim.exitCode == null) shim.exitCode = 0;
+		for (const cb of Array.from(closeListeners)) cb();
+	});
+	// The supervisor's abort path only reaches into `.pid` and `.kill()`.
+	// Cast through `unknown` to sidestep the structural mismatch; the
+	// shim's surface area is deliberately minimal and the daemon never
+	// inspects streams on this reference.
+	return shim as unknown as ChildProcess;
+}
+
 function killProcessTree(pid: number, signal: NodeJS.Signals): void {
 	if (process.platform === "win32") {
 		try {
@@ -923,9 +1097,7 @@ function buildIterationPrompt(params: {
 		sections.push(
 			`${goalPath} を読んで、${goalClause}。作業ディレクトリは worktree のルートです。`,
 		);
-		sections.push(
-			`タスクのタイトル: ${session.title}\n説明: ${session.description}`,
-		);
+		sections.push(`説明: ${session.description}`);
 		if (session.goal?.trim()) {
 			sections.push(`ゴール:\n${session.goal.trim()}`);
 		}

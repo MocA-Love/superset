@@ -44,11 +44,13 @@ import { closeLocalDb, localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
+import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
 import {
 	prewarmTerminalRuntime,
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
+import { windowManager } from "./lib/window-manager";
 
 // Lazy import to avoid module resolution issues during Vite build
 const loadVscodeShim = () =>
@@ -437,6 +439,39 @@ app.on("before-quit", async (event) => {
 		manager.releaseAll();
 	}
 	disposeTray();
+
+	// app.exit() bypasses beforeunload in renderer processes, so tearoff windows
+	// never return their tabs via the normal beforeunload path. Collect them here
+	// and merge into persisted tabsState before the process exits.
+	try {
+		const { appState } = await import("./lib/app-state");
+		const tearoffTabs = await windowManager.collectAllTearoffTabs(1500);
+		if (tearoffTabs.length > 0) {
+			const current = appState.data.tabsState;
+			const existingIds = new Set(current.tabs.map((t) => t.id));
+			const newEntries = tearoffTabs.filter(
+				({ tab }) => !existingIds.has((tab as { id: string }).id),
+			);
+			if (newEntries.length > 0) {
+				const newPanes: Record<string, unknown> = {};
+				for (const { panes } of newEntries) {
+					Object.assign(newPanes, panes);
+				}
+				appState.data.tabsState = {
+					...current,
+					tabs: [
+						...current.tabs,
+						...newEntries.map(({ tab }) => tab as (typeof current.tabs)[0]),
+					],
+					panes: { ...current.panes, ...newPanes } as typeof current.panes,
+				};
+				await appState.write();
+			}
+		}
+	} catch (error) {
+		console.error("[main] Failed to collect tearoff tabs before quit:", error);
+	}
+
 	app.exit(0);
 });
 
@@ -502,6 +537,15 @@ protocol.registerSchemesAsPrivileged([
 	},
 	{
 		scheme: "superset-ext-icon",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
+		scheme: "superset-temp-audio",
 		privileges: {
 			standard: true,
 			secure: true,
@@ -667,6 +711,13 @@ if (!gotTheLock) {
 		session
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-ext-icon", extIconHandler);
+
+		// Serve temp audio files (for YouTube import waveform editor)
+		const tempAudioHandler = createTempAudioProtocolHandler();
+		protocol.handle("superset-temp-audio", tempAudioHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-temp-audio", tempAudioHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();

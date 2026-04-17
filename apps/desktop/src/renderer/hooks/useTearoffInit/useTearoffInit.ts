@@ -29,6 +29,31 @@ export function useTearoffInit() {
 		navigate({ to: `/workspace/${tab.workspaceId}`, replace: true });
 	}, [tabs, navigate]);
 
+	// Respond to main-process request for state before app.exit() (Cmd+Q path)
+	useEffect(() => {
+		if (!_cachedWindowId) return;
+		const handleCollect = (windowId: string) => {
+			if (windowId !== _cachedWindowId) return;
+			const state = useTabsStore.getState();
+			if (state.tabs.length === 0) return;
+			const tabsWithPanes = state.tabs.map((tab) => {
+				const panes: Record<string, Pane> = {};
+				for (const [id, pane] of Object.entries(state.panes)) {
+					if (pane.tabId === tab.id) {
+						panes[id] = pane;
+					}
+				}
+				return { tab, panes };
+			});
+			window.ipcRenderer.send(
+				`tearoff-state-collected-${windowId}`,
+				tabsWithPanes,
+			);
+		};
+		window.ipcRenderer.on("collect-tearoff-state", handleCollect);
+		return () => window.ipcRenderer.off("collect-tearoff-state", handleCollect);
+	}, []);
+
 	// Return ALL tabs to main window when this tearoff window closes
 	useEffect(() => {
 		if (!_cachedWindowId) return;

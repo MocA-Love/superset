@@ -12,6 +12,8 @@ export interface RingtoneData {
 	color: string;
 	/** Duration in seconds */
 	duration?: number;
+	/** Optional thumbnail URL (used for YouTube imports) */
+	thumbnailUrl?: string;
 }
 
 export const CUSTOM_RINGTONE_ID = "custom";

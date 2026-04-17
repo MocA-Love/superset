@@ -3,7 +3,7 @@ import {
 	SITE_PERMISSION_VALUES,
 } from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
-import { session } from "electron";
+import { session, webContents } from "electron";
 import { requestMediaAccess } from "lib/electron/request-media-access";
 import { browserManager } from "main/lib/browser/browser-manager";
 import { browserSitePermissionManager } from "main/lib/browser/browser-site-permission-manager";
@@ -347,6 +347,21 @@ export const createBrowserRouter = () => {
 						);
 					};
 				});
+			}),
+
+		showElementContextMenu: publicProcedure
+			.input(
+				z.object({
+					webContentsId: z.number(),
+					x: z.number(),
+					y: z.number(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const wc = webContents.fromId(input.webContentsId);
+				if (!wc) return { success: false };
+				browserManager.showContextMenuForWebContents(wc, input.x, input.y);
+				return { success: true };
 			}),
 
 		clearBrowsingData: publicProcedure

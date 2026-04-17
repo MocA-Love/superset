@@ -103,6 +103,17 @@ export const todoSessions = sqliteTable(
 
 		artifactPath: text("artifact_path").notNull(),
 
+		// When true, the daemon starts the Claude Code worker in the PTY
+		// engine (apps/desktop/src/main/todo-daemon/pty-turn-runner.ts) and
+		// sends `/remote-control` after spawn so the session is reachable
+		// from claude.ai/code and the Claude mobile app. Only effective
+		// when the daemon is running with TODO_ENGINE=pty; the UI disables
+		// the toggle when the flag is off. See
+		// apps/desktop/plans/20260417-todo-agent-remote-control.md.
+		remoteControlEnabled: integer("remote_control_enabled", { mode: "boolean" })
+			.notNull()
+			.default(false),
+
 		// Populated when the session is in the `waiting` state — i.e. the
 		// underlying Claude Code worker called `ScheduleWakeup` (or another
 		// self-pacing primitive) to pause itself until a specific wall-clock

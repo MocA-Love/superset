@@ -96,3 +96,4 @@ test-conflict-repo/
 
 # Claude Code session lock (runtime artifact)
 .claude/scheduled_tasks.lock
+temp/
