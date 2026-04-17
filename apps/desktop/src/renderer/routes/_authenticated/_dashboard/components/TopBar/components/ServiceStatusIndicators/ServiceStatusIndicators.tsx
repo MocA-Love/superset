@@ -1,4 +1,4 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { useMemo, useState } from "react";
 import type { IconType } from "react-icons";
 import { SiClaude, SiOpenai } from "react-icons/si";
@@ -53,12 +53,12 @@ function hostOrFallback(statusUrl: string, fallback: string): string {
 
 interface ServiceStatusIndicatorProps {
 	snapshot: ServiceStatusSnapshot;
-	onClick: () => void;
+	onOpenStatusPage: () => void;
 }
 
 function ServiceStatusIndicator({
 	snapshot,
-	onClick,
+	onOpenStatusPage,
 }: ServiceStatusIndicatorProps) {
 	const dotClass = LEVEL_DOT_CLASS[snapshot.level];
 	const levelLabel = LEVEL_LABEL[snapshot.level];
@@ -66,11 +66,10 @@ function ServiceStatusIndicator({
 	const Icon = SERVICE_ICON[snapshot.id];
 
 	return (
-		<Tooltip delayDuration={300}>
-			<TooltipTrigger asChild>
+		<Popover>
+			<PopoverTrigger asChild>
 				<button
 					type="button"
-					onClick={onClick}
 					aria-label={`${snapshot.label} status: ${levelLabel}`}
 					className="no-drag relative flex items-center justify-center size-7 rounded-md text-foreground/80 hover:text-foreground hover:bg-accent/60 transition-colors"
 				>
@@ -79,17 +78,10 @@ function ServiceStatusIndicator({
 						className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background ${dotClass}`}
 					/>
 				</button>
-			</TooltipTrigger>
-			{/* Project's TooltipContent defaults to an inverted color pair
-			 *  (`bg-foreground` + `text-[var(--background)]`). For this
-			 *  multi-line status card we want the regular popover surface
-			 *  instead so description / meta colors (muted-foreground, etc.)
-			 *  work normally. `!` prefix forces the override past the
-			 *  component defaults. */}
-			<TooltipContent
+			</PopoverTrigger>
+			<PopoverContent
 				side="bottom"
-				showArrow={false}
-				className="!bg-popover !text-popover-foreground border shadow-md p-3 max-w-[280px] space-y-1.5 text-sm"
+				className="p-3 max-w-[280px] w-auto space-y-1.5 text-sm"
 			>
 				<div className="flex items-center gap-1.5 font-semibold">
 					<Icon className="size-3.5 shrink-0" />
@@ -102,11 +94,15 @@ function ServiceStatusIndicator({
 					{formatCheckedAt(snapshot.checkedAt)}
 					{snapshot.fetchError ? ` · ${snapshot.fetchError}` : ""}
 				</div>
-				<div className="text-xs text-muted-foreground">
-					クリックで {displayHost} を開く
-				</div>
-			</TooltipContent>
-		</Tooltip>
+				<button
+					type="button"
+					onClick={onOpenStatusPage}
+					className="text-xs text-primary hover:underline focus:outline-none focus-visible:underline"
+				>
+					{displayHost} を開く
+				</button>
+			</PopoverContent>
+		</Popover>
 	);
 }
 
@@ -147,7 +143,7 @@ export function ServiceStatusIndicators() {
 				<ServiceStatusIndicator
 					key={snapshot.id}
 					snapshot={snapshot}
-					onClick={() => openUrl.mutate(snapshot.statusUrl)}
+					onOpenStatusPage={() => openUrl.mutate(snapshot.statusUrl)}
 				/>
 			))}
 		</div>

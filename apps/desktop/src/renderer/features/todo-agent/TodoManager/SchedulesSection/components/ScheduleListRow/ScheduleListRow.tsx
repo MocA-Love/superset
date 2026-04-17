@@ -92,8 +92,8 @@ export function ScheduleListRow({
 					</span>
 				</div>
 				<div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
-					<span>モデル: {getClaudeModelLabel(schedule.claudeModel)}</span>
-					<span>effort: {getClaudeEffortLabel(schedule.claudeEffort)}</span>
+					<span>Model: {getClaudeModelLabel(schedule.claudeModel)}</span>
+					<span>Effort: {getClaudeEffortLabel(schedule.claudeEffort)}</span>
 				</div>
 				{schedule.lastRunAt && (
 					<div className="text-[10px] text-muted-foreground mt-0.5">
@@ -101,7 +101,7 @@ export function ScheduleListRow({
 					</div>
 				)}
 			</button>
-			<DropdownMenu>
+			<DropdownMenu modal={false}>
 				<DropdownMenuTrigger asChild>
 					<Button
 						type="button"
@@ -113,12 +113,21 @@ export function ScheduleListRow({
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					<DropdownMenuItem onClick={onEdit}>
+					<DropdownMenuItem
+						onSelect={() => {
+							// Defer opening the editor Dialog so the dropdown's own
+							// pointer-up / focus-return doesn't race with Dialog's
+							// outside-click detection and immediately close it.
+							setTimeout(onEdit, 0);
+						}}
+					>
 						<HiMiniPencil className="mr-2 size-4" />
 						編集
 					</DropdownMenuItem>
 					<DropdownMenuItem
-						onClick={() => void handleDelete()}
+						onSelect={() => {
+							setTimeout(() => void handleDelete(), 0);
+						}}
 						className="text-destructive focus:text-destructive"
 					>
 						<HiMiniTrash className="mr-2 size-4" />

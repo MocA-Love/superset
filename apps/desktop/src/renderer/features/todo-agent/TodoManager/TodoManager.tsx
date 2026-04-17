@@ -771,7 +771,7 @@ function SessionRow({
 
 	const handleRenameKey = useCallback(
 		(e: ReactKeyboardEvent<HTMLInputElement>) => {
-			if (e.key === "Enter") {
+			if (e.key === "Enter" && !e.nativeEvent.isComposing) {
 				e.preventDefault();
 				e.stopPropagation();
 				void commitRename();
@@ -1526,12 +1526,12 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 						</div>
 
 						<div className="grid grid-cols-2 gap-4">
-							<DetailBlock label="Claude モデル">
+							<DetailBlock label="Model">
 								<div className="text-xs">
 									{getClaudeModelLabel(session.claudeModel)}
 								</div>
 							</DetailBlock>
-							<DetailBlock label="思考 effort">
+							<DetailBlock label="Effort">
 								<div className="text-xs">
 									{getClaudeEffortLabel(session.claudeEffort)}
 								</div>
@@ -1634,7 +1634,11 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							rows={2}
 							className="resize-none min-h-[44px] max-h-40 text-xs leading-relaxed"
 							onKeyDown={(e) => {
-								if (e.key === "Enter" && !e.shiftKey) {
+								if (
+									e.key === "Enter" &&
+									!e.shiftKey &&
+									!e.nativeEvent.isComposing
+								) {
 									e.preventDefault();
 									void handleSendInput();
 								}
