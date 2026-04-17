@@ -28,6 +28,7 @@ import { useHotkeyDisplay } from "renderer/hotkeys";
 import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-registry";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import { useSettings } from "renderer/stores/settings";
+import { isSpreadsheetFile } from "shared/file-types";
 import {
 	getDocument,
 	useSharedFileDocument,
@@ -54,10 +55,62 @@ import { FilePaneHeaderExtras } from "./components/FilePane/components/FilePaneH
 import { TerminalPane } from "./components/TerminalPane";
 
 function getFileName(filePath: string): string {
-	return filePath.split("/").pop() ?? filePath;
+	// FORK NOTE: v2 desktop runs on Windows too, so split on both separators.
+	return filePath.split(/[/\\]/).pop() || filePath;
 }
 
 function FilePaneTabTitle({
+	filePath,
+	displayName,
+	pinned,
+	workspaceId,
+}: {
+	filePath: string;
+	displayName?: string;
+	pinned: boolean;
+	workspaceId: string;
+}) {
+	// FORK NOTE: Spreadsheet files bypass the shared document store in
+	// FilePane (own streaming loader). Keep the tab title off the store too
+	// so it does not try to acquire a document that will never be consumed.
+	if (isSpreadsheetFile(filePath)) {
+		return (
+			<FilePaneTabTitleStatic
+				filePath={filePath}
+				displayName={displayName}
+				pinned={pinned}
+			/>
+		);
+	}
+	return (
+		<FilePaneTabTitleWithDocument
+			filePath={filePath}
+			displayName={displayName}
+			pinned={pinned}
+			workspaceId={workspaceId}
+		/>
+	);
+}
+
+function FilePaneTabTitleStatic({
+	filePath,
+	displayName,
+	pinned,
+}: {
+	filePath: string;
+	displayName?: string;
+	pinned: boolean;
+}) {
+	const name = displayName ?? getFileName(filePath);
+	return (
+		<div className="flex items-center space-x-2">
+			<FileIcon fileName={getFileName(filePath)} className="size-4 shrink-0" />
+			<span className={pinned ? undefined : "italic"}>{name}</span>
+		</div>
+	);
+}
+
+function FilePaneTabTitleWithDocument({
 	filePath,
 	displayName,
 	pinned,
