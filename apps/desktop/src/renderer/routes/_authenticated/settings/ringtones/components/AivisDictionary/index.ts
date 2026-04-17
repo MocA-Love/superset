@@ -1,0 +1,1 @@
+export { AivisDictionary } from "./AivisDictionary";

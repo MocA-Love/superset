@@ -22,6 +22,8 @@ export const SETTING_ITEM_ID = {
 
 	RINGTONES_NOTIFICATION: "ringtones-notification",
 	RINGTONES_AIVIS: "ringtones-aivis",
+	RINGTONES_AIVIS_DICTIONARY: "ringtones-aivis-dictionary",
+	RINGTONES_AIVIS_USAGE: "ringtones-aivis-usage",
 
 	KEYBOARD_SHORTCUTS: "keyboard-shortcuts",
 	BEHAVIOR_CONFIRM_QUIT: "behavior-confirm-quit",
@@ -387,6 +389,36 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"読み上げ",
 			"音声合成",
 			"アイビス",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY,
+		section: "ringtones",
+		title: "Aivis User Dictionary",
+		description:
+			"Register custom pronunciations for branch names, acronyms, and proper nouns",
+		keywords: [
+			"aivis",
+			"dictionary",
+			"pronunciation",
+			"辞書",
+			"読み方",
+			"カスタム読み",
+			"固有名詞",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE,
+		section: "ringtones",
+		title: "Aivis Usage",
+		description: "Daily Aivis API request count, characters and credits",
+		keywords: [
+			"aivis",
+			"usage",
+			"credits",
+			"使用量",
+			"クレジット",
+			"リクエスト",
 		],
 	},
 	{

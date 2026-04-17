@@ -1,6 +1,13 @@
 import { Button } from "@superset/ui/button";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
 import { Textarea } from "@superset/ui/textarea";
 import { useEffect, useRef, useState } from "react";
@@ -163,6 +170,8 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 				/>
 			</div>
 
+			<AivisDictionarySelector apiKey={apiKey} enabled={enabled} />
+
 			<div className="space-y-2">
 				<div className="flex items-center justify-between">
 					<Label>プレースホルダ</Label>
@@ -244,6 +253,64 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 			</div>
 
 			{testError && <p className="text-sm text-destructive">{testError}</p>}
+		</div>
+	);
+}
+
+function AivisDictionarySelector({
+	apiKey,
+	enabled,
+}: {
+	apiKey: string;
+	enabled: boolean;
+}) {
+	const utils = electronTrpc.useUtils();
+	const { data: settingsData } =
+		electronTrpc.settings.getAivisSettings.useQuery();
+	const list = electronTrpc.aivis.dictionary.list.useQuery(undefined, {
+		enabled: Boolean(apiKey),
+		retry: false,
+	});
+	const save = electronTrpc.settings.setAivisSettings.useMutation({
+		onSuccess: () => utils.settings.getAivisSettings.invalidate(),
+	});
+
+	const selected = settingsData?.userDictionaryUuid || "__none__";
+
+	const options = list.data ?? [];
+
+	return (
+		<div className="space-y-2">
+			<div className="flex items-center justify-between">
+				<Label>適用するユーザー辞書</Label>
+				{list.error && (
+					<span className="text-xs text-muted-foreground">
+						辞書の取得に失敗
+					</span>
+				)}
+			</div>
+			<Select
+				value={selected}
+				onValueChange={(v) =>
+					save.mutate({ userDictionaryUuid: v === "__none__" ? "" : v })
+				}
+				disabled={!enabled || !apiKey || list.isLoading}
+			>
+				<SelectTrigger>
+					<SelectValue placeholder="— 辞書なし —" />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="__none__">— 辞書なし —</SelectItem>
+					{options.map((d) => (
+						<SelectItem key={d.uuid} value={d.uuid}>
+							{d.name} ({d.word_count} 語)
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			<p className="text-[11px] text-muted-foreground">
+				下の「ユーザー辞書」セクションで辞書の作成・編集ができます。
+			</p>
 		</div>
 	);
 }

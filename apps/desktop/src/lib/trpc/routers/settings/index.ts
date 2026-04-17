@@ -1046,6 +1046,7 @@ export const createSettingsRouter = () => {
 				enabled: row.aivisEnabled ?? false,
 				apiKey: row.aivisApiKey ?? "",
 				modelUuid: row.aivisModelUuid ?? "",
+				userDictionaryUuid: row.aivisUserDictionaryUuid ?? "",
 				format: row.aivisFormat ?? "ワークスペース、{{workspace}}、です",
 				formatPermission:
 					row.aivisFormatPermission ?? "{{branch}}で対応が必要です",
@@ -1058,6 +1059,7 @@ export const createSettingsRouter = () => {
 					enabled: z.boolean().optional(),
 					apiKey: z.string().optional(),
 					modelUuid: z.string().optional(),
+					userDictionaryUuid: z.string().optional(),
 					format: z.string().optional(),
 					formatPermission: z.string().optional(),
 				}),
@@ -1076,6 +1078,10 @@ export const createSettingsRouter = () => {
 				if (input.modelUuid !== undefined) {
 					values.aivisModelUuid = input.modelUuid;
 					set.aivisModelUuid = input.modelUuid;
+				}
+				if (input.userDictionaryUuid !== undefined) {
+					values.aivisUserDictionaryUuid = input.userDictionaryUuid;
+					set.aivisUserDictionaryUuid = input.userDictionaryUuid;
 				}
 				if (input.format !== undefined) {
 					values.aivisFormat = input.format;
@@ -1099,6 +1105,7 @@ export const createSettingsRouter = () => {
 					apiKey: z.string(),
 					modelUuid: z.string(),
 					text: z.string().min(1).max(3000),
+					userDictionaryUuid: z.string().uuid().optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -1109,6 +1116,7 @@ export const createSettingsRouter = () => {
 					apiKey: input.apiKey,
 					modelUuid: input.modelUuid,
 					text: input.text,
+					userDictionaryUuid: input.userDictionaryUuid,
 				});
 				return { success: true };
 			}),
