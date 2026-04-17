@@ -32,7 +32,7 @@ export function readTodoSessionRuntimeConfig(params: {
 		ptyEnabled: legacyRemoteControlEnabled,
 		remoteControlEnabled: legacyRemoteControlEnabled,
 	};
-	if (!params.artifactPath.startsWith("/")) {
+	if (!path.isAbsolute(params.artifactPath)) {
 		return legacyFallback;
 	}
 
@@ -62,7 +62,7 @@ export function writeTodoSessionRuntimeConfig(
 	artifactPath: string,
 	config: TodoSessionRuntimeConfig,
 ): void {
-	if (!artifactPath.startsWith("/")) return;
+	if (!path.isAbsolute(artifactPath)) return;
 	try {
 		mkdirSync(artifactPath, { recursive: true });
 		writeFileSync(
