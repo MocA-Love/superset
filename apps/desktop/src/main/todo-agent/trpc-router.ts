@@ -30,6 +30,8 @@ import {
 	type TodoScheduleFireEvent,
 	type TodoSessionStateEvent,
 	type TodoStreamUpdate,
+	todoClaudeEffortSchema,
+	todoClaudeModelSchema,
 	todoCreateInputSchema,
 	todoEnhanceTextInputSchema,
 	todoPresetCreateInputSchema,
@@ -277,6 +279,10 @@ export const createTodoAgentRouter = () => {
 						.optional()
 						.transform((v) => (v && v.length > 0 ? v : undefined)),
 					clearGoal: z.boolean().optional(),
+					claudeModel: todoClaudeModelSchema.optional(),
+					clearClaudeModel: z.boolean().optional(),
+					claudeEffort: todoClaudeEffortSchema.optional(),
+					clearClaudeEffort: z.boolean().optional(),
 				}),
 			)
 			.mutation(({ input }) => {
@@ -293,7 +299,14 @@ export const createTodoAgentRouter = () => {
 					session.status !== "preparing" &&
 					session.status !== "failed" &&
 					session.status !== "aborted" &&
-					session.status !== "escalated"
+					session.status !== "escalated" &&
+					// Allow editing resumable done sessions so a subsequent
+					// `--resume` Start picks up the new description / goal /
+					// model / effort. `done` without a claudeSessionId isn't
+					// resumable, but `canStart` on the frontend already
+					// gates that case, and an accidental save here would
+					// just be a no-op that prepareArtifacts makes durable.
+					session.status !== "done"
 				) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
@@ -304,6 +317,8 @@ export const createTodoAgentRouter = () => {
 				const patch: {
 					description?: string;
 					goal?: string | null;
+					claudeModel?: string | null;
+					claudeEffort?: string | null;
 				} = {};
 				if (input.description !== undefined) {
 					patch.description = input.description;
@@ -312,6 +327,16 @@ export const createTodoAgentRouter = () => {
 					patch.goal = null;
 				} else if (input.goal !== undefined) {
 					patch.goal = input.goal;
+				}
+				if (input.clearClaudeModel) {
+					patch.claudeModel = null;
+				} else if (input.claudeModel !== undefined) {
+					patch.claudeModel = input.claudeModel;
+				}
+				if (input.clearClaudeEffort) {
+					patch.claudeEffort = null;
+				} else if (input.claudeEffort !== undefined) {
+					patch.claudeEffort = input.claudeEffort;
 				}
 				const updated = store.update(input.sessionId, patch);
 				// Rewrite goal.md so a subsequent Start reads the edited

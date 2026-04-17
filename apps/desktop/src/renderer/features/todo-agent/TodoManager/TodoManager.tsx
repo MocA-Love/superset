@@ -1011,9 +1011,13 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [streamEvents, setStreamEvents] = useState<TodoStreamEvent[]>([]);
 	const [editingField, setEditingField] = useState<
-		"description" | "goal" | null
+		"description" | "goal" | "runtime" | null
 	>(null);
 	const [editDraft, setEditDraft] = useState("");
+	const [editModelDraft, setEditModelDraft] =
+		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
+	const [editEffortDraft, setEditEffortDraft] =
+		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
 	const [previewAttachment, setPreviewAttachment] =
 		useState<AttachmentRef | null>(null);
 
@@ -1238,13 +1242,24 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 	}, [editingField, session.status]);
 
 	const startEditField = useCallback(
-		(field: "description" | "goal") => {
+		(field: "description" | "goal" | "runtime") => {
 			setEditingField(field);
-			setEditDraft(
-				field === "description" ? session.description : (session.goal ?? ""),
-			);
+			if (field === "description") {
+				setEditDraft(session.description);
+			} else if (field === "goal") {
+				setEditDraft(session.goal ?? "");
+			} else {
+				setEditDraft("");
+				setEditModelDraft(fromPersistedModel(session.claudeModel));
+				setEditEffortDraft(fromPersistedEffort(session.claudeEffort));
+			}
 		},
-		[session.description, session.goal],
+		[
+			session.description,
+			session.goal,
+			session.claudeModel,
+			session.claudeEffort,
+		],
 	);
 
 	const cancelEditField = useCallback(() => {
@@ -1254,8 +1269,8 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 
 	const commitEditField = useCallback(async () => {
 		if (!editingField) return;
-		const trimmed = editDraft.trim();
 		if (editingField === "description") {
+			const trimmed = editDraft.trim();
 			if (trimmed.length === 0) {
 				toast.error("『やって欲しいこと』は空にできません");
 				return;
@@ -1271,7 +1286,8 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 				);
 				return;
 			}
-		} else {
+		} else if (editingField === "goal") {
+			const trimmed = editDraft.trim();
 			try {
 				await updateFieldsMut.mutateAsync({
 					sessionId: session.id,
@@ -1284,12 +1300,37 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 				);
 				return;
 			}
+		} else {
+			const nextModel = toPersistedModel(editModelDraft);
+			const nextEffort = toPersistedEffort(editEffortDraft);
+			try {
+				await updateFieldsMut.mutateAsync({
+					sessionId: session.id,
+					claudeModel: nextModel ?? undefined,
+					clearClaudeModel: nextModel === null,
+					claudeEffort: nextEffort ?? undefined,
+					clearClaudeEffort: nextEffort === null,
+				});
+			} catch (error) {
+				toast.error(
+					error instanceof Error ? error.message : "更新に失敗しました",
+				);
+				return;
+			}
 		}
 		await invalidate();
 		setEditingField(null);
 		setEditDraft("");
 		toast.success("保存しました");
-	}, [editingField, editDraft, updateFieldsMut, session.id, invalidate]);
+	}, [
+		editingField,
+		editDraft,
+		editModelDraft,
+		editEffortDraft,
+		updateFieldsMut,
+		session.id,
+		invalidate,
+	]);
 
 	return (
 		<div className="flex flex-col h-full min-h-0 overflow-hidden text-sm">
@@ -1567,18 +1608,71 @@ function SessionDetail({ session, onDeleted }: SessionDetailProps) {
 							</DetailBlock>
 						</div>
 
-						<div className="grid grid-cols-2 gap-4">
-							<DetailBlock label="Model">
-								<div className="text-xs">
-									{getClaudeModelLabel(session.claudeModel)}
+						<DetailBlock
+							label="Model / Effort"
+							action={
+								canEditFields && editingField !== "runtime" ? (
+									<button
+										type="button"
+										className="text-[10px] text-muted-foreground hover:text-foreground transition"
+										onClick={() => startEditField("runtime")}
+									>
+										編集
+									</button>
+								) : null
+							}
+						>
+							{editingField === "runtime" ? (
+								<div className="flex flex-col gap-2">
+									<ClaudeRuntimePicker
+										model={editModelDraft}
+										effort={editEffortDraft}
+										onModelChange={setEditModelDraft}
+										onEffortChange={setEditEffortDraft}
+										disabled={updateFieldsMut.isPending}
+									/>
+									<div className="flex items-center gap-1.5">
+										<Button
+											type="button"
+											size="sm"
+											className="h-6 px-2 text-[11px]"
+											onClick={commitEditField}
+											disabled={updateFieldsMut.isPending}
+										>
+											保存
+										</Button>
+										<Button
+											type="button"
+											size="sm"
+											variant="ghost"
+											className="h-6 px-2 text-[11px]"
+											onClick={cancelEditField}
+										>
+											キャンセル
+										</Button>
+									</div>
 								</div>
-							</DetailBlock>
-							<DetailBlock label="Effort">
-								<div className="text-xs">
-									{getClaudeEffortLabel(session.claudeEffort)}
+							) : (
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<div className="text-[10px] text-muted-foreground mb-0.5">
+											Model
+										</div>
+										<div className="text-xs">
+											{getClaudeModelLabel(session.claudeModel)}
+										</div>
+									</div>
+									<div>
+										<div className="text-[10px] text-muted-foreground mb-0.5">
+											Effort
+										</div>
+										<div className="text-xs">
+											{getClaudeEffortLabel(session.claudeEffort)}
+										</div>
+									</div>
 								</div>
-							</DetailBlock>
-						</div>
+							)}
+						</DetailBlock>
 
 						{(session.totalCostUsd != null ||
 							session.totalNumTurns != null) && (
