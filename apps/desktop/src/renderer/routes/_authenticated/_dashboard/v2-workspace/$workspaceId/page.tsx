@@ -588,7 +588,7 @@ function WorkspaceContent({
 									return getDocument(workspaceId, filePath)?.dirty === true;
 								});
 								const dirtyFileNames = dirtyPanes.map((p) =>
-									(p.data as FilePaneData).filePath.split("/").pop(),
+									(p.data as FilePaneData).filePath.split(/[/\\]/).pop(),
 								);
 								if (dirtyPanes.length === 0) return true;
 								const title =

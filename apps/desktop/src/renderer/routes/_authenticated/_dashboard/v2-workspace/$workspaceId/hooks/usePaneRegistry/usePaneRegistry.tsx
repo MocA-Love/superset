@@ -239,7 +239,7 @@ export function usePaneRegistry(
 					const data = pane.data as FilePaneData;
 					const doc = getDocument(workspaceId, data.filePath);
 					if (!doc?.dirty) return true;
-					const name = data.filePath.split("/").pop();
+					const name = data.filePath.split(/[/\\]/).pop();
 					return new Promise<boolean>((resolve) => {
 						alert({
 							title: `Do you want to save the changes you made to ${name}?`,

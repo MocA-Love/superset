@@ -11,6 +11,30 @@ export function WorkspaceFilePreviewContent({
 	selectedFilePath,
 	workspaceId,
 }: WorkspaceFilePreviewContentProps) {
+	// FORK NOTE: Spreadsheets bypass the shared document store (they stream
+	// their own content). The store treats non-image binary files as text,
+	// so xlsx etc. would otherwise fall into the raw-text preview branch.
+	if (isSpreadsheetFile(selectedFilePath)) {
+		return (
+			<SpreadsheetViewer
+				workspaceId={workspaceId}
+				filePath={selectedFilePath}
+				absoluteFilePath={selectedFilePath}
+			/>
+		);
+	}
+	return (
+		<WorkspaceFilePreviewContentInner
+			selectedFilePath={selectedFilePath}
+			workspaceId={workspaceId}
+		/>
+	);
+}
+
+function WorkspaceFilePreviewContentInner({
+	selectedFilePath,
+	workspaceId,
+}: WorkspaceFilePreviewContentProps) {
 	// FORK NOTE: Fork-only sidebar file preview. Upstream removed its own
 	// equivalent in c504; ported to the new shared document store so we can
 	// keep the fork feature while the rest of v2 migrates off the old

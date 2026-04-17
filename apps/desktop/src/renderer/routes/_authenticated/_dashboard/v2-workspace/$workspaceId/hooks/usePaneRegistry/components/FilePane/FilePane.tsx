@@ -88,7 +88,7 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 	const hasConflict = document.conflict !== null;
 	useEffect(() => {
 		if (!hasConflict) return;
-		const name = filePath.split("/").pop();
+		const name = filePath.split(/[/\\]/).pop();
 		alert({
 			title: `Do you want to save the changes you made to ${name}?`,
 			description: "Your changes will be lost if you don't save them.",
