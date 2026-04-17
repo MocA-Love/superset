@@ -40,7 +40,17 @@ export interface PtyTurnParams {
 	claudeModel: string | null;
 	claudeEffort: string | null;
 	signal: AbortSignal;
-	onChild: (handle: { pid: number | null; kill: () => void }) => void;
+	onChild: (handle: {
+		pid: number | null;
+		kill: () => void;
+		/**
+		 * Register a callback invoked when the spawned PTY process
+		 * exits. The supervisor uses this to clear its SIGKILL
+		 * fallback timer so it does not fire against a terminated or
+		 * recycled PID (CodeRabbit review).
+		 */
+		onExit: (cb: () => void) => void;
+	}) => void;
 	/** Whether to send `/remote-control` after the PTY is ready. */
 	remoteControlEnabled: boolean;
 }
@@ -192,6 +202,11 @@ export async function runClaudeTurnPty(
 		alive: boolean;
 		exit: { exitCode: number; signal?: number } | null;
 	} = { alive: true, exit: null };
+	// Collect onExit subscribers from the supervisor shim before the
+	// PTY actually exits so none are dropped even if the callback is
+	// registered after `onExit` fires (defensive — the supervisor is
+	// expected to subscribe synchronously inside `params.onChild`).
+	const exitSubscribers = new Set<() => void>();
 	ptyProcess.onData((data) => {
 		ptyBuffer += data;
 		// Keep the buffer bounded. We only parse the last page when we
@@ -203,11 +218,30 @@ export async function runClaudeTurnPty(
 	ptyProcess.onExit((ev) => {
 		ptyStatus.alive = false;
 		ptyStatus.exit = ev;
+		for (const cb of Array.from(exitSubscribers)) {
+			exitSubscribers.delete(cb);
+			try {
+				cb();
+			} catch {
+				/* ignore */
+			}
+		}
 	});
 
 	params.onChild({
 		pid: ptyProcess.pid ?? null,
 		kill: () => safeKill(ptyProcess),
+		onExit: (cb) => {
+			if (!ptyStatus.alive) {
+				try {
+					cb();
+				} catch {
+					/* ignore */
+				}
+				return;
+			}
+			exitSubscribers.add(cb);
+		},
 	});
 
 	const abortHandler = () => {
@@ -709,13 +743,10 @@ async function tailJsonl(
 		buf = Buffer.alloc(len);
 		fs.readSync(fd, buf, 0, len, state.jsonlReadOffset);
 	} catch {
-		if (fd != null) {
-			try {
-				fs.closeSync(fd);
-			} catch {
-				/* ignore */
-			}
-		}
+		// `finally` below handles cleanup — returning here without a
+		// separate `closeSync` avoids the double-close that would
+		// otherwise risk closing an unrelated fd if the descriptor
+		// was recycled between the two closes (CodeRabbit review).
 		return;
 	} finally {
 		if (fd != null) {
@@ -726,16 +757,21 @@ async function tailJsonl(
 			}
 		}
 	}
-	state.jsonlReadOffset += len;
-	const text = buf.toString("utf8");
-	const lines = text.split("\n");
-	// The last chunk may be a partial line; rewind so we re-read it
-	// next poll. This keeps the parser simple — no in-memory line
-	// reassembly across poll cycles.
-	if (text.length > 0 && !text.endsWith("\n")) {
-		const lastLine = lines.pop() ?? "";
-		state.jsonlReadOffset -= Buffer.byteLength(lastLine, "utf8");
+	// Find the last newline at the raw-byte level so we never split
+	// on a UTF-8 multibyte boundary. `Buffer.toString("utf8")` would
+	// replace a truncated tail with U+FFFD and make
+	// `Buffer.byteLength(lastLine)` disagree with the underlying bytes —
+	// which breaks Japanese content in verdict reasons etc.
+	// (CodeRabbit review).
+	const lastNewlineIdx = buf.lastIndexOf(0x0a);
+	if (lastNewlineIdx < 0) {
+		// No newline in this chunk — defer everything until we see one.
+		return;
 	}
+	const consumedBytes = lastNewlineIdx + 1;
+	const text = buf.subarray(0, consumedBytes).toString("utf8");
+	state.jsonlReadOffset += consumedBytes;
+	const lines = text.split("\n");
 	const events: TodoStreamEvent[] = [];
 	for (const line of lines) {
 		if (!line.trim()) continue;
@@ -805,12 +841,24 @@ function classifyJsonlRecord(payload: unknown): ClassifiedJsonlRecord {
 	if (typeof payload !== "object" || payload === null) return empty;
 	const rec = payload as Record<string, unknown>;
 	const type = typeof rec.type === "string" ? (rec.type as string) : "";
+	// Claude Code's transcript format has varied between camelCase
+	// (`sessionId`, `parentToolUseId`) and snake_case (`session_id`,
+	// `parent_tool_use_id`) across versions. Read both so the parser
+	// stays correct regardless of which shape the installed CLI
+	// emits — otherwise sessionId ends up null and the daemon has no
+	// way to bind to the right JSONL (CodeRabbit review finding).
 	const sessionId =
-		typeof rec.sessionId === "string" ? (rec.sessionId as string) : null;
+		typeof rec.sessionId === "string"
+			? (rec.sessionId as string)
+			: typeof rec.session_id === "string"
+				? (rec.session_id as string)
+				: null;
 	const parentToolUseId =
 		typeof rec.parentToolUseId === "string"
 			? (rec.parentToolUseId as string)
-			: undefined;
+			: typeof rec.parent_tool_use_id === "string"
+				? (rec.parent_tool_use_id as string)
+				: undefined;
 
 	if (type === "assistant") {
 		const msg = rec.message as { content?: unknown } | undefined;

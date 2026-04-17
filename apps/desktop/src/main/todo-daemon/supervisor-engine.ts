@@ -282,6 +282,17 @@ export class TodoSupervisorEngine {
 					"有効 (PTY モード)。起動後に接続 URL を発行します。",
 				);
 			}
+			if (willUsePty) {
+				// PTY 経路は Claude Code JSONL に cost_usd が載らない
+				// ため totalCostUsd の集計は当面行われません。ユーザー
+				// 可観測性のためセットアップバナーに明示します
+				// (CodeRabbit review #278)。
+				appendSetupEvent(
+					sessionId,
+					"計測",
+					"PTY モードではコスト (USD) の集計が無効化されます。ターン数は計測されます。",
+				);
+			}
 
 			const preservedClaudeSessionId = isResumingPastRun
 				? (session0.claudeSessionId ?? null)
@@ -637,10 +648,10 @@ export class TodoSupervisorEngine {
 				remoteControlEnabled: params.remoteControlEnabled,
 				// The legacy caller only knows how to track a
 				// ChildProcess-shaped handle. The PTY runner hands
-				// back a minimal shim that exposes `.pid` and a
-				// `kill()` compatible with the paths the supervisor
-				// uses (signal abort → kill). Wrap it so `abort()`
-				// keeps working.
+				// back an opaque handle plus an `onExit` subscription;
+				// wrap both into a shim so `abort()` and its
+				// `once("close", ...)` SIGKILL-cancel path keep
+				// working.
 				onChild: (handle) => {
 					params.onChild(buildChildProcessShim(handle));
 				},
@@ -917,8 +928,18 @@ export class TodoSupervisorEngine {
 function buildChildProcessShim(handle: {
 	pid: number | null;
 	kill: () => void;
+	/**
+	 * Register a callback the PTY runner invokes on spawn exit. The
+	 * supervisor's abort path records a `once("close", ...)` listener
+	 * to clear its 1.5s SIGKILL fallback timer — without an exit
+	 * notification the timer always fires even when the PTY died
+	 * cleanly, which is a best-effort `kill(-pid, SIGKILL)` against a
+	 * potentially recycled PID (CodeRabbit review).
+	 */
+	onExit: (cb: () => void) => void;
 }): ChildProcess {
 	let killed = false;
+	const closeListeners = new Set<() => void>();
 	const shim = {
 		pid: handle.pid ?? undefined,
 		exitCode: null as number | null,
@@ -934,14 +955,46 @@ function buildChildProcessShim(handle: {
 			}
 			return true;
 		},
-		once: (_event: string, _listener: (...args: unknown[]) => void) => shim,
-		on: (_event: string, _listener: (...args: unknown[]) => void) => shim,
+		once: (event: string, listener: (...args: unknown[]) => void) => {
+			if (event === "close" || event === "exit") {
+				const wrapped = () => {
+					closeListeners.delete(wrapped);
+					try {
+						listener();
+					} catch {
+						/* ignore */
+					}
+				};
+				closeListeners.add(wrapped);
+			}
+			return shim;
+		},
+		on: (event: string, listener: (...args: unknown[]) => void) => {
+			if (event === "close" || event === "exit") {
+				const wrapped = () => {
+					try {
+						listener();
+					} catch {
+						/* ignore */
+					}
+				};
+				closeListeners.add(wrapped);
+			}
+			return shim;
+		},
 		off: (_event: string, _listener: (...args: unknown[]) => void) => shim,
 		removeListener: (_event: string, _listener: (...args: unknown[]) => void) =>
 			shim,
 		removeAllListeners: (_event?: string) => shim,
 		emit: (_event: string, ..._args: unknown[]) => false,
 	};
+	handle.onExit(() => {
+		// Mark terminated so the supervisor's abort path's check
+		// `child.exitCode == null && child.signalCode == null` stops
+		// being universally true, and fire listeners in-order.
+		if (shim.exitCode == null) shim.exitCode = 0;
+		for (const cb of Array.from(closeListeners)) cb();
+	});
 	// The supervisor's abort path only reaches into `.pid` and `.kill()`.
 	// Cast through `unknown` to sidestep the structural mismatch; the
 	// shim's surface area is deliberately minimal and the daemon never
