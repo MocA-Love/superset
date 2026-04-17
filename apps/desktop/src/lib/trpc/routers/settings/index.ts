@@ -1050,6 +1050,12 @@ export const createSettingsRouter = () => {
 				format: row.aivisFormat ?? "ワークスペース、{{workspace}}、です",
 				formatPermission:
 					row.aivisFormatPermission ?? "{{branch}}で対応が必要です",
+				volume:
+					typeof row.aivisVolume === "number" &&
+					Number.isFinite(row.aivisVolume)
+						? Math.max(0, Math.min(100, row.aivisVolume))
+						: 100,
+				modelPresets: row.aivisModelPresets ?? [],
 			};
 		}),
 
@@ -1062,6 +1068,16 @@ export const createSettingsRouter = () => {
 					userDictionaryUuid: z.string().optional(),
 					format: z.string().optional(),
 					formatPermission: z.string().optional(),
+					volume: z.number().int().min(0).max(100).optional(),
+					modelPresets: z
+						.array(
+							z.object({
+								uuid: z.string().uuid(),
+								name: z.string(),
+								iconUrl: z.string().nullable(),
+							}),
+						)
+						.optional(),
 				}),
 			)
 			.mutation(({ input }) => {
@@ -1090,6 +1106,14 @@ export const createSettingsRouter = () => {
 				if (input.formatPermission !== undefined) {
 					values.aivisFormatPermission = input.formatPermission;
 					set.aivisFormatPermission = input.formatPermission;
+				}
+				if (input.volume !== undefined) {
+					values.aivisVolume = input.volume;
+					set.aivisVolume = input.volume;
+				}
+				if (input.modelPresets !== undefined) {
+					values.aivisModelPresets = input.modelPresets;
+					set.aivisModelPresets = input.modelPresets;
 				}
 				localDb
 					.insert(settings)

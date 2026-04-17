@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 import type {
 	AgentCustomDefinition,
 	AgentPresetOverrideEnvelope,
+	AivisModelPreset,
 	BranchPrefixMode,
 	BranchSortOrder,
 	ExternalApp,
@@ -225,6 +226,10 @@ export const settings = sqliteTable("settings", {
 	aivisFormat: text("aivis_format"),
 	aivisFormatPermission: text("aivis_format_permission"),
 	aivisUserDictionaryUuid: text("aivis_user_dictionary_uuid"),
+	aivisVolume: integer("aivis_volume"),
+	aivisModelPresets: text("aivis_model_presets", { mode: "json" }).$type<
+		AivisModelPreset[]
+	>(),
 	preventAgentSleep: integer("prevent_agent_sleep", { mode: "boolean" }),
 	deleteLocalBranch: integer("delete_local_branch", { mode: "boolean" }),
 	fileOpenMode: text("file_open_mode").$type<FileOpenMode>(),
