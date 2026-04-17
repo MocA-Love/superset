@@ -105,6 +105,13 @@ export const todoCreateInputSchema = z.object({
 	// means "use the user's configured default" (see todoSettingsSchema).
 	claudeModel: todoClaudeModelSchema.nullish(),
 	claudeEffort: todoClaudeEffortSchema.nullish(),
+	// When true, the daemon starts the session under the PTY engine
+	// and sends `/remote-control` after spawn so it is reachable from
+	// claude.ai/code and the Claude mobile app. Requires the daemon to
+	// be running in PTY mode (`TODO_ENGINE=pty`) and a claude.ai
+	// subscription (Pro/Max). See
+	// apps/desktop/plans/20260417-todo-agent-remote-control.md.
+	remoteControlEnabled: z.boolean().optional().default(false),
 });
 
 export const todoPresetKindSchema = z.enum(["system", "description", "goal"]);
@@ -206,7 +213,14 @@ export type TodoStreamEventKind =
 	| "tool_result"
 	| "result"
 	| "error"
-	| "raw";
+	| "raw"
+	// PTY engine (`TODO_ENGINE=pty`) emits these when Remote Control is
+	// enabled on the session. `remote_control` carries the connection URL
+	// (`https://claude.ai/code/session_...`) the UI surfaces as a badge;
+	// `remote_control_error` is non-fatal — the turn continues without RC.
+	// See apps/desktop/plans/20260417-todo-agent-remote-control.md.
+	| "remote_control"
+	| "remote_control_error";
 
 /**
  * One condensed event we store in the per-session in-memory buffer and send
