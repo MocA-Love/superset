@@ -79,10 +79,11 @@ function AuthenticatedLayout() {
 		});
 	}, []);
 
-	// Update workspace-run pane state on terminal exit
+	// Update workspace-run pane state on terminal exit.
+	// Each window has its own useTabsStore, so the paneId lookup below naturally
+	// scopes the update to the window that actually owns the pane.
 	electronTrpc.notifications.subscribe.useSubscription(undefined, {
 		onData: (event) => {
-			if (isTearoffWindow()) return;
 			if (
 				event.type !== NOTIFICATION_EVENTS.TERMINAL_EXIT ||
 				!event.data?.paneId
@@ -110,6 +111,14 @@ function AuthenticatedLayout() {
 	const updateInitProgress = useWorkspaceInitStore((s) => s.updateProgress);
 	electronTrpc.workspaces.onInitProgress.useSubscription(undefined, {
 		onData: (progress) => {
+			// React Query cache invalidation runs in every window (including
+			// tearoff) since each BrowserWindow has its own QueryClient and may
+			// be displaying the affected workspace.
+			if (progress.step === "ready" || progress.step === "failed") {
+				utils.workspaces.getAllGrouped.invalidate();
+				utils.workspaces.get.invalidate({ id: progress.workspaceId });
+			}
+			// The rest (progress store, toast, navigate) is main-window only.
 			if (isTearoffWindow()) return;
 			updateInitProgress(progress);
 			if (
@@ -123,11 +132,6 @@ function AuthenticatedLayout() {
 						void navigate({ to: "/settings/models" });
 					},
 				});
-			}
-			if (progress.step === "ready" || progress.step === "failed") {
-				// Invalidate both the grouped list AND the specific workspace
-				utils.workspaces.getAllGrouped.invalidate();
-				utils.workspaces.get.invalidate({ id: progress.workspaceId });
 			}
 		},
 		onError: (error) => {
