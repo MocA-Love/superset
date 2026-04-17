@@ -937,10 +937,8 @@ function buildChildProcessShim(handle: {
 		once: (_event: string, _listener: (...args: unknown[]) => void) => shim,
 		on: (_event: string, _listener: (...args: unknown[]) => void) => shim,
 		off: (_event: string, _listener: (...args: unknown[]) => void) => shim,
-		removeListener: (
-			_event: string,
-			_listener: (...args: unknown[]) => void,
-		) => shim,
+		removeListener: (_event: string, _listener: (...args: unknown[]) => void) =>
+			shim,
 		removeAllListeners: (_event?: string) => shim,
 		emit: (_event: string, ..._args: unknown[]) => false,
 	};

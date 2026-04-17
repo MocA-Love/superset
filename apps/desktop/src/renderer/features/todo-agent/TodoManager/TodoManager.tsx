@@ -2253,6 +2253,46 @@ function MessageRow({ event }: { event: TodoStreamEvent }) {
 			</div>
 		);
 	}
+	if (event.kind === "remote_control") {
+		// `event.text` is `接続 URL: https://claude.ai/code/session_...`
+		// – extract the URL so the badge can render a real link.
+		const urlMatch = event.text.match(
+			/https:\/\/claude\.ai\/code\/session_[A-Za-z0-9_-]+/,
+		);
+		const url = urlMatch?.[0];
+		return (
+			<div className="group flex items-center gap-2 border-l-2 border-indigo-500/60 bg-indigo-500/5 pl-2 pr-1 py-1 my-1 rounded-r text-xs">
+				<span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+					Remote Control 接続中
+				</span>
+				{url ? (
+					<a
+						href={url}
+						onClick={(e) => {
+							e.preventDefault();
+							window.open(url, "_blank", "noopener,noreferrer");
+						}}
+						className="truncate font-mono text-[11px] text-indigo-200/90 hover:text-indigo-100 underline-offset-2 hover:underline"
+						title="claude.ai/code で開く"
+					>
+						{url}
+					</a>
+				) : (
+					<span className="truncate text-[11px] opacity-80">{event.text}</span>
+				)}
+			</div>
+		);
+	}
+	if (event.kind === "remote_control_error") {
+		return (
+			<div className="group flex items-center gap-2 border-l-2 border-amber-500/60 bg-amber-500/5 pl-2 pr-1 py-1 my-1 rounded-r text-xs">
+				<span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+					Remote Control エラー
+				</span>
+				<span className="truncate text-[11px] opacity-80">{event.text}</span>
+			</div>
+		);
+	}
 	if (event.kind === "system_init") {
 		return (
 			<div className="flex items-baseline gap-2 text-[10px] text-muted-foreground py-0.5 px-1">

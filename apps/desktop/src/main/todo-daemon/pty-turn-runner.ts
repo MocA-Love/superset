@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
-import type { IPty } from "node-pty";
-import * as pty from "node-pty";
+import * as path from "node:path";
+import { getTodoSessionStore } from "main/todo-agent/session-store";
 import {
 	CLAUDE_EFFORT_OPTIONS,
 	CLAUDE_MODEL_OPTIONS,
 	type TodoStreamEvent,
 	type TodoStreamEventKind,
 } from "main/todo-agent/types";
-import { getTodoSessionStore } from "main/todo-agent/session-store";
+import type { IPty } from "node-pty";
+import * as pty from "node-pty";
 
 /**
  * PTY-mode Claude Code turn runner.
@@ -62,16 +62,10 @@ export interface PtyTurnResult {
 /** Path of the POSIX executable whose session JSONL we tail. Falls
  * back to `claude` on PATH when unset (tests / dev shells). */
 const CLAUDE_BIN =
-	process.env.TODO_CLAUDE_BIN ||
-	process.env.CLAUDE_BIN ||
-	"claude";
+	process.env.TODO_CLAUDE_BIN || process.env.CLAUDE_BIN || "claude";
 
 /** Project transcript root used by Claude Code. */
-const CLAUDE_PROJECTS_ROOT = path.join(
-	os.homedir(),
-	".claude",
-	"projects",
-);
+const CLAUDE_PROJECTS_ROOT = path.join(os.homedir(), ".claude", "projects");
 
 /** How long we wait after spawn for the JSONL file to appear. */
 const JSONL_DISCOVERY_TIMEOUT_MS = 15_000;
@@ -115,7 +109,12 @@ export async function runClaudeTurnPty(
 	const hookSink = createHookSink(params.sessionId);
 	const settings = buildSettingsJson(hookSink.scriptPath);
 
-	const args = ["--permission-mode", "bypassPermissions", "--settings", settings];
+	const args = [
+		"--permission-mode",
+		"bypassPermissions",
+		"--settings",
+		settings,
+	];
 	if (params.customSystemPrompt) {
 		args.push("--append-system-prompt", params.customSystemPrompt);
 	}
@@ -186,8 +185,15 @@ export async function runClaudeTurnPty(
 	};
 
 	let ptyBuffer = "";
-	let ptyAlive = true;
-	let ptyExit: { exitCode: number; signal: number } | null = null;
+	// Mutable flags wrapped in an object so TypeScript's control-flow
+	// analysis doesn't narrow the closure-captured locals to `never`
+	// when we read them later in the same function (the assignments
+	// live inside `onExit`/`onData` callbacks and are opaque to the
+	// analyzer).
+	const ptyStatus: {
+		alive: boolean;
+		exit: { exitCode: number; signal?: number } | null;
+	} = { alive: true, exit: null };
 	ptyProcess.onData((data) => {
 		ptyBuffer += data;
 		// Keep the buffer bounded. We only parse the last page when we
@@ -197,8 +203,8 @@ export async function runClaudeTurnPty(
 		}
 	});
 	ptyProcess.onExit((ev) => {
-		ptyAlive = false;
-		ptyExit = ev;
+		ptyStatus.alive = false;
+		ptyStatus.exit = ev;
 	});
 
 	params.onChild({
@@ -215,7 +221,7 @@ export async function runClaudeTurnPty(
 	let interrupted = false;
 	const interventionStore = getTodoSessionStore();
 	const pollState = () => {
-		if (!ptyAlive) return false;
+		if (!ptyStatus.alive) return false;
 		if (params.signal.aborted) {
 			safeKill(ptyProcess);
 			return false;
@@ -295,16 +301,21 @@ export async function runClaudeTurnPty(
 				sessionId: state.claudeSessionId,
 				costUsd: null,
 				numTurns: null,
-				error: "Claude Code の JSONL ファイルが発見できませんでした (PTY 起動は成功)",
+				error:
+					"Claude Code の JSONL ファイルが発見できませんでした (PTY 起動は成功)",
 				interrupted: false,
 				scheduledWakeup: null,
 			};
 		}
 
 		// Wait for the TUI to settle so the first prompt isn't dropped.
-		await waitForTuiReady(() => ptyBuffer, () => ptyAlive, TUI_READY_MAX_WAIT_MS);
-		if (!ptyAlive) {
-			return ptyExitError(state, ptyExit, ptyBuffer);
+		await waitForTuiReady(
+			() => ptyBuffer,
+			() => ptyStatus.alive,
+			TUI_READY_MAX_WAIT_MS,
+		);
+		if (!ptyStatus.alive) {
+			return ptyExitError(state, ptyStatus.exit, ptyBuffer);
 		}
 
 		// `/remote-control` must be sent BEFORE the first user prompt.
@@ -341,13 +352,13 @@ export async function runClaudeTurnPty(
 		// Send the prompt via bracketed paste to preserve newlines and
 		// avoid the TUI re-interpreting content like `/` as slash
 		// commands when it starts a line.
-		ptyProcess.write("\x1b[200~" + params.prompt + "\x1b[201~");
+		ptyProcess.write(`\x1b[200~${params.prompt}\x1b[201~`);
 		await sleep(200);
 		ptyProcess.write("\r");
 
 		// Tail the JSONL and wait for Stop hook or PTY exit.
 		const turnStartTs = Date.now();
-		while (ptyAlive) {
+		while (ptyStatus.alive) {
 			if (!pollState()) break;
 			await tailJsonl(state, params);
 			if (hookSink.hasStopEvent()) break;
@@ -379,8 +390,12 @@ export async function runClaudeTurnPty(
 			};
 		}
 
-		if (!ptyAlive && (ptyExit?.exitCode ?? 0) !== 0 && !state.lastAssistantText) {
-			return ptyExitError(state, ptyExit, ptyBuffer);
+		if (
+			!ptyStatus.alive &&
+			(ptyStatus.exit?.exitCode ?? 0) !== 0 &&
+			!state.lastAssistantText
+		) {
+			return ptyExitError(state, ptyStatus.exit, ptyBuffer);
 		}
 
 		return {
@@ -398,14 +413,14 @@ export async function runClaudeTurnPty(
 		// exited (Stop hook path often corresponds to a long-lived TUI
 		// waiting for the next prompt); tell it to exit so the next
 		// iteration can start fresh with --resume.
-		if (ptyAlive) {
+		if (ptyStatus.alive) {
 			try {
 				ptyProcess.write("/exit\r");
 			} catch {
 				/* ignore */
 			}
 			await sleep(300);
-			if (ptyAlive) safeKill(ptyProcess);
+			if (ptyStatus.alive) safeKill(ptyProcess);
 		}
 		hookSink.cleanup();
 	}
@@ -442,9 +457,7 @@ function ensureDir(p: string): void {
 
 function listJsonl(dir: string): string[] {
 	try {
-		return fs
-			.readdirSync(dir)
-			.filter((f) => f.endsWith(".jsonl"));
+		return fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
 	} catch {
 		return [];
 	}
@@ -485,9 +498,7 @@ function buildSettingsJson(hookScriptPath: string): string {
 			Stop: [
 				{
 					matcher: "",
-					hooks: [
-						{ type: "command", command: `${hookScriptPath} Stop` },
-					],
+					hooks: [{ type: "command", command: `${hookScriptPath} Stop` }],
 				},
 			],
 		},
@@ -636,15 +647,21 @@ async function activateRemoteControl(
 }
 
 function stripAnsi(s: string): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping real ANSI escapes is the point
-	return s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping real ANSI escapes from PTY output is the whole point
+	const csi = /\x1b\[[0-9;?]*[A-Za-z]/g;
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: OSC terminator BEL (0x07) is the spec-defined end of an OSC sequence
+	const osc = /\x1b\][^\x07]*\x07/g;
+	return s.replace(csi, "").replace(osc, "");
 }
 
 // -----------------------------------------------------------------------------
 // JSONL tail
 // -----------------------------------------------------------------------------
 
-async function tailJsonl(state: TurnState, params: PtyTurnParams): Promise<void> {
+async function tailJsonl(
+	state: TurnState,
+	params: PtyTurnParams,
+): Promise<void> {
 	if (!state.jsonlPath) return;
 	let stat: fs.Stats;
 	try {
@@ -997,7 +1014,7 @@ function appendRawEvent(
 
 function ptyExitError(
 	state: TurnState,
-	exit: { exitCode: number; signal: number } | null,
+	exit: { exitCode: number; signal?: number } | null,
 	ptyBuffer: string,
 ): PtyTurnResult {
 	const tail = stripAnsi(ptyBuffer).split("\n").slice(-8).join("\n").trim();

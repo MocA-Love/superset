@@ -415,6 +415,7 @@ export const createTodoAgentRouter = () => {
 					customSystemPrompt: source.customSystemPrompt,
 					claudeModel: source.claudeModel,
 					claudeEffort: source.claudeEffort,
+					remoteControlEnabled: source.remoteControlEnabled ?? false,
 					verdictPassed: null,
 					verdictReason: null,
 					verdictFailingTest: null,
