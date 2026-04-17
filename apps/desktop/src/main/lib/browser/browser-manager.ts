@@ -16,6 +16,55 @@ interface ConsoleEntry {
 
 const MAX_CONSOLE_ENTRIES = 500;
 
+function buildElementPathScript(x: number, y: number): string {
+	return `(function() {
+		var el = document.elementFromPoint(${x}, ${y});
+		if (!el) return null;
+		function getCssSelector(element) {
+			var parts = [];
+			var current = element;
+			while (current && current.nodeType === 1 && current !== document.documentElement) {
+				var sel = current.tagName.toLowerCase();
+				if (current.id) {
+					parts.unshift('#' + CSS.escape(current.id));
+					return parts.join(' > ');
+				}
+				var classes = Array.prototype.slice.call(current.classList, 0, 3).map(function(c) { return CSS.escape(c); });
+				if (classes.length > 0) sel += '.' + classes.join('.');
+				var parent = current.parentElement;
+				if (parent) {
+					var sameTag = Array.prototype.filter.call(parent.children, function(s) { return s.tagName === current.tagName; });
+					if (sameTag.length > 1) sel += ':nth-of-type(' + (Array.prototype.indexOf.call(sameTag, current) + 1) + ')';
+				}
+				parts.unshift(sel);
+				current = current.parentElement;
+				if (parts.length >= 5) break;
+			}
+			return parts.join(' > ');
+		}
+		function getXPath(element) {
+			if (element.id) return '//*[@id="' + element.id + '"]';
+			var parts = [];
+			var current = element;
+			while (current && current.nodeType === 1) {
+				var tag = current.tagName.toLowerCase();
+				var parent = current.parentElement;
+				if (!parent) { parts.unshift(tag); break; }
+				var sameTag = Array.prototype.filter.call(parent.children, function(s) { return s.tagName === current.tagName; });
+				if (sameTag.length > 1) {
+					parts.unshift(tag + '[' + (Array.prototype.indexOf.call(sameTag, current) + 1) + ']');
+				} else {
+					parts.unshift(tag);
+				}
+				current = parent;
+				if (parts.length >= 8) break;
+			}
+			return '/' + parts.join('/');
+		}
+		return { cssSelector: getCssSelector(el), xpath: getXPath(el) };
+	})()`;
+}
+
 function sanitizeUrl(url: string): string {
 	if (/^https?:\/\//i.test(url) || url.startsWith("about:")) {
 		return url;
@@ -440,6 +489,41 @@ class BrowserManager extends EventEmitter {
 			menuItems.push(
 				{ type: "separator" },
 				{
+					label: "Copy Element Selector",
+					submenu: [
+						{
+							label: "CSS Selector",
+							click: async () => {
+								try {
+									const result = (await wc.executeJavaScript(
+										buildElementPathScript(params.x, params.y),
+									)) as { cssSelector: string; xpath: string } | null;
+									if (result?.cssSelector) {
+										clipboard.writeText(result.cssSelector);
+									}
+								} catch {
+									// page may not support elementFromPoint
+								}
+							},
+						},
+						{
+							label: "XPath",
+							click: async () => {
+								try {
+									const result = (await wc.executeJavaScript(
+										buildElementPathScript(params.x, params.y),
+									)) as { cssSelector: string; xpath: string } | null;
+									if (result?.xpath) {
+										clipboard.writeText(result.xpath);
+									}
+								} catch {
+									// page may not support elementFromPoint
+								}
+							},
+						},
+					],
+				},
+				{
 					label: "Inspect Element",
 					click: () => wc.inspectElement(params.x, params.y),
 				},
@@ -493,6 +577,60 @@ class BrowserManager extends EventEmitter {
 				// webContents may be destroyed
 			}
 		});
+	}
+
+	showContextMenuForWebContents(
+		wc: Electron.WebContents,
+		x: number,
+		y: number,
+	): void {
+		const script = buildElementPathScript(x, y);
+		const menuItems: Electron.MenuItemConstructorOptions[] = [
+			{
+				label: "Copy Element Selector",
+				submenu: [
+					{
+						label: "CSS Selector",
+						click: async () => {
+							try {
+								const result = (await wc.executeJavaScript(script)) as {
+									cssSelector: string;
+									xpath: string;
+								} | null;
+								if (result?.cssSelector) {
+									clipboard.writeText(result.cssSelector);
+								}
+							} catch {
+								// page may not support elementFromPoint
+							}
+						},
+					},
+					{
+						label: "XPath",
+						click: async () => {
+							try {
+								const result = (await wc.executeJavaScript(script)) as {
+									cssSelector: string;
+									xpath: string;
+								} | null;
+								if (result?.xpath) {
+									clipboard.writeText(result.xpath);
+								}
+							} catch {
+								// page may not support elementFromPoint
+							}
+						},
+					},
+				],
+			},
+			{ type: "separator" },
+			{
+				label: "Inspect Element",
+				click: () => wc.inspectElement(x, y),
+			},
+		];
+		const menu = Menu.buildFromTemplate(menuItems);
+		menu.popup();
 	}
 }
 
