@@ -52,7 +52,7 @@ export function ClaudeRuntimePicker({
 				)}
 			>
 				<div className="flex flex-col gap-1.5">
-					<Label className={labelClass}>Claude モデル</Label>
+					<Label className={labelClass}>Model</Label>
 					<Select
 						value={model}
 						onValueChange={(v) => onModelChange(v as ClaudeModelPick)}
@@ -71,7 +71,7 @@ export function ClaudeRuntimePicker({
 					</Select>
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<Label className={labelClass}>思考 effort</Label>
+					<Label className={labelClass}>Effort</Label>
 					<Select
 						value={effort}
 						onValueChange={(v) => onEffortChange(v as ClaudeEffortPick)}
