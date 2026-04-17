@@ -7,6 +7,8 @@ export {
 	DEFAULT_SENTINEL,
 	fromPersistedEffort,
 	fromPersistedModel,
+	getClaudeEffortLabel,
+	getClaudeModelLabel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "./claudeRuntimeOptions";

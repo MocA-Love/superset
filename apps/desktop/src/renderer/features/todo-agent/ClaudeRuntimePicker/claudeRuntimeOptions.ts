@@ -161,3 +161,28 @@ export function fromPersistedEffort(
 	);
 	return DEFAULT_SENTINEL;
 }
+
+/**
+ * Resolve a DB-persisted model/effort value to the human-readable label
+ * the picker shows. Used by read-only views (session detail, schedule
+ * list) so the label matches what the user originally selected.
+ */
+export function getClaudeModelLabel(
+	persisted: string | null | undefined,
+): string {
+	const pick = fromPersistedModel(persisted);
+	return (
+		CLAUDE_MODEL_SELECT_OPTIONS.find((o) => o.value === pick)?.label ??
+		String(persisted)
+	);
+}
+
+export function getClaudeEffortLabel(
+	persisted: string | null | undefined,
+): string {
+	const pick = fromPersistedEffort(persisted);
+	return (
+		CLAUDE_EFFORT_SELECT_OPTIONS.find((o) => o.value === pick)?.label ??
+		String(persisted)
+	);
+}

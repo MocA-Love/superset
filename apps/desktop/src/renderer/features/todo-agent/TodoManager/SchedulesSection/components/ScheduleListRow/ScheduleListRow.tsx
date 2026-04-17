@@ -14,6 +14,10 @@ import {
 	HiMiniPencil,
 	HiMiniTrash,
 } from "react-icons/hi2";
+import {
+	getClaudeEffortLabel,
+	getClaudeModelLabel,
+} from "renderer/features/todo-agent/ClaudeRuntimePicker";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { describeSchedule } from "../../utils/describeSchedule";
 import { formatNextRun } from "../../utils/formatNextRun";
@@ -86,6 +90,10 @@ export function ScheduleListRow({
 						{projectName ?? "(不明なプロジェクト)"}
 						{workspaceName ? ` / ${workspaceName}` : " / main"}
 					</span>
+				</div>
+				<div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
+					<span>モデル: {getClaudeModelLabel(schedule.claudeModel)}</span>
+					<span>effort: {getClaudeEffortLabel(schedule.claudeEffort)}</span>
 				</div>
 				{schedule.lastRunAt && (
 					<div className="text-[10px] text-muted-foreground mt-0.5">
