@@ -1,0 +1,1 @@
+ALTER TABLE `todo_sessions` ADD `remote_control_enabled` integer DEFAULT false NOT NULL;
