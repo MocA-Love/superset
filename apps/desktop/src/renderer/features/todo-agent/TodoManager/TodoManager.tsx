@@ -13,6 +13,7 @@ import { Label } from "@superset/ui/label";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import {
 	Bot,
@@ -551,23 +552,36 @@ export function TodoManager({
 										const collapsed = collapsedGroups.has(group.key);
 										return (
 											<div key={group.key} className="pb-1">
-												<button
-													type="button"
-													onClick={() => toggleGroup(group.key)}
-													className="sticky top-0 z-10 bg-background/95 backdrop-blur w-full flex items-center gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b hover:bg-accent/40 transition"
-												>
-													{collapsed ? (
-														<HiMiniChevronRight className="size-3" />
-													) : (
-														<HiMiniChevronDown className="size-3" />
-													)}
-													<span className="flex-1 text-left truncate">
-														{group.label}
-													</span>
-													<span className="text-muted-foreground/60">
-														{group.sessions.length}
-													</span>
-												</button>
+												<Tooltip delayDuration={300}>
+													<TooltipTrigger asChild>
+														<button
+															type="button"
+															onClick={() => toggleGroup(group.key)}
+															className="sticky top-0 z-10 bg-background/95 backdrop-blur w-full flex items-center gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b hover:bg-accent/40 transition min-w-0"
+														>
+															{collapsed ? (
+																<HiMiniChevronRight className="size-3 shrink-0" />
+															) : (
+																<HiMiniChevronDown className="size-3 shrink-0" />
+															)}
+															<span className="flex-1 text-left truncate min-w-0">
+																{group.label}
+															</span>
+															<span className="text-muted-foreground/60 shrink-0">
+																{group.sessions.length}
+															</span>
+														</button>
+													</TooltipTrigger>
+													<TooltipContent
+														side="right"
+														align="start"
+														className="max-w-[360px]"
+													>
+														<span className="text-[11px] break-all">
+															{group.label}
+														</span>
+													</TooltipContent>
+												</Tooltip>
 												{!collapsed && (
 													<div className="flex flex-col px-1.5 py-1 gap-0.5">
 														{group.sessions.map((session) => (
@@ -797,6 +811,8 @@ function SessionRow({
 		void copyToClipboard(session.title, "タイトルをコピーしました");
 	}, [session.title]);
 
+	const status = statusLabel(session);
+
 	return (
 		<div
 			className={cn(
@@ -804,38 +820,54 @@ function SessionRow({
 				isSelected ? "bg-accent" : "hover:bg-accent/50",
 			)}
 		>
-			<button
-				type="button"
-				onClick={onSelect}
-				className="text-left flex-1 min-w-0 pl-2.5 pr-1 py-2"
-			>
-				<div className="flex items-center gap-2">
-					<StatusDot status={session.status} />
-					{renaming ? (
-						<Input
-							autoFocus
-							value={renameValue}
-							onChange={(e) => setRenameValue(e.target.value)}
-							onKeyDown={handleRenameKey}
-							onBlur={() => void commitRename()}
-							onClick={(e) => e.stopPropagation()}
-							className="h-6 text-xs rounded-md"
-						/>
-					) : (
-						<span className="text-xs font-medium line-clamp-1 flex-1">
-							{session.title}
-						</span>
-					)}
-				</div>
-				<div className="flex items-center justify-between gap-2 pl-4 mt-0.5">
-					<span className="text-[10px] text-muted-foreground line-clamp-1 flex-1">
-						{statusLabel(session)}
-					</span>
-					<span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-						{formatRelativeTime(session.createdAt)}
-					</span>
-				</div>
-			</button>
+			<Tooltip delayDuration={500}>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						onClick={onSelect}
+						className="text-left flex-1 min-w-0 pl-2.5 pr-1 py-2"
+					>
+						<div className="flex items-center gap-2 min-w-0">
+							<StatusDot status={session.status} />
+							{renaming ? (
+								<Input
+									autoFocus
+									value={renameValue}
+									onChange={(e) => setRenameValue(e.target.value)}
+									onKeyDown={handleRenameKey}
+									onBlur={() => void commitRename()}
+									onClick={(e) => e.stopPropagation()}
+									className="h-6 text-xs rounded-md"
+								/>
+							) : (
+								<span className="text-xs font-medium line-clamp-1 flex-1 min-w-0">
+									{session.title}
+								</span>
+							)}
+						</div>
+						<div className="flex items-center justify-between gap-2 pl-4 mt-0.5 min-w-0">
+							<span className="text-[10px] text-muted-foreground line-clamp-1 flex-1 min-w-0">
+								{status}
+							</span>
+							<span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+								{formatRelativeTime(session.createdAt)}
+							</span>
+						</div>
+					</button>
+				</TooltipTrigger>
+				{!renaming && (
+					<TooltipContent side="right" align="start" className="max-w-[360px]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[11px] font-medium break-words">
+								{session.title}
+							</span>
+							<span className="text-[10px] opacity-70 break-words">
+								{status}
+							</span>
+						</div>
+					</TooltipContent>
+				)}
+			</Tooltip>
 			<div className="flex items-center pr-1">
 				<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
 					<DropdownMenuTrigger asChild>
