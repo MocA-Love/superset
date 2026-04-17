@@ -1,12 +1,11 @@
 export interface FilePaneData {
 	filePath: string;
 	mode: "editor" | "diff" | "preview";
-	hasChanges: boolean;
+	/** FORK NOTE: carried for memo tabs so the tab title shows the
+	 * memo-derived displayName instead of the random filename. */
 	displayName?: string;
 	language?: string;
-	/** Added in PR4 (c504 foundation). Wired by PR5 adaptation. */
 	viewId?: string;
-	/** Added in PR4 (c504 foundation). Wired by PR5 adaptation. */
 	forceViewId?: string;
 }
 

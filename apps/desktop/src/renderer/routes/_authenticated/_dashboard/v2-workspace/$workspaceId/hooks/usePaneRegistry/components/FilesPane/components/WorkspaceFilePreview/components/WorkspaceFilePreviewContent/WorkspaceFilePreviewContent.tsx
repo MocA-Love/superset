@@ -1,6 +1,6 @@
-import { useFileDocument } from "renderer/hooks/host-service/useFileDocument";
 import { SpreadsheetViewer } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/FileViewerPane/components/SpreadsheetViewer";
 import { isSpreadsheetFile } from "shared/file-types";
+import { useSharedFileDocument } from "../../../../../../../../state/fileDocumentStore";
 
 interface WorkspaceFilePreviewContentProps {
 	selectedFilePath: string;
@@ -11,13 +11,40 @@ export function WorkspaceFilePreviewContent({
 	selectedFilePath,
 	workspaceId,
 }: WorkspaceFilePreviewContentProps) {
-	const document = useFileDocument({
+	// FORK NOTE: Spreadsheets bypass the shared document store (they stream
+	// their own content). The store treats non-image binary files as text,
+	// so xlsx etc. would otherwise fall into the raw-text preview branch.
+	if (isSpreadsheetFile(selectedFilePath)) {
+		return (
+			<SpreadsheetViewer
+				workspaceId={workspaceId}
+				filePath={selectedFilePath}
+				absoluteFilePath={selectedFilePath}
+			/>
+		);
+	}
+	return (
+		<WorkspaceFilePreviewContentInner
+			selectedFilePath={selectedFilePath}
+			workspaceId={workspaceId}
+		/>
+	);
+}
+
+function WorkspaceFilePreviewContentInner({
+	selectedFilePath,
+	workspaceId,
+}: WorkspaceFilePreviewContentProps) {
+	// FORK NOTE: Fork-only sidebar file preview. Upstream removed its own
+	// equivalent in c504; ported to the new shared document store so we can
+	// keep the fork feature while the rest of v2 migrates off the old
+	// useFileDocument hook.
+	const document = useSharedFileDocument({
 		workspaceId,
 		absolutePath: selectedFilePath,
-		mode: "auto",
 	});
 
-	if (document.state.kind === "loading") {
+	if (document.content.kind === "loading") {
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
 				Loading file...
@@ -25,7 +52,7 @@ export function WorkspaceFilePreviewContent({
 		);
 	}
 
-	if (document.state.kind === "not-found") {
+	if (document.content.kind === "not-found") {
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
 				File not found
@@ -33,7 +60,31 @@ export function WorkspaceFilePreviewContent({
 		);
 	}
 
-	if (document.state.kind === "binary") {
+	if (document.content.kind === "is-directory") {
+		return (
+			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+				Directory previews are not implemented yet
+			</div>
+		);
+	}
+
+	if (document.content.kind === "too-large") {
+		return (
+			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+				File is too large to preview
+			</div>
+		);
+	}
+
+	if (document.content.kind === "error") {
+		return (
+			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+				{document.content.error.message}
+			</div>
+		);
+	}
+
+	if (document.content.kind === "bytes") {
 		if (isSpreadsheetFile(selectedFilePath)) {
 			return (
 				<SpreadsheetViewer
@@ -50,22 +101,6 @@ export function WorkspaceFilePreviewContent({
 		);
 	}
 
-	if (document.state.kind === "too-large") {
-		return (
-			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-				File is too large to preview
-			</div>
-		);
-	}
-
-	if (document.state.kind === "bytes") {
-		return (
-			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-				Byte previews are not implemented yet
-			</div>
-		);
-	}
-
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="border-b border-border px-4 py-3">
@@ -75,7 +110,7 @@ export function WorkspaceFilePreviewContent({
 							{document.absolutePath}
 						</h2>
 						<p className="text-xs text-muted-foreground">
-							Revision {document.state.revision}
+							Revision {document.content.revision}
 						</p>
 					</div>
 					<button
@@ -93,7 +128,7 @@ export function WorkspaceFilePreviewContent({
 				) : null}
 			</div>
 			<pre className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 text-xs leading-6 text-foreground">
-				{document.state.content}
+				{document.content.value}
 			</pre>
 		</div>
 	);
