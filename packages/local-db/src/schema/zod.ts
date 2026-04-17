@@ -281,6 +281,7 @@ export const aivisModelPresetSchema = z.object({
 	uuid: z.string().uuid(),
 	name: z.string(),
 	iconUrl: z.string().nullable(),
+	sampleUrl: z.string().nullable().optional(),
 });
 
 export type AivisModelPreset = z.infer<typeof aivisModelPresetSchema>;

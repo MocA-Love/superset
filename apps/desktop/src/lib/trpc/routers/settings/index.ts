@@ -1075,6 +1075,7 @@ export const createSettingsRouter = () => {
 								uuid: z.string().uuid(),
 								name: z.string(),
 								iconUrl: z.string().nullable(),
+								sampleUrl: z.string().nullable().optional(),
 							}),
 						)
 						.optional(),

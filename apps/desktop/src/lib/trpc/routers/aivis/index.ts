@@ -372,40 +372,18 @@ export const createAivisRouter = () => {
 						throw wrapApiError(err);
 					}
 				}),
-
-			resolveByNames: publicProcedure
-				.input(z.object({ names: z.array(z.string().min(1).max(100)).max(50) }))
-				.query(async ({ input }) => {
-					const results = await Promise.all(
-						input.names.map(async (name) => {
-							try {
-								const json = await aivisJson<{
-									aivm_models: AivmModelResponse[];
-								}>("/v1/aivm-models/search", {
-									optionalAuth: true,
-									query: { keyword: name, limit: 5 },
-								});
-								const models = json.aivm_models ?? [];
-								const exact = models.find((m) => m.name === name);
-								const match = exact ?? models[0];
-								return match
-									? { name, model: summarizeModel(match) }
-									: { name, model: null };
-							} catch {
-								return { name, model: null };
-							}
-						}),
-					);
-					return results;
-				}),
 		}),
 	});
 };
 
+interface AivmStyle {
+	voice_samples?: Array<{ audio_url?: string | null }>;
+}
 interface AivmSpeaker {
 	aivm_speaker_uuid: string;
 	name: string;
 	icon_url?: string | null;
+	styles?: AivmStyle[];
 }
 interface AivmUser {
 	handle?: string;
@@ -423,11 +401,14 @@ interface AivmModelResponse {
 function summarizeModel(m: AivmModelResponse) {
 	const speakerIcon = m.speakers?.[0]?.icon_url ?? null;
 	const userIcon = m.user?.icon_url ?? null;
+	const sampleUrl =
+		m.speakers?.[0]?.styles?.[0]?.voice_samples?.[0]?.audio_url ?? null;
 	return {
 		uuid: m.aivm_model_uuid,
 		name: m.name,
 		description: m.description ?? "",
 		iconUrl: speakerIcon ?? userIcon,
+		sampleUrl,
 		authorName: m.user?.name ?? null,
 		authorHandle: m.user?.handle ?? null,
 	};

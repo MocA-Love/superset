@@ -1,26 +1,16 @@
 import { Button } from "@superset/ui/button";
 import { cn } from "@superset/ui/utils";
-import { useMemo, useState } from "react";
-import { HiPlus, HiXMark } from "react-icons/hi2";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { HiPlay, HiPlus, HiStop, HiXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { AddModelPresetDialog } from "../AddModelPresetDialog";
-
-const DEFAULT_PRESET_NAMES = [
-	"まい",
-	"花音",
-	"るな",
-	"桜音",
-	"中2",
-	"zonoko",
-	"コハク",
-	"まお",
-	"天深シノ",
-] as const;
+import { AIVIS_PRESET_MODELS } from "./preset-data";
 
 interface PresetItem {
 	uuid: string;
 	name: string;
-	iconUrl: string | null;
+	icon: string | null;
+	sample: string | null;
 	source: "default" | "custom";
 }
 
@@ -46,32 +36,59 @@ export function ModelPresetTiles({
 
 	const customPresets = settingsData?.modelPresets ?? [];
 
-	// Resolve all default preset names via a single batched query.
-	const defaultPresets = electronTrpc.aivis.model.resolveByNames.useQuery(
-		{ names: [...DEFAULT_PRESET_NAMES] },
-		{ retry: false, staleTime: 60 * 60 * 1000 },
-	);
-
 	const items: PresetItem[] = useMemo(() => {
 		const seen = new Set<string>();
 		const out: PresetItem[] = [];
-		for (const r of defaultPresets.data ?? []) {
-			if (!r.model || seen.has(r.model.uuid)) continue;
-			seen.add(r.model.uuid);
+		for (const m of AIVIS_PRESET_MODELS) {
+			if (seen.has(m.uuid)) continue;
+			seen.add(m.uuid);
 			out.push({
-				uuid: r.model.uuid,
-				name: r.model.name,
-				iconUrl: r.model.iconUrl,
+				uuid: m.uuid,
+				name: m.name,
+				icon: m.iconAsset,
+				sample: m.sampleAsset,
 				source: "default",
 			});
 		}
 		for (const p of customPresets) {
 			if (seen.has(p.uuid)) continue;
 			seen.add(p.uuid);
-			out.push({ ...p, source: "custom" });
+			out.push({
+				uuid: p.uuid,
+				name: p.name,
+				icon: p.iconUrl,
+				sample: p.sampleUrl ?? null,
+				source: "custom",
+			});
 		}
 		return out;
-	}, [defaultPresets.data, customPresets]);
+	}, [customPresets]);
+
+	const [playingUuid, setPlayingUuid] = useState<string | null>(null);
+	const audioRef = useRef<HTMLAudioElement | null>(null);
+
+	useEffect(() => {
+		return () => {
+			audioRef.current?.pause();
+			audioRef.current = null;
+		};
+	}, []);
+
+	const togglePreview = (uuid: string, src: string | null) => {
+		if (!src) return;
+		if (playingUuid === uuid) {
+			audioRef.current?.pause();
+			setPlayingUuid(null);
+			return;
+		}
+		audioRef.current?.pause();
+		const audio = new Audio(src);
+		audioRef.current = audio;
+		audio.onended = () => setPlayingUuid((c) => (c === uuid ? null : c));
+		audio.onerror = () => setPlayingUuid((c) => (c === uuid ? null : c));
+		audio.play().catch(() => setPlayingUuid((c) => (c === uuid ? null : c)));
+		setPlayingUuid(uuid);
+	};
 
 	const removeCustom = (uuid: string) => {
 		const next = customPresets.filter((p) => p.uuid !== uuid);
@@ -83,14 +100,13 @@ export function ModelPresetTiles({
 		uuid: string;
 		name: string;
 		iconUrl: string | null;
+		sampleUrl: string | null;
 	}) => {
 		const exists = customPresets.some((p) => p.uuid === preset.uuid);
 		const next = exists ? customPresets : [...customPresets, preset];
 		save.mutate({ modelPresets: next });
 		onSelect(preset.uuid);
 	};
-
-	const anyDefaultLoading = defaultPresets.isLoading;
 
 	return (
 		<div className="space-y-2">
@@ -108,32 +124,35 @@ export function ModelPresetTiles({
 				</Button>
 			</div>
 
-			{anyDefaultLoading && items.length === 0 && (
-				<div className="text-xs text-muted-foreground">
-					モデル一覧を読み込み中…
-				</div>
-			)}
-
 			<div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
 				{items.map((item) => {
 					const selected = currentModelUuid === item.uuid;
+					const isPlaying = playingUuid === item.uuid;
 					return (
-						<button
+						// biome-ignore lint/a11y/useSemanticElements: nested buttons invalid; use div + role
+						<div
 							key={item.uuid}
-							type="button"
-							onClick={() => onSelect(item.uuid)}
-							disabled={disabled}
+							role="button"
+							tabIndex={disabled ? -1 : 0}
+							onClick={() => !disabled && onSelect(item.uuid)}
+							onKeyDown={(e) => {
+								if (disabled) return;
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									onSelect(item.uuid);
+								}
+							}}
 							className={cn(
-								"relative flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all overflow-hidden",
+								"relative flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all overflow-hidden cursor-pointer",
 								selected
 									? "border-emerald-500/60 bg-emerald-500/5"
 									: "border-border bg-card hover:border-border/80 hover:bg-muted/30",
 								disabled && "opacity-50 cursor-not-allowed",
 							)}
 						>
-							{item.iconUrl ? (
+							{item.icon ? (
 								<img
-									src={item.iconUrl}
+									src={item.icon}
 									alt=""
 									className="h-10 w-10 rounded-md object-cover flex-shrink-0"
 								/>
@@ -148,8 +167,25 @@ export function ModelPresetTiles({
 									{item.source === "default" ? "Built-in" : "Custom"}
 								</div>
 							</div>
+							{item.sample && (
+								<button
+									type="button"
+									aria-label={isPlaying ? "停止" : "サンプル再生"}
+									className="h-7 w-7 rounded-md bg-muted hover:bg-muted-foreground/20 flex items-center justify-center text-foreground"
+									onClick={(e) => {
+										e.stopPropagation();
+										togglePreview(item.uuid, item.sample);
+									}}
+								>
+									{isPlaying ? (
+										<HiStop className="h-3.5 w-3.5" />
+									) : (
+										<HiPlay className="h-3.5 w-3.5" />
+									)}
+								</button>
+							)}
 							{item.source === "custom" && (
-								// biome-ignore lint/a11y/useSemanticElements: nested <button> inside another button is invalid HTML; use role
+								// biome-ignore lint/a11y/useSemanticElements: nested buttons invalid; use span + role
 								<span
 									role="button"
 									tabIndex={0}
@@ -170,7 +206,7 @@ export function ModelPresetTiles({
 									<HiXMark className="h-3.5 w-3.5" />
 								</span>
 							)}
-						</button>
+						</div>
 					);
 				})}
 			</div>

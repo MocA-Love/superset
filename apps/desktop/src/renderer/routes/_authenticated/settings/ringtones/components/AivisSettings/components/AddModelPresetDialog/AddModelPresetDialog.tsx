@@ -9,13 +9,15 @@ import {
 } from "@superset/ui/dialog";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { HiPlay, HiStop } from "react-icons/hi2";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 
 interface PresetData {
 	uuid: string;
 	name: string;
 	iconUrl: string | null;
+	sampleUrl: string | null;
 }
 
 interface Props {
@@ -33,10 +35,20 @@ export function AddModelPresetDialog({ open, onOpenChange, onAdd }: Props) {
 		uuid: string;
 		name: string;
 		iconUrl: string | null;
+		sampleUrl: string | null;
 		authorName: string | null;
 	} | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
+	const [playing, setPlaying] = useState(false);
+	const audioRef = useRef<HTMLAudioElement | null>(null);
+
+	useEffect(() => {
+		return () => {
+			audioRef.current?.pause();
+			audioRef.current = null;
+		};
+	}, []);
 
 	useEffect(() => {
 		if (!open) {
@@ -44,6 +56,9 @@ export function AddModelPresetDialog({ open, onOpenChange, onAdd }: Props) {
 			setPreview(null);
 			setError(null);
 			setLoading(false);
+			setPlaying(false);
+			audioRef.current?.pause();
+			audioRef.current = null;
 		}
 	}, [open]);
 
@@ -65,6 +80,7 @@ export function AddModelPresetDialog({ open, onOpenChange, onAdd }: Props) {
 					uuid: m.uuid,
 					name: m.name,
 					iconUrl: m.iconUrl,
+					sampleUrl: m.sampleUrl,
 					authorName: m.authorName,
 				});
 			})
@@ -83,12 +99,30 @@ export function AddModelPresetDialog({ open, onOpenChange, onAdd }: Props) {
 
 	const handleAdd = () => {
 		if (!preview) return;
+		audioRef.current?.pause();
 		onAdd({
 			uuid: preview.uuid,
 			name: preview.name,
 			iconUrl: preview.iconUrl,
+			sampleUrl: preview.sampleUrl,
 		});
 		onOpenChange(false);
+	};
+
+	const togglePlay = () => {
+		if (!preview?.sampleUrl) return;
+		if (playing) {
+			audioRef.current?.pause();
+			setPlaying(false);
+			return;
+		}
+		const audio = new Audio(preview.sampleUrl);
+		audioRef.current?.pause();
+		audioRef.current = audio;
+		audio.onended = () => setPlaying(false);
+		audio.onerror = () => setPlaying(false);
+		audio.play().catch(() => setPlaying(false));
+		setPlaying(true);
 	};
 
 	return (
@@ -132,7 +166,7 @@ export function AddModelPresetDialog({ open, onOpenChange, onAdd }: Props) {
 									🎙️
 								</div>
 							)}
-							<div className="min-w-0">
+							<div className="min-w-0 flex-1">
 								<div className="text-sm font-medium truncate">
 									{preview.name}
 								</div>
@@ -142,6 +176,20 @@ export function AddModelPresetDialog({ open, onOpenChange, onAdd }: Props) {
 									</div>
 								)}
 							</div>
+							{preview.sampleUrl && (
+								<Button
+									type="button"
+									size="sm"
+									variant="outline"
+									onClick={togglePlay}
+								>
+									{playing ? (
+										<HiStop className="h-3.5 w-3.5" />
+									) : (
+										<HiPlay className="h-3.5 w-3.5" />
+									)}
+								</Button>
+							)}
 						</div>
 					)}
 				</div>
