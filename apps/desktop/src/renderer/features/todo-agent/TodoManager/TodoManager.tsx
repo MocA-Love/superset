@@ -1,3 +1,7 @@
+import {
+	type TodoSessionStatus,
+	todoSessionStatusValues,
+} from "@superset/local-db";
 import { Button } from "@superset/ui/button";
 import { Checkbox } from "@superset/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@superset/ui/dialog";
@@ -83,6 +87,10 @@ import {
 import { ChangesSidebar } from "./ChangesSidebar";
 import { AttachmentChips } from "./components/AttachmentChips";
 import { AttachmentPreviewDialog } from "./components/AttachmentPreviewDialog";
+import {
+	type StatusFilterOption,
+	StatusFilterPopover,
+} from "./components/StatusFilterPopover";
 import { PresetsDialog } from "./PresetsDialog";
 import { SchedulesSection } from "./SchedulesSection";
 import {
@@ -90,6 +98,25 @@ import {
 	extractAttachmentRefs,
 	stripAttachmentRefs,
 } from "./utils/attachmentRefs";
+
+const TODO_STATUS_LABELS: Record<TodoSessionStatus, string> = {
+	queued: "待機列",
+	preparing: "準備中",
+	running: "実行中",
+	verifying: "検証中",
+	done: "完了",
+	failed: "失敗",
+	escalated: "要確認",
+	aborted: "中止",
+	paused: "一時停止",
+	waiting: "再開待ち",
+};
+
+const TODO_STATUS_FILTER_OPTIONS: readonly StatusFilterOption<TodoSessionStatus>[] =
+	todoSessionStatusValues.map((v) => ({
+		value: v,
+		label: TODO_STATUS_LABELS[v],
+	}));
 
 async function copyToClipboard(text: string, label = "コピーしました") {
 	try {
@@ -372,6 +399,9 @@ export function TodoManager({
 }: TodoManagerProps) {
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [filter, setFilter] = useState("");
+	const [statusFilter, setStatusFilter] = useState<Set<TodoSessionStatus>>(
+		() => new Set(),
+	);
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
 		new Set(),
 	);
@@ -389,16 +419,23 @@ export function TodoManager({
 	);
 
 	const filtered = useMemo(() => {
-		if (!filter.trim()) return sessions ?? [];
+		const base = sessions ?? [];
 		const needle = filter.trim().toLowerCase();
-		return (sessions ?? []).filter(
-			(s) =>
+		const hasStatus = statusFilter.size > 0;
+		if (!needle && !hasStatus) return base;
+		return base.filter((s) => {
+			if (hasStatus && !statusFilter.has(s.status as TodoSessionStatus)) {
+				return false;
+			}
+			if (!needle) return true;
+			return (
 				s.title.toLowerCase().includes(needle) ||
 				s.description.toLowerCase().includes(needle) ||
 				(s.workspaceName ?? "").toLowerCase().includes(needle) ||
-				(s.projectName ?? "").toLowerCase().includes(needle),
-		);
-	}, [sessions, filter]);
+				(s.projectName ?? "").toLowerCase().includes(needle)
+			);
+		});
+	}, [sessions, filter, statusFilter]);
 
 	const grouped = useMemo(() => groupByWorkspace(filtered), [filtered]);
 
@@ -545,12 +582,17 @@ export function TodoManager({
 										新規
 									</Button>
 								</div>
-								<div className="p-2 border-b shrink-0">
+								<div className="p-2 border-b shrink-0 flex items-center gap-2">
 									<Input
 										value={filter}
 										onChange={(e) => setFilter(e.target.value)}
 										placeholder="絞り込み（タイトル / ワークスペース）"
-										className="h-8 text-xs rounded-md"
+										className="h-8 text-xs rounded-md flex-1 min-w-0"
+									/>
+									<StatusFilterPopover
+										options={TODO_STATUS_FILTER_OPTIONS}
+										selected={statusFilter}
+										onChange={setStatusFilter}
 									/>
 								</div>
 								<ScrollArea className="flex-1 min-h-0">

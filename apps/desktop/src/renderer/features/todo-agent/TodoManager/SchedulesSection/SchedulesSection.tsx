@@ -5,8 +5,19 @@ import { ScrollArea } from "@superset/ui/scroll-area";
 import { useMemo, useState } from "react";
 import { HiMiniPlus } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	type StatusFilterOption,
+	StatusFilterPopover,
+} from "../components/StatusFilterPopover";
 import { ScheduleEditorDialog } from "./components/ScheduleEditorDialog";
 import { ScheduleListRow } from "./components/ScheduleListRow";
+
+type ScheduleStatus = "enabled" | "disabled";
+
+const SCHEDULE_STATUS_OPTIONS: readonly StatusFilterOption<ScheduleStatus>[] = [
+	{ value: "enabled", label: "有効" },
+	{ value: "disabled", label: "無効" },
+];
 
 /**
  * Tab shown inside TodoManager's left sidebar when the user flips to
@@ -17,6 +28,9 @@ export function SchedulesSection() {
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editing, setEditing] = useState<SelectTodoSchedule | null>(null);
 	const [filter, setFilter] = useState("");
+	const [statusFilter, setStatusFilter] = useState<Set<ScheduleStatus>>(
+		() => new Set(),
+	);
 
 	const { data: schedules } = electronTrpc.todoAgent.schedule.listAll.useQuery(
 		undefined,
@@ -42,8 +56,14 @@ export function SchedulesSection() {
 	const filteredSchedules = useMemo(() => {
 		const list = schedules ?? [];
 		const needle = filter.trim().toLowerCase();
-		if (!needle) return list;
+		const hasStatus = statusFilter.size > 0;
+		if (!needle && !hasStatus) return list;
 		return list.filter((s) => {
+			if (hasStatus) {
+				const statusKey: ScheduleStatus = s.enabled ? "enabled" : "disabled";
+				if (!statusFilter.has(statusKey)) return false;
+			}
+			if (!needle) return true;
 			const wsName = s.workspaceId
 				? (workspaceNameById.get(s.workspaceId) ?? "")
 				: "";
@@ -56,7 +76,7 @@ export function SchedulesSection() {
 				projName.toLowerCase().includes(needle)
 			);
 		});
-	}, [schedules, filter, workspaceNameById, projectNameById]);
+	}, [schedules, filter, statusFilter, workspaceNameById, projectNameById]);
 
 	const openNew = () => {
 		setEditing(null);
@@ -86,12 +106,17 @@ export function SchedulesSection() {
 					新規
 				</Button>
 			</div>
-			<div className="p-2 border-b shrink-0">
+			<div className="p-2 border-b shrink-0 flex items-center gap-2">
 				<Input
 					value={filter}
 					onChange={(e) => setFilter(e.target.value)}
 					placeholder="絞り込み（名前 / タイトル / プロジェクト）"
-					className="h-8 text-xs rounded-md"
+					className="h-8 text-xs rounded-md flex-1 min-w-0"
+				/>
+				<StatusFilterPopover
+					options={SCHEDULE_STATUS_OPTIONS}
+					selected={statusFilter}
+					onChange={setStatusFilter}
 				/>
 			</div>
 			<ScrollArea className="flex-1 min-h-0">
