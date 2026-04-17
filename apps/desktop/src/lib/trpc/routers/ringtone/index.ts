@@ -3,9 +3,11 @@ import { TRPCError } from "@trpc/server";
 import type { BrowserWindow, OpenDialogOptions } from "electron";
 import { dialog } from "electron";
 import {
+	deleteCustomRingtone,
 	getCustomRingtoneInfo,
 	getCustomRingtonePath,
 	importCustomRingtoneFromPath,
+	setCustomRingtoneDisplayName,
 } from "main/lib/custom-ringtones";
 import { playSoundFile } from "main/lib/play-sound";
 import { getSoundPath } from "main/lib/sound-paths";
@@ -175,6 +177,43 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 				});
 			}
 		}),
+
+		/**
+		 * Deletes the imported custom ringtone (audio file + metadata).
+		 */
+		deleteCustom: publicProcedure.mutation(() => {
+			stopCurrentSound();
+			deleteCustomRingtone();
+			return { success: true as const };
+		}),
+
+		/**
+		 * Renames the custom ringtone's display name.
+		 */
+		renameCustom: publicProcedure
+			.input(z.object({ name: z.string().min(1).max(80) }))
+			.mutation(({ input }) => {
+				try {
+					setCustomRingtoneDisplayName(input.name);
+					const info = getCustomRingtoneInfo();
+					if (!info) {
+						throw new TRPCError({
+							code: "NOT_FOUND",
+							message: "No custom ringtone to rename.",
+						});
+					}
+					return { ringtone: info };
+				} catch (error) {
+					if (error instanceof TRPCError) throw error;
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message:
+							error instanceof Error
+								? error.message
+								: "Failed to rename custom ringtone",
+					});
+				}
+			}),
 
 		/**
 		 * Imports a custom ringtone by clipping a section of a YouTube video.

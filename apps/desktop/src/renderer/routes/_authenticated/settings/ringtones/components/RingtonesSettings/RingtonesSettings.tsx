@@ -1,9 +1,23 @@
 import { Button } from "@superset/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@superset/ui/dropdown-menu";
 import { Label } from "@superset/ui/label";
 import { Switch } from "@superset/ui/switch";
 import { cn } from "@superset/ui/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HiCheck, HiPlay, HiPlus, HiStop } from "react-icons/hi2";
+import {
+	HiCheck,
+	HiEllipsisHorizontal,
+	HiPencil,
+	HiPlay,
+	HiPlus,
+	HiStop,
+	HiTrash,
+} from "react-icons/hi2";
 import { SiYoutube } from "react-icons/si";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
@@ -19,6 +33,7 @@ import {
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
+import { RenameRingtoneDialog } from "./components/RenameRingtoneDialog";
 import { VolumeDropdown } from "./components/VolumeDropdown";
 import { YouTubeImportDialog } from "./components/YouTubeImportDialog";
 
@@ -32,6 +47,8 @@ interface RingtoneCardProps {
 	isPlaying: boolean;
 	onSelect: () => void;
 	onTogglePlay: () => void;
+	onRename?: () => void;
+	onDelete?: () => void;
 }
 
 function RingtoneCard({
@@ -40,7 +57,11 @@ function RingtoneCard({
 	isPlaying,
 	onSelect,
 	onTogglePlay,
+	onRename,
+	onDelete,
 }: RingtoneCardProps) {
+	const showActions = Boolean(onRename || onDelete);
+
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: Using div with role="button" to allow nested play/stop button
 		<div
@@ -75,6 +96,45 @@ function RingtoneCard({
 					<span className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-1.5 py-0.5 rounded">
 						{formatDuration(ringtone.duration)}
 					</span>
+				)}
+
+				{/* Actions menu (custom ringtones only) */}
+				{showActions && (
+					// biome-ignore lint/a11y/noStaticElementInteractions: wrapper exists only to stop click bubbling to the outer card button
+					<div
+						className="absolute top-1.5 left-1.5"
+						onClick={(e) => e.stopPropagation()}
+						onKeyDown={(e) => e.stopPropagation()}
+					>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<button
+									type="button"
+									aria-label="Custom ringtone actions"
+									className="h-7 w-7 rounded-full flex items-center justify-center bg-background/80 text-foreground border border-border hover:bg-accent"
+								>
+									<HiEllipsisHorizontal className="h-4 w-4" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="start">
+								{onRename && (
+									<DropdownMenuItem onClick={onRename}>
+										<HiPencil className="mr-2 h-4 w-4" />
+										Rename
+									</DropdownMenuItem>
+								)}
+								{onDelete && (
+									<DropdownMenuItem
+										onClick={onDelete}
+										className="text-destructive focus:text-destructive"
+									>
+										<HiTrash className="mr-2 h-4 w-4" />
+										Delete
+									</DropdownMenuItem>
+								)}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
 				)}
 
 				{/* Play/Stop button */}
@@ -200,6 +260,31 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 		},
 	);
 
+	const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+	const [renameError, setRenameError] = useState<string | null>(null);
+	const renameCustomRingtone = electronTrpc.ringtone.renameCustom.useMutation({
+		onSuccess: async () => {
+			setRenameError(null);
+			setRenameDialogOpen(false);
+			await utils.ringtone.getCustom.invalidate();
+		},
+		onError: (error) => {
+			setRenameError(error.message);
+		},
+	});
+
+	const deleteCustomRingtone = electronTrpc.ringtone.deleteCustom.useMutation({
+		onSuccess: async () => {
+			if (selectedRingtoneId === CUSTOM_RINGTONE_ID) {
+				setRingtone(AVAILABLE_RINGTONES[0]?.id ?? "");
+			}
+			await utils.ringtone.getCustom.invalidate();
+		},
+		onError: (error) => {
+			console.error("Failed to delete custom ringtone:", error);
+		},
+	});
+
 	const handleMutedToggle = (enabled: boolean) => {
 		setMuted.mutate({ muted: !enabled });
 	};
@@ -207,6 +292,19 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 	const handleImportCustomRingtone = useCallback(() => {
 		importCustomRingtone.mutate();
 	}, [importCustomRingtone]);
+
+	const handleRenameCustom = useCallback(() => {
+		setRenameError(null);
+		setRenameDialogOpen(true);
+	}, []);
+
+	const handleDeleteCustom = useCallback(() => {
+		const confirmed = window.confirm(
+			"Delete the custom notification sound? This cannot be undone.",
+		);
+		if (!confirmed) return;
+		deleteCustomRingtone.mutate();
+	}, [deleteCustomRingtone]);
 
 	// Clean up timer and stop any playing sound on unmount
 	useEffect(() => {
@@ -345,16 +443,21 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 							</div>
 						</div>
 						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-							{ringtoneOptions.map((ringtone) => (
-								<RingtoneCard
-									key={ringtone.id}
-									ringtone={ringtone}
-									isSelected={selectedRingtoneId === ringtone.id}
-									isPlaying={playingId === ringtone.id}
-									onSelect={() => handleSelect(ringtone.id)}
-									onTogglePlay={() => handleTogglePlay(ringtone)}
-								/>
-							))}
+							{ringtoneOptions.map((ringtone) => {
+								const isCustom = ringtone.id === CUSTOM_RINGTONE_ID;
+								return (
+									<RingtoneCard
+										key={ringtone.id}
+										ringtone={ringtone}
+										isSelected={selectedRingtoneId === ringtone.id}
+										isPlaying={playingId === ringtone.id}
+										onSelect={() => handleSelect(ringtone.id)}
+										onTogglePlay={() => handleTogglePlay(ringtone)}
+										onRename={isCustom ? handleRenameCustom : undefined}
+										onDelete={isCustom ? handleDeleteCustom : undefined}
+									/>
+								);
+							})}
 						</div>
 					</div>
 				)}
@@ -384,6 +487,22 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 				}}
 				isSubmitting={importFromYouTube.isPending}
 				errorMessage={youtubeError}
+			/>
+
+			<RenameRingtoneDialog
+				open={renameDialogOpen}
+				onOpenChange={(open) => {
+					setRenameDialogOpen(open);
+					if (!open) setRenameError(null);
+				}}
+				currentName={customRingtone?.name ?? ""}
+				onSubmit={async (name) => {
+					await renameCustomRingtone.mutateAsync({ name }).catch(() => {
+						// Error surfaced via renameError state.
+					});
+				}}
+				isSubmitting={renameCustomRingtone.isPending}
+				errorMessage={renameError}
 			/>
 		</div>
 	);
