@@ -9,8 +9,8 @@ import {
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
-import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
+import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { useHotkey } from "renderer/hotkeys";
 import {
 	addBrowserShortcutListener,
