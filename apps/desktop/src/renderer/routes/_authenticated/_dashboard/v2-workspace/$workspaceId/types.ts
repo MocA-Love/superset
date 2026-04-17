@@ -4,6 +4,10 @@ export interface FilePaneData {
 	hasChanges: boolean;
 	displayName?: string;
 	language?: string;
+	/** Added in PR4 (c504 foundation). Wired by PR5 adaptation. */
+	viewId?: string;
+	/** Added in PR4 (c504 foundation). Wired by PR5 adaptation. */
+	forceViewId?: string;
 }
 
 export interface TerminalPaneData {
