@@ -45,6 +45,7 @@ import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
 import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
+import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-protocol";
 import {
 	prewarmTerminalRuntime,
 	reconcileDaemonSessions,
@@ -554,6 +555,16 @@ protocol.registerSchemesAsPrivileged([
 		},
 	},
 	{
+		scheme: "superset-workspace-media",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+			stream: true,
+		},
+	},
+	{
 		scheme: "vscode-webview-resource",
 		privileges: {
 			standard: true,
@@ -722,6 +733,13 @@ if (!gotTheLock) {
 		session
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-temp-audio", tempAudioHandler);
+
+		// Serve workspace audio/video files for the file viewer
+		const workspaceMediaHandler = createWorkspaceMediaProtocolHandler();
+		protocol.handle("superset-workspace-media", workspaceMediaHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-workspace-media", workspaceMediaHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();
