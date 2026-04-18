@@ -355,8 +355,18 @@ function WorkspaceContent({
 		[collections, workspaceId],
 	);
 
+	// FORK NOTE: fork's openFilePane takes (filePath, displayName?) for the
+	// memo-title path; usePaneRegistry's onOpenFile contract is
+	// (path, openInNewTab?). Bind without forwarding the 2nd arg so the types
+	// line up — terminal Cmd+click just opens in the active tab — and wrap
+	// with useCallback so paneRegistry's memo stays stable.
+	const handleTerminalOpenFile = useCallback(
+		(filePath: string) => openFilePane(filePath),
+		[openFilePane],
+	);
+
 	const paneRegistry = usePaneRegistry(workspaceId, {
-		onOpenFile: openFilePane,
+		onOpenFile: handleTerminalOpenFile,
 		onRevealPath: revealPath,
 	});
 	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
