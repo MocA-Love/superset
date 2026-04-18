@@ -30,12 +30,12 @@ export class LocalModelProvider implements ModelProviderRuntimeResolver {
 		this.anthropicEnvConfigPath = options?.anthropicEnvConfigPath;
 	}
 
-	private async resolveRuntimeEnv(): Promise<{
+	private resolveRuntimeEnv(): {
 		env: Record<string, string>;
 		cleanupKeys: string[];
 		hasUsableRuntimeEnv: boolean;
-	}> {
-		const anthropicCredential = await resolveAnthropicCredential();
+	} {
+		const anthropicCredential = resolveAnthropicCredential();
 		const openaiCredential = resolveOpenAICredential();
 		const anthropicEnvConfig = getAnthropicEnvConfig({
 			configPath: this.anthropicEnvConfigPath,
@@ -54,11 +54,11 @@ export class LocalModelProvider implements ModelProviderRuntimeResolver {
 	}
 
 	async hasUsableRuntimeEnv(): Promise<boolean> {
-		return (await this.resolveRuntimeEnv()).hasUsableRuntimeEnv;
+		return this.resolveRuntimeEnv().hasUsableRuntimeEnv;
 	}
 
 	async prepareRuntimeEnv(): Promise<void> {
-		const runtimeEnv = await this.resolveRuntimeEnv();
+		const runtimeEnv = this.resolveRuntimeEnv();
 		this.currentRuntimeEnv = applyRuntimeEnv(
 			runtimeEnv.env,
 			runtimeEnv.cleanupKeys,
