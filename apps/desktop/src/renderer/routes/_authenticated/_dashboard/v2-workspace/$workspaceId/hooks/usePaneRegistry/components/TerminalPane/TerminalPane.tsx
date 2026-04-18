@@ -32,6 +32,7 @@ import {
 	DEFAULT_FILE_OPEN_MODE,
 } from "shared/constants";
 import { LinkHoverTooltip } from "./components/LinkHoverTooltip";
+import { useLinkClickHint } from "./hooks/useLinkClickHint";
 import { useLinkHoverState } from "./hooks/useLinkHoverState";
 import { useTerminalAppearance } from "./hooks/useTerminalAppearance";
 import { shellEscapePaths } from "./utils";
@@ -68,6 +69,7 @@ export function TerminalPane({
 		onHover: onLinkHover,
 		onLeave: onLinkLeave,
 	} = useLinkHoverState();
+	const { hint, showHint } = useLinkClickHint();
 	const paneData = ctx.pane.data as TerminalPaneData;
 	// FORK NOTE: Guard against legacy pane data format {sessionKey, cwd, launchMode}
 	// saved in local DB before the terminalId migration.
@@ -175,7 +177,10 @@ export function TerminalPane({
 				}
 			},
 			onFileLinkClick: (event, link) => {
-				if (!event.metaKey && !event.ctrlKey) return;
+				if (!event.metaKey && !event.ctrlKey) {
+					showHint(event.clientX, event.clientY);
+					return;
+				}
 				event.preventDefault();
 				if (event.shiftKey) {
 					openInExternalEditor(link.resolvedPath, {
@@ -218,6 +223,7 @@ export function TerminalPane({
 		openInExternalEditor,
 		onLinkHover,
 		onLinkLeave,
+		showHint,
 	]);
 
 	useHotkey(
@@ -343,7 +349,7 @@ export function TerminalPane({
 					<span>Disconnected</span>
 				</div>
 			)}
-			<LinkHoverTooltip hoveredLink={hoveredLink} />
+			<LinkHoverTooltip hoveredLink={hoveredLink} hint={hint} />
 		</div>
 	);
 }
