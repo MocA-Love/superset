@@ -25,7 +25,7 @@ import {
 } from "main/lib/project-icons";
 import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import { PROJECT_COLOR_VALUES } from "shared/constants/project-colors";
-import type { SimpleGitProgressEvent } from "simple-git";
+import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { resolveDefaultEditor } from "../external";
@@ -45,11 +45,11 @@ import {
 	refreshDefaultBranch,
 	sanitizeAuthorPrefix,
 } from "../workspaces/utils/git";
+import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import {
-	createSimpleGitWithShellPath,
-	getSimpleGitWithShellPath,
-} from "../workspaces/utils/git-client";
-import { execWithShellEnv } from "../workspaces/utils/shell-env";
+	execWithShellEnv,
+	getProcessEnvWithShellPath,
+} from "../workspaces/utils/shell-env";
 import { getDefaultProjectColor } from "./utils/colors";
 import { discoverAndSaveProjectIcon } from "./utils/favicon-discovery";
 import { fetchGitHubOwner, getGitHubAvatarUrl } from "./utils/github";
@@ -1493,7 +1493,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 							`Preparing clone into ${basename(clonePath)}`,
 						);
 						try {
-							const gitWithProgress = await createSimpleGitWithShellPath({
+							const gitWithProgress = simpleGit({
 								abort: abortController.signal,
 								progress: (event: SimpleGitProgressEvent) => {
 									emitCloneEvent({
@@ -1507,6 +1507,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 									});
 								},
 							});
+							gitWithProgress.env(await getProcessEnvWithShellPath());
 							emitCloneLog(
 								cloneId,
 								`Cloning ${redactGitCredentials(input.url)}`,
