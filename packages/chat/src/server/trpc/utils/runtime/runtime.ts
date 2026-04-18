@@ -1,10 +1,8 @@
 import type { AppRouter } from "@superset/trpc";
 import type { createTRPCClient } from "@trpc/client";
 import type { createMastraCode } from "mastracode";
-import {
-	generateTitleFromMessageWithStreamingModel,
-	getDefaultSmallModelProviders,
-} from "../../../desktop";
+import { generateTitleFromMessage } from "../../../desktop";
+import { getSmallModel } from "../../../shared/small-model";
 import type { ThinkingLevel } from "../../zod";
 
 const SUBAGENT_AGENT_TYPES = ["explore", "plan", "execute"] as const;
@@ -512,31 +510,21 @@ export async function generateAndSetTitle(
 		// Use a small model for title generation instead of the chat model,
 		// because the chat model may use OAuth auth that isn't accessible via
 		// process.env API keys (e.g. OpenAI Codex OAuth).
-		const providers = getDefaultSmallModelProviders();
-		for (const provider of providers) {
-			const creds = provider.resolveCredentials();
-			if (!creds) continue;
-			const { supported } = provider.isSupported(creds);
-			if (!supported) continue;
-			try {
-				const model = await provider.createModel(creds);
-				const title = await generateTitleFromMessageWithStreamingModel({
-					message: text,
-					model: model as import("ai").LanguageModel,
-				});
-				if (!title?.trim()) return;
+		const model = getSmallModel();
+		if (!model) return;
+		try {
+			const title = await generateTitleFromMessage({
+				message: text,
+				agentModel: model,
+			});
+			if (!title?.trim()) return;
 
-				await apiClient.chat.updateTitle.mutate({
-					sessionId: runtime.sessionId,
-					title: title.trim(),
-				});
-				return;
-			} catch (error) {
-				console.warn(
-					`[chat] Title generation failed with ${provider.id}, trying next provider:`,
-					error,
-				);
-			}
+			await apiClient.chat.updateTitle.mutate({
+				sessionId: runtime.sessionId,
+				title: title.trim(),
+			});
+		} catch (error) {
+			console.warn("[chat] Title generation failed:", error);
 		}
 	} catch (error) {
 		console.warn("[chat] Title generation failed:", error);
