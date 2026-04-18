@@ -4,13 +4,16 @@ import {
 	execFile,
 } from "node:child_process";
 import simpleGit, { type SimpleGit } from "simple-git";
-import { getProcessEnvWithShellPath } from "./shell-env";
+import {
+	getProcessEnvWithShellPath,
+	stripSimpleGitUnsafeEnv,
+} from "./shell-env";
 
 export async function getSimpleGitWithShellPath(
 	repoPath?: string,
 ): Promise<SimpleGit> {
 	const git = repoPath ? simpleGit(repoPath) : simpleGit();
-	git.env(await getProcessEnvWithShellPath());
+	git.env(stripSimpleGitUnsafeEnv(await getProcessEnvWithShellPath()));
 	return git;
 }
 
@@ -45,8 +48,10 @@ async function execGitWithShellPathWithEncoding<
 	stdout: TEncoding extends "buffer" ? Buffer : string;
 	stderr: TEncoding extends "buffer" ? Buffer : string;
 }> {
-	const env = await getProcessEnvWithShellPath(
-		options?.env ? { ...process.env, ...options.env } : process.env,
+	const env = stripSimpleGitUnsafeEnv(
+		await getProcessEnvWithShellPath(
+			options?.env ? { ...process.env, ...options.env } : process.env,
+		),
 	);
 
 	return new Promise((resolve, reject) => {
