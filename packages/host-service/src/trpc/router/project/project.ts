@@ -2,8 +2,8 @@ import { existsSync, rmSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
+import simpleGit from "simple-git";
 import { z } from "zod";
-import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { projects, workspaces } from "../../../db/schema";
 import { parseGitHubRemote } from "../../../runtime/pull-requests/utils/parse-github-remote";
 import { protectedProcedure, router } from "../../index";
@@ -162,7 +162,7 @@ async function importExistingRepo(
 		});
 	}
 
-	const git = createSimpleGitWithEnv({ baseDir: localPath });
+	const git = simpleGit(localPath);
 
 	let gitRoot: string;
 	try {
@@ -174,9 +174,7 @@ async function importExistingRepo(
 		});
 	}
 
-	const remotes = await getGitHubRemotes(
-		createSimpleGitWithEnv({ baseDir: gitRoot }),
-	);
+	const remotes = await getGitHubRemotes(simpleGit(gitRoot));
 	const matchingRemote = findMatchingRemote(remotes, expectedSlug);
 
 	if (!matchingRemote) {
@@ -232,7 +230,7 @@ async function cloneRepo(
 	}
 
 	try {
-		await createSimpleGitWithEnv().clone(repoCloneUrl, targetPath);
+		await simpleGit().clone(repoCloneUrl, targetPath);
 	} catch (err) {
 		if (existsSync(targetPath)) {
 			rmSync(targetPath, { recursive: true, force: true });
@@ -243,9 +241,7 @@ async function cloneRepo(
 		});
 	}
 
-	const remotes = await getGitHubRemotes(
-		createSimpleGitWithEnv({ baseDir: targetPath }),
-	);
+	const remotes = await getGitHubRemotes(simpleGit(targetPath));
 	const matchingRemote = findMatchingRemote(remotes, expectedSlug);
 
 	if (!matchingRemote) {
