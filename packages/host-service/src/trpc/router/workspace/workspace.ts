@@ -3,9 +3,9 @@ import { dirname, join } from "node:path";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
-import simpleGit from "simple-git";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
+import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { protectedProcedure, router } from "../../index";
 
 export const workspaceRouter = router({
@@ -64,7 +64,10 @@ export const workspaceRouter = router({
 
 				if (!existsSync(repoPath)) {
 					mkdirSync(dirname(repoPath), { recursive: true });
-					await simpleGit().clone(cloudProject.repoCloneUrl, repoPath);
+					await createSimpleGitWithEnv().clone(
+						cloudProject.repoCloneUrl,
+						repoPath,
+					);
 				}
 
 				const inserted = ctx.db
