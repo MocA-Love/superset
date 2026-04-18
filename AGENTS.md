@@ -58,6 +58,86 @@ bun run clean              # Clean root node_modules
 bun run clean:workspaces   # Clean all workspace node_modules
 ```
 
+## MocA-Love/superset フォーク向け: Desktop アプリのビルドとリリース
+
+このフォーク固有のビルド手順とリリースフロー。本家 (superset-sh/superset) とは配布先やチャネルが異なる。
+
+### ローカル開発
+
+`apps/desktop` の dev 起動:
+
+```bash
+cd apps/desktop
+SUPERSET_WORKSPACE_NAME=superset SKIP_ENV_VALIDATION=1 DESKTOP_VITE_PORT=5222 bun run dev
+```
+
+- **`SUPERSET_WORKSPACE_NAME=superset` は必須**。未指定だと dev 環境のワークスペースデータが意図せず消える。
+- dev 起動時に `bun run predev` で `scripts/patch-dev-protocol.ts` が走り、プロトコルハンドラをパッチ。
+
+### ローカルでの配布ビルド確認
+
+```bash
+cd apps/desktop
+
+# 1. コンパイル (electron-vite build)
+bun run compile:app
+
+# 2. ネイティブモジュール複製 + ランタイム検証
+bun run copy:native-modules
+bun run validate:native-runtime
+
+# 3. electron-builder でパッケージ (配布物の dmg / zip を生成、未 publish)
+bun run build
+# または package のみ (publish 条件を無視)
+bun run package
+```
+
+`bun run build` は `--publish never` で実行され、`apps/desktop/dist/` に成果物が出る。CI と同じ電池ない確認が可能。
+
+### リリース (本番タグ)
+
+GitHub Actions の `.github/workflows/release-desktop.yml` が `desktop-v*.*.*` タグ push でトリガーされる。手順:
+
+```bash
+# main 最新化
+git checkout main && git pull
+
+# 新バージョンで apps/desktop/package.json の version 更新
+# 例: 1.5.7 → 1.5.8
+# (手動編集 → commit → push → PR → merge)
+
+# main にマージ後、タグ打ち
+git tag desktop-v1.5.8
+git push origin desktop-v1.5.8
+```
+
+タグを push すると:
+1. `build-desktop.yml` 経由で macOS (arm64 / x64) / Windows / Linux ビルド
+2. `release-desktop.yml` が GitHub Release を自動作成し artifact を添付
+3. `bump-homebrew.yml` が Homebrew tap を更新 (必要に応じて)
+
+**Canary リリース** は `.github/workflows/release-desktop-canary.yml` で別管理。Canary 用タグ命名規則はワークフロー参照。
+
+### ビルド前チェックリスト — 忘れずに
+
+dependency bump や upstream 取り込み後にリリースビルドを走らせる前、以下を必ず実施:
+
+```bash
+# lockfile と node_modules の整合性を取り直す (重複残骸を除去)
+rm -rf node_modules apps/*/node_modules packages/*/node_modules
+bun install
+```
+
+**理由:** `bun install` を override 切替や複数回 install で繰り返すと、lockfile には 1 バージョンしか無いのに node_modules 内に旧バージョンの残骸が残ることがある。この状態でビルドすると配布版に重複パッケージが混入し、`@pierre/diffs` 等の Web Components が `customElements.define` で二重登録され、DiffViewer のセパレータ枠線が白くなる等の UI 崩壊を引き起こす (参考: PR #332 / #333)。
+
+以下のタイミングでは毎回上記のフルクリーンを挟むこと:
+- dependency bump を含む PR を main にマージした直後
+- `overrides` や `patchedDependencies` を変更した後
+- `desktop-v*` タグを切る直前
+- `release-desktop.yml` を手動トリガーする前
+
+CI 側でもワークフロー実行前に `node_modules` を毎回ゼロから作っていれば問題ないが、ローカル確認時は特に注意。
+
 ## Code Quality
 
 **Biome runs at root level** (not per-package) for speed:
