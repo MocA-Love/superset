@@ -294,8 +294,10 @@ export function TerminalPane({
 		dragCounterRef.current = 0;
 		setIsDropActive(false);
 		if (connectionState === "closed") return;
+		const hasNativeFiles = event.dataTransfer.files.length > 0;
 		const internalFilePath = getInternalDraggedFilePath(event.dataTransfer);
 		if (
+			!hasNativeFiles &&
 			internalFilePath &&
 			(fileDragBehavior ?? DEFAULT_FILE_DRAG_BEHAVIOR) === "open-file-viewer"
 		) {

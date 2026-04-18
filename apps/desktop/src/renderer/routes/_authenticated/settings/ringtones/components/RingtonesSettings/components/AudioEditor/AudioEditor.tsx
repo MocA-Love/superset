@@ -214,10 +214,6 @@ export function AudioEditor({
 			.then((data) => {
 				if (!cancelled) {
 					setWaveform(data);
-					if (!hasInitialRange) {
-						setStartSeconds(0);
-						setEndSeconds(Math.min(10, data.duration));
-					}
 				}
 			})
 			.catch((err) => {
@@ -234,7 +230,13 @@ export function AudioEditor({
 		return () => {
 			cancelled = true;
 		};
-	}, [audioUrl, hasInitialRange]);
+	}, [audioUrl]);
+
+	useEffect(() => {
+		if (!waveform || hasInitialRange) return;
+		setStartSeconds(0);
+		setEndSeconds(Math.min(10, waveform.duration));
+	}, [waveform, hasInitialRange]);
 
 	// Draw waveform whenever relevant state changes
 	const redrawWaveform = useCallback(() => {
