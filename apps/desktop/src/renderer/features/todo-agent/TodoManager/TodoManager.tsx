@@ -2673,6 +2673,8 @@ function TodoComposer({
 
 	const [projectId, setProjectId] = useState<string>("");
 	const [createWorktree, setCreateWorktree] = useState(true);
+	const [ptyEnabled, setPtyEnabled] = useState(false);
+	const [remoteControlEnabled, setRemoteControlEnabled] = useState(false);
 	const [workspaceId, setWorkspaceId] = useState<string>("");
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
@@ -2733,6 +2735,15 @@ function TodoComposer({
 			setWorkspaceId(preferred?.id ?? "");
 		}
 	}, [createWorktree, workspaceId, projectWorkspaces, currentWorkspaceId]);
+
+	// Remote Control requires the PTY engine — clear the RC toggle
+	// whenever the user disables PTY so an invalid combination cannot
+	// slip through to the submit call.
+	useEffect(() => {
+		if (!ptyEnabled && remoteControlEnabled) {
+			setRemoteControlEnabled(false);
+		}
+	}, [ptyEnabled, remoteControlEnabled]);
 
 	const maxIterations = todoSettings?.defaultMaxIterations ?? 10;
 	const maxWallClockSec = (todoSettings?.defaultMaxWallClockMin ?? 30) * 60;
@@ -2801,6 +2812,8 @@ function TodoComposer({
 				customSystemPrompt: selected?.content ?? undefined,
 				claudeModel: toPersistedModel(claudeModel),
 				claudeEffort: toPersistedEffort(claudeEffort),
+				ptyEnabled,
+				remoteControlEnabled,
 			});
 			await utils.todoAgent.listAll.invalidate();
 			toast.success(
@@ -2836,6 +2849,8 @@ function TodoComposer({
 		maxWallClockSec,
 		onCreated,
 		projectId,
+		ptyEnabled,
+		remoteControlEnabled,
 		scopedPresets.system,
 		selectedPresetId,
 		title,
@@ -2903,6 +2918,62 @@ function TodoComposer({
 								新しい worktree を作成して実行
 							</span>
 							<HiMiniSparkles className="size-3 text-primary/70" />
+						</label>
+
+						<label
+							htmlFor="composer-pty-mode"
+							className={cn(
+								"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
+								ptyEnabled
+									? "border-emerald-400/50 bg-emerald-500/5"
+									: "border-border/40 hover:bg-muted/40",
+							)}
+							title="beta: Claude を interactive PTY モードで起動します。従来の headless (`-p`) 経路よりも実環境に近く、Remote Control など TUI 専用機能が使えます。"
+						>
+							<Checkbox
+								id="composer-pty-mode"
+								checked={ptyEnabled}
+								onCheckedChange={(checked) => setPtyEnabled(checked === true)}
+							/>
+							<div className="flex-1 flex flex-col gap-0.5">
+								<span className="text-xs font-medium">PTY モードで実行</span>
+								<span className="text-[10px] text-muted-foreground">
+									beta: interactive Claude を使う
+								</span>
+							</div>
+						</label>
+
+						<label
+							htmlFor="composer-remote-control"
+							className={cn(
+								"flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition",
+								remoteControlEnabled
+									? "border-indigo-400/50 bg-indigo-500/5"
+									: "border-border/40 hover:bg-muted/40",
+								!ptyEnabled && "opacity-60 cursor-not-allowed",
+							)}
+							title={
+								ptyEnabled
+									? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+									: "Remote Control は PTY モード時のみ有効です。"
+							}
+						>
+							<Checkbox
+								id="composer-remote-control"
+								checked={remoteControlEnabled}
+								disabled={!ptyEnabled}
+								onCheckedChange={(checked) =>
+									setRemoteControlEnabled(checked === true)
+								}
+							/>
+							<div className="flex-1 flex flex-col gap-0.5">
+								<span className="text-xs font-medium">
+									Remote Control を有効化
+								</span>
+								<span className="text-[10px] text-muted-foreground">
+									PTY 時のみ。claude.ai / Claude アプリから接続できる
+								</span>
+							</div>
 						</label>
 
 						{!createWorktree && (
