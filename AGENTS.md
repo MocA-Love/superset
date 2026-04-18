@@ -94,29 +94,94 @@ bun run package
 
 `bun run build` は `--publish never` で実行され、`apps/desktop/dist/` に成果物が出る。CI と同じ電池ない確認が可能。
 
-### リリース (本番タグ)
+### リリース (フォーク配布)
 
-GitHub Actions の `.github/workflows/release-desktop.yml` が `desktop-v*.*.*` タグ push でトリガーされる。手順:
+このフォークには `release-desktop.yml` のような**自動リリースワークフローは無い**。タグ命名も upstream の `desktop-v*.*.*` ではなく **`v<package.json version>-fork.<N>`** (例: `v1.5.5-fork.9`) を使う。リリースはローカルでビルドし `gh release create` で GitHub Release を作る**手動運用**。
+
+`electron-builder.ts` の `publish` 設定は `superset-sh/superset` を向いたままなので、`bun run release` (electron-builder --publish always) は**使わない**。代わりに `bun run build` (`--publish never`) で成果物だけ作り、`gh` で MocA-Love/superset に上げる。
+
+#### 手順
 
 ```bash
-# main 最新化
+# 1. main を最新化
 git checkout main && git pull
 
-# 新バージョンで apps/desktop/package.json の version 更新
-# 例: 1.5.7 → 1.5.8
-# (手動編集 → commit → push → PR → merge)
+# 2. 前回の fork タグを確認して次の番号を決める
+gh release list --repo MocA-Love/superset --limit 3
+git tag -l 'v*-fork.*' | sort -V | tail -5
 
-# main にマージ後、タグ打ち
-git tag desktop-v1.5.8
-git push origin desktop-v1.5.8
+# 3. 必要なら apps/desktop/package.json の version を更新
+#    package.json version は upstream トラッキング、fork 番号は別管理。
+#    upstream の major/minor が上がった時だけ package.json version を更新し、
+#    fork.N はその version の中でインクリメント。
+#    例: package.json 1.5.5 のまま → タグは v1.5.5-fork.8, v1.5.5-fork.9 ... と進む
+
+# 4. node_modules を完全クリーン (後述のチェックリスト必須)
+rm -rf node_modules apps/*/node_modules packages/*/node_modules
+bun install
+
+# 5. ビルド
+cd apps/desktop
+bun run compile:app
+bun run copy:native-modules
+bun run validate:native-runtime
+bun run build
+# 成果物は apps/desktop/release/ に出力 (dmg, zip, blockmap, latest-mac.yml 等)
+
+# 6. リリースノート作成 (後述フォーマット)
+# ファイルに保存しておくと gh release create の --notes-file で渡せる
+
+# 7. タグを切って push
+cd ../..
+git tag v1.5.5-fork.9
+git push origin v1.5.5-fork.9
+
+# 8. GitHub Release を作成し成果物をアップロード
+gh release create v1.5.5-fork.9 \
+  --repo MocA-Love/superset \
+  --title "v1.5.5-fork.9" \
+  --notes-file /tmp/release-notes-fork9.md \
+  apps/desktop/release/Superset-*.dmg \
+  apps/desktop/release/Superset-*-mac.zip \
+  apps/desktop/release/Superset-*-mac.zip.blockmap \
+  apps/desktop/release/latest-mac.yml
 ```
 
-タグを push すると:
-1. `build-desktop.yml` 経由で macOS (arm64 / x64) / Windows / Linux ビルド
-2. `release-desktop.yml` が GitHub Release を自動作成し artifact を添付
-3. `bump-homebrew.yml` が Homebrew tap を更新 (必要に応じて)
+**注:** Windows / Linux ビルドは手元が macOS の場合は作成されない。必要なら各 OS で実行するか、GitHub Actions を別途仕立てる。upstream から取り込んだ `release-desktop.yml` は発火条件 (`desktop-v*.*.*`) がフォーク運用と合わないため、fork タグでは動かない。
 
-**Canary リリース** は `.github/workflows/release-desktop-canary.yml` で別管理。Canary 用タグ命名規則はワークフロー参照。
+#### リリースノート フォーマット
+
+`v1.5.5-fork.6` / `fork.7` で使った形式に揃える。トップレベルは原則:
+
+```markdown
+## Highlights
+### <主要機能 1 のタイトル> (#PR番号)
+- 一言で何が変わったか
+- 影響範囲 / 設定方法 / opt-in 要否など補足
+- 関連 PR や regression 対応があれば括弧で
+
+### <主要機能 2 のタイトル>
+- ...
+
+## Upstream 取り込み  ← upstream の PR を取り込んだ場合のみ
+- 簡潔な日本語サマリ (upstream PR #xxxx) (our PR #YYY)
+- mastracode / v2 editor 等の大物は 1 行追加説明可
+
+## Bug Fixes
+- 修正内容 (#PR)
+- regression や revert/re-submit の流れはまとめて 1 行に圧縮
+
+## Internal  ← 任意、外形に影響しない整理系
+- AGENTS.md 改訂 / lockfile 整理 / CI 調整など
+
+**Full Changelog**: https://github.com/MocA-Love/superset/compare/<前回タグ>...<今回タグ>
+```
+
+ルール:
+- **日本語で書く**。PR 番号は本家(`#3xxx`)とフォーク(`#xxx`)を区別、upstream 取り込みは「(upstream #3517) (#313)」のように両方併記
+- Highlights は **機能単位で 3〜6 セクション**。細かい UX 改善はまとめて `## UX / UI 改善` の単一セクションに寄せる
+- Bug Fixes は**ユーザー影響がある修正のみ**。内部リファクタや lint 対応は Internal に
+- 最後の Full Changelog リンクは必ず付ける (差分を追いやすくするため)
 
 ### ビルド前チェックリスト — 忘れずに
 
