@@ -29,7 +29,7 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 	const importAllWorktrees = useImportAllWorktrees();
 
 	const handleImportAll = useCallback(
-		async (silent = false) => {
+		async (silent = false): Promise<boolean> => {
 			try {
 				const result = await importAllWorktrees.mutateAsync({ projectId });
 				if (!silent) {
@@ -41,17 +41,29 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 						`Auto-imported ${result.imported} worktree${result.imported === 1 ? "" : "s"}`,
 					);
 				}
+				return true;
 			} catch (err) {
 				toast.error(
 					err instanceof Error ? err.message : "Failed to import worktrees",
 				);
+				return false;
 			}
 		},
 		[importAllWorktrees, projectId],
 	);
 
 	const autoImportInFlightRef = useRef(false);
+	const lastFailedSignatureRef = useRef<string | null>(null);
 	const autoImportEnabled = project?.autoImportExternalWorktrees === true;
+
+	// Stable signature of the current external-worktree set. We remember the
+	// signature of the last auto-import attempt that failed so we do not
+	// retry the same (broken) set on every render — that previously created a
+	// tight failure loop of mutations + error toasts with no user action.
+	const externalSignature = externalWorktrees
+		.map((wt) => wt.path)
+		.sort()
+		.join("\n");
 
 	useEffect(() => {
 		if (!autoImportEnabled) return;
@@ -59,15 +71,21 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 		if (externalWorktrees.length === 0) return;
 		if (autoImportInFlightRef.current) return;
 		if (importAllWorktrees.isPending) return;
+		if (lastFailedSignatureRef.current === externalSignature) return;
 
 		autoImportInFlightRef.current = true;
-		handleImportAll(true).finally(() => {
-			autoImportInFlightRef.current = false;
-		});
+		handleImportAll(true)
+			.then((ok) => {
+				lastFailedSignatureRef.current = ok ? null : externalSignature;
+			})
+			.finally(() => {
+				autoImportInFlightRef.current = false;
+			});
 	}, [
 		autoImportEnabled,
 		isLoading,
 		externalWorktrees.length,
+		externalSignature,
 		importAllWorktrees.isPending,
 		handleImportAll,
 	]);
