@@ -3,64 +3,15 @@ import {
 	type ExecFileOptionsWithStringEncoding,
 	execFile,
 } from "node:child_process";
-import {
-	buildSimpleGitUnsafeOptions,
-	type SimpleGitUnsafeOptions,
-} from "@superset/shared/simple-git-unsafe";
-import simpleGit, { type SimpleGit, type SimpleGitProgressEvent } from "simple-git";
+import simpleGit, { type SimpleGit } from "simple-git";
 import { getProcessEnvWithShellPath } from "./shell-env";
-
-interface CreateSimpleGitWithShellPathOptions {
-	abort?: AbortSignal;
-	baseEnv?: NodeJS.ProcessEnv;
-	progress?: (event: SimpleGitProgressEvent) => void;
-	repoPath?: string;
-}
-
-function createSimpleGitWithEnv(
-	env: Record<string, string>,
-	options: Omit<CreateSimpleGitWithShellPathOptions, "baseEnv"> = {},
-): SimpleGit {
-	const unsafe = buildSimpleGitUnsafeOptions(env);
-	const gitOptions: {
-		abort?: AbortSignal;
-		baseDir?: string;
-		progress?: (event: SimpleGitProgressEvent) => void;
-		unsafe?: SimpleGitUnsafeOptions;
-	} = {};
-
-	if (options.abort) {
-		gitOptions.abort = options.abort;
-	}
-	if (options.progress) {
-		gitOptions.progress = options.progress;
-	}
-	if (options.repoPath) {
-		gitOptions.baseDir = options.repoPath;
-	}
-	if (unsafe) {
-		gitOptions.unsafe = unsafe;
-	}
-
-	const git =
-		Object.keys(gitOptions).length > 0
-			? simpleGit(gitOptions as never)
-			: simpleGit();
-	git.env(env);
-	return git;
-}
-
-export async function createSimpleGitWithShellPath(
-	options: CreateSimpleGitWithShellPathOptions = {},
-): Promise<SimpleGit> {
-	const env = await getProcessEnvWithShellPath(options.baseEnv ?? process.env);
-	return createSimpleGitWithEnv(env, options);
-}
 
 export async function getSimpleGitWithShellPath(
 	repoPath?: string,
 ): Promise<SimpleGit> {
-	return createSimpleGitWithShellPath({ repoPath });
+	const git = repoPath ? simpleGit(repoPath) : simpleGit();
+	git.env(await getProcessEnvWithShellPath());
+	return git;
 }
 
 export async function execGitWithShellPath(
