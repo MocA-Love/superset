@@ -9,6 +9,7 @@ import {
 } from "@superset/ui/dialog";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
+import { cn } from "@superset/ui/utils";
 import {
 	useCallback,
 	useEffect,
@@ -20,7 +21,7 @@ import {
 import { LuLoaderCircle } from "react-icons/lu";
 import { SiYoutube } from "react-icons/si";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { AudioEditor } from "./components/AudioEditor";
+import { AudioEditor } from "../AudioEditor";
 
 const YOUTUBE_URL_HINT =
 	/^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i;
@@ -240,6 +241,7 @@ export function YouTubeImportDialog({
 				playbackRate:
 					params.playbackRate !== 1.0 ? params.playbackRate : undefined,
 				tempId: downloaded.tempId,
+				sourceTitle: downloaded.info.title,
 			});
 		},
 		[downloaded, url, displayName, importFromYouTube],
@@ -266,7 +268,12 @@ export function YouTubeImportDialog({
 				if (!isLoading && !importFromYouTube.isPending) onOpenChange(o);
 			}}
 		>
-			<DialogContent className="!max-w-lg sm:!max-w-4xl">
+			<DialogContent
+				className={cn(
+					"!max-w-lg",
+					step === "editor" && "sm:!max-w-[min(95vw,1600px)]",
+				)}
+			>
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<SiYoutube className="h-4 w-4 text-red-500" />

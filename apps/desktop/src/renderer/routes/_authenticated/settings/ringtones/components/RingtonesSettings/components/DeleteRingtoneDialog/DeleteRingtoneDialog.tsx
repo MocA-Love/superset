@@ -7,6 +7,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@superset/ui/dialog";
+import { useEffect, useRef } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 
 interface DeleteRingtoneDialogProps {
@@ -26,6 +27,19 @@ export function DeleteRingtoneDialog({
 	isSubmitting,
 	errorMessage,
 }: DeleteRingtoneDialogProps) {
+	// Swallow the stray pointer/focus event that arrives right after the dialog
+	// opens from a DropdownMenu item — otherwise the menu's closing pointerup
+	// is treated as an outside-click and dismisses this dialog immediately.
+	const openedAtRef = useRef(0);
+	useEffect(() => {
+		if (open) openedAtRef.current = Date.now();
+	}, [open]);
+	const guardOutside = (event: Event) => {
+		if (Date.now() - openedAtRef.current < 300) {
+			event.preventDefault();
+		}
+	};
+
 	return (
 		<Dialog
 			open={open}
@@ -34,7 +48,12 @@ export function DeleteRingtoneDialog({
 				onOpenChange(next);
 			}}
 		>
-			<DialogContent className="sm:max-w-sm">
+			<DialogContent
+				className="sm:max-w-sm"
+				onPointerDownOutside={guardOutside}
+				onInteractOutside={guardOutside}
+				onFocusOutside={guardOutside}
+			>
 				<DialogHeader>
 					<DialogTitle>Delete custom audio</DialogTitle>
 					<DialogDescription>

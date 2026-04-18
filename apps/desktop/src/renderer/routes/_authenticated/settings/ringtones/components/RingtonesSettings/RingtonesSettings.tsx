@@ -15,6 +15,7 @@ import {
 	HiPencil,
 	HiPlay,
 	HiPlus,
+	HiScissors,
 	HiStop,
 	HiTrash,
 } from "react-icons/hi2";
@@ -34,6 +35,7 @@ import {
 	type SettingItemId,
 } from "../../../utils/settings-search";
 import { DeleteRingtoneDialog } from "./components/DeleteRingtoneDialog";
+import { EditCustomRingtoneDialog } from "./components/EditCustomRingtoneDialog";
 import { RenameRingtoneDialog } from "./components/RenameRingtoneDialog";
 import { VolumeDropdown } from "./components/VolumeDropdown";
 import { YouTubeImportDialog } from "./components/YouTubeImportDialog";
@@ -49,6 +51,7 @@ interface RingtoneCardProps {
 	onSelect: () => void;
 	onTogglePlay: () => void;
 	onRename?: () => void;
+	onEdit?: () => void;
 	onDelete?: () => void;
 }
 
@@ -59,9 +62,10 @@ function RingtoneCard({
 	onSelect,
 	onTogglePlay,
 	onRename,
+	onEdit,
 	onDelete,
 }: RingtoneCardProps) {
-	const showActions = Boolean(onRename || onDelete);
+	const showActions = Boolean(onRename || onEdit || onDelete);
 
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: Using div with role="button" to allow nested play/stop button
@@ -126,6 +130,12 @@ function RingtoneCard({
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="start">
+								{onEdit && (
+									<DropdownMenuItem onClick={onEdit}>
+										<HiScissors className="mr-2 h-4 w-4" />
+										Edit clip
+									</DropdownMenuItem>
+								)}
 								{onRename && (
 									<DropdownMenuItem onClick={onRename}>
 										<HiPencil className="mr-2 h-4 w-4" />
@@ -307,14 +317,24 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 		importCustomRingtone.mutate();
 	}, [importCustomRingtone]);
 
+	const [editClipDialogOpen, setEditClipDialogOpen] = useState(false);
+
+	// Radix DropdownMenu closes on click; the trailing pointerup fires on the
+	// document and, if the dialog has already mounted, its pointer-down-outside
+	// handler catches it and closes the dialog. Defer open by one frame so the
+	// menu fully tears down first.
 	const handleRenameCustom = useCallback(() => {
 		setRenameError(null);
-		setRenameDialogOpen(true);
+		requestAnimationFrame(() => setRenameDialogOpen(true));
+	}, []);
+
+	const handleEditCustom = useCallback(() => {
+		requestAnimationFrame(() => setEditClipDialogOpen(true));
 	}, []);
 
 	const handleDeleteCustom = useCallback(() => {
 		setDeleteError(null);
-		setDeleteDialogOpen(true);
+		requestAnimationFrame(() => setDeleteDialogOpen(true));
 	}, []);
 
 	const handleConfirmDelete = useCallback(async () => {
@@ -467,6 +487,7 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 										onSelect={() => handleSelect(ringtone.id)}
 										onTogglePlay={() => handleTogglePlay(ringtone)}
 										onRename={isCustom ? handleRenameCustom : undefined}
+										onEdit={isCustom ? handleEditCustom : undefined}
 										onDelete={isCustom ? handleDeleteCustom : undefined}
 									/>
 								);
@@ -519,6 +540,16 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 				}}
 				isSubmitting={renameCustomRingtone.isPending}
 				errorMessage={renameError}
+			/>
+
+			<EditCustomRingtoneDialog
+				open={editClipDialogOpen}
+				onOpenChange={setEditClipDialogOpen}
+				currentDisplayName={customRingtone?.name ?? ""}
+				currentThumbnailUrl={customRingtone?.thumbnailUrl}
+				onSaveSuccess={async () => {
+					await utils.ringtone.getCustom.invalidate();
+				}}
 			/>
 		</div>
 	);

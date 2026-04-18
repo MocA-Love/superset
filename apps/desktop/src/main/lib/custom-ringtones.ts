@@ -20,17 +20,38 @@ import {
 
 const RINGTONES_ASSETS_DIR = join(SUPERSET_HOME_DIR, "assets", "ringtones");
 const CUSTOM_RINGTONE_FILE_STEM = "notification-custom";
+const CUSTOM_RINGTONE_SOURCE_STEM = "notification-custom-source";
 const CUSTOM_RINGTONE_METADATA_PATH = join(
 	RINGTONES_ASSETS_DIR,
 	`${CUSTOM_RINGTONE_FILE_STEM}.json`,
 );
 const MAX_CUSTOM_RINGTONE_SIZE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg"]);
+const ALLOWED_SOURCE_EXTENSIONS = new Set([
+	".mp3",
+	".wav",
+	".ogg",
+	".m4a",
+	".aac",
+	".opus",
+	".webm",
+]);
+
+export interface RingtoneEditState {
+	startSeconds: number;
+	endSeconds: number;
+	fadeInSeconds?: number;
+	fadeOutSeconds?: number;
+	playbackRate?: number;
+	sourceTitle?: string;
+	sourceUrl?: string;
+}
 
 interface CustomRingtoneMetadata {
 	name?: string;
 	importedAt?: number;
 	thumbnailUrl?: string;
+	editState?: RingtoneEditState;
 }
 
 export interface CustomRingtoneInfo {
@@ -122,6 +143,7 @@ function writeCustomRingtoneMetadata(
 	name: string,
 	importedAt: number = Date.now(),
 	thumbnailUrl?: string,
+	editState?: RingtoneEditState,
 ): void {
 	writeFileSync(
 		CUSTOM_RINGTONE_METADATA_PATH,
@@ -129,6 +151,7 @@ function writeCustomRingtoneMetadata(
 			name,
 			importedAt,
 			...(thumbnailUrl ? { thumbnailUrl } : {}),
+			...(editState ? { editState } : {}),
 		}),
 		"utf-8",
 	);
@@ -138,6 +161,99 @@ function writeCustomRingtoneMetadata(
 	} catch {
 		// Best effort only.
 	}
+}
+
+function getCustomRingtoneSourceFilename(): string | null {
+	if (!existsSync(RINGTONES_ASSETS_DIR)) return null;
+	const candidates = readdirSync(RINGTONES_ASSETS_DIR).filter(
+		(file) =>
+			file.startsWith(`${CUSTOM_RINGTONE_SOURCE_STEM}.`) &&
+			ALLOWED_SOURCE_EXTENSIONS.has(extname(file).toLowerCase()),
+	);
+	if (candidates.length === 0) return null;
+	candidates.sort((a, b) => {
+		const am = statSync(join(RINGTONES_ASSETS_DIR, a)).mtimeMs;
+		const bm = statSync(join(RINGTONES_ASSETS_DIR, b)).mtimeMs;
+		return bm - am;
+	});
+	return candidates[0] ?? null;
+}
+
+export function getCustomRingtoneSourcePath(): string | null {
+	const name = getCustomRingtoneSourceFilename();
+	return name ? join(RINGTONES_ASSETS_DIR, name) : null;
+}
+
+function removeExistingSourceFiles(): void {
+	if (!existsSync(RINGTONES_ASSETS_DIR)) return;
+	for (const file of readdirSync(RINGTONES_ASSETS_DIR)) {
+		if (file.startsWith(`${CUSTOM_RINGTONE_SOURCE_STEM}.`)) {
+			try {
+				unlinkSync(join(RINGTONES_ASSETS_DIR, file));
+			} catch {
+				// Best effort.
+			}
+		}
+	}
+}
+
+export async function saveCustomRingtoneSource(
+	sourcePath: string,
+): Promise<string> {
+	ensureCustomRingtonesDir();
+	const ext = extname(sourcePath).toLowerCase();
+	const dest = join(
+		RINGTONES_ASSETS_DIR,
+		`${CUSTOM_RINGTONE_SOURCE_STEM}${ext}`,
+	);
+	if (areSamePath(sourcePath, dest) && existsSync(dest)) {
+		try {
+			chmodSync(dest, SUPERSET_SENSITIVE_FILE_MODE);
+		} catch {
+			// Best effort.
+		}
+		return dest;
+	}
+	const tempPath = join(
+		RINGTONES_ASSETS_DIR,
+		`.tmp-${CUSTOM_RINGTONE_SOURCE_STEM}-${randomUUID()}${ext}`,
+	);
+	try {
+		await copyFile(sourcePath, tempPath);
+		removeExistingSourceFiles();
+		await rename(tempPath, dest);
+	} catch (error) {
+		if (existsSync(tempPath)) {
+			try {
+				await unlink(tempPath);
+			} catch {
+				// Best effort cleanup only.
+			}
+		}
+		throw error;
+	}
+	try {
+		chmodSync(dest, SUPERSET_SENSITIVE_FILE_MODE);
+	} catch {
+		// Best effort.
+	}
+	return dest;
+}
+
+export function getCustomRingtoneEditState(): RingtoneEditState | null {
+	return readCustomRingtoneMetadata().editState ?? null;
+}
+
+export function updateCustomRingtoneEditState(
+	editState: RingtoneEditState,
+): void {
+	const existing = readCustomRingtoneMetadata();
+	writeCustomRingtoneMetadata(
+		existing.name ?? "Custom Audio",
+		existing.importedAt ?? Date.now(),
+		existing.thumbnailUrl,
+		editState,
+	);
 }
 
 export function ensureCustomRingtonesDir(): void {
@@ -172,6 +288,7 @@ export function deleteCustomRingtone(): void {
 		return;
 	}
 	removeExistingCustomRingtoneFiles();
+	removeExistingSourceFiles();
 	if (existsSync(CUSTOM_RINGTONE_METADATA_PATH)) {
 		try {
 			unlinkSync(CUSTOM_RINGTONE_METADATA_PATH);

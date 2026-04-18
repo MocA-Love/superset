@@ -15,7 +15,9 @@ import { getProcessEnvWithShellPath } from "lib/trpc/routers/workspaces/utils/sh
 import {
 	type CustomRingtoneInfo,
 	importCustomRingtoneFromPath,
+	saveCustomRingtoneSource,
 	setCustomRingtoneDisplayName,
+	updateCustomRingtoneEditState,
 } from "./custom-ringtones";
 import {
 	getTempAudioPath,
@@ -29,7 +31,15 @@ const FULL_DOWNLOAD_TIMEOUT_MS = 300_000;
 const MAX_FULL_DOWNLOAD_DURATION_SECONDS = 600;
 const REQUIRED_BINARIES = ["yt-dlp", "ffmpeg", "ffprobe"] as const;
 type RequiredBinary = (typeof REQUIRED_BINARIES)[number];
-const ALLOWED_OUTPUT_EXTENSIONS = new Set([".mp3", ".wav", ".ogg"]);
+const ALLOWED_OUTPUT_EXTENSIONS = new Set([
+	".mp3",
+	".wav",
+	".ogg",
+	".m4a",
+	".aac",
+	".opus",
+	".webm",
+]);
 
 const FALLBACK_SEARCH_DIRS = [
 	"/opt/homebrew/bin",
@@ -65,6 +75,8 @@ export interface ImportFromYouTubeOptions {
 	playbackRate?: number;
 	/** If provided, skip yt-dlp download and use this temp file instead */
 	tempFilePath?: string;
+	/** Original video title (YouTube). Stored so re-edit can show it in the UI. */
+	sourceTitle?: string;
 }
 
 export class YouTubeRingtoneError extends Error {
@@ -499,12 +511,25 @@ export async function downloadFullYouTubeAudio(
 	mkdirSync(workDir, { recursive: true });
 	const outputTemplate = join(workDir, "audio.%(ext)s");
 
-	const infoArgs = [
-		"--dump-single-json",
+	// Single yt-dlp invocation: fetch metadata AND download the audio-only
+	// stream. Skipping `-x --audio-format mp3` avoids a multi-second ffmpeg
+	// re-encode — the browser and ffmpeg both decode m4a/webm natively, and
+	// we can re-encode to mp3 only at the final import step.
+	const args = [
 		"--no-playlist",
 		"--no-warnings",
-		`--match-filter`,
+		"--match-filter",
 		`duration <= ${MAX_FULL_DOWNLOAD_DURATION_SECONDS}`,
+		"-f",
+		"bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+		"--concurrent-fragments",
+		"5",
+		"--ffmpeg-location",
+		ffmpegDir,
+		"--print-json",
+		"--no-simulate",
+		"-o",
+		outputTemplate,
 		trimmedUrl,
 	];
 
@@ -512,16 +537,24 @@ export async function downloadFullYouTubeAudio(
 	try {
 		const jsonOutput = await runProcess(
 			resolved["yt-dlp"],
-			infoArgs,
+			args,
 			workDir,
 			spawnEnv,
-			YT_DLP_TIMEOUT_MS,
+			FULL_DOWNLOAD_TIMEOUT_MS,
 		);
-		const data = JSON.parse(jsonOutput) as {
-			title?: string;
-			duration?: number;
-			thumbnail?: string;
-		};
+		// --print-json can emit multiple JSON lines; find the one with title.
+		const lastJsonLine = jsonOutput
+			.split("\n")
+			.map((l) => l.trim())
+			.filter((l) => l.startsWith("{") && l.endsWith("}"))
+			.pop();
+		const data = lastJsonLine
+			? (JSON.parse(lastJsonLine) as {
+					title?: string;
+					duration?: number;
+					thumbnail?: string;
+				})
+			: {};
 		info = {
 			title: data.title?.trim() || "YouTube Video",
 			thumbnailUrl: data.thumbnail || "",
@@ -538,35 +571,6 @@ export async function downloadFullYouTubeAudio(
 				);
 			}
 		}
-		throw err;
-	}
-
-	const downloadArgs = [
-		"--no-playlist",
-		"--no-warnings",
-		"--quiet",
-		"-x",
-		"--audio-format",
-		"mp3",
-		"--audio-quality",
-		"5",
-		"--ffmpeg-location",
-		ffmpegDir,
-		"-o",
-		outputTemplate,
-		trimmedUrl,
-	];
-
-	try {
-		await runProcess(
-			resolved["yt-dlp"],
-			downloadArgs,
-			workDir,
-			spawnEnv,
-			FULL_DOWNLOAD_TIMEOUT_MS,
-		);
-	} catch (err) {
-		await rm(workDir, { recursive: true, force: true }).catch(() => {});
 		throw err;
 	}
 
@@ -711,11 +715,18 @@ export async function importRingtoneFromYouTube(
 		}
 
 		const outputPath = join(workDir, `output_${randomUUID()}.mp3`);
-		const ffmpegArgs: string[] = ["-i", inputPath];
+		const ffmpegArgs: string[] = [];
 
 		if (options.tempFilePath) {
-			// Trim from the full downloaded file
-			ffmpegArgs.push("-ss", String(startSeconds), "-to", String(endSeconds));
+			// Input-side seek: ffmpeg is fast AND frame-accurate, and it skips
+			// MP3 decoder priming so the cut lines up with the browser preview.
+			ffmpegArgs.push("-ss", startSeconds.toFixed(3));
+		}
+
+		ffmpegArgs.push("-i", inputPath);
+
+		if (options.tempFilePath) {
+			ffmpegArgs.push("-t", rawDuration.toFixed(3));
 		}
 
 		if (filters.length > 0) {
@@ -732,10 +743,32 @@ export async function importRingtoneFromYouTube(
 			YT_DLP_TIMEOUT_MS,
 		);
 
-		return await importCustomRingtoneFromPath(outputPath, {
+		const result = await importCustomRingtoneFromPath(outputPath, {
 			displayName: options.displayName?.trim() || undefined,
 			thumbnailUrl: options.thumbnailUrl,
 		});
+
+		// Persist the source audio + edit parameters so the user can re-open
+		// the clip editor later and adjust the trim/fade/speed without
+		// re-downloading from YouTube.
+		if (options.tempFilePath) {
+			try {
+				await saveCustomRingtoneSource(options.tempFilePath);
+				updateCustomRingtoneEditState({
+					startSeconds,
+					endSeconds,
+					fadeInSeconds: options.fadeInSeconds,
+					fadeOutSeconds: options.fadeOutSeconds,
+					playbackRate,
+					sourceTitle: options.sourceTitle,
+					sourceUrl: options.url,
+				});
+			} catch (err) {
+				console.error("Failed to persist ringtone source for re-edit:", err);
+			}
+		}
+
+		return result;
 	} finally {
 		await rm(workDir, { recursive: true, force: true }).catch(() => {});
 	}

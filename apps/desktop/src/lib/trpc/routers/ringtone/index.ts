@@ -1,18 +1,25 @@
 import type { ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import type { BrowserWindow, OpenDialogOptions } from "electron";
 import { dialog } from "electron";
 import {
 	deleteCustomRingtone,
+	getCustomRingtoneEditState,
 	getCustomRingtoneInfo,
 	getCustomRingtonePath,
+	getCustomRingtoneSourcePath,
 	importCustomRingtoneFromPath,
 	setCustomRingtoneDisplayName,
 } from "main/lib/custom-ringtones";
 import { playSoundFile } from "main/lib/play-sound";
 import { getSoundPath } from "main/lib/sound-paths";
-import { getTempAudioPath } from "main/lib/temp-audio-protocol";
+import {
+	getTempAudioPath,
+	registerTempAudio,
+	unregisterTempAudio,
+} from "main/lib/temp-audio-protocol";
 import {
 	checkMissingBinaries,
 	cleanupTempAudio,
@@ -322,6 +329,103 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 			}),
 
 		/**
+		 * Returns the saved edit parameters for the current custom ringtone,
+		 * or null if the ringtone was not produced by the clip editor.
+		 */
+		getCustomEditState: publicProcedure.query(() => {
+			return getCustomRingtoneEditState();
+		}),
+
+		/**
+		 * Registers the saved source audio with the temp-audio protocol so
+		 * the clip editor can stream it for preview & waveform. Returns
+		 * `null` if no source is available (user can only re-import fresh).
+		 */
+		openCustomSource: publicProcedure.mutation(() => {
+			const sourcePath = getCustomRingtoneSourcePath();
+			if (!sourcePath) {
+				return { tempId: null as string | null };
+			}
+			const tempId = randomUUID();
+			registerTempAudio(tempId, sourcePath);
+			return { tempId };
+		}),
+
+		/**
+		 * Release the temp-audio registration returned by `openCustomSource`.
+		 * Does NOT delete the persisted source file.
+		 */
+		closeCustomSource: publicProcedure
+			.input(z.object({ tempId: z.string() }))
+			.mutation(({ input }) => {
+				unregisterTempAudio(input.tempId);
+				return { success: true as const };
+			}),
+
+		/**
+		 * Re-produce the custom ringtone by re-running the ffmpeg clip
+		 * pipeline on the saved source audio with new parameters.
+		 */
+		reEditCustom: publicProcedure
+			.input(
+				z.object({
+					startSeconds: z
+						.number()
+						.min(0)
+						.max(60 * 60 * 12),
+					endSeconds: z
+						.number()
+						.min(0)
+						.max(60 * 60 * 12),
+					displayName: z.string().max(120).optional(),
+					fadeInSeconds: z.number().min(0).max(10).optional(),
+					fadeOutSeconds: z.number().min(0).max(10).optional(),
+					playbackRate: z.number().min(0.5).max(2.0).optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const sourcePath = getCustomRingtoneSourcePath();
+				if (!sourcePath) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message:
+							"This ringtone has no saved source audio. Re-import from YouTube to enable editing.",
+					});
+				}
+				const existingInfo = getCustomRingtoneInfo();
+				const existingEditState = getCustomRingtoneEditState();
+				try {
+					const ringtone = await importRingtoneFromYouTube({
+						url: existingEditState?.sourceUrl ?? "",
+						startSeconds: input.startSeconds,
+						endSeconds: input.endSeconds,
+						displayName: input.displayName,
+						thumbnailUrl: existingInfo?.thumbnailUrl,
+						fadeInSeconds: input.fadeInSeconds,
+						fadeOutSeconds: input.fadeOutSeconds,
+						playbackRate: input.playbackRate,
+						tempFilePath: sourcePath,
+						sourceTitle: existingEditState?.sourceTitle,
+					});
+					return { ringtone };
+				} catch (error) {
+					if (error instanceof YouTubeRingtoneError) {
+						throw new TRPCError({
+							code: "BAD_REQUEST",
+							message: error.message,
+						});
+					}
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message:
+							error instanceof Error
+								? error.message
+								: "Failed to re-edit custom ringtone",
+					});
+				}
+			}),
+
+		/**
 		 * Imports a custom ringtone by clipping a section of a YouTube video.
 		 * Requires `yt-dlp` and `ffmpeg` to be installed on the user's machine.
 		 */
@@ -344,6 +448,7 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 					playbackRate: z.number().min(0.5).max(2.0).optional(),
 					/** Client-side tempId from downloadYouTubeAudio – resolved to path server-side */
 					tempId: z.string().optional(),
+					sourceTitle: z.string().max(400).optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {

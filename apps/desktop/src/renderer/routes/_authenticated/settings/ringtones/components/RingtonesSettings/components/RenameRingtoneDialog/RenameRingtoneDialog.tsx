@@ -9,7 +9,7 @@ import {
 } from "@superset/ui/dialog";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { LuLoaderCircle } from "react-icons/lu";
 
 interface RenameRingtoneDialogProps {
@@ -32,6 +32,19 @@ export function RenameRingtoneDialog({
 	const nameId = useId();
 	const [name, setName] = useState(currentName);
 
+	// Swallow stray pointer/focus events that fire right after opening from a
+	// DropdownMenu item (otherwise the menu's closing pointerup is treated as
+	// an outside-click and dismisses this dialog immediately).
+	const openedAtRef = useRef(0);
+	useEffect(() => {
+		if (open) openedAtRef.current = Date.now();
+	}, [open]);
+	const guardOutside = (event: Event) => {
+		if (Date.now() - openedAtRef.current < 300) {
+			event.preventDefault();
+		}
+	};
+
 	useEffect(() => {
 		if (open) {
 			setName(currentName);
@@ -50,7 +63,12 @@ export function RenameRingtoneDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-sm">
+			<DialogContent
+				className="sm:max-w-sm"
+				onPointerDownOutside={guardOutside}
+				onInteractOutside={guardOutside}
+				onFocusOutside={guardOutside}
+			>
 				<DialogHeader>
 					<DialogTitle>Rename custom audio</DialogTitle>
 					<DialogDescription>

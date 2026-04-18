@@ -25,6 +25,15 @@ interface AudioEditorProps {
 	}) => Promise<void>;
 	isImporting: boolean;
 	errorMessage?: string | null;
+	/** Pre-fill values when re-editing an existing clip. */
+	initialStartSeconds?: number;
+	initialEndSeconds?: number;
+	initialFadeIn?: number;
+	initialFadeOut?: number;
+	initialPlaybackRate?: number;
+	/** Submit-button label, defaults to "Import". */
+	submitLabel?: string;
+	submittingLabel?: string;
 }
 
 interface WaveformPeaks {
@@ -152,6 +161,13 @@ export function AudioEditor({
 	onImport,
 	isImporting,
 	errorMessage,
+	initialStartSeconds,
+	initialEndSeconds,
+	initialFadeIn,
+	initialFadeOut,
+	initialPlaybackRate,
+	submitLabel = "Import",
+	submittingLabel = "Importing...",
 }: AudioEditorProps) {
 	const audioRef = useRef<HTMLAudioElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -163,13 +179,17 @@ export function AudioEditor({
 	const [waveformError, setWaveformError] = useState<string | null>(null);
 	const [isLoadingWaveform, setIsLoadingWaveform] = useState(true);
 
-	const [startSeconds, setStartSeconds] = useState(0);
-	const [endSeconds, setEndSeconds] = useState(Math.min(10, totalDuration));
+	const [startSeconds, setStartSeconds] = useState(initialStartSeconds ?? 0);
+	const [endSeconds, setEndSeconds] = useState(
+		initialEndSeconds ?? Math.min(10, totalDuration),
+	);
 	const [playFrac, setPlayFrac] = useState(-1);
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [fadeIn, setFadeIn] = useState(0);
-	const [fadeOut, setFadeOut] = useState(0);
-	const [playbackRate, setPlaybackRate] = useState(1.0);
+	const [fadeIn, setFadeIn] = useState(initialFadeIn ?? 0);
+	const [fadeOut, setFadeOut] = useState(initialFadeOut ?? 0);
+	const [playbackRate, setPlaybackRate] = useState(initialPlaybackRate ?? 1.0);
+	const hasInitialRange =
+		initialStartSeconds !== undefined && initialEndSeconds !== undefined;
 
 	const nameId = useId();
 
@@ -183,18 +203,21 @@ export function AudioEditor({
 		document.documentElement.classList.contains("dark") ||
 		window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-	// Load waveform on mount
+	// Load waveform on mount. Peak count is generous so drawing stays crisp
+	// even on wide dialogs / HiDPI displays; we downsample per draw if needed.
 	useEffect(() => {
 		let cancelled = false;
 		setIsLoadingWaveform(true);
 		setWaveformError(null);
 
-		decodeWaveformPeaks(audioUrl, 400)
+		decodeWaveformPeaks(audioUrl, 2400)
 			.then((data) => {
 				if (!cancelled) {
 					setWaveform(data);
-					setStartSeconds(0);
-					setEndSeconds(Math.min(10, data.duration));
+					if (!hasInitialRange) {
+						setStartSeconds(0);
+						setEndSeconds(Math.min(10, data.duration));
+					}
 				}
 			})
 			.catch((err) => {
@@ -229,6 +252,28 @@ export function AudioEditor({
 
 	useEffect(() => {
 		redrawWaveform();
+	}, [redrawWaveform]);
+
+	// Size the canvas backing store to match CSS pixels × DPR so the waveform
+	// stays sharp when the dialog grows. Redraws on resize.
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const resize = () => {
+			const dpr = window.devicePixelRatio || 1;
+			const rect = canvas.getBoundingClientRect();
+			const w = Math.max(1, Math.floor(rect.width * dpr));
+			const h = Math.max(1, Math.floor(rect.height * dpr));
+			if (canvas.width !== w || canvas.height !== h) {
+				canvas.width = w;
+				canvas.height = h;
+				redrawWaveform();
+			}
+		};
+		resize();
+		const ro = new ResizeObserver(resize);
+		ro.observe(canvas);
+		return () => ro.disconnect();
 	}, [redrawWaveform]);
 
 	// Animate playhead
@@ -546,11 +591,16 @@ export function AudioEditor({
 					)}
 				</Label>
 				<Slider
-					min={0.5}
-					max={2.0}
-					step={0.05}
-					value={[playbackRate]}
-					onValueChange={([v]) => setPlaybackRate(v ?? 1.0)}
+					min={-1}
+					max={1}
+					step={0.01}
+					value={[Math.log2(playbackRate)]}
+					onValueChange={([v]) => {
+						const exp = v ?? 0;
+						const rate = 2 ** exp;
+						// Snap to 1.00x near center to make it easy to hit.
+						setPlaybackRate(Math.abs(exp) < 0.02 ? 1.0 : rate);
+					}}
 				/>
 				<div className="flex justify-between text-xs text-muted-foreground">
 					<span>0.5x</span>
@@ -596,7 +646,7 @@ export function AudioEditor({
 				{isImporting && (
 					<LuLoaderCircle className="mr-2 h-4 w-4 animate-spin" />
 				)}
-				{isImporting ? "Importing..." : "Import"}
+				{isImporting ? submittingLabel : submitLabel}
 			</Button>
 
 			{/* biome-ignore lint/a11y/useMediaCaption: programmatic preview player, no dialogue content */}
