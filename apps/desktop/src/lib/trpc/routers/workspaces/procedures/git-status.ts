@@ -6,12 +6,20 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, isNull } from "drizzle-orm";
 import yaml from "js-yaml";
 import { localDb } from "main/lib/local-db";
+import { workspaceInitManager } from "main/lib/workspace-init-manager";
+import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
 import {
+	clearWorkspaceDeletingStatus,
+	deleteWorkspace,
+	deleteWorktreeRecord,
 	getProject,
 	getWorkspace,
 	getWorktree,
+	hideProjectIfNoWorkspaces,
+	markWorkspaceAsDeleting,
+	updateActiveWorkspaceIfRemoved,
 	updateProjectDefaultBranch,
 } from "../utils/db-helpers";
 import {
@@ -1884,7 +1892,7 @@ export const createGitStatusProcedures = () => {
 
 		cleanupMissingWorktrees: publicProcedure
 			.input(z.object({ projectId: z.string() }))
-			.mutation(({ input }) => {
+			.mutation(async ({ input }) => {
 				const projectWorktrees = localDb
 					.select()
 					.from(worktrees)
@@ -1895,12 +1903,41 @@ export const createGitStatusProcedures = () => {
 
 				let removed = 0;
 				for (const wt of missing) {
-					// Delete associated workspaces first (cascade would handle it, but be explicit)
-					localDb
-						.delete(workspaces)
+					const relatedWorkspaces = localDb
+						.select()
+						.from(workspaces)
 						.where(eq(workspaces.worktreeId, wt.id))
-						.run();
-					localDb.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
+						.all();
+
+					// Tear down runtime state for each workspace before deleting DB rows.
+					// The worktree files are already gone (hence "missing"), so we skip
+					// disk teardown scripts but still kill terminals, unregister GitHub
+					// sync, and update active-workspace/project visibility so the app
+					// doesn't retain orphan state.
+					for (const ws of relatedWorkspaces) {
+						markWorkspaceAsDeleting(ws.id);
+						updateActiveWorkspaceIfRemoved(ws.id);
+
+						try {
+							await getWorkspaceRuntimeRegistry()
+								.getForWorkspaceId(ws.id)
+								.terminal.killByWorkspaceId(ws.id);
+						} catch (err) {
+							console.warn(
+								`[cleanupMissingWorktrees] terminal kill failed for workspace ${ws.id}:`,
+								err,
+							);
+						}
+
+						githubSyncService.unregisterWorkspace(wt.path);
+						workspaceInitManager.clearJob(ws.id);
+
+						deleteWorkspace(ws.id);
+						clearWorkspaceDeletingStatus(ws.id);
+					}
+
+					deleteWorktreeRecord(wt.id);
+					hideProjectIfNoWorkspaces(input.projectId);
 					removed++;
 				}
 

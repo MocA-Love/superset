@@ -14,12 +14,18 @@ export function ProjectWorktreeAutoSync({ projectId }: { projectId: string }) {
 	const { data: project } = electronTrpc.projects.get.useQuery({
 		id: projectId,
 	});
+	const autoRemoveEnabled = project?.autoRemoveMissingWorktrees === true;
+
+	// Only pay the cost of listing + existsSync-ing tracked worktrees when the
+	// project has opted in. Otherwise the query is skipped entirely.
 	const { data: missingWorktrees = [], isLoading } =
-		electronTrpc.workspaces.getMissingWorktrees.useQuery({ projectId });
+		electronTrpc.workspaces.getMissingWorktrees.useQuery(
+			{ projectId },
+			{ enabled: autoRemoveEnabled },
+		);
 	const cleanupMutation = useCleanupMissingWorktrees();
 
 	const inFlightRef = useRef(false);
-	const autoRemoveEnabled = project?.autoRemoveMissingWorktrees === true;
 
 	useEffect(() => {
 		if (!autoRemoveEnabled) return;

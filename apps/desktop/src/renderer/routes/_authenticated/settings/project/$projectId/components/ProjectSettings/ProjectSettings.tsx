@@ -248,8 +248,7 @@ export function ProjectSettings({
 		});
 	};
 
-	const autoRemoveMissingEnabled =
-		project?.autoRemoveMissingWorktrees === true;
+	const autoRemoveMissingEnabled = project?.autoRemoveMissingWorktrees === true;
 
 	const handleToggleAutoRemove = (next: boolean) => {
 		if (!project) return;
