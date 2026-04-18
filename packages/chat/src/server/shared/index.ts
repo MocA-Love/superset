@@ -1,6 +1,1 @@
-export {
-	getSmallModel,
-	getSmallModelCandidates,
-	type SmallModelCandidate,
-	type SmallModelProviderId,
-} from "./small-model";
+export { getSmallModel } from "./small-model";
