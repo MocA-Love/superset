@@ -172,7 +172,7 @@ describe("agent-wrappers copilot", () => {
 		expect(updated).not.toContain("/tmp/old-hook.sh");
 	});
 
-	it("injects codex start + permission watchers and completion notifications in wrapper", () => {
+	it("injects codex start + permission watchers and enables native hooks", () => {
 		createCodexWrapper();
 
 		const wrapperPath = path.join(TEST_BIN_DIR, "codex");
@@ -237,12 +237,9 @@ exit 0
 		});
 
 		expect(readFileSync(argsFile, "utf-8")).toBe(
-			`${[
-				"--enable",
-				"codex_hooks",
-				"exec",
-				"Reply with exactly OK.",
-			].join("\n")}\n`,
+			`${["--enable", "codex_hooks", "exec", "Reply with exactly OK."].join(
+				"\n",
+			)}\n`,
 		);
 	});
 

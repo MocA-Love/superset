@@ -109,9 +109,8 @@ let mainWindowCleanup: (() => void) | null = null;
 let notificationsInitialized = false;
 let notificationsServer: Server | null = null;
 let notificationManager: NotificationManager | null = null;
-let agentLifecycleListener:
-	| ((event: AgentLifecycleEvent) => void)
-	| null = null;
+let agentLifecycleListener: ((event: AgentLifecycleEvent) => void) | null =
+	null;
 let terminalExitListener:
 	| ((event: {
 			paneId: string;

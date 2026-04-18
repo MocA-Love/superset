@@ -51,6 +51,7 @@ import {
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
 import { windowManager } from "./lib/window-manager";
+import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-protocol";
 
 // Lazy import to avoid module resolution issues during Vite build
 const loadVscodeShim = () =>
@@ -555,6 +556,17 @@ protocol.registerSchemesAsPrivileged([
 			secure: true,
 			bypassCSP: true,
 			supportFetchAPI: true,
+			stream: true,
+		},
+	},
+	{
+		scheme: "superset-workspace-media",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+			stream: true,
 		},
 	},
 	{
@@ -564,6 +576,7 @@ protocol.registerSchemesAsPrivileged([
 			secure: true,
 			bypassCSP: true,
 			supportFetchAPI: true,
+			stream: true,
 		},
 	},
 	{
@@ -726,6 +739,13 @@ if (!gotTheLock) {
 		session
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-temp-audio", tempAudioHandler);
+
+		// Serve workspace audio/video files for the file viewer
+		const workspaceMediaHandler = createWorkspaceMediaProtocolHandler();
+		protocol.handle("superset-workspace-media", workspaceMediaHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-workspace-media", workspaceMediaHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();
