@@ -149,49 +149,6 @@ function copyStringEnv(
 }
 
 /**
- * Env var names flagged as "unsafe" by simple-git's block-unsafe-operations
- * plugin (v3.36+). If present in the env handed to simple-git, it throws
- * `Use of "X" is not permitted without enabling allowUnsafeY` — e.g. a user
- * shell with `PAGER=less` blocks every simple-git call.
- *
- * None of these are required for the git operations this app performs, so we
- * strip them rather than toggling allowUnsafe flags.
- */
-const SIMPLE_GIT_UNSAFE_ENV_KEYS = new Set([
-	"EDITOR",
-	"PAGER",
-	"PREFIX",
-	"SSH_ASKPASS",
-	"GIT_ASKPASS",
-	"GIT_CONFIG",
-	"GIT_CONFIG_COUNT",
-	"GIT_CONFIG_GLOBAL",
-	"GIT_CONFIG_SYSTEM",
-	"GIT_EDITOR",
-	"GIT_EXEC_PATH",
-	"GIT_EXTERNAL_DIFF",
-	"GIT_PAGER",
-	"GIT_PROXY_COMMAND",
-	"GIT_SEQUENCE_EDITOR",
-	"GIT_SSH",
-	"GIT_SSH_COMMAND",
-	"GIT_TEMPLATE_DIR",
-]);
-
-export function stripSimpleGitUnsafeEnv(
-	env: Record<string, string>,
-): Record<string, string> {
-	const result: Record<string, string> = {};
-	for (const [key, value] of Object.entries(env)) {
-		const upper = key.toUpperCase();
-		if (SIMPLE_GIT_UNSAFE_ENV_KEYS.has(upper)) continue;
-		if (/^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(upper)) continue;
-		result[key] = value;
-	}
-	return result;
-}
-
-/**
  * Returns process env merged with missing variables from the user's shell.
  * Existing values always win so Electron/app-managed vars remain intact.
  */
