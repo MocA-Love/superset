@@ -662,7 +662,8 @@ export function WorkspacePage({
 		return addBrowserShortcutListener(handleBrowserShortcut);
 	}, [handleBrowserShortcut]);
 
-	const handleSearchInFiles = useCallback(() => {
+	// Open diff viewer (⌘⇧L)
+	useHotkey("OPEN_DIFF_VIEWER", () => {
 		if (!isSidebarOpen) {
 			setSidebarOpen(true);
 		}
