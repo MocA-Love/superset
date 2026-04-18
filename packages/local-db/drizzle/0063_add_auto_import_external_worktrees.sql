@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `auto_import_external_worktrees` integer;
