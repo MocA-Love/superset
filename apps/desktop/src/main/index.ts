@@ -41,6 +41,7 @@ import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
 // Aliased as getHostServiceManager to minimize diff with fork's quit lifecycle code
 import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-service-coordinator";
 import { closeLocalDb, localDb } from "./lib/local-db";
+import { requestLocalNetworkAccess } from "./lib/local-network-permission";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { reportError } from "./lib/report-error";
 import { initSentry } from "./lib/sentry";
@@ -617,6 +618,7 @@ if (!gotTheLock) {
 		await app.whenReady();
 		registerWithMacOSNotificationCenter();
 		requestAppleEventsAccess();
+		requestLocalNetworkAccess();
 		initializeBrowserIdentityManager();
 		initializeBrowserWebviewCompat();
 		browserSitePermissionManager.initialize();
