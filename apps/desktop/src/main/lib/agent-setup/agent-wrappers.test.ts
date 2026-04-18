@@ -197,9 +197,7 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('awk -F\'"approval_id":"\'');
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
-		expect(wrapper).toContain(
-			`"$REAL_BIN" --enable codex_hooks -c 'notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]' "$@"`,
-		);
+		expect(wrapper).toContain(`"$REAL_BIN" --enable codex_hooks "$@"`);
 		expect(wrapper).toContain("SUPERSET_CODEX_START_WATCHER_PID");
 		expect(wrapper).toContain('kill "$SUPERSET_CODEX_START_WATCHER_PID"');
 
@@ -242,8 +240,6 @@ exit 0
 			`${[
 				"--enable",
 				"codex_hooks",
-				"-c",
-				`notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]`,
 				"exec",
 				"Reply with exactly OK.",
 			].join("\n")}\n`,

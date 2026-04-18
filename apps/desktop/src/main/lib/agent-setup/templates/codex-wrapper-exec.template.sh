@@ -1,6 +1,6 @@
-# Codex exposes completion notifications via notify.
-# For per-prompt Start notifications and permission requests, watch the TUI
-# session log for task_started/exec_command_begin and *_approval_request events.
+# Native ~/.codex/hooks.json handles SessionStart/UserPromptSubmit/Stop.
+# The wrapper keeps the session-log watcher only for per-prompt Start
+# notifications and permission requests inside Superset terminals.
 if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
   export CODEX_TUI_RECORD_SESSION=1
   if [ -z "$CODEX_TUI_SESSION_LOG_PATH" ]; then
@@ -72,7 +72,7 @@ if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
   SUPERSET_CODEX_START_WATCHER_PID=$!
 fi
 
-"$REAL_BIN" --enable codex_hooks -c 'notify=["bash","{{NOTIFY_PATH}}"]' "$@"
+"$REAL_BIN" --enable codex_hooks "$@"
 SUPERSET_CODEX_STATUS=$?
 
 if [ -n "$SUPERSET_CODEX_START_WATCHER_PID" ]; then

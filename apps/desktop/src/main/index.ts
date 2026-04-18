@@ -51,13 +51,16 @@ import {
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
 import { windowManager } from "./lib/window-manager";
-import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-protocol";
 
 // Lazy import to avoid module resolution issues during Vite build
 const loadVscodeShim = () =>
 	import("./lib/vscode-shim") as Promise<typeof import("./lib/vscode-shim")>;
 
-import { cleanupMainWindowResources, MainWindow } from "./windows/main";
+import {
+	cleanupMainWindowResources,
+	initNotifications,
+	MainWindow,
+} from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -552,17 +555,6 @@ protocol.registerSchemesAsPrivileged([
 			secure: true,
 			bypassCSP: true,
 			supportFetchAPI: true,
-			stream: true,
-		},
-	},
-	{
-		scheme: "superset-workspace-media",
-		privileges: {
-			standard: true,
-			secure: true,
-			bypassCSP: true,
-			supportFetchAPI: true,
-			stream: true,
 		},
 	},
 	{
@@ -572,7 +564,6 @@ protocol.registerSchemesAsPrivileged([
 			secure: true,
 			bypassCSP: true,
 			supportFetchAPI: true,
-			stream: true,
 		},
 	},
 	{
@@ -736,13 +727,6 @@ if (!gotTheLock) {
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-temp-audio", tempAudioHandler);
 
-		// Serve workspace audio/video files for the file viewer
-		const workspaceMediaHandler = createWorkspaceMediaProtocolHandler();
-		protocol.handle("superset-workspace-media", workspaceMediaHandler);
-		session
-			.fromPartition("persist:superset")
-			.protocol.handle("superset-workspace-media", workspaceMediaHandler);
-
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();
 		initSentry();
@@ -773,6 +757,7 @@ if (!gotTheLock) {
 			});
 		}
 
+		initNotifications();
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
 		setupServiceStatusPolling();
