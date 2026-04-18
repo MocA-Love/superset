@@ -1,7 +1,7 @@
 import { Label } from "@superset/ui/label";
 import { Slider } from "@superset/ui/slider";
 import { Switch } from "@superset/ui/switch";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useVibrancyStore } from "renderer/stores/vibrancy";
 import {
 	VIBRANCY_BLUR_RADIUS_MAX,
@@ -63,27 +63,37 @@ export function VibrancySection() {
 	);
 	const displayBlurLevelValue =
 		draftBlurLevelValue ?? blurLevelToSliderValue(blurLevel);
+	const opacityDraftRevisionRef = useRef(0);
+	const blurRadiusDraftRevisionRef = useRef(0);
+	const blurLevelDraftRevisionRef = useRef(0);
 
 	const commitOpacity = (value: number) => {
+		const revision = opacityDraftRevisionRef.current;
 		void setState({ opacity: value }).finally(() => {
-			setDraftOpacity((current) => (current === value ? null : current));
+			if (opacityDraftRevisionRef.current !== revision) return;
+			setDraftOpacity(null);
 		});
 	};
 
 	const commitBlurRadius = (value: number) => {
+		const revision = blurRadiusDraftRevisionRef.current;
 		void setState({ blurRadius: value }).finally(() => {
-			setDraftBlurRadius((current) => (current === value ? null : current));
+			if (blurRadiusDraftRevisionRef.current !== revision) return;
+			setDraftBlurRadius(null);
 		});
 	};
 
 	const commitBlurLevelValue = (value: number) => {
+		const revision = blurLevelDraftRevisionRef.current;
 		const nextLevel = sliderValueToBlurLevel(value);
 		if (nextLevel === blurLevel) {
-			setDraftBlurLevelValue((current) => (current === value ? null : current));
+			if (blurLevelDraftRevisionRef.current !== revision) return;
+			setDraftBlurLevelValue(null);
 			return;
 		}
 		void setState({ blurLevel: nextLevel }).finally(() => {
-			setDraftBlurLevelValue((current) => (current === value ? null : current));
+			if (blurLevelDraftRevisionRef.current !== revision) return;
+			setDraftBlurLevelValue(null);
 		});
 	};
 
@@ -155,6 +165,7 @@ export function VibrancySection() {
 					onValueChange={(values) => {
 						const value = values[0];
 						if (typeof value !== "number") return;
+						opacityDraftRevisionRef.current += 1;
 						setDraftOpacity(value);
 						// Live-preview via the store so all CSS variable
 						// overlays are recomputed — no disk write, no IPC.
@@ -191,6 +202,7 @@ export function VibrancySection() {
 						onValueChange={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
+							blurRadiusDraftRevisionRef.current += 1;
 							setDraftBlurRadius(value);
 						}}
 						onValueCommit={(values) => {
@@ -226,6 +238,7 @@ export function VibrancySection() {
 						onValueChange={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
+							blurLevelDraftRevisionRef.current += 1;
 							setDraftBlurLevelValue(value);
 						}}
 						onValueCommit={(values) => {
