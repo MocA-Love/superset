@@ -30,6 +30,42 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 /** Spreadsheet extensions */
 const SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods"]);
 
+/** Audio extensions playable in Chromium */
+const AUDIO_EXTENSIONS = new Set([
+	"mp3",
+	"wav",
+	"ogg",
+	"oga",
+	"m4a",
+	"aac",
+	"flac",
+	"opus",
+	"weba",
+]);
+
+const AUDIO_MIME_TYPES: Record<string, string> = {
+	mp3: "audio/mpeg",
+	wav: "audio/wav",
+	ogg: "audio/ogg",
+	oga: "audio/ogg",
+	m4a: "audio/mp4",
+	aac: "audio/aac",
+	flac: "audio/flac",
+	opus: "audio/ogg",
+	weba: "audio/webm",
+};
+
+/** Video extensions playable in Chromium */
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
+
+const VIDEO_MIME_TYPES: Record<string, string> = {
+	mp4: "video/mp4",
+	webm: "video/webm",
+	mov: "video/quicktime",
+	m4v: "video/mp4",
+	ogv: "video/ogg",
+};
+
 /** Extensions for supported image MIME types */
 const IMAGE_MIME_TYPE_EXTENSIONS: Record<string, string> = {
 	"image/png": "png",
@@ -126,10 +162,42 @@ export function isSpreadsheetFile(filePath: string): boolean {
 }
 
 /**
- * Checks if a file supports rendered preview (markdown, image, or HTML)
+ * Checks if a file is an audio file based on extension
+ */
+export function isAudioFile(filePath: string): boolean {
+	return AUDIO_EXTENSIONS.has(getExtension(filePath));
+}
+
+/**
+ * Checks if a file is a video file based on extension
+ */
+export function isVideoFile(filePath: string): boolean {
+	return VIDEO_EXTENSIONS.has(getExtension(filePath));
+}
+
+/**
+ * Gets the MIME type for an audio file. Returns null if unsupported.
+ */
+export function getAudioMimeType(filePath: string): string | null {
+	return AUDIO_MIME_TYPES[getExtension(filePath)] ?? null;
+}
+
+/**
+ * Gets the MIME type for a video file. Returns null if unsupported.
+ */
+export function getVideoMimeType(filePath: string): string | null {
+	return VIDEO_MIME_TYPES[getExtension(filePath)] ?? null;
+}
+
+/**
+ * Checks if a file supports rendered preview (markdown, image, HTML, audio, or video)
  */
 export function hasRenderedPreview(filePath: string): boolean {
 	return (
-		isMarkdownFile(filePath) || isImageFile(filePath) || isHtmlFile(filePath)
+		isMarkdownFile(filePath) ||
+		isImageFile(filePath) ||
+		isHtmlFile(filePath) ||
+		isAudioFile(filePath) ||
+		isVideoFile(filePath)
 	);
 }

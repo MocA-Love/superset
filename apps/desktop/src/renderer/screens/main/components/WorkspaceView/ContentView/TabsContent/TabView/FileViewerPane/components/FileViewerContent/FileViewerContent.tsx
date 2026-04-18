@@ -30,7 +30,15 @@ import type { Tab } from "renderer/stores/tabs/types";
 import { pathsMatch, toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import { type DiffViewMode, isDiffEditable } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
-import { isHtmlFile, isImageFile, isSpreadsheetFile } from "shared/file-types";
+import {
+	getAudioMimeType,
+	getVideoMimeType,
+	isAudioFile,
+	isHtmlFile,
+	isImageFile,
+	isSpreadsheetFile,
+	isVideoFile,
+} from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import { useNextEditCompletion } from "../../hooks/useNextEditCompletion";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
@@ -307,6 +315,8 @@ export function FileViewerContent({
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 	const isHtml = isHtmlFile(filePath);
+	const isAudio = isAudioFile(filePath);
+	const isVideo = isVideoFile(filePath);
 	const {
 		isAvailable: isNextEditAvailable,
 		requestInlineCompletion,
@@ -860,6 +870,48 @@ export function FileViewerContent({
 					className="max-h-full max-w-full object-contain"
 					style={{ imageRendering: "auto" }}
 				/>
+			</div>
+		);
+	}
+
+	if (viewMode === "rendered" && (isAudio || isVideo) && absoluteFilePath) {
+		const mediaUrl = `superset-workspace-media:///${encodeURIComponent(
+			absoluteFilePath,
+		)}`;
+		const mimeType = isAudio
+			? getAudioMimeType(filePath)
+			: getVideoMimeType(filePath);
+
+		if (isAudio) {
+			return (
+				<div className="flex h-full flex-col items-center justify-center gap-4 bg-background-solid p-6">
+					<div className="max-w-md truncate text-sm text-muted-foreground">
+						{filePath.split("/").pop()}
+					</div>
+					{/* biome-ignore lint/a11y/useMediaCaption: user-opened media files have no caption tracks */}
+					<audio
+						key={absoluteFilePath}
+						controls
+						preload="metadata"
+						className="w-full max-w-xl"
+					>
+						<source src={mediaUrl} type={mimeType ?? undefined} />
+					</audio>
+				</div>
+			);
+		}
+
+		return (
+			<div className="flex h-full items-center justify-center bg-black">
+				{/* biome-ignore lint/a11y/useMediaCaption: user-opened media files have no caption tracks */}
+				<video
+					key={absoluteFilePath}
+					controls
+					preload="metadata"
+					className="max-h-full max-w-full"
+				>
+					<source src={mediaUrl} type={mimeType ?? undefined} />
+				</video>
 			</div>
 		);
 	}
