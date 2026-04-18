@@ -9,6 +9,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+	createFileProtocolResponse,
+	MEDIA_MIME_TYPES,
+} from "../../file-streaming";
 import { shimLog } from "./debug-log";
 
 /** Allowed base directories for serving extension resources */
@@ -39,6 +43,7 @@ const MIME_TYPES: Record<string, string> = {
 	".woff2": "font/woff2",
 	".ttf": "font/ttf",
 	".ico": "image/x-icon",
+	...MEDIA_MIME_TYPES,
 };
 
 function getMimeType(filePath: string): string {
@@ -50,7 +55,7 @@ export function registerWebviewProtocol(): void {
 	try {
 		const { protocol } = require("electron");
 
-		protocol.handle("vscode-webview-resource", (request: Request) => {
+		protocol.handle("vscode-webview-resource", async (request: Request) => {
 			const url = new URL(request.url);
 			let filePath = decodeURIComponent(url.pathname);
 
@@ -66,11 +71,11 @@ export function registerWebviewProtocol(): void {
 				return new Response("Not found", { status: 404 });
 			}
 
-			const content = fs.readFileSync(filePath);
 			const mimeType = getMimeType(filePath);
 
-			return new Response(content, {
-				headers: { "Content-Type": mimeType },
+			return createFileProtocolResponse(request, filePath, {
+				contentType: mimeType,
+				cacheControl: "public, max-age=3600",
 			});
 		});
 

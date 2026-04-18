@@ -10,6 +10,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { MEDIA_MIME_TYPES, writeFileHttpResponse } from "../../file-streaming";
 import { shimLog, shimWarn } from "./debug-log";
 
 const MIME_TYPES: Record<string, string> = {
@@ -28,6 +29,7 @@ const MIME_TYPES: Record<string, string> = {
 	".ttf": "font/ttf",
 	".ico": "image/x-icon",
 	".wasm": "application/wasm",
+	...MEDIA_MIME_TYPES,
 };
 
 const ALLOWED_ROOTS = [
@@ -242,7 +244,7 @@ export async function startWebviewServer(): Promise<number> {
 	if (server) return serverPort;
 
 	return new Promise((resolve, reject) => {
-		server = http.createServer((req, res) => {
+		server = http.createServer(async (req, res) => {
 			const url = new URL(req.url ?? "/", `http://127.0.0.1`);
 			shimLog(`[webview-server] ${req.method} ${url.pathname}`);
 
@@ -294,6 +296,7 @@ export async function startWebviewServer(): Promise<number> {
 						`style-src 'unsafe-inline' http://127.0.0.1:${serverPort} https:`,
 						`img-src http://127.0.0.1:${serverPort} https: data: blob:`,
 						`font-src http://127.0.0.1:${serverPort} https: data:`,
+						`media-src vscode-webview-resource: http://127.0.0.1:${serverPort} https: data: blob:`,
 						"connect-src https: wss: ws: http://127.0.0.1:* http://localhost:*",
 						`frame-src http://127.0.0.1:${serverPort} https:`,
 						"worker-src blob:",
@@ -333,12 +336,10 @@ export async function startWebviewServer(): Promise<number> {
 				const ext = path.extname(filePath).toLowerCase();
 				const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
 
-				const content = fs.readFileSync(filePath);
-				res.writeHead(200, {
-					"Content-Type": mimeType,
-					"Cache-Control": "public, max-age=3600",
+				await writeFileHttpResponse(req, res, filePath, {
+					contentType: mimeType,
+					cacheControl: "public, max-age=3600",
 				});
-				res.end(content);
 				return;
 			}
 
