@@ -15,7 +15,7 @@ import { workspaceTrpc } from "@superset/workspace-client";
 import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
 import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
@@ -154,8 +154,7 @@ function WorkspaceContent({
 		projectId,
 	});
 	useConsumePendingLaunch({ workspaceId, store });
-	const paneRegistry = usePaneRegistry(workspaceId);
-	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
+	const collections = useCollections();
 	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
 	const utils = electronTrpc.useUtils();
 	const { data: showPresetsBar } =
@@ -195,13 +194,23 @@ function WorkspaceContent({
 		[recordView, worktreePath],
 	);
 
-	const selectedFilePath = useStore(store, (s) => {
+	const activeFilePanePath = useStore(store, (s) => {
 		const tab = s.tabs.find((t) => t.id === s.activeTabId);
 		if (!tab?.activePaneId) return undefined;
 		const pane = tab.panes[tab.activePaneId];
 		if (pane?.kind === "file") return (pane.data as FilePaneData).filePath;
 		return undefined;
 	});
+
+	const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(
+		activeFilePanePath,
+	);
+
+	useEffect(() => {
+		if (activeFilePanePath !== undefined) {
+			setSelectedFilePath(activeFilePanePath);
+		}
+	}, [activeFilePanePath]);
 
 	const openFilePathsKey = useStore(store, (s) =>
 		s.tabs
@@ -334,6 +343,33 @@ function WorkspaceContent({
 		},
 		[rightSidebarOpenViewWidth, store, recordRecentlyViewed],
 	);
+
+	const revealPath = useCallback(
+		(path: string) => {
+			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+				draft.rightSidebarOpen = true;
+				draft.sidebarState.activeTab = "files";
+			});
+			setSelectedFilePath(path);
+		},
+		[collections, workspaceId],
+	);
+
+	// FORK NOTE: fork's openFilePane takes (filePath, displayName?) for the
+	// memo-title path; usePaneRegistry's onOpenFile contract is
+	// (path, openInNewTab?). Bind without forwarding the 2nd arg so the types
+	// line up — terminal Cmd+click just opens in the active tab — and wrap
+	// with useCallback so paneRegistry's memo stays stable.
+	const handleTerminalOpenFile = useCallback(
+		(filePath: string) => openFilePane(filePath),
+		[openFilePane],
+	);
+
+	const paneRegistry = usePaneRegistry(workspaceId, {
+		onOpenFile: handleTerminalOpenFile,
+		onRevealPath: revealPath,
+	});
+	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
 
 	const openDiffPane = useCallback(
 		(filePath: string) => {
