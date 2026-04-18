@@ -552,6 +552,7 @@ protocol.registerSchemesAsPrivileged([
 			secure: true,
 			bypassCSP: true,
 			supportFetchAPI: true,
+			stream: true,
 		},
 	},
 	{
@@ -571,6 +572,7 @@ protocol.registerSchemesAsPrivileged([
 			secure: true,
 			bypassCSP: true,
 			supportFetchAPI: true,
+			stream: true,
 		},
 	},
 	{
