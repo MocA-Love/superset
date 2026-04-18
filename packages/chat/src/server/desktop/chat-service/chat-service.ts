@@ -27,9 +27,11 @@ import {
 } from "./anthropic-env-config";
 import type { AuthStatus } from "./auth-storage-types";
 import {
+	backupApiKeyBeforeOAuth,
 	clearApiKeyForProvider,
 	clearCredentialForProvider,
 	resolveAuthMethodForProvider,
+	restoreApiKeyAfterOAuthDisconnect,
 	setApiKeyForProvider,
 } from "./auth-storage-utils";
 import {
@@ -103,11 +105,32 @@ export class ChatService {
 		);
 	}
 
-	getAnthropicAuthStatus(): AuthStatus {
+	async getAnthropicAuthStatus(): Promise<AuthStatus> {
 		const authStorage = this.getAuthStorage();
 		authStorage.reload();
-		const storedCredential = authStorage.get(ANTHROPIC_AUTH_PROVIDER_ID);
+		let storedCredential = authStorage.get(ANTHROPIC_AUTH_PROVIDER_ID);
 		const hasManagedOAuth = storedCredential?.type === "oauth";
+
+		// If managed OAuth is past its expiry, give mastracode a chance to
+		// refresh it before downgrading status to "expired". Mastracode's
+		// getApiKey uses the stored refresh token via the anthropic provider.
+		if (
+			storedCredential?.type === "oauth" &&
+			typeof storedCredential.expires === "number" &&
+			storedCredential.expires <= Date.now()
+		) {
+			try {
+				await authStorage.getApiKey(ANTHROPIC_AUTH_PROVIDER_ID);
+				authStorage.reload();
+				storedCredential = authStorage.get(ANTHROPIC_AUTH_PROVIDER_ID);
+			} catch (error) {
+				// Refresh failed; fall through to expired-state handling below.
+				console.warn(
+					"[chat-service] Anthropic OAuth refresh failed, falling back to expired state:",
+					error,
+				);
+			}
+		}
 		const configCredential = getAnthropicCredentialsFromConfig();
 		const keychainCredential = getAnthropicCredentialsFromKeychain();
 		const externalCandidates = [configCredential, keychainCredential].filter(
@@ -594,6 +617,7 @@ export class ChatService {
 			}
 
 			clearCredentialForProvider(authStorage, providerId);
+			restoreApiKeyAfterOAuthDisconnect(authStorage, providerId);
 			removedProviderIds.push(providerId);
 		}
 		this.logAuthResolution("openai", {
@@ -607,6 +631,9 @@ export class ChatService {
 	async completeOpenAIOAuth(input: {
 		code?: string;
 	}): Promise<{ success: true }> {
+		for (const providerId of OPENAI_AUTH_PROVIDER_IDS) {
+			backupApiKeyBeforeOAuth(this.getAuthStorage(), providerId);
+		}
 		await this.oauthFlowController.complete(
 			this.getOpenAIOAuthFlowOptions(),
 			input.code,
@@ -696,6 +723,11 @@ export class ChatService {
 		const credential = authStorage.get(ANTHROPIC_AUTH_PROVIDER_ID);
 		if (credential?.type === "oauth") {
 			clearCredentialForProvider(authStorage, ANTHROPIC_AUTH_PROVIDER_ID);
+			// Restore API key from backup slot if one was saved before OAuth connect.
+			restoreApiKeyAfterOAuthDisconnect(
+				authStorage,
+				ANTHROPIC_AUTH_PROVIDER_ID,
+			);
 			const config = getAnthropicEnvConfigFromDisk({
 				configPath: this.anthropicEnvConfigPath,
 			});
@@ -715,6 +747,8 @@ export class ChatService {
 	async completeAnthropicOAuth(input: {
 		code?: string;
 	}): Promise<{ success: true; expiresAt: number }> {
+		// Save API key to backup slot before OAuth overwrites the main slot.
+		backupApiKeyBeforeOAuth(this.getAuthStorage(), ANTHROPIC_AUTH_PROVIDER_ID);
 		const credential = await this.oauthFlowController.complete(
 			this.getAnthropicOAuthFlowOptions(),
 			input.code,
@@ -779,10 +813,7 @@ export class ChatService {
 
 		const authStorage = this.getAuthStorage();
 		authStorage.reload();
-		authStorage.set(ANTHROPIC_AUTH_PROVIDER_ID, {
-			type: "api_key",
-			key: apiKey,
-		});
+		authStorage.setStoredApiKey(ANTHROPIC_AUTH_PROVIDER_ID, apiKey);
 	}
 
 	private applyAnthropicRuntimeEnv(variables: AnthropicEnvVariables): void {
