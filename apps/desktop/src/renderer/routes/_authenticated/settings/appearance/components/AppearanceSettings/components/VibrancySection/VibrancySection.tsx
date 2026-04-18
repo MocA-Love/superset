@@ -1,7 +1,7 @@
 import { Label } from "@superset/ui/label";
 import { Slider } from "@superset/ui/slider";
 import { Switch } from "@superset/ui/switch";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useVibrancyStore } from "renderer/stores/vibrancy";
 import {
 	VIBRANCY_BLUR_RADIUS_MAX,
@@ -63,6 +63,39 @@ export function VibrancySection() {
 	);
 	const displayBlurLevelValue =
 		draftBlurLevelValue ?? blurLevelToSliderValue(blurLevel);
+	const opacityDraftRevisionRef = useRef(0);
+	const blurRadiusDraftRevisionRef = useRef(0);
+	const blurLevelDraftRevisionRef = useRef(0);
+
+	const commitOpacity = (value: number) => {
+		const revision = opacityDraftRevisionRef.current;
+		void setState({ opacity: value }).finally(() => {
+			if (opacityDraftRevisionRef.current !== revision) return;
+			setDraftOpacity(null);
+		});
+	};
+
+	const commitBlurRadius = (value: number) => {
+		const revision = blurRadiusDraftRevisionRef.current;
+		void setState({ blurRadius: value }).finally(() => {
+			if (blurRadiusDraftRevisionRef.current !== revision) return;
+			setDraftBlurRadius(null);
+		});
+	};
+
+	const commitBlurLevelValue = (value: number) => {
+		const revision = blurLevelDraftRevisionRef.current;
+		const nextLevel = sliderValueToBlurLevel(value);
+		if (nextLevel === blurLevel) {
+			if (blurLevelDraftRevisionRef.current !== revision) return;
+			setDraftBlurLevelValue(null);
+			return;
+		}
+		void setState({ blurLevel: nextLevel }).finally(() => {
+			if (blurLevelDraftRevisionRef.current !== revision) return;
+			setDraftBlurLevelValue(null);
+		});
+	};
 
 	useEffect(() => {
 		// index.tsx already kicks off hydrate at startup; this is a safety net
@@ -132,6 +165,7 @@ export function VibrancySection() {
 					onValueChange={(values) => {
 						const value = values[0];
 						if (typeof value !== "number") return;
+						opacityDraftRevisionRef.current += 1;
 						setDraftOpacity(value);
 						// Live-preview via the store so all CSS variable
 						// overlays are recomputed — no disk write, no IPC.
@@ -140,8 +174,7 @@ export function VibrancySection() {
 					onValueCommit={(values) => {
 						const value = values[0];
 						if (typeof value !== "number") return;
-						setDraftOpacity(null);
-						void setState({ opacity: value });
+						commitOpacity(value);
 					}}
 				/>
 				<p className="text-xs text-muted-foreground">
@@ -169,13 +202,13 @@ export function VibrancySection() {
 						onValueChange={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
+							blurRadiusDraftRevisionRef.current += 1;
 							setDraftBlurRadius(value);
 						}}
 						onValueCommit={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
-							setDraftBlurRadius(null);
-							void setState({ blurRadius: value });
+							commitBlurRadius(value);
 						}}
 					/>
 					<p className="text-xs text-muted-foreground">
@@ -205,16 +238,13 @@ export function VibrancySection() {
 						onValueChange={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
+							blurLevelDraftRevisionRef.current += 1;
 							setDraftBlurLevelValue(value);
 						}}
 						onValueCommit={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
-							setDraftBlurLevelValue(null);
-							const nextLevel = sliderValueToBlurLevel(value);
-							if (nextLevel !== blurLevel) {
-								void setState({ blurLevel: nextLevel });
-							}
+							commitBlurLevelValue(value);
 						}}
 					/>
 					<p className="text-xs text-muted-foreground">
