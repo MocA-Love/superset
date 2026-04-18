@@ -171,7 +171,10 @@ export function buildSimpleGitUnsafeOptions(
 	);
 
 	for (const key of Object.keys(upperEnv)) {
-		const option = SIMPLE_GIT_UNSAFE_ENV_TO_OPTION[key];
+		const option =
+			SIMPLE_GIT_UNSAFE_ENV_TO_OPTION[
+				key as keyof typeof SIMPLE_GIT_UNSAFE_ENV_TO_OPTION
+			];
 		if (option) {
 			markUnsafeOption(unsafe, option);
 		}

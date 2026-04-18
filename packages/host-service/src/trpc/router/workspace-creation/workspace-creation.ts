@@ -5,7 +5,6 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
-import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import {
 	asLocalRef,
 	asRemoteRef,
@@ -13,6 +12,7 @@ import {
 	resolveDefaultBranchName,
 	resolveRef,
 } from "../../../runtime/git/refs";
+import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { createTerminalSessionInternal } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
 import { protectedProcedure, router } from "../../index";

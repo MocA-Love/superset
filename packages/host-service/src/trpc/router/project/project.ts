@@ -3,8 +3,8 @@ import { basename, join, resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { projects, workspaces } from "../../../db/schema";
+import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { parseGitHubRemote } from "../../../runtime/pull-requests/utils/parse-github-remote";
 import { protectedProcedure, router } from "../../index";
 import {

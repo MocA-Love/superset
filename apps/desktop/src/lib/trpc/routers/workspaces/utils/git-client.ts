@@ -7,7 +7,10 @@ import {
 	buildSimpleGitUnsafeOptions,
 	type SimpleGitUnsafeOptions,
 } from "@superset/shared/simple-git-unsafe";
-import simpleGit, { type SimpleGit, type SimpleGitProgressEvent } from "simple-git";
+import simpleGit, {
+	type SimpleGit,
+	type SimpleGitProgressEvent,
+} from "simple-git";
 import { getProcessEnvWithShellPath } from "./shell-env";
 
 interface CreateSimpleGitWithShellPathOptions {

@@ -1,5 +1,5 @@
-import type { GitCredentialProvider, GitFactory } from "./types";
 import { createSimpleGitWithEnv } from "./simple-git";
+import type { GitCredentialProvider, GitFactory } from "./types";
 import { getRemoteUrl } from "./utils";
 
 export function createGitFactory(provider: GitCredentialProvider): GitFactory {
