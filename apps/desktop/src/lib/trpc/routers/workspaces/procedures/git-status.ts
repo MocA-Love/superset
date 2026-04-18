@@ -6,12 +6,20 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, isNull } from "drizzle-orm";
 import yaml from "js-yaml";
 import { localDb } from "main/lib/local-db";
+import { workspaceInitManager } from "main/lib/workspace-init-manager";
+import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
 import {
+	clearWorkspaceDeletingStatus,
+	deleteWorkspace,
+	deleteWorktreeRecord,
 	getProject,
 	getWorkspace,
 	getWorktree,
+	hideProjectIfNoWorkspaces,
+	markWorkspaceAsDeleting,
+	updateActiveWorkspaceIfRemoved,
 	updateProjectDefaultBranch,
 } from "../utils/db-helpers";
 import {
@@ -1858,6 +1866,82 @@ export const createGitStatusProcedures = () => {
 						// biome-ignore lint/style/noNonNullAssertion: filtered above
 						branch: wt.branch!,
 					}));
+			}),
+
+		getMissingWorktrees: publicProcedure
+			.input(z.object({ projectId: z.string() }))
+			.query(({ input }) => {
+				const projectWorktrees = localDb
+					.select({
+						id: worktrees.id,
+						path: worktrees.path,
+						branch: worktrees.branch,
+					})
+					.from(worktrees)
+					.where(eq(worktrees.projectId, input.projectId))
+					.all();
+
+				return projectWorktrees
+					.filter((wt) => !existsSync(wt.path))
+					.map((wt) => ({
+						worktreeId: wt.id,
+						path: wt.path,
+						branch: wt.branch,
+					}));
+			}),
+
+		cleanupMissingWorktrees: publicProcedure
+			.input(z.object({ projectId: z.string() }))
+			.mutation(async ({ input }) => {
+				const projectWorktrees = localDb
+					.select()
+					.from(worktrees)
+					.where(eq(worktrees.projectId, input.projectId))
+					.all();
+
+				const missing = projectWorktrees.filter((wt) => !existsSync(wt.path));
+
+				let removed = 0;
+				for (const wt of missing) {
+					const relatedWorkspaces = localDb
+						.select()
+						.from(workspaces)
+						.where(eq(workspaces.worktreeId, wt.id))
+						.all();
+
+					// Tear down runtime state for each workspace before deleting DB rows.
+					// The worktree files are already gone (hence "missing"), so we skip
+					// disk teardown scripts but still kill terminals, unregister GitHub
+					// sync, and update active-workspace/project visibility so the app
+					// doesn't retain orphan state.
+					for (const ws of relatedWorkspaces) {
+						markWorkspaceAsDeleting(ws.id);
+						updateActiveWorkspaceIfRemoved(ws.id);
+
+						try {
+							await getWorkspaceRuntimeRegistry()
+								.getForWorkspaceId(ws.id)
+								.terminal.killByWorkspaceId(ws.id);
+						} catch (err) {
+							console.warn(
+								`[cleanupMissingWorktrees] terminal kill failed for workspace ${ws.id}:`,
+								err,
+							);
+						}
+
+						githubSyncService.unregisterWorkspace(wt.path);
+						workspaceInitManager.clearJob(ws.id);
+
+						deleteWorkspace(ws.id);
+						clearWorkspaceDeletingStatus(ws.id);
+					}
+
+					deleteWorktreeRecord(wt.id);
+					hideProjectIfNoWorkspaces(input.projectId);
+					removed++;
+				}
+
+				return { removed };
 			}),
 
 		getCheckJobSteps: publicProcedure

@@ -73,6 +73,7 @@ export const SETTING_ITEM_ID = {
 	PROJECT_WORKTREE_LOCATION: "project-worktree-location",
 	PROJECT_IMPORT_WORKTREES: "project-import-worktrees",
 	PROJECT_AUTO_IMPORT_WORKTREES: "project-auto-import-worktrees",
+	PROJECT_AUTO_REMOVE_WORKTREES: "project-auto-remove-worktrees",
 	PROJECT_ENV_VARS: "project-env-vars",
 
 	API_KEYS_LIST: "api-keys-list",
@@ -1117,6 +1118,26 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"llm",
 			"claude",
 			"agent",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.PROJECT_AUTO_REMOVE_WORKTREES,
+		section: "project",
+		title: "Auto-remove missing worktrees",
+		description:
+			"Automatically remove worktrees from the sidebar when they are deleted from disk",
+		keywords: [
+			"project",
+			"auto",
+			"automatic",
+			"remove",
+			"delete",
+			"cleanup",
+			"missing",
+			"worktree",
+			"worktrees",
+			"orphan",
+			"sync",
 		],
 	},
 	{

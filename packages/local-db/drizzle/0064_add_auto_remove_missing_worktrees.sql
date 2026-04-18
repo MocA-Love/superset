@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `auto_remove_missing_worktrees` integer;

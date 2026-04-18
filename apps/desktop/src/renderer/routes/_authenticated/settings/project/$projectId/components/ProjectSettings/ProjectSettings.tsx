@@ -248,6 +248,16 @@ export function ProjectSettings({
 		});
 	};
 
+	const autoRemoveMissingEnabled = project?.autoRemoveMissingWorktrees === true;
+
+	const handleToggleAutoRemove = (next: boolean) => {
+		if (!project) return;
+		updateProject.mutate({
+			id: projectId,
+			patch: { autoRemoveMissingWorktrees: next },
+		});
+	};
+
 	const handleImportWorktree = async (path: string, branch: string) => {
 		toast.promise(
 			openExternalWorktree.mutateAsync({
@@ -561,6 +571,32 @@ export function ProjectSettings({
 								</div>
 							</div>
 						)}
+
+					{isItemVisible(
+						SETTING_ITEM_ID.PROJECT_AUTO_REMOVE_WORKTREES,
+						visibleItems,
+					) && (
+						<div className="flex items-center justify-between gap-4">
+							<div className="space-y-0.5">
+								<Label
+									htmlFor="auto-remove-missing-worktrees"
+									className="text-sm font-medium"
+								>
+									Auto-remove missing worktrees
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Automatically remove worktrees from the sidebar when they are
+									deleted from disk (for example by external tools).
+								</p>
+							</div>
+							<Switch
+								id="auto-remove-missing-worktrees"
+								checked={autoRemoveMissingEnabled}
+								onCheckedChange={handleToggleAutoRemove}
+								disabled={updateProject.isPending}
+							/>
+						</div>
+					)}
 				</SettingsSection>
 
 				<SettingsSection

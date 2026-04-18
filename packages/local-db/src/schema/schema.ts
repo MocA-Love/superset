@@ -61,6 +61,9 @@ export const projects = sqliteTable(
 		autoImportExternalWorktrees: integer("auto_import_external_worktrees", {
 			mode: "boolean",
 		}),
+		autoRemoveMissingWorktrees: integer("auto_remove_missing_worktrees", {
+			mode: "boolean",
+		}),
 	},
 	(table) => [
 		index("projects_main_repo_path_idx").on(table.mainRepoPath),

@@ -449,6 +449,13 @@
       "when": 1776503122026,
       "tag": "0063_add_auto_import_external_worktrees",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1776505848956,
+      "tag": "0064_add_auto_remove_missing_worktrees",
+      "breakpoints": true
     }
   ]
 }

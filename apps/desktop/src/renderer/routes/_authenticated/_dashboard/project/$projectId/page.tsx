@@ -38,6 +38,7 @@ import { NotFound } from "renderer/routes/not-found";
 import type { SetupAction } from "shared/types/config";
 import { sanitizeSegment } from "shared/utils/branch";
 import { ExternalWorktreesBanner } from "./components/ExternalWorktreesBanner";
+import { ProjectWorktreeAutoSync } from "./components/ProjectWorktreeAutoSync";
 
 export const Route = createFileRoute(
 	"/_authenticated/_dashboard/project/$projectId/",
@@ -305,6 +306,7 @@ function ProjectPage() {
 
 	return (
 		<div className="flex-1 h-full flex flex-col overflow-hidden bg-background">
+			<ProjectWorktreeAutoSync projectId={projectId} />
 			<AnimatePresence>
 				<ExternalWorktreesBanner projectId={projectId} />
 			</AnimatePresence>
