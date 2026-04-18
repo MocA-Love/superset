@@ -442,6 +442,13 @@
       "when": 1776452055220,
       "tag": "0062_add_aivis_volume_and_presets",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1776503122026,
+      "tag": "0063_add_auto_import_external_worktrees",
+      "breakpoints": true
     }
   ]
 }

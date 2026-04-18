@@ -1701,6 +1701,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						worktreeBaseDir: z.string().nullable().optional(),
 						hideImage: z.boolean().optional(),
 						defaultApp: z.enum(EXTERNAL_APPS).nullable().optional(),
+						autoImportExternalWorktrees: z.boolean().nullable().optional(),
 					}),
 				}),
 			)
@@ -1738,6 +1739,10 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 						}),
 						...(input.patch.defaultApp !== undefined && {
 							defaultApp: input.patch.defaultApp,
+						}),
+						...(input.patch.autoImportExternalWorktrees !== undefined && {
+							autoImportExternalWorktrees:
+								input.patch.autoImportExternalWorktrees,
 						}),
 						lastOpenedAt: Date.now(),
 					})

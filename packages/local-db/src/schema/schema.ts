@@ -58,6 +58,9 @@ export const projects = sqliteTable(
 		iconUrl: text("icon_url"),
 		neonProjectId: text("neon_project_id"),
 		defaultApp: text("default_app").$type<ExternalApp>(),
+		autoImportExternalWorktrees: integer("auto_import_external_worktrees", {
+			mode: "boolean",
+		}),
 	},
 	(table) => [
 		index("projects_main_repo_path_idx").on(table.mainRepoPath),

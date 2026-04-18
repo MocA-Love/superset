@@ -72,6 +72,7 @@ export const SETTING_ITEM_ID = {
 	PROJECT_BRANCH_PREFIX: "project-branch-prefix",
 	PROJECT_WORKTREE_LOCATION: "project-worktree-location",
 	PROJECT_IMPORT_WORKTREES: "project-import-worktrees",
+	PROJECT_AUTO_IMPORT_WORKTREES: "project-auto-import-worktrees",
 	PROJECT_ENV_VARS: "project-env-vars",
 
 	API_KEYS_LIST: "api-keys-list",
@@ -1097,6 +1098,25 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"existing",
 			"disk",
 			"add",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.PROJECT_AUTO_IMPORT_WORKTREES,
+		section: "project",
+		title: "Auto-import detected worktrees",
+		description:
+			"Automatically import worktrees created outside Superset (e.g. by LLM agents)",
+		keywords: [
+			"project",
+			"auto",
+			"automatic",
+			"import",
+			"worktree",
+			"worktrees",
+			"detect",
+			"llm",
+			"claude",
+			"agent",
 		],
 	},
 	{

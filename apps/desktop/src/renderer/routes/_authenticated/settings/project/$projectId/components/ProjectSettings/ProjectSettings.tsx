@@ -238,6 +238,16 @@ export function ProjectSettings({
 		}
 	};
 
+	const autoImportEnabled = project?.autoImportExternalWorktrees === true;
+
+	const handleToggleAutoImport = (next: boolean) => {
+		if (!project) return;
+		updateProject.mutate({
+			id: projectId,
+			patch: { autoImportExternalWorktrees: next },
+		});
+	};
+
 	const handleImportWorktree = async (path: string, branch: string) => {
 		toast.promise(
 			openExternalWorktree.mutateAsync({
@@ -427,6 +437,32 @@ export function ProjectSettings({
 							})
 						}
 					/>
+
+					{isItemVisible(
+						SETTING_ITEM_ID.PROJECT_AUTO_IMPORT_WORKTREES,
+						visibleItems,
+					) && (
+						<div className="flex items-center justify-between gap-4">
+							<div className="space-y-0.5">
+								<Label
+									htmlFor="auto-import-worktrees"
+									className="text-sm font-medium"
+								>
+									Auto-import detected worktrees
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Automatically import worktrees created outside Superset (for
+									example by LLM agents) as soon as they are detected.
+								</p>
+							</div>
+							<Switch
+								id="auto-import-worktrees"
+								checked={autoImportEnabled}
+								onCheckedChange={handleToggleAutoImport}
+								disabled={updateProject.isPending}
+							/>
+						</div>
+					)}
 
 					{!isExternalLoading &&
 						externalWorktrees.length > 0 &&
