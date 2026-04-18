@@ -356,13 +356,20 @@ function WorkspaceContent({
 	);
 
 	// FORK NOTE: fork's openFilePane takes (filePath, displayName?) for the
-	// memo-title path; usePaneRegistry's onOpenFile contract is
-	// (path, openInNewTab?). Bind without forwarding the 2nd arg so the types
-	// line up — terminal Cmd+click just opens in the active tab — and wrap
-	// with useCallback so paneRegistry's memo stays stable.
+	// memo-title path. Pane registry callers that pass an explicit
+	// `openInNewTab` use the sidebar-opening path so they can honor the
+	// file-open preference and right-sidebar split width, while callers that
+	// omit the 2nd arg keep the legacy "open in the active pane" behavior.
 	const handleTerminalOpenFile = useCallback(
-		(filePath: string) => openFilePane(filePath),
-		[openFilePane],
+		(filePath: string, openInNewTab?: boolean) => {
+			if (openInNewTab !== undefined) {
+				openSidebarFilePane(filePath, openInNewTab);
+				return;
+			}
+
+			openFilePane(filePath);
+		},
+		[openFilePane, openSidebarFilePane],
 	);
 
 	const paneRegistry = usePaneRegistry(workspaceId, {

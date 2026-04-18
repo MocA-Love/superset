@@ -5,6 +5,7 @@ import {
 	BRANCH_SORT_ORDERS,
 	EXECUTION_MODES,
 	EXTERNAL_APPS,
+	FILE_DRAG_BEHAVIORS,
 	FILE_OPEN_MODES,
 	NON_EDITOR_APPS,
 	POST_COMMIT_COMMANDS,
@@ -29,6 +30,7 @@ import {
 	DEFAULT_AUTO_APPLY_DEFAULT_PRESET,
 	DEFAULT_CONFIRM_ON_QUIT,
 	DEFAULT_EXPOSE_HOST_SERVICE_VIA_RELAY,
+	DEFAULT_FILE_DRAG_BEHAVIOR,
 	DEFAULT_FILE_OPEN_MODE,
 	DEFAULT_OPEN_LINKS_IN_APP,
 	DEFAULT_PREVENT_AGENT_SLEEP,
@@ -731,6 +733,11 @@ export const createSettingsRouter = () => {
 			return row.fileOpenMode ?? DEFAULT_FILE_OPEN_MODE;
 		}),
 
+		getFileDragBehavior: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.fileDragBehavior ?? DEFAULT_FILE_DRAG_BEHAVIOR;
+		}),
+
 		setFileOpenMode: publicProcedure
 			.input(z.object({ mode: z.enum(FILE_OPEN_MODES) }))
 			.mutation(({ input }) => {
@@ -740,6 +747,21 @@ export const createSettingsRouter = () => {
 					.onConflictDoUpdate({
 						target: settings.id,
 						set: { fileOpenMode: input.mode },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
+		setFileDragBehavior: publicProcedure
+			.input(z.object({ behavior: z.enum(FILE_DRAG_BEHAVIORS) }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, fileDragBehavior: input.behavior })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { fileDragBehavior: input.behavior },
 					})
 					.run();
 

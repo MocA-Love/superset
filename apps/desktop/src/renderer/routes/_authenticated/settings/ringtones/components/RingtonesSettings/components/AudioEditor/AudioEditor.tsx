@@ -234,7 +234,7 @@ export function AudioEditor({
 		return () => {
 			cancelled = true;
 		};
-	}, [audioUrl]);
+	}, [audioUrl, hasInitialRange]);
 
 	// Draw waveform whenever relevant state changes
 	const redrawWaveform = useCallback(() => {

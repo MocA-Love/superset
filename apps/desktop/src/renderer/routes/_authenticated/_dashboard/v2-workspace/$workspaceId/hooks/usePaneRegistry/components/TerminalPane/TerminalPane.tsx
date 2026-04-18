@@ -9,6 +9,8 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { useHotkey } from "renderer/hotkeys";
+import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getInternalDraggedFilePath } from "renderer/lib/file-drag";
 import {
 	type ConnectionState,
 	terminalRuntimeRegistry,
@@ -25,6 +27,10 @@ import { ScrollToBottomButton } from "renderer/screens/main/components/Workspace
 import { TerminalSearch } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/TerminalSearch";
 import { useTheme } from "renderer/stores/theme";
 import { resolveTerminalThemeType } from "renderer/stores/theme/utils";
+import {
+	DEFAULT_FILE_DRAG_BEHAVIOR,
+	DEFAULT_FILE_OPEN_MODE,
+} from "shared/constants";
 import { LinkHoverTooltip } from "./components/LinkHoverTooltip";
 import { useLinkHoverState } from "./hooks/useLinkHoverState";
 import { useTerminalAppearance } from "./hooks/useTerminalAppearance";
@@ -53,6 +59,10 @@ export function TerminalPane({
 	onRevealPath,
 }: TerminalPaneProps) {
 	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
+	const { data: fileDragBehavior } =
+		electronTrpc.settings.getFileDragBehavior.useQuery();
+	const { data: fileOpenMode } =
+		electronTrpc.settings.getFileOpenMode.useQuery();
 	const {
 		hoveredLink,
 		onHover: onLinkHover,
@@ -284,6 +294,17 @@ export function TerminalPane({
 		dragCounterRef.current = 0;
 		setIsDropActive(false);
 		if (connectionState === "closed") return;
+		const internalFilePath = getInternalDraggedFilePath(event.dataTransfer);
+		if (
+			internalFilePath &&
+			(fileDragBehavior ?? DEFAULT_FILE_DRAG_BEHAVIOR) === "open-file-viewer"
+		) {
+			onOpenFile(
+				internalFilePath,
+				(fileOpenMode ?? DEFAULT_FILE_OPEN_MODE) === "new-tab",
+			);
+			return;
+		}
 		const text = resolveDroppedText(event.dataTransfer);
 		if (!text) return;
 		terminalRuntimeRegistry.getTerminal(terminalId)?.focus();

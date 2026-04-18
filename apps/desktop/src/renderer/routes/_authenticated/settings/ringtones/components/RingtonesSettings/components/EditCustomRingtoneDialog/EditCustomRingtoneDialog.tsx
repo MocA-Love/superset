@@ -75,8 +75,7 @@ export function EditCustomRingtoneDialog({
 		return () => {
 			cancelled = true;
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [open]);
+	}, [open, openSource]);
 
 	// Release the tempId when the dialog closes.
 	useEffect(() => {
@@ -89,8 +88,7 @@ export function EditCustomRingtoneDialog({
 		setTempId(null);
 		setErrorMessage(null);
 		setDisplayName(currentDisplayName);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [open]);
+	}, [open, closeSource, currentDisplayName]);
 
 	useEffect(() => {
 		if (open) setDisplayName(currentDisplayName);

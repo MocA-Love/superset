@@ -4,10 +4,12 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getInternalDraggedFilePath } from "renderer/lib/file-drag";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestions";
 import { useEffectiveTerminalTheme } from "renderer/stores/vibrancy";
+import { DEFAULT_FILE_DRAG_BEHAVIOR } from "shared/constants";
 import { sanitizeForTitle } from "./commandBuffer";
 import { SessionKilledOverlay } from "./components";
 import {
@@ -54,6 +56,9 @@ export const Terminal = memo(function Terminal({
 	const isWorkspaceRunPane = Boolean(pane?.workspaceRun?.workspaceId);
 	const paneInitialCwd = pane?.initialCwd;
 	const clearPaneInitialData = useTabsStore((s) => s.clearPaneInitialData);
+	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
+	const { data: fileDragBehavior } =
+		electronTrpc.settings.getFileDragBehavior.useQuery();
 
 	const { data: workspaceData } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId },
@@ -562,6 +567,19 @@ export const Terminal = memo(function Terminal({
 	const handleDrop = (event: React.DragEvent) => {
 		event.preventDefault();
 		const files = Array.from(event.dataTransfer.files);
+		const internalFilePath = getInternalDraggedFilePath(event.dataTransfer);
+		if (
+			files.length === 0 &&
+			internalFilePath &&
+			(fileDragBehavior ?? DEFAULT_FILE_DRAG_BEHAVIOR) === "open-file-viewer"
+		) {
+			addFileViewerPane(workspaceId, {
+				filePath: internalFilePath,
+				useRightSidebarOpenViewWidth: true,
+			});
+			return;
+		}
+
 		let text: string;
 		if (files.length > 0) {
 			// Native file drop (from Finder, etc.)

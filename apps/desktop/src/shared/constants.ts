@@ -44,6 +44,7 @@ export const DEFAULT_TERMINAL_SCROLLBACK = 5000;
 export const DEFAULT_CONFIRM_ON_QUIT = true;
 export const DEFAULT_TERMINAL_LINK_BEHAVIOR = "file-viewer" as const;
 export const DEFAULT_FILE_OPEN_MODE = "split-pane" as const;
+export const DEFAULT_FILE_DRAG_BEHAVIOR = "open-file-viewer" as const;
 export const DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH = 50;
 export const MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH = 20;
 export const MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH = 80;

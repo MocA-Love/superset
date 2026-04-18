@@ -1,6 +1,5 @@
 import { useCallback } from "react";
-
-const FILE_PATH_MIME = "application/x-superset-file-path";
+import { INTERNAL_FILE_PATH_MIME } from "renderer/lib/file-drag";
 
 interface UseFileDragProps {
 	absolutePath: string | null;
@@ -14,7 +13,7 @@ export function useFileDrag({ absolutePath }: UseFileDragProps) {
 				return;
 			}
 			e.dataTransfer.setData("text/plain", absolutePath);
-			e.dataTransfer.setData(FILE_PATH_MIME, absolutePath);
+			e.dataTransfer.setData(INTERNAL_FILE_PATH_MIME, absolutePath);
 			e.dataTransfer.effectAllowed = "copy";
 		},
 		[absolutePath],

@@ -1,4 +1,4 @@
-import type { FileOpenMode } from "@superset/local-db";
+import type { FileDragBehavior, FileOpenMode } from "@superset/local-db";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import {
@@ -42,6 +42,10 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		isItemVisible(SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP, visibleItems);
 	const showFileOpenMode = isItemVisible(
 		SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
+		visibleItems,
+	);
+	const showFileDragBehavior = isItemVisible(
+		SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR,
 		visibleItems,
 	);
 	const showRightSidebarOpenViewWidth = isItemVisible(
@@ -152,6 +156,28 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 			utils.settings.getFileOpenMode.invalidate();
 		},
 	});
+	const { data: fileDragBehavior, isLoading: isFileDragBehaviorLoading } =
+		electronTrpc.settings.getFileDragBehavior.useQuery();
+	const setFileDragBehavior =
+		electronTrpc.settings.setFileDragBehavior.useMutation({
+			onMutate: async ({ behavior }) => {
+				await utils.settings.getFileDragBehavior.cancel();
+				const previous = utils.settings.getFileDragBehavior.getData();
+				utils.settings.getFileDragBehavior.setData(undefined, behavior);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getFileDragBehavior.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getFileDragBehavior.invalidate();
+			},
+		});
 
 	const {
 		data: rightSidebarOpenViewWidth,
@@ -324,6 +350,42 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 							<SelectContent>
 								<SelectItem value="split-pane">Split pane</SelectItem>
 								<SelectItem value="new-tab">New tab</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+				)}
+
+				{showFileDragBehavior && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label className="text-sm font-medium">
+								Sidebar file drag behavior
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Choose whether dragging files from the Files or Changes sidebar
+								into the main area opens them in the file viewer or pastes their
+								path into terminals
+							</p>
+						</div>
+						<Select
+							value={fileDragBehavior ?? "open-file-viewer"}
+							onValueChange={(value) =>
+								setFileDragBehavior.mutate({
+									behavior: value as FileDragBehavior,
+								})
+							}
+							disabled={
+								isFileDragBehaviorLoading || setFileDragBehavior.isPending
+							}
+						>
+							<SelectTrigger className="w-[220px]">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="open-file-viewer">
+									Open file viewer
+								</SelectItem>
+								<SelectItem value="paste-path">Paste file path</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>
