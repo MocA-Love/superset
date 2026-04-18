@@ -64,6 +64,29 @@ export function VibrancySection() {
 	const displayBlurLevelValue =
 		draftBlurLevelValue ?? blurLevelToSliderValue(blurLevel);
 
+	const commitOpacity = (value: number) => {
+		void setState({ opacity: value }).finally(() => {
+			setDraftOpacity((current) => (current === value ? null : current));
+		});
+	};
+
+	const commitBlurRadius = (value: number) => {
+		void setState({ blurRadius: value }).finally(() => {
+			setDraftBlurRadius((current) => (current === value ? null : current));
+		});
+	};
+
+	const commitBlurLevelValue = (value: number) => {
+		const nextLevel = sliderValueToBlurLevel(value);
+		if (nextLevel === blurLevel) {
+			setDraftBlurLevelValue((current) => (current === value ? null : current));
+			return;
+		}
+		void setState({ blurLevel: nextLevel }).finally(() => {
+			setDraftBlurLevelValue((current) => (current === value ? null : current));
+		});
+	};
+
 	useEffect(() => {
 		// index.tsx already kicks off hydrate at startup; this is a safety net
 		// for cold settings-only flows. The store itself dedupes concurrent
@@ -140,8 +163,7 @@ export function VibrancySection() {
 					onValueCommit={(values) => {
 						const value = values[0];
 						if (typeof value !== "number") return;
-						setDraftOpacity(null);
-						void setState({ opacity: value });
+						commitOpacity(value);
 					}}
 				/>
 				<p className="text-xs text-muted-foreground">
@@ -174,8 +196,7 @@ export function VibrancySection() {
 						onValueCommit={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
-							setDraftBlurRadius(null);
-							void setState({ blurRadius: value });
+							commitBlurRadius(value);
 						}}
 					/>
 					<p className="text-xs text-muted-foreground">
@@ -210,11 +231,7 @@ export function VibrancySection() {
 						onValueCommit={(values) => {
 							const value = values[0];
 							if (typeof value !== "number") return;
-							setDraftBlurLevelValue(null);
-							const nextLevel = sliderValueToBlurLevel(value);
-							if (nextLevel !== blurLevel) {
-								void setState({ blurLevel: nextLevel });
-							}
+							commitBlurLevelValue(value);
 						}}
 					/>
 					<p className="text-xs text-muted-foreground">
