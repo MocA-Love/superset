@@ -3,6 +3,7 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
 	HiOutlineBell,
 	HiOutlineBuildingOffice2,
+	HiOutlineChartBar,
 	HiOutlineCommandLine,
 	HiOutlineCpuChip,
 	HiOutlineCreditCard,
@@ -173,6 +174,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 	{
 		label: "System",
 		items: [
+			{
+				id: "/settings/metrics",
+				section: "metrics",
+				label: "Metrics",
+				icon: <HiOutlineChartBar className="h-4 w-4" />,
+			},
 			{
 				id: "/settings/security",
 				section: "security",
