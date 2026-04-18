@@ -3,9 +3,9 @@ import { dirname, join, resolve, sep } from "node:path";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
-import simpleGit from "simple-git";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
+import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import {
 	asLocalRef,
 	asRemoteRef,
@@ -732,7 +732,10 @@ export const workspaceCreationRouter = router({
 
 				if (!existsSync(repoPath)) {
 					mkdirSync(dirname(repoPath), { recursive: true });
-					await simpleGit().clone(cloudProject.repoCloneUrl, repoPath);
+					await createSimpleGitWithEnv().clone(
+						cloudProject.repoCloneUrl,
+						repoPath,
+					);
 				}
 
 				localProject = ctx.db
@@ -1073,7 +1076,10 @@ export const workspaceCreationRouter = router({
 				const repoPath = join(homeDir, ".superset", "repos", input.projectId);
 				if (!existsSync(repoPath)) {
 					mkdirSync(dirname(repoPath), { recursive: true });
-					await simpleGit().clone(cloudProject.repoCloneUrl, repoPath);
+					await createSimpleGitWithEnv().clone(
+						cloudProject.repoCloneUrl,
+						repoPath,
+					);
 				}
 				localProject = ctx.db
 					.insert(projects)
