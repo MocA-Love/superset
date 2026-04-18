@@ -45,13 +45,15 @@ its hook entries into these files while preserving user-defined entries:
 | `~/.codex/hooks.json` | Codex hook registration merge (`SessionStart`, `UserPromptSubmit`, `Stop`) |
 | `~/.factory/settings.json` | Factory Droid hook registration (`UserPromptSubmit`, `Notification`, `PostToolUse`, `Stop`) |
 
-For Codex specifically, Superset now relies on native `~/.codex/hooks.json`
-registration for durable prompt/tool lifecycle events, while the wrapper in
-`~/.superset[-{workspace}]/bin/codex` still injects `notify` and keeps the
-session-log watcher as a best-effort compatibility bridge for older Codex
-releases. On startup, Superset rewrites only its own managed entries in
-`~/.codex/hooks.json` to point at the current environment's `notify.sh`, while
-preserving any user-defined Codex hooks.
+For Codex specifically, Superset relies on native `~/.codex/hooks.json`
+registration as the sole source of completion notifications. The wrapper in
+`~/.superset[-{workspace}]/bin/codex` only enables `codex_hooks` (by passing
+`--enable codex_hooks` to the real binary) and keeps the session-log watcher
+as a best-effort bridge for per-prompt Start notifications and permission
+requests inside Superset terminals. It no longer injects `--notify=[...]` to
+avoid duplicate `/hook/complete` POSTs. On startup, Superset rewrites only its
+own managed entries in `~/.codex/hooks.json` to point at the current
+environment's `notify.sh`, while preserving any user-defined Codex hooks.
 
 ### `zsh/` and `bash/` - Shell Integration
 
