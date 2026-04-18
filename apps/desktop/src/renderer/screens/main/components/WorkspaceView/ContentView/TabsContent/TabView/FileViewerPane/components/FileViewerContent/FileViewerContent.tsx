@@ -888,6 +888,7 @@ export function FileViewerContent({
 					<div className="max-w-md truncate text-sm text-muted-foreground">
 						{filePath.split("/").pop()}
 					</div>
+					{/* biome-ignore lint/a11y/useMediaCaption: user-opened media files have no caption tracks */}
 					<audio
 						key={absoluteFilePath}
 						controls
@@ -902,6 +903,7 @@ export function FileViewerContent({
 
 		return (
 			<div className="flex h-full items-center justify-center bg-black">
+				{/* biome-ignore lint/a11y/useMediaCaption: user-opened media files have no caption tracks */}
 				<video
 					key={absoluteFilePath}
 					controls

@@ -45,13 +45,13 @@ import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
 import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
-import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-protocol";
 import {
 	prewarmTerminalRuntime,
 	reconcileDaemonSessions,
 } from "./lib/terminal";
 import { disposeTray, initTray } from "./lib/tray";
 import { windowManager } from "./lib/window-manager";
+import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-protocol";
 
 // Lazy import to avoid module resolution issues during Vite build
 const loadVscodeShim = () =>
