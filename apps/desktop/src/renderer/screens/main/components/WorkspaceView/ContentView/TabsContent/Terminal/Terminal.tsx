@@ -4,6 +4,7 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { sanitizeTerminalFontFamily } from "renderer/lib/terminal/appearance";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestions";
@@ -544,8 +545,7 @@ export const Terminal = memo(function Terminal({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: resizeRef is a stable MutableRefObject — .current is read inside the effect, not a dependency
 	useEffect(() => {
 		if (!fontSettings) return;
-		const family =
-			fontSettings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY;
+		const family = sanitizeTerminalFontFamily(fontSettings.terminalFontFamily);
 		const size = fontSettings.terminalFontSize ?? DEFAULT_TERMINAL_FONT_SIZE;
 		const result = v1TerminalCache.updateAppearance(paneId, family, size);
 		if (result?.changed) {
