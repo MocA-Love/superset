@@ -1,3 +1,4 @@
+import type { Server } from "node:http";
 import { join } from "node:path";
 import * as Sentry from "@sentry/electron/main";
 import { projects, workspaces, worktrees } from "@superset/local-db";
@@ -105,6 +106,19 @@ function buildAivisVars(event: AgentLifecycleEvent) {
 
 let currentWindow: BrowserWindow | null = null;
 let mainWindowCleanup: (() => void) | null = null;
+let notificationsInitialized = false;
+let notificationsServer: Server | null = null;
+let notificationManager: NotificationManager | null = null;
+let agentLifecycleListener: ((event: AgentLifecycleEvent) => void) | null =
+	null;
+let terminalExitListener:
+	| ((event: {
+			paneId: string;
+			exitCode: number;
+			signal?: number;
+			reason?: "killed" | "exited" | "error";
+	  }) => void)
+	| null = null;
 
 /** Tear down main window resources (notification server, IPC, etc.)
  *  without destroying the BrowserWindow itself. Called from before-quit
@@ -112,6 +126,7 @@ let mainWindowCleanup: (() => void) | null = null;
 export function cleanupMainWindowResources(): void {
 	mainWindowCleanup?.();
 	mainWindowCleanup = null;
+	cleanupNotifications();
 }
 
 function addWindowLifecycleBreadcrumb(
@@ -174,6 +189,110 @@ nativeTheme.on("updated", () => {
 		applyVibrancy(win, vibrancyState, isDark);
 	}
 });
+
+export function initNotifications(): void {
+	if (notificationsInitialized) return;
+
+	notificationManager = new NotificationManager({
+		isSupported: () => Notification.isSupported(),
+		createNotification: (opts) => new Notification(opts),
+		playSound: playNotificationSound,
+		playAivis: (event) => {
+			const kind =
+				event.eventType === "PermissionRequest" ? "permission" : "complete";
+			void playAivisNotification(kind, buildAivisVars(event));
+		},
+		onNotificationClick: (ids) => {
+			const window = getWindow();
+			if (window && !window.isDestroyed()) {
+				window.show();
+				window.focus();
+			} else {
+				app.emit("activate");
+			}
+			notificationsEmitter.emit(NOTIFICATION_EVENTS.FOCUS_TAB, ids);
+		},
+		getVisibilityContext: () => {
+			const window = getWindow();
+			const windowIsReady = window && !window.isDestroyed();
+			return {
+				isFocused: windowIsReady ? window.isFocused() : false,
+				currentWorkspaceId: windowIsReady
+					? extractWorkspaceIdFromUrl(window.webContents.getURL())
+					: null,
+				tabsState: appState.data?.tabsState,
+			};
+		},
+		getWorkspaceName: getWorkspaceNameFromDb,
+		getNotificationTitle: (event) =>
+			getNotificationTitle({
+				tabId: event.tabId,
+				paneId: event.paneId,
+				tabs: appState.data?.tabsState?.tabs,
+				panes: appState.data?.tabsState?.panes,
+			}),
+	});
+	notificationManager.start();
+
+	agentLifecycleListener = (event: AgentLifecycleEvent) => {
+		notificationManager?.handleAgentLifecycle(event);
+	};
+	notificationsEmitter.on(
+		NOTIFICATION_EVENTS.AGENT_LIFECYCLE,
+		agentLifecycleListener,
+	);
+
+	terminalExitListener = (event) => {
+		notificationsEmitter.emit(NOTIFICATION_EVENTS.TERMINAL_EXIT, {
+			paneId: event.paneId,
+			exitCode: event.exitCode,
+			signal: event.signal,
+			reason: event.reason,
+		});
+	};
+	getWorkspaceRuntimeRegistry()
+		.getDefault()
+		.terminal.on("terminalExit", terminalExitListener);
+
+	notificationsServer = notificationsApp.listen(
+		env.DESKTOP_NOTIFICATIONS_PORT,
+		"127.0.0.1",
+		() => {
+			console.log(
+				`[notifications] Listening on http://127.0.0.1:${env.DESKTOP_NOTIFICATIONS_PORT}`,
+			);
+		},
+	);
+
+	notificationsInitialized = true;
+}
+
+function cleanupNotifications(): void {
+	if (!notificationsInitialized) return;
+
+	if (agentLifecycleListener) {
+		notificationsEmitter.off(
+			NOTIFICATION_EVENTS.AGENT_LIFECYCLE,
+			agentLifecycleListener,
+		);
+		agentLifecycleListener = null;
+	}
+
+	if (terminalExitListener) {
+		getWorkspaceRuntimeRegistry()
+			.getDefault()
+			.terminal.off("terminalExit", terminalExitListener);
+		terminalExitListener = null;
+	}
+
+	notificationManager?.dispose();
+	notificationManager = null;
+
+	notificationsServer?.close();
+	notificationsServer = null;
+
+	notificationsInitialized = false;
+}
 
 export async function MainWindow() {
 	const shouldPersistWindowPosition = isWindowPositionPersistenceEnabled();
@@ -243,77 +362,6 @@ export async function MainWindow() {
 		});
 		windowManager.setIpcHandler(ipcHandler);
 	}
-
-	const server = notificationsApp.listen(
-		env.DESKTOP_NOTIFICATIONS_PORT,
-		"127.0.0.1",
-		() => {
-			console.log(
-				`[notifications] Listening on http://127.0.0.1:${env.DESKTOP_NOTIFICATIONS_PORT}`,
-			);
-		},
-	);
-
-	const notificationManager = new NotificationManager({
-		isSupported: () => Notification.isSupported(),
-		createNotification: (opts) => new Notification(opts),
-		playSound: playNotificationSound,
-		playAivis: (event) => {
-			const kind =
-				event.eventType === "PermissionRequest" ? "permission" : "complete";
-			void playAivisNotification(kind, buildAivisVars(event));
-		},
-		onNotificationClick: (ids) => {
-			window.show();
-			window.focus();
-			notificationsEmitter.emit(NOTIFICATION_EVENTS.FOCUS_TAB, ids);
-		},
-		getVisibilityContext: () => ({
-			isFocused: window.isFocused(),
-			currentWorkspaceId: extractWorkspaceIdFromUrl(
-				window.webContents.getURL(),
-			),
-			tabsState: appState.data?.tabsState,
-		}),
-		getWorkspaceName: getWorkspaceNameFromDb,
-		getNotificationTitle: (event) =>
-			getNotificationTitle({
-				tabId: event.tabId,
-				paneId: event.paneId,
-				tabs: appState.data?.tabsState?.tabs,
-				panes: appState.data?.tabsState?.panes,
-			}),
-	});
-	notificationManager.start();
-
-	notificationsEmitter.on(
-		NOTIFICATION_EVENTS.AGENT_LIFECYCLE,
-		(event: AgentLifecycleEvent) => {
-			notificationManager.handleAgentLifecycle(event);
-		},
-	);
-
-	// Forward low-volume terminal lifecycle events to the renderer via the existing
-	// notifications subscription. This is used only for correctness (e.g. clearing
-	// stuck agent lifecycle statuses when terminal panes aren't mounted).
-	getWorkspaceRuntimeRegistry()
-		.getDefault()
-		.terminal.on(
-			"terminalExit",
-			(event: {
-				paneId: string;
-				exitCode: number;
-				signal?: number;
-				reason?: "killed" | "exited" | "error";
-			}) => {
-				notificationsEmitter.emit(NOTIFICATION_EVENTS.TERMINAL_EXIT, {
-					paneId: event.paneId,
-					exitCode: event.exitCode,
-					signal: event.signal,
-					reason: event.reason,
-				});
-			},
-		);
 
 	// macOS Sequoia+: occluded/minimized windows can lose compositor layers,
 	// and NSVisualEffectView's vibrancy/native blur can detach while the
@@ -483,10 +531,6 @@ export async function MainWindow() {
 
 	function doCleanup() {
 		browserManager.unregisterAll();
-		server.close();
-		notificationManager.dispose();
-		notificationsEmitter.removeAllListeners();
-		getWorkspaceRuntimeRegistry().getDefault().terminal.detachAllListeners();
 		ipcHandler?.detachWindow(window);
 		windowManager.unregister("main");
 		currentWindow = null;

@@ -57,7 +57,11 @@ import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-proto
 const loadVscodeShim = () =>
 	import("./lib/vscode-shim") as Promise<typeof import("./lib/vscode-shim")>;
 
-import { cleanupMainWindowResources, MainWindow } from "./windows/main";
+import {
+	cleanupMainWindowResources,
+	initNotifications,
+	MainWindow,
+} from "./windows/main";
 
 console.log("[main] Local database ready:", !!localDb);
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -773,6 +777,7 @@ if (!gotTheLock) {
 			});
 		}
 
+		initNotifications();
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
 		setupServiceStatusPolling();
