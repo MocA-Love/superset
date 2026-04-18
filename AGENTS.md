@@ -92,7 +92,26 @@ bun run build
 bun run package
 ```
 
-`bun run build` は `--publish never` で実行され、`apps/desktop/dist/` に成果物が出る。CI と同じ電池ない確認が可能。
+`bun run build` は `--publish never` で実行され、`apps/desktop/release/` に成果物 (dmg / zip / blockmap / latest-mac.yml) が出る。
+
+**⚠️ dmg は必ず内容検証すること。** electron-builder が `Electron Framework.framework/Versions/A/Electron Framework` (175MB のバイナリ本体) を dmg に書き込まないバグがある (v1.5.5-fork.9 で発生、再現)。検証と復旧の手順:
+
+```bash
+# 検証: dmg 内に Electron Framework 本体があるか
+hdiutil attach apps/desktop/release/Superset-*-arm64.dmg -nobrowse -readonly
+ls -la "/Volumes/Superset*/Superset.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
+# 175MB のバイナリがあれば OK。無ければ dmg 壊れ → 下記手順で作り直す。
+hdiutil detach /Volumes/Superset*
+
+# 復旧: hdiutil で手動 dmg を生成
+rm -f apps/desktop/release/Superset-*-arm64.dmg apps/desktop/release/Superset-*-arm64.dmg.blockmap
+hdiutil create -fs HFS+ -format UDZO \
+  -srcfolder "apps/desktop/release/mac-arm64/Superset.app" \
+  -volname "Superset <version>-arm64" \
+  apps/desktop/release/Superset-<version>-arm64.dmg
+```
+
+zip はこのバグの影響を受けない (EF binary を正しく含む) ので、ユーザー向けに **zip 配布経路も並行で用意する**のが安全。
 
 ### リリース (フォーク配布)
 
