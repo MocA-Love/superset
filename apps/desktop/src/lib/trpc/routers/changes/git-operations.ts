@@ -1,4 +1,7 @@
-import { generateTitleFromMessage } from "@superset/chat/server/desktop";
+import {
+	generateTitleFromMessage,
+	generateTitleFromMessageWithStreamingModel,
+} from "@superset/chat/server/desktop";
 import { TRPCError } from "@trpc/server";
 import { callSmallModel } from "lib/ai/call-small-model";
 import { z } from "zod";
@@ -657,8 +660,20 @@ export const createGitOperationsRouter = () => {
 							: f.diff;
 
 					const { result } = await callSmallModel<string>({
-						invoke: async ({ model, providerId, providerName }) =>
-							generateTitleFromMessage({
+						invoke: async ({
+							model,
+							credentials,
+							providerId,
+							providerName,
+						}) => {
+							if (providerId === "openai" && credentials.kind === "oauth") {
+								return generateTitleFromMessageWithStreamingModel({
+									message: `File: ${f.path}\n\n${truncatedDiff}`,
+									model: model as never,
+									instructions: PHASE1_INSTRUCTIONS,
+								});
+							}
+							return generateTitleFromMessage({
 								message: `File: ${f.path}\n\n${truncatedDiff}`,
 								agentModel: model,
 								agentId: `commit-file-summary-${providerId}`,
@@ -668,7 +683,8 @@ export const createGitOperationsRouter = () => {
 									surface: "commit-file-summary",
 									provider: providerName,
 								},
-							}),
+							});
+						},
 					});
 
 					return `${f.path}: ${result ?? "変更あり"}`;
@@ -692,8 +708,16 @@ export const createGitOperationsRouter = () => {
 					"日本語で簡潔なconventional commitメッセージを生成してください。コミットメッセージの行のみを返してください。";
 
 				const { result, attempts } = await callSmallModel<string>({
-					invoke: async ({ model, providerId, providerName }) =>
-						generateTitleFromMessage({
+					invoke: async ({ model, credentials, providerId, providerName }) => {
+						if (providerId === "openai" && credentials.kind === "oauth") {
+							return generateTitleFromMessageWithStreamingModel({
+								message: PHASE2_PROMPT,
+								model: model as never,
+								instructions: PHASE2_INSTRUCTIONS,
+							});
+						}
+
+						return generateTitleFromMessage({
 							message: PHASE2_PROMPT,
 							agentModel: model,
 							agentId: `commit-message-${providerId}`,
@@ -703,7 +727,8 @@ export const createGitOperationsRouter = () => {
 								surface: "commit-message-generation",
 								provider: providerName,
 							},
-						}),
+						});
+					},
 				});
 
 				if (!result) {

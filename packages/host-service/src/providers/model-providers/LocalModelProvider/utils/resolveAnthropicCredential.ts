@@ -82,7 +82,7 @@ function getAnthropicCredentialFromKeychain(): LocalResolvedCredential | null {
 	return null;
 }
 
-async function getAnthropicCredentialFromAuthStorage(): Promise<LocalResolvedCredential | null> {
+function getAnthropicCredentialFromAuthStorage(): LocalResolvedCredential | null {
 	try {
 		const authStorage = createAuthStorage();
 		authStorage.reload();
@@ -97,45 +97,18 @@ async function getAnthropicCredentialFromAuthStorage(): Promise<LocalResolvedCre
 			return { kind: "api_key" };
 		}
 
-		if (credential.type === "oauth") {
-			const expiresAt =
-				typeof credential.expires === "number" ? credential.expires : undefined;
-			if (typeof expiresAt === "number" && Date.now() >= expiresAt) {
-				try {
-					await authStorage.getApiKey(ANTHROPIC_PROVIDER_ID);
-					authStorage.reload();
-					const refreshed = authStorage.get(ANTHROPIC_PROVIDER_ID);
-					if (
-						isObjectRecord(refreshed) &&
-						refreshed.type === "oauth" &&
-						typeof refreshed.access === "string" &&
-						refreshed.access.trim().length > 0
-					) {
-						return {
-							kind: "oauth",
-							expiresAt:
-								typeof refreshed.expires === "number"
-									? refreshed.expires
-									: undefined,
-						};
-					}
-					// Refresh returned no usable access token — callers must
-					// fall back rather than proxying an expired credential.
-					return null;
-				} catch (error) {
-					console.warn(
-						"[LocalModelProvider] Anthropic OAuth refresh failed:",
-						error,
-					);
-					return null;
-				}
-			}
-			if (
-				typeof credential.access === "string" &&
-				credential.access.trim().length > 0
-			) {
-				return { kind: "oauth", expiresAt };
-			}
+		if (
+			credential.type === "oauth" &&
+			typeof credential.access === "string" &&
+			credential.access.trim().length > 0
+		) {
+			return {
+				kind: "oauth",
+				expiresAt:
+					typeof credential.expires === "number"
+						? credential.expires
+						: undefined,
+			};
 		}
 	} catch {
 		// Ignore auth storage read failures for now.
@@ -144,10 +117,10 @@ async function getAnthropicCredentialFromAuthStorage(): Promise<LocalResolvedCre
 	return null;
 }
 
-export async function resolveAnthropicCredential(): Promise<LocalResolvedCredential | null> {
+export function resolveAnthropicCredential(): LocalResolvedCredential | null {
 	return (
 		getAnthropicCredentialFromConfig() ??
 		getAnthropicCredentialFromKeychain() ??
-		(await getAnthropicCredentialFromAuthStorage())
+		getAnthropicCredentialFromAuthStorage()
 	);
 }

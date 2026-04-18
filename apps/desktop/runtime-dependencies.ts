@@ -108,7 +108,7 @@ export const mainExternalizedDependencies = [
 	// mastracode transitively loads @mastra/fastembed → onnxruntime-node, whose
 	// native binding is loaded via a dynamic `require` that @rollup/plugin-commonjs
 	// can't resolve at bundle time. Externalizing lets Node handle the require at
-	// runtime from node_modules. Also keeps the bundle size sane (~20 MB chunk).
+	// runtime from node_modules.
 	"mastracode",
 ];
 

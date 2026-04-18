@@ -1,7 +1,13 @@
-import { generateTitleFromMessage } from "@superset/chat/server/desktop";
-import { getSmallModel } from "@superset/chat/server/shared";
+import {
+	generateTitleFromMessage,
+	generateTitleFromMessageWithStreamingModel,
+} from "@superset/chat/server/desktop";
 import { workspaces } from "@superset/local-db";
 import { and, eq, isNull } from "drizzle-orm";
+import {
+	callSmallModel,
+	type SmallModelAttempt,
+} from "lib/ai/call-small-model";
 import { localDb } from "main/lib/local-db";
 import { deriveWorkspaceTitleFromPrompt } from "shared/utils/workspace-naming";
 import { getWorkspaceAutoRenameDecision } from "./workspace-auto-rename";
@@ -26,39 +32,66 @@ export type WorkspaceAutoRenameResult =
 			warning?: string;
 	  };
 
-const FALLBACK_WARNING =
-	"A prompt-based title was used because model naming was unavailable.";
-
 export async function generateWorkspaceNameFromPrompt(prompt: string): Promise<{
 	name: string | null;
 	usedPromptFallback: boolean;
 	warning?: string;
 }> {
-	const model = getSmallModel();
-	if (model) {
-		try {
-			const generated = await generateTitleFromMessage({
+	const { result, attempts } = await callSmallModel<string>({
+		invoke: async ({ credentials, providerId, providerName, model }) => {
+			if (providerId === "openai" && credentials.kind === "oauth") {
+				return generateTitleFromMessageWithStreamingModel({
+					message: prompt,
+					model: model as never,
+					instructions: "You generate concise workspace titles.",
+				});
+			}
+
+			return generateTitleFromMessage({
 				message: prompt,
 				agentModel: model,
-				agentId: "workspace-namer",
+				agentId: `workspace-namer-${providerId}`,
 				agentName: "Workspace Namer",
 				instructions: "You generate concise workspace titles.",
-				tracingContext: { surface: "workspace-auto-name" },
+				tracingContext: {
+					surface: "workspace-auto-name",
+					provider: providerName,
+				},
 			});
-			if (generated !== null && generated !== undefined) {
-				return { name: generated, usedPromptFallback: false };
-			}
-		} catch (error) {
-			console.error("[workspace-ai-name] title generation failed", error);
+		},
+	});
+	if (result !== null && result !== undefined) {
+		return { name: result, usedPromptFallback: false };
+	}
+
+	for (const attempt of attempts) {
+		if (attempt.outcome === "failed") {
+			console.error(
+				`[workspace-ai-name] ${attempt.providerName} title generation failed`,
+				{
+					issue: attempt.issue ?? null,
+					reason: attempt.reason ?? null,
+				},
+			);
+			continue;
+		}
+		if (attempt.outcome === "unsupported-credentials") {
+			console.info(
+				`[workspace-ai-name] Skipping ${attempt.providerName} for title generation`,
+				{
+					issue: attempt.issue ?? attempt.reason,
+				},
+			);
 		}
 	}
 
 	const fallbackTitle = deriveWorkspaceTitleFromPrompt(prompt);
 	if (fallbackTitle) {
+		console.info("[workspace-ai-name] Falling back to prompt-derived title");
 		return {
 			name: fallbackTitle,
 			usedPromptFallback: true,
-			warning: FALLBACK_WARNING,
+			warning: buildWorkspaceAutoNameFallbackWarning(attempts),
 		};
 	}
 
@@ -169,4 +202,34 @@ export async function attemptWorkspaceAutoRenameFromPrompt({
 				? latestDecision.reason
 				: "workspace-name-changed",
 	};
+}
+
+function buildWorkspaceAutoNameFallbackWarning(
+	attempts: SmallModelAttempt[],
+): string {
+	if (attempts.length === 0) {
+		return "No model account was connected, so a prompt-based title was used.";
+	}
+
+	for (let index = attempts.length - 1; index >= 0; index -= 1) {
+		const attempt = attempts[index];
+		if (attempt.outcome === "expired-credentials") {
+			return `${attempt.issue?.message ?? `${attempt.providerName} needs to be reconnected`}, so a prompt-based title was used.`;
+		}
+		if (attempt.outcome === "failed") {
+			return `${attempt.issue?.message ?? `${attempt.providerName} couldn't generate a title`}, so a prompt-based title was used.`;
+		}
+		if (attempt.outcome === "unsupported-credentials") {
+			return `${attempt.issue?.message ?? "No compatible model account was available"}, so a prompt-based title was used.`;
+		}
+	}
+
+	const missingCredentials = attempts.every(
+		(attempt) => attempt.outcome === "missing-credentials",
+	);
+	if (missingCredentials) {
+		return "No model account was connected, so a prompt-based title was used.";
+	}
+
+	return "A prompt-based title was used because model naming was unavailable.";
 }

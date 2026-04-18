@@ -1,6 +1,7 @@
 import { chatServiceTrpc } from "@superset/chat/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -46,6 +47,7 @@ export function useOpenAIOAuth({
 	const [oauthCode, setOauthCode] = useState("");
 	const [oauthError, setOauthError] = useState<string | null>(null);
 	const [hasPendingOAuthSession, setHasPendingOAuthSession] = useState(false);
+	const electronUtils = electronTrpc.useUtils();
 
 	const { data: openAIStatus, refetch: refetchOpenAIStatus } =
 		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
@@ -90,14 +92,13 @@ export function useOpenAIOAuth({
 			setOauthCode("");
 			setHasPendingOAuthSession(true);
 			setOauthDialogOpen(true);
-			await openExternalUrl(result.url);
 		} catch (error) {
 			setOauthDialogOpen(true);
 			setOauthError(
 				getErrorMessage(error, "Failed to start OpenAI OAuth flow"),
 			);
 		}
-	}, [openExternalUrl, startOpenAIOAuthMutation]);
+	}, [startOpenAIOAuthMutation]);
 
 	const { copyToClipboard } = useCopyToClipboard();
 	const copyOAuthUrl = useCallback(() => {
@@ -109,6 +110,10 @@ export function useOpenAIOAuth({
 	const syncOpenAIAuthUi = useCallback(
 		async (action: "complete" | "disconnect") => {
 			try {
+				await electronTrpcClient.modelProviders.clearIssue.mutate({
+					providerId: "openai",
+				});
+				await electronUtils.modelProviders.getStatuses.invalidate();
 				await refetchOpenAIStatus();
 			} catch (error) {
 				console.error(
@@ -117,7 +122,7 @@ export function useOpenAIOAuth({
 				);
 			}
 		},
-		[refetchOpenAIStatus],
+		[electronUtils.modelProviders.getStatuses.invalidate, refetchOpenAIStatus],
 	);
 
 	const completeOpenAIOAuth = useCallback(async () => {
