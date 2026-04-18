@@ -80,7 +80,7 @@ export interface TerminalSessionOperations {
 	cancelCreateOrAttach(params: { paneId: string; requestId: string }): void;
 
 	/** Write data to the terminal */
-	write(params: { paneId: string; data: string }): void;
+	write(params: { paneId: string; data: string; requireAck?: boolean }): void;
 
 	/** Resize the terminal */
 	resize(params: { paneId: string; cols: number; rows: number }): void;

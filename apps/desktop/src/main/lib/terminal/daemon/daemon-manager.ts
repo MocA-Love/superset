@@ -682,12 +682,22 @@ export class DaemonTerminalManager extends EventEmitter {
 		}
 	}
 
-	write(params: { paneId: string; data: string }): void {
-		const { paneId, data } = params;
+	write(params: {
+		paneId: string;
+		data: string;
+		requireAck?: boolean;
+	}): Promise<void> | void {
+		const { paneId, data, requireAck = false } = params;
 
 		const session = this.sessions.get(paneId);
 		if (!session || !session.isAlive) {
 			throw new Error(`Terminal session ${paneId} not found or not alive`);
+		}
+
+		// Critical one-shot commands like workspace setup should fail loudly if
+		// the daemon didn't actually accept the write.
+		if (requireAck) {
+			return this.client.write({ sessionId: paneId, data }).then(() => {});
 		}
 
 		this.client.writeNoAck({ sessionId: paneId, data });
