@@ -1860,6 +1860,53 @@ export const createGitStatusProcedures = () => {
 					}));
 			}),
 
+		getMissingWorktrees: publicProcedure
+			.input(z.object({ projectId: z.string() }))
+			.query(({ input }) => {
+				const projectWorktrees = localDb
+					.select({
+						id: worktrees.id,
+						path: worktrees.path,
+						branch: worktrees.branch,
+					})
+					.from(worktrees)
+					.where(eq(worktrees.projectId, input.projectId))
+					.all();
+
+				return projectWorktrees
+					.filter((wt) => !existsSync(wt.path))
+					.map((wt) => ({
+						worktreeId: wt.id,
+						path: wt.path,
+						branch: wt.branch,
+					}));
+			}),
+
+		cleanupMissingWorktrees: publicProcedure
+			.input(z.object({ projectId: z.string() }))
+			.mutation(({ input }) => {
+				const projectWorktrees = localDb
+					.select()
+					.from(worktrees)
+					.where(eq(worktrees.projectId, input.projectId))
+					.all();
+
+				const missing = projectWorktrees.filter((wt) => !existsSync(wt.path));
+
+				let removed = 0;
+				for (const wt of missing) {
+					// Delete associated workspaces first (cascade would handle it, but be explicit)
+					localDb
+						.delete(workspaces)
+						.where(eq(workspaces.worktreeId, wt.id))
+						.run();
+					localDb.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
+					removed++;
+				}
+
+				return { removed };
+			}),
+
 		getCheckJobSteps: publicProcedure
 			.input(
 				z.object({

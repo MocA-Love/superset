@@ -1,3 +1,4 @@
+export { useCleanupMissingWorktrees } from "./useCleanupMissingWorktrees";
 export { useCloseWorkspace } from "./useCloseWorkspace";
 export { useCreateFromPr } from "./useCreateFromPr";
 export { useCreateSectionFromWorkspaces } from "./useCreateSectionFromWorkspaces";
