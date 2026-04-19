@@ -62,7 +62,7 @@ export const createTodoAgentRouter = () => {
 						remoteControlEnabled: input.remoteControlEnabled,
 						maxIterations: input.maxIterations,
 						maxWallClockSec: input.maxWallClockSec,
-						hasVerify: input.verifyCommand.trim().length > 0,
+						hasVerify: (input.verifyCommand?.trim().length ?? 0) > 0,
 						hasCustomSystemPrompt:
 							(input.customSystemPrompt?.trim().length ?? 0) > 0,
 					},
