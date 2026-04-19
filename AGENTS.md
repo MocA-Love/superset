@@ -94,21 +94,40 @@ bun run package
 
 `bun run build` は `--publish never` で実行され、`apps/desktop/release/` に成果物 (dmg / zip / blockmap / latest-mac.yml) が出る。
 
-**⚠️ dmg は必ず内容検証すること。** electron-builder が `Electron Framework.framework/Versions/A/Electron Framework` (175MB のバイナリ本体) を dmg に書き込まないバグがある (v1.5.5-fork.9 で発生、再現)。検証と復旧の手順:
+**⚠️ dmg は必ず内容検証すること。** `bun run build` (フル build、dmg+zip 同時生成) だけだと、electron-builder が `Electron Framework.framework/Versions/A/Electron Framework` (167MB のバイナリ本体) を dmg に書き込まないバグが再現する (v1.5.5-fork.9 / fork.11 で発生)。zip 側は EF を正しく含むので、このバグは **dmg ターゲット固有**。
+
+**検証:**
 
 ```bash
-# 検証: dmg 内に Electron Framework 本体があるか
 hdiutil attach apps/desktop/release/Superset-*-arm64.dmg -nobrowse -readonly
-ls -la "/Volumes/Superset*/Superset.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
-# 175MB のバイナリがあれば OK。無ければ dmg 壊れ → 下記手順で作り直す。
-hdiutil detach /Volumes/Superset*
+# 4点セットが揃っているか確認:
+#   - Superset.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework (167MB)
+#   - Applications -> /Applications シンボリックリンク
+#   - .DS_Store (アイコン配置・ウィンドウサイズ)
+#   - .background.tiff (背景画像)
+ls -la "/Volumes/Superset 1.5.5-arm64/"
+ls -la "/Volumes/Superset 1.5.5-arm64/Superset.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
+hdiutil detach "/Volumes/Superset 1.5.5-arm64"
+```
 
-# 復旧: hdiutil で手動 dmg を生成
-rm -f apps/desktop/release/Superset-*-arm64.dmg apps/desktop/release/Superset-*-arm64.dmg.blockmap
-hdiutil create -fs HFS+ -format UDZO \
-  -srcfolder "apps/desktop/release/mac-arm64/Superset.app" \
-  -volname "Superset <version>-arm64" \
-  apps/desktop/release/Superset-<version>-arm64.dmg
+**復旧: dmg ターゲットだけを単独で再実行する** (v1.5.5-fork.11 で有効性確認):
+
+```bash
+cd apps/desktop
+rm -f release/Superset-*-arm64.dmg release/Superset-*-arm64.dmg.blockmap
+bunx electron-builder --mac dmg --config electron-builder.ts --publish never
+# 再度検証 (上のブロック)
+```
+
+このフルビルド → dmg 再生成の二段階で、EF バイナリ + レイアウト (背景 + Applications ドラッグターゲット + アイコン配置) 両方が入った正しい dmg が得られる。
+
+**❌ hdiutil で手動生成してはいけない** (v1.5.5-fork.11 で失敗):
+
+```bash
+# これは dmg の EF 欠落は直るが、.DS_Store / .background.tiff / Applications symlink が
+# 一切含まれず、ユーザーが開いたときにプレーンな Finder ウィンドウになってしまう。
+# 過去の手順ノートにあったが、使わないこと。
+hdiutil create -fs HFS+ -format UDZO -srcfolder "release/mac-arm64/Superset.app" ...
 ```
 
 zip はこのバグの影響を受けない (EF binary を正しく含む) ので、ユーザー向けに **zip 配布経路も並行で用意する**のが安全。
