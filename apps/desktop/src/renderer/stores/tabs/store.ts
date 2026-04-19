@@ -49,6 +49,7 @@ import {
 	createVscodeExtensionTabWithPane,
 	equalizeSplitPercentages,
 	extractPaneIdsFromLayout,
+	findPanePathInLayout,
 	findReusableFileViewerPane,
 	generateId,
 	generateTabName,
@@ -63,6 +64,22 @@ import {
 import { killTerminalForPane } from "./utils/terminal-cleanup";
 
 const DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE = 50;
+
+const getRelativeFileViewerSplitPercentage = (
+	position: "top" | "bottom" | "left" | "right",
+	useRightSidebarOpenViewWidth?: boolean,
+): number => {
+	if (
+		!useRightSidebarOpenViewWidth ||
+		position === "top" ||
+		position === "bottom"
+	) {
+		return DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE;
+	}
+
+	const sidebarWidth = getRightSidebarOpenViewWidth();
+	return position === "left" ? sidebarWidth : 100 - sidebarWidth;
+};
 
 /**
  * Finds the next best tab to activate when closing a tab.
@@ -1102,41 +1119,90 @@ export const useTabsStore = create<TabsStore>()(
 						return newPane.id;
 					}
 
-					const newPane = createFileViewerPane(activeTab.id, options);
-					const splitPercentage = options.useRightSidebarOpenViewWidth
-						? 100 - getRightSidebarOpenViewWidth()
-						: DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE;
+					const relativeSplitPosition =
+						options.relativeSplitPosition ?? "right";
+					const splitPercentage = getRelativeFileViewerSplitPercentage(
+						relativeSplitPosition,
+						options.useRightSidebarOpenViewWidth,
+					);
+					const splitTargetTab =
+						options.relativeToTabId && options.relativeToPaneId
+							? (state.tabs.find((tab) => tab.id === options.relativeToTabId) ??
+								null)
+							: null;
+					const splitTargetPane =
+						splitTargetTab && options.relativeToPaneId
+							? state.panes[options.relativeToPaneId]
+							: null;
+					const splitTargetPath =
+						splitTargetTab &&
+						splitTargetPane &&
+						splitTargetPane.tabId === splitTargetTab.id
+							? findPanePathInLayout(splitTargetTab.layout, splitTargetPane.id)
+							: null;
+					const resolvedRelativeTarget =
+						splitTargetTab && splitTargetPane && splitTargetPath !== null
+							? {
+									tab: splitTargetTab,
+									pane: splitTargetPane,
+									path: splitTargetPath,
+								}
+							: null;
 
-					const newLayout: MosaicNode<string> = {
-						direction: "row",
-						first: activeTab.layout,
-						second: newPane.id,
+					const targetTab = resolvedRelativeTarget?.tab ?? activeTab;
+					const newPaneForTarget = createFileViewerPane(targetTab.id, options);
+					const targetLayoutNode =
+						resolvedRelativeTarget?.pane.id ?? targetTab.layout;
+					const splitDirection =
+						relativeSplitPosition === "top" ||
+						relativeSplitPosition === "bottom"
+							? "column"
+							: "row";
+					const insertBeforeTarget =
+						relativeSplitPosition === "left" || relativeSplitPosition === "top";
+					const splitNode: MosaicNode<string> = {
+						direction: splitDirection,
+						first: insertBeforeTarget ? newPaneForTarget.id : targetLayoutNode,
+						second: insertBeforeTarget ? targetLayoutNode : newPaneForTarget.id,
 						splitPercentage,
 					};
+					const newLayout: MosaicNode<string> = resolvedRelativeTarget
+						? resolvedRelativeTarget.path.length > 0
+							? updateTree(targetTab.layout, [
+									{
+										path: resolvedRelativeTarget.path,
+										spec: { $set: splitNode },
+									},
+								])
+							: splitNode
+						: splitNode;
 
-					const newPanes = { ...state.panes, [newPane.id]: newPane };
-					const tabName = deriveTabName(newPanes, activeTab.id);
+					const newPanes = {
+						...state.panes,
+						[newPaneForTarget.id]: newPaneForTarget,
+					};
+					const tabName = deriveTabName(newPanes, targetTab.id);
 
 					set({
 						tabs: state.tabs.map((t) =>
-							t.id === activeTab.id
+							t.id === targetTab.id
 								? { ...t, layout: newLayout, name: tabName }
 								: t,
 						),
 						panes: newPanes,
 						focusedPaneIds: {
 							...state.focusedPaneIds,
-							[activeTab.id]: newPane.id,
+							[targetTab.id]: newPaneForTarget.id,
 						},
 					});
 
 					posthog.capture("panel_opened", {
 						panel_type: "file_viewer",
-						workspace_id: activeTab.workspaceId,
-						pane_id: newPane.id,
+						workspace_id: targetTab.workspaceId,
+						pane_id: newPaneForTarget.id,
 					});
 
-					return newPane.id;
+					return newPaneForTarget.id;
 				},
 
 				removePane: (paneId) => {

@@ -94,6 +94,12 @@ export interface AddFileViewerPaneOptions {
 	reuseExisting?: FileViewerReuseScope;
 	/** If true, use the right sidebar initial split width setting for new split panes */
 	useRightSidebarOpenViewWidth?: boolean;
+	/** When provided, split relative to this existing pane instead of the root layout */
+	relativeToPaneId?: string;
+	/** Tab containing `relativeToPaneId`; ignored when the pane is missing or invalid */
+	relativeToTabId?: string;
+	/** Split direction to use when opening relative to an existing pane */
+	relativeSplitPosition?: MosaicDropPosition;
 }
 
 /**

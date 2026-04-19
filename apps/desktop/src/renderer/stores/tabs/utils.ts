@@ -676,6 +676,8 @@ export const findPanePath = (
 	return null;
 };
 
+export const findPanePathInLayout = findPanePath;
+
 export type FocusDirection = "left" | "right" | "up" | "down";
 
 const findEdgeMosaicPaneId = (
