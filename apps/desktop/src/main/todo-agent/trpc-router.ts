@@ -25,6 +25,7 @@ import { computeNextRunAt, getTodoScheduler } from "./scheduler";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSettings, updateTodoSettings } from "./settings";
 import { getTodoSupervisor } from "./supervisor";
+import { getTodoSessionDebugData, todoAgentMainDebug } from "./debug";
 import {
 	TODO_ARTIFACT_SUBDIR,
 	type TodoScheduleFireEvent,
@@ -52,104 +53,153 @@ export const createTodoAgentRouter = () => {
 		create: publicProcedure
 			.input(todoCreateInputSchema)
 			.mutation(async ({ input }) => {
-				// When the UI creates a fresh workspace+worktree immediately
-				// before creating the TODO (the "新しい worktree を作成して実行"
-				// checkbox), `workspaces.create` returns while `git worktree
-				// add` is still running in the background. Materializing the
-				// artifact directory now would mkdir inside the future
-				// worktree path, leaving it non-empty and causing the
-				// subsequent `git worktree add` to fail — the symptom users
-				// see as the sidebar error + "ブランチ取得中…" that never
-				// resolves. Block until init is done (or already no-op) so
-				// prepareArtifacts runs against a real worktree.
-				//
-				// `waitForInit` has a 30s internal timeout that resolves
-				// silently even if init is still running, so a slow
-				// fetch/clone path could still slip through. Loop on the
-				// `isInitializing` flag so we really block until the job
-				// reaches a terminal state, up to a generous ceiling.
-				const INIT_WAIT_STEP_MS = 30_000;
-				const INIT_WAIT_CEILING_MS = 10 * 60_000;
-				const waitStartedAt = Date.now();
-				while (workspaceInitManager.isInitializing(input.workspaceId)) {
-					if (Date.now() - waitStartedAt > INIT_WAIT_CEILING_MS) {
+				todoAgentMainDebug.info(
+					"todo-create-request",
+					{
+						workspaceId: input.workspaceId,
+						projectId: input.projectId ?? null,
+						ptyEnabled: input.ptyEnabled,
+						remoteControlEnabled: input.remoteControlEnabled,
+						maxIterations: input.maxIterations,
+						maxWallClockSec: input.maxWallClockSec,
+						hasVerify: input.verifyCommand.trim().length > 0,
+						hasCustomSystemPrompt:
+							(input.customSystemPrompt?.trim().length ?? 0) > 0,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["todo.agent.main", "todo-create-request"],
+					},
+				);
+				try {
+					// When the UI creates a fresh workspace+worktree immediately
+					// before creating the TODO (the "新しい worktree を作成して実行"
+					// checkbox), `workspaces.create` returns while `git worktree
+					// add` is still running in the background. Materializing the
+					// artifact directory now would mkdir inside the future
+					// worktree path, leaving it non-empty and causing the
+					// subsequent `git worktree add` to fail — the symptom users
+					// see as the sidebar error + "ブランチ取得中…" that never
+					// resolves. Block until init is done (or already no-op) so
+					// prepareArtifacts runs against a real worktree.
+					//
+					// `waitForInit` has a 30s internal timeout that resolves
+					// silently even if init is still running, so a slow
+					// fetch/clone path could still slip through. Loop on the
+					// `isInitializing` flag so we really block until the job
+					// reaches a terminal state, up to a generous ceiling.
+					const INIT_WAIT_STEP_MS = 30_000;
+					const INIT_WAIT_CEILING_MS = 10 * 60_000;
+					const waitStartedAt = Date.now();
+					while (workspaceInitManager.isInitializing(input.workspaceId)) {
+						if (Date.now() - waitStartedAt > INIT_WAIT_CEILING_MS) {
+							throw new TRPCError({
+								code: "TIMEOUT",
+								message: `todo-agent: workspace ${input.workspaceId} の初期化が時間内に終わりませんでした`,
+							});
+						}
+						await workspaceInitManager.waitForInit(
+							input.workspaceId,
+							INIT_WAIT_STEP_MS,
+						);
+					}
+					if (workspaceInitManager.hasFailed(input.workspaceId)) {
 						throw new TRPCError({
-							code: "TIMEOUT",
-							message: `todo-agent: workspace ${input.workspaceId} の初期化が時間内に終わりませんでした`,
+							code: "PRECONDITION_FAILED",
+							message: `todo-agent: workspace ${input.workspaceId} の初期化に失敗しました`,
 						});
 					}
-					await workspaceInitManager.waitForInit(
-						input.workspaceId,
-						INIT_WAIT_STEP_MS,
-					);
-				}
-				if (workspaceInitManager.hasFailed(input.workspaceId)) {
-					throw new TRPCError({
-						code: "PRECONDITION_FAILED",
-						message: `todo-agent: workspace ${input.workspaceId} の初期化に失敗しました`,
+
+					const store = getTodoSessionStore();
+					const worktreePath = resolveWorktreePath(input.workspaceId);
+					if (!worktreePath) {
+						throw new Error(
+							`todo-agent: workspace ${input.workspaceId} のパスを解決できませんでした`,
+						);
+					}
+
+					// Compute the final artifact path up-front so the row is
+					// inserted with its permanent path in one shot. No more
+					// half-written PENDING rows left behind if the process
+					// crashes between insert and update.
+					const sessionId = randomUUID();
+					const supervisor = getTodoSupervisor();
+					const artifactPath = supervisor.computeArtifactPath({
+						sessionId,
+						workspaceId: input.workspaceId,
 					});
-				}
 
-				const store = getTodoSessionStore();
-				const worktreePath = resolveWorktreePath(input.workspaceId);
-				if (!worktreePath) {
-					throw new Error(
-						`todo-agent: workspace ${input.workspaceId} のパスを解決できませんでした`,
+					// Fall through to the user's configured defaults when the
+					// composer did not pick an explicit model / effort. Null
+					// at both levels means "use Claude Code's own default"
+					// (we simply omit the CLI flag at spawn time).
+					const settings = getTodoSettings();
+					const resolvedModel =
+						input.claudeModel !== undefined
+							? input.claudeModel
+							: (settings.defaultClaudeModel ?? null);
+					const resolvedEffort =
+						input.claudeEffort !== undefined
+							? input.claudeEffort
+							: (settings.defaultClaudeEffort ?? null);
+
+					const session = store.insertQueuedFromTemplate({
+						id: sessionId,
+						projectId: input.projectId ?? null,
+						workspaceId: input.workspaceId,
+						title: input.title ?? "",
+						description: input.description,
+						goal: input.goal,
+						verifyCommand: input.verifyCommand,
+						maxIterations: input.maxIterations,
+						maxWallClockSec: input.maxWallClockSec,
+						customSystemPrompt: input.customSystemPrompt,
+						claudeModel: resolvedModel,
+						claudeEffort: resolvedEffort,
+						remoteControlEnabled: input.remoteControlEnabled,
+						artifactPath,
+					});
+
+					// Materialize the directory + goal.md. If this throws after
+					// the row exists the user can delete the broken session
+					// from the Manager — same as any other filesystem error.
+					supervisor.prepareArtifacts(session);
+					writeTodoSessionRuntimeConfig(session.artifactPath, {
+						ptyEnabled: input.ptyEnabled,
+						remoteControlEnabled: input.remoteControlEnabled,
+					});
+
+					todoAgentMainDebug.info(
+						"todo-create-request-success",
+						{
+							...getTodoSessionDebugData(session),
+							ptyEnabled: input.ptyEnabled,
+							remoteControlEnabled: input.remoteControlEnabled,
+							claudeModel: resolvedModel,
+							claudeEffort: resolvedEffort,
+						},
+						{
+							captureMessage: true,
+							fingerprint: ["todo.agent.main", "todo-create-request-success"],
+						},
 					);
+					return { sessionId: session.id };
+				} catch (error) {
+					todoAgentMainDebug.captureException(
+						error,
+						"todo-create-request-failed",
+						{
+							workspaceId: input.workspaceId,
+							projectId: input.projectId ?? null,
+							ptyEnabled: input.ptyEnabled,
+							remoteControlEnabled: input.remoteControlEnabled,
+						},
+						{
+							fingerprint: ["todo.agent.main", "todo-create-request-failed"],
+						},
+					);
+					throw error;
 				}
-
-				// Compute the final artifact path up-front so the row is
-				// inserted with its permanent path in one shot. No more
-				// half-written PENDING rows left behind if the process
-				// crashes between insert and update.
-				const sessionId = randomUUID();
-				const supervisor = getTodoSupervisor();
-				const artifactPath = supervisor.computeArtifactPath({
-					sessionId,
-					workspaceId: input.workspaceId,
-				});
-
-				// Fall through to the user's configured defaults when the
-				// composer did not pick an explicit model / effort. Null
-				// at both levels means "use Claude Code's own default"
-				// (we simply omit the CLI flag at spawn time).
-				const settings = getTodoSettings();
-				const resolvedModel =
-					input.claudeModel !== undefined
-						? input.claudeModel
-						: (settings.defaultClaudeModel ?? null);
-				const resolvedEffort =
-					input.claudeEffort !== undefined
-						? input.claudeEffort
-						: (settings.defaultClaudeEffort ?? null);
-
-				const session = store.insertQueuedFromTemplate({
-					id: sessionId,
-					projectId: input.projectId ?? null,
-					workspaceId: input.workspaceId,
-					title: input.title ?? "",
-					description: input.description,
-					goal: input.goal,
-					verifyCommand: input.verifyCommand,
-					maxIterations: input.maxIterations,
-					maxWallClockSec: input.maxWallClockSec,
-					customSystemPrompt: input.customSystemPrompt,
-					claudeModel: resolvedModel,
-					claudeEffort: resolvedEffort,
-					remoteControlEnabled: input.remoteControlEnabled,
-					artifactPath,
-				});
-
-				// Materialize the directory + goal.md. If this throws after
-				// the row exists the user can delete the broken session
-				// from the Manager — same as any other filesystem error.
-				supervisor.prepareArtifacts(session);
-				writeTodoSessionRuntimeConfig(session.artifactPath, {
-					ptyEnabled: input.ptyEnabled,
-					remoteControlEnabled: input.remoteControlEnabled,
-				});
-
-				return { sessionId: session.id };
 			}),
 
 		list: publicProcedure
@@ -226,6 +276,23 @@ export const createTodoAgentRouter = () => {
 					waitingUntil: null,
 					waitingReason: null,
 				});
+				const runtimeConfig = readTodoSessionRuntimeConfig({
+					artifactPath: session.artifactPath,
+					fallbackRemoteControlEnabled: session.remoteControlEnabled ?? false,
+				});
+				todoAgentMainDebug.info(
+					"todo-start-request",
+					{
+						...getTodoSessionDebugData(session),
+						runtimeConfigPtyEnabled: runtimeConfig.ptyEnabled,
+						runtimeConfigRemoteControlEnabled:
+							runtimeConfig.remoteControlEnabled,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["todo.agent.main", "todo-start-request"],
+					},
+				);
 				// Fire-and-forget: the supervisor drives the rest of the loop.
 				void getTodoSupervisor().start(input.sessionId);
 				return { ok: true };
@@ -412,6 +479,14 @@ export const createTodoAgentRouter = () => {
 						message: "元セッションが見つかりません",
 					});
 				}
+				todoAgentMainDebug.info(
+					"todo-rerun-request",
+					getTodoSessionDebugData(source),
+					{
+						captureMessage: true,
+						fingerprint: ["todo.agent.main", "todo-rerun-request"],
+					},
+				);
 
 				// Create a brand-new queued session that copies the user-
 				// authored fields from the source. Verdict / iteration /
@@ -465,6 +540,20 @@ export const createTodoAgentRouter = () => {
 					fallbackRemoteControlEnabled: source.remoteControlEnabled ?? false,
 				});
 				writeTodoSessionRuntimeConfig(next.artifactPath, runtimeConfig);
+				todoAgentMainDebug.info(
+					"todo-rerun-request-success",
+					{
+						sourceSessionId: source.id,
+						nextSessionId: next.id,
+						nextArtifactPath: next.artifactPath,
+						ptyEnabled: runtimeConfig.ptyEnabled,
+						remoteControlEnabled: runtimeConfig.remoteControlEnabled,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["todo.agent.main", "todo-rerun-request-success"],
+					},
+				);
 
 				return { sessionId: next.id };
 			}),

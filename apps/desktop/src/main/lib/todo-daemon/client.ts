@@ -27,6 +27,7 @@ import { connect, type Socket } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { app } from "electron";
+import { todoAgentMainDebug } from "main/todo-agent/debug";
 import { SUPERSET_DIR_NAME } from "shared/constants";
 import {
 	type AbortRequest,
@@ -221,6 +222,17 @@ export class TodoDaemonClient extends EventEmitter {
 				this.activeSessionIds = Array.isArray(response.activeSessionIds)
 					? response.activeSessionIds.slice()
 					: [];
+				todoAgentMainDebug.info(
+					"todo-daemon-client-authenticated",
+					{
+						protocolVersion: response.protocolVersion,
+						activeSessionCount: this.activeSessionIds.length,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["todo.agent.main", "todo-daemon-client-authenticated"],
+					},
+				);
 				return;
 			} catch (error) {
 				if (attempt === 0) {
@@ -640,8 +652,52 @@ export class TodoDaemonClient extends EventEmitter {
 	// =========================================================================
 
 	async start(request: StartRequest): Promise<EmptyResponse> {
-		await this.ensureConnected();
-		return this.sendRequest<EmptyResponse>("start", request);
+		todoAgentMainDebug.info(
+			"todo-daemon-client-start-request",
+			{
+				sessionId: request.sessionId,
+				fromScheduledWakeup: request.fromScheduledWakeup ?? false,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["todo.agent.main", "todo-daemon-client-start-request"],
+			},
+		);
+		try {
+			await this.ensureConnected();
+			const response = await this.sendRequest<EmptyResponse>("start", request);
+			todoAgentMainDebug.info(
+				"todo-daemon-client-start-request-success",
+				{
+					sessionId: request.sessionId,
+					fromScheduledWakeup: request.fromScheduledWakeup ?? false,
+				},
+				{
+					captureMessage: true,
+					fingerprint: [
+						"todo.agent.main",
+						"todo-daemon-client-start-request-success",
+					],
+				},
+			);
+			return response;
+		} catch (error) {
+			todoAgentMainDebug.captureException(
+				error,
+				"todo-daemon-client-start-request-failed",
+				{
+					sessionId: request.sessionId,
+					fromScheduledWakeup: request.fromScheduledWakeup ?? false,
+				},
+				{
+					fingerprint: [
+						"todo.agent.main",
+						"todo-daemon-client-start-request-failed",
+					],
+				},
+			);
+			throw error;
+		}
 	}
 
 	async abort(request: AbortRequest): Promise<EmptyResponse> {
@@ -667,8 +723,31 @@ export class TodoDaemonClient extends EventEmitter {
 	}
 
 	async rehydrate(): Promise<EmptyResponse> {
-		await this.ensureConnected();
-		return this.sendRequest<EmptyResponse>("rehydrate", {});
+		try {
+			await this.ensureConnected();
+			const response = await this.sendRequest<EmptyResponse>("rehydrate", {});
+			todoAgentMainDebug.info(
+				"todo-daemon-client-rehydrate-success",
+				{
+					activeSessionCount: this.activeSessionIds.length,
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["todo.agent.main", "todo-daemon-client-rehydrate-success"],
+				},
+			);
+			return response;
+		} catch (error) {
+			todoAgentMainDebug.captureException(
+				error,
+				"todo-daemon-client-rehydrate-failed",
+				undefined,
+				{
+					fingerprint: ["todo.agent.main", "todo-daemon-client-rehydrate-failed"],
+				},
+			);
+			throw error;
+		}
 	}
 
 	async listActive(): Promise<ListActiveResponse> {
