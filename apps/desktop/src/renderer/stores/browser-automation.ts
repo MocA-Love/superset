@@ -32,7 +32,7 @@ interface BrowserAutomationUiState {
 	listViewOpen: boolean;
 	openConnectModal: (paneId: string, preselectSessionId?: string) => void;
 	closeConnectModal: () => void;
-	setSelectedSession: (sessionId: string) => void;
+	setSelectedSession: (sessionId: string | null) => void;
 	setListViewOpen: (open: boolean) => void;
 }
 

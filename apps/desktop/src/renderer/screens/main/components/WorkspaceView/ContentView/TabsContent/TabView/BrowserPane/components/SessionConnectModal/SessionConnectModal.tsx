@@ -56,12 +56,16 @@ export function SessionConnectModal({
 		? (sessions.find((s) => s.id === currentBinding) ?? null)
 		: null;
 
-	// Auto-select a sensible default when the modal opens with nothing picked.
+	// Auto-select a sensible default when the modal opens with nothing picked,
+	// and reset the selection when the chosen session drops out of the live
+	// set (e.g. it transitioned to `done` / `aborted`).
 	useEffect(() => {
 		if (!open || !paneId) return;
-		if (selectedSessionId) return;
+		const selectedStillLive =
+			selectedSessionId && sessions.some((s) => s.id === selectedSessionId);
+		if (selectedStillLive) return;
 		const fallback = currentBinding ?? sessions[0]?.id ?? null;
-		if (fallback) setSelectedSession(fallback);
+		setSelectedSession(fallback);
 	}, [
 		open,
 		paneId,

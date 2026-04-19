@@ -28,6 +28,12 @@ class BindingStore {
 	private readonly byPane = new Map<string, BrowserAutomationBinding>();
 	private readonly emitter = new EventEmitter();
 
+	constructor() {
+		// One subscription per renderer hook instance; a workspace with many
+		// open panes can blow past Node's 10-listener default otherwise.
+		this.emitter.setMaxListeners(0);
+	}
+
 	list(): BrowserAutomationBinding[] {
 		return Array.from(this.byPane.values());
 	}
