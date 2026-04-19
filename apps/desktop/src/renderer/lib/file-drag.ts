@@ -1,9 +1,15 @@
 export const INTERNAL_FILE_PATH_MIME = "application/x-superset-file-path";
 
+export function hasInternalDraggedFilePath(
+	dataTransfer: DataTransfer,
+): boolean {
+	return Array.from(dataTransfer.types).includes(INTERNAL_FILE_PATH_MIME);
+}
+
 export function getInternalDraggedFilePath(
 	dataTransfer: DataTransfer,
 ): string | null {
-	if (!Array.from(dataTransfer.types).includes(INTERNAL_FILE_PATH_MIME)) {
+	if (!hasInternalDraggedFilePath(dataTransfer)) {
 		return null;
 	}
 

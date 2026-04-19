@@ -162,6 +162,27 @@ export const extractPaneIdsFromLayout = (
 /** Alias for extractPaneIdsFromLayout emphasizing the visual ordering contract */
 export const getPaneIdsInVisualOrder = extractPaneIdsFromLayout;
 
+export const findPanePathInLayout = (
+	layout: MosaicNode<string>,
+	paneId: string,
+	currentPath: MosaicBranch[] = [],
+): MosaicBranch[] | null => {
+	if (typeof layout === "string") {
+		return layout === paneId ? currentPath : null;
+	}
+
+	const firstPath = findPanePathInLayout(layout.first, paneId, [
+		...currentPath,
+		"first",
+	]);
+	if (firstPath) return firstPath;
+
+	return findPanePathInLayout(layout.second, paneId, [
+		...currentPath,
+		"second",
+	]);
+};
+
 /**
  * Options for creating a pane with preset configuration
  */
