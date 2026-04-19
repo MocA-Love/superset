@@ -2,6 +2,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { useCallback, useRef } from "react";
 import { DEBUG_TERMINAL } from "../config";
+import { logTerminalWrite, terminalRendererDebug } from "../debug";
 import type {
 	CreateOrAttachResult,
 	TerminalExitReason,
@@ -91,9 +92,31 @@ export function useTerminalRestore({
 			0,
 			pendingEventsRef.current.length,
 		);
+		terminalRendererDebug.info(
+			"flush-pending-events",
+			{
+				paneId,
+				eventCount: events.length,
+				dataEvents: events.filter((event) => event.type === "data").length,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "flush-pending-events"],
+			},
+		);
 		for (const event of events) {
 			if (event.type === "data") {
+				terminalRendererDebug.observe(
+					"restore-pending-data-bytes",
+					event.data.length,
+					{
+						data: { paneId },
+					},
+				);
 				updateModesRef.current(event.data);
+				logTerminalWrite("restore-pending-event", event.data.length, {
+					paneId,
+				});
 				xterm.write(event.data);
 				updateCwdRef.current(event.data);
 			} else if (event.type === "exit") {
@@ -104,7 +127,7 @@ export function useTerminalRestore({
 				onDisconnectEventRef.current(event.reason);
 			}
 		}
-	}, [xtermRef, pendingEventsRef]);
+	}, [paneId, pendingEventsRef, xtermRef]);
 
 	const maybeApplyInitialState = useCallback(() => {
 		if (!didFirstRenderRef.current) return;
@@ -130,6 +153,22 @@ export function useTerminalRestore({
 
 			// Canonical initial content: prefer snapshot (daemon mode) over scrollback
 			const initialAnsi = result.snapshot?.snapshotAnsi ?? result.scrollback;
+			terminalRendererDebug.info(
+				"apply-initial-state",
+				{
+					paneId,
+					isNew: result.isNew,
+					isColdRestore: result.isColdRestore ?? false,
+					hasSnapshot: result.snapshot !== undefined,
+					initialAnsiBytes: initialAnsi.length,
+					rehydrateBytes: result.snapshot?.rehydrateSequences.length ?? 0,
+					pendingEvents: pendingEventsRef.current.length,
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "apply-initial-state"],
+				},
+			);
 
 			// Track alternate screen mode from snapshot
 			isAlternateScreenRef.current = !!result.snapshot?.modes.alternateScreen;
@@ -163,6 +202,9 @@ export function useTerminalRestore({
 
 			// For alt-screen (TUI) sessions, enter alt-screen and trigger SIGWINCH
 			if (isAltScreenReattach) {
+				logTerminalWrite("restore-enter-alt-screen", "\x1b[?1049h".length, {
+					paneId,
+				});
 				xterm.write("\x1b[?1049h", () => {
 					if (result.snapshot?.rehydrateSequences) {
 						const ESC = "\x1b";
@@ -172,6 +214,13 @@ export function useTerminalRestore({
 							.split(`${ESC}[?47h`)
 							.join("");
 						if (filteredRehydrate) {
+							logTerminalWrite(
+								"restore-rehydrate-filtered",
+								filteredRehydrate.length,
+								{
+									paneId,
+								},
+							);
 							xterm.write(filteredRehydrate);
 						}
 					}
@@ -213,10 +262,20 @@ export function useTerminalRestore({
 					finalizeRestore();
 					return;
 				}
+				logTerminalWrite("restore-initial-ansi", initialAnsi.length, {
+					paneId,
+				});
 				xterm.write(initialAnsi, finalizeRestore);
 			};
 
 			if (rehydrateSequences) {
+				logTerminalWrite(
+					"restore-rehydrate-sequences",
+					rehydrateSequences.length,
+					{
+						paneId,
+					},
+				);
 				xterm.write(rehydrateSequences, writeSnapshot);
 			} else {
 				writeSnapshot();

@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { DEBUG_TERMINAL } from "../config";
+import { logTerminalWrite, terminalRendererDebug } from "../debug";
 import type { TerminalExitReason, TerminalStreamEvent } from "../types";
 
 export interface UseTerminalStreamOptions {
@@ -158,6 +159,18 @@ export function useTerminalStream({
 						`[Terminal] Queuing event (not ready): ${paneId}, type=${event.type}, bytes=${event.data.length}`,
 					);
 				}
+				if (event.type === "data") {
+					terminalRendererDebug.increment("pending-data-events", 1, {
+						data: { paneId, bytes: event.data.length },
+					});
+					terminalRendererDebug.observe(
+						"pending-data-bytes",
+						event.data.length,
+						{
+							data: { paneId },
+						},
+					);
+				}
 				pendingEventsRef.current.push(event);
 				return;
 			}
@@ -170,8 +183,15 @@ export function useTerminalStream({
 						`[Terminal] First stream data received: ${paneId}, ${event.data.length} bytes`,
 					);
 				}
+				terminalRendererDebug.increment("stream-data-events", 1, {
+					data: { paneId },
+				});
+				terminalRendererDebug.observe("stream-data-bytes", event.data.length, {
+					data: { paneId },
+				});
 
 				updateModesRef.current(event.data);
+				logTerminalWrite("stream-data", event.data.length, { paneId });
 				xterm.write(event.data);
 				updateCwdRef.current(event.data);
 			} else if (event.type === "exit") {

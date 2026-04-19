@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useCreateOrAttachWithTheme } from "renderer/hooks/useCreateOrAttachWithTheme";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
+import { logTerminalInput, terminalRendererDebug } from "../debug";
 import type {
 	TerminalCancelCreateOrAttachMutate,
 	TerminalClearScrollbackMutate,
@@ -44,12 +45,26 @@ export function useTerminalConnection({
 	// Use imperative client calls for write/resize/detach/clear to avoid
 	// mutation-observer re-renders on every keystroke.
 	const writeRef = useRef<TerminalWriteMutate>((input, callbacks) => {
+		logTerminalInput("trpc-write", input.data.length, { paneId: input.paneId });
 		electronTrpcClient.terminal.write
 			.mutate(input)
 			.then(() => {
 				callbacks?.onSuccess?.();
 			})
 			.catch((error) => {
+				terminalRendererDebug.error(
+					"terminal-write-mutate-failed",
+					{
+						paneId: input.paneId,
+						bytes: input.data.length,
+						errorMessage:
+							error instanceof Error ? error.message : "Write failed",
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "terminal-write-mutate-failed"],
+					},
+				);
 				callbacks?.onError?.({
 					message: error instanceof Error ? error.message : "Write failed",
 				});

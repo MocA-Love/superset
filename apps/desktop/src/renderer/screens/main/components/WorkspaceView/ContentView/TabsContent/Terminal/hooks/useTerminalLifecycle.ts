@@ -16,6 +16,7 @@ import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { scheduleTerminalAttach } from "../attach-scheduler";
 import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
 import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
+import { logTerminalWrite, terminalRendererDebug } from "../debug";
 import {
 	type ActiveSuggestionHandle,
 	setupClickToMoveCursor,
@@ -228,6 +229,11 @@ export function useTerminalLifecycle({
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] Mount: ${paneId}`);
 		}
+		terminalRendererDebug.info(
+			"mount",
+			{ paneId, workspaceId },
+			{ captureMessage: true, fingerprint: ["terminal.renderer", "mount"] },
+		);
 
 		// Cancel pending detach from previous unmount
 		const pendingDetach = pendingDetaches.get(paneId);
@@ -269,6 +275,20 @@ export function useTerminalLifecycle({
 			cachedBeforeCreate?.streamReady === true &&
 			cachedBeforeCreate.subscription !== null &&
 			!hasPendingColdRestore;
+		terminalRendererDebug.info(
+			"reattach-evaluated",
+			{
+				paneId,
+				isReattach,
+				hasPendingColdRestore,
+				hasSubscription: cachedBeforeCreate?.subscription !== null,
+				streamReady: cachedBeforeCreate?.streamReady ?? false,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "reattach-evaluated"],
+			},
+		);
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] isReattach=${isReattach} paneId=${paneId}`);
 		}
@@ -604,6 +624,14 @@ export function useTerminalLifecycle({
 						if (DEBUG_TERMINAL) {
 							console.log(`[Terminal] createOrAttach start: ${paneId}`);
 						}
+						terminalRendererDebug.info(
+							"create-or-attach-start",
+							{ paneId, workspaceId, requestId },
+							{
+								captureMessage: true,
+								fingerprint: ["terminal.renderer", "create-or-attach-start"],
+							},
+						);
 						createOrAttachRef.current(
 							{
 								paneId,
@@ -624,6 +652,23 @@ export function useTerminalLifecycle({
 									setConnectionError(null);
 									syncBackendDimensions();
 									clearPaneInitialDataRef.current(paneId);
+									terminalRendererDebug.info(
+										"create-or-attach-success",
+										{
+											paneId,
+											requestId,
+											isColdRestore: result.isColdRestore ?? false,
+											isNew: result.isNew,
+											wasRecovered: result.wasRecovered,
+										},
+										{
+											captureMessage: true,
+											fingerprint: [
+												"terminal.renderer",
+												"create-or-attach-success",
+											],
+										},
+									);
 
 									// FORK NOTE: Do NOT mark the cache as streamReady here
 									// yet. Cold-restore responses come back without a real
@@ -638,6 +683,11 @@ export function useTerminalLifecycle({
 										setIsRestoredMode(true);
 										setRestoredCwd(storedColdRestore.cwd);
 										if (storedColdRestore.scrollback && xterm) {
+											logTerminalWrite(
+												"lifecycle-stored-cold-restore-scrollback",
+												storedColdRestore.scrollback.length,
+												{ paneId },
+											);
 											xterm.write(
 												storedColdRestore.scrollback,
 												scheduleScrollToBottom,
@@ -658,6 +708,11 @@ export function useTerminalLifecycle({
 										setIsRestoredMode(true);
 										setRestoredCwd(result.previousCwd || null);
 										if (scrollback && xterm) {
+											logTerminalWrite(
+												"lifecycle-cold-restore-scrollback",
+												scrollback.length,
+												{ paneId },
+											);
 											xterm.write(scrollback, scheduleScrollToBottom);
 										}
 										didFirstRenderRef.current = true;
@@ -717,6 +772,22 @@ export function useTerminalLifecycle({
 										return;
 									}
 									console.error("[Terminal] Failed to create/attach:", error);
+									terminalRendererDebug.captureException(
+										error,
+										"create-or-attach-failed",
+										{
+											paneId,
+											requestId,
+											errorMessage:
+												error instanceof Error ? error.message : String(error),
+										},
+										{
+											fingerprint: [
+												"terminal.renderer",
+												"create-or-attach-failed",
+											],
+										},
+									);
 									rejectTerminalSessionReady(
 										paneId,
 										new Error(error.message || "Failed to connect to terminal"),
@@ -841,6 +912,11 @@ export function useTerminalLifecycle({
 					`[Terminal] Unmount: ${paneId}, paneDestroyed=${paneDestroyed}`,
 				);
 			}
+			terminalRendererDebug.info(
+				"unmount",
+				{ paneId, workspaceId, paneDestroyed },
+				{ captureMessage: true, fingerprint: ["terminal.renderer", "unmount"] },
+			);
 			cancelInitialAttach?.();
 			isUnmounted = true;
 			attachCanceled = true;
@@ -878,6 +954,22 @@ export function useTerminalLifecycle({
 				// xterm AND stream subscription alive in the cache.
 				// No backend detach — the session stays connected so data
 				// continues flowing to xterm while hidden.
+				// これは主問題ではなく副次仮説の観測点で、
+				// hidden 中の keepalive が描画崩れや重さに関係するかを
+				// Sentry 上で切り分けるために残している。
+				terminalRendererDebug.info(
+					"hidden-detach-keepalive",
+					{
+						paneId,
+						workspaceId,
+						streamReady: cached.streamReady,
+						hasSubscription: cached.subscription !== null,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "hidden-detach-keepalive"],
+					},
+				);
 				v1TerminalCache.detachFromContainer(paneId);
 			}
 

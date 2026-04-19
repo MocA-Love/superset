@@ -5,6 +5,7 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import { markTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { DEBUG_TERMINAL } from "./config";
+import { logTerminalWrite, terminalRendererDebug } from "./debug";
 import { type CreateTerminalOptions, createTerminalInWrapper } from "./helpers";
 import type { TerminalStreamEvent } from "./types";
 
@@ -111,6 +112,18 @@ export function attachToContainer(
 	if (!entry) return;
 
 	container.appendChild(entry.wrapper);
+	terminalRendererDebug.info(
+		"cache-attach-to-container",
+		{
+			paneId,
+			hasSubscription: entry.subscription !== null,
+			streamReady: entry.streamReady,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "cache-attach-to-container"],
+		},
+	);
 
 	if (container.clientWidth > 0 && container.clientHeight > 0) {
 		entry.fitAddon.fit();
@@ -145,6 +158,18 @@ export function detachFromContainer(paneId: string): void {
 	if (DEBUG_TERMINAL) {
 		console.log(`[v1-terminal-cache] detachFromContainer: ${paneId}`);
 	}
+	terminalRendererDebug.info(
+		"cache-detach-from-container",
+		{
+			paneId,
+			hasSubscription: entry.subscription !== null,
+			streamReady: entry.streamReady,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "cache-detach-from-container"],
+		},
+	);
 	entry.resizeObserver?.disconnect();
 	entry.resizeObserver = null;
 	entry.wrapper.remove();
@@ -189,7 +214,11 @@ export function updateAppearance(
 
 // --- Stream subscription ---
 
-function routeEvent(entry: CachedTerminal, event: TerminalStreamEvent): void {
+function routeEvent(
+	paneId: string,
+	entry: CachedTerminal,
+	event: TerminalStreamEvent,
+): void {
 	// Before stream is ready: queue everything (first-mount gating).
 	if (!entry.streamReady) {
 		entry.pendingStreamEvents.push(event);
@@ -203,7 +232,17 @@ function routeEvent(entry: CachedTerminal, event: TerminalStreamEvent): void {
 	}
 
 	// Component unmounted — write data directly to xterm, queue the rest.
+	// ここは hidden terminal 継続処理の観測点で、主問題ではなく副次仮説。
+	// 「表示中なのに描画されない」問題とは別軸で、
+	// hidden 中も xterm.write が走り続けていないかを見る。
 	if (event.type === "data") {
+		terminalRendererDebug.increment("hidden-data-events", 1, {
+			data: { paneId, bytes: event.data.length },
+		});
+		terminalRendererDebug.observe("hidden-data-bytes", event.data.length, {
+			data: { paneId },
+		});
+		logTerminalWrite("hidden-stream-data", event.data.length, { paneId });
 		entry.xterm.write(event.data);
 	} else {
 		entry.pendingLifecycleEvents.push(event);
@@ -223,16 +262,35 @@ export function startStream(paneId: string): void {
 	if (DEBUG_TERMINAL) {
 		console.log(`[v1-terminal-cache] Starting stream: ${paneId}`);
 	}
+	terminalRendererDebug.info(
+		"cache-start-stream",
+		{ paneId },
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "cache-start-stream"],
+		},
+	);
 
 	entry.subscription = electronTrpcClient.terminal.stream.subscribe(paneId, {
 		onData: (event: TerminalStreamEvent) => {
-			routeEvent(entry, event);
+			routeEvent(paneId, entry, event);
 		},
 		onError: (error: unknown) => {
 			// Subscription is dead after onError — null it and reset streamReady
 			// so the next remount goes through the full create/attach path.
 			entry.subscription = null;
 			entry.streamReady = false;
+			terminalRendererDebug.error(
+				"cache-stream-error",
+				{
+					paneId,
+					errorMessage: error instanceof Error ? error.message : String(error),
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "cache-stream-error"],
+				},
+			);
 
 			if (entry.subscriptionErrorHandler) {
 				entry.subscriptionErrorHandler(error);
@@ -259,11 +317,19 @@ export function setStreamReady(paneId: string): void {
 			`[v1-terminal-cache] Stream ready: ${paneId}, flushing ${entry.pendingStreamEvents.length} queued events`,
 		);
 	}
+	terminalRendererDebug.info(
+		"cache-stream-ready",
+		{ paneId, pendingStreamEvents: entry.pendingStreamEvents.length },
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "cache-stream-ready"],
+		},
+	);
 
 	entry.streamReady = true;
 	const pending = entry.pendingStreamEvents.splice(0);
 	for (const event of pending) {
-		routeEvent(entry, event);
+		routeEvent(paneId, entry, event);
 	}
 }
 
@@ -325,6 +391,14 @@ export function dispose(paneId: string): void {
 	if (DEBUG_TERMINAL) {
 		console.log(`[v1-terminal-cache] Disposing: ${paneId}`);
 	}
+	terminalRendererDebug.info(
+		"cache-dispose",
+		{ paneId },
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "cache-dispose"],
+		},
+	);
 
 	entry.resizeObserver?.disconnect();
 	entry.subscription?.unsubscribe();

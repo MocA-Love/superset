@@ -36,6 +36,7 @@ import type {
 	TerminalSnapshot,
 } from "../lib/terminal-host/types";
 import { treeKillAsync } from "../lib/tree-kill";
+import { terminalHostDebug } from "./debug";
 import {
 	createFrameHeader,
 	PtySubprocessFrameDecoder,
@@ -1245,6 +1246,18 @@ export class Session {
 		}
 
 		this.emulatorWriteBackpressured = true;
+		terminalHostDebug.warn(
+			"emulator-backpressure-paused",
+			{
+				sessionId: this.sessionId,
+				queuedBytes: this.emulatorWriteQueuedBytes,
+				clientCount: this.attachedClients.size,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.host", "emulator-backpressure-paused"],
+			},
+		);
 		console.warn(
 			`[Session ${this.sessionId}] Emulator backlog reached ${this.emulatorWriteQueuedBytes} bytes, pausing PTY reads`,
 		);
@@ -1260,6 +1273,18 @@ export class Session {
 		}
 
 		this.emulatorWriteBackpressured = false;
+		terminalHostDebug.info(
+			"emulator-backpressure-resumed",
+			{
+				sessionId: this.sessionId,
+				queuedBytes: this.emulatorWriteQueuedBytes,
+				clientCount: this.attachedClients.size,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.host", "emulator-backpressure-resumed"],
+			},
+		);
 		this.updateSubprocessStdoutFlow();
 	}
 

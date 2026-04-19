@@ -28,6 +28,7 @@ import {
 	shouldSelectAllShortcut,
 } from "./clipboardShortcuts";
 import { TERMINAL_OPTIONS } from "./config";
+import { terminalRendererDebug } from "./debug";
 import { suppressQueryResponses } from "./suppressQueryResponses";
 
 /**
@@ -145,15 +146,31 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 
 		try {
 			webglAddon = new WebglAddon();
+			terminalRendererDebug.info(
+				"webgl-addon-loaded",
+				{ suggestedRendererType: suggestedRendererType ?? "auto" },
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "webgl-loaded"],
+				},
+			);
 			webglAddon.onContextLoss(() => {
 				webglAddon?.dispose();
 				webglAddon = null;
+				terminalRendererDebug.warn("webgl-context-lost", undefined, {
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "webgl-context-lost"],
+				});
 				xterm.refresh(0, xterm.rows - 1);
 			});
 			xterm.loadAddon(webglAddon);
 		} catch {
 			suggestedRendererType = "dom";
 			webglAddon = null;
+			terminalRendererDebug.warn("webgl-addon-fallback-dom", undefined, {
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "webgl-fallback-dom"],
+			});
 		}
 	});
 

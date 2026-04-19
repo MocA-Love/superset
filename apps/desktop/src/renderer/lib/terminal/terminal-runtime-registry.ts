@@ -1,6 +1,7 @@
 import type { ProgressAddon } from "@xterm/addon-progress";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { TerminalAppearance } from "./appearance";
+import { terminalRendererDebug } from "./debug";
 import {
 	type LinkHoverInfo,
 	type TerminalLinkHandlers,
@@ -43,7 +44,7 @@ class TerminalRuntimeRegistryImpl {
 
 		entry = {
 			runtime: null,
-			transport: createTransport(),
+			transport: createTransport(terminalId),
 			linkManager: null,
 			pendingLinkHandlers: null,
 		};
@@ -59,6 +60,18 @@ class TerminalRuntimeRegistryImpl {
 		appearance: TerminalAppearance,
 	) {
 		const entry = this.getOrCreateEntry(terminalId);
+		terminalRendererDebug.info(
+			"runtime-attach",
+			{
+				terminalId,
+				hasExistingRuntime: entry.runtime !== null,
+				connectionState: entry.transport.connectionState,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "runtime-attach"],
+			},
+		);
 
 		if (!entry.runtime) {
 			entry.runtime = createRuntime(terminalId, appearance);
@@ -104,6 +117,17 @@ class TerminalRuntimeRegistryImpl {
 	detach(terminalId: string) {
 		const entry = this.entries.get(terminalId);
 		if (!entry?.runtime) return;
+		terminalRendererDebug.info(
+			"runtime-detach",
+			{
+				terminalId,
+				connectionState: entry.transport.connectionState,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "runtime-detach"],
+			},
+		);
 
 		detachFromContainer(entry.runtime);
 	}
@@ -126,6 +150,18 @@ class TerminalRuntimeRegistryImpl {
 	dispose(terminalId: string) {
 		const entry = this.entries.get(terminalId);
 		if (!entry) return;
+		terminalRendererDebug.info(
+			"runtime-dispose",
+			{
+				terminalId,
+				hasRuntime: entry.runtime !== null,
+				connectionState: entry.transport.connectionState,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "runtime-dispose"],
+			},
+		);
 
 		entry.linkManager?.dispose();
 
