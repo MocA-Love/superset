@@ -287,7 +287,6 @@ export function BasePaneWindow({
 				relativeToPaneId: paneId,
 				relativeToTabId: tabId,
 				relativeSplitPosition: dropPosition,
-				useRightSidebarOpenViewWidth: true,
 			});
 			resetInternalFileDragState();
 		},
