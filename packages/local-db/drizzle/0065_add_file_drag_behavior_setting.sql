@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `file_drag_behavior` text;

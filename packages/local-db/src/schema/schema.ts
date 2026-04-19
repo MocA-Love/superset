@@ -14,6 +14,7 @@ import type {
 	BranchPrefixMode,
 	BranchSortOrder,
 	ExternalApp,
+	FileDragBehavior,
 	FileOpenMode,
 	GitHubStatus,
 	GitStatus,
@@ -239,6 +240,7 @@ export const settings = sqliteTable("settings", {
 	preventAgentSleep: integer("prevent_agent_sleep", { mode: "boolean" }),
 	deleteLocalBranch: integer("delete_local_branch", { mode: "boolean" }),
 	fileOpenMode: text("file_open_mode").$type<FileOpenMode>(),
+	fileDragBehavior: text("file_drag_behavior").$type<FileDragBehavior>(),
 	rightSidebarOpenViewWidth: integer("right_sidebar_open_view_width"),
 	showPresetsBar: integer("show_presets_bar", { mode: "boolean" }),
 	useCompactTerminalAddButton: integer("use_compact_terminal_add_button", {

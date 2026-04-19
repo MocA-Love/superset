@@ -33,8 +33,9 @@ async function resolveDefaultBranch(cwd: string): Promise<string> {
 			10_000,
 		);
 		const ref = stdout.trim();
-		if (ref.startsWith("origin/")) {
-			return ref.slice("origin/".length);
+		const defaultBranch = ref.replace(/^origin\//, "");
+		if (defaultBranch) {
+			return defaultBranch;
 		}
 	} catch {}
 	// Fallbacks — conservative default.

@@ -220,6 +220,7 @@ const localDbMock = () => ({
 	BRANCH_PREFIX_MODES: ["none", "github", "author", "custom"],
 	TERMINAL_LINK_BEHAVIORS: ["external-editor", "file-viewer"],
 	FILE_OPEN_MODES: ["split-pane", "new-tab"],
+	FILE_DRAG_BEHAVIORS: ["open-file-viewer", "paste-path"],
 });
 
 // Mock both the package name and the resolved source path to handle

@@ -30,8 +30,10 @@ export function EditCustomRingtoneDialog({
 		undefined,
 		{ enabled: open, staleTime: 0 },
 	);
-	const openSource = electronTrpc.ringtone.openCustomSource.useMutation();
-	const closeSource = electronTrpc.ringtone.closeCustomSource.useMutation();
+	const { mutateAsync: openCustomSource } =
+		electronTrpc.ringtone.openCustomSource.useMutation();
+	const { mutate: closeCustomSource } =
+		electronTrpc.ringtone.closeCustomSource.useMutation();
 	const reEdit = electronTrpc.ringtone.reEditCustom.useMutation();
 
 	const [tempId, setTempId] = useState<string | null>(null);
@@ -56,8 +58,7 @@ export function EditCustomRingtoneDialog({
 	useEffect(() => {
 		if (!open) return;
 		let cancelled = false;
-		openSource
-			.mutateAsync()
+		openCustomSource()
 			.then((result) => {
 				if (cancelled) return;
 				if (result.tempId) {
@@ -75,22 +76,20 @@ export function EditCustomRingtoneDialog({
 		return () => {
 			cancelled = true;
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [open]);
+	}, [open, openCustomSource]);
 
 	// Release the tempId when the dialog closes.
 	useEffect(() => {
 		if (open) return;
 		const id = openedTempIdRef.current;
 		if (id) {
-			closeSource.mutate({ tempId: id });
+			closeCustomSource({ tempId: id });
 			openedTempIdRef.current = null;
 		}
 		setTempId(null);
 		setErrorMessage(null);
 		setDisplayName(currentDisplayName);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [open]);
+	}, [open, closeCustomSource, currentDisplayName]);
 
 	useEffect(() => {
 		if (open) setDisplayName(currentDisplayName);
