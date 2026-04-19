@@ -1,6 +1,7 @@
 import {
 	index,
 	integer,
+	real,
 	sqliteTable,
 	text,
 	uniqueIndex,
@@ -234,6 +235,7 @@ export const settings = sqliteTable("settings", {
 	aivisFormatPermission: text("aivis_format_permission"),
 	aivisUserDictionaryUuid: text("aivis_user_dictionary_uuid"),
 	aivisVolume: integer("aivis_volume"),
+	aivisSpeakingRate: real("aivis_speaking_rate"),
 	aivisModelPresets: text("aivis_model_presets", { mode: "json" }).$type<
 		AivisModelPreset[]
 	>(),

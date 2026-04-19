@@ -18,6 +18,7 @@ import {
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
+import { AivisSpeakingRateSlider } from "./components/AivisSpeakingRateSlider";
 import { AivisVolumeSlider } from "./components/AivisVolumeSlider";
 import { ModelPresetTiles } from "./components/ModelPresetTiles";
 
@@ -122,6 +123,7 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 				apiKey,
 				modelUuid,
 				text: rendered || "テストです",
+				speakingRate: data?.speakingRate,
 			});
 		} catch (err) {
 			setTestError(err instanceof Error ? err.message : String(err));
@@ -149,6 +151,7 @@ export function AivisSettings({ visibleItems }: AivisSettingsProps) {
 			</div>
 
 			{enabled && <AivisVolumeSlider disabled={!enabled} />}
+			{enabled && <AivisSpeakingRateSlider disabled={!enabled} />}
 
 			<div className="space-y-2">
 				<Label htmlFor="aivis-api-key">API Key</Label>

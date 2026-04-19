@@ -1,0 +1,1 @@
+export { AivisSpeakingRateSlider } from "./AivisSpeakingRateSlider";

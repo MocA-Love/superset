@@ -1077,6 +1077,11 @@ export const createSettingsRouter = () => {
 					Number.isFinite(row.aivisVolume)
 						? Math.max(0, Math.min(100, row.aivisVolume))
 						: 100,
+				speakingRate:
+					typeof row.aivisSpeakingRate === "number" &&
+					Number.isFinite(row.aivisSpeakingRate)
+						? Math.max(0.5, Math.min(2.0, row.aivisSpeakingRate))
+						: 1.0,
 				modelPresets: row.aivisModelPresets ?? [],
 			};
 		}),
@@ -1091,6 +1096,7 @@ export const createSettingsRouter = () => {
 					format: z.string().optional(),
 					formatPermission: z.string().optional(),
 					volume: z.number().int().min(0).max(100).optional(),
+					speakingRate: z.number().min(0.5).max(2.0).optional(),
 					modelPresets: z
 						.array(
 							z.object({
@@ -1134,6 +1140,10 @@ export const createSettingsRouter = () => {
 					values.aivisVolume = input.volume;
 					set.aivisVolume = input.volume;
 				}
+				if (input.speakingRate !== undefined) {
+					values.aivisSpeakingRate = input.speakingRate;
+					set.aivisSpeakingRate = input.speakingRate;
+				}
 				if (input.modelPresets !== undefined) {
 					values.aivisModelPresets = input.modelPresets;
 					set.aivisModelPresets = input.modelPresets;
@@ -1153,6 +1163,7 @@ export const createSettingsRouter = () => {
 					modelUuid: z.string(),
 					text: z.string().min(1).max(3000),
 					userDictionaryUuid: z.string().uuid().optional(),
+					speakingRate: z.number().min(0.5).max(2.0).optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -1164,6 +1175,7 @@ export const createSettingsRouter = () => {
 					modelUuid: input.modelUuid,
 					text: input.text,
 					userDictionaryUuid: input.userDictionaryUuid,
+					speakingRate: input.speakingRate,
 				});
 				return { success: true };
 			}),
