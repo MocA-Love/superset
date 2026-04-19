@@ -1387,7 +1387,8 @@ export function ReviewPanel({
 							<TooltipTrigger asChild>
 								<button
 									type="button"
-									className="shrink-0 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+									aria-label="New comment"
+									className="mr-1.5 shrink-0 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
 									onClick={() => setIsNewCommentDialogOpen(true)}
 								>
 									<LuMessageSquarePlus className="size-3" />
