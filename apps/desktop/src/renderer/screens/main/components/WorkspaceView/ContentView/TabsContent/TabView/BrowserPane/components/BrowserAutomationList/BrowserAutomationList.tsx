@@ -8,6 +8,7 @@ import {
 } from "@superset/ui/dialog";
 import { cn } from "@superset/ui/utils";
 import { useMemo } from "react";
+import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
 
@@ -22,8 +23,7 @@ export function BrowserAutomationList({
 }: BrowserAutomationListProps) {
 	const panes = useTabsStore((s) => s.panes);
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
-	const bindings = useBrowserAutomationStore((s) => s.bindings);
-	const sessions = useBrowserAutomationStore((s) => s.sessions);
+	const { sessions, bindingsByPane } = useBrowserAutomationData();
 	const openConnectModal = useBrowserAutomationStore((s) => s.openConnectModal);
 
 	const browserPanes = useMemo(
@@ -31,8 +31,10 @@ export function BrowserAutomationList({
 		[panes],
 	);
 
-	const connectedCount = browserPanes.filter((p) => bindings[p.id]).length;
-	const needsSetupCount = Object.values(sessions).filter(
+	const connectedCount = browserPanes.filter(
+		(p) => bindingsByPane[p.id],
+	).length;
+	const needsSetupCount = sessions.filter(
 		(s) => s.mcpStatus === "missing",
 	).length;
 
@@ -59,8 +61,10 @@ export function BrowserAutomationList({
 						</div>
 					)}
 					{browserPanes.map((pane) => {
-						const sessionId = bindings[pane.id];
-						const session = sessionId ? sessions[sessionId] : null;
+						const sessionId = bindingsByPane[pane.id];
+						const session = sessionId
+							? (sessions.find((s) => s.id === sessionId) ?? null)
+							: null;
 						const url = pane.browser?.currentUrl ?? pane.url ?? "about:blank";
 						return (
 							<div
@@ -93,7 +97,7 @@ export function BrowserAutomationList({
 								<div className="mt-2 text-[11px] text-muted-foreground">
 									{session
 										? `${session.displayName} · ${session.provider} · ${session.mcpStatus === "ready" ? "MCP ready" : "MCP missing"}`
-										: "Pick any running Claude or Codex session"}
+										: "Pick any running LLM session"}
 								</div>
 								<div className="mt-3 flex gap-2">
 									<Button
@@ -109,7 +113,7 @@ export function BrowserAutomationList({
 									<Button
 										size="sm"
 										onClick={() => {
-											openConnectModal(pane.id);
+											openConnectModal(pane.id, sessionId);
 											onOpenChange(false);
 										}}
 									>

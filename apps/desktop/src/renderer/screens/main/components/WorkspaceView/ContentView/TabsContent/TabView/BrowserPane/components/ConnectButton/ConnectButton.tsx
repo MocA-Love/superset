@@ -1,5 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { LuPlug } from "react-icons/lu";
+import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 
 interface ConnectButtonProps {
@@ -7,12 +8,13 @@ interface ConnectButtonProps {
 }
 
 export function ConnectButton({ paneId }: ConnectButtonProps) {
-	const sessionId = useBrowserAutomationStore((s) => s.bindings[paneId]);
-	const session = useBrowserAutomationStore((s) =>
-		sessionId ? s.sessions[sessionId] : null,
-	);
+	const { sessions, bindingsByPane } = useBrowserAutomationData();
 	const openConnectModal = useBrowserAutomationStore((s) => s.openConnectModal);
 
+	const sessionId = bindingsByPane[paneId];
+	const session = sessionId
+		? (sessions.find((s) => s.id === sessionId) ?? null)
+		: null;
 	const connected = Boolean(session);
 	const label = connected
 		? `${session?.displayName} · ${session?.provider}`
@@ -23,7 +25,7 @@ export function ConnectButton({ paneId }: ConnectButtonProps) {
 			<TooltipTrigger asChild>
 				<button
 					type="button"
-					onClick={() => openConnectModal(paneId)}
+					onClick={() => openConnectModal(paneId, sessionId)}
 					data-state={connected ? "connected" : "idle"}
 					className={`flex items-center gap-1.5 h-6 rounded-md px-2 text-[11px] border transition-colors ${
 						connected

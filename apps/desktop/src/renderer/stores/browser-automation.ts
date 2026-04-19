@@ -12,10 +12,18 @@ export interface AutomationSession {
 	mcpStatus: McpStatus;
 }
 
-interface BrowserAutomationState {
-	sessions: Record<string, AutomationSession>;
-	/** paneId -> sessionId */
-	bindings: Record<string, string>;
+/**
+ * UI-only state for the browser-automation feature.
+ *
+ * Real data (sessions, bindings, MCP status) lives in main-process tRPC
+ * routers and is consumed via `useBrowserAutomationData`. This store
+ * only tracks transient UI state that does not need to survive reloads
+ * or sync with the main process:
+ *   - Which pane opened the Connect dialog, and which session is
+ *     currently highlighted within it.
+ *   - Whether the cross-pane list view dialog is open.
+ */
+interface BrowserAutomationUiState {
 	connectModal: {
 		isOpen: boolean;
 		paneId: string | null;
@@ -25,63 +33,21 @@ interface BrowserAutomationState {
 	openConnectModal: (paneId: string, preselectSessionId?: string) => void;
 	closeConnectModal: () => void;
 	setSelectedSession: (sessionId: string) => void;
-	connect: (
-		paneId: string,
-		sessionId: string,
-	) => { reassignedFromPaneId: string | null };
-	disconnect: (paneId: string) => void;
-	markSessionReady: (sessionId: string) => void;
 	setListViewOpen: (open: boolean) => void;
 }
 
-const initialSessions: Record<string, AutomationSession> = {
-	"session-14": {
-		id: "session-14",
-		displayName: "Session 14",
-		provider: "Codex",
-		kind: "Terminal",
-		branchOrContextLabel: "feature/browser-cdp-map",
-		lastActiveAt: "20s ago",
-		mcpStatus: "ready",
-	},
-	"session-11": {
-		id: "session-11",
-		displayName: "Session 11",
-		provider: "Claude",
-		kind: "Terminal",
-		branchOrContextLabel: "checkout-debug",
-		lastActiveAt: "2m ago",
-		mcpStatus: "missing",
-	},
-	"session-09": {
-		id: "session-09",
-		displayName: "Session 09",
-		provider: "Codex",
-		kind: "Chat",
-		branchOrContextLabel: "release-notes-draft",
-		lastActiveAt: "6m ago",
-		mcpStatus: "ready",
-	},
-};
-
-export const useBrowserAutomationStore = create<BrowserAutomationState>(
-	(set, get) => ({
-		sessions: initialSessions,
-		bindings: {},
+export const useBrowserAutomationStore = create<BrowserAutomationUiState>(
+	(set) => ({
 		connectModal: { isOpen: false, paneId: null, selectedSessionId: null },
 		listViewOpen: false,
-		openConnectModal: (paneId, preselectSessionId) => {
-			const state = get();
-			const currentBinding = state.bindings[paneId];
-			const fallback = Object.keys(state.sessions)[0] ?? null;
+		openConnectModal: (paneId, preselectSessionId) =>
 			set({
 				connectModal: {
 					isOpen: true,
 					paneId,
-					selectedSessionId: preselectSessionId ?? currentBinding ?? fallback,
+					selectedSessionId: preselectSessionId ?? null,
 				},
-			});
-		},
+			}),
 		closeConnectModal: () =>
 			set({
 				connectModal: {
@@ -93,31 +59,6 @@ export const useBrowserAutomationStore = create<BrowserAutomationState>(
 		setSelectedSession: (sessionId) =>
 			set((s) => ({
 				connectModal: { ...s.connectModal, selectedSessionId: sessionId },
-			})),
-		connect: (paneId, sessionId) => {
-			const state = get();
-			const reassignedFromPaneId =
-				Object.entries(state.bindings).find(
-					([pid, sid]) => sid === sessionId && pid !== paneId,
-				)?.[0] ?? null;
-			const next: Record<string, string> = { ...state.bindings };
-			if (reassignedFromPaneId) delete next[reassignedFromPaneId];
-			next[paneId] = sessionId;
-			set({ bindings: next });
-			return { reassignedFromPaneId };
-		},
-		disconnect: (paneId) =>
-			set((s) => {
-				const next = { ...s.bindings };
-				delete next[paneId];
-				return { bindings: next };
-			}),
-		markSessionReady: (sessionId) =>
-			set((s) => ({
-				sessions: {
-					...s.sessions,
-					[sessionId]: { ...s.sessions[sessionId], mcpStatus: "ready" },
-				},
 			})),
 		setListViewOpen: (open) => set({ listViewOpen: open }),
 	}),
@@ -137,3 +78,18 @@ args = []`;
   }
 }`;
 }
+
+function formatRelativeTime(ts: number | null | undefined): string {
+	if (!ts) return "unknown";
+	const diffSec = Math.round((Date.now() - ts) / 1000);
+	if (diffSec < 5) return "just now";
+	if (diffSec < 60) return `${diffSec}s ago`;
+	const diffMin = Math.round(diffSec / 60);
+	if (diffMin < 60) return `${diffMin}m ago`;
+	const diffHour = Math.round(diffMin / 60);
+	if (diffHour < 24) return `${diffHour}h ago`;
+	const diffDay = Math.round(diffHour / 24);
+	return `${diffDay}d ago`;
+}
+
+export { formatRelativeTime };

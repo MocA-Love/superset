@@ -9,8 +9,10 @@ import {
 } from "@superset/ui/dialog";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { LuCopy, LuList } from "react-icons/lu";
+import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type AutomationSession,
 	getSnippetForSession,
@@ -31,54 +33,92 @@ export function SessionConnectModal({
 	const selectedSessionId = useBrowserAutomationStore(
 		(s) => s.connectModal.selectedSessionId,
 	);
-	const sessions = useBrowserAutomationStore((s) => s.sessions);
-	const bindings = useBrowserAutomationStore((s) => s.bindings);
 	const setSelectedSession = useBrowserAutomationStore(
 		(s) => s.setSelectedSession,
 	);
-	const connect = useBrowserAutomationStore((s) => s.connect);
-	const disconnect = useBrowserAutomationStore((s) => s.disconnect);
-	const markSessionReady = useBrowserAutomationStore((s) => s.markSessionReady);
 	const setListViewOpen = useBrowserAutomationStore((s) => s.setListViewOpen);
+
+	const { sessions, bindingsByPane, mcpStatus } = useBrowserAutomationData();
+
+	const setBinding = electronTrpc.browserAutomation.setBinding.useMutation();
+	const removeBinding =
+		electronTrpc.browserAutomation.removeBinding.useMutation();
+	const utils = electronTrpc.useUtils();
 
 	const pane = useTabsStore((s) => (paneId ? s.panes[paneId] : null));
 	const panes = useTabsStore((s) => s.panes);
 
-	const sessionList = useMemo(() => Object.values(sessions), [sessions]);
-	const session = selectedSessionId ? sessions[selectedSessionId] : null;
-	const currentBinding = paneId ? bindings[paneId] : null;
-	const currentSession = currentBinding ? sessions[currentBinding] : null;
+	const session = selectedSessionId
+		? (sessions.find((s) => s.id === selectedSessionId) ?? null)
+		: null;
+	const currentBinding = paneId ? bindingsByPane[paneId] : null;
+	const currentSession = currentBinding
+		? (sessions.find((s) => s.id === currentBinding) ?? null)
+		: null;
+
+	// Auto-select a sensible default when the modal opens with nothing picked.
+	useEffect(() => {
+		if (!open || !paneId) return;
+		if (selectedSessionId) return;
+		const fallback = currentBinding ?? sessions[0]?.id ?? null;
+		if (fallback) setSelectedSession(fallback);
+	}, [
+		open,
+		paneId,
+		selectedSessionId,
+		currentBinding,
+		sessions,
+		setSelectedSession,
+	]);
 
 	const assignedPaneIdForSelected = useMemo(() => {
 		if (!selectedSessionId) return null;
-		return (
-			Object.entries(bindings).find(
-				([pid, sid]) => sid === selectedSessionId && pid !== paneId,
-			)?.[0] ?? null
+		const entry = Object.entries(bindingsByPane).find(
+			([pid, sid]) => sid === selectedSessionId && pid !== paneId,
 		);
-	}, [bindings, paneId, selectedSessionId]);
+		return entry?.[0] ?? null;
+	}, [bindingsByPane, paneId, selectedSessionId]);
 
 	const paneUrl = pane?.browser?.currentUrl ?? pane?.url ?? "about:blank";
 	const paneName = pane?.userTitle || pane?.name || "Browser pane";
 
-	const handleConnect = () => {
+	const handleConnect = async () => {
 		if (!paneId || !session || session.mcpStatus !== "ready") return;
-		const { reassignedFromPaneId } = connect(paneId, session.id);
-		if (reassignedFromPaneId) {
-			const fromPane = panes[reassignedFromPaneId];
-			toast.success(
-				`${session.displayName} moved from ${fromPane?.name ?? "another pane"} to ${paneName}`,
+		try {
+			const result = await setBinding.mutateAsync({
+				paneId,
+				sessionId: session.id,
+			});
+			await utils.browserAutomation.listBindings.invalidate();
+			if (result.previousPaneId) {
+				const fromPane = panes[result.previousPaneId];
+				toast.success(
+					`${session.displayName} moved from ${fromPane?.name ?? "another pane"} to ${paneName}`,
+				);
+			} else {
+				toast.success(
+					`${paneName} is now controlled by ${session.displayName}`,
+				);
+			}
+			onOpenChange(false);
+		} catch (error) {
+			toast.error(
+				`Failed to connect session: ${error instanceof Error ? error.message : String(error)}`,
 			);
-		} else {
-			toast.success(`${paneName} is now controlled by ${session.displayName}`);
 		}
-		onOpenChange(false);
 	};
 
-	const handleDisconnect = () => {
+	const handleDisconnect = async () => {
 		if (!paneId || !currentSession) return;
-		disconnect(paneId);
-		toast.info(`${currentSession.displayName} disconnected from ${paneName}`);
+		try {
+			await removeBinding.mutateAsync({ paneId });
+			await utils.browserAutomation.listBindings.invalidate();
+			toast.info(`${currentSession.displayName} disconnected from ${paneName}`);
+		} catch (error) {
+			toast.error(
+				`Failed to disconnect: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	};
 
 	const handleCopySnippet = async () => {
@@ -117,9 +157,7 @@ export function SessionConnectModal({
 							</div>
 							<button
 								type="button"
-								onClick={() => {
-									setListViewOpen(true);
-								}}
+								onClick={() => setListViewOpen(true)}
 								className="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
 							>
 								<LuList className="size-3" />
@@ -131,27 +169,32 @@ export function SessionConnectModal({
 							Running sessions
 						</div>
 
-						<div className="flex flex-col gap-2">
-							{sessionList.map((s) => (
-								<SessionCard
-									key={s.id}
-									session={s}
-									isSelected={s.id === selectedSessionId}
-									assignedElsewherePaneName={
-										Object.entries(bindings).find(
-											([pid, sid]) => sid === s.id && pid !== paneId,
-										)
-											? (panes[
-													Object.entries(bindings).find(
-														([pid, sid]) => sid === s.id && pid !== paneId,
-													)?.[0] ?? ""
-												]?.name ?? null)
-											: null
-									}
-									onSelect={() => setSelectedSession(s.id)}
-								/>
-							))}
-						</div>
+						{sessions.length === 0 ? (
+							<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+								No running LLM sessions found in this app. Start a TODO-Agent
+								session (Claude) or open a chat pane, then return here.
+							</div>
+						) : (
+							<div className="flex flex-col gap-2">
+								{sessions.map((s) => {
+									const otherPaneId = Object.entries(bindingsByPane).find(
+										([pid, sid]) => sid === s.id && pid !== paneId,
+									)?.[0];
+									const otherPaneName = otherPaneId
+										? (panes[otherPaneId]?.name ?? null)
+										: null;
+									return (
+										<SessionCard
+											key={s.id}
+											session={s}
+											isSelected={s.id === selectedSessionId}
+											assignedElsewherePaneName={otherPaneName}
+											onSelect={() => setSelectedSession(s.id)}
+										/>
+									);
+								})}
+							</div>
+						)}
 					</div>
 
 					<div className="overflow-y-auto p-4 bg-muted/20">
@@ -170,7 +213,11 @@ export function SessionConnectModal({
 							) : (
 								<SetupPanel
 									session={session}
-									onSimulate={() => markSessionReady(session.id)}
+									mcpConfigPath={
+										session.provider === "Codex"
+											? (mcpStatus?.codexConfigPath ?? null)
+											: (mcpStatus?.claudeConfigPath ?? null)
+									}
 									onCopy={handleCopySnippet}
 								/>
 							)
@@ -188,11 +235,20 @@ export function SessionConnectModal({
 							? assignedPaneIdForSelected
 								? `Connecting will reassign ${session.displayName} from ${panes[assignedPaneIdForSelected]?.name ?? "another pane"} to ${paneName}.`
 								: "Connecting binds this browser pane to the selected session only."
-							: "Add the MCP entry first, then reopen or restart this session."}
+							: session
+								? "Add the MCP entry first, then reopen or restart this session."
+								: sessions.length === 0
+									? "Start an LLM session, then pick it here."
+									: "Select a session from the left."}
 					</div>
 					<div className="flex items-center gap-2">
 						{currentSession && (
-							<Button variant="outline" size="sm" onClick={handleDisconnect}>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleDisconnect}
+								disabled={removeBinding.isPending}
+							>
 								Disconnect {currentSession.displayName}
 							</Button>
 						)}
@@ -205,7 +261,11 @@ export function SessionConnectModal({
 						</Button>
 						<Button
 							size="sm"
-							disabled={!session || session.mcpStatus !== "ready"}
+							disabled={
+								!session ||
+								session.mcpStatus !== "ready" ||
+								setBinding.isPending
+							}
 							onClick={handleConnect}
 						>
 							{session?.mcpStatus === "ready"
@@ -248,7 +308,9 @@ function SessionCard({
 		? `${session.displayName} is currently controlling ${assignedElsewherePaneName}. Connecting here moves ownership.`
 		: session.mcpStatus === "ready"
 			? "Browser MCP is configured. Connect will be immediate."
-			: "This session does not currently expose the required browser automation MCP entry.";
+			: session.mcpStatus === "missing"
+				? "This session does not currently expose the required browser automation MCP entry."
+				: "Could not verify MCP status for this session.";
 
 	return (
 		<button
@@ -282,7 +344,7 @@ function SessionCard({
 			<div className="mt-2 flex flex-wrap gap-1.5">
 				<Tag>{session.kind}</Tag>
 				<Tag>{session.branchOrContextLabel}</Tag>
-				<Tag>Last prompt {session.lastActiveAt}</Tag>
+				<Tag>Last active {session.lastActiveAt}</Tag>
 			</div>
 			<div className="mt-2 text-[11px] leading-snug text-muted-foreground">
 				{note}
@@ -358,11 +420,11 @@ function DetailItem({
 
 function SetupPanel({
 	session,
-	onSimulate,
+	mcpConfigPath,
 	onCopy,
 }: {
 	session: AutomationSession;
-	onSimulate: () => void;
+	mcpConfigPath: string | null;
 	onCopy: () => void;
 }) {
 	const snippet = getSnippetForSession(session);
@@ -375,26 +437,40 @@ function SetupPanel({
 				<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
 					The connect action will not fail silently. Add the{" "}
 					<code className="rounded bg-muted px-1">superset-browser</code> MCP
-					server to this session and reload.
+					server to {session.provider}, then reload this session.
 				</div>
 				<ol className="mt-2 pl-4 list-decimal text-[12px] leading-relaxed text-muted-foreground">
-					<li>Open the agent config used by {session.displayName}.</li>
 					<li>
-						Add the managed <code>superset-browser</code> MCP server.
+						Open{" "}
+						{mcpConfigPath ? (
+							<code className="rounded bg-muted px-1">{mcpConfigPath}</code>
+						) : (
+							"your agent config file"
+						)}
+						.
 					</li>
-					<li>Reload the session or start a new one from this workspace.</li>
+					<li>
+						Append the <code>superset-browser</code> MCP server block below.
+					</li>
+					<li>
+						Restart {session.displayName} (or run the agent again) so the new
+						entry is picked up.
+					</li>
 				</ol>
 				<pre className="mt-2 rounded-md border bg-black/40 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
 					{snippet}
 				</pre>
 				<div className="mt-3 flex gap-2">
-					<Button size="sm" onClick={onSimulate}>
-						Simulate MCP added
-					</Button>
 					<Button size="sm" variant="outline" onClick={onCopy}>
 						<LuCopy className="size-3" />
 						Copy snippet
 					</Button>
+				</div>
+				<div className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
+					MCP readiness is detected by inspecting the config file for the string{" "}
+					<code>superset-browser</code>. If you prefer a managed location, the
+					desktop app also ships the server at <code>packages/desktop-mcp</code>
+					.
 				</div>
 			</div>
 		</div>

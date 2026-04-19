@@ -152,11 +152,7 @@ export function writeTodoSessionRuntimeConfig(
 		const normalized = normalizeConfig(config);
 		const filePath = getRuntimeConfigPath(artifactPath);
 		mkdirSync(artifactPath, { recursive: true });
-		writeFileSync(
-			filePath,
-			`${JSON.stringify(normalized, null, 2)}\n`,
-			"utf8",
-		);
+		writeFileSync(filePath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
 		todoAgentMainDebug.info(
 			"todo-runtime-config-write",
 			{
