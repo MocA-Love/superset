@@ -94,14 +94,30 @@ bun run package
 
 `bun run build` は `--publish never` で実行され、`apps/desktop/release/` に成果物 (dmg / zip / blockmap / latest-mac.yml) が出る。
 
-**⚠️ dmg は必ず内容検証すること。** `bun run build` (フル build、dmg+zip 同時生成) だけだと、electron-builder が `Electron Framework.framework/Versions/A/Electron Framework` (167MB のバイナリ本体) を dmg に書き込まないバグが再現する (v1.5.5-fork.9 / fork.11 で発生)。zip 側は EF を正しく含むので、このバグは **dmg ターゲット固有**。
+### かつて存在した dmg 破損バグ（v1.5.5-fork.9〜11、v1.5.5-fork.12 で解決済み）
 
-**検証:**
+v1.5.5 系で app サイズが 1.6GB → 1.9GB に成長した結果、`bun run build` が生成する dmg から Electron Framework 本体 (167MB) が欠落する問題が発生していた。
+
+**真因:** electron-builder が内部で使う `dmgbuild 1.2.0` (`~/Library/Caches/electron-builder/dmg-builder@1.2.0/.../dmgbuild/core.py:448-474`) はスパースイメージのサイズを `app ファイル合計 + 128MB` で算出するが、**HFS+ のカタログ/ジャーナル overhead (≈150MB+) を考慮しないため、app が 1.8GB を超えると `ditto` が "No space left on device" で停止する**。途中でコピーされる locale.pak 群の後に来る Electron Framework binary が丸ごと欠けた状態で dmg が完成する (zip は別経路で無傷のまま)。
+
+**対処:** `apps/desktop/electron-builder.ts` の `dmg.size` で明示的に大きめの値を指定して dmgbuild の自動計算をバイパスする。
+
+```ts
+dmg: {
+    size: "4g",   // app 成長を先読みして余裕を取る
+},
+```
+
+electron-builder schema 公式ドキュメントにも "Set this explicitly for large apps or apps with sparse files to avoid 'No space left on device' errors." と明記されている。size は `hdiutil -size` と同じ書式 ("150m"/"4g" 等)。
+
+**app 本体が今後 3.5GB を超え始めたら `size` を上げ直す**。
+
+**dmg 検証手順（念のため）:**
 
 ```bash
 hdiutil attach apps/desktop/release/Superset-*-arm64.dmg -nobrowse -readonly
 # 4点セットが揃っているか確認:
-#   - Superset.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework (167MB)
+#   - Superset.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework (167MB+)
 #   - Applications -> /Applications シンボリックリンク
 #   - .DS_Store (アイコン配置・ウィンドウサイズ)
 #   - .background.tiff (背景画像)
@@ -110,27 +126,7 @@ ls -la "/Volumes/Superset 1.5.5-arm64/Superset.app/Contents/Frameworks/Electron 
 hdiutil detach "/Volumes/Superset 1.5.5-arm64"
 ```
 
-**復旧: dmg ターゲットだけを単独で再実行する** (v1.5.5-fork.11 で有効性確認):
-
-```bash
-cd apps/desktop
-rm -f release/Superset-*-arm64.dmg release/Superset-*-arm64.dmg.blockmap
-bunx electron-builder --mac dmg --config electron-builder.ts --publish never
-# 再度検証 (上のブロック)
-```
-
-このフルビルド → dmg 再生成の二段階で、EF バイナリ + レイアウト (背景 + Applications ドラッグターゲット + アイコン配置) 両方が入った正しい dmg が得られる。
-
-**❌ hdiutil で手動生成してはいけない** (v1.5.5-fork.11 で失敗):
-
-```bash
-# これは dmg の EF 欠落は直るが、.DS_Store / .background.tiff / Applications symlink が
-# 一切含まれず、ユーザーが開いたときにプレーンな Finder ウィンドウになってしまう。
-# 過去の手順ノートにあったが、使わないこと。
-hdiutil create -fs HFS+ -format UDZO -srcfolder "release/mac-arm64/Superset.app" ...
-```
-
-zip はこのバグの影響を受けない (EF binary を正しく含む) ので、ユーザー向けに **zip 配布経路も並行で用意する**のが安全。
+**❌ 過去に試した回避策 (dmg 単独再実行 / hdiutil 手動生成) はどれも不完全。** `dmg.size` 指定が唯一のクリーンな正解。
 
 ### リリース (フォーク配布)
 
@@ -160,11 +156,21 @@ bun install
 
 # 5. ビルド
 cd apps/desktop
+# ⚠️ ビルド時の環境変数は必須。compile:app 時にバンドルへ焼き込まれる:
+#   - SUPERSET_WORKSPACE_NAME=superset  … 未指定だとバンドルに "default" が焼き込まれ、
+#                                          ~/.superset-default/ の空ワークスペースを見るようになる
+#                                          (ユーザーの ~/.superset/ 過去データに辿り着けず、強制ログイン画面化)
+#   - SENTRY_DSN_DESKTOP                … .env にあるが compile:app は dotenv を自動ロードしない
+#                                          ので明示 export しないと Sentry が初期化されない
+export SUPERSET_WORKSPACE_NAME=superset
+export $(grep -v '^#' ../../.env | grep -E '^[A-Z_]+=' | tr '\n' ' ')
 bun run compile:app
 bun run copy:native-modules
 bun run validate:native-runtime
-bun run build
+SUPERSET_WORKSPACE_NAME=superset bun run build
 # 成果物は apps/desktop/release/ に出力 (dmg, zip, blockmap, latest-mac.yml 等)
+# `bun run build` は CSC_IDENTITY_AUTO_DISCOVERY=false 付きで adhoc sign になる。
+# keychain に Apple Development 証明書があっても拾わせない (配布用 Developer ID ではないので)。
 
 # 6. リリースノート作成 (後述フォーマット)
 # ファイルに保存しておくと gh release create の --notes-file で渡せる

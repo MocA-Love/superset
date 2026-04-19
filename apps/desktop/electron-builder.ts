@@ -90,8 +90,13 @@ const config: Configuration = {
 	// Rebuild native modules for Electron's Node.js version
 	npmRebuild: true,
 
-	// macOS DMG installer
+	// macOS DMG
+	// NOTE: dmgbuild 1.2.0 は size = (sum(app files) + 128MB) を割り当てるが、
+	// HFS+ のカタログ/ジャーナル overhead (≈150MB+) を無視するため、app が 1.8GB を超えると
+	// ditto が "No space left on device" で失敗し、最後にコピーされる Electron Framework
+	// バイナリ (167MB) が欠落した dmg が生成される。size を明示してバイパスする。
 	dmg: {
+		size: "4g",
 		...(existsSync(dmgBackgroundPath) ? { background: dmgBackgroundPath } : {}),
 	},
 
