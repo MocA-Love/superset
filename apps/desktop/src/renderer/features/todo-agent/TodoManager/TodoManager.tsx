@@ -71,6 +71,7 @@ import {
 	LuPanelRightOpen,
 } from "react-icons/lu";
 import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
+import { todoAgentRendererDebug } from "renderer/features/todo-agent/debug";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type ClaudeEffortPick,
@@ -2800,6 +2801,29 @@ function TodoComposer({
 				goal.trim(),
 				goalAttachments,
 			);
+			todoAgentRendererDebug.info(
+				"todo-create-submit",
+				{
+					source: "todo-manager-composer",
+					workspaceId: targetWorkspaceId,
+					projectId,
+					createWorktree,
+					ptyEnabled,
+					remoteControlEnabled,
+					titleLength: title.trim().length,
+					descriptionLength: resolvedDescription.length,
+					hasGoal: resolvedGoal.length > 0,
+					hasVerify: verifyCommand.trim().length > 0,
+				},
+				{
+					captureMessage: true,
+					fingerprint: [
+						"todo.agent.renderer",
+						"todo-create-submit",
+						"todo-manager-composer",
+					],
+				},
+			);
 			const res = await createMut.mutateAsync({
 				workspaceId: targetWorkspaceId,
 				projectId,
@@ -2815,6 +2839,24 @@ function TodoComposer({
 				ptyEnabled,
 				remoteControlEnabled,
 			});
+			todoAgentRendererDebug.info(
+				"todo-create-submit-success",
+				{
+					source: "todo-manager-composer",
+					sessionId: res.sessionId,
+					workspaceId: targetWorkspaceId,
+					ptyEnabled,
+					remoteControlEnabled,
+				},
+				{
+					captureMessage: true,
+					fingerprint: [
+						"todo.agent.renderer",
+						"todo-create-submit-success",
+						"todo-manager-composer",
+					],
+				},
+			);
 			await utils.todoAgent.listAll.invalidate();
 			toast.success(
 				createWorktree
@@ -2826,6 +2868,27 @@ function TodoComposer({
 			// to unmount via onCreated → re-enabling the button would
 			// flicker. The finally below only runs on error / throw.
 		} catch (error) {
+			todoAgentRendererDebug.captureException(
+				error,
+				"todo-create-submit-failed",
+				{
+					source: "todo-manager-composer",
+					projectId,
+					workspaceId,
+					createWorktree,
+					ptyEnabled,
+					remoteControlEnabled,
+					errorMessage:
+						error instanceof Error ? error.message : "作成に失敗しました",
+				},
+				{
+					fingerprint: [
+						"todo.agent.renderer",
+						"todo-create-submit-failed",
+						"todo-manager-composer",
+					],
+				},
+			);
 			toast.error(
 				error instanceof Error ? error.message : "作成に失敗しました",
 			);

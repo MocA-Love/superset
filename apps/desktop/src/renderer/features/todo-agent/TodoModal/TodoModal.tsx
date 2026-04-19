@@ -33,6 +33,7 @@ import {
 	toPersistedEffort,
 	toPersistedModel,
 } from "../ClaudeRuntimePicker";
+import { todoAgentRendererDebug } from "../debug";
 import { EnhanceButton } from "./components/EnhanceButton";
 
 interface TodoModalProps {
@@ -199,6 +200,25 @@ export function TodoModal({
 				targetWorkspaceId = result.workspace.id;
 			}
 
+			todoAgentRendererDebug.info(
+				"todo-create-submit",
+				{
+					source: "todo-modal",
+					workspaceId: targetWorkspaceId,
+					projectId: projectId ?? null,
+					createWorktree,
+					ptyEnabled,
+					remoteControlEnabled,
+					titleLength: title.trim().length,
+					descriptionLength: description.trim().length,
+					hasGoal,
+					hasVerify,
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["todo.agent.renderer", "todo-create-submit", "todo-modal"],
+				},
+			);
 			const created = await create.mutateAsync({
 				workspaceId: targetWorkspaceId,
 				projectId,
@@ -214,6 +234,24 @@ export function TodoModal({
 				ptyEnabled,
 				remoteControlEnabled,
 			});
+			todoAgentRendererDebug.info(
+				"todo-create-submit-success",
+				{
+					source: "todo-modal",
+					sessionId: created.sessionId,
+					workspaceId: targetWorkspaceId,
+					ptyEnabled,
+					remoteControlEnabled,
+				},
+				{
+					captureMessage: true,
+					fingerprint: [
+						"todo.agent.renderer",
+						"todo-create-submit-success",
+						"todo-modal",
+					],
+				},
+			);
 			if (createWorktree) {
 				toast.success(
 					"新しい worktree を作成して TODO セッションを紐付けました",
@@ -226,6 +264,22 @@ export function TodoModal({
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : "作成に失敗しました";
+			todoAgentRendererDebug.captureException(
+				error,
+				"todo-create-submit-failed",
+				{
+					source: "todo-modal",
+					workspaceId,
+					projectId: projectId ?? null,
+					createWorktree,
+					ptyEnabled,
+					remoteControlEnabled,
+					errorMessage: message,
+				},
+				{
+					fingerprint: ["todo.agent.renderer", "todo-create-submit-failed", "todo-modal"],
+				},
+			);
 			toast.error(message);
 			setSubmitting(false);
 		}

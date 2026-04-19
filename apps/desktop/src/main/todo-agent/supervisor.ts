@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SelectTodoSession } from "@superset/local-db";
 import { getTodoDaemonClient } from "main/lib/todo-daemon/client";
+import { getTodoSessionDebugData, todoAgentMainDebug } from "./debug";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { TODO_ARTIFACT_SUBDIR } from "./types";
 
@@ -41,11 +42,35 @@ class TodoSupervisor {
 		sessionId: string,
 		options?: { fromScheduledWakeup?: boolean },
 	): Promise<void> {
+		const current = getTodoSessionStore().get(sessionId);
+		todoAgentMainDebug.info(
+			"todo-supervisor-start",
+			{
+				sessionId,
+				fromScheduledWakeup: options?.fromScheduledWakeup ?? false,
+				...(current ? getTodoSessionDebugData(current) : {}),
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["todo.agent.main", "todo-supervisor-start"],
+			},
+		);
 		try {
 			await getTodoDaemonClient().start({
 				sessionId,
 				fromScheduledWakeup: options?.fromScheduledWakeup,
 			});
+			todoAgentMainDebug.info(
+				"todo-supervisor-start-success",
+				{
+					sessionId,
+					fromScheduledWakeup: options?.fromScheduledWakeup ?? false,
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["todo.agent.main", "todo-supervisor-start-success"],
+				},
+			);
 		} catch (error) {
 			// The tRPC router flips the session to `preparing` before
 			// fire-and-forgetting us, so a daemon spawn/connect/auth
@@ -55,6 +80,18 @@ class TodoSupervisor {
 			// can retry or delete the session.
 			const reason = error instanceof Error ? error.message : String(error);
 			console.warn("[todo-supervisor] daemon start failed", error);
+			todoAgentMainDebug.captureException(
+				error,
+				"todo-supervisor-start-failed",
+				{
+					sessionId,
+					fromScheduledWakeup: options?.fromScheduledWakeup ?? false,
+					errorMessage: reason,
+				},
+				{
+					fingerprint: ["todo.agent.main", "todo-supervisor-start-failed"],
+				},
+			);
 			try {
 				const store = getTodoSessionStore();
 				const current = store.get(sessionId);
