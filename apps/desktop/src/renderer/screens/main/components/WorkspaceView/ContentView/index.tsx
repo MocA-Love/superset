@@ -59,6 +59,7 @@ export function ContentView({
 				onOpenQuickOpen={onOpenQuickOpen}
 			/>
 			<BrowserAutomationList
+				workspaceId={workspaceId}
 				open={listViewOpen}
 				onOpenChange={setListViewOpen}
 			/>

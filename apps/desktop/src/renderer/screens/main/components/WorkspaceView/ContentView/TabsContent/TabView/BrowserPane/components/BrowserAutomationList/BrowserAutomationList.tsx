@@ -13,23 +13,31 @@ import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
 
 interface BrowserAutomationListProps {
+	workspaceId: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
 
 export function BrowserAutomationList({
+	workspaceId,
 	open,
 	onOpenChange,
 }: BrowserAutomationListProps) {
 	const panes = useTabsStore((s) => s.panes);
+	const tabs = useTabsStore((s) => s.tabs);
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
+	const setActiveTab = useTabsStore((s) => s.setActiveTab);
 	const { sessions, bindingsByPane } = useBrowserAutomationData();
 	const openConnectModal = useBrowserAutomationStore((s) => s.openConnectModal);
 
-	const browserPanes = useMemo(
-		() => Object.values(panes).filter((p) => p.type === "webview"),
-		[panes],
-	);
+	const browserPanes = useMemo(() => {
+		const tabById = new Map(tabs.map((t) => [t.id, t]));
+		return Object.values(panes).filter(
+			(p) =>
+				p.type === "webview" &&
+				tabById.get(p.tabId)?.workspaceId === workspaceId,
+		);
+	}, [panes, tabs, workspaceId]);
 
 	const connectedCount = browserPanes.filter(
 		(p) => bindingsByPane[p.id],
@@ -104,6 +112,7 @@ export function BrowserAutomationList({
 										size="sm"
 										variant="outline"
 										onClick={() => {
+											setActiveTab(workspaceId, pane.tabId);
 											setFocusedPane(pane.tabId, pane.id);
 											onOpenChange(false);
 										}}
