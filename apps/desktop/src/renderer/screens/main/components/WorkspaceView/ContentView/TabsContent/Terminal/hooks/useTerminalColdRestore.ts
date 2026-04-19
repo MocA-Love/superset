@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { rejectTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
+import { logTerminalWrite } from "../debug";
 import { coldRestoreState } from "../state";
 import type {
 	CreateOrAttachMutate,
@@ -251,7 +252,10 @@ export function useTerminalColdRestore({
 		});
 
 		// Add visual separator
-		xterm.write("\r\n\x1b[90m─── Session Contents Restored ───\x1b[0m\r\n\r\n");
+		const restoreBanner =
+			"\r\n\x1b[90m─── Session Contents Restored ───\x1b[0m\r\n\r\n";
+		logTerminalWrite("cold-restore-banner", restoreBanner.length, { paneId });
+		xterm.write(restoreBanner);
 
 		// Reset state for new session
 		isStreamReadyRef.current = false;

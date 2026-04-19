@@ -1,4 +1,9 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
+import {
+	logTerminalInput,
+	logTerminalWrite,
+	terminalRendererDebug,
+} from "./debug";
 
 export type ConnectionState = "disconnected" | "connecting" | "open" | "closed";
 
@@ -9,6 +14,7 @@ type TerminalServerMessage =
 	| { type: "replay"; data: string };
 
 export interface TerminalTransport {
+	debugId: string | null;
 	socket: WebSocket | null;
 	connectionState: ConnectionState;
 	/** The URL the socket is currently connected (or connecting) to. */
@@ -39,8 +45,9 @@ const MAX_RECONNECT_DELAY = 10_000;
 const BASE_RECONNECT_DELAY = 500;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
-export function createTransport(): TerminalTransport {
+export function createTransport(debugId?: string): TerminalTransport {
 	return {
+		debugId: debugId ?? null,
 		socket: null,
 		connectionState: "disconnected",
 		currentUrl: null,
@@ -64,6 +71,18 @@ function scheduleReconnect(transport: TerminalTransport) {
 		MAX_RECONNECT_DELAY,
 	);
 	transport._reconnectAttempt++;
+	terminalRendererDebug.info(
+		"ws-reconnect-scheduled",
+		{
+			terminalId: transport.debugId,
+			delayMs: delay,
+			reconnectAttempt: transport._reconnectAttempt,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "ws-reconnect-scheduled"],
+		},
+	);
 
 	transport._reconnectTimer = setTimeout(() => {
 		transport._reconnectTimer = null;
@@ -104,6 +123,18 @@ export function connect(
 	transport.currentUrl = wsUrl;
 	transport._terminal = terminal;
 	transport._exited = false;
+	terminalRendererDebug.info(
+		"ws-connect-start",
+		{
+			terminalId: transport.debugId,
+			wsUrl,
+			reconnectAttempt: transport._reconnectAttempt,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "ws-connect-start"],
+		},
+	);
 	setConnectionState(transport, "connecting");
 	const socket = new WebSocket(wsUrl);
 	transport.socket = socket;
@@ -111,6 +142,14 @@ export function connect(
 	socket.addEventListener("open", () => {
 		if (transport.socket !== socket) return;
 		transport._reconnectAttempt = 0;
+		terminalRendererDebug.info(
+			"ws-open",
+			{ terminalId: transport.debugId },
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "ws-open"],
+			},
+		);
 		setConnectionState(transport, "open");
 		sendResize(transport, terminal.cols, terminal.rows);
 	});
@@ -121,16 +160,45 @@ export function connect(
 		try {
 			message = JSON.parse(String(event.data)) as TerminalServerMessage;
 		} catch {
+			terminalRendererDebug.error(
+				"ws-invalid-payload",
+				{ terminalId: transport.debugId },
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "ws-invalid-payload"],
+				},
+			);
 			terminal.writeln("\r\n[terminal] invalid server payload");
 			return;
 		}
 
 		if (message.type === "data" || message.type === "replay") {
+			terminalRendererDebug.increment("ws-receive-events", 1, {
+				data: { terminalId: transport.debugId, type: message.type },
+			});
+			terminalRendererDebug.observe("ws-receive-bytes", message.data.length, {
+				data: { terminalId: transport.debugId, type: message.type },
+			});
+			logTerminalWrite("ws-message", message.data.length, {
+				terminalId: transport.debugId,
+				messageType: message.type,
+			});
 			terminal.write(message.data);
 			return;
 		}
 
 		if (message.type === "error") {
+			terminalRendererDebug.warn(
+				"ws-server-error",
+				{
+					terminalId: transport.debugId,
+					errorMessage: message.message,
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "ws-server-error"],
+				},
+			);
 			terminal.writeln(`\r\n[terminal] ${message.message}`);
 			return;
 		}
@@ -138,6 +206,18 @@ export function connect(
 		if (message.type === "exit") {
 			transport._exited = true;
 			cancelReconnect(transport);
+			terminalRendererDebug.info(
+				"ws-exit",
+				{
+					terminalId: transport.debugId,
+					exitCode: message.exitCode,
+					signal: message.signal,
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "ws-exit"],
+				},
+			);
 			terminal.writeln(
 				`\r\n[terminal] exited with code ${message.exitCode} (signal ${message.signal})`,
 			);
@@ -146,6 +226,18 @@ export function connect(
 
 	socket.addEventListener("close", () => {
 		if (transport.socket !== socket) return;
+		terminalRendererDebug.warn(
+			"ws-close",
+			{
+				terminalId: transport.debugId,
+				exited: transport._exited,
+				reconnectAttempt: transport._reconnectAttempt,
+			},
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "ws-close"],
+			},
+		);
 		setConnectionState(transport, "closed");
 		transport.socket = null;
 		// Auto-reconnect on unexpected close (host-service restart, network blip)
@@ -154,12 +246,23 @@ export function connect(
 
 	socket.addEventListener("error", () => {
 		if (transport.socket !== socket) return;
+		terminalRendererDebug.error(
+			"ws-error",
+			{ terminalId: transport.debugId },
+			{
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "ws-error"],
+			},
+		);
 		terminal.writeln("\r\n[terminal] websocket error");
 	});
 
 	transport.onDataDisposable?.dispose();
 	transport.onDataDisposable = terminal.onData((data) => {
 		if (socket.readyState !== WebSocket.OPEN) return;
+		logTerminalInput("ws-input", data.length, {
+			terminalId: transport.debugId,
+		});
 		socket.send(JSON.stringify({ type: "input", data }));
 	});
 }
@@ -179,6 +282,14 @@ export function disconnect(transport: TerminalTransport) {
 		transport.socket.close();
 		transport.socket = null;
 	}
+	terminalRendererDebug.info(
+		"ws-disconnect",
+		{ terminalId: transport.debugId },
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "ws-disconnect"],
+		},
+	);
 	transport.currentUrl = null;
 	transport._terminal = null;
 	transport._reconnectAttempt = 0;
@@ -215,6 +326,14 @@ export function disposeTransport(transport: TerminalTransport) {
 		transport.socket.close();
 		transport.socket = null;
 	}
+	terminalRendererDebug.info(
+		"ws-transport-dispose",
+		{ terminalId: transport.debugId },
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "ws-transport-dispose"],
+		},
+	);
 	transport.currentUrl = null;
 	transport._terminal = null;
 	transport._reconnectAttempt = 0;

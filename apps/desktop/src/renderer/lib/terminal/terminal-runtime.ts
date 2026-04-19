@@ -6,6 +6,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { resolveHotkeyFromEvent } from "renderer/hotkeys";
 import { DEFAULT_TERMINAL_SCROLLBACK } from "shared/constants";
 import type { TerminalAppearance } from "./appearance";
+import { logTerminalWrite, terminalRendererDebug } from "./debug";
 import { loadAddons } from "./terminal-addons";
 
 const SERIALIZE_SCROLLBACK = 1000;
@@ -81,7 +82,10 @@ function persistBuffer(terminalId: string, serializeAddon: SerializeAddon) {
 function restoreBuffer(terminalId: string, terminal: XTerm) {
 	try {
 		const data = localStorage.getItem(`${STORAGE_KEY_PREFIX}${terminalId}`);
-		if (data) terminal.write(data);
+		if (data) {
+			logTerminalWrite("runtime-restore-buffer", data.length, { terminalId });
+			terminal.write(data);
+		}
 	} catch {}
 }
 
@@ -181,9 +185,32 @@ export function attachToContainer(
 ) {
 	runtime.container = container;
 	container.appendChild(runtime.wrapper);
+	terminalRendererDebug.info(
+		"runtime-attach-to-container",
+		{
+			terminalId: runtime.terminalId,
+			containerWidth: container.clientWidth,
+			containerHeight: container.clientHeight,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "runtime-attach-to-container"],
+		},
+	);
 	measureAndResize(runtime);
 
 	// Renderer may have skipped frames while the wrapper was detached.
+	terminalRendererDebug.info(
+		"runtime-refresh",
+		{
+			terminalId: runtime.terminalId,
+			rows: runtime.terminal.rows,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "runtime-refresh"],
+		},
+	);
 	runtime.terminal.refresh(0, runtime.terminal.rows - 1);
 
 	runtime.resizeObserver?.disconnect();
@@ -200,6 +227,18 @@ export function attachToContainer(
 export function detachFromContainer(runtime: TerminalRuntime) {
 	persistBuffer(runtime.terminalId, runtime.serializeAddon);
 	persistDimensions(runtime.terminalId, runtime.lastCols, runtime.lastRows);
+	terminalRendererDebug.info(
+		"runtime-detach-from-container",
+		{
+			terminalId: runtime.terminalId,
+			lastCols: runtime.lastCols,
+			lastRows: runtime.lastRows,
+		},
+		{
+			captureMessage: true,
+			fingerprint: ["terminal.renderer", "runtime-detach-from-container"],
+		},
+	);
 	runtime.resizeObserver?.disconnect();
 	runtime.resizeObserver = null;
 	runtime.wrapper.remove();
