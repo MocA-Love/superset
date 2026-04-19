@@ -219,7 +219,11 @@ export const createTerminalRouter = () => {
 			.mutation(async ({ input }) => {
 				const shouldThrow = input.throwOnError ?? false;
 				try {
-					terminal.write(input);
+					await terminal.write({
+						paneId: input.paneId,
+						data: input.data,
+						requireAck: shouldThrow,
+					});
 				} catch (error) {
 					const message =
 						error instanceof Error ? error.message : "Write failed";
