@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `aivis_speaking_rate` real;

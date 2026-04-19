@@ -55,6 +55,11 @@ function readAivisSettings() {
 				typeof row?.aivisVolume === "number" && Number.isFinite(row.aivisVolume)
 					? Math.max(0, Math.min(100, row.aivisVolume))
 					: 100,
+			speakingRate:
+				typeof row?.aivisSpeakingRate === "number" &&
+				Number.isFinite(row.aivisSpeakingRate)
+					? Math.max(0.5, Math.min(2.0, row.aivisSpeakingRate))
+					: 1.0,
 		};
 	} catch {
 		return null;
@@ -66,6 +71,7 @@ async function synthesize(
 	modelUuid: string,
 	text: string,
 	userDictionaryUuid?: string,
+	speakingRate?: number,
 ): Promise<Buffer> {
 	const body: Record<string, unknown> = {
 		model_uuid: modelUuid,
@@ -73,6 +79,7 @@ async function synthesize(
 		output_format: "mp3",
 	};
 	if (userDictionaryUuid) body.user_dictionary_uuid = userDictionaryUuid;
+	if (speakingRate !== undefined) body.speaking_rate = speakingRate;
 
 	const res = await fetch(AIVIS_ENDPOINT, {
 		method: "POST",
@@ -118,6 +125,7 @@ export async function playAivisTts(options: {
 	modelUuid: string;
 	text: string;
 	volume?: number;
+	speakingRate?: number;
 	userDictionaryUuid?: string;
 }): Promise<void> {
 	const trimmed = options.text.trim();
@@ -131,6 +139,7 @@ export async function playAivisTts(options: {
 		options.modelUuid,
 		trimmed,
 		options.userDictionaryUuid,
+		options.speakingRate,
 	);
 	const path = uniqueTmpPath();
 	await writeFile(path, audio);
@@ -162,6 +171,7 @@ export async function playAivisNotification(
 			modelUuid: cfg.modelUuid,
 			text,
 			volume: cfg.volume,
+			speakingRate: cfg.speakingRate,
 			userDictionaryUuid: cfg.userDictionaryUuid || undefined,
 		});
 	} catch (err) {
