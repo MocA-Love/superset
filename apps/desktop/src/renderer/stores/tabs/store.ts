@@ -1126,9 +1126,7 @@ export const useTabsStore = create<TabsStore>()(
 						options.useRightSidebarOpenViewWidth,
 					);
 					const splitTargetTab =
-						options.relativeToTabId &&
-						!options.openInNewTab &&
-						options.relativeToPaneId
+						options.relativeToTabId && options.relativeToPaneId
 							? (state.tabs.find((tab) => tab.id === options.relativeToTabId) ??
 								null)
 							: null;
@@ -1142,13 +1140,19 @@ export const useTabsStore = create<TabsStore>()(
 						splitTargetPane.tabId === splitTargetTab.id
 							? findPanePathInLayout(splitTargetTab.layout, splitTargetPane.id)
 							: null;
+					const resolvedRelativeTarget =
+						splitTargetTab && splitTargetPane && splitTargetPath !== null
+							? {
+									tab: splitTargetTab,
+									pane: splitTargetPane,
+									path: splitTargetPath,
+								}
+							: null;
 
-					const targetTab = splitTargetTab ?? activeTab;
+					const targetTab = resolvedRelativeTarget?.tab ?? activeTab;
 					const newPaneForTarget = createFileViewerPane(targetTab.id, options);
 					const targetLayoutNode =
-						splitTargetTab && splitTargetPane && splitTargetPath !== null
-							? splitTargetPane.id
-							: targetTab.layout;
+						resolvedRelativeTarget?.pane.id ?? targetTab.layout;
 					const splitDirection =
 						relativeSplitPosition === "top" ||
 						relativeSplitPosition === "bottom"
@@ -1162,22 +1166,16 @@ export const useTabsStore = create<TabsStore>()(
 						second: insertBeforeTarget ? targetLayoutNode : newPaneForTarget.id,
 						splitPercentage,
 					};
-					const newLayout: MosaicNode<string> =
-						splitTargetTab && splitTargetPane && splitTargetPath !== null
-							? splitTargetPath.length > 0
-								? updateTree(targetTab.layout, [
-										{
-											path: splitTargetPath,
-											spec: { $set: splitNode },
-										},
-									])
-								: splitNode
-							: {
-									direction: "row",
-									first: targetTab.layout,
-									second: newPaneForTarget.id,
-									splitPercentage,
-								};
+					const newLayout: MosaicNode<string> = resolvedRelativeTarget
+						? resolvedRelativeTarget.path.length > 0
+							? updateTree(targetTab.layout, [
+									{
+										path: resolvedRelativeTarget.path,
+										spec: { $set: splitNode },
+									},
+								])
+							: splitNode
+						: splitNode;
 
 					const newPanes = {
 						...state.panes,

@@ -268,17 +268,16 @@ export function BasePaneWindow({
 				return;
 			}
 
+			event.preventDefault();
+			event.stopPropagation();
+
 			const filePath = getInternalDraggedFilePath(event.dataTransfer);
 			if (!filePath) {
 				resetInternalFileDragState();
 				return;
 			}
 
-			event.preventDefault();
-			event.stopPropagation();
-			const dropPosition =
-				internalFileDropPositionRef.current ??
-				updateInternalFileDropPosition(event);
+			const dropPosition = updateInternalFileDropPosition(event);
 
 			addFileViewerPane(workspaceId, {
 				filePath,
