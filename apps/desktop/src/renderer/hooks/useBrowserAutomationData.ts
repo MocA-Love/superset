@@ -28,22 +28,25 @@ export function useBrowserAutomationData() {
 		electronTrpc.browserAutomation.listBindings.useQuery(undefined, {
 			refetchInterval: 1000,
 		});
+	const utils = electronTrpc.useUtils();
 	electronTrpc.browserAutomation.onBindingsChanged.useSubscription(undefined, {
 		onData: () => {
-			// The query above drives rendering; the subscription exists so the
-			// query invalidates reactively when another window mutates state.
+			utils.browserAutomation.listBindings.invalidate();
 		},
 	});
 
 	const sessions: AutomationSession[] = useMemo(() => {
-		const terminalStatuses = new Set([
-			"done",
-			"failed",
-			"aborted",
-			"escalated",
+		// Only sessions that have a live worker (or are actively scheduled to
+		// wake up) should be connectable. Queued/paused/aborted/done/failed/
+		// escalated sessions either never started or are terminal.
+		const liveStatuses = new Set([
+			"running",
+			"preparing",
+			"verifying",
+			"waiting",
 		]);
 		return todoSessions
-			.filter((s) => !terminalStatuses.has(s.status))
+			.filter((s) => liveStatuses.has(s.status))
 			.map((s) => {
 				// Todo-agent rows always represent Claude Code workers (see
 				// todo-daemon/claude-code-runner.ts). We label them as Claude
