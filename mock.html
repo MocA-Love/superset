@@ -1,0 +1,2031 @@
+<!doctype html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover"
+		/>
+		<title>Superset Browser Automation Mock</title>
+		<style>
+			:root {
+				--background: #151110;
+				--background-solid: #151110;
+				--foreground: #eae8e6;
+				--card: #201e1c;
+				--popover: #201e1c;
+				--secondary: #2a2827;
+				--muted: #2a2827;
+				--muted-foreground: #a8a5a3;
+				--accent: #2a2827;
+				--accent-foreground: #eae8e6;
+				--tertiary: #1a1716;
+				--tertiary-active: #252220;
+				--border: #2a2827;
+				--ring: #3a3837;
+				--sidebar: #1a1716;
+				--sidebar-accent: #252220;
+				--sidebar-border: #2a2827;
+				--brand: #e07850;
+				--brand-soft: rgba(224, 120, 80, 0.14);
+				--success: #6cb282;
+				--warning: #d5a24a;
+				--danger: #cc4444;
+				--shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+				--radius: 10px;
+				--radius-sm: 8px;
+				font-family:
+					ui-sans-serif,
+					-apple-system,
+					BlinkMacSystemFont,
+					"Segoe UI",
+					sans-serif;
+				color-scheme: dark;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			html,
+			body {
+				width: 100%;
+				height: 100%;
+				margin: 0;
+				background:
+					radial-gradient(circle at top left, rgba(224, 120, 80, 0.08), transparent 24%),
+					radial-gradient(circle at top right, rgba(255, 255, 255, 0.04), transparent 20%),
+					var(--background);
+				color: var(--foreground);
+				overflow: hidden;
+				user-select: none;
+			}
+
+			body {
+				display: flex;
+				flex-direction: column;
+			}
+
+			button,
+			input {
+				font: inherit;
+			}
+
+			button {
+				border: 0;
+				background: none;
+				color: inherit;
+				cursor: pointer;
+			}
+
+			.shell {
+				display: grid;
+				grid-template-columns: 248px minmax(720px, 1fr) 328px;
+				height: 100vh;
+			}
+
+			.sidebar {
+				display: flex;
+				flex-direction: column;
+				background: rgba(42, 40, 39, 0.42);
+				border-right: 1px solid var(--sidebar-border);
+				backdrop-filter: blur(14px);
+			}
+
+			.sidebar-header,
+			.topbar,
+			.automation-header {
+				height: 44px;
+				display: flex;
+				align-items: center;
+				padding: 0 12px;
+				border-bottom: 1px solid var(--border);
+			}
+
+			.sidebar-header {
+				justify-content: space-between;
+				font-size: 12px;
+				color: var(--muted-foreground);
+			}
+
+			.brand {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				color: var(--foreground);
+				font-weight: 600;
+				letter-spacing: 0.01em;
+			}
+
+			.brand-mark {
+				width: 14px;
+				height: 14px;
+				border-radius: 4px;
+				background:
+					linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent),
+					linear-gradient(135deg, #f3b391, #e07850 58%, #9e5335);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+			}
+
+			.sidebar-scroll,
+			.automation-scroll {
+				flex: 1;
+				overflow: auto;
+				padding: 10px 8px 18px;
+			}
+
+			.sidebar-section-title,
+			.panel-title,
+			.stack-title {
+				padding: 0 10px 8px;
+				font-size: 11px;
+				font-weight: 600;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				color: rgba(234, 232, 230, 0.48);
+			}
+
+			.project-group {
+				margin-bottom: 8px;
+				border: 1px solid rgba(255, 255, 255, 0.04);
+				border-radius: 10px;
+				background: rgba(21, 17, 16, 0.5);
+				overflow: hidden;
+			}
+
+			.project-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 10px 12px;
+				font-size: 12px;
+				color: rgba(234, 232, 230, 0.84);
+			}
+
+			.project-items {
+				padding: 0 6px 8px;
+			}
+
+			.workspace-item {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				width: 100%;
+				padding: 8px 10px;
+				border-radius: 8px;
+				color: rgba(234, 232, 230, 0.82);
+				font-size: 12px;
+				transition:
+					background 140ms ease,
+					color 140ms ease;
+			}
+
+			.workspace-item.active {
+				background: rgba(224, 120, 80, 0.12);
+				color: var(--foreground);
+				box-shadow: inset 0 0 0 1px rgba(224, 120, 80, 0.22);
+			}
+
+			.workspace-item:hover {
+				background: rgba(255, 255, 255, 0.04);
+			}
+
+			.workspace-dot {
+				width: 7px;
+				height: 7px;
+				border-radius: 999px;
+				background: var(--success);
+				box-shadow: 0 0 0 3px rgba(108, 178, 130, 0.12);
+			}
+
+			.sidebar-meta {
+				margin-left: auto;
+				font-size: 11px;
+				color: rgba(234, 232, 230, 0.4);
+			}
+
+			.main {
+				display: flex;
+				flex-direction: column;
+				min-width: 0;
+			}
+
+			.topbar {
+				gap: 10px;
+				background: rgba(21, 17, 16, 0.65);
+				backdrop-filter: blur(10px);
+			}
+
+			.search-trigger {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				width: min(280px, 100%);
+				height: 28px;
+				padding: 0 10px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: rgba(42, 40, 39, 0.55);
+				color: var(--muted-foreground);
+				font-size: 12px;
+			}
+
+			.kbd {
+				margin-left: auto;
+				padding: 1px 6px;
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				border-bottom-color: rgba(255, 255, 255, 0.14);
+				border-radius: 5px;
+				background: rgba(0, 0, 0, 0.18);
+				font-size: 10px;
+				color: rgba(234, 232, 230, 0.65);
+			}
+
+			.topbar-spacer {
+				flex: 1;
+			}
+
+			.metric {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				padding: 4px 8px;
+				border-radius: 999px;
+				background: rgba(42, 40, 39, 0.55);
+				border: 1px solid rgba(255, 255, 255, 0.04);
+				font-size: 11px;
+				color: rgba(234, 232, 230, 0.72);
+			}
+
+			.workspace {
+				display: grid;
+				grid-template-rows: 34px 1fr;
+				flex: 1;
+				min-height: 0;
+				background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent);
+			}
+
+			.tabstrip {
+				display: flex;
+				align-items: stretch;
+				padding: 0 10px;
+				border-bottom: 1px solid var(--border);
+				background: rgba(21, 17, 16, 0.55);
+			}
+
+			.workspace-tab {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				padding: 0 11px;
+				font-size: 12px;
+				color: rgba(234, 232, 230, 0.62);
+				border-right: 1px solid rgba(255, 255, 255, 0.035);
+			}
+
+			.workspace-tab.active {
+				background: rgba(255, 255, 255, 0.028);
+				color: var(--foreground);
+			}
+
+			.workspace-body {
+				display: grid;
+				grid-template-columns: 1fr;
+				min-height: 0;
+				padding: 10px;
+			}
+
+			.pane {
+				display: flex;
+				flex-direction: column;
+				min-height: 0;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				background: rgba(26, 23, 22, 0.68);
+				overflow: hidden;
+				box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+			}
+
+			.browser-toolbar {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				min-height: 37px;
+				padding: 0 8px;
+				border-bottom: 1px solid var(--border);
+				background: rgba(21, 17, 16, 0.42);
+			}
+
+			.browser-actions {
+				display: flex;
+				align-items: center;
+				gap: 2px;
+			}
+
+			.icon-btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 24px;
+				height: 24px;
+				border-radius: 7px;
+				color: rgba(234, 232, 230, 0.58);
+				transition:
+					background 140ms ease,
+					color 140ms ease;
+			}
+
+			.icon-btn:hover {
+				background: rgba(255, 255, 255, 0.05);
+				color: var(--foreground);
+			}
+
+			.sep {
+				width: 1px;
+				height: 14px;
+				background: rgba(234, 232, 230, 0.22);
+			}
+
+			.url-pill {
+				display: flex;
+				align-items: baseline;
+				flex: 1;
+				min-width: 0;
+				height: 24px;
+				padding: 0 10px;
+				border-radius: 7px;
+				background: rgba(42, 40, 39, 0.46);
+				color: rgba(234, 232, 230, 0.62);
+				font-size: 12px;
+				line-height: 24px;
+			}
+
+			.url-host {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.url-title {
+				margin-left: 8px;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				color: rgba(234, 232, 230, 0.34);
+			}
+
+			.toolbar-right {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+			}
+
+			.connect-btn {
+				display: inline-flex;
+				align-items: center;
+				gap: 7px;
+				height: 24px;
+				padding: 0 9px;
+				border-radius: 7px;
+				border: 1px solid rgba(255, 255, 255, 0.06);
+				background: rgba(42, 40, 39, 0.5);
+				color: rgba(234, 232, 230, 0.86);
+				font-size: 11px;
+				transition:
+					background 140ms ease,
+					border-color 140ms ease;
+			}
+
+			.connect-btn[data-state="connected"] {
+				background: rgba(224, 120, 80, 0.12);
+				border-color: rgba(224, 120, 80, 0.22);
+			}
+
+			.connect-btn:hover {
+				background: rgba(255, 255, 255, 0.07);
+			}
+
+			.connect-label {
+				max-width: 180px;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.browser-view {
+				position: relative;
+				flex: 1;
+				min-height: 0;
+				background:
+					linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0)),
+					#f4f1ed;
+				color: #1f1c18;
+			}
+
+			.browser-chrome {
+				height: 36px;
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				padding: 0 12px;
+				background: #e5ddd5;
+				border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+				font-size: 11px;
+				color: rgba(31, 28, 24, 0.62);
+			}
+
+			.browser-dot {
+				width: 9px;
+				height: 9px;
+				border-radius: 999px;
+				background: rgba(31, 28, 24, 0.14);
+			}
+
+			.browser-page {
+				display: grid;
+				grid-template-columns: minmax(360px, 1fr) 280px;
+				height: calc(100% - 36px);
+				min-height: 0;
+			}
+
+			.page-main {
+				padding: 26px 32px 28px;
+				overflow: hidden;
+			}
+
+			.hero-kicker {
+				display: inline-flex;
+				align-items: center;
+				gap: 7px;
+				padding: 5px 10px;
+				border-radius: 999px;
+				background: rgba(224, 120, 80, 0.1);
+				color: #924a2f;
+				font-size: 11px;
+				font-weight: 600;
+			}
+
+			.page-main h1 {
+				margin: 18px 0 12px;
+				font-size: 34px;
+				line-height: 1.03;
+				letter-spacing: -0.04em;
+			}
+
+			.page-main p {
+				margin: 0;
+				max-width: 640px;
+				font-size: 14px;
+				line-height: 1.6;
+				color: rgba(31, 28, 24, 0.72);
+			}
+
+			.stat-grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 12px;
+				margin-top: 24px;
+			}
+
+			.stat-card {
+				padding: 14px 16px;
+				border-radius: 14px;
+				background: rgba(255, 255, 255, 0.72);
+				box-shadow: inset 0 0 0 1px rgba(31, 28, 24, 0.06);
+			}
+
+			.stat-value {
+				font-size: 22px;
+				font-weight: 700;
+				letter-spacing: -0.04em;
+			}
+
+			.stat-label {
+				margin-top: 5px;
+				font-size: 11px;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+				color: rgba(31, 28, 24, 0.5);
+			}
+
+			.page-rail {
+				padding: 20px 18px;
+				border-left: 1px solid rgba(0, 0, 0, 0.07);
+				background: rgba(255, 255, 255, 0.52);
+			}
+
+			.rail-card {
+				padding: 14px;
+				border-radius: 14px;
+				background: rgba(255, 255, 255, 0.65);
+				box-shadow: inset 0 0 0 1px rgba(31, 28, 24, 0.06);
+				margin-bottom: 12px;
+			}
+
+			.rail-card h3 {
+				margin: 0 0 8px;
+				font-size: 13px;
+			}
+
+			.rail-row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 8px 0;
+				font-size: 12px;
+				color: rgba(31, 28, 24, 0.72);
+				border-top: 1px solid rgba(31, 28, 24, 0.06);
+			}
+
+			.rail-row:first-of-type {
+				border-top: 0;
+				padding-top: 0;
+			}
+
+			.automation {
+				display: flex;
+				flex-direction: column;
+				border-left: 1px solid var(--border);
+				background: rgba(21, 17, 16, 0.62);
+				backdrop-filter: blur(12px);
+			}
+
+			.automation-header {
+				justify-content: space-between;
+				background: rgba(21, 17, 16, 0.46);
+			}
+
+			.automation-header .title-wrap {
+				display: flex;
+				flex-direction: column;
+				gap: 1px;
+			}
+
+			.automation-header strong {
+				font-size: 12px;
+				font-weight: 600;
+			}
+
+			.automation-header span {
+				font-size: 11px;
+				color: var(--muted-foreground);
+			}
+
+			.pill {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				padding: 3px 8px;
+				border-radius: 999px;
+				font-size: 10px;
+				font-weight: 600;
+				letter-spacing: 0.04em;
+				text-transform: uppercase;
+			}
+
+			.pill.ready {
+				background: rgba(108, 178, 130, 0.14);
+				color: #9ad0ac;
+			}
+
+			.pill.warning {
+				background: rgba(213, 162, 74, 0.16);
+				color: #f0c46f;
+			}
+
+			.pill.muted {
+				background: rgba(255, 255, 255, 0.05);
+				color: rgba(234, 232, 230, 0.68);
+			}
+
+			.summary-card,
+			.browser-target-card,
+			.session-card,
+			.detail-card,
+			.setup-card {
+				border: 1px solid rgba(255, 255, 255, 0.04);
+				background: rgba(32, 30, 28, 0.85);
+				border-radius: 12px;
+				margin: 0 8px 10px;
+				padding: 12px;
+				box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+			}
+
+			.summary-grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 8px;
+			}
+
+			.summary-metric {
+				padding: 10px;
+				border-radius: 10px;
+				background: rgba(255, 255, 255, 0.03);
+			}
+
+			.summary-metric .num {
+				font-size: 18px;
+				font-weight: 700;
+				letter-spacing: -0.04em;
+			}
+
+			.summary-metric .label {
+				margin-top: 4px;
+				font-size: 10px;
+				color: rgba(234, 232, 230, 0.5);
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+			}
+
+			.browser-target-card {
+				cursor: pointer;
+				transition:
+					border-color 140ms ease,
+					background 140ms ease,
+					transform 140ms ease;
+			}
+
+			.browser-target-card:hover {
+				border-color: rgba(255, 255, 255, 0.09);
+				transform: translateY(-1px);
+			}
+
+			.browser-target-card.active {
+				border-color: rgba(224, 120, 80, 0.26);
+				background: rgba(224, 120, 80, 0.08);
+			}
+
+			.card-top {
+				display: flex;
+				align-items: flex-start;
+				justify-content: space-between;
+				gap: 12px;
+			}
+
+			.card-title {
+				font-size: 12px;
+				font-weight: 600;
+				line-height: 1.4;
+			}
+
+			.card-subtitle,
+			.meta-line,
+			.helper-text {
+				font-size: 11px;
+				line-height: 1.5;
+				color: rgba(234, 232, 230, 0.54);
+			}
+
+			.meta-line {
+				margin-top: 8px;
+			}
+
+			.assignment {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				margin-top: 12px;
+				padding-top: 12px;
+				border-top: 1px solid rgba(255, 255, 255, 0.05);
+			}
+
+			.assignment-avatar {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 26px;
+				height: 26px;
+				border-radius: 8px;
+				background: rgba(255, 255, 255, 0.05);
+				font-size: 11px;
+				font-weight: 700;
+			}
+
+			.assignment-text {
+				display: flex;
+				flex-direction: column;
+				gap: 2px;
+				min-width: 0;
+			}
+
+			.assignment-text strong {
+				font-size: 12px;
+				font-weight: 600;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.assignment-text span {
+				font-size: 11px;
+				color: rgba(234, 232, 230, 0.54);
+			}
+
+			.tiny-btn,
+			.primary-btn,
+			.secondary-btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 8px;
+				height: 30px;
+				padding: 0 12px;
+				border-radius: 9px;
+				font-size: 12px;
+				font-weight: 600;
+				transition:
+					background 140ms ease,
+					border-color 140ms ease,
+					opacity 140ms ease;
+			}
+
+			.tiny-btn {
+				height: 24px;
+				padding: 0 8px;
+				border-radius: 7px;
+				background: rgba(255, 255, 255, 0.05);
+				color: rgba(234, 232, 230, 0.84);
+				font-size: 11px;
+			}
+
+			.primary-btn {
+				background: var(--brand);
+				color: #1a120f;
+			}
+
+			.primary-btn:hover {
+				background: #ea8b65;
+			}
+
+			.secondary-btn,
+			.tiny-btn:hover {
+				background: rgba(255, 255, 255, 0.06);
+				color: var(--foreground);
+			}
+
+			.secondary-btn {
+				border: 1px solid rgba(255, 255, 255, 0.06);
+			}
+
+			.primary-btn:disabled {
+				opacity: 0.45;
+				cursor: default;
+			}
+
+			.overlay {
+				position: fixed;
+				inset: 0;
+				display: none;
+				align-items: center;
+				justify-content: center;
+				padding: 24px;
+				background: rgba(7, 5, 4, 0.62);
+				backdrop-filter: blur(10px);
+				z-index: 20;
+			}
+
+			.overlay.open {
+				display: flex;
+			}
+
+			.modal {
+				width: min(1020px, calc(100vw - 48px));
+				max-height: min(780px, calc(100vh - 48px));
+				display: grid;
+				grid-template-rows: 56px 1fr 58px;
+				background: var(--popover);
+				border: 1px solid rgba(255, 255, 255, 0.07);
+				border-radius: 18px;
+				box-shadow: var(--shadow);
+				overflow: hidden;
+			}
+
+			.modal-header,
+			.modal-footer {
+				display: flex;
+				align-items: center;
+				padding: 0 18px;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+			}
+
+			.modal-footer {
+				justify-content: space-between;
+				border-top: 1px solid rgba(255, 255, 255, 0.05);
+				border-bottom: 0;
+				gap: 12px;
+			}
+
+			.modal-title {
+				display: flex;
+				flex-direction: column;
+				gap: 3px;
+			}
+
+			.modal-title strong {
+				font-size: 13px;
+			}
+
+			.modal-title span {
+				font-size: 11px;
+				color: rgba(234, 232, 230, 0.56);
+			}
+
+			.modal-body {
+				display: grid;
+				grid-template-columns: minmax(340px, 0.95fr) minmax(300px, 0.85fr);
+				min-height: 0;
+			}
+
+			.modal-column {
+				min-height: 0;
+				overflow: auto;
+				padding: 16px;
+			}
+
+			.modal-column + .modal-column {
+				border-left: 1px solid rgba(255, 255, 255, 0.05);
+				background: rgba(255, 255, 255, 0.015);
+			}
+
+			.context-strip {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 10px 12px;
+				border-radius: 10px;
+				background: rgba(255, 255, 255, 0.03);
+				margin-bottom: 14px;
+			}
+
+			.context-icon {
+				width: 28px;
+				height: 28px;
+				border-radius: 8px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				background: rgba(224, 120, 80, 0.14);
+				color: #f0b198;
+				font-size: 13px;
+				font-weight: 700;
+			}
+
+			.session-card {
+				cursor: pointer;
+				transition:
+					background 140ms ease,
+					border-color 140ms ease;
+			}
+
+			.session-card.active {
+				border-color: rgba(224, 120, 80, 0.28);
+				background: rgba(224, 120, 80, 0.08);
+			}
+
+			.session-top {
+				display: flex;
+				align-items: flex-start;
+				justify-content: space-between;
+				gap: 14px;
+			}
+
+			.session-name {
+				font-size: 13px;
+				font-weight: 600;
+			}
+
+			.session-meta {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+				margin-top: 8px;
+			}
+
+			.session-tag {
+				padding: 3px 7px;
+				border-radius: 999px;
+				background: rgba(255, 255, 255, 0.05);
+				font-size: 10px;
+				color: rgba(234, 232, 230, 0.72);
+				text-transform: uppercase;
+				letter-spacing: 0.05em;
+			}
+
+			.session-note {
+				margin-top: 10px;
+				font-size: 11px;
+				line-height: 1.55;
+				color: rgba(234, 232, 230, 0.54);
+			}
+
+			.detail-card,
+			.setup-card {
+				margin: 0 0 14px;
+			}
+
+			.detail-grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 8px;
+				margin-top: 12px;
+			}
+
+			.detail-item {
+				padding: 10px;
+				border-radius: 10px;
+				background: rgba(255, 255, 255, 0.035);
+			}
+
+			.detail-item span {
+				display: block;
+				font-size: 10px;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+				color: rgba(234, 232, 230, 0.46);
+			}
+
+			.detail-item strong {
+				display: block;
+				margin-top: 5px;
+				font-size: 12px;
+				line-height: 1.4;
+			}
+
+			.codeblock {
+				margin-top: 10px;
+				padding: 12px 14px;
+				border-radius: 10px;
+				background: rgba(0, 0, 0, 0.18);
+				border: 1px solid rgba(255, 255, 255, 0.04);
+				font-family:
+					ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					monospace;
+				font-size: 11px;
+				line-height: 1.65;
+				color: rgba(234, 232, 230, 0.82);
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+
+			.setup-list {
+				margin: 12px 0 0;
+				padding-left: 18px;
+				color: rgba(234, 232, 230, 0.74);
+				font-size: 12px;
+				line-height: 1.65;
+			}
+
+			.footer-actions {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				margin-left: auto;
+			}
+
+			.toast-stack {
+				position: fixed;
+				right: 20px;
+				bottom: 20px;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				z-index: 30;
+			}
+
+			.toast {
+				min-width: 280px;
+				max-width: 360px;
+				padding: 12px 14px;
+				border-radius: 12px;
+				background: rgba(32, 30, 28, 0.96);
+				border: 1px solid rgba(255, 255, 255, 0.06);
+				box-shadow: var(--shadow);
+			}
+
+			.toast strong {
+				display: block;
+				font-size: 12px;
+			}
+
+			.toast span {
+				display: block;
+				margin-top: 4px;
+				font-size: 11px;
+				line-height: 1.5;
+				color: rgba(234, 232, 230, 0.58);
+			}
+
+			.hidden {
+				display: none;
+			}
+
+			@media (max-width: 1320px) {
+				.shell {
+					grid-template-columns: 224px minmax(620px, 1fr) 300px;
+				}
+			}
+
+			@media (max-width: 1120px) {
+				.shell {
+					grid-template-columns: 212px 1fr;
+				}
+
+				.automation {
+					display: none;
+				}
+
+				.modal {
+					width: min(920px, calc(100vw - 32px));
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="shell">
+			<aside class="sidebar">
+				<div class="sidebar-header">
+					<div class="brand">
+						<span class="brand-mark"></span>
+						<span>Superset</span>
+					</div>
+					<span>v1 workspace</span>
+				</div>
+				<div class="sidebar-scroll">
+					<div class="sidebar-section-title">Projects</div>
+					<div class="project-group">
+						<div class="project-header">
+							<span>moca-love/superset</span>
+							<span class="sidebar-meta">3</span>
+						</div>
+						<div class="project-items">
+							<button class="workspace-item active">
+								<span class="workspace-dot"></span>
+								<span>Desktop automation spike</span>
+								<span class="sidebar-meta">⌘1</span>
+							</button>
+							<button class="workspace-item">
+								<span class="workspace-dot" style="background:#d5a24a; box-shadow: 0 0 0 3px rgba(213, 162, 74, 0.1)"></span>
+								<span>Billing polish</span>
+								<span class="sidebar-meta">⌘2</span>
+							</button>
+							<button class="workspace-item">
+								<span class="workspace-dot" style="background:#7b68ee; box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.12)"></span>
+								<span>Marketing launch</span>
+								<span class="sidebar-meta">⌘3</span>
+							</button>
+						</div>
+					</div>
+
+					<div class="project-group">
+						<div class="project-header">
+							<span>playground</span>
+							<span class="sidebar-meta">1</span>
+						</div>
+						<div class="project-items">
+							<button class="workspace-item">
+								<span class="workspace-dot" style="background:#5ca8ff; box-shadow: 0 0 0 3px rgba(92, 168, 255, 0.12)"></span>
+								<span>Docs browsing</span>
+							</button>
+						</div>
+					</div>
+				</div>
+			</aside>
+
+			<main class="main">
+				<div class="topbar">
+					<button class="search-trigger" type="button">
+						<span>Search v1 workspace…</span>
+						<span class="kbd">⌘K</span>
+					</button>
+					<div class="topbar-spacer"></div>
+					<div class="metric" id="metricReadySessions">Ready sessions 2</div>
+					<div class="metric" id="metricConnected">Connected panes 1</div>
+					<div class="metric" id="metricTargets">Browser panes 3</div>
+				</div>
+
+				<div class="workspace">
+					<div class="tabstrip" id="workspaceTabstrip">
+						<button class="workspace-tab active" data-pane-tab="pane-pricing">Pricing QA</button>
+						<button class="workspace-tab" data-pane-tab="pane-checkout">Checkout flow</button>
+						<button class="workspace-tab" data-pane-tab="pane-landing">Landing research</button>
+						<div class="workspace-tab" style="pointer-events:none;">Agent Chat</div>
+					</div>
+
+					<div class="workspace-body">
+						<section class="pane">
+							<div class="browser-toolbar">
+								<div class="browser-actions">
+									<button class="icon-btn" type="button" aria-label="Back">
+										←
+									</button>
+									<button class="icon-btn" type="button" aria-label="Forward">
+										→
+									</button>
+									<button class="icon-btn" type="button" aria-label="Reload">
+										↻
+									</button>
+								</div>
+								<div class="sep"></div>
+								<div class="url-pill">
+									<span class="url-host" id="urlHost">app.superset.sh/pricing</span>
+									<span class="url-title" id="urlTitle">/ Pricing redesign preview</span>
+								</div>
+								<div class="toolbar-right">
+									<div class="sep"></div>
+									<button
+										id="connectButton"
+										class="connect-btn"
+										data-state="connected"
+										type="button"
+									>
+										<span>◌</span>
+										<span class="connect-label" id="connectLabel"
+											>Session 14 connected</span
+										>
+									</button>
+									<button class="icon-btn" type="button" aria-label="DevTools">
+										⌂
+									</button>
+									<button class="icon-btn" type="button" aria-label="More">
+										⋯
+									</button>
+								</div>
+							</div>
+
+							<div class="browser-view">
+								<div class="browser-chrome">
+									<span class="browser-dot"></span>
+									<span class="browser-dot"></span>
+									<span class="browser-dot"></span>
+									<span id="browserChromeTitle" style="margin-left:10px;"
+										>Pricing redesign preview</span
+									>
+								</div>
+								<div class="browser-page">
+									<div class="page-main">
+										<div class="hero-kicker" id="heroKicker">
+											Automation candidate selected
+										</div>
+										<h1 id="heroTitle">
+											Build internal tools that feel closer to native than web.
+										</h1>
+										<p id="heroBody">
+											This pane is the one currently targeted by the mock
+											automation binding. The connect action lives in the browser
+											toolbar, so switching ownership is a single click and does
+											not require leaving the page context.
+										</p>
+
+										<div class="stat-grid" id="statGrid">
+											<div class="stat-card">
+												<div class="stat-value">42%</div>
+												<div class="stat-label">Conversion lift</div>
+											</div>
+											<div class="stat-card">
+												<div class="stat-value">8.6m</div>
+												<div class="stat-label">Median setup time</div>
+											</div>
+											<div class="stat-card">
+												<div class="stat-value">3 tabs</div>
+												<div class="stat-label">Automation targets</div>
+											</div>
+										</div>
+									</div>
+
+									<aside class="page-rail">
+										<div class="rail-card">
+											<h3>Connected session</h3>
+											<div class="rail-row">
+												<span>Owner</span>
+												<strong id="railOwner">Session 14</strong>
+											</div>
+											<div class="rail-row">
+												<span>Agent</span>
+												<strong id="railAgent">Codex</strong>
+											</div>
+											<div class="rail-row">
+												<span>Transport</span>
+												<strong id="railTransport">MCP ready</strong>
+											</div>
+										</div>
+										<div class="rail-card">
+											<h3 id="railCardTitle">Expected behavior</h3>
+											<div id="railRows">
+												<div class="rail-row">
+													<span>Click Connect</span>
+													<strong>Pick a running session</strong>
+												</div>
+												<div class="rail-row">
+													<span>If MCP missing</span>
+													<strong>Show setup guide inline</strong>
+												</div>
+												<div class="rail-row">
+													<span>After connect</span>
+													<strong>Badge updates immediately</strong>
+												</div>
+											</div>
+										</div>
+									</aside>
+								</div>
+							</div>
+						</section>
+					</div>
+				</div>
+			</main>
+
+			<aside class="automation">
+				<div class="automation-header">
+					<div class="title-wrap">
+						<strong>Browser Automation</strong>
+						<span>Workspace-wide list view</span>
+					</div>
+					<span class="pill ready">Live</span>
+				</div>
+				<div class="automation-scroll">
+					<div class="summary-card">
+						<div class="panel-title" style="padding:0 0 10px;">Overview</div>
+						<div class="summary-grid">
+							<div class="summary-metric">
+								<div class="num" id="summaryPanes">3</div>
+								<div class="label">Browser panes</div>
+							</div>
+							<div class="summary-metric">
+								<div class="num" id="summaryConnected">1</div>
+								<div class="label">Connected</div>
+							</div>
+							<div class="summary-metric">
+								<div class="num" id="summaryNeedsSetup">1</div>
+								<div class="label">Needs setup</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="stack-title">Targets</div>
+					<div id="targetList"></div>
+				</div>
+			</aside>
+		</div>
+
+		<div id="connectOverlay" class="overlay">
+			<div class="modal" role="dialog" aria-modal="true">
+				<div class="modal-header">
+					<div class="modal-title">
+						<strong>Connect browser automation</strong>
+						<span id="modalSubtitle"
+							>Choose which running LLM session should control this browser pane.</span
+						>
+					</div>
+					<div class="topbar-spacer"></div>
+					<button id="closeModalButton" class="icon-btn" type="button" aria-label="Close">
+						✕
+					</button>
+				</div>
+
+				<div class="modal-body">
+					<div class="modal-column">
+						<div class="context-strip">
+							<div class="context-icon">◎</div>
+							<div>
+								<div class="card-title" id="contextPaneTitle">Pricing QA</div>
+								<div class="card-subtitle" id="contextPaneUrl">
+									app.superset.sh/pricing
+								</div>
+							</div>
+						</div>
+
+						<div class="stack-title" style="padding:0 0 10px;">Running sessions</div>
+
+						<div class="session-card active" data-session-id="session-14">
+							<div class="session-top">
+								<div>
+									<div class="session-name">Session 14</div>
+									<div class="card-subtitle">Codex · feature/browser-cdp-map</div>
+								</div>
+								<span class="pill ready">Ready</span>
+							</div>
+							<div class="session-meta">
+								<span class="session-tag">Terminal</span>
+								<span class="session-tag">Bound to workspace</span>
+								<span class="session-tag">Last prompt 20s ago</span>
+							</div>
+							<div class="session-note">
+								Browser MCP is already configured. Connecting this session should
+								be immediate and should update the toolbar badge without any extra
+								setup flow.
+							</div>
+						</div>
+
+						<div class="session-card" data-session-id="session-11">
+							<div class="session-top">
+								<div>
+									<div class="session-name">Session 11</div>
+									<div class="card-subtitle">Claude · checkout-debug</div>
+								</div>
+								<span class="pill warning">Needs MCP</span>
+							</div>
+							<div class="session-meta">
+								<span class="session-tag">Terminal</span>
+								<span class="session-tag">Focus in current tab</span>
+								<span class="session-tag">Last prompt 2m ago</span>
+							</div>
+							<div class="session-note">
+								Good candidate, but this session does not currently expose the
+								required browser automation MCP entry. The right column explains
+								what needs to be added.
+							</div>
+						</div>
+
+						<div class="session-card" data-session-id="session-09">
+							<div class="session-top">
+								<div>
+									<div class="session-name">Session 09</div>
+									<div class="card-subtitle">Codex · release-notes-draft</div>
+								</div>
+								<span class="pill muted">No browser context</span>
+							</div>
+							<div class="session-meta">
+								<span class="session-tag">Chat</span>
+								<span class="session-tag">Different tab</span>
+							</div>
+							<div class="session-note">
+								Allowed, but probably not ideal. This shows the generic
+								“pick any LLM session later” model you described, without
+								splitting the first action by provider.
+							</div>
+						</div>
+					</div>
+
+					<div class="modal-column">
+						<div id="readyPanel">
+							<div class="detail-card">
+								<div class="card-title">Selected session is ready to connect</div>
+								<div class="helper-text">
+									This session already has the browser automation MCP entry, so
+									the connect action can immediately bind the pane to this owner.
+								</div>
+								<div class="detail-grid">
+									<div class="detail-item">
+										<span>Owner</span>
+										<strong id="readyOwner">Session 14 / Codex</strong>
+									</div>
+									<div class="detail-item">
+										<span>Binding mode</span>
+										<strong id="readyMode">Exclusive control</strong>
+									</div>
+									<div class="detail-item">
+										<span>Pane</span>
+										<strong id="readyPaneName">Pricing QA</strong>
+									</div>
+									<div class="detail-item">
+										<span>Expected UI result</span>
+										<strong id="readyExpected">Toolbar badge updates instantly</strong>
+									</div>
+								</div>
+							</div>
+
+							<div class="detail-card">
+								<div class="card-title">What the user would feel</div>
+								<div class="helper-text">
+									The main UX stays local to the pane. You click Connect, choose
+									a session, and the pane shows ownership immediately. The list
+									view on the right updates in parallel.
+								</div>
+							</div>
+						</div>
+
+						<div id="setupPanel" class="hidden">
+							<div class="setup-card">
+								<div class="card-title">This session needs browser MCP setup</div>
+								<div class="helper-text">
+									The connect action should not fail silently. If the selected
+									LLM session does not have the required MCP entry, the same
+									dialog should explain how to add it before allowing connect.
+								</div>
+								<ol class="setup-list">
+									<li>Open the agent config used by this session.</li>
+									<li>Add the managed <code>superset-browser</code> MCP server.</li>
+									<li>Reload the session or start a new one from this workspace.</li>
+								</ol>
+								<div class="codeblock" id="setupSnippet"></div>
+								<div style="display:flex; gap:10px; margin-top:12px;">
+									<button id="simulateSetupButton" class="primary-btn" type="button">
+										Simulate MCP added
+									</button>
+									<button id="copySnippetButton" class="secondary-btn" type="button">
+										Copy snippet
+									</button>
+								</div>
+							</div>
+
+							<div class="detail-card">
+								<div class="card-title">Suggested copy</div>
+								<div class="helper-text">
+									“Session 11 is missing the browser automation MCP. Add the
+									server below, then reopen or restart the session to connect
+									this pane.”
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="modal-footer">
+					<div class="helper-text" id="footerHint">
+						Connecting binds this browser pane to the selected session only.
+					</div>
+					<div class="footer-actions">
+						<button id="disconnectButton" class="secondary-btn" type="button">
+							Disconnect current
+						</button>
+						<button id="cancelButton" class="secondary-btn" type="button">
+							Cancel
+						</button>
+						<button id="confirmButton" class="primary-btn" type="button">
+							Connect session
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="toast-stack" id="toastStack"></div>
+
+		<script>
+			const sessions = {
+				"session-14": {
+					id: "session-14",
+					name: "Session 14",
+					agent: "Codex",
+					branch: "feature/browser-cdp-map",
+					kind: "Terminal",
+					lastPrompt: "20s ago",
+					mcpReady: true,
+					snippet: `[mcp_servers.superset-browser]
+command = "superset-browser-mcp"
+args = []`,
+				},
+				"session-11": {
+					id: "session-11",
+					name: "Session 11",
+					agent: "Claude",
+					branch: "checkout-debug",
+					kind: "Terminal",
+					lastPrompt: "2m ago",
+					mcpReady: false,
+					snippet: `{
+  "mcpServers": {
+    "superset-browser": {
+      "command": "superset-browser-mcp"
+    }
+  }
+}`,
+				},
+				"session-09": {
+					id: "session-09",
+					name: "Session 09",
+					agent: "Codex",
+					branch: "release-notes-draft",
+					kind: "Chat",
+					lastPrompt: "6m ago",
+					mcpReady: true,
+					snippet: `[mcp_servers.superset-browser]
+command = "superset-browser-mcp"
+args = []`,
+				},
+			};
+
+			const panes = {
+				"pane-pricing": {
+					id: "pane-pricing",
+					name: "Pricing QA",
+					url: "app.superset.sh/pricing",
+					pageTitle: "Pricing redesign preview",
+					kicker: "v1 workspace / browser pane",
+					heroTitle:
+						"Build internal tools that feel closer to native than web.",
+					heroBody:
+						"This pane is the one currently targeted by the mock automation binding. The connect action lives in the browser toolbar, so switching ownership is a single click and does not require leaving the page context.",
+					stats: [
+						{ value: "42%", label: "Conversion lift" },
+						{ value: "8.6m", label: "Median setup time" },
+						{ value: "3 tabs", label: "Automation targets" },
+					],
+					railTitle: "Expected behavior",
+					railRows: [
+						["Click Connect", "Pick a running session"],
+						["If MCP missing", "Show setup guide inline"],
+						["After connect", "Badge updates immediately"],
+					],
+					connectedSessionId: "session-14",
+				},
+				"pane-checkout": {
+					id: "pane-checkout",
+					name: "Checkout flow",
+					url: "app.superset.sh/checkout",
+					pageTitle: "Checkout validation run",
+					kicker: "Regression check",
+					heroTitle: "Exercise the payment flow and capture flaky interactions.",
+					heroBody:
+						"This pane is meant for step-by-step form automation. It is a good example of a browser target that should be assigned late, because the best LLM session depends on what task is already running in the workspace.",
+					stats: [
+						{ value: "12", label: "Input fields" },
+						{ value: "3", label: "3DS states" },
+						{ value: "1.2s", label: "Avg idle gap" },
+					],
+					railTitle: "Good automation target",
+					railRows: [
+						["Best owner", "Session 11 / Claude"],
+						["Current issue", "Browser MCP not configured"],
+						["Desired action", "Guide the user, then connect"],
+					],
+					connectedSessionId: null,
+					suggestedSessionId: "session-11",
+				},
+				"pane-landing": {
+					id: "pane-landing",
+					name: "Landing page research",
+					url: "dev.classmethod.jp/articles/chrome-devtools-mcp-setup/",
+					pageTitle: "chrome-devtools-mcp setup article",
+					kicker: "Research tab",
+					heroTitle: "Compare external MCP workflows before productizing them.",
+					heroBody:
+						"This pane represents the reference-reading use case. It should still be connectable, but the product should make it obvious when the pane is simply open for reading versus actively assigned to an agent session.",
+					stats: [
+						{ value: "5", label: "Linked sources" },
+						{ value: "0", label: "Current owner" },
+						{ value: "3m", label: "Last active" },
+					],
+					railTitle: "Why keep list view",
+					railRows: [
+						["Research panes", "Easy to lose without a list"],
+						["Unassigned state", "Should still be visible"],
+						["Connect later", "Any ready session can claim it"],
+					],
+					connectedSessionId: null,
+				},
+			};
+
+			let selectedPaneId = "pane-pricing";
+			let selectedSessionId = "session-14";
+
+			const connectButton = document.getElementById("connectButton");
+			const connectLabel = document.getElementById("connectLabel");
+			const overlay = document.getElementById("connectOverlay");
+			const closeModalButton = document.getElementById("closeModalButton");
+			const cancelButton = document.getElementById("cancelButton");
+			const confirmButton = document.getElementById("confirmButton");
+			const disconnectButton = document.getElementById("disconnectButton");
+			const footerHint = document.getElementById("footerHint");
+			const contextPaneTitle = document.getElementById("contextPaneTitle");
+			const contextPaneUrl = document.getElementById("contextPaneUrl");
+			const urlHost = document.getElementById("urlHost");
+			const urlTitle = document.getElementById("urlTitle");
+			const readyPaneName = document.getElementById("readyPaneName");
+			const readyOwner = document.getElementById("readyOwner");
+			const readyMode = document.getElementById("readyMode");
+			const readyExpected = document.getElementById("readyExpected");
+			const heroKicker = document.getElementById("heroKicker");
+			const heroTitle = document.getElementById("heroTitle");
+			const heroBody = document.getElementById("heroBody");
+			const browserChromeTitle = document.getElementById("browserChromeTitle");
+			const railOwner = document.getElementById("railOwner");
+			const railAgent = document.getElementById("railAgent");
+			const railTransport = document.getElementById("railTransport");
+			const railCardTitle = document.getElementById("railCardTitle");
+			const railRows = document.getElementById("railRows");
+			const statGrid = document.getElementById("statGrid");
+			const targetList = document.getElementById("targetList");
+			const metricReadySessions = document.getElementById("metricReadySessions");
+			const metricConnected = document.getElementById("metricConnected");
+			const metricTargets = document.getElementById("metricTargets");
+			const summaryPanes = document.getElementById("summaryPanes");
+			const summaryConnected = document.getElementById("summaryConnected");
+			const summaryNeedsSetup = document.getElementById("summaryNeedsSetup");
+			const workspaceTabstrip = document.getElementById("workspaceTabstrip");
+			const readyPanel = document.getElementById("readyPanel");
+			const setupPanel = document.getElementById("setupPanel");
+			const setupSnippet = document.getElementById("setupSnippet");
+			const modalSubtitle = document.getElementById("modalSubtitle");
+			const toastStack = document.getElementById("toastStack");
+			const simulateSetupButton = document.getElementById("simulateSetupButton");
+			const copySnippetButton = document.getElementById("copySnippetButton");
+
+			function getAssignedPaneForSession(sessionId) {
+				return Object.values(panes).find((pane) => pane.connectedSessionId === sessionId) || null;
+			}
+
+			function getConnectedCount() {
+				return Object.values(panes).filter((pane) => pane.connectedSessionId).length;
+			}
+
+			function getNeedsSetupCount() {
+				const suggested = Object.values(panes).filter(
+					(pane) =>
+						!pane.connectedSessionId &&
+						pane.suggestedSessionId &&
+						!sessions[pane.suggestedSessionId].mcpReady,
+				);
+				return suggested.length;
+			}
+
+			function getReadySessionCount() {
+				return Object.values(sessions).filter((session) => session.mcpReady).length;
+			}
+
+			function renderPage() {
+				const pane = panes[selectedPaneId];
+				const session = pane.connectedSessionId
+					? sessions[pane.connectedSessionId]
+					: null;
+
+				heroKicker.textContent = pane.kicker;
+				heroTitle.textContent = pane.heroTitle;
+				heroBody.textContent = pane.heroBody;
+				urlHost.textContent = pane.url;
+				urlTitle.textContent = `/ ${pane.pageTitle}`;
+				browserChromeTitle.textContent = pane.pageTitle;
+				railCardTitle.textContent = pane.railTitle;
+				railRows.innerHTML = pane.railRows
+					.map(
+						([label, value]) =>
+							'<div class="rail-row"><span>' +
+							label +
+							"</span><strong>" +
+							value +
+							"</strong></div>",
+					)
+					.join("");
+				statGrid.innerHTML = pane.stats
+					.map(
+						(stat) =>
+							'<div class="stat-card"><div class="stat-value">' +
+							stat.value +
+							'</div><div class="stat-label">' +
+							stat.label +
+							"</div></div>",
+					)
+					.join("");
+
+				if (session) {
+					railOwner.textContent = session.name;
+					railAgent.textContent = session.agent;
+					railTransport.textContent = session.mcpReady ? "MCP ready" : "MCP missing";
+				} else {
+					railOwner.textContent = "Unassigned";
+					railAgent.textContent = "None";
+					railTransport.textContent = "No active binding";
+				}
+			}
+
+			function renderToolbarState() {
+				const pane = panes[selectedPaneId];
+				const session = pane.connectedSessionId
+					? sessions[pane.connectedSessionId]
+					: null;
+
+				if (session) {
+					connectButton.dataset.state = "connected";
+					connectLabel.textContent = `${session.name} · ${session.agent}`;
+				} else {
+					connectButton.dataset.state = "idle";
+					connectLabel.textContent = "Connect";
+				}
+			}
+
+			function renderWorkspaceTabs() {
+				workspaceTabstrip.querySelectorAll("[data-pane-tab]").forEach((tab) => {
+					const paneId = tab.dataset.paneTab;
+					const pane = panes[paneId];
+					tab.classList.toggle("active", paneId === selectedPaneId);
+					tab.textContent = pane.name;
+				});
+			}
+
+			function renderSummary() {
+				const connectedCount = getConnectedCount();
+				const readyCount = getReadySessionCount();
+				const needsSetupCount = getNeedsSetupCount();
+
+				metricReadySessions.textContent = `Ready sessions ${readyCount}`;
+				metricConnected.textContent = `Connected panes ${connectedCount}`;
+				metricTargets.textContent = `Browser panes ${Object.keys(panes).length}`;
+				summaryPanes.textContent = String(Object.keys(panes).length);
+				summaryConnected.textContent = String(connectedCount);
+				summaryNeedsSetup.textContent = String(needsSetupCount);
+			}
+
+			function renderAutomationCards() {
+				targetList.innerHTML = Object.values(panes)
+					.map((pane) => {
+						const session = pane.connectedSessionId
+							? sessions[pane.connectedSessionId]
+							: null;
+						const suggested = pane.suggestedSessionId
+							? sessions[pane.suggestedSessionId]
+							: null;
+						const isActive = pane.id === selectedPaneId ? " active" : "";
+
+						let pillClass = "muted";
+						let pillLabel = "Unassigned";
+						let assignmentAvatar = "＋";
+						let assignmentTitle = "Connect a session";
+						let assignmentSub = "Pick any running Claude or Codex session";
+						let trailingButton = "";
+						let meta = "No current owner";
+
+						if (session) {
+							pillClass = "ready";
+							pillLabel = "Connected";
+							assignmentAvatar = session.id.replace("session-", "");
+							assignmentTitle = session.name;
+							assignmentSub =
+								session.agent +
+								" · " +
+								(session.mcpReady ? "MCP ready" : "MCP missing") +
+								" · Exclusive control";
+							meta = "Bound in v1 workspace / active browser target";
+						} else if (suggested && !suggested.mcpReady) {
+							pillClass = "warning";
+							pillLabel = "Setup needed";
+							assignmentAvatar = suggested.id.replace("session-", "");
+							assignmentTitle = "Not connected";
+							assignmentSub = `${suggested.name} is missing browser MCP`;
+							meta = `Suggested owner: ${suggested.name} · ${suggested.agent}`;
+							trailingButton =
+								'<button class="tiny-btn" type="button" data-action="guide" data-session-id="' +
+								suggested.id +
+								'">Guide</button>';
+						}
+
+						return (
+							'<div class="browser-target-card' +
+							isActive +
+							'" data-pane-id="' +
+							pane.id +
+							'"><div class="card-top"><div><div class="card-title">' +
+							pane.name +
+							'</div><div class="card-subtitle">' +
+							pane.url +
+							'</div></div><span class="pill ' +
+							pillClass +
+							'">' +
+							pillLabel +
+							'</span></div><div class="meta-line">' +
+							meta +
+							'</div><div class="assignment"><div class="assignment-avatar">' +
+							assignmentAvatar +
+							'</div><div class="assignment-text"><strong>' +
+							assignmentTitle +
+							'</strong><span>' +
+							assignmentSub +
+							'</span></div>' +
+							trailingButton +
+							"</div></div>"
+						);
+					})
+					.join("");
+
+				targetList.querySelectorAll(".browser-target-card").forEach((card) => {
+					card.addEventListener("click", (event) => {
+						if (event.target.closest("[data-action='guide']")) return;
+						selectedPaneId = card.dataset.paneId;
+						renderAll();
+					});
+				});
+
+				targetList.querySelectorAll("[data-action='guide']").forEach((button) => {
+					button.addEventListener("click", (event) => {
+						event.stopPropagation();
+						selectedPaneId = button.closest(".browser-target-card").dataset.paneId;
+						selectedSessionId = button.dataset.sessionId;
+						renderAll();
+						openModal();
+					});
+				});
+			}
+
+			function renderModal() {
+				const pane = panes[selectedPaneId];
+				const session = sessions[selectedSessionId];
+				const connected = pane.connectedSessionId
+					? sessions[pane.connectedSessionId]
+					: null;
+
+				contextPaneTitle.textContent = pane.name;
+				contextPaneUrl.textContent = pane.url;
+				readyPaneName.textContent = pane.name;
+				readyOwner.textContent = `${session.name} / ${session.agent}`;
+				readyMode.textContent = "Exclusive control";
+				readyExpected.textContent =
+					session.agent === "Claude"
+						? "Setup guide closes and pane ownership updates"
+						: "Toolbar badge updates instantly";
+				modalSubtitle.textContent =
+					"Choose which running LLM session should control this browser pane in the v1 workspace.";
+				setupSnippet.textContent = session.snippet;
+
+				document.querySelectorAll(".session-card").forEach((card) => {
+					const cardSessionId = card.dataset.sessionId;
+					const cardSession = sessions[cardSessionId];
+					const assignedPane = getAssignedPaneForSession(cardSessionId);
+					card.classList.toggle("active", cardSessionId === selectedSessionId);
+					const note = card.querySelector(".session-note");
+					const pill = card.querySelector(".pill");
+					const metaTags = card.querySelector(".session-meta");
+
+					if (assignedPane && assignedPane.id !== selectedPaneId) {
+						pill.className = "pill warning";
+						pill.textContent = "Reassign";
+						note.textContent =
+							cardSession.name +
+							" is currently controlling " +
+							assignedPane.name +
+							". Connecting here will move ownership and disconnect the previous pane.";
+					} else if (cardSession.mcpReady) {
+						pill.className = "pill ready";
+						pill.textContent = "Ready";
+						note.textContent =
+							"Browser MCP is already configured. Connecting this session should be immediate and should update the toolbar badge without any extra setup flow.";
+					} else {
+						pill.className = "pill warning";
+						pill.textContent = "Needs MCP";
+						note.textContent =
+							"Good candidate, but this session does not currently expose the required browser automation MCP entry. The right column explains what needs to be added.";
+					}
+
+					metaTags.innerHTML =
+						'<span class="session-tag">' +
+						cardSession.kind +
+						'</span>' +
+						'<span class="session-tag">' +
+						cardSession.branch +
+						'</span>' +
+						'<span class="session-tag">Last prompt ' +
+						cardSession.lastPrompt +
+						"</span>";
+				});
+
+				if (session.mcpReady) {
+					readyPanel.classList.remove("hidden");
+					setupPanel.classList.add("hidden");
+					confirmButton.disabled = false;
+					confirmButton.textContent = "Connect session";
+					const previousPane = getAssignedPaneForSession(session.id);
+					footerHint.textContent =
+						previousPane && previousPane.id !== selectedPaneId
+							? "Connecting will reassign " +
+								session.name +
+								" from " +
+								previousPane.name +
+								" to " +
+								pane.name +
+								"."
+							: "Connecting binds this browser pane to the selected session only.";
+				} else {
+					readyPanel.classList.add("hidden");
+					setupPanel.classList.remove("hidden");
+					confirmButton.disabled = true;
+					confirmButton.textContent = "Connect blocked";
+					footerHint.textContent =
+						"Add the MCP entry first, then reopen or restart this session.";
+				}
+
+				if (connected) {
+					disconnectButton.classList.remove("hidden");
+					disconnectButton.textContent = `Disconnect ${connected.name}`;
+				} else {
+					disconnectButton.classList.add("hidden");
+				}
+			}
+
+			function openModal() {
+				const pane = panes[selectedPaneId];
+				selectedSessionId =
+					pane.connectedSessionId || pane.suggestedSessionId || "session-14";
+				renderModal();
+				overlay.classList.add("open");
+			}
+
+			function closeModal() {
+				overlay.classList.remove("open");
+			}
+
+			function showToast(title, detail) {
+				const toast = document.createElement("div");
+				toast.className = "toast";
+				toast.innerHTML = `<strong>${title}</strong><span>${detail}</span>`;
+				toastStack.appendChild(toast);
+				setTimeout(() => {
+					toast.style.opacity = "0";
+					toast.style.transform = "translateY(8px)";
+					toast.style.transition = "opacity 180ms ease, transform 180ms ease";
+					setTimeout(() => toast.remove(), 220);
+				}, 2600);
+			}
+
+			function connectSelectedSession() {
+				const pane = panes[selectedPaneId];
+				const session = sessions[selectedSessionId];
+				if (!session.mcpReady) return;
+
+				const previousPane = getAssignedPaneForSession(session.id);
+				if (previousPane && previousPane.id !== pane.id) {
+					previousPane.connectedSessionId = null;
+				}
+
+				pane.connectedSessionId = selectedSessionId;
+				renderAll();
+				closeModal();
+
+				if (previousPane && previousPane.id !== pane.id) {
+					showToast(
+						"Browser reassigned",
+						session.name +
+							" moved from " +
+							previousPane.name +
+							" to " +
+							pane.name +
+							".",
+					);
+				} else {
+					showToast(
+						"Browser connected",
+						`${pane.name} is now controlled by ${session.name}.`,
+					);
+				}
+			}
+
+			function disconnectCurrentPane() {
+				const pane = panes[selectedPaneId];
+				const previous = pane.connectedSessionId
+					? sessions[pane.connectedSessionId]
+					: null;
+				pane.connectedSessionId = null;
+				renderAll();
+				renderModal();
+				showToast(
+					"Browser disconnected",
+					previous
+						? `${previous.name} is no longer bound to ${pane.name}.`
+						: `${pane.name} was already unassigned.`,
+				);
+			}
+
+			function renderAll() {
+				renderToolbarState();
+				renderWorkspaceTabs();
+				renderPage();
+				renderSummary();
+				renderAutomationCards();
+			}
+
+			connectButton.addEventListener("click", openModal);
+			closeModalButton.addEventListener("click", closeModal);
+			cancelButton.addEventListener("click", closeModal);
+			overlay.addEventListener("click", (event) => {
+				if (event.target === overlay) closeModal();
+			});
+
+			workspaceTabstrip.querySelectorAll("[data-pane-tab]").forEach((tab) => {
+				tab.addEventListener("click", () => {
+					selectedPaneId = tab.dataset.paneTab;
+					renderAll();
+				});
+			});
+
+			document.querySelectorAll(".session-card").forEach((card) => {
+				card.addEventListener("click", () => {
+					selectedSessionId = card.dataset.sessionId;
+					renderModal();
+				});
+			});
+
+			confirmButton.addEventListener("click", connectSelectedSession);
+			disconnectButton.addEventListener("click", disconnectCurrentPane);
+
+			simulateSetupButton.addEventListener("click", () => {
+				sessions[selectedSessionId].mcpReady = true;
+				renderSummary();
+				renderModal();
+				showToast(
+					"MCP configured",
+					sessions[selectedSessionId].name +
+						" can now be connected to browser panes.",
+				);
+			});
+
+			copySnippetButton.addEventListener("click", async () => {
+				try {
+					await navigator.clipboard.writeText(setupSnippet.textContent);
+					showToast("Snippet copied", "Configuration snippet copied to clipboard.");
+				} catch {
+					showToast("Copy failed", "Clipboard API was unavailable in this browser.");
+				}
+			});
+
+			renderAll();
+		</script>
+	</body>
+</html>

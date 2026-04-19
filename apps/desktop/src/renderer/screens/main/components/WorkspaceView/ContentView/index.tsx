@@ -1,6 +1,7 @@
 import type { ExternalApp } from "@superset/local-db";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 import { useBrowserFullscreenStore } from "renderer/stores/browser-fullscreen";
 import { useSidebarStore } from "renderer/stores/sidebar-state";
 import { SidebarControl } from "../../SidebarControl";
@@ -9,6 +10,7 @@ import { ContentHeader } from "./ContentHeader";
 import { PresetsBar } from "./components/PresetsBar";
 import { TabsContent } from "./TabsContent";
 import { GroupStrip } from "./TabsContent/GroupStrip";
+import { BrowserAutomationList } from "./TabsContent/TabView/BrowserPane/components/BrowserAutomationList";
 
 interface ContentViewProps {
 	workspaceId: string;
@@ -31,6 +33,8 @@ export function ContentView({
 	);
 	const { data: showPresetsBar } =
 		electronTrpc.settings.getShowPresetsBar.useQuery();
+	const listViewOpen = useBrowserAutomationStore((s) => s.listViewOpen);
+	const setListViewOpen = useBrowserAutomationStore((s) => s.setListViewOpen);
 
 	return (
 		<div className="h-full flex flex-col overflow-hidden">
@@ -53,6 +57,10 @@ export function ContentView({
 				defaultExternalApp={defaultExternalApp}
 				onOpenInApp={onOpenInApp}
 				onOpenQuickOpen={onOpenQuickOpen}
+			/>
+			<BrowserAutomationList
+				open={listViewOpen}
+				onOpenChange={setListViewOpen}
 			/>
 		</div>
 	);
