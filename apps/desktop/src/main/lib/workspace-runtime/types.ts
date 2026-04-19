@@ -9,8 +9,9 @@
  * 1. Stream subscriptions MUST NOT complete on session exit (exit is a state transition)
  * 2. Capability presence (e.g., management !== null) indicates feature availability,
  *    not "health right now"; mid-session failures should propagate as errors
- * 3. Operations use sync signatures where latency-critical (write, resize, signal, detach);
- *    async signatures for lifecycle ops (createOrAttach, kill, cleanup)
+ * 3. Operations stay sync where latency-critical by default (resize, signal, detach).
+ *    `write` can opt into an ack-backed async path for critical one-shot commands;
+ *    lifecycle ops remain async (createOrAttach, kill, cleanup).
  *
  * Reference: apps/desktop/plans/20260109-2313-terminal-runtime-abstraction-rewrite.md
  */
@@ -79,8 +80,15 @@ export interface TerminalSessionOperations {
 	/** Cancel the current createOrAttach attempt for a pane if it matches requestId. */
 	cancelCreateOrAttach(params: { paneId: string; requestId: string }): void;
 
-	/** Write data to the terminal */
-	write(params: { paneId: string; data: string; requireAck?: boolean }): void;
+	/**
+	 * Write data to the terminal.
+	 * `requireAck` opts into a confirmed async write for critical one-shot commands.
+	 */
+	write(params: {
+		paneId: string;
+		data: string;
+		requireAck?: boolean;
+	}): void | Promise<void>;
 
 	/** Resize the terminal */
 	resize(params: { paneId: string; cols: number; rows: number }): void;
