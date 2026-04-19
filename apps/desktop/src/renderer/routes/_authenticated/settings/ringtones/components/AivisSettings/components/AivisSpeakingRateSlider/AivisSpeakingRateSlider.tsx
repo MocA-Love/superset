@@ -1,6 +1,6 @@
 import { Label } from "@superset/ui/label";
 import { Slider } from "@superset/ui/slider";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { HiArrowsRightLeft } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
@@ -16,12 +16,6 @@ export function AivisSpeakingRateSlider({ disabled }: Props) {
 	});
 
 	const [draft, setDraft] = useState<number | null>(null);
-	const hydrated = useRef(false);
-
-	useEffect(() => {
-		if (!data || hydrated.current) return;
-		hydrated.current = true;
-	}, [data]);
 
 	const display = draft ?? data?.speakingRate ?? 1.0;
 
