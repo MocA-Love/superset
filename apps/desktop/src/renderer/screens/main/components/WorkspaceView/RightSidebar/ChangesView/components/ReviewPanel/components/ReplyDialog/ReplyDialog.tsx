@@ -22,6 +22,8 @@ interface ReplyDialogProps {
 	onSubmit: (body: string) => Promise<void> | void;
 	isSubmitting: boolean;
 	onOpenUrl?: (url: string, e: React.MouseEvent) => void;
+	/** When true, shows a "New comment" dialog instead of a reply dialog */
+	isNewComment?: boolean;
 }
 
 export function ReplyDialog({
@@ -31,6 +33,7 @@ export function ReplyDialog({
 	onSubmit,
 	isSubmitting,
 	onOpenUrl,
+	isNewComment = false,
 }: ReplyDialogProps) {
 	const [body, setBody] = useState("");
 	const inFlightRef = useRef(false);
@@ -42,11 +45,11 @@ export function ReplyDialog({
 		}
 	}, [open]);
 
-	if (!comment) {
+	if (!isNewComment && !comment) {
 		return null;
 	}
 
-	const isReviewThreadReply = Boolean(comment.threadId);
+	const isReviewThreadReply = Boolean(comment?.threadId);
 	const trimmed = body.trim();
 	const canSubmit = trimmed.length > 0 && !isSubmitting;
 
@@ -74,56 +77,64 @@ export function ReplyDialog({
 		}
 	};
 
+	const dialogTitle = isNewComment
+		? "New comment"
+		: isReviewThreadReply
+			? "Reply to review thread"
+			: "Reply to comment";
+
+	const dialogDescription = isNewComment
+		? "Your comment will be posted on this pull request."
+		: isReviewThreadReply
+			? "Your reply will be posted to this review thread on GitHub."
+			: "Your reply will be posted as a new comment on this pull request.";
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-lg">
 				<DialogHeader>
-					<DialogTitle>
-						{isReviewThreadReply
-							? "Reply to review thread"
-							: "Reply to comment"}
-					</DialogTitle>
-					<DialogDescription>
-						{isReviewThreadReply
-							? "Your reply will be posted to this review thread on GitHub."
-							: "Your reply will be posted as a new comment on this pull request."}
-					</DialogDescription>
+					<DialogTitle>{dialogTitle}</DialogTitle>
+					<DialogDescription>{dialogDescription}</DialogDescription>
 				</DialogHeader>
 
-				<div className="max-h-48 overflow-y-auto rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
-					<div className="mb-1 flex items-center gap-1.5">
-						<Avatar className="size-4">
-							{comment.avatarUrl ? (
-								<AvatarImage
-									src={comment.avatarUrl}
-									alt={comment.authorLogin}
-								/>
-							) : null}
-							<AvatarFallback className="text-[10px] font-medium">
-								{getCommentAvatarFallback(comment.authorLogin)}
-							</AvatarFallback>
-						</Avatar>
-						<span className="font-medium text-foreground">
-							{comment.authorLogin}
-						</span>
-						{comment.path ? (
-							<span className="truncate text-muted-foreground">
-								{comment.path}
-								{comment.line ? `:${comment.line}` : ""}
+				{comment ? (
+					<div className="max-h-48 overflow-y-auto rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
+						<div className="mb-1 flex items-center gap-1.5">
+							<Avatar className="size-4">
+								{comment.avatarUrl ? (
+									<AvatarImage
+										src={comment.avatarUrl}
+										alt={comment.authorLogin}
+									/>
+								) : null}
+								<AvatarFallback className="text-[10px] font-medium">
+									{getCommentAvatarFallback(comment.authorLogin)}
+								</AvatarFallback>
+							</Avatar>
+							<span className="font-medium text-foreground">
+								{comment.authorLogin}
 							</span>
-						) : null}
+							{comment.path ? (
+								<span className="truncate text-muted-foreground">
+									{comment.path}
+									{comment.line ? `:${comment.line}` : ""}
+								</span>
+							) : null}
+						</div>
+						<div className="review-comment-body break-words text-xs leading-5 text-muted-foreground">
+							<CommentBody body={comment.body} onOpenUrl={onOpenUrl} />
+						</div>
 					</div>
-					<div className="review-comment-body break-words text-xs leading-5 text-muted-foreground">
-						<CommentBody body={comment.body} onOpenUrl={onOpenUrl} />
-					</div>
-				</div>
+				) : null}
 
 				<form className="space-y-3" onSubmit={handleSubmit}>
 					<Textarea
 						value={body}
 						onChange={(event) => setBody(event.target.value)}
 						onKeyDown={handleKeyDown}
-						placeholder="Write a reply..."
+						placeholder={
+							isNewComment ? "Write a comment..." : "Write a reply..."
+						}
 						className="min-h-[120px] resize-none text-sm"
 						disabled={isSubmitting}
 						autoFocus
@@ -141,7 +152,7 @@ export function ReplyDialog({
 							{isSubmitting ? (
 								<LuLoaderCircle className="mr-1 size-3.5 animate-spin" />
 							) : null}
-							Reply
+							{isNewComment ? "Comment" : "Reply"}
 						</Button>
 					</DialogFooter>
 				</form>

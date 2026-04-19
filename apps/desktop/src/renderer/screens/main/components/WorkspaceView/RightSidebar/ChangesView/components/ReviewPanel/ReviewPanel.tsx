@@ -28,6 +28,7 @@ import {
 	LuCopy,
 	LuExternalLink,
 	LuLoaderCircle,
+	LuMessageSquarePlus,
 	LuRefreshCw,
 	LuReply,
 	LuX,
@@ -135,6 +136,8 @@ export function ReviewPanel({
 	const [replyTargetComment, setReplyTargetComment] =
 		useState<PullRequestComment | null>(null);
 	const [isReplySubmitting, setIsReplySubmitting] = useState(false);
+	const [isNewCommentDialogOpen, setIsNewCommentDialogOpen] = useState(false);
+	const [isNewCommentSubmitting, setIsNewCommentSubmitting] = useState(false);
 	const [identityPopoverOpen, setIdentityPopoverOpen] = useState<
 		"reviewers" | "assignees" | null
 	>(null);
@@ -282,6 +285,30 @@ export function ReviewPanel({
 			toast.error(`Failed to post reply: ${message}`);
 		} finally {
 			setIsReplySubmitting(false);
+		}
+	};
+
+	const handleSubmitNewComment = async (body: string) => {
+		if (!resolvedWorkspaceId) {
+			return;
+		}
+
+		setIsNewCommentSubmitting(true);
+		try {
+			await replyToPullRequestCommentMutation.mutateAsync({
+				workspaceId: resolvedWorkspaceId,
+				body,
+				pullRequestNumber: pr?.number,
+				pullRequestUrl: pr?.url,
+			});
+			toast.success("Comment posted");
+			setIsNewCommentDialogOpen(false);
+			void refreshReview("full");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			toast.error(`Failed to post comment: ${message}`);
+		} finally {
+			setIsNewCommentSubmitting(false);
 		}
 	};
 
@@ -1355,6 +1382,21 @@ export function ReviewPanel({
 							{commentsCountLabel}
 						</span>
 					</CollapsibleTrigger>
+					{pr && canEditPullRequest && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									aria-label="New comment"
+									className="mr-1.5 shrink-0 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+									onClick={() => setIsNewCommentDialogOpen(true)}
+								>
+									<LuMessageSquarePlus className="size-3" />
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">New comment</TooltipContent>
+						</Tooltip>
+					)}
 					{activeComments.length > 0 && (
 						<button
 							type="button"
@@ -1423,6 +1465,18 @@ export function ReviewPanel({
 				onSubmit={handleSubmitReply}
 				isSubmitting={isReplySubmitting}
 				onOpenUrl={handleOpenUrl}
+			/>
+			<ReplyDialog
+				comment={null}
+				open={isNewCommentDialogOpen}
+				onOpenChange={(open) => {
+					if (!isNewCommentSubmitting) {
+						setIsNewCommentDialogOpen(open);
+					}
+				}}
+				onSubmit={handleSubmitNewComment}
+				isSubmitting={isNewCommentSubmitting}
+				isNewComment
 			/>
 		</div>
 	);
