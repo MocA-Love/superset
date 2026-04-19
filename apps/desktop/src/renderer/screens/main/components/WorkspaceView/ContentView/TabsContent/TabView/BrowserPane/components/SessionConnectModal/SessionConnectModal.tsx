@@ -109,11 +109,12 @@ export function SessionConnectModal({
 	};
 
 	const handleDisconnect = async () => {
-		if (!paneId || !currentSession) return;
+		if (!paneId || !currentBinding) return;
 		try {
 			await removeBinding.mutateAsync({ paneId });
 			await utils.browserAutomation.listBindings.invalidate();
-			toast.info(`${currentSession.displayName} disconnected from ${paneName}`);
+			const label = currentSession?.displayName ?? "Previous session";
+			toast.info(`${label} disconnected from ${paneName}`);
 		} catch (error) {
 			toast.error(
 				`Failed to disconnect: ${error instanceof Error ? error.message : String(error)}`,
@@ -242,14 +243,15 @@ export function SessionConnectModal({
 									: "Select a session from the left."}
 					</div>
 					<div className="flex items-center gap-2">
-						{currentSession && (
+						{currentBinding && (
 							<Button
 								variant="outline"
 								size="sm"
 								onClick={handleDisconnect}
 								disabled={removeBinding.isPending}
 							>
-								Disconnect {currentSession.displayName}
+								Disconnect
+								{currentSession ? ` ${currentSession.displayName}` : ""}
 							</Button>
 						)}
 						<Button

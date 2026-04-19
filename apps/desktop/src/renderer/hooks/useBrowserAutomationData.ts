@@ -36,8 +36,14 @@ export function useBrowserAutomationData() {
 	});
 
 	const sessions: AutomationSession[] = useMemo(() => {
+		const terminalStatuses = new Set([
+			"done",
+			"failed",
+			"aborted",
+			"escalated",
+		]);
 		return todoSessions
-			.filter((s) => s.status !== "done" && s.status !== "failed")
+			.filter((s) => !terminalStatuses.has(s.status))
 			.map((s) => {
 				// Todo-agent rows always represent Claude Code workers (see
 				// todo-daemon/claude-code-runner.ts). We label them as Claude
