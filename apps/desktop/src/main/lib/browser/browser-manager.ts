@@ -126,6 +126,10 @@ class BrowserManager extends EventEmitter {
 			}
 		}
 		this.paneWebContentsIds.set(paneId, webContentsId);
+		// Invalidate any stale targetId captured from a previous
+		// webContents so /mcp/cdp-endpoint never returns a URL pointing
+		// at a dead target while the async recapture is in flight.
+		this.paneTargetIds.delete(paneId);
 		const wc = webContents.fromId(webContentsId);
 		if (wc) {
 			// Keep throttling enabled so parked/offscreen persistent webviews don't
@@ -263,6 +267,7 @@ class BrowserManager extends EventEmitter {
 		wc: Electron.WebContents,
 	): Promise<void> {
 		if (wc.isDestroyed()) return;
+		const expectedWebContentsId = wc.id;
 		let attachedHere = false;
 		try {
 			if (!wc.debugger.isAttached()) {
@@ -273,7 +278,15 @@ class BrowserManager extends EventEmitter {
 				targetInfo?: { targetId?: string };
 			};
 			const targetId = info?.targetInfo?.targetId;
-			if (typeof targetId === "string" && targetId.length > 0) {
+			// Late-resolution guard: if the pane was unregistered or
+			// re-registered with a different webContents while we were
+			// awaiting, do not overwrite the current cache with stale data.
+			const currentId = this.paneWebContentsIds.get(paneId);
+			if (
+				typeof targetId === "string" &&
+				targetId.length > 0 &&
+				currentId === expectedWebContentsId
+			) {
 				this.paneTargetIds.set(paneId, targetId);
 			}
 		} catch (error) {
