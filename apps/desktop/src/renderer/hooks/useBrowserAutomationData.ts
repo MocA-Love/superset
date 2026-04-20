@@ -12,21 +12,36 @@ import {
  * session list (each row is a running Claude/Codex worker), and their
  * MCP readiness is resolved against the user's Claude/Codex config
  * files.
+ *
+ * `enabled` controls the expensive queries (sessions + MCP status). The
+ * binding query and its subscription always run because `ConnectButton`
+ * is mounted for every browser pane and needs to reflect the binding
+ * state without expensive polling.
  */
-export function useBrowserAutomationData() {
+export function useBrowserAutomationData({
+	enabled = true,
+}: {
+	enabled?: boolean;
+} = {}) {
 	const { data: todoSessions = [], refetch: refetchSessions } =
 		electronTrpc.todoAgent.listAll.useQuery(undefined, {
-			refetchOnWindowFocus: true,
-			refetchInterval: 5000,
+			enabled,
+			refetchOnWindowFocus: enabled,
+			refetchInterval: enabled ? 15000 : false,
 		});
 	const { data: mcpStatus } =
 		electronTrpc.browserAutomation.getMcpStatus.useQuery(
 			{},
-			{ refetchOnWindowFocus: true, refetchInterval: 10000 },
+			{
+				enabled,
+				refetchOnWindowFocus: enabled,
+				refetchInterval: enabled ? 30000 : false,
+			},
 		);
 	const { data: bindings = [] } =
 		electronTrpc.browserAutomation.listBindings.useQuery(undefined, {
-			refetchInterval: 1000,
+			// Binding changes are pushed via onBindingsChanged, so no polling.
+			refetchOnWindowFocus: false,
 		});
 	const utils = electronTrpc.useUtils();
 	electronTrpc.browserAutomation.onBindingsChanged.useSubscription(undefined, {

@@ -8,17 +8,16 @@ interface ConnectButtonProps {
 }
 
 export function ConnectButton({ paneId }: ConnectButtonProps) {
-	const { sessions, bindingsByPane } = useBrowserAutomationData();
+	// Do not fetch the session list / MCP status here; those are only
+	// needed inside the Connect dialog. The binding query is cheap and
+	// subscription-driven, so the badge still reflects connect/disconnect
+	// in real time.
+	const { bindingsByPane } = useBrowserAutomationData({ enabled: false });
 	const openConnectModal = useBrowserAutomationStore((s) => s.openConnectModal);
 
 	const sessionId = bindingsByPane[paneId];
-	const session = sessionId
-		? (sessions.find((s) => s.id === sessionId) ?? null)
-		: null;
-	const connected = Boolean(session);
-	const label = connected
-		? `${session?.displayName} · ${session?.provider}`
-		: "Connect";
+	const connected = Boolean(sessionId);
+	const label = connected ? "Connected" : "Connect";
 
 	return (
 		<Tooltip>

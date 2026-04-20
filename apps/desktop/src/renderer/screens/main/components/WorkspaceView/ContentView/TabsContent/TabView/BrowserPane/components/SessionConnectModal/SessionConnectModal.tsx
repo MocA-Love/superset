@@ -64,7 +64,14 @@ export function SessionConnectModal({
 		const selectedStillLive =
 			selectedSessionId && sessions.some((s) => s.id === selectedSessionId);
 		if (selectedStillLive) return;
-		const fallback = currentBinding ?? sessions[0]?.id ?? null;
+		// Only fall back to the currently-bound session if it is still in the
+		// live set — otherwise the modal would open with a truthy selection
+		// whose detail view can't render and whose Connect button stays
+		// blocked.
+		const bindingIsLive =
+			currentBinding && sessions.some((s) => s.id === currentBinding);
+		const fallback =
+			(bindingIsLive ? currentBinding : null) ?? sessions[0]?.id ?? null;
 		setSelectedSession(fallback);
 	}, [
 		open,
