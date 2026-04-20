@@ -122,11 +122,11 @@ function spawnAndReady(
 // =============================================================================
 
 describe("Session shell-ready: write buffering", () => {
-	it("buffers writes while shell is pending and flushes after marker", () => {
+	it("buffers non-interactive writes while shell is pending and flushes after marker", () => {
 		const { session, proc } = createTestSession("/bin/zsh");
 		spawnAndReady(session, proc);
 
-		// Write before shell is ready — should be buffered
+		// Preset/programmatic writes before shell is ready — should be buffered
 		session.write("echo hello\n");
 		session.write("echo world\n");
 
@@ -139,6 +139,21 @@ describe("Session shell-ready: write buffering", () => {
 		// Now the buffered writes should be flushed in order
 		const writes = getWrittenData(proc);
 		expect(writes).toEqual(["echo hello\n", "echo world\n"]);
+	});
+
+	it("forwards interactive writes directly to PTY while shell is pending", () => {
+		const { session, proc } = createTestSession("/bin/zsh");
+		spawnAndReady(session, proc);
+
+		// Interactive write (user keyboard input) — forwarded immediately
+		session.write("y", { interactive: true });
+
+		expect(getWrittenData(proc)).toEqual(["y"]);
+
+		// Shell emits the ready marker — interactive writes continue to work
+		sendData(proc, `direnv output...${SHELL_READY_MARKER}prompt$ `);
+		session.write("n", { interactive: true });
+		expect(getWrittenData(proc)).toEqual(["y", "n"]);
 	});
 
 	it("passes writes through immediately for unsupported shells (sh)", () => {
@@ -178,6 +193,19 @@ describe("Session shell-ready: write buffering", () => {
 
 		// Only the command should flush — escape sequences dropped
 		expect(getWrittenData(proc)).toEqual(["claude\n"]);
+	});
+
+	it("drops escape sequences even for interactive writes during pending state", () => {
+		const { session, proc } = createTestSession("/bin/zsh");
+		spawnAndReady(session, proc);
+
+		// Escape sequences are always dropped during pending, even if interactive
+		session.write("\x1b[?62;4;9;22c", { interactive: true });
+		expect(getWrittenData(proc)).toEqual([]);
+
+		// Regular interactive write goes through
+		session.write("y", { interactive: true });
+		expect(getWrittenData(proc)).toEqual(["y"]);
 	});
 
 	it("flushes buffered writes on subprocess exit", async () => {
@@ -222,14 +250,16 @@ describe("Session shell-ready: marker detection", () => {
 		// Send first half — shell should still be pending
 		sendData(proc, `output${firstHalf}`);
 
+		// Interactive write forwarded; non-interactive buffered (still pending)
 		session.write("buffered\n");
-		expect(getWrittenData(proc)).toEqual([]);
+		session.write("y", { interactive: true });
+		expect(getWrittenData(proc)).toEqual(["y"]);
 
 		// Send second half — should complete the marker
 		sendData(proc, `${secondHalf}prompt`);
 
-		// Now writes should flush
-		expect(getWrittenData(proc)).toEqual(["buffered\n"]);
+		// Now the buffered write flushes
+		expect(getWrittenData(proc)).toEqual(["y", "buffered\n"]);
 	});
 
 	it("handles marker at start of data frame", () => {
@@ -260,7 +290,7 @@ describe("Session shell-ready: marker detection", () => {
 		const partialMarker = SHELL_READY_MARKER.slice(0, 5);
 		sendData(proc, `${partialMarker}not-a-marker`);
 
-		// Shell should still be pending
+		// Shell should still be pending — non-interactive write buffered
 		session.write("buffered\n");
 		expect(getWrittenData(proc)).toEqual([]);
 
@@ -330,7 +360,7 @@ describe("Session shell-ready: supported shells", () => {
 		"/bin/bash",
 		"/usr/local/bin/fish",
 	]) {
-		it(`buffers writes for supported shell: ${shell}`, () => {
+		it(`buffers non-interactive writes for supported shell: ${shell}`, () => {
 			const { session, proc } = createTestSession(shell);
 			spawnAndReady(session, proc);
 
@@ -339,6 +369,14 @@ describe("Session shell-ready: supported shells", () => {
 
 			sendData(proc, SHELL_READY_MARKER);
 			expect(getWrittenData(proc)).toEqual(["test\n"]);
+		});
+
+		it(`forwards interactive writes for supported shell: ${shell}`, () => {
+			const { session, proc } = createTestSession(shell);
+			spawnAndReady(session, proc);
+
+			session.write("y", { interactive: true });
+			expect(getWrittenData(proc)).toEqual(["y"]);
 		});
 	}
 

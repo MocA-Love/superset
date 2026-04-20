@@ -217,7 +217,7 @@ export class TerminalHost {
 
 	write(request: WriteRequest): EmptyResponse {
 		const session = this.getActiveSession(request.sessionId);
-		session.write(request.data);
+		session.write(request.data, { interactive: request.interactive });
 		return { success: true };
 	}
 

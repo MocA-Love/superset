@@ -686,8 +686,9 @@ export class DaemonTerminalManager extends EventEmitter {
 		paneId: string;
 		data: string;
 		requireAck?: boolean;
+		interactive?: boolean;
 	}): Promise<void> | void {
-		const { paneId, data, requireAck = false } = params;
+		const { paneId, data, requireAck = false, interactive } = params;
 
 		const session = this.sessions.get(paneId);
 		if (!session || !session.isAlive) {
@@ -697,10 +698,12 @@ export class DaemonTerminalManager extends EventEmitter {
 		// Critical one-shot commands like workspace setup should fail loudly if
 		// the daemon didn't actually accept the write.
 		if (requireAck) {
-			return this.client.write({ sessionId: paneId, data }).then(() => {});
+			return this.client
+				.write({ sessionId: paneId, data, interactive })
+				.then(() => {});
 		}
 
-		this.client.writeNoAck({ sessionId: paneId, data });
+		this.client.writeNoAck({ sessionId: paneId, data, interactive });
 	}
 
 	ackColdRestore(paneId: string): void {

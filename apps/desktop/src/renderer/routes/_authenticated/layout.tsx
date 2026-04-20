@@ -15,7 +15,6 @@ import { NewWorkspaceModal } from "renderer/components/NewWorkspaceModal";
 import { Paywall } from "renderer/components/Paywall";
 import { useUpdateListener } from "renderer/components/UpdateToast";
 import { env } from "renderer/env.renderer";
-import { ScheduleFireToasts } from "renderer/features/todo-agent/ScheduleFireToasts";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit/useTearoffInit";
@@ -29,15 +28,14 @@ import { LanguageServicesProvider } from "renderer/providers/LanguageServicesPro
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
 import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
-import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
 import { useSettingsStore } from "renderer/stores/settings-state";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useAgentHookListener } from "renderer/stores/tabs/useAgentHookListener";
 import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { useWorkspaceInitStore } from "renderer/stores/workspace-init";
 import { MOCK_ORG_ID, NOTIFICATION_EVENTS } from "shared/constants";
-import { AgentHooks } from "./components/AgentHooks";
 import { GlobalTerminalLifecycle } from "./components/GlobalTerminalLifecycle";
+import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
 import { createPierreWorker } from "./lib/pierreWorker";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
@@ -222,10 +220,8 @@ function AuthenticatedLayout() {
 						poolOptions={{ workerFactory: createPierreWorker, poolSize: 8 }}
 						highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
 					>
-						<AgentHooks />
-						<ScheduleFireToasts />
+						<MainWindowEffects />
 						<Outlet />
-						<WorkspaceInitEffects />
 						{isV2CloudEnabled ? (
 							<DashboardNewWorkspaceModal />
 						) : (

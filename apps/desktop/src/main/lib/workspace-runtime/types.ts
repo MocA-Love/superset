@@ -83,11 +83,14 @@ export interface TerminalSessionOperations {
 	/**
 	 * Write data to the terminal.
 	 * `requireAck` opts into a confirmed async write for critical one-shot commands.
+	 * `interactive` marks writes from direct user keyboard input; they bypass the
+	 * shell-ready queue so prompts during initialization (e.g. oh-my-zsh update) work.
 	 */
 	write(params: {
 		paneId: string;
 		data: string;
 		requireAck?: boolean;
+		interactive?: boolean;
 	}): void | Promise<void>;
 
 	/** Resize the terminal */

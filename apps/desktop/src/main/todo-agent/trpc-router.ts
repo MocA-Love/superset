@@ -10,6 +10,7 @@ import { publicProcedure, router } from "lib/trpc";
 import { localDb } from "main/lib/local-db";
 import { workspaceInitManager } from "main/lib/workspace-init-manager";
 import { z } from "zod";
+import { getTodoSessionDebugData, todoAgentMainDebug } from "./debug";
 import { describeEnhanceFailure, enhanceTodoText } from "./enhance-text";
 import {
 	getSessionFileDiff,
@@ -25,7 +26,6 @@ import { computeNextRunAt, getTodoScheduler } from "./scheduler";
 import { getTodoSessionStore, resolveWorktreePath } from "./session-store";
 import { getTodoSettings, updateTodoSettings } from "./settings";
 import { getTodoSupervisor } from "./supervisor";
-import { getTodoSessionDebugData, todoAgentMainDebug } from "./debug";
 import {
 	TODO_ARTIFACT_SUBDIR,
 	type TodoScheduleFireEvent,

@@ -214,6 +214,7 @@ export const createTerminalRouter = () => {
 					paneId: z.string(),
 					data: z.string(),
 					throwOnError: z.boolean().optional(),
+					interactive: z.boolean().optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -223,6 +224,7 @@ export const createTerminalRouter = () => {
 						paneId: input.paneId,
 						data: input.data,
 						requireAck: shouldThrow,
+						interactive: input.interactive,
 					});
 				} catch (error) {
 					const message =

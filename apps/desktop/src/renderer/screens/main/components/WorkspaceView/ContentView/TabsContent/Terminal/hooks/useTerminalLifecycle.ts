@@ -525,7 +525,7 @@ export function useTerminalLifecycle({
 				void restartTerminalSession();
 				return;
 			}
-			writeRef.current({ paneId, data });
+			writeRef.current({ paneId, data, interactive: true });
 		};
 
 		const handleKeyPress = (event: {
@@ -854,7 +854,7 @@ export function useTerminalLifecycle({
 
 		const handleWrite = (data: string) => {
 			if (isExitedRef.current) return;
-			writeRef.current({ paneId, data });
+			writeRef.current({ paneId, data, interactive: true });
 		};
 
 		const cleanupKeyboard = setupKeyboardHandler(xterm, {
