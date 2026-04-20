@@ -252,6 +252,7 @@
 		"vscode-langservers-extracted": "^4.10.0",
 		"vscode-languageserver-textdocument": "^1.0.12",
 		"vscode-languageserver-types": "3.17.3",
+		"ws": "^8.18.0",
 		"yaml-language-server": "^1.21.0",
 		"zod": "^4.3.5",
 		"zustand": "^5.0.8"
@@ -276,6 +277,7 @@
 		"@types/react-syntax-highlighter": "^15.5.13",
 		"@types/semver": "^7.7.1",
 		"@types/shell-quote": "^1.7.5",
+		"@types/ws": "^8.18.1",
 		"@vitejs/plugin-react": "^5.0.1",
 		"code-inspector-plugin": "^1.2.2",
 		"cross-env": "^10.0.0",
