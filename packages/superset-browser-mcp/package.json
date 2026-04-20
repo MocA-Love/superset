@@ -13,7 +13,8 @@
 		}
 	},
 	"scripts": {
-		"typecheck": "tsc --noEmit --emitDeclarationOnly false"
+		"typecheck": "tsc --noEmit --emitDeclarationOnly false",
+		"build:bin": "bun build --compile --minify --sourcemap --outfile dist/superset-browser-mcp src/bin.ts"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.26.0",

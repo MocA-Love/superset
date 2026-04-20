@@ -10,7 +10,7 @@ import {
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { useEffect, useMemo } from "react";
-import { LuCopy, LuList } from "react-icons/lu";
+import { LuList } from "react-icons/lu";
 import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -20,6 +20,7 @@ import {
 	useBrowserAutomationStore,
 } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { McpInstallPanel } from "./components/McpInstallPanel";
 
 interface SessionConnectModalProps {
 	open: boolean;
@@ -452,101 +453,12 @@ function DetailItem({
 }
 
 function SetupPanel({
-	session,
-	mcpConfigPath,
 	serverCommand,
-	onCopy,
 }: {
 	session: AutomationSession;
 	mcpConfigPath: string | null;
 	serverCommand?: ServerCommand;
 	onCopy: () => void;
 }) {
-	const snippet = getSnippetForSession(session, serverCommand);
-	// `available: false` means the Superset install cannot start the MCP
-	// locally yet (e.g. packaged build before the @superset/superset-browser-mcp
-	// package ships on npm). Surface that state instead of handing the user
-	// a command that would fail.
-	if (serverCommand && !serverCommand.available) {
-		return (
-			<div className="flex flex-col gap-3">
-				<div className="rounded-xl border p-3 bg-card/60">
-					<div className="text-xs font-semibold">
-						Browser MCP is not yet available in this build
-					</div>
-					<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-						The <code>@superset/superset-browser-mcp</code> package needs to
-						ship before this release can register the MCP for you. Until then
-						run the browser automation from a dev build, or check back once the
-						next desktop release lands.
-					</div>
-				</div>
-			</div>
-		);
-	}
-	return (
-		<div className="flex flex-col gap-3">
-			<div className="rounded-xl border p-3 bg-card/60">
-				<div className="text-xs font-semibold">
-					This session needs browser MCP setup
-				</div>
-				<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-					The connect action will not fail silently. Add the{" "}
-					<code className="rounded bg-muted px-1">superset-browser</code> MCP
-					server to {session.provider}, then reload this session.
-				</div>
-				<ol className="mt-2 pl-4 list-decimal text-[12px] leading-relaxed text-muted-foreground">
-					{session.provider === "Claude" ? (
-						<>
-							<li>
-								Run the command below in a terminal that has the{" "}
-								<code>claude</code> CLI installed. It will register{" "}
-								<code>superset-browser</code> in{" "}
-								<code className="rounded bg-muted px-1">~/.claude.json</code>{" "}
-								without hand-editing JSON.
-							</li>
-							<li>
-								Restart {session.displayName} (or run <code>/mcp</code> in the
-								session) so the new entry is picked up.
-							</li>
-						</>
-					) : (
-						<>
-							<li>
-								Open{" "}
-								{mcpConfigPath ? (
-									<code className="rounded bg-muted px-1">{mcpConfigPath}</code>
-								) : (
-									"your Codex config file"
-								)}
-								.
-							</li>
-							<li>
-								Append the <code>[mcp_servers.superset-browser]</code> section
-								below. TOML section-append is safe against existing content.
-							</li>
-							<li>
-								Restart {session.displayName} so the new entry is picked up.
-							</li>
-						</>
-					)}
-				</ol>
-				<pre className="mt-2 rounded-md border bg-black/40 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
-					{snippet}
-				</pre>
-				<div className="mt-3 flex gap-2">
-					<Button size="sm" variant="outline" onClick={onCopy}>
-						<LuCopy className="size-3" />
-						Copy snippet
-					</Button>
-				</div>
-				<div className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
-					MCP readiness is detected by inspecting the config file for the string{" "}
-					<code>superset-browser</code>. If you prefer a managed location, the
-					desktop app also ships the server at <code>packages/desktop-mcp</code>
-					.
-				</div>
-			</div>
-		</div>
-	);
+	return <McpInstallPanel serverCommand={serverCommand} />;
 }
