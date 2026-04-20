@@ -120,8 +120,19 @@ export async function handleCdpHttp(
 
 	try {
 		if (parsed.subPath === "/json/version") {
-			const body = await fetchUpstreamJson("/json/version");
-			sendJson(res, 200, body);
+			const body = (await fetchUpstreamJson("/json/version")) as Record<
+				string,
+				unknown
+			>;
+			// Chromium's /json/version response carries the browser-level
+			// `webSocketDebuggerUrl` for the root CDP target. Leaving it in
+			// would let a caller with a valid /cdp/<token> URL bypass the
+			// per-pane filter entirely by attaching straight to
+			// ws://127.0.0.1:<raw>/devtools/browser/... . Strip it so the
+			// only ws path the caller ever sees is the token-scoped one.
+			const { webSocketDebuggerUrl: _unused, ...safe } = body;
+			void _unused;
+			sendJson(res, 200, safe);
 			return true;
 		}
 		if (parsed.subPath === "/json/protocol") {
@@ -207,10 +218,21 @@ export async function handleCdpUpgrade(
 				/* ignore */
 			}
 		};
+		// CDP clients typically ship their first command immediately after
+		// the handshake, so wire the client handler BEFORE upstream opens
+		// and buffer frames until upstream is ready. Otherwise early frames
+		// get dropped and the attach looks stalled.
+		const pending: Array<Parameters<typeof upstream.send>[0]> = [];
+		clientWs.on("message", (data) => {
+			if (upstream.readyState === WebSocket.OPEN) {
+				upstream.send(data);
+			} else {
+				pending.push(data as Parameters<typeof upstream.send>[0]);
+			}
+		});
 		upstream.on("open", () => {
-			clientWs.on("message", (data) => {
-				if (upstream.readyState === WebSocket.OPEN) upstream.send(data);
-			});
+			for (const buf of pending) upstream.send(buf);
+			pending.length = 0;
 			upstream.on("message", (data) => {
 				if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
 			});
