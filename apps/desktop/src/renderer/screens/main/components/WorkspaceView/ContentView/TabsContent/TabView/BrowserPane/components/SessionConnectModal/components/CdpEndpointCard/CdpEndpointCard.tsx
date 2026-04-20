@@ -44,9 +44,7 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 				? "Chromium has not finished attaching to this pane yet. Reload the pane and retry."
 				: data?.reason === "cdp-disabled"
 					? "This build did not enable --remote-debugging-port."
-					: data?.reason === "bridge-not-running"
-						? "The browser-mcp bridge is not running yet."
-						: "Bind a pane first to expose a CDP endpoint.";
+					: "Bind a pane first to expose a CDP endpoint.";
 		return (
 			<div className="rounded-xl border p-3 bg-card/60">
 				<div className="text-xs font-semibold">CDP endpoint unavailable</div>
