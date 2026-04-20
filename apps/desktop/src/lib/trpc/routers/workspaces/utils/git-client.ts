@@ -3,6 +3,7 @@ import {
 	type ExecFileOptionsWithStringEncoding,
 	execFile,
 } from "node:child_process";
+import { access } from "node:fs/promises";
 import {
 	buildSimpleGitUnsafeOptions,
 	type SimpleGitUnsafeOptions,
@@ -12,6 +13,22 @@ import simpleGit, {
 	type SimpleGitProgressEvent,
 } from "simple-git";
 import { getProcessEnvWithShellPath } from "./shell-env";
+
+/**
+ * Thrown when a git operation is requested against a path that no longer
+ * exists on disk (typically a worktree that was deleted externally while
+ * Superset's background polling kept firing). Caught by the tRPC Sentry
+ * middleware and NOT reported — this is an expected race, not a bug.
+ *
+ * Sentry dashboard ELECTRON-26 / ELECTRON-1Z were 5000+ occurrences of
+ * this case on Superset@1.4.7 before dedicated handling existed.
+ */
+export class WorktreePathMissingError extends Error {
+	constructor(public readonly repoPath: string) {
+		super(`Worktree path no longer exists: ${repoPath}`);
+		this.name = "WorktreePathMissingError";
+	}
+}
 
 interface CreateSimpleGitWithShellPathOptions {
 	abort?: AbortSignal;
@@ -56,6 +73,16 @@ function createSimpleGitWithEnv(
 export async function createSimpleGitWithShellPath(
 	options: CreateSimpleGitWithShellPathOptions = {},
 ): Promise<SimpleGit> {
+	if (options.repoPath) {
+		try {
+			await access(options.repoPath);
+		} catch {
+			// Surface a dedicated error so callers (and the Sentry middleware)
+			// can recognise the "worktree deleted externally" race and handle
+			// it gracefully instead of reporting an INTERNAL_SERVER_ERROR.
+			throw new WorktreePathMissingError(options.repoPath);
+		}
+	}
 	const env = await getProcessEnvWithShellPath(options.baseEnv ?? process.env);
 	return createSimpleGitWithEnv(env, options);
 }
