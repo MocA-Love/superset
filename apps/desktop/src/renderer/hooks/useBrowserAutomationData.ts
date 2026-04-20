@@ -45,14 +45,11 @@ export function useBrowserAutomationData({
 			},
 		);
 	const { data: mcpStatus } =
-		electronTrpc.browserAutomation.getMcpStatus.useQuery(
-			{},
-			{
-				enabled,
-				refetchOnWindowFocus: enabled,
-				refetchInterval: enabled ? 30000 : false,
-			},
-		);
+		electronTrpc.browserAutomation.getMcpStatus.useQuery(undefined, {
+			enabled,
+			refetchOnWindowFocus: enabled,
+			refetchInterval: enabled ? 30000 : false,
+		});
 	const { data: bindings = [] } =
 		electronTrpc.browserAutomation.listBindings.useQuery(undefined, {
 			// Binding changes are pushed via onBindingsChanged, so no polling.
@@ -72,17 +69,20 @@ export function useBrowserAutomationData({
 			"verifying",
 			"waiting",
 		]);
+		const claudeReadyForWorkspace = (workspaceId: string | null): McpStatus => {
+			if (!mcpStatus) return "unknown";
+			if (mcpStatus.claudeHomeReady) return "ready";
+			if (workspaceId && mcpStatus.claudeReadyByWorkspaceId[workspaceId])
+				return "ready";
+			return "missing";
+		};
 		const todo: AutomationSession[] = todoSessions
 			.filter((s) => liveStatuses.has(s.status))
 			.map((s) => {
 				// Todo-agent rows always represent Claude Code workers (see
 				// todo-daemon/claude-code-runner.ts).
 				const provider = "Claude" as const;
-				const mcp: McpStatus = mcpStatus
-					? mcpStatus.claudeReady
-						? "ready"
-						: "missing"
-					: "unknown";
+				const mcp: McpStatus = claudeReadyForWorkspace(s.workspaceId);
 				const displayName = s.title || `Session ${s.id.slice(0, 6)}`;
 				const branchOrContext =
 					s.workspaceBranch ??
@@ -101,15 +101,14 @@ export function useBrowserAutomationData({
 
 		const terminal: AutomationSession[] = terminalAgents.map((t) => {
 			const pane = panes[t.paneId];
-			const mcp: McpStatus = mcpStatus
-				? t.provider === "Codex"
-					? mcpStatus.codexReady
-						? "ready"
-						: "missing"
-					: mcpStatus.claudeReady
-						? "ready"
-						: "missing"
-				: "unknown";
+			const mcp: McpStatus =
+				t.provider === "Codex"
+					? mcpStatus
+						? mcpStatus.codexReady
+							? "ready"
+							: "missing"
+						: "unknown"
+					: claudeReadyForWorkspace(t.workspaceId);
 			return {
 				id: `terminal:${t.paneId}`,
 				displayName: pane?.userTitle || pane?.name || `Terminal ${t.command}`,

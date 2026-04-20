@@ -178,14 +178,16 @@ function detectClaudeMcp(paths: readonly string[]): boolean {
 }
 
 /**
- * Enumerate all `<workspace>/.mcp.json` candidate paths so per-project
- * MCP definitions (the output of `claude mcp add -s project ...`) are
- * considered when deciding whether the browser MCP is configured.
+ * Resolve the `.mcp.json` path for each workspace keyed by workspaceId,
+ * so per-project MCP definitions (output of `claude mcp add -s project`)
+ * can be considered per-session without letting one configured project
+ * make sessions from other projects look ready.
  */
-function collectProjectMcpJsonPaths(): string[] {
+function collectProjectMcpJsonPathsByWorkspace(): Record<string, string> {
 	try {
 		const rows = localDb
-			.selectDistinct({
+			.select({
+				workspaceId: workspaces.id,
 				worktreePath: worktrees.path,
 				mainRepoPath: projects.mainRepoPath,
 			})
@@ -193,14 +195,16 @@ function collectProjectMcpJsonPaths(): string[] {
 			.leftJoin(projects, eq(projects.id, workspaces.projectId))
 			.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
 			.all();
-		const paths = new Set<string>();
+		const out: Record<string, string> = {};
 		for (const row of rows) {
 			const base = row.worktreePath ?? row.mainRepoPath ?? null;
-			if (base) paths.add(join(base, ".mcp.json"));
+			if (row.workspaceId && base) {
+				out[row.workspaceId] = join(base, ".mcp.json");
+			}
 		}
-		return Array.from(paths);
+		return out;
 	} catch {
-		return [];
+		return {};
 	}
 }
 
@@ -310,33 +314,29 @@ async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
 
 export const createBrowserAutomationRouter = () => {
 	return router({
-		getMcpStatus: publicProcedure
-			.input(
-				z.object({
-					provider: z.enum(["Claude", "Codex"]).optional(),
-				}),
-			)
-			.query(({ input }) => {
-				const projectMcpPaths = collectProjectMcpJsonPaths();
-				const claudeReady = detectClaudeMcp([
-					...CLAUDE_CONFIG_PATHS,
-					...projectMcpPaths,
-				]);
-				const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
-				const resolved =
-					input.provider === "Claude"
-						? claudeReady
-						: input.provider === "Codex"
-							? codexReady
-							: claudeReady || codexReady;
-				return {
-					claudeReady,
-					codexReady,
-					ready: resolved,
-					claudeConfigPath: CLAUDE_USER_JSON_PATH,
-					codexConfigPath: CODEX_CONFIG_PATH,
-				};
-			}),
+		getMcpStatus: publicProcedure.query(() => {
+			// Claude readiness is resolved in two dimensions:
+			//   - `claudeHomeReady`: user/legacy files in $HOME.
+			//   - `claudeReadyByWorkspaceId`: per-workspace `.mcp.json` probe
+			//     (keyed by workspaceId) so a single configured project does
+			//     not make sessions from other projects look ready.
+			// A session is ready when its home check OR its workspace probe
+			// finds the entry; callers combine the two by workspaceId.
+			const claudeHomeReady = detectClaudeMcp(CLAUDE_CONFIG_PATHS);
+			const projectPaths = collectProjectMcpJsonPathsByWorkspace();
+			const claudeReadyByWorkspaceId: Record<string, boolean> = {};
+			for (const [workspaceId, path] of Object.entries(projectPaths)) {
+				claudeReadyByWorkspaceId[workspaceId] = detectClaudeMcpInFile(path);
+			}
+			const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
+			return {
+				claudeHomeReady,
+				claudeReadyByWorkspaceId,
+				codexReady,
+				claudeConfigPath: CLAUDE_USER_JSON_PATH,
+				codexConfigPath: CODEX_CONFIG_PATH,
+			};
+		}),
 
 		listTerminalAgentSessions: publicProcedure.query(() =>
 			detectTerminalAgentSessions(),
