@@ -85,6 +85,15 @@ function getChromeLikeUserAgent(userAgent: string): string {
 
 class BrowserManager extends EventEmitter {
 	private paneWebContentsIds = new Map<string, number>();
+	/**
+	 * Chromium CDP targetId for each pane's webview, captured once per
+	 * register(). The browser-mcp bridge uses this to hand out a
+	 * per-pane `ws://…/devtools/page/<targetId>` URL without probing
+	 * `/json/list` on every tool call. Stable for the lifetime of the
+	 * underlying webContents.
+	 */
+	private paneTargetIds = new Map<string, string>();
+	private paneIdMarkerListeners = new Map<string, () => void>();
 	private consoleLogs = new Map<string, ConsoleEntry[]>();
 	private consoleListeners = new Map<string, () => void>();
 	private contextMenuListeners = new Map<string, () => void>();
@@ -117,6 +126,10 @@ class BrowserManager extends EventEmitter {
 			}
 		}
 		this.paneWebContentsIds.set(paneId, webContentsId);
+		// Invalidate any stale targetId captured from a previous
+		// webContents so /mcp/cdp-endpoint never returns a URL pointing
+		// at a dead target while the async recapture is in flight.
+		this.paneTargetIds.delete(paneId);
 		const wc = webContents.fromId(webContentsId);
 		if (wc) {
 			// Keep throttling enabled so parked/offscreen persistent webviews don't
@@ -156,6 +169,8 @@ class BrowserManager extends EventEmitter {
 			this.setupConsoleCapture(paneId, wc);
 			this.setupContextMenu(paneId, wc);
 			this.setupFindInPage(paneId, wc);
+			this.setupPaneIdMarker(paneId, wc);
+			void this.captureCdpTargetId(paneId, wc);
 		}
 	}
 
@@ -166,6 +181,7 @@ class BrowserManager extends EventEmitter {
 			this.fullscreenListeners,
 			this.popupListeners,
 			this.findListeners,
+			this.paneIdMarkerListeners,
 		]) {
 			const cleanup = map.get(paneId);
 			if (cleanup) {
@@ -177,6 +193,7 @@ class BrowserManager extends EventEmitter {
 			this.fullscreenPaneId = null;
 		}
 		this.paneWebContentsIds.delete(paneId);
+		this.paneTargetIds.delete(paneId);
 		this.consoleLogs.delete(paneId);
 	}
 
@@ -192,6 +209,100 @@ class BrowserManager extends EventEmitter {
 		const wc = webContents.fromId(id);
 		if (!wc || wc.isDestroyed()) return null;
 		return wc;
+	}
+
+	/**
+	 * Chromium CDP targetId for the pane's webview, or null if we have
+	 * not finished capturing it yet. The browser-mcp bridge uses this to
+	 * hand external automation MCPs a per-pane ws://.../devtools/page/<id>
+	 * URL.
+	 */
+	getCdpTargetId(paneId: string): string | null {
+		return this.paneTargetIds.get(paneId) ?? null;
+	}
+
+	listPanesWithCdpTargets(): Array<{ paneId: string; targetId: string }> {
+		return Array.from(this.paneTargetIds.entries()).map(
+			([paneId, targetId]) => ({ paneId, targetId }),
+		);
+	}
+
+	/**
+	 * Inject `window.__supersetPaneId = '<paneId>'` into every top frame
+	 * of this pane, including after navigation. External CDP clients
+	 * (chrome-devtools-mcp etc.) that enumerate /json/list use this as
+	 * the ground-truth pane identifier via Runtime.evaluate.
+	 */
+	private setupPaneIdMarker(paneId: string, wc: Electron.WebContents): void {
+		const literal = JSON.stringify(paneId);
+		const inject = (): void => {
+			if (wc.isDestroyed()) return;
+			// executeJavaScript returns a promise we don't need to await.
+			void wc
+				.executeJavaScript(`window.__supersetPaneId = ${literal};`, false)
+				.catch(() => {
+					/* Pages like about:blank or in the middle of a redirect
+					   can reject — retry on the next did-navigate. */
+				});
+		};
+		wc.on("did-navigate", inject);
+		wc.on("did-navigate-in-page", inject);
+		wc.on("did-finish-load", inject);
+		inject();
+		this.paneIdMarkerListeners.set(paneId, () => {
+			wc.off("did-navigate", inject);
+			wc.off("did-navigate-in-page", inject);
+			wc.off("did-finish-load", inject);
+		});
+	}
+
+	/**
+	 * Briefly attach the Electron CDP debugger to this pane so we can
+	 * read `Target.getTargetInfo` and remember the Chromium-assigned
+	 * targetId. Detach right after so we do not conflict with external
+	 * CDP clients the user wires up later.
+	 */
+	private async captureCdpTargetId(
+		paneId: string,
+		wc: Electron.WebContents,
+	): Promise<void> {
+		if (wc.isDestroyed()) return;
+		const expectedWebContentsId = wc.id;
+		let attachedHere = false;
+		try {
+			if (!wc.debugger.isAttached()) {
+				wc.debugger.attach("1.3");
+				attachedHere = true;
+			}
+			const info = (await wc.debugger.sendCommand("Target.getTargetInfo")) as {
+				targetInfo?: { targetId?: string };
+			};
+			const targetId = info?.targetInfo?.targetId;
+			// Late-resolution guard: if the pane was unregistered or
+			// re-registered with a different webContents while we were
+			// awaiting, do not overwrite the current cache with stale data.
+			const currentId = this.paneWebContentsIds.get(paneId);
+			if (
+				typeof targetId === "string" &&
+				targetId.length > 0 &&
+				currentId === expectedWebContentsId
+			) {
+				this.paneTargetIds.set(paneId, targetId);
+			}
+		} catch (error) {
+			console.warn(
+				`[browser-manager] failed to capture CDP targetId for pane ${paneId}:`,
+				error,
+			);
+		} finally {
+			if (attachedHere) {
+				try {
+					wc.debugger.detach();
+				} catch {
+					/* already detached */
+				}
+			}
+		}
 	}
 
 	getPaneIdForWebContents(webContentsId: number): string | null {

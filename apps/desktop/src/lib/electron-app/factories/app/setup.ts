@@ -1,5 +1,4 @@
 import { app, BrowserWindow, shell } from "electron";
-import { env } from "main/env.main";
 import { loadReactDevToolsExtension } from "main/lib/extensions";
 import { PLATFORM } from "shared/constants";
 import { makeAppId } from "shared/utils";
@@ -69,17 +68,18 @@ if (PLATFORM.IS_MAC) {
 
 PLATFORM.IS_WINDOWS &&
 	app.setAppUserModelId(
-		env.NODE_ENV === "development" ? process.execPath : makeAppId(),
+		process.env.NODE_ENV === "development" ? process.execPath : makeAppId(),
 	);
 
 app.commandLine.appendSwitch("force-color-profile", "srgb");
 
-// Only expose CDP in development when a port is explicitly configured.
-const cdpPort =
-	env.NODE_ENV === "development"
-		? process.env.DESKTOP_AUTOMATION_PORT
-		: undefined;
-if (cdpPort) {
-	app.commandLine.appendSwitch("remote-debugging-port", cdpPort);
-	app.commandLine.appendSwitch("remote-allow-origins", "*");
-}
+// Always expose CDP on a loopback port so the browser-mcp bridge can
+// hand external browser automation MCPs (chrome-devtools-mcp,
+// browser-use, playwright-mcp, …) a filtered per-pane CDP endpoint.
+// DESKTOP_AUTOMATION_PORT overrides the random-port default for the
+// existing desktop-automation integration. `*` here is safe because
+// the actual gate is at the browser-mcp-bridge proxy level
+// (token-authenticated, loopback-only).
+const cdpPort = process.env.DESKTOP_AUTOMATION_PORT ?? "0";
+app.commandLine.appendSwitch("remote-debugging-port", cdpPort);
+app.commandLine.appendSwitch("remote-allow-origins", "*");
