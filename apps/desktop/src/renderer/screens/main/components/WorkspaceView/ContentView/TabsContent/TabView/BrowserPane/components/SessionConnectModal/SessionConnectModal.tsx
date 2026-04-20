@@ -220,6 +220,7 @@ export function SessionConnectModal({
 											key={s.id}
 											session={s}
 											isSelected={s.id === selectedSessionId}
+											attachedToThisPane={s.id === currentBinding}
 											assignedElsewherePaneName={otherPaneName}
 											onSelect={() => setSelectedSession(s.id)}
 										/>
@@ -316,35 +317,48 @@ export function SessionConnectModal({
 function SessionCard({
 	session,
 	isSelected,
+	attachedToThisPane,
 	assignedElsewherePaneName,
 	onSelect,
 }: {
 	session: AutomationSession;
 	isSelected: boolean;
+	attachedToThisPane: boolean;
 	assignedElsewherePaneName: string | null;
 	onSelect: () => void;
 }) {
-	const pillClass = assignedElsewherePaneName
-		? "bg-amber-500/15 text-amber-300"
-		: session.mcpStatus === "ready"
-			? "bg-emerald-500/15 text-emerald-300"
-			: session.mcpStatus === "missing"
-				? "bg-amber-500/15 text-amber-300"
-				: "bg-muted text-muted-foreground";
-	const pillLabel = assignedElsewherePaneName
-		? "Reassign"
-		: session.mcpStatus === "ready"
-			? "Ready"
-			: session.mcpStatus === "missing"
-				? "Needs MCP"
-				: "Unknown";
-	const note = assignedElsewherePaneName
-		? `${session.displayName} is currently controlling ${assignedElsewherePaneName}. Connecting here moves ownership.`
-		: session.mcpStatus === "ready"
-			? "Browser MCP is configured. Connect will be immediate."
-			: session.mcpStatus === "missing"
-				? "This session does not currently expose the required browser automation MCP entry."
-				: "Could not verify MCP status for this session.";
+	// Pill precedence: "Attached" (bound to THIS pane already) >
+	// "Reassign" (bound to a different pane) > MCP readiness label.
+	// Showing "Ready" on an already-bound session buried the active
+	// binding status, which is the most important thing the user needs
+	// to see in this list.
+	const pillClass = attachedToThisPane
+		? "bg-brand/15 text-brand"
+		: assignedElsewherePaneName
+			? "bg-amber-500/15 text-amber-300"
+			: session.mcpStatus === "ready"
+				? "bg-emerald-500/15 text-emerald-300"
+				: session.mcpStatus === "missing"
+					? "bg-amber-500/15 text-amber-300"
+					: "bg-muted text-muted-foreground";
+	const pillLabel = attachedToThisPane
+		? "Attached"
+		: assignedElsewherePaneName
+			? "Reassign"
+			: session.mcpStatus === "ready"
+				? "Ready"
+				: session.mcpStatus === "missing"
+					? "Needs MCP"
+					: "Unknown";
+	const note = attachedToThisPane
+		? "This session is currently driving this browser pane."
+		: assignedElsewherePaneName
+			? `${session.displayName} is currently controlling ${assignedElsewherePaneName}. Connecting here moves ownership.`
+			: session.mcpStatus === "ready"
+				? "Browser MCP is configured. Connect will be immediate."
+				: session.mcpStatus === "missing"
+					? "This session does not currently expose the required browser automation MCP entry."
+					: "Could not verify MCP status for this session.";
 
 	return (
 		<button
