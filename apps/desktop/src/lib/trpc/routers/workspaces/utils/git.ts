@@ -12,7 +12,11 @@ import {
 } from "shared/utils/branch";
 import type { StatusResult } from "simple-git";
 import { runWithPostCheckoutHookTolerance } from "../../utils/git-hook-tolerance";
-import { execGitWithShellPath, getSimpleGitWithShellPath } from "./git-client";
+import {
+	execGitWithShellPath,
+	getSimpleGitWithShellPath,
+	WorktreePathMissingError,
+} from "./git-client";
 import { execWithShellEnv, getProcessEnvWithShellPath } from "./shell-env";
 import { resolveTrackingRemoteName } from "./upstream-ref";
 
@@ -186,6 +190,15 @@ export async function getStatusNoLock(repoPath: string): Promise<StatusResult> {
 			const stderr = error.stderr || error.message || "";
 			if (stderr.includes("not a git repository")) {
 				throw new NotGitRepoError(repoPath);
+			}
+			// Externally-deleted worktree: git prints "Cannot change to ... No such
+			// file or directory" before exiting. Surface as the same race-class
+			// error that git-client.ts uses so Sentry/UI treats it consistently.
+			if (
+				stderr.includes("No such file or directory") ||
+				stderr.includes("cannot change to")
+			) {
+				throw new WorktreePathMissingError(repoPath);
 			}
 		}
 		throw new Error(

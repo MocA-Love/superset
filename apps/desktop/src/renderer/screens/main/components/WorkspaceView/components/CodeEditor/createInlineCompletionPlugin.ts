@@ -118,8 +118,17 @@ function clearInlineCompletion(view: EditorView): boolean {
 		return false;
 	}
 
-	view.dispatch({
-		effects: clearInlineCompletionEffect.of(undefined),
+	// Defer the dispatch so this function is safe to call from inside a CodeMirror
+	// update cycle (plugin.update → schedule → clearInlineCompletion). Calling
+	// dispatch synchronously during an update throws "Calls to EditorView.update
+	// are not allowed while an update is in progress" (Sentry ELECTRON-1P/1N).
+	queueMicrotask(() => {
+		if (!view.state.field(inlineCompletionField, false)) {
+			return;
+		}
+		view.dispatch({
+			effects: clearInlineCompletionEffect.of(undefined),
+		});
 	});
 	return true;
 }
