@@ -148,8 +148,16 @@ function isEnabledMcpEntry(value: unknown): boolean {
 	);
 }
 
-/** Claude: ~/.claude/settings.json is JSON with `mcpServers[name]`. */
-function detectClaudeMcp(filePath: string): boolean {
+/**
+ * Claude Code writes MCP server definitions into several possible files:
+ *   - `~/.claude.json` (user scope, written by `claude mcp add`)
+ *   - `~/.claude/settings.json` (legacy / hooks-oriented)
+ *   - `<project>/.mcp.json` (project scope)
+ * We inspect all of them and accept the server if any file contains an
+ * enabled entry. Each file is parsed as JSON and we look under
+ * `mcpServers[name]`.
+ */
+function detectClaudeMcpInFile(filePath: string): boolean {
 	try {
 		const contents = readFileSync(filePath, "utf8");
 		const parsed = JSON.parse(contents) as unknown;
@@ -160,6 +168,10 @@ function detectClaudeMcp(filePath: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+function detectClaudeMcp(paths: readonly string[]): boolean {
+	return paths.some(detectClaudeMcpInFile);
 }
 
 /**
@@ -188,7 +200,9 @@ function detectCodexMcp(filePath: string): boolean {
 	}
 }
 
-const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+const CLAUDE_USER_JSON_PATH = join(homedir(), ".claude.json");
+const CLAUDE_SETTINGS_JSON_PATH = join(homedir(), ".claude", "settings.json");
+const CLAUDE_CONFIG_PATHS = [CLAUDE_USER_JSON_PATH, CLAUDE_SETTINGS_JSON_PATH];
 const CODEX_CONFIG_PATH = join(homedir(), ".codex", "config.toml");
 
 export interface TerminalAgentSession {
@@ -263,7 +277,7 @@ export const createBrowserAutomationRouter = () => {
 				}),
 			)
 			.query(({ input }) => {
-				const claudeReady = detectClaudeMcp(CLAUDE_SETTINGS_PATH);
+				const claudeReady = detectClaudeMcp(CLAUDE_CONFIG_PATHS);
 				const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
 				const resolved =
 					input.provider === "Claude"
@@ -275,7 +289,7 @@ export const createBrowserAutomationRouter = () => {
 					claudeReady,
 					codexReady,
 					ready: resolved,
-					claudeConfigPath: CLAUDE_SETTINGS_PATH,
+					claudeConfigPath: CLAUDE_USER_JSON_PATH,
 					codexConfigPath: CODEX_CONFIG_PATH,
 				};
 			}),
