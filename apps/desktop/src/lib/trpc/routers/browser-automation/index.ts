@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import {
 	browserAutomationBindings,
 	projects,
@@ -11,10 +11,10 @@ import {
 } from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
 import { and, eq, ne } from "drizzle-orm";
+import { app } from "electron";
 import { localDb } from "main/lib/local-db";
 import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
-import { getTodoSessionStore } from "main/todo-agent/session-store";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
@@ -139,16 +139,34 @@ export const bindingStore = new BindingStore();
 
 const SERVER_NAME = "superset-browser";
 
-function isEnabledMcpEntry(value: unknown): boolean {
+function isEnabledMcpEntry(
+	value: unknown,
+	expected?: { command: string; args: string[] },
+): boolean {
 	if (value == null || typeof value !== "object") return false;
 	const entry = value as Record<string, unknown>;
 	if (entry.disabled === true) return false;
-	// An entry needs at minimum a command/url/args hint to be usable.
-	return (
+	const hasShape =
 		typeof entry.command === "string" ||
 		typeof entry.url === "string" ||
-		Array.isArray(entry.args)
-	);
+		Array.isArray(entry.args);
+	if (!hasShape) return false;
+	// When we know the canonical command the app wants to install (the
+	// bundled binary path), require the registered entry to match. That
+	// way a legacy `desktop-mcp` / `superset-browser-mcp` registration
+	// isn't reported as ready and the UI prompts the user to re-install
+	// against the current bundled binary. Absence of expected means the
+	// shape check alone is enough (for callers that do not care yet).
+	if (!expected) return true;
+	if (entry.command !== expected.command) return false;
+	const rawArgs = Array.isArray(entry.args)
+		? (entry.args as unknown[]).map(String)
+		: [];
+	if (rawArgs.length !== expected.args.length) return false;
+	for (let i = 0; i < rawArgs.length; i++) {
+		if (rawArgs[i] !== expected.args[i]) return false;
+	}
+	return true;
 }
 
 /**
@@ -177,19 +195,24 @@ function mcpServersInObject(obj: unknown): Record<string, unknown> | null {
  */
 function detectClaudeMcpInFile(
 	filePath: string,
-	opts?: { workspacePaths?: readonly string[] },
+	opts?: {
+		workspacePaths?: readonly string[];
+		expected?: { command: string; args: string[] };
+	},
 ): boolean {
 	try {
 		const contents = readFileSync(filePath, "utf8");
 		const parsed = JSON.parse(contents) as unknown;
 		const topLevel = mcpServersInObject(parsed);
-		if (topLevel && isEnabledMcpEntry(topLevel[SERVER_NAME])) return true;
+		if (topLevel && isEnabledMcpEntry(topLevel[SERVER_NAME], opts?.expected))
+			return true;
 		const projects = (parsed as Record<string, unknown> | null)?.projects;
 		if (projects && typeof projects === "object" && opts?.workspacePaths) {
 			for (const wsPath of opts.workspacePaths) {
 				const project = (projects as Record<string, unknown>)[wsPath];
 				const entries = mcpServersInObject(project);
-				if (entries && isEnabledMcpEntry(entries[SERVER_NAME])) return true;
+				if (entries && isEnabledMcpEntry(entries[SERVER_NAME], opts?.expected))
+					return true;
 			}
 		}
 		return false;
@@ -200,7 +223,10 @@ function detectClaudeMcpInFile(
 
 function detectClaudeMcp(
 	paths: readonly string[],
-	opts?: { workspacePaths?: readonly string[] },
+	opts?: {
+		workspacePaths?: readonly string[];
+		expected?: { command: string; args: string[] };
+	},
 ): boolean {
 	return paths.some((p) => detectClaudeMcpInFile(p, opts));
 }
@@ -254,17 +280,67 @@ function collectWorkspacePathsByWorkspaceId(): Record<
  * at least one usable field (`command`, `url`, `args`) and is not marked
  * `disabled = true`. Comment lines (starting with `#`) are ignored.
  */
-function detectCodexMcp(filePath: string): boolean {
+function unescapeTomlBasicString(raw: string): string {
+	// Minimal TOML basic-string unescape: handles the standard sequences
+	// users actually write for Windows paths (backslashes) and shell
+	// invocations. Not a full TOML parser but enough for command / args
+	// values that come out of `codex mcp add`.
+	return raw.replace(
+		/\\(["\\bfnrt]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/g,
+		(_, esc) => {
+			switch (esc) {
+				case "\\":
+					return "\\";
+				case '"':
+					return '"';
+				case "b":
+					return "\b";
+				case "f":
+					return "\f";
+				case "n":
+					return "\n";
+				case "r":
+					return "\r";
+				case "t":
+					return "\t";
+				default: {
+					const hex = esc.slice(1);
+					const code = Number.parseInt(hex, 16);
+					return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+				}
+			}
+		},
+	);
+}
+
+function extractTomlStrings(line: string | undefined): string[] {
+	if (!line) return [];
+	const out: string[] = [];
+	// Match basic strings "…" (with escapes) and literal strings '…'
+	// (no escape processing). Both are valid TOML.
+	const re = /"((?:\\.|[^"\\])*)"|'([^']*)'/g;
+	for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+		if (m[1] !== undefined) out.push(unescapeTomlBasicString(m[1]));
+		else if (m[2] !== undefined) out.push(m[2]);
+	}
+	return out;
+}
+
+function parseFirstTomlString(line: string | undefined): string {
+	return extractTomlStrings(line)[0] ?? "";
+}
+
+function parseAllTomlStrings(line: string | undefined): string[] {
+	return extractTomlStrings(line);
+}
+
+function detectCodexMcp(
+	filePath: string,
+	expected?: { command: string; args: string[] },
+): boolean {
 	try {
 		const contents = readFileSync(filePath, "utf8");
-		// TOML accepts several equivalent header forms for the same table:
-		//   [mcp_servers.superset-browser]
-		//   [mcp_servers."superset-browser"]
-		//   [mcp_servers.'superset-browser']
-		//   ["mcp_servers".superset-browser]   (rarely used)
-		// The regex below matches the common shapes; it is not a full TOML
-		// parser but is strict enough that typos and unrelated keys don't
-		// match.
+		// TOML accepts several equivalent header forms for the same table.
 		const q = `["']`;
 		const name = SERVER_NAME.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 		const sectionRe = new RegExp(
@@ -277,7 +353,19 @@ function detectCodexMcp(filePath: string): boolean {
 			.map((line) => line.trim())
 			.filter((line) => line.length > 0 && !line.startsWith("#"));
 		if (body.some((line) => /^disabled\s*=\s*true\b/.test(line))) return false;
-		return body.some((line) => /^(command|url|args)\s*=/.test(line));
+		const hasShape = body.some((line) => /^(command|url|args)\s*=/.test(line));
+		if (!hasShape) return false;
+		if (!expected) return true;
+		const commandLine = body.find((line) => /^command\s*=/.test(line));
+		const argsLine = body.find((line) => /^args\s*=/.test(line));
+		const command = parseFirstTomlString(commandLine);
+		const args = parseAllTomlStrings(argsLine);
+		if (command !== expected.command) return false;
+		if (args.length !== expected.args.length) return false;
+		for (let i = 0; i < args.length; i++) {
+			if (args[i] !== expected.args[i]) return false;
+		}
+		return true;
 	} catch {
 		return false;
 	}
@@ -351,6 +439,55 @@ async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
 	return out;
 }
 
+/**
+ * Resolve the `superset-browser-mcp` bin that a Claude / Codex session
+ * should spawn. In dev we return `bun run <repo>/packages/superset-browser-mcp/src/bin.ts`
+ * so the snippet shown in the Connect modal is copy-pasteable without
+ * requiring a global install. In packaged production builds the source
+ * tree is not available; we fall back to the bare name so a future
+ * published npm package still produces a usable snippet.
+ */
+function resolveSupersetBrowserMcpCommand(): {
+	command: string;
+	args: string[];
+	available: boolean;
+} {
+	if (app.isPackaged) {
+		// Standalone binary shipped alongside the app (see electron-builder
+		// extraResources `to: "resources/superset-browser-mcp"`). On macOS
+		// process.resourcesPath is <app>/Contents/Resources, so the final
+		// layout is <app>/Contents/Resources/resources/superset-browser-mcp/.
+		const binName =
+			process.platform === "win32"
+				? "superset-browser-mcp.exe"
+				: "superset-browser-mcp";
+		const binPath = join(
+			process.resourcesPath,
+			"resources",
+			"superset-browser-mcp",
+			binName,
+		);
+		if (existsSync(binPath)) {
+			return { command: binPath, args: [], available: true };
+		}
+		return {
+			command: binPath,
+			args: [],
+			available: false,
+		};
+	}
+	const repoRoot = resolvePath(app.getAppPath(), "../..");
+	const binPath = join(repoRoot, "packages/superset-browser-mcp/src/bin.ts");
+	if (existsSync(binPath)) {
+		return { command: "bun", args: ["run", binPath], available: true };
+	}
+	return {
+		command: "bun",
+		args: ["run", binPath],
+		available: false,
+	};
+}
+
 export const createBrowserAutomationRouter = () => {
 	return router({
 		getMcpStatus: publicProcedure.query(() => {
@@ -363,23 +500,35 @@ export const createBrowserAutomationRouter = () => {
 			//     * `~/.claude.json` under `projects[<workspace path>]`
 			//       (local scope, where `claude mcp add` lands by default)
 			//     * `<workspace>/.mcp.json` (project scope)
-			const claudeHomeReady = detectClaudeMcp(CLAUDE_CONFIG_PATHS);
+			// Only accept entries that point at *this* install's bundled
+			// binary. An older desktop-mcp / legacy superset-browser-mcp
+			// registration from a prior build would otherwise be reported
+			// as ready and the UI would enable Connect against a command
+			// that does not exist.
+			const expected = resolveSupersetBrowserMcpCommand();
+			const claudeHomeReady = detectClaudeMcp(CLAUDE_CONFIG_PATHS, {
+				expected,
+			});
 			const wsInfo = collectWorkspacePathsByWorkspaceId();
 			const claudeReadyByWorkspaceId: Record<string, boolean> = {};
 			for (const [workspaceId, info] of Object.entries(wsInfo)) {
 				const localScope = detectClaudeMcpInFile(CLAUDE_USER_JSON_PATH, {
 					workspacePaths: [info.base],
+					expected,
 				});
-				const projectScope = detectClaudeMcpInFile(info.mcpJsonPath);
+				const projectScope = detectClaudeMcpInFile(info.mcpJsonPath, {
+					expected,
+				});
 				claudeReadyByWorkspaceId[workspaceId] = localScope || projectScope;
 			}
-			const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
+			const codexReady = detectCodexMcp(CODEX_CONFIG_PATH, expected);
 			return {
 				claudeHomeReady,
 				claudeReadyByWorkspaceId,
 				codexReady,
 				claudeConfigPath: CLAUDE_USER_JSON_PATH,
 				codexConfigPath: CODEX_CONFIG_PATH,
+				serverCommand: expected,
 			};
 		}),
 
@@ -398,6 +547,17 @@ export const createBrowserAutomationRouter = () => {
 		 * against the live status whitelist.
 		 */
 		listBindingLiveness: publicProcedure.query(async () => {
+			// Sweep out any persisted todo-agent bindings — those were
+			// allowed by an earlier build but the MCP bridge cannot resolve
+			// them yet. Leaving them would show up as "Connected" on the
+			// ConnectButton even though no session is reachable. After the
+			// sweep, re-read.
+			const stored = bindingStore.list();
+			for (const b of stored) {
+				if (b.sessionKind === "todo-agent") {
+					bindingStore.remove(b.paneId);
+				}
+			}
 			const bindings = bindingStore.list();
 			if (bindings.length === 0)
 				return [] as Array<{
@@ -409,23 +569,9 @@ export const createBrowserAutomationRouter = () => {
 			const hasTerminalBinding = bindings.some(
 				(b) => b.sessionKind === "terminal",
 			);
-			const hasTodoBinding = bindings.some((b) => b.sessionKind !== "terminal");
-			const liveTodoIds = hasTodoBinding
-				? new Set(
-						getTodoSessionStore()
-							.listAll()
-							.filter((s) =>
-								["running", "preparing", "verifying", "waiting"].includes(
-									s.status,
-								),
-							)
-							.map((s) => s.id),
-					)
-				: new Set<string>();
 			// Only probe the terminal daemon when at least one binding actually
 			// points at a terminal — otherwise every Connect button's 15s poll
-			// would wake the terminal-host and walk every PTY's process tree
-			// just to confirm TODO-Agent liveness we already have in memory.
+			// would wake the terminal-host and walk every PTY's process tree.
 			const liveTerminalIds = hasTerminalBinding
 				? new Set(
 						(await detectTerminalAgentSessions()).map(
@@ -437,7 +583,7 @@ export const createBrowserAutomationRouter = () => {
 				const live =
 					b.sessionKind === "terminal"
 						? liveTerminalIds.has(b.sessionId)
-						: liveTodoIds.has(b.sessionId);
+						: false;
 				return {
 					paneId: b.paneId,
 					sessionId: b.sessionId,
@@ -460,18 +606,57 @@ export const createBrowserAutomationRouter = () => {
 				z.object({
 					paneId: z.string(),
 					sessionId: z.string(),
-					sessionKind: z.enum(["todo-agent", "terminal"]).default("todo-agent"),
+					sessionKind: z.enum(["todo-agent", "terminal"]).default("terminal"),
 				}),
 			)
-			.mutation(({ input }) =>
-				bindingStore.set(input.paneId, input.sessionId, input.sessionKind),
-			),
+			.mutation(({ input }) => {
+				// TODO-Agent workers live in the todo-daemon process; the
+				// browser-mcp bridge in main can't resolve their PIDs yet.
+				// Reject the binding instead of letting users create one
+				// whose MCP tool calls would always error.
+				if (input.sessionKind === "todo-agent") {
+					throw new Error(
+						"TODO-Agent browser automation bindings are not supported yet. Run claude / codex in a Superset terminal pane instead.",
+					);
+				}
+				return bindingStore.set(
+					input.paneId,
+					input.sessionId,
+					input.sessionKind,
+				);
+			}),
 
 		removeBinding: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.mutation(({ input }) => ({
 				removed: bindingStore.remove(input.paneId),
 			})),
+
+		getMcpInstallState: publicProcedure.query(async () => {
+			const { getInstallState } = await import(
+				"main/lib/browser-mcp-bridge/mcp-installer"
+			);
+			return getInstallState(resolveSupersetBrowserMcpCommand());
+		}),
+
+		installMcp: publicProcedure
+			.input(
+				z.object({
+					targets: z.array(z.enum(["claude", "codex"])).min(1),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const server = resolveSupersetBrowserMcpCommand();
+				if (!server.available) {
+					throw new Error(
+						"The bundled superset-browser-mcp binary is not available in this build.",
+					);
+				}
+				const { installMcp } = await import(
+					"main/lib/browser-mcp-bridge/mcp-installer"
+				);
+				return installMcp(input.targets, server);
+			}),
 
 		onBindingsChanged: publicProcedure.subscription(() => {
 			return observable<BrowserAutomationBinding[]>((emit) => {

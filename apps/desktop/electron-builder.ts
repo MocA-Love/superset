@@ -69,6 +69,15 @@ const config: Configuration = {
 			to: "resources/host-migrations",
 			filter: ["**/*"],
 		},
+		// Standalone `superset-browser-mcp` binary produced by
+		// `bun build --compile`. Shipped with the app so users register it
+		// into Claude Code / Codex via one command with an absolute path
+		// and never need npm or a separate install step.
+		{
+			from: "../../packages/superset-browser-mcp/dist",
+			to: "resources/superset-browser-mcp",
+			filter: ["superset-browser-mcp", "superset-browser-mcp.exe"],
+		},
 	],
 
 	files: [

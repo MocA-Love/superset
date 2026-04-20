@@ -29,12 +29,6 @@ export function useBrowserAutomationData({
 } = {}) {
 	const panes = useTabsStore((s) => s.panes);
 
-	const { data: todoSessions = [], refetch: refetchSessions } =
-		electronTrpc.todoAgent.listAll.useQuery(undefined, {
-			enabled,
-			refetchOnWindowFocus: enabled,
-			refetchInterval: enabled ? 15000 : false,
-		});
 	const { data: terminalAgents = [] } =
 		electronTrpc.browserAutomation.listTerminalAgentSessions.useQuery(
 			undefined,
@@ -60,15 +54,12 @@ export function useBrowserAutomationData({
 	// consumer.
 
 	const sessions: AutomationSession[] = useMemo(() => {
-		// Only sessions that have a live worker (or are actively scheduled to
-		// wake up) should be connectable. Queued/paused/aborted/done/failed/
-		// escalated sessions either never started or are terminal.
-		const liveStatuses = new Set([
-			"running",
-			"preparing",
-			"verifying",
-			"waiting",
-		]);
+		// TODO-Agent sessions are intentionally hidden here. The browser-mcp
+		// bridge resolves MCP → session by walking terminal PTY trees, and
+		// the TODO-Agent daemon runs in a separate process so its worker
+		// PIDs are not visible to the bridge. Showing TODO-Agent rows would
+		// let users build bindings that always fail at tool-call time.
+		// Re-enable once the daemon-bridge IPC pipe lands.
 		const claudeReadyForWorkspace = (workspaceId: string | null): McpStatus => {
 			if (!mcpStatus) return "unknown";
 			if (mcpStatus.claudeHomeReady) return "ready";
@@ -76,30 +67,7 @@ export function useBrowserAutomationData({
 				return "ready";
 			return "missing";
 		};
-		const todo: AutomationSession[] = todoSessions
-			.filter((s) => liveStatuses.has(s.status))
-			.map((s) => {
-				// Todo-agent rows always represent Claude Code workers (see
-				// todo-daemon/claude-code-runner.ts).
-				const provider = "Claude" as const;
-				const mcp: McpStatus = claudeReadyForWorkspace(s.workspaceId);
-				const displayName = s.title || `Session ${s.id.slice(0, 6)}`;
-				const branchOrContext =
-					s.workspaceBranch ??
-					s.workspaceName ??
-					(s.projectName ? s.projectName : "workspace");
-				return {
-					id: s.id,
-					displayName,
-					provider,
-					kind: "TODO-Agent",
-					branchOrContextLabel: branchOrContext,
-					lastActiveAt: formatRelativeTime(s.updatedAt ?? s.createdAt),
-					mcpStatus: mcp,
-				};
-			});
-
-		const terminal: AutomationSession[] = terminalAgents.map((t) => {
+		return terminalAgents.map((t): AutomationSession => {
 			const pane = panes[t.paneId];
 			const mcp: McpStatus =
 				t.provider === "Codex"
@@ -121,9 +89,7 @@ export function useBrowserAutomationData({
 				mcpStatus: mcp,
 			};
 		});
-
-		return [...todo, ...terminal];
-	}, [todoSessions, terminalAgents, mcpStatus, panes]);
+	}, [terminalAgents, mcpStatus, panes]);
 
 	const bindingsByPane = useMemo(() => {
 		const map: Record<string, string> = {};
@@ -135,6 +101,5 @@ export function useBrowserAutomationData({
 		sessions,
 		bindingsByPane,
 		mcpStatus,
-		refetchSessions,
 	};
 }

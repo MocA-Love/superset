@@ -428,6 +428,15 @@ export class TodoSupervisorEngine {
 					remoteControlEnabled,
 					onChild: (child) => {
 						run.currentChild = child;
+						// NOTE: browser-mcp bridge PID-based mapping for
+						// TODO-Agent workers is not wired here — the daemon
+						// runs in a separate process from main, so
+						// pid-registry writes would not be visible to the
+						// bridge. TODO-Agent MCP resolution will be added in
+						// a follow-up that pipes the PID through the
+						// daemon-bridge IPC. Terminal-pane claude/codex
+						// sessions continue to resolve automatically via
+						// the PTY process tree.
 					},
 				});
 				run.currentChild = null;

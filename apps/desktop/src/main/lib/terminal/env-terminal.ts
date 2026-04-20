@@ -108,6 +108,11 @@ export function buildTerminalEnv(params: {
 		COLORTERM: "truecolor",
 		COLORFGBG: colorFgBg,
 		LANG: locale,
+		// Browser-MCP bridge discovery: propagate the resolved Superset home
+		// dir so MCP servers spawned by claude/codex in this terminal read
+		// the correct workspace-scoped browser-mcp.json.
+		SUPERSET_HOME_DIR:
+			process.env.SUPERSET_HOME_DIR ?? shellEnv.SUPERSET_HOME_DIR ?? "",
 		SUPERSET_PANE_ID: paneId,
 		SUPERSET_TAB_ID: tabId,
 		SUPERSET_WORKSPACE_ID: workspaceId,
