@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
 	createServer,
@@ -7,7 +8,7 @@ import {
 } from "node:http";
 import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
-import { WebSocket, WebSocketServer } from "ws";
+import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
 import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
@@ -183,6 +184,21 @@ async function fetchUpstreamJson(path: string): Promise<unknown> {
 	return (await res.json()) as unknown;
 }
 
+/**
+ * Per-server identifier used in `/devtools/browser/<id>` so the URL
+ * Chromium itself would hand out looks identical in shape to ours.
+ */
+const browserWsIds = new Map<string, string>();
+
+function browserWsIdFor(sessionId: string): string {
+	let id = browserWsIds.get(sessionId);
+	if (!id) {
+		id = randomBytes(16).toString("hex");
+		browserWsIds.set(sessionId, id);
+	}
+	return id;
+}
+
 function wireRequestHandler(server: Server, sessionId: string): void {
 	server.on("request", async (req, res) => {
 		try {
@@ -196,17 +212,24 @@ function wireRequestHandler(server: Server, sessionId: string): void {
 			}
 			const url = new URL(req.url ?? "/", "http://localhost");
 			const pathname = url.pathname.replace(/\/$/, "") || "/";
+			const host = req.headers.host ?? "127.0.0.1";
 			if (pathname === "/json/version") {
 				const body = (await fetchUpstreamJson("/json/version")) as Record<
 					string,
 					unknown
 				>;
-				// Chromium's /json/version exposes the browser-level
-				// `webSocketDebuggerUrl` pointing at the raw CDP port, which
-				// would bypass the filter. Drop it.
+				// Replace Chromium's browser-level `webSocketDebuggerUrl` with
+				// our filtered one. External clients (puppeteer.connect,
+				// chrome-devtools-mcp, browser-use) rely on this field to
+				// obtain a browser-level CDP connection. Routing it through
+				// our proxy lets us filter the `Target.*` domain so they only
+				// see the bound pane.
 				const { webSocketDebuggerUrl: _drop, ...safe } = body;
 				void _drop;
-				return sendJson(res, 200, safe);
+				return sendJson(res, 200, {
+					...safe,
+					webSocketDebuggerUrl: `ws://${host}/devtools/browser/${browserWsIdFor(sessionId)}`,
+				});
 			}
 			if (pathname === "/json/protocol") {
 				const body = await fetchUpstreamJson("/json/protocol");
@@ -218,7 +241,6 @@ function wireRequestHandler(server: Server, sessionId: string): void {
 				const raw = (await fetchUpstreamJson("/json/list")) as Array<
 					Record<string, unknown>
 				>;
-				const host = req.headers.host ?? "127.0.0.1";
 				const out = raw
 					.filter((t) => (t as { id?: string }).id === resolved.targetId)
 					.map((t) => {
@@ -259,10 +281,6 @@ function wireUpgradeHandler(
 			return;
 		}
 		const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-		if (!/^\/devtools\/page\/[^/]+$/.test(pathname)) {
-			socket.destroy();
-			return;
-		}
 		const resolved = resolveBindingForSession(sessionId);
 		if (!resolved) {
 			socket.destroy();
@@ -273,11 +291,25 @@ function wireUpgradeHandler(
 			socket.destroy();
 			return;
 		}
-		void proxyUpgrade(req, socket, head, wss, port, resolved.targetId);
+
+		if (/^\/devtools\/browser\/[^/]+$/.test(pathname)) {
+			const expected = `/devtools/browser/${browserWsIdFor(sessionId)}`;
+			if (pathname !== expected) {
+				socket.destroy();
+				return;
+			}
+			void proxyBrowserUpgrade(req, socket, head, wss, port, resolved);
+			return;
+		}
+		if (/^\/devtools\/page\/[^/]+$/.test(pathname)) {
+			void proxyPageUpgrade(req, socket, head, wss, port, resolved.targetId);
+			return;
+		}
+		socket.destroy();
 	});
 }
 
-async function proxyUpgrade(
+async function proxyPageUpgrade(
 	req: IncomingMessage,
 	socket: Duplex,
 	head: Buffer,
@@ -317,7 +349,300 @@ async function proxyUpgrade(
 			});
 		});
 		upstream.on("error", (err) => {
-			console.warn("[cdp-filter-proxy] upstream error", err);
+			console.warn("[cdp-filter-proxy] page upstream error", err);
+			closeBoth();
+		});
+		upstream.on("close", closeBoth);
+		clientWs.on("error", closeBoth);
+		clientWs.on("close", closeBoth);
+	});
+}
+
+/* ---------------------------------------------------------------- */
+/* Browser-level CDP filter.                                         */
+/*                                                                   */
+/* Client is talking to our proxy as if we were Chromium's browser-  */
+/* level CDP endpoint. We forward most messages through to the real  */
+/* browser WS but rewrite the `Target` domain so the client only     */
+/* ever sees the single pane bound to this session:                  */
+/*                                                                   */
+/*   • Target.getTargets / targetCreated / targetDestroyed           */
+/*     / targetInfoChanged — filtered to bound paneId                */
+/*   • Target.attachToTarget / setAutoAttach — allowed, but limited  */
+/*     to bound paneId; other ids get a CDP error                    */
+/*   • Target.createTarget — treated as "navigate the bound pane"    */
+/*     (per user decision: the pane is already under attached        */
+/*     automation, so redirecting a new-tab request into a           */
+/*     Page.navigate on the bound pane is the expected UX)           */
+/*   • Target.closeTarget / disposeBrowserContext / Browser.close    */
+/*     — rejected, so MCPs cannot shut the pane or Chromium down     */
+/*                                                                   */
+/* Session-scoped messages (CDP frames carrying `sessionId`) are     */
+/* forwarded verbatim — once a client is attached to the bound pane  */
+/* it speaks Page/DOM/Runtime/… directly with Chromium.              */
+/* ---------------------------------------------------------------- */
+
+interface JsonRpcMsg {
+	id?: number;
+	method?: string;
+	params?: Record<string, unknown>;
+	result?: Record<string, unknown>;
+	error?: { code: number; message: string };
+	sessionId?: string;
+}
+
+function isTargetInfoForBound(
+	info: unknown,
+	boundTargetId: string,
+): info is { targetId: string } {
+	return (
+		typeof info === "object" &&
+		info !== null &&
+		(info as { targetId?: unknown }).targetId === boundTargetId
+	);
+}
+
+async function proxyBrowserUpgrade(
+	req: IncomingMessage,
+	socket: Duplex,
+	head: Buffer,
+	wss: WebSocketServer,
+	chromiumPort: number,
+	resolved: { paneId: string; targetId: string },
+): Promise<void> {
+	// Chromium's real browser WS URL — fetch /json/version to discover
+	// it. The `id` in the path is per Chromium run, not per target.
+	let chromiumBrowserWs: string;
+	try {
+		const ver = (await fetchUpstreamJson("/json/version")) as {
+			webSocketDebuggerUrl?: string;
+		};
+		if (!ver.webSocketDebuggerUrl) {
+			socket.destroy();
+			return;
+		}
+		// Rewrite host:port to our resolved Chromium CDP port (in case
+		// /json/version returned a different hostname).
+		const parsed = new URL(ver.webSocketDebuggerUrl);
+		parsed.host = `127.0.0.1:${chromiumPort}`;
+		chromiumBrowserWs = parsed.toString();
+	} catch (error) {
+		console.warn("[cdp-filter-proxy] could not resolve browser WS:", error);
+		socket.destroy();
+		return;
+	}
+
+	wss.handleUpgrade(req, socket, head, (clientWs) => {
+		const upstream = new WebSocket(chromiumBrowserWs);
+		const boundTargetId = resolved.targetId;
+		// Map outgoing request id → original method so we can filter
+		// responses for Target.getTargets etc. Chromium echoes `id` back.
+		const pendingMethods = new Map<number, string>();
+
+		const closeBoth = (): void => {
+			try {
+				clientWs.close();
+			} catch {
+				/* ignore */
+			}
+			try {
+				upstream.close();
+			} catch {
+				/* ignore */
+			}
+		};
+
+		const sendToClient = (obj: unknown): void => {
+			if (clientWs.readyState !== WebSocket.OPEN) return;
+			try {
+				clientWs.send(JSON.stringify(obj));
+			} catch {
+				/* ignore */
+			}
+		};
+		const sendToUpstream = (obj: unknown): void => {
+			if (upstream.readyState !== WebSocket.OPEN) return;
+			try {
+				upstream.send(JSON.stringify(obj));
+			} catch {
+				/* ignore */
+			}
+		};
+
+		const rejectRequest = (id: number, message: string): void => {
+			sendToClient({ id, error: { code: -32601, message } });
+		};
+
+		// Incoming (client → us). Most messages are forwarded; Target.*
+		// is filtered; known-destructive calls are rejected.
+		clientWs.on("message", (data: RawData) => {
+			let msg: JsonRpcMsg;
+			try {
+				msg = JSON.parse(data.toString()) as JsonRpcMsg;
+			} catch {
+				return;
+			}
+			// Session-scoped frames: always forward (Page/DOM/Runtime/etc
+			// speak to an already-attached page).
+			if (msg.sessionId) {
+				sendToUpstream(msg);
+				return;
+			}
+			const method = msg.method ?? "";
+			const id = typeof msg.id === "number" ? msg.id : undefined;
+
+			// Hard-rejected methods — these would let a hostile MCP tear
+			// down the pane or browser.
+			if (
+				method === "Target.closeTarget" ||
+				method === "Target.disposeBrowserContext" ||
+				method === "Target.createBrowserContext" ||
+				method === "Browser.close" ||
+				method === "Browser.crash" ||
+				method === "Browser.crashGpuProcess"
+			) {
+				if (id !== undefined) {
+					rejectRequest(
+						id,
+						`${method} is not permitted by the Superset CDP filter`,
+					);
+				}
+				return;
+			}
+
+			// Scope enforcement: attaches must target the bound pane.
+			if (method === "Target.attachToTarget" && id !== undefined) {
+				const targetId = (msg.params as { targetId?: string } | undefined)
+					?.targetId;
+				if (targetId && targetId !== boundTargetId) {
+					rejectRequest(
+						id,
+						"This Superset session is scoped to a single bound pane; attachToTarget for other targets is refused.",
+					);
+					return;
+				}
+				pendingMethods.set(id, method);
+				sendToUpstream(msg);
+				return;
+			}
+
+			// createTarget → navigate the bound pane (option B). We do
+			// NOT create a real new target in Chromium; instead we:
+			//   1. trigger a navigation on the bound pane if a URL was
+			//      supplied, via the main process's BrowserView handle
+			//      (side-channel, not upstream CDP);
+			//   2. respond with `{targetId: boundTargetId}` so the MCP
+			//      treats the bound pane as "the new page".
+			if (method === "Target.createTarget" && id !== undefined) {
+				const params = msg.params as
+					| { url?: string; background?: boolean }
+					| undefined;
+				const nextUrl = params?.url;
+				if (nextUrl && typeof nextUrl === "string" && nextUrl !== "") {
+					try {
+						const wc = browserManager.getWebContents(resolved.paneId);
+						if (wc && !wc.isDestroyed() && !/^about:blank$/i.test(nextUrl)) {
+							void wc.loadURL(nextUrl).catch(() => {
+								/* loadURL can reject on aborted nav; ignore */
+							});
+						}
+					} catch {
+						/* best-effort — the respond-with-bound flow still works */
+					}
+				}
+				sendToClient({ id, result: { targetId: boundTargetId } });
+				return;
+			}
+
+			if (
+				method === "Target.getTargets" ||
+				method === "Target.getTargetInfo"
+			) {
+				if (id !== undefined) pendingMethods.set(id, method);
+				sendToUpstream(msg);
+				return;
+			}
+
+			// Other Target.* methods (setAutoAttach, setDiscoverTargets,
+			// detachFromTarget, activateTarget, …): forward.
+			if (id !== undefined) pendingMethods.set(id, method);
+			sendToUpstream(msg);
+		});
+
+		// Outgoing (upstream → client). Filter Target events and Target
+		// responses so the client only sees the bound pane.
+		upstream.on("message", (data: RawData) => {
+			let msg: JsonRpcMsg;
+			try {
+				msg = JSON.parse(data.toString()) as JsonRpcMsg;
+			} catch {
+				return;
+			}
+			// Session-scoped event/response: always forward.
+			if (msg.sessionId) {
+				sendToClient(msg);
+				return;
+			}
+
+			// Responses.
+			if (typeof msg.id === "number") {
+				const origMethod = pendingMethods.get(msg.id);
+				pendingMethods.delete(msg.id);
+				if (origMethod === "Target.getTargets" && msg.result) {
+					const infos = (msg.result.targetInfos ?? []) as unknown[];
+					const filtered = infos.filter((i) =>
+						isTargetInfoForBound(i, boundTargetId),
+					);
+					sendToClient({
+						...msg,
+						result: { ...msg.result, targetInfos: filtered },
+					});
+					return;
+				}
+				if (origMethod === "Target.getTargetInfo" && msg.result?.targetInfo) {
+					if (!isTargetInfoForBound(msg.result.targetInfo, boundTargetId)) {
+						sendToClient({
+							id: msg.id,
+							error: { code: -32000, message: "target not found" },
+						});
+						return;
+					}
+				}
+				sendToClient(msg);
+				return;
+			}
+
+			// Events.
+			const method = msg.method ?? "";
+			if (
+				method === "Target.targetCreated" ||
+				method === "Target.targetDestroyed" ||
+				method === "Target.targetInfoChanged" ||
+				method === "Target.targetCrashed"
+			) {
+				const info =
+					(msg.params as { targetInfo?: unknown; targetId?: string } | undefined)
+						?.targetInfo ?? msg.params;
+				const tid =
+					(info as { targetId?: string } | undefined)?.targetId ??
+					(msg.params as { targetId?: string } | undefined)?.targetId;
+				if (tid !== boundTargetId) return; // drop
+				sendToClient(msg);
+				return;
+			}
+			if (method === "Target.attachedToTarget") {
+				const tid = (
+					msg.params as { targetInfo?: { targetId?: string } } | undefined
+				)?.targetInfo?.targetId;
+				if (tid !== boundTargetId) return;
+				sendToClient(msg);
+				return;
+			}
+			sendToClient(msg);
+		});
+
+		upstream.on("error", (err) => {
+			console.warn("[cdp-filter-proxy] browser upstream error", err);
 			closeBoth();
 		});
 		upstream.on("close", closeBoth);
