@@ -1996,18 +1996,26 @@ function buildStreamTree(events: TodoStreamEvent[]): StreamItem[] {
  * Remove redundant items from a StreamItem list (and recursively from
  * tool-node children):
  *
- * 1. Drop `assistant_text` whose text is identical to a `result` **in the
- *    same iteration** — Claude Code emits the final assistant turn both as
- *    an `assistant` message AND as `result.result`, producing a visible
- *    duplicate in the UI. Scoping to the same iteration avoids false
- *    positives when a later turn happens to produce the same reply text
- *    as an earlier turn whose result was empty/null.
+ * 1. Drop the **last** `assistant_text` per (iteration × result-text) pair
+ *    — Claude Code emits the final assistant turn both as an `assistant`
+ *    message AND as `result.result`, producing a visible duplicate in the
+ *    UI. We only remove the last occurrence so that intermediate status
+ *    lines that happen to share the same wording are preserved.
  * 2. Drop `result` items whose text is empty / the placeholder fallback
  *    "（空の結果）" — they add a blank green box above the real content.
  */
 function deduplicateStreamItems(items: StreamItem[]): StreamItem[] {
-	// Map iteration → set of non-empty result texts for that iteration.
-	const resultTextsByIteration = new Map<number, Set<string>>();
+	// For each (iteration, resultText) pair, record the id of the LAST
+	// assistant_text item that matches, so only that one is suppressed.
+	const lastAssistantIdByKey = new Map<string, string>();
+	for (const item of items) {
+		if (item.type === "message" && item.event.kind === "assistant_text") {
+			const key = `${item.event.iteration}:${item.event.text}`;
+			lastAssistantIdByKey.set(key, item.id);
+		}
+	}
+
+	const idsToRemove = new Set<string>();
 	for (const item of items) {
 		if (
 			item.type === "message" &&
@@ -2015,21 +2023,16 @@ function deduplicateStreamItems(items: StreamItem[]): StreamItem[] {
 			item.event.text &&
 			item.event.text !== "（空の結果）"
 		) {
-			const iter = item.event.iteration;
-			if (!resultTextsByIteration.has(iter)) {
-				resultTextsByIteration.set(iter, new Set());
-			}
-			resultTextsByIteration.get(iter)?.add(item.event.text);
+			const key = `${item.event.iteration}:${item.event.text}`;
+			const lastId = lastAssistantIdByKey.get(key);
+			if (lastId) idsToRemove.add(lastId);
 		}
 	}
 
 	return items
 		.filter((item) => {
 			if (item.type === "message") {
-				if (item.event.kind === "assistant_text") {
-					const resultTexts = resultTextsByIteration.get(item.event.iteration);
-					if (resultTexts?.has(item.event.text)) return false;
-				}
+				if (idsToRemove.has(item.id)) return false;
 				if (
 					item.event.kind === "result" &&
 					(!item.event.text || item.event.text === "（空の結果）")
