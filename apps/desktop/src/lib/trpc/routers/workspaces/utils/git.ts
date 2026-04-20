@@ -193,12 +193,20 @@ export async function getStatusNoLock(repoPath: string): Promise<StatusResult> {
 			}
 			// Externally-deleted worktree: git prints
 			// `fatal: cannot change to '<path>': No such file or directory`
-			// before exiting. `cannot change to` だけで判定する (特異的)。
-			// NOTE: "No such file or directory" 単独での判定はしない。`-uall`
-			// スキャン中の untracked dir / submodule 欠落 / ephemeral unlink 等でも
-			// 同じ文言が出うるため、誤って「全体が消えた worktree」扱いにすると
-			// 上位の UI がファイル変更の差分表示を落としてしまう。
-			if (stderr.includes("cannot change to")) {
+			// before exiting。`cannot change to` と "no such file or directory"
+			// / "not a directory" の AND 条件でのみ missing 扱いする。
+			// NOTE: `cannot change to` 単独だと `Permission denied` のように
+			// 「path は存在するが chdir 不可」なケースまで missing 扱いになり、
+			// 上位 UI が差分表示を落としてしまう。また "No such file or directory"
+			// 単独も、`-uall` スキャン中の untracked dir / submodule 欠落 /
+			// ephemeral unlink 等で発生するため使えない。両方が揃って初めて
+			// 「worktree ルート自体が消えた」と判断できる。
+			const lowerStderr = stderr.toLowerCase();
+			if (
+				lowerStderr.includes("cannot change to") &&
+				(lowerStderr.includes("no such file or directory") ||
+					lowerStderr.includes("not a directory"))
+			) {
 				throw new WorktreePathMissingError(repoPath);
 			}
 		}
