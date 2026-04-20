@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
@@ -36,6 +36,73 @@ import { getBoundPaneForSession, resolvePpidToSession } from "./pane-resolver";
  */
 
 const RUNTIME_INFO_PATH = join(SUPERSET_HOME_DIR, "browser-mcp.json");
+
+/**
+ * Preferred loopback port for the bridge. Chosen in the IANA
+ * dynamic-port range where browser dev tools are unlikely to collide
+ * (9000-series is taken by Chrome remote debugging, 3000/5173 by dev
+ * servers, 8080 by everything, etc.). Persisted to browser-mcp.json so
+ * the same port is reused on restart — which lets the CDP URL that an
+ * external MCP was registered with stay valid across Superset launches.
+ */
+const PREFERRED_BRIDGE_PORT = 47834;
+
+async function tryListen(server: Server, port: number): Promise<number | null> {
+	return new Promise<number | null>((resolve) => {
+		const onError = (err: NodeJS.ErrnoException): void => {
+			server.off("error", onError);
+			if (err.code === "EADDRINUSE") resolve(null);
+			else resolve(null);
+		};
+		server.once("error", onError);
+		server.listen(port, "127.0.0.1", () => {
+			server.off("error", onError);
+			const address = server.address();
+			if (!address || typeof address === "string") {
+				resolve(null);
+				return;
+			}
+			resolve(address.port);
+		});
+	});
+}
+
+function readPersistedPort(): number | null {
+	try {
+		const raw = readFileSync(RUNTIME_INFO_PATH, "utf8");
+		const parsed = JSON.parse(raw) as { port?: number };
+		if (
+			typeof parsed.port === "number" &&
+			Number.isInteger(parsed.port) &&
+			parsed.port > 0 &&
+			parsed.port < 65_536
+		) {
+			return parsed.port;
+		}
+	} catch {
+		/* no prior state */
+	}
+	return null;
+}
+
+async function listenPreferringStablePort(server: Server): Promise<number> {
+	// 1. Try the port used last run (so external MCP registrations stay
+	//    valid across restarts).
+	const previous = readPersistedPort();
+	const candidates = [previous, PREFERRED_BRIDGE_PORT].filter(
+		(p): p is number => typeof p === "number",
+	);
+	for (const candidate of candidates) {
+		const bound = await tryListen(server, candidate);
+		if (bound) return bound;
+	}
+	// 2. Fall back to a kernel-assigned port. The user will have to
+	//    re-register external MCPs with the new URL, but the app still
+	//    comes up cleanly instead of hanging on a conflict.
+	const bound = await tryListen(server, 0);
+	if (bound) return bound;
+	throw new Error("browser-mcp-bridge: could not bind any loopback port");
+}
 
 async function resolvePaneFromRequest(
 	req: IncomingMessage,
@@ -209,15 +276,7 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 		});
 	});
 
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(0, "127.0.0.1", resolve);
-	});
-	const address = server.address();
-	if (!address || typeof address === "string") {
-		throw new Error("browser-mcp-bridge: failed to bind port");
-	}
-	const port = address.port;
+	const port = await listenPreferringStablePort(server);
 
 	mkdirSync(dirname(RUNTIME_INFO_PATH), { recursive: true });
 	writeFileSync(RUNTIME_INFO_PATH, JSON.stringify({ port, secret }, null, 2), {

@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
 import { WebSocket, type WebSocketServer } from "ws";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
+import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
 import { resolveCdpPort } from "./cdp-port";
 
@@ -26,6 +29,7 @@ import { resolveCdpPort } from "./cdp-port";
  */
 
 const TOKEN_BYTES = 24;
+const TOKEN_STORE_PATH = join(SUPERSET_HOME_DIR, "browser-mcp-tokens.json");
 
 interface TokenEntry {
 	sessionId: string;
@@ -35,8 +39,64 @@ interface TokenEntry {
 
 const tokensBySession = new Map<string, string>();
 const entriesByToken = new Map<string, TokenEntry>();
+let hydrated = false;
+
+interface PersistedTokenFile {
+	version: 1;
+	entries: Array<TokenEntry & { token: string }>;
+}
+
+/**
+ * Load previously-minted tokens from disk. Tokens survive app
+ * restarts so the URL a user registered once into their external
+ * browser MCP (chrome-devtools-mcp / browser-use) stays valid.
+ */
+function hydrate(): void {
+	if (hydrated) return;
+	hydrated = true;
+	try {
+		const raw = readFileSync(TOKEN_STORE_PATH, "utf8");
+		const parsed = JSON.parse(raw) as Partial<PersistedTokenFile>;
+		if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) return;
+		for (const e of parsed.entries) {
+			if (
+				typeof e.token === "string" &&
+				e.token.length >= TOKEN_BYTES * 2 &&
+				typeof e.sessionId === "string"
+			) {
+				tokensBySession.set(e.sessionId, e.token);
+				entriesByToken.set(e.token, {
+					sessionId: e.sessionId,
+					createdAt: e.createdAt ?? Date.now(),
+					lastUsedAt: e.lastUsedAt ?? Date.now(),
+				});
+			}
+		}
+	} catch {
+		/* no prior state, start fresh */
+	}
+}
+
+function persist(): void {
+	try {
+		const payload: PersistedTokenFile = {
+			version: 1,
+			entries: Array.from(entriesByToken.entries()).map(([token, entry]) => ({
+				token,
+				...entry,
+			})),
+		};
+		mkdirSync(dirname(TOKEN_STORE_PATH), { recursive: true });
+		writeFileSync(TOKEN_STORE_PATH, JSON.stringify(payload, null, 2), {
+			mode: 0o600,
+		});
+	} catch (error) {
+		console.warn("[cdp-filter-proxy] failed to persist tokens:", error);
+	}
+}
 
 export function mintCdpToken(sessionId: string): string {
+	hydrate();
 	const existing = tokensBySession.get(sessionId);
 	if (existing) {
 		const entry = entriesByToken.get(existing);
@@ -50,12 +110,14 @@ export function mintCdpToken(sessionId: string): string {
 		createdAt: Date.now(),
 		lastUsedAt: Date.now(),
 	});
+	persist();
 	return token;
 }
 
 function resolveTokenToPane(
 	token: string,
 ): { sessionId: string; paneId: string; targetId: string } | null {
+	hydrate();
 	const entry = entriesByToken.get(token);
 	if (!entry) return null;
 	entry.lastUsedAt = Date.now();
