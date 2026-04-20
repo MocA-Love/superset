@@ -58,10 +58,23 @@ export function BulkActionBar({ workspaceId }: BulkActionBarProps) {
 
 	const handleBulkClose = () => {
 		const ids = Array.from(selectedTabIds);
-		for (const tabId of ids) {
-			requestTabClose(tabId);
+		const remaining: string[] = [];
+		for (let i = 0; i < ids.length; i++) {
+			const tabId = ids[i];
+			if (!tabId) continue;
+			const closed = requestTabClose(tabId);
+			if (!closed) {
+				// requestTabClose は dirty タブ確認を 1 件しか保持できないため、
+				// ここで停止して残りは選択に残し、ユーザーに順次対応してもらう
+				remaining.push(...ids.slice(i));
+				break;
+			}
 		}
-		exitBulkMode();
+		if (remaining.length === 0) {
+			exitBulkMode();
+		} else {
+			setSelection(remaining);
+		}
 	};
 
 	return (
