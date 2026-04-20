@@ -3,6 +3,7 @@ import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import type { AppRouter } from "./routers";
 import { NotGitRepoError } from "./routers/workspaces/utils/git";
+import { WorktreePathMissingError } from "./routers/workspaces/utils/git-client";
 
 /**
  * Core tRPC initialization
@@ -29,8 +30,40 @@ const sentryMiddleware = t.middleware(async ({ next, path, type }) => {
 			// Get the original error if it's wrapped in a TRPCError
 			const originalError = error.cause instanceof Error ? error.cause : error;
 
-			// Don't report expected user conditions to Sentry
-			if (originalError instanceof NotGitRepoError) {
+			// Don't report expected user conditions to Sentry.
+			// These are races/lifecycle events, not bugs — reporting them floods
+			// the dashboard (ELECTRON-26/1Z hit 5000+ events in one session).
+			// The `.name` check catches errors re-thrown from worker threads
+			// (WorkerTaskError preserves the original name but not the class).
+			const errorName =
+				originalError instanceof Error ? originalError.name : null;
+			if (
+				originalError instanceof NotGitRepoError ||
+				originalError instanceof WorktreePathMissingError ||
+				errorName === "NotGitRepoError" ||
+				errorName === "WorktreePathMissingError"
+			) {
+				return result;
+			}
+
+			// User-environment errors bubbled out through tRPC. These tell us
+			// nothing actionable about the app itself — they're about the user's
+			// disk, their gh CLI auth, or the remote they were pushing to.
+			const message =
+				originalError instanceof Error ? originalError.message : "";
+			const USER_ENV_NOISE_PATTERNS = [
+				// Disk full (ELECTRON-25)
+				"ENOSPC: no space left on device",
+				// gh CLI auth/network failures against external repos (ELECTRON-R/18)
+				"Command failed: gh ",
+				// Git push rejections and remote connectivity (ELECTRON-P/16/21/22)
+				"the remote end hung up unexpectedly",
+				"ssh_dispatch_run_fatal",
+				"Operation timed out",
+				"! [rejected]",
+				"failed to push some refs",
+			];
+			if (USER_ENV_NOISE_PATTERNS.some((pattern) => message.includes(pattern))) {
 				return result;
 			}
 
