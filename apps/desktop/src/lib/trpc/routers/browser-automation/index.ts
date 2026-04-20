@@ -489,12 +489,25 @@ export const createBrowserAutomationRouter = () => {
 				z.object({
 					paneId: z.string(),
 					sessionId: z.string(),
-					sessionKind: z.enum(["todo-agent", "terminal"]).default("todo-agent"),
+					sessionKind: z.enum(["todo-agent", "terminal"]).default("terminal"),
 				}),
 			)
-			.mutation(({ input }) =>
-				bindingStore.set(input.paneId, input.sessionId, input.sessionKind),
-			),
+			.mutation(({ input }) => {
+				// TODO-Agent workers live in the todo-daemon process; the
+				// browser-mcp bridge in main can't resolve their PIDs yet.
+				// Reject the binding instead of letting users create one
+				// whose MCP tool calls would always error.
+				if (input.sessionKind === "todo-agent") {
+					throw new Error(
+						"TODO-Agent browser automation bindings are not supported yet. Run claude / codex in a Superset terminal pane instead.",
+					);
+				}
+				return bindingStore.set(
+					input.paneId,
+					input.sessionId,
+					input.sessionKind,
+				);
+			}),
 
 		removeBinding: publicProcedure
 			.input(z.object({ paneId: z.string() }))
