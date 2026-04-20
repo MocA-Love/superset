@@ -1,3 +1,5 @@
+import { reportError } from "./report-error";
+
 let bootErrorReported = false;
 let hasMounted = false;
 let rootElement: Element | null = null;
@@ -63,6 +65,14 @@ const renderBootError = (message: string, error?: unknown) => {
 
 export const reportBootError = (message: string, error?: unknown) => {
 	console.error("[renderer] Boot error:", message, error);
+	// Pre-mount errors bypass React, so window.onerror/Sentry default handlers
+	// may or may not catch them depending on when Sentry.init resolved. Report
+	// explicitly so a boot crash always lands in the dashboard.
+	reportError(error ?? new Error(message), {
+		severity: "fatal",
+		tags: { subsystem: "boot", mounted: hasMounted ? "post-mount" : "pre-mount" },
+		context: { message },
+	});
 	if (hasMounted) return;
 	renderBootError(message, error);
 };

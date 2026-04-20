@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { Component } from "react";
+import { reportError } from "renderer/lib/report-error";
 
 export interface BootErrorBoundaryProps {
 	children: ReactNode;
@@ -21,8 +22,15 @@ export class BootErrorBoundary extends Component<
 		return { hasError: true, error };
 	}
 
-	componentDidCatch(error: Error): void {
-		console.error("[renderer] Boot error boundary caught:", error);
+	componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+		console.error("[renderer] Boot error boundary caught:", error, errorInfo);
+		// Forward to Sentry so React render errors (which bypass window.onerror)
+		// actually show up in the dashboard.
+		reportError(error, {
+			severity: "fatal",
+			tags: { subsystem: "boot-error-boundary" },
+			context: { componentStack: errorInfo.componentStack },
+		});
 		this.props.onError?.(error);
 	}
 
