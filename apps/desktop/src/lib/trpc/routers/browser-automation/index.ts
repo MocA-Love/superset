@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
 	browserAutomationBindings,
 	projects,
@@ -11,7 +11,6 @@ import {
 } from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
 import { and, eq, ne } from "drizzle-orm";
-import { app } from "electron";
 import { localDb } from "main/lib/local-db";
 import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
@@ -289,33 +288,6 @@ const CLAUDE_SETTINGS_JSON_PATH = join(homedir(), ".claude", "settings.json");
 const CLAUDE_CONFIG_PATHS = [CLAUDE_USER_JSON_PATH, CLAUDE_SETTINGS_JSON_PATH];
 const CODEX_CONFIG_PATH = join(homedir(), ".codex", "config.toml");
 
-/**
- * Resolve the absolute command Claude / Codex should spawn to start the
- * superset-browser MCP server. `desktop-mcp` is a workspace-private bin
- * (TypeScript, no compiled output), so it is not on PATH. We point
- * users at `bun <repo>/packages/desktop-mcp/src/bin.ts` instead — bun
- * can execute TypeScript directly.
- *
- * In packaged production builds the source tree isn't available, so we
- * fall back to the bare `desktop-mcp` name and let the user pick the
- * command themselves. (Browser automation is dev-only today.)
- */
-function resolveDesktopMcpCommand(): {
-	command: string;
-	args: string[];
-	available: boolean;
-} {
-	if (!app.isPackaged) {
-		// `app.getAppPath()` is the `apps/desktop` directory in dev.
-		const repoRoot = resolve(app.getAppPath(), "../..");
-		const binPath = join(repoRoot, "packages/desktop-mcp/src/bin.ts");
-		if (existsSync(binPath)) {
-			return { command: "bun", args: [binPath], available: true };
-		}
-	}
-	return { command: "desktop-mcp", args: [], available: false };
-}
-
 export interface TerminalAgentSession {
 	paneId: string;
 	workspaceId: string;
@@ -402,14 +374,12 @@ export const createBrowserAutomationRouter = () => {
 				claudeReadyByWorkspaceId[workspaceId] = localScope || projectScope;
 			}
 			const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
-			const serverCommand = resolveDesktopMcpCommand();
 			return {
 				claudeHomeReady,
 				claudeReadyByWorkspaceId,
 				codexReady,
 				claudeConfigPath: CLAUDE_USER_JSON_PATH,
 				codexConfigPath: CODEX_CONFIG_PATH,
-				serverCommand,
 			};
 		}),
 
