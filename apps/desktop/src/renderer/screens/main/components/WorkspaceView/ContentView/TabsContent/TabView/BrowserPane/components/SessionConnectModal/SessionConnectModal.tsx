@@ -38,7 +38,9 @@ export function SessionConnectModal({
 	);
 	const setListViewOpen = useBrowserAutomationStore((s) => s.setListViewOpen);
 
-	const { sessions, bindingsByPane, mcpStatus } = useBrowserAutomationData();
+	const { sessions, bindingsByPane, mcpStatus } = useBrowserAutomationData({
+		enabled: open,
+	});
 
 	const setBinding = electronTrpc.browserAutomation.setBinding.useMutation();
 	const removeBinding =

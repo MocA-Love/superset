@@ -27,7 +27,9 @@ export function BrowserAutomationList({
 	const tabs = useTabsStore((s) => s.tabs);
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
 	const setActiveTab = useTabsStore((s) => s.setActiveTab);
-	const { sessions, bindingsByPane } = useBrowserAutomationData();
+	const { sessions, bindingsByPane } = useBrowserAutomationData({
+		enabled: open,
+	});
 	const openConnectModal = useBrowserAutomationStore((s) => s.openConnectModal);
 
 	const browserPanes = useMemo(() => {
