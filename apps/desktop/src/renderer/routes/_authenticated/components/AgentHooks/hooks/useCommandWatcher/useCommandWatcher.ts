@@ -46,6 +46,10 @@ export function useCommandWatcher() {
 	const terminalCreateOrAttach =
 		electronTrpc.terminal.createOrAttach.useMutation();
 	const terminalWrite = electronTrpc.terminal.write.useMutation();
+	const claimCommandExecution =
+		electronTrpc.agentCommandExecution.claim.useMutation();
+	const releaseCommandExecution =
+		electronTrpc.agentCommandExecution.release.useMutation();
 
 	const { data: workspaces, refetch: refetchWorkspaces } =
 		electronTrpc.workspaces.getAll.useQuery();
@@ -140,7 +144,6 @@ export function useCommandWatcher() {
 					draft.executedAt = resolved.executedAt ?? null;
 				});
 				await tx.isPersisted.promise;
-				pendingPersistenceRef.current.delete(commandId);
 			} catch (error) {
 				console.error(
 					`[command-watcher] Failed to persist ${resolved.status}: ${commandId}`,
@@ -157,11 +160,20 @@ export function useCommandWatcher() {
 					}, COMMAND_PERSIST_RETRY_MS);
 					persistenceRetryTimersRef.current.set(commandId, retryTimer);
 				}
+				return;
 			} finally {
 				persistingCommandsRef.current.delete(commandId);
 			}
+
+			pendingPersistenceRef.current.delete(commandId);
+			void releaseCommandExecution.mutateAsync({ commandId }).catch((error) => {
+				console.error(
+					`[command-watcher] Failed to release claim: ${commandId}`,
+					error,
+				);
+			});
 		},
-		[collections.agentCommands],
+		[collections.agentCommands, releaseCommandExecution],
 	);
 
 	useEffect(() => {
@@ -179,6 +191,7 @@ export function useCommandWatcher() {
 			commandId: string,
 			tool: string,
 			params: Record<string, unknown> | null,
+			timeoutAt?: Date | string | null,
 		) => {
 			if (
 				handledCommandsRef.current.has(commandId) ||
@@ -187,6 +200,22 @@ export function useCommandWatcher() {
 				if (pendingPersistenceRef.current.has(commandId)) {
 					void persistResolvedCommand(commandId);
 				}
+				return;
+			}
+
+			let claimGranted = false;
+			try {
+				const claim = await claimCommandExecution.mutateAsync({
+					commandId,
+					timeoutAt,
+				});
+				claimGranted = claim.granted;
+			} catch (error) {
+				console.error(`[command-watcher] Failed to claim: ${commandId}`, error);
+				return;
+			}
+
+			if (!claimGranted) {
 				return;
 			}
 
@@ -241,7 +270,7 @@ export function useCommandWatcher() {
 			pendingPersistenceRef.current.set(commandId, resolvedState);
 			void persistResolvedCommand(commandId);
 		},
-		[persistResolvedCommand, toolContext],
+		[claimCommandExecution, persistResolvedCommand, toolContext],
 	);
 
 	useEffect(() => {
@@ -299,7 +328,7 @@ export function useCommandWatcher() {
 		});
 
 		for (const cmd of commandsForThisDevice) {
-			processCommand(cmd.id, cmd.tool, cmd.params);
+			processCommand(cmd.id, cmd.tool, cmd.params, cmd.timeoutAt ?? null);
 		}
 	}, [
 		shouldWatch,
