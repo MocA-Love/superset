@@ -658,6 +658,61 @@ export const createBrowserAutomationRouter = () => {
 				return installMcp(input.targets, server);
 			}),
 
+		/**
+		 * Resolve the per-session filtered CDP endpoint directly from the
+		 * UI (no MCP round-trip). Used by the Connect dialog to show a
+		 * copy-ready URL and example commands for external browser MCPs.
+		 */
+		getCdpEndpointForSession: publicProcedure
+			.input(z.object({ sessionId: z.string() }))
+			.query(async ({ input }) => {
+				const binding = bindingStore.getBySessionId(input.sessionId);
+				if (!binding) {
+					return { available: false as const, reason: "not-bound" as const };
+				}
+				const { browserManager } = await import(
+					"main/lib/browser/browser-manager"
+				);
+				const targetId = browserManager.getCdpTargetId(binding.paneId);
+				if (!targetId) {
+					return {
+						available: false as const,
+						reason: "target-not-ready" as const,
+					};
+				}
+				const { resolveCdpPort } = await import(
+					"main/lib/browser-mcp-bridge/cdp-port"
+				);
+				const cdpPort = await resolveCdpPort();
+				if (!cdpPort) {
+					return {
+						available: false as const,
+						reason: "cdp-disabled" as const,
+					};
+				}
+				const { mintCdpToken } = await import(
+					"main/lib/browser-mcp-bridge/cdp-filter-proxy"
+				);
+				const token = mintCdpToken(input.sessionId);
+				const handle = (
+					await import("main/lib/browser-mcp-bridge/server")
+				).getBrowserMcpBridge();
+				const bridgePort = handle?.port;
+				if (!bridgePort) {
+					return {
+						available: false as const,
+						reason: "bridge-not-running" as const,
+					};
+				}
+				return {
+					available: true as const,
+					paneId: binding.paneId,
+					targetId,
+					httpBase: `http://127.0.0.1:${bridgePort}/cdp/${token}`,
+					wsEndpoint: `ws://127.0.0.1:${bridgePort}/cdp/${token}/devtools/page/${targetId}`,
+				};
+			}),
+
 		onBindingsChanged: publicProcedure.subscription(() => {
 			return observable<BrowserAutomationBinding[]>((emit) => {
 				emit.next(bindingStore.list());
