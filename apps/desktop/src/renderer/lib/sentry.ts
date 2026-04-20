@@ -33,9 +33,6 @@ export async function initSentry(): Promise<void> {
 			// react-mosaic-component v6 internal race during drag-end when the
 			// target path has collapsed to a leaf. ELECTRON-1R / ELECTRON-1S.
 			"Cannot create property 'splitPercentage' on string",
-			// xterm.js v6 internal race: rAF fires after terminal dispose when
-			// _renderer.value is already undefined. ELECTRON-17 / ELECTRON-V.
-			"Cannot read properties of undefined (reading 'dimensions')",
 			// CodeMirror guard already handled by deferring our own dispatch
 			// (createInlineCompletionPlugin). Suppress any late-fire from
 			// third-party plugins that still violate the invariant.
@@ -47,11 +44,32 @@ export async function initSentry(): Promise<void> {
 			environment: env.NODE_ENV,
 			tracesSampleRate: 0.1,
 			beforeSend(event) {
-				const message = event.exception?.values?.[0]?.value ?? "";
+				const firstException = event.exception?.values?.[0];
+				const message = firstException?.value ?? "";
 				if (
 					NOISY_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
 				) {
 					return null;
+				}
+				// xterm.js v6 internal race: rAF fires after terminal dispose when
+				// _renderer.value is already undefined (ELECTRON-17 / ELECTRON-V)。
+				// xterm のスタック由来の時だけ握りつぶす。
+				// NOTE: `dimensions` undefined はチャート・canvas・画像処理など
+				// アプリ側の実バグで将来いくらでも生まれ得る。メッセージ単独で
+				// 全て黙らせると実バグが静かに消えるので、stacktrace に xterm が
+				// 含まれる場合のみフィルタする。
+				if (
+					message.includes(
+						"Cannot read properties of undefined (reading 'dimensions')",
+					)
+				) {
+					const frames = firstException?.stacktrace?.frames ?? [];
+					const fromXterm = frames.some((f) =>
+						f.filename?.includes("xterm"),
+					);
+					if (fromXterm) {
+						return null;
+					}
 				}
 				return event;
 			},

@@ -51,15 +51,25 @@ const sentryMiddleware = t.middleware(async ({ next, path, type }) => {
 			// disk, their gh CLI auth, or the remote they were pushing to.
 			const message =
 				originalError instanceof Error ? originalError.message : "";
+			// NOTE: これらは「ユーザー環境起因」のノイズだけを握りつぶす意図。
+			// 広いパターン (例: "Operation timed out" 単独、"Command failed: gh" の
+			// 全サブコマンド) を入れると、本来修正すべきアプリ側の呼び出しバグや
+			// 本家リポジトリ操作の不具合まで消してしまうので、外部ネットワーク/
+			// 外部プロセスに帰着できる文脈 (ssh, remote repo push, gh auth) に
+			// 限定した文字列を重ねて使う。
 			const USER_ENV_NOISE_PATTERNS = [
 				// Disk full (ELECTRON-25)
 				"ENOSPC: no space left on device",
-				// gh CLI auth/network failures against external repos (ELECTRON-R/18)
-				"Command failed: gh ",
+				// gh CLI auth/network failures — auth / api / clone / pr view など
+				// 外部 GitHub への通信系だけに絞る (ELECTRON-R/18)
+				"Command failed: gh auth",
+				"Command failed: gh api",
+				"Command failed: gh repo clone",
+				"Command failed: gh pr view",
+				"Command failed: gh pr list",
 				// Git push rejections and remote connectivity (ELECTRON-P/16/21/22)
 				"the remote end hung up unexpectedly",
 				"ssh_dispatch_run_fatal",
-				"Operation timed out",
 				"! [rejected]",
 				"failed to push some refs",
 			];

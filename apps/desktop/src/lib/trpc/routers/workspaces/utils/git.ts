@@ -191,13 +191,14 @@ export async function getStatusNoLock(repoPath: string): Promise<StatusResult> {
 			if (stderr.includes("not a git repository")) {
 				throw new NotGitRepoError(repoPath);
 			}
-			// Externally-deleted worktree: git prints "Cannot change to ... No such
-			// file or directory" before exiting. Surface as the same race-class
-			// error that git-client.ts uses so Sentry/UI treats it consistently.
-			if (
-				stderr.includes("No such file or directory") ||
-				stderr.includes("cannot change to")
-			) {
+			// Externally-deleted worktree: git prints
+			// `fatal: cannot change to '<path>': No such file or directory`
+			// before exiting. `cannot change to` だけで判定する (特異的)。
+			// NOTE: "No such file or directory" 単独での判定はしない。`-uall`
+			// スキャン中の untracked dir / submodule 欠落 / ephemeral unlink 等でも
+			// 同じ文言が出うるため、誤って「全体が消えた worktree」扱いにすると
+			// 上位の UI がファイル変更の差分表示を落としてしまう。
+			if (stderr.includes("cannot change to")) {
 				throw new WorktreePathMissingError(repoPath);
 			}
 		}
