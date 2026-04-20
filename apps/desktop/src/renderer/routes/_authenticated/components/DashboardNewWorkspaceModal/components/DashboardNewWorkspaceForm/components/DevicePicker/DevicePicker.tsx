@@ -1,4 +1,3 @@
-import { Button } from "@superset/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -9,6 +8,7 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
+import { cn } from "@superset/ui/utils";
 import {
 	HiCheck,
 	HiChevronUpDown,
@@ -16,15 +16,30 @@ import {
 	HiOutlineComputerDesktop,
 	HiOutlineServer,
 } from "react-icons/hi2";
+import { FormPickerTrigger } from "../../PromptGroup/components/FormPickerTrigger";
 import {
 	useWorkspaceHostOptions,
 	type WorkspaceHostOption,
 } from "./hooks/useWorkspaceHostOptions";
 import type { WorkspaceHostTarget } from "./types";
 
+function OnlineDot({ online }: { online: boolean }) {
+	return (
+		<span
+			role="img"
+			aria-label={online ? "online" : "offline"}
+			className={cn(
+				"inline-block size-1.5 shrink-0 rounded-full",
+				online ? "bg-emerald-500" : "bg-muted-foreground/60",
+			)}
+		/>
+	);
+}
+
 interface DevicePickerProps {
 	hostTarget: WorkspaceHostTarget;
 	onSelectHostTarget: (target: WorkspaceHostTarget) => void;
+	className?: string;
 }
 
 function getHostIcon(host: WorkspaceHostOption) {
@@ -65,6 +80,7 @@ function getSelectedIcon(
 export function DevicePicker({
 	hostTarget,
 	onSelectHostTarget,
+	className,
 }: DevicePickerProps) {
 	const { currentDeviceName, otherHosts } = useWorkspaceHostOptions();
 	const selectedLabel = getSelectedLabel(
@@ -72,19 +88,31 @@ export function DevicePicker({
 		currentDeviceName,
 		otherHosts,
 	);
+	// Only remote hosts have a meaningful online indicator — the app itself
+	// is the local host, so it's tautologically online.
+	const selectedRemoteOnline =
+		hostTarget.kind === "host"
+			? (otherHosts.find((host) => host.id === hostTarget.hostId)?.isOnline ??
+				false)
+			: null;
 
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs">
-					<span className="flex min-w-0 items-center gap-1.5">
-						{getSelectedIcon(hostTarget, otherHosts)}
-						<span className="max-w-[140px] truncate">{selectedLabel}</span>
-					</span>
+				<FormPickerTrigger
+					className={cn("max-w-[140px]", className)}
+					aria-label={`Device: ${selectedLabel}`}
+					title={selectedLabel}
+				>
+					{getSelectedIcon(hostTarget, otherHosts)}
+					<span className="truncate">{selectedLabel}</span>
+					{selectedRemoteOnline !== null && (
+						<OnlineDot online={selectedRemoteOnline} />
+					)}
 					<HiChevronUpDown className="size-3 shrink-0" />
-				</Button>
+				</FormPickerTrigger>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-72">
+			<DropdownMenuContent align="start" className="w-72">
 				<DropdownMenuItem
 					onSelect={() => onSelectHostTarget({ kind: "local" })}
 				>
@@ -117,10 +145,11 @@ export function DevicePicker({
 											}
 										>
 											<HostIcon className="size-4" />
-											<div className="min-w-0 flex-1">
-												<div className="truncate">{host.name}</div>
-											</div>
-											{isSelected && <HiCheck className="size-4" />}
+											<span className="min-w-0 truncate">{host.name}</span>
+											<OnlineDot online={host.isOnline} />
+											{isSelected && (
+												<HiCheck className="ml-auto size-4 shrink-0" />
+											)}
 										</DropdownMenuItem>
 									);
 								})}
