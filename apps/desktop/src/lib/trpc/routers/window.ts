@@ -47,13 +47,15 @@ export const createWindowRouter = (
 			return process.platform;
 		}),
 
-		shouldOwnSingletonEffects: publicProcedure.query(() => {
-			const window = getWindow();
-			if (!window) {
-				return false;
-			}
-			return wm.shouldWindowOwnSingletonEffects(window);
-		}),
+		shouldOwnSingletonEffects: publicProcedure
+			.input(
+				z.object({
+					tearoffWindowId: z.string().nullable(),
+				}),
+			)
+			.query(({ input }) => {
+				return wm.shouldWindowIdOwnSingletonEffects(input.tearoffWindowId);
+			}),
 
 		getHomeDir: publicProcedure.query(() => {
 			return homedir();

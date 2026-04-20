@@ -11,11 +11,15 @@ import { AgentHooks } from "../AgentHooks";
  */
 export function MainWindowEffects() {
 	const isTearoff = isTearoffWindow();
+	const tearoffWindowId = window.App?.tearoffWindowId ?? null;
 	const { data: shouldOwnEffectsInTearoff } =
-		electronTrpc.window.shouldOwnSingletonEffects.useQuery(undefined, {
-			enabled: isTearoff,
-			refetchInterval: 1_000,
-		});
+		electronTrpc.window.shouldOwnSingletonEffects.useQuery(
+			{ tearoffWindowId },
+			{
+				enabled: isTearoff,
+				refetchInterval: 1_000,
+			},
+		);
 
 	if (isTearoff && !shouldOwnEffectsInTearoff) {
 		return null;

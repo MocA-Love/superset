@@ -109,23 +109,13 @@ export class WindowManager {
 		return this.windows.get("main") ?? null;
 	}
 
-	private getWindowId(targetWindow: BrowserWindow): string | null {
-		for (const [windowId, window] of this.windows.entries()) {
-			if (window === targetWindow) {
-				return windowId;
-			}
-		}
-		return null;
-	}
-
-	shouldWindowOwnSingletonEffects(targetWindow: BrowserWindow): boolean {
-		const currentWindowId = this.getWindowId(targetWindow);
-		if (!currentWindowId) {
-			return false;
-		}
-
-		if (currentWindowId === "main") {
+	shouldWindowIdOwnSingletonEffects(windowId: string | null): boolean {
+		if (!windowId || windowId === "main") {
 			return true;
+		}
+
+		if (!this.windows.has(windowId)) {
+			return false;
 		}
 
 		const mainWindow = this.getMain();
@@ -140,7 +130,7 @@ export class WindowManager {
 			.map(([windowId]) => windowId)
 			.sort()[0];
 
-		return fallbackOwnerId === currentWindowId;
+		return fallbackOwnerId === windowId;
 	}
 
 	getAll(): Map<string, BrowserWindow> {
