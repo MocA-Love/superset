@@ -14,14 +14,15 @@ import { cn } from "@superset/ui/utils";
 import { useEffect, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { getEmptyImage } from "react-dnd-html5-backend";
-import { HiMiniXMark } from "react-icons/hi2";
-import { LuEyeOff, LuPalette, LuPencil } from "react-icons/lu";
+import { HiMiniCheck, HiMiniXMark } from "react-icons/hi2";
+import { LuEyeOff, LuListChecks, LuPalette, LuPencil } from "react-icons/lu";
 import type { MosaicBranch } from "react-mosaic-component";
 import { MosaicDragType } from "react-mosaic-component";
 import { ColorSelector } from "renderer/components/ColorSelector/ColorSelector";
 import { StatusIndicator } from "renderer/screens/main/components/StatusIndicator";
 import { RenameInput } from "renderer/screens/main/components/WorkspaceSidebar/RenameInput";
 import { useDragPaneStore } from "renderer/stores/drag-pane-store";
+import { useTabBulkSelectionStore } from "renderer/stores/tab-bulk-selection-store";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type {
 	MosaicDropPosition,
@@ -57,6 +58,7 @@ interface GroupItemProps {
 	onMarkAsUnread: () => void;
 	onPaneDrop?: (paneId: string) => void;
 	onReorder?: (fromIndex: number, toIndex: number) => void;
+	onEnterBulkMode?: () => void;
 }
 
 export function GroupItem({
@@ -71,8 +73,15 @@ export function GroupItem({
 	onMarkAsUnread,
 	onPaneDrop,
 	onReorder,
+	onEnterBulkMode,
 }: GroupItemProps) {
 	const displayName = getTabDisplayName(tab);
+	const bulkWorkspaceId = useTabBulkSelectionStore((s) => s.workspaceId);
+	const isBulkMode = bulkWorkspaceId === tab.workspaceId;
+	const isBulkSelected = useTabBulkSelectionStore((s) =>
+		s.selectedTabIds.has(tab.id),
+	);
+	const toggleBulkSelect = useTabBulkSelectionStore((s) => s.toggleSelect);
 	const [isEditing, setIsEditing] = useState(false);
 	const [editValue, setEditValue] = useState("");
 	const activeTabId = useTabsStore((s) =>
@@ -203,7 +212,8 @@ export function GroupItem({
 	const hasTabColor = tab.color && tab.color !== PROJECT_COLOR_DEFAULT;
 
 	const tabStyles = cn(
-		"flex items-center gap-2 transition-all w-full shrink-0 pl-3 pr-8 h-full",
+		"flex items-center gap-2 transition-all w-full shrink-0 pl-3 h-full",
+		isBulkMode ? "pr-3" : "pr-8",
 		hasTabColor
 			? "text-foreground"
 			: isActive
@@ -235,6 +245,9 @@ export function GroupItem({
 						"group relative flex items-center shrink-0 h-full border-r border-border",
 						isOver && canDrop && "bg-primary/5",
 						isDragging && "opacity-50 text-muted-foreground/50",
+						isBulkMode &&
+							isBulkSelected &&
+							"bg-primary/10 ring-1 ring-inset ring-primary/60",
 					)}
 					style={{
 						cursor: isDragging ? "grabbing" : undefined,
@@ -260,16 +273,37 @@ export function GroupItem({
 						<>
 							<button
 								type="button"
-								onClick={onSelect}
-								onDoubleClick={startEditing}
+								onClick={() => {
+									if (isBulkMode) {
+										toggleBulkSelect(tab.id);
+										return;
+									}
+									onSelect();
+								}}
+								onDoubleClick={isBulkMode ? undefined : startEditing}
 								onAuxClick={(e) => {
+									if (isBulkMode) return;
 									if (e.button === 1) {
 										e.preventDefault();
 										onClose();
 									}
 								}}
 								className={tabStyles}
+								aria-pressed={isBulkMode ? isBulkSelected : undefined}
 							>
+								{isBulkMode && (
+									<span
+										className={cn(
+											"flex size-4 shrink-0 items-center justify-center rounded-sm border",
+											isBulkSelected
+												? "border-primary bg-primary text-primary-foreground"
+												: "border-muted-foreground/40 bg-background",
+										)}
+										aria-hidden
+									>
+										{isBulkSelected && <HiMiniCheck className="size-3" />}
+									</span>
+								)}
 								<span className="text-sm truncate flex-1 text-left">
 									{displayName}
 								</span>
@@ -277,28 +311,30 @@ export function GroupItem({
 									<StatusIndicator status={status} />
 								)}
 							</button>
-							<div className="absolute right-1 top-1/2 -translate-y-1/2 hidden items-center gap-0.5 group-hover:flex">
-								<Tooltip delayDuration={500}>
-									<TooltipTrigger asChild>
-										<Button
-											type="button"
-											variant="ghost"
-											size="icon"
-											onClick={(e) => {
-												e.stopPropagation();
-												onClose();
-											}}
-											className="cursor-pointer size-6 hover:bg-muted"
-											aria-label="Close pane"
-										>
-											<HiMiniXMark className="size-4" />
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent side="top" showArrow={false}>
-										Close pane
-									</TooltipContent>
-								</Tooltip>
-							</div>
+							{!isBulkMode && (
+								<div className="absolute right-1 top-1/2 -translate-y-1/2 hidden items-center gap-0.5 group-hover:flex">
+									<Tooltip delayDuration={500}>
+										<TooltipTrigger asChild>
+											<Button
+												type="button"
+												variant="ghost"
+												size="icon"
+												onClick={(e) => {
+													e.stopPropagation();
+													onClose();
+												}}
+												className="cursor-pointer size-6 hover:bg-muted"
+												aria-label="Close pane"
+											>
+												<HiMiniXMark className="size-4" />
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent side="top" showArrow={false}>
+											Close pane
+										</TooltipContent>
+									</Tooltip>
+								</div>
+							)}
 						</>
 					)}
 				</div>
@@ -328,6 +364,15 @@ export function GroupItem({
 					<LuEyeOff className="size-4 mr-2" />
 					Mark as Unread
 				</ContextMenuItem>
+				{onEnterBulkMode && (
+					<>
+						<ContextMenuSeparator />
+						<ContextMenuItem onSelect={onEnterBulkMode}>
+							<LuListChecks className="size-4 mr-2" />
+							Select Multiple Tabs…
+						</ContextMenuItem>
+					</>
+				)}
 				<ContextMenuSeparator />
 				<ContextMenuItem onSelect={onClose}>
 					<HiMiniXMark className="size-4 mr-2" />

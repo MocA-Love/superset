@@ -11,6 +11,7 @@ import { ContentHeader } from "./ContentHeader";
 import { PresetsBar } from "./components/PresetsBar";
 import { TabsContent } from "./TabsContent";
 import { GroupStrip } from "./TabsContent/GroupStrip";
+import { BulkActionBar } from "./TabsContent/GroupStrip/components/BulkActionBar";
 import { BrowserAutomationList } from "./TabsContent/TabView/BrowserPane/components/BrowserAutomationList";
 
 interface ContentViewProps {
@@ -52,6 +53,7 @@ export function ContentView({
 					<GroupStrip />
 				</ContentHeader>
 			)}
+			{!isBrowserFullscreen && <BulkActionBar workspaceId={workspaceId} />}
 			{showPresetsBar && !isBrowserFullscreen && <PresetsBar />}
 			<TabsContent
 				workspaceId={workspaceId}

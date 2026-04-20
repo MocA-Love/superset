@@ -2,11 +2,15 @@ import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import type { BrowserWindow } from "electron";
 import { dialog } from "electron";
+import type { WindowManager } from "main/lib/window-manager";
 import { getImageMimeType } from "shared/file-types";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
 
-export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
+export const createWindowRouter = (
+	getWindow: () => BrowserWindow | null,
+	wm: WindowManager,
+) => {
 	return router({
 		minimize: publicProcedure.mutation(() => {
 			const window = getWindow();
@@ -42,6 +46,16 @@ export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
 		getPlatform: publicProcedure.query(() => {
 			return process.platform;
 		}),
+
+		shouldOwnSingletonEffects: publicProcedure
+			.input(
+				z.object({
+					tearoffWindowId: z.string().nullable(),
+				}),
+			)
+			.query(({ input }) => {
+				return wm.shouldWindowIdOwnSingletonEffects(input.tearoffWindowId);
+			}),
 
 		getHomeDir: publicProcedure.query(() => {
 			return homedir();

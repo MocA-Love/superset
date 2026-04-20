@@ -1989,7 +1989,65 @@ function buildStreamTree(events: TodoStreamEvent[]): StreamItem[] {
 		}
 		roots.push(item);
 	}
-	return roots;
+	return deduplicateStreamItems(roots);
+}
+
+/**
+ * Remove redundant items from a StreamItem list (and recursively from
+ * tool-node children):
+ *
+ * 1. Drop the **last** `assistant_text` per (iteration × result-text) pair
+ *    — Claude Code emits the final assistant turn both as an `assistant`
+ *    message AND as `result.result`, producing a visible duplicate in the
+ *    UI. We only remove the last occurrence so that intermediate status
+ *    lines that happen to share the same wording are preserved.
+ * 2. Drop `result` items whose text is empty / the placeholder fallback
+ *    "（空の結果）" — they add a blank green box above the real content.
+ */
+function deduplicateStreamItems(items: StreamItem[]): StreamItem[] {
+	// For each (iteration, resultText) pair, record the id of the LAST
+	// assistant_text item that matches, so only that one is suppressed.
+	const lastAssistantIdByKey = new Map<string, string>();
+	for (const item of items) {
+		if (item.type === "message" && item.event.kind === "assistant_text") {
+			const key = `${item.event.iteration}:${item.event.text}`;
+			lastAssistantIdByKey.set(key, item.id);
+		}
+	}
+
+	const idsToRemove = new Set<string>();
+	for (const item of items) {
+		if (
+			item.type === "message" &&
+			item.event.kind === "result" &&
+			item.event.text &&
+			item.event.text !== "（空の結果）"
+		) {
+			const key = `${item.event.iteration}:${item.event.text}`;
+			const lastId = lastAssistantIdByKey.get(key);
+			if (lastId) idsToRemove.add(lastId);
+		}
+	}
+
+	return items
+		.filter((item) => {
+			if (item.type === "message") {
+				if (idsToRemove.has(item.id)) return false;
+				if (
+					item.event.kind === "result" &&
+					(!item.event.text || item.event.text === "（空の結果）")
+				) {
+					return false;
+				}
+			}
+			return true;
+		})
+		.map((item) => {
+			if (item.type === "tool" && item.children.length > 0) {
+				return { ...item, children: deduplicateStreamItems(item.children) };
+			}
+			return item;
+		});
 }
 
 function StreamView({ events }: { events: TodoStreamEvent[] }) {
@@ -2404,9 +2462,15 @@ function MessageRow({ event }: { event: TodoStreamEvent }) {
 		);
 	}
 	if (event.kind === "result") {
+		const time = new Date(event.ts).toLocaleTimeString("ja-JP", {
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+		});
 		return (
 			<div className="group/result border-l-2 border-emerald-500/50 bg-emerald-500/5 pl-2 pr-1 py-1 text-xs my-1 rounded-r relative">
 				<MarkdownRenderer content={event.text} scrollable={false} />
+				<div className="text-[10px] text-emerald-400/60 mt-0.5">{time}</div>
 				<div className="absolute top-0 right-0 opacity-0 invisible group-hover/result:opacity-100 group-hover/result:visible transition-opacity">
 					<CopyIconButton
 						value={event.text}
