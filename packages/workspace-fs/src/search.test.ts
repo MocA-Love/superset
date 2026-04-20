@@ -5,12 +5,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { rgPath as bundledRgPath } from "@vscode/ripgrep";
-import type { SearchPatchEvent } from "./search";
+import type { RunRipgrepStream, SearchPatchEvent } from "./search";
 import {
 	invalidateAllSearchIndexes,
 	patchSearchIndexesForRoot,
 	replaceContent,
 	searchContent,
+	searchContentStream,
 	searchFiles,
 	warmupSearchIndex,
 } from "./search";
@@ -60,6 +61,40 @@ const bundledRunRipgrep = async (
 		signal: options.signal,
 	});
 	return { stdout: result.stdout };
+};
+
+// Same idea as bundledRunRipgrep, but streams stdout so searchContentStream
+// can exercise its incremental parse path.
+const bundledSpawnRipgrep: RunRipgrepStream = async function* (args, options) {
+	const { spawn } = await import("node:child_process");
+	const child = spawn(bundledRgPath, args, {
+		cwd: options.cwd,
+		windowsHide: true,
+	});
+	const signal = options.signal;
+	const onAbort = () => {
+		if (!child.killed) child.kill("SIGTERM");
+	};
+	if (signal) {
+		if (signal.aborted) onAbort();
+		else signal.addEventListener("abort", onAbort, { once: true });
+	}
+	try {
+		child.stdout.setEncoding("utf8");
+		for await (const chunk of child.stdout as AsyncIterable<string>) {
+			yield chunk;
+		}
+		await new Promise<void>((resolve, reject) => {
+			child.once("close", (code) => {
+				if (code === null || code === 0 || code === 1) resolve();
+				else reject(new Error(`rg exit ${code}`));
+			});
+			child.once("error", reject);
+		});
+	} finally {
+		signal?.removeEventListener("abort", onAbort);
+		if (!child.killed) child.kill("SIGTERM");
+	}
 };
 
 describe("patchSearchIndexesForRoot", () => {
@@ -601,5 +636,89 @@ describe("replaceContent", () => {
 
 		const updated = await fs.readFile(filePath, "utf8");
 		expect(updated).toEqual("BAR + foobar\n");
+	});
+});
+
+describe("searchContentStream", () => {
+	it("yields each match incrementally as ripgrep produces them", async () => {
+		const rootPath = await createTempRoot();
+		// Spread matches across multiple files so ripgrep flushes between
+		// them; this is the scenario where streaming actually pays off.
+		for (let fileIndex = 0; fileIndex < 5; fileIndex++) {
+			await fs.writeFile(
+				path.join(rootPath, `file-${fileIndex}.ts`),
+				"export const NEEDLE = 1;\n",
+			);
+		}
+
+		const matches = [];
+		for await (const match of searchContentStream({
+			rootPath,
+			query: "NEEDLE",
+			spawnRipgrep: bundledSpawnRipgrep,
+		})) {
+			matches.push(match);
+		}
+
+		expect(matches.length).toEqual(5);
+		for (const match of matches) {
+			expect(match.relativePath.startsWith("file-")).toEqual(true);
+			expect(match.line).toEqual(1);
+			expect(match.preview.includes("NEEDLE")).toEqual(true);
+		}
+	});
+
+	it("honors limit so runaway queries terminate", async () => {
+		const rootPath = await createTempRoot();
+		const lines: string[] = [];
+		for (let i = 0; i < 50; i++) lines.push(`NEEDLE line ${i}`);
+		await fs.writeFile(path.join(rootPath, "big.ts"), `${lines.join("\n")}\n`);
+
+		const matches = [];
+		for await (const match of searchContentStream({
+			rootPath,
+			query: "NEEDLE",
+			limit: 2,
+			spawnRipgrep: bundledSpawnRipgrep,
+		})) {
+			matches.push(match);
+		}
+
+		// ripgrep's --max-count caps per-file too, but limit should enforce the
+		// tighter cap regardless of underlying behavior.
+		expect(matches.length <= 2).toEqual(true);
+	});
+
+	it("cancels streaming when the external signal fires", async () => {
+		const rootPath = await createTempRoot();
+		for (let i = 0; i < 50; i++) {
+			await fs.writeFile(
+				path.join(rootPath, `file-${i}.ts`),
+				"NEEDLE\n".repeat(100),
+			);
+		}
+
+		const controller = new AbortController();
+		const matches = [];
+		const iter = searchContentStream({
+			rootPath,
+			query: "NEEDLE",
+			signal: controller.signal,
+			spawnRipgrep: bundledSpawnRipgrep,
+		});
+
+		let seen = 0;
+		for await (const match of iter) {
+			matches.push(match);
+			seen += 1;
+			if (seen === 1) {
+				controller.abort();
+			}
+		}
+
+		// After abort, the generator must stop yielding; we may or may not
+		// have a trailing match that was already in the buffer, but it must
+		// not stream the entire 5000-match corpus.
+		expect(matches.length < 500).toEqual(true);
 	});
 });

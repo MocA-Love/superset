@@ -822,6 +822,7 @@ export function SearchView({
 												caseSensitive={caseSensitive}
 												wholeWord={wholeWord}
 												multiline={isRegex && multiline}
+												replacement={replaceOpen ? replacement : undefined}
 												isReplacing={
 													replaceMutation.isPending ||
 													writeFileMutation.isPending
@@ -856,6 +857,7 @@ export function SearchView({
 												caseSensitive={caseSensitive}
 												wholeWord={wholeWord}
 												multiline={isRegex && multiline}
+												replacement={replaceOpen ? replacement : undefined}
 												isReplacing={
 													replaceMutation.isPending ||
 													writeFileMutation.isPending

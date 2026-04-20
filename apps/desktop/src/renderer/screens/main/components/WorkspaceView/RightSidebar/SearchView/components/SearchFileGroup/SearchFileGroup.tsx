@@ -24,6 +24,8 @@ interface SearchFileGroupProps {
 	caseSensitive: boolean;
 	wholeWord?: boolean;
 	multiline?: boolean;
+	/** Forwarded to SearchMatchItem for the VSCode-style inline diff preview. */
+	replacement?: string;
 	isReplacing: boolean;
 	showReplaceAction: boolean;
 	showParentPath?: boolean;
@@ -79,6 +81,7 @@ export const SearchFileGroup = memo(function SearchFileGroup({
 	caseSensitive,
 	wholeWord = false,
 	multiline = false,
+	replacement,
 	isReplacing,
 	showReplaceAction,
 	showParentPath = true,
@@ -239,6 +242,7 @@ export const SearchFileGroup = memo(function SearchFileGroup({
 								caseSensitive={caseSensitive}
 								wholeWord={wholeWord}
 								multiline={multiline}
+								replacement={replacement}
 								isReplaceEnabled={showReplaceAction && !isReplacing}
 								variant={
 									isTreeVariant ? "tree" : isListVariant ? "list" : "default"

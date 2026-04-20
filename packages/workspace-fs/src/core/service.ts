@@ -9,6 +9,23 @@ import type {
 	FsWriteResult,
 } from "../types";
 
+export interface FsContentStreamInput {
+	query: string;
+	includeHidden?: boolean;
+	includePattern?: string;
+	excludePattern?: string;
+	limit?: number;
+	isRegex?: boolean;
+	caseSensitive?: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
+	scopeId?: string;
+}
+
+export interface FsContentStreamEvent {
+	match: FsContentMatch;
+}
+
 export interface FsService {
 	listDirectory(input: {
 		absolutePath: string;
@@ -94,6 +111,10 @@ export interface FsService {
 		absolutePath: string;
 		recursive?: boolean;
 	}): AsyncIterable<{ events: FsWatchEvent[] }>;
+
+	searchContentStream(
+		input: FsContentStreamInput,
+	): AsyncIterable<FsContentStreamEvent>;
 }
 
 export interface FsRequestMap {
@@ -201,5 +222,9 @@ export interface FsSubscriptionMap {
 	watchPath: {
 		input: { absolutePath: string; recursive?: boolean };
 		event: { events: FsWatchEvent[] };
+	};
+	searchContentStream: {
+		input: FsContentStreamInput;
+		event: FsContentStreamEvent;
 	};
 }

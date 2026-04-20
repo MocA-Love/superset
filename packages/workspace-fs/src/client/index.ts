@@ -63,5 +63,8 @@ export function createFsClient(transport: FsClientTransport): FsService {
 		watchPath(input) {
 			return transport.subscribe("watchPath", input);
 		},
+		searchContentStream(input) {
+			return transport.subscribe("searchContentStream", input);
+		},
 	};
 }

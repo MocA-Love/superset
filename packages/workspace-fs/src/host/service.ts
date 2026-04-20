@@ -9,10 +9,11 @@ import {
 	readFile,
 	writeFile,
 } from "../fs";
-import type { SearchContentOptions } from "../search";
+import type { RunRipgrepStream, SearchContentOptions } from "../search";
 import {
 	replaceContent,
 	searchContent,
+	searchContentStream,
 	searchFiles,
 	warmupSearchIndex,
 } from "../search";
@@ -28,6 +29,8 @@ export interface FsHostServiceOptions {
 	watcherManager?: Pick<FsWatcherManager, "subscribe" | "close">;
 	trashItem?: (absolutePath: string) => Promise<void>;
 	runRipgrep?: SearchContentOptions["runRipgrep"];
+	/** Streaming ripgrep runner for the searchContentStream subscription. */
+	spawnRipgrep?: RunRipgrepStream;
 }
 
 interface AsyncQueueState<T> {
@@ -283,6 +286,29 @@ export function createFsHostService(
 					push,
 				);
 			});
+		},
+
+		async *searchContentStream(input) {
+			// Wrap the raw match stream so the subscription event matches
+			// the FsSubscriptionMap shape (`{ match }`). Callers iterate and
+			// break to cancel; the inner generator propagates that via its
+			// try/finally cleanup.
+			for await (const match of searchContentStream({
+				rootPath,
+				query: input.query,
+				includeHidden: input.includeHidden,
+				includePattern: input.includePattern,
+				excludePattern: input.excludePattern,
+				limit: input.limit,
+				isRegex: input.isRegex,
+				caseSensitive: input.caseSensitive,
+				wholeWord: input.wholeWord,
+				multiline: input.multiline,
+				scopeId: input.scopeId,
+				spawnRipgrep: options.spawnRipgrep,
+			})) {
+				yield { match };
+			}
 		},
 
 		async close() {

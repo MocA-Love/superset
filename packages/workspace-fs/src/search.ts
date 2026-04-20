@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -198,6 +198,21 @@ export interface RunRipgrepOptions {
 	signal?: AbortSignal;
 }
 
+export interface RunRipgrepStreamOptions {
+	cwd: string;
+	signal?: AbortSignal;
+}
+
+/**
+ * Streaming ripgrep runner. Yields stdout chunks as they arrive so callers
+ * can parse match lines before the subprocess finishes. Implementations
+ * must honor the provided AbortSignal.
+ */
+export type RunRipgrepStream = (
+	args: string[],
+	options: RunRipgrepStreamOptions,
+) => AsyncIterable<string>;
+
 export interface SearchContentOptions {
 	rootPath: string;
 	query: string;
@@ -229,6 +244,8 @@ export interface SearchContentOptions {
 		args: string[],
 		options: RunRipgrepOptions,
 	) => Promise<{ stdout: string }>;
+	/** Streaming runner, used by searchContentStream. */
+	spawnRipgrep?: RunRipgrepStream;
 }
 
 export interface ReplaceContentOptions {
@@ -763,6 +780,68 @@ async function defaultRunRipgrep(
 	});
 
 	return { stdout: result.stdout };
+}
+
+// Streaming default runner. Uses `spawn` so stdout chunks can be consumed
+// before the process exits. Desktop overrides this to invoke the bundled
+// ripgrep binary instead of relying on PATH.
+async function* defaultSpawnRipgrep(
+	args: string[],
+	options: RunRipgrepStreamOptions,
+): AsyncIterable<string> {
+	const child = spawn("rg", args, {
+		cwd: options.cwd,
+		windowsHide: true,
+	});
+
+	const onAbort = () => {
+		// `spawn`'s `signal` option exists on modern Node, but we wire up the
+		// handler manually so we can treat the cancellation as a clean
+		// shutdown (no throw propagated to the generator consumer).
+		if (!child.killed) {
+			child.kill("SIGTERM");
+		}
+	};
+	const signal = options.signal;
+	if (signal) {
+		if (signal.aborted) {
+			onAbort();
+		} else {
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
+	}
+
+	try {
+		// Set encoding so `data` events arrive as strings instead of Buffers.
+		child.stdout.setEncoding("utf8");
+		for await (const chunk of child.stdout as AsyncIterable<string>) {
+			if (signal?.aborted) {
+				return;
+			}
+			yield chunk;
+		}
+		// Drain exit so any non-zero code turns into a real error (other than
+		// exit 1 which ripgrep uses for "no matches found").
+		await new Promise<void>((resolve, reject) => {
+			child.once("error", reject);
+			child.once("close", (code) => {
+				if (signal?.aborted || code === null || code === 0 || code === 1) {
+					resolve();
+				} else {
+					const err = new Error(`ripgrep exited with code ${code}`) as Error & {
+						code?: number;
+					};
+					err.code = code;
+					reject(err);
+				}
+			});
+		});
+	} finally {
+		signal?.removeEventListener("abort", onAbort);
+		if (!child.killed) {
+			child.kill("SIGTERM");
+		}
+	}
 }
 
 async function searchContentWithRipgrep({
@@ -1534,6 +1613,298 @@ export async function searchContent({
 			preview,
 		}),
 	);
+}
+
+// Shared helper between the batched and streaming searchContent paths so
+// argv stays in sync when we add flags (wholeWord, multiline, etc.).
+function buildRipgrepSearchArgs({
+	query,
+	includeHidden,
+	includePattern,
+	excludePattern,
+	isRegex,
+	caseSensitive,
+	wholeWord,
+	multiline,
+	useSmartCase,
+}: {
+	query: string;
+	includeHidden: boolean;
+	includePattern: string;
+	excludePattern: string;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
+	useSmartCase: boolean;
+}): string[] {
+	const args = [
+		"--json",
+		"--line-number",
+		"--column",
+		"--no-messages",
+		"--max-filesize",
+		`${Math.floor(MAX_KEYWORD_FILE_SIZE_BYTES / 1024)}K`,
+		"--max-count",
+		String(KEYWORD_SEARCH_MAX_COUNT_PER_FILE),
+	];
+
+	if (isRegex) {
+		args.push(caseSensitive ? "--case-sensitive" : "--ignore-case");
+		if (multiline) {
+			args.push("--multiline", "--multiline-dotall");
+		}
+	} else {
+		if (caseSensitive) {
+			args.push("--case-sensitive");
+		} else if (useSmartCase) {
+			args.push("--smart-case");
+		} else {
+			args.push("--ignore-case");
+		}
+		args.push("--fixed-strings");
+	}
+
+	if (wholeWord) {
+		args.push("--word-regexp");
+	}
+	if (includeHidden) {
+		args.push("--hidden", "--no-ignore");
+	}
+	for (const pattern of DEFAULT_IGNORE_PATTERNS) {
+		args.push("--glob", `!${pattern}`);
+	}
+	for (const pattern of parseGlobPatterns(includePattern)) {
+		args.push("--glob", normalizePathForGlob(pattern));
+	}
+	for (const pattern of parseGlobPatterns(excludePattern)) {
+		args.push("--glob", `!${normalizePathForGlob(pattern)}`);
+	}
+
+	args.push(query, ".");
+	return args;
+}
+
+interface RgJsonMatch {
+	absolutePath: string;
+	relativePath: string;
+	name: string;
+	line: number;
+	column: number;
+	preview: string;
+}
+
+// Parses one line of ripgrep `--json` output. Returns the match, or null
+// for begin/end/summary/unparsable lines.
+function parseRipgrepMatchLine(
+	rawLine: string,
+	normalizedRootPath: string,
+): RgJsonMatch | null {
+	if (!rawLine) {
+		return null;
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawLine);
+	} catch {
+		return null;
+	}
+
+	if (
+		typeof parsed !== "object" ||
+		parsed === null ||
+		!("type" in parsed) ||
+		parsed.type !== "match" ||
+		!("data" in parsed)
+	) {
+		return null;
+	}
+
+	const data = parsed.data;
+	if (typeof data !== "object" || data === null) {
+		return null;
+	}
+
+	const pathData = "path" in data ? data.path : null;
+	const rawPath =
+		typeof pathData === "object" &&
+		pathData !== null &&
+		"text" in pathData &&
+		typeof pathData.text === "string"
+			? pathData.text
+			: null;
+	if (!rawPath) {
+		return null;
+	}
+
+	const relativePath = normalizePathForGlob(rawPath);
+	const lineNumber =
+		"line_number" in data && typeof data.line_number === "number"
+			? data.line_number
+			: 1;
+
+	const linesData = "lines" in data ? data.lines : null;
+	const lineText =
+		typeof linesData === "object" &&
+		linesData !== null &&
+		"text" in linesData &&
+		typeof linesData.text === "string"
+			? linesData.text
+			: "";
+
+	const submatches = "submatches" in data ? data.submatches : null;
+	let column = 1;
+	if (Array.isArray(submatches) && submatches.length > 0) {
+		const firstSubmatch = submatches[0];
+		if (
+			typeof firstSubmatch === "object" &&
+			firstSubmatch !== null &&
+			"start" in firstSubmatch &&
+			typeof firstSubmatch.start === "number"
+		) {
+			column = firstSubmatch.start + 1;
+		}
+	}
+
+	return {
+		absolutePath: path.join(normalizedRootPath, relativePath),
+		relativePath,
+		name: path.basename(relativePath),
+		line: lineNumber,
+		column,
+		preview: formatPreviewLine(lineText.replace(/\r?\n$/, "")),
+	};
+}
+
+export interface SearchContentStreamOptions
+	extends Omit<SearchContentOptions, "runRipgrep" | "limit"> {
+	/** Maximum matches emitted before the stream ends. Defaults to 500. */
+	limit?: number;
+}
+
+/**
+ * VSCode-style streaming search: yields each match as ripgrep reports it
+ * instead of buffering the full result set. Falls back to throwing if the
+ * underlying binary is missing — callers expecting a legacy environment
+ * without rg should continue to use `searchContent`.
+ */
+export async function* searchContentStream({
+	rootPath,
+	query,
+	includeHidden = false,
+	includePattern = "",
+	excludePattern = "",
+	limit = MAX_SEARCH_RESULTS,
+	isRegex = false,
+	caseSensitive,
+	wholeWord = false,
+	multiline = false,
+	scopeId,
+	signal,
+	spawnRipgrep = defaultSpawnRipgrep,
+}: SearchContentStreamOptions): AsyncIterable<FsContentMatch> {
+	const trimmedQuery = query.trim();
+	if (!trimmedQuery) {
+		return;
+	}
+
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	const controllerKey = `${normalizedRootPath}::${scopeId ?? "default"}::stream`;
+	const prev = activeSearchControllers.get(controllerKey);
+	prev?.abort();
+	const controller = new AbortController();
+	activeSearchControllers.set(controllerKey, controller);
+	const onExternalAbort = () => controller.abort();
+	if (signal) {
+		if (signal.aborted) {
+			controller.abort();
+		} else {
+			signal.addEventListener("abort", onExternalAbort, { once: true });
+		}
+	}
+
+	const pattern = compileSearchPattern({
+		query: trimmedQuery,
+		isRegex,
+		caseSensitive,
+		wholeWord,
+		multiline,
+	});
+	const args = buildRipgrepSearchArgs({
+		query: trimmedQuery,
+		includeHidden,
+		includePattern,
+		excludePattern,
+		isRegex,
+		caseSensitive: pattern.caseSensitive,
+		wholeWord,
+		multiline,
+		useSmartCase: !isRegex && caseSensitive === undefined,
+	});
+
+	const safeLimit = safeSearchLimit(limit);
+	const seen = new Set<string>();
+	let emitted = 0;
+	let buffer = "";
+
+	try {
+		for await (const chunk of spawnRipgrep(args, {
+			cwd: normalizedRootPath,
+			signal: controller.signal,
+		})) {
+			if (controller.signal.aborted) {
+				return;
+			}
+			buffer += chunk;
+			let newlineIndex = buffer.indexOf("\n");
+			while (newlineIndex !== -1) {
+				const line = buffer.slice(0, newlineIndex);
+				buffer = buffer.slice(newlineIndex + 1);
+				const match = parseRipgrepMatchLine(line, normalizedRootPath);
+				if (match) {
+					const id = `${match.absolutePath}:${match.line}:${match.column}`;
+					if (!seen.has(id)) {
+						seen.add(id);
+						emitted += 1;
+						yield {
+							absolutePath: match.absolutePath,
+							relativePath: match.relativePath,
+							line: match.line,
+							column: match.column,
+							preview: match.preview,
+						};
+						if (emitted >= safeLimit) {
+							controller.abort();
+							return;
+						}
+					}
+				}
+				newlineIndex = buffer.indexOf("\n");
+			}
+		}
+		// Trailing partial line (no newline at EOF).
+		if (buffer && !controller.signal.aborted) {
+			const match = parseRipgrepMatchLine(buffer, normalizedRootPath);
+			if (match) {
+				const id = `${match.absolutePath}:${match.line}:${match.column}`;
+				if (!seen.has(id) && emitted < safeLimit) {
+					yield {
+						absolutePath: match.absolutePath,
+						relativePath: match.relativePath,
+						line: match.line,
+						column: match.column,
+						preview: match.preview,
+					};
+				}
+			}
+		}
+	} finally {
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeSearchControllers.get(controllerKey) === controller) {
+			activeSearchControllers.delete(controllerKey);
+		}
+	}
 }
 
 export async function replaceContent({
