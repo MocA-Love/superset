@@ -122,7 +122,19 @@ function clearInlineCompletion(view: EditorView): boolean {
 	// update cycle (plugin.update → schedule → clearInlineCompletion). Calling
 	// dispatch synchronously during an update throws "Calls to EditorView.update
 	// are not allowed while an update is in progress" (Sentry ELECTRON-1P/1N).
+	//
+	// NOTE: 戻り値 `true` は「クリア要求を受け付けた (キーマップで consume する)」
+	// という意味であって、「実際に dispatch した」ではない。dispatch は次の
+	// microtask で行い、その時点で view が destroy されていればスキップする。
+	// Escape キーハンドラが true を返すことで上位のデフォルト挙動を止められる
+	// ので、早期 return しても UX 上は問題ない。
 	queueMicrotask(() => {
+		// ViewPlugin 側が destroy 済みなら触らない (renderer リロード/
+		// タブ切替直後に古い view が残ったままクリア要求が届くケースを想定)。
+		// CodeMirror の型に `destroyed` は露出していないので any 経由で参照する。
+		if ((view as unknown as { destroyed?: boolean }).destroyed) {
+			return;
+		}
 		if (!view.state.field(inlineCompletionField, false)) {
 			return;
 		}
