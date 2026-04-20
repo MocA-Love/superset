@@ -130,6 +130,14 @@ export function BrowserAutomationList({
 									<Button
 										size="sm"
 										onClick={() => {
+											// SessionConnectModal is rendered inside each
+											// BrowserPane (gated by isConnectOpenForThisPane), so
+											// it only mounts when the owning tab/pane is active.
+											// Activate the target before opening the modal, or the
+											// dialog never appears if the pane lives on another
+											// tab.
+											setActiveTab(workspaceId, pane.tabId);
+											setFocusedPane(pane.tabId, pane.id);
 											openConnectModal(pane.id, sessionId);
 											onOpenChange(false);
 										}}

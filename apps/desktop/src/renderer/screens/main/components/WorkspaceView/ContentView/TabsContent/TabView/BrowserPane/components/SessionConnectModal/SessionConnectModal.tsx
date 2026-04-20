@@ -179,7 +179,11 @@ export function SessionConnectModal({
 							</div>
 							<button
 								type="button"
-								onClick={() => setListViewOpen(true)}
+								onClick={() => {
+									// Close this dialog first so focus traps don't stack.
+									onOpenChange(false);
+									setListViewOpen(true);
+								}}
 								className="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
 							>
 								<LuList className="size-3" />
