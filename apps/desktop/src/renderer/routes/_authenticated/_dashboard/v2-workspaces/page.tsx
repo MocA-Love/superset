@@ -22,12 +22,12 @@ function V2WorkspacesPage() {
 		resetFilters();
 	}, [resetFilters]);
 
-	const { all, counts } = useAccessibleV2Workspaces({ searchQuery });
+	const { pinned, others, counts } = useAccessibleV2Workspaces({ searchQuery });
 
 	return (
 		<div className="flex h-full w-full flex-1 flex-col overflow-hidden">
 			<V2WorkspacesHeader counts={counts} />
-			<V2WorkspacesList workspaces={all} />
+			<V2WorkspacesList pinned={pinned} others={others} />
 		</div>
 	);
 }

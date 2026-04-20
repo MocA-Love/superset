@@ -26,6 +26,7 @@ import {
 	MAX_WORKSPACE_SIDEBAR_WIDTH,
 	useWorkspaceSidebarStore,
 } from "renderer/stores/workspace-sidebar-state";
+import { AddRepositoryModals } from "./components/AddRepositoryModals";
 import { KeepAliveWorkspaces } from "./components/KeepAliveWorkspaces";
 import { TopBar } from "./components/TopBar";
 
@@ -138,6 +139,7 @@ function DashboardLayout() {
 				<div className="flex flex-1 min-h-0 min-w-0">
 					<KeepAliveWorkspaces />
 				</div>
+				<AddRepositoryModals />
 				{deleteTarget && (
 					<DeleteWorkspaceDialog
 						workspaceId={deleteTarget.workspaceId}
