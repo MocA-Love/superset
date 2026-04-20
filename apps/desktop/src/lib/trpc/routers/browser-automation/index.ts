@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import {
 	browserAutomationBindings,
 	projects,
@@ -11,6 +11,7 @@ import {
 } from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
 import { and, eq, ne } from "drizzle-orm";
+import { app } from "electron";
 import { localDb } from "main/lib/local-db";
 import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
@@ -351,6 +352,33 @@ async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
 	return out;
 }
 
+/**
+ * Resolve the `superset-browser-mcp` bin that a Claude / Codex session
+ * should spawn. In dev we return `bun run <repo>/packages/superset-browser-mcp/src/bin.ts`
+ * so the snippet shown in the Connect modal is copy-pasteable without
+ * requiring a global install. In packaged production builds the source
+ * tree is not available; we fall back to the bare name so a future
+ * published npm package still produces a usable snippet.
+ */
+function resolveSupersetBrowserMcpCommand(): {
+	command: string;
+	args: string[];
+	available: boolean;
+} {
+	if (!app.isPackaged) {
+		const repoRoot = resolvePath(app.getAppPath(), "../..");
+		const binPath = join(repoRoot, "packages/superset-browser-mcp/src/bin.ts");
+		if (existsSync(binPath)) {
+			return { command: "bun", args: ["run", binPath], available: true };
+		}
+	}
+	return {
+		command: "bunx",
+		args: ["@superset/superset-browser-mcp"],
+		available: false,
+	};
+}
+
 export const createBrowserAutomationRouter = () => {
 	return router({
 		getMcpStatus: publicProcedure.query(() => {
@@ -380,6 +408,7 @@ export const createBrowserAutomationRouter = () => {
 				codexReady,
 				claudeConfigPath: CLAUDE_USER_JSON_PATH,
 				codexConfigPath: CODEX_CONFIG_PATH,
+				serverCommand: resolveSupersetBrowserMcpCommand(),
 			};
 		}),
 

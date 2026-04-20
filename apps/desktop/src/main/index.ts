@@ -620,6 +620,14 @@ if (!gotTheLock) {
 		initializeBrowserIdentityManager();
 		initializeBrowserWebviewCompat();
 		browserSitePermissionManager.initialize();
+		try {
+			const { startBrowserMcpBridge } = await import(
+				"./lib/browser-mcp-bridge/server"
+			);
+			await startBrowserMcpBridge();
+		} catch (error) {
+			console.warn("[main] browser-mcp-bridge startup skipped", error);
+		}
 		// One-shot sweep of 30-day-old pasted attachments so userData
 		// doesn't grow forever from screenshots dropped into TODOs.
 		try {

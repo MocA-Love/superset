@@ -428,6 +428,25 @@ export class TodoSupervisorEngine {
 					remoteControlEnabled,
 					onChild: (child) => {
 						run.currentChild = child;
+						const childPid = child.pid;
+						if (typeof childPid === "number" && childPid > 0) {
+							// Publish the Claude worker PID so the browser-mcp
+							// bridge can map MCP processes (spawned under this
+							// Claude) back to this TODO-Agent session without
+							// walking PTY trees.
+							void import("../lib/browser-mcp-bridge/pid-registry").then(
+								({ registerTodoAgentWorker }) => {
+									registerTodoAgentWorker(currentSession.id, childPid);
+								},
+							);
+							child.once("exit", () => {
+								void import("../lib/browser-mcp-bridge/pid-registry").then(
+									({ unregisterTodoAgentWorker }) => {
+										unregisterTodoAgentWorker(childPid);
+									},
+								);
+							});
+						}
 					},
 				});
 				run.currentChild = null;

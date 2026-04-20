@@ -901,6 +901,22 @@
         "typescript": "^5.9.3",
       },
     },
+    "packages/superset-browser-mcp": {
+      "name": "@superset/superset-browser-mcp",
+      "version": "0.1.0",
+      "bin": {
+        "superset-browser-mcp": "./src/bin.ts",
+      },
+      "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.26.0",
+        "zod": "^4.3.5",
+      },
+      "devDependencies": {
+        "@superset/typescript": "workspace:*",
+        "@types/node": "^24.9.1",
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/trpc": {
       "name": "@superset/trpc",
       "version": "0.1.0",
@@ -2653,6 +2669,8 @@
     "@superset/relay": ["@superset/relay@workspace:apps/relay"],
 
     "@superset/shared": ["@superset/shared@workspace:packages/shared"],
+
+    "@superset/superset-browser-mcp": ["@superset/superset-browser-mcp@workspace:packages/superset-browser-mcp"],
 
     "@superset/trpc": ["@superset/trpc@workspace:packages/trpc"],
 
