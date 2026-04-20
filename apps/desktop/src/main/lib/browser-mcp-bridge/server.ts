@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { app } from "electron";
 import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
+import { resolveCdpPort } from "./cdp-port";
 import { getBoundPaneForSession, resolvePpidToSession } from "./pane-resolver";
 
 /**
@@ -125,6 +126,41 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 
 			if (req.method === "POST" && url.pathname === "/mcp/register") {
 				return send(res, 200, { ok: true });
+			}
+
+			if (req.method === "GET" && url.pathname === "/mcp/cdp-endpoint") {
+				const resolved = await resolvePaneFromRequest(req);
+				if ("error" in resolved)
+					return send(res, resolved.status, { error: resolved.error });
+				const targetId = browserManager.getCdpTargetId(resolved.paneId);
+				if (!targetId) {
+					return send(res, 503, {
+						error:
+							"CDP targetId for this pane has not been captured yet. Give the pane a moment to finish loading and retry.",
+					});
+				}
+				const cdpPort = await resolveCdpPort();
+				if (!cdpPort) {
+					return send(res, 503, {
+						error:
+							"Chromium CDP port is not available. This build did not start with --remote-debugging-port.",
+					});
+				}
+				const wc = browserManager.getWebContents(resolved.paneId);
+				return send(res, 200, {
+					paneId: resolved.paneId,
+					sessionId: resolved.sessionId,
+					targetId,
+					cdpPort,
+					httpBase: `http://127.0.0.1:${cdpPort}`,
+					webSocketDebuggerUrl: `ws://127.0.0.1:${cdpPort}/devtools/page/${targetId}`,
+					url: wc?.getURL() ?? null,
+					title: wc?.getTitle() ?? null,
+					// PR2 will wrap this behind a pane-filter proxy so other panes
+					// are invisible to the external MCP. For PR1 the endpoint is
+					// the raw Chromium CDP — callers see every target.
+					filtered: false,
+				});
 			}
 
 			if (req.method === "GET" && url.pathname === "/mcp/binding") {
