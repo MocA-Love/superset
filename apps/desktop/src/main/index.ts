@@ -42,6 +42,7 @@ import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
 import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-service-coordinator";
 import { closeLocalDb, localDb } from "./lib/local-db";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
+import { reportError } from "./lib/report-error";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
 import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
@@ -483,11 +484,19 @@ app.on("before-quit", async (event) => {
 process.on("uncaughtException", (error) => {
 	if (isQuitting) return;
 	console.error("[main] Uncaught exception:", error);
+	reportError(error, {
+		severity: "fatal",
+		tags: { subsystem: "main", handler: "uncaughtException" },
+	});
 });
 
 process.on("unhandledRejection", (reason) => {
 	if (isQuitting) return;
 	console.error("[main] Unhandled rejection:", reason);
+	reportError(reason, {
+		severity: "error",
+		tags: { subsystem: "main", handler: "unhandledRejection" },
+	});
 });
 
 // Without these handlers, Electron may not quit when electron-vite sends SIGTERM

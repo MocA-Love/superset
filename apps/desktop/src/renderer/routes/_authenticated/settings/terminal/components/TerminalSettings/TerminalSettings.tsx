@@ -91,28 +91,17 @@ export function TerminalSettings({
 					/>
 				)}
 				{showSuggestions && <SuggestionsSetting key="suggestions" />}
-				{(showPresets || showQuickAdd) &&
-					(isV2CloudEnabled ? (
-						<V2PresetsSection
-							key="presets"
-							showPresets={showPresets}
-							showQuickAdd={showQuickAdd}
-							editingPresetId={editingPresetId}
-							onEditingPresetIdChange={onEditingPresetIdChange}
-							pendingCreateProjectId={pendingCreateProjectId}
-							onPendingCreateProjectIdChange={onPendingCreateProjectIdChange}
-						/>
-					) : (
-						<PresetsSection
-							key="presets"
-							showPresets={showPresets}
-							showQuickAdd={showQuickAdd}
-							editingPresetId={editingPresetId}
-							onEditingPresetIdChange={onEditingPresetIdChange}
-							pendingCreateProjectId={pendingCreateProjectId}
-							onPendingCreateProjectIdChange={onPendingCreateProjectIdChange}
-						/>
-					))}
+				{(showPresets || showQuickAdd) && isV2CloudEnabled && (
+					<V2PresetsSection
+						key="presets-v2"
+						showPresets={showPresets}
+						showQuickAdd={showQuickAdd}
+						editingPresetId={editingPresetId}
+						onEditingPresetIdChange={onEditingPresetIdChange}
+						pendingCreateProjectId={pendingCreateProjectId}
+						onPendingCreateProjectIdChange={onPendingCreateProjectIdChange}
+					/>
+				)}
 				{showLinkBehavior && <LinkBehaviorSetting key="link-behavior" />}
 				{showSessions && <SessionsSection key="sessions" />}
 			</SectionList>

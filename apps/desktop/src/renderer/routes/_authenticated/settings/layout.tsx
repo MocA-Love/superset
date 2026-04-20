@@ -13,6 +13,7 @@ import {
 	useSettingsOriginRoute,
 	useSettingsSearchQuery,
 } from "renderer/stores/settings-state";
+import { RouteErrorBoundary } from "renderer/components/RouteErrorBoundary";
 import { SearchResultsBanner } from "./components/SearchResultsBanner";
 import { SettingsSidebar } from "./components/SettingsSidebar";
 import {
@@ -183,7 +184,12 @@ function SettingsLayout() {
 							onClear={() => setSearchQuery("")}
 						/>
 					)}
-					<Outlet />
+					<RouteErrorBoundary
+						key={getSectionFromPath(location.pathname) ?? "unknown"}
+						routeName={`settings/${getSectionFromPath(location.pathname) ?? "unknown"}`}
+					>
+						<Outlet />
+					</RouteErrorBoundary>
 				</div>
 			</div>
 		</div>
