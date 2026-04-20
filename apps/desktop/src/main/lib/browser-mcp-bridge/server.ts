@@ -146,9 +146,26 @@ async function resolvePaneFromRequest(
 	return { paneId, sessionId: resolved.sessionId };
 }
 
+const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
+
+class PayloadTooLargeError extends Error {
+	readonly status = 413;
+	constructor() {
+		super(`request body exceeds ${MAX_JSON_BODY_BYTES} bytes`);
+	}
+}
+
 async function readJson<T>(req: IncomingMessage): Promise<T> {
 	const chunks: Buffer[] = [];
-	for await (const chunk of req) chunks.push(chunk as Buffer);
+	let total = 0;
+	for await (const chunk of req) {
+		const buf = chunk as Buffer;
+		total += buf.length;
+		if (total > MAX_JSON_BODY_BYTES) {
+			throw new PayloadTooLargeError();
+		}
+		chunks.push(buf);
+	}
 	const raw = Buffer.concat(chunks).toString("utf8");
 	return raw ? (JSON.parse(raw) as T) : ({} as T);
 }
@@ -296,6 +313,9 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 
 			return send(res, 404, { error: "not found" });
 		} catch (error) {
+			if (error instanceof PayloadTooLargeError) {
+				return send(res, 413, { error: error.message });
+			}
 			console.error("[browser-mcp-bridge]", error);
 			return send(res, 500, {
 				error: error instanceof Error ? error.message : String(error),

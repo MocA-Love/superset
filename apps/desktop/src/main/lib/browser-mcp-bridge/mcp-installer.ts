@@ -4,6 +4,50 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+function unescapeTomlBasicString(raw: string): string {
+	return raw.replace(
+		/\\(["\\bfnrt]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/g,
+		(_, esc) => {
+			switch (esc) {
+				case "\\":
+					return "\\";
+				case '"':
+					return '"';
+				case "b":
+					return "\b";
+				case "f":
+					return "\f";
+				case "n":
+					return "\n";
+				case "r":
+					return "\r";
+				case "t":
+					return "\t";
+				default: {
+					const hex = esc.slice(1);
+					const code = Number.parseInt(hex, 16);
+					return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+				}
+			}
+		},
+	);
+}
+
+function extractTomlStrings(line: string | undefined): string[] {
+	if (!line) return [];
+	const out: string[] = [];
+	const re = /"((?:\\.|[^"\\])*)"|'([^']*)'/g;
+	for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+		if (m[1] !== undefined) out.push(unescapeTomlBasicString(m[1]));
+		else if (m[2] !== undefined) out.push(m[2]);
+	}
+	return out;
+}
+
+function parseFirstTomlString(line: string | undefined): string {
+	return extractTomlStrings(line)[0] ?? "";
+}
+
 const execFile = promisify(execFileCb);
 
 const SERVER_NAME = "superset-browser";
@@ -127,15 +171,13 @@ function probeCodex(expected: ExpectedCommand): InstallTargetState {
 		.filter((l) => l.length > 0 && !l.startsWith("#"));
 	const commandLine = body.find((l) => /^command\s*=/.test(l));
 	const argsLine = body.find((l) => /^args\s*=/.test(l));
-	const commandMatch = commandLine?.match(/^command\s*=\s*"([^"]*)"/);
-	const command = commandMatch?.[1] ?? "";
-	const argsMatches =
-		argsLine?.match(/"([^"]*)"/g)?.map((s) => s.replace(/"/g, "")) ?? [];
+	const command = parseFirstTomlString(commandLine);
+	const args = extractTomlStrings(argsLine);
 	return {
 		cliFound,
 		installed: true,
-		matchesExpected: commandsEqual({ command, args: argsMatches }, expected),
-		currentCommand: [command, ...argsMatches].filter(Boolean).join(" "),
+		matchesExpected: commandsEqual({ command, args }, expected),
+		currentCommand: [command, ...args].filter(Boolean).join(" "),
 	};
 }
 

@@ -280,6 +280,60 @@ function collectWorkspacePathsByWorkspaceId(): Record<
  * at least one usable field (`command`, `url`, `args`) and is not marked
  * `disabled = true`. Comment lines (starting with `#`) are ignored.
  */
+function unescapeTomlBasicString(raw: string): string {
+	// Minimal TOML basic-string unescape: handles the standard sequences
+	// users actually write for Windows paths (backslashes) and shell
+	// invocations. Not a full TOML parser but enough for command / args
+	// values that come out of `codex mcp add`.
+	return raw.replace(
+		/\\(["\\bfnrt]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})/g,
+		(_, esc) => {
+			switch (esc) {
+				case "\\":
+					return "\\";
+				case '"':
+					return '"';
+				case "b":
+					return "\b";
+				case "f":
+					return "\f";
+				case "n":
+					return "\n";
+				case "r":
+					return "\r";
+				case "t":
+					return "\t";
+				default: {
+					const hex = esc.slice(1);
+					const code = Number.parseInt(hex, 16);
+					return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+				}
+			}
+		},
+	);
+}
+
+function extractTomlStrings(line: string | undefined): string[] {
+	if (!line) return [];
+	const out: string[] = [];
+	// Match basic strings "…" (with escapes) and literal strings '…'
+	// (no escape processing). Both are valid TOML.
+	const re = /"((?:\\.|[^"\\])*)"|'([^']*)'/g;
+	for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+		if (m[1] !== undefined) out.push(unescapeTomlBasicString(m[1]));
+		else if (m[2] !== undefined) out.push(m[2]);
+	}
+	return out;
+}
+
+function parseFirstTomlString(line: string | undefined): string {
+	return extractTomlStrings(line)[0] ?? "";
+}
+
+function parseAllTomlStrings(line: string | undefined): string[] {
+	return extractTomlStrings(line);
+}
+
 function detectCodexMcp(
 	filePath: string,
 	expected?: { command: string; args: string[] },
@@ -302,18 +356,14 @@ function detectCodexMcp(
 		const hasShape = body.some((line) => /^(command|url|args)\s*=/.test(line));
 		if (!hasShape) return false;
 		if (!expected) return true;
-		const commandMatch = body
-			.find((line) => /^command\s*=/.test(line))
-			?.match(/"([^"]*)"/);
-		const argsMatches =
-			body
-				.find((line) => /^args\s*=/.test(line))
-				?.match(/"([^"]*)"/g)
-				?.map((s) => s.replace(/"/g, "")) ?? [];
-		if ((commandMatch?.[1] ?? "") !== expected.command) return false;
-		if (argsMatches.length !== expected.args.length) return false;
-		for (let i = 0; i < argsMatches.length; i++) {
-			if (argsMatches[i] !== expected.args[i]) return false;
+		const commandLine = body.find((line) => /^command\s*=/.test(line));
+		const argsLine = body.find((line) => /^args\s*=/.test(line));
+		const command = parseFirstTomlString(commandLine);
+		const args = parseAllTomlStrings(argsLine);
+		if (command !== expected.command) return false;
+		if (args.length !== expected.args.length) return false;
+		for (let i = 0; i < args.length; i++) {
+			if (args[i] !== expected.args[i]) return false;
 		}
 		return true;
 	} catch {
@@ -404,13 +454,16 @@ function resolveSupersetBrowserMcpCommand(): {
 } {
 	if (app.isPackaged) {
 		// Standalone binary shipped alongside the app (see electron-builder
-		// extraResources). Single executable, no runtime deps.
+		// extraResources `to: "resources/superset-browser-mcp"`). On macOS
+		// process.resourcesPath is <app>/Contents/Resources, so the final
+		// layout is <app>/Contents/Resources/resources/superset-browser-mcp/.
 		const binName =
 			process.platform === "win32"
 				? "superset-browser-mcp.exe"
 				: "superset-browser-mcp";
 		const binPath = join(
 			process.resourcesPath,
+			"resources",
 			"superset-browser-mcp",
 			binName,
 		);
