@@ -79,6 +79,15 @@ const externalizedRuntimeModules: ExternalizedRuntimeModule[] = [
 		],
 		asarUnpackGlobs: ["**/node_modules/@libsql/**/*"],
 	},
+	{
+		// Ships the ripgrep binary with the app so VSCode-style .gitignore-aware
+		// Quick Open / Files tab search works for every user regardless of
+		// whether they have rg on their system PATH.
+		specifier: "@vscode/ripgrep",
+		materialize: ["@vscode/ripgrep"],
+		packagedCopies: [copyWholeModule("@vscode/ripgrep")],
+		asarUnpackGlobs: ["**/node_modules/@vscode/ripgrep/**/*"],
+	},
 ];
 
 const packagedSupportModules = [

@@ -143,6 +143,7 @@
 		"@types/express": "^5.0.5",
 		"@types/pidusage": "^2.0.5",
 		"@vercel/blob": "^2.0.0",
+		"@vscode/ripgrep": "^1.15.9",
 		"@xterm/addon-clipboard": "0.3.0-beta.195",
 		"@xterm/addon-fit": "0.12.0-beta.195",
 		"@xterm/addon-image": "0.10.0-beta.195",

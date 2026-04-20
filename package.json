@@ -53,6 +53,7 @@
 		"fstream@1.0.12": "patches/fstream@1.0.12.patch"
 	},
 	"trustedDependencies": [
+		"@vscode/ripgrep",
 		"better-sqlite3",
 		"bufferutil",
 		"electron",
