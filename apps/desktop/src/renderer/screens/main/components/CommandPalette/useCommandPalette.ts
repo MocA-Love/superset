@@ -23,6 +23,16 @@ interface UseCommandPaletteParams {
 		close: () => void;
 		navigate: UseNavigateResult<string>;
 	}) => void;
+	/**
+	 * Absolute paths currently open in the editor. Forwarded to `searchFiles`
+	 * so VSCode-style Quick Open boosts them above unrelated hits.
+	 */
+	openFilePaths?: readonly string[];
+	/**
+	 * Absolute paths ordered most-recent-first. Forwarded to `searchFiles` for
+	 * MRU boosting and tiebreaking.
+	 */
+	recentFilePaths?: readonly string[];
 }
 
 export function useCommandPalette({
@@ -30,6 +40,8 @@ export function useCommandPalette({
 	navigate,
 	enabled = true,
 	onSelectFile,
+	openFilePaths,
+	recentFilePaths,
 }: UseCommandPaletteParams) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -63,6 +75,20 @@ export function useCommandPalette({
 			enabled: open && scope === "global",
 		},
 	);
+
+	// Kick off a background index build whenever Cmd+P is opened. The backend
+	// deduplicates concurrent builds via its in-flight Promise cache and the
+	// TTL (30s), so firing this on every open is cheap and keeps results
+	// instant even after the cache expires between uses.
+	const warmupMutation =
+		electronTrpc.filesystem.warmupSearchIndex.useMutation();
+	const warmupMutate = warmupMutation.mutate;
+	useEffect(() => {
+		if (!open || !workspaceId) {
+			return;
+		}
+		warmupMutate({ workspaceId });
+	}, [open, workspaceId, warmupMutate]);
 
 	// Build roots array for multi-workspace search
 	const roots = useMemo(() => {
@@ -103,6 +129,32 @@ export function useCommandPalette({
 		return result;
 	}, [scope, allGrouped]);
 
+	// Stabilize identity of the MRU/open arrays across renders. Joining into a
+	// single sentinel string is cheap and means React Query only re-fetches
+	// when the actual set of paths changes, not on every parent render.
+	const openFilePathsKey = useMemo(
+		() => (openFilePaths ? openFilePaths.join("\u0000") : ""),
+		[openFilePaths],
+	);
+	const recentFilePathsKey = useMemo(
+		() => (recentFilePaths ? recentFilePaths.join("\u0000") : ""),
+		[recentFilePaths],
+	);
+	const openFilePathsList = useMemo(
+		() =>
+			openFilePathsKey.length > 0
+				? openFilePathsKey.split("\u0000")
+				: undefined,
+		[openFilePathsKey],
+	);
+	const recentFilePathsList = useMemo(
+		() =>
+			recentFilePathsKey.length > 0
+				? recentFilePathsKey.split("\u0000")
+				: undefined,
+		[recentFilePathsKey],
+	);
+
 	// Single-workspace search (existing behavior)
 	const singleSearch = useFileSearch({
 		workspaceId: open && scope === "workspace" ? workspaceId : undefined,
@@ -110,9 +162,14 @@ export function useCommandPalette({
 		includePattern,
 		excludePattern,
 		limit: SEARCH_LIMIT,
+		openFilePaths: openFilePathsList,
+		recentFilePaths: recentFilePathsList,
+		scopeId: "quick-open",
 	});
 
-	// Multi-workspace search
+	// Multi-workspace search. Note that MRU/open boosts aren't forwarded here
+	// because the recency lists are scoped to the current workspace; applying
+	// them across other workspaces would mis-rank unrelated paths.
 	const debouncedQuery = useDebouncedValue(query.trim(), 150);
 	const multiSearchQueries = electronTrpc.useQueries((t) =>
 		open && scope === "global" && roots.length > 0 && debouncedQuery.length > 0
@@ -123,6 +180,7 @@ export function useCommandPalette({
 						includePattern,
 						excludePattern,
 						limit: SEARCH_LIMIT,
+						scopeId: "quick-open-global",
 					}),
 				)
 			: [],

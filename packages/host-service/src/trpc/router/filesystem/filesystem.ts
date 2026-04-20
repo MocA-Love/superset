@@ -260,6 +260,9 @@ export const filesystemRouter = router({
 				includePattern: z.string().optional(),
 				excludePattern: z.string().optional(),
 				limit: z.number().optional(),
+				openFilePaths: z.array(z.string()).optional(),
+				recentFilePaths: z.array(z.string()).optional(),
+				scopeId: z.string().optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {
@@ -274,6 +277,19 @@ export const filesystemRouter = router({
 				...serviceInput,
 				query: trimmedQuery,
 			});
+		}),
+
+	warmupSearchIndex: protectedProcedure
+		.input(
+			z.object({
+				workspaceId: z.string(),
+				includeHidden: z.boolean().optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const { workspaceId, ...serviceInput } = input;
+			const service = getFilesystemService(ctx, workspaceId);
+			return await service.warmupSearchIndex(serviceInput);
 		}),
 
 	searchContent: protectedProcedure

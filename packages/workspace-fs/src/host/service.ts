@@ -10,7 +10,12 @@ import {
 	writeFile,
 } from "../fs";
 import type { SearchContentOptions } from "../search";
-import { replaceContent, searchContent, searchFiles } from "../search";
+import {
+	replaceContent,
+	searchContent,
+	searchFiles,
+	warmupSearchIndex,
+} from "../search";
 import type { FsWatchEvent } from "../types";
 import type { FsWatcherManager, WatchPathOptions } from "../watch";
 
@@ -213,8 +218,21 @@ export function createFsHostService(
 				includePattern: input.includePattern,
 				excludePattern: input.excludePattern,
 				limit: input.limit,
+				openFilePaths: input.openFilePaths,
+				recentFilePaths: input.recentFilePaths,
+				scopeId: input.scopeId,
+				runRipgrep: options.runRipgrep,
 			});
 			return { matches };
+		},
+
+		async warmupSearchIndex(input) {
+			await warmupSearchIndex({
+				rootPath,
+				includeHidden: input.includeHidden,
+				runRipgrep: options.runRipgrep,
+			});
+			return { ok: true as const };
 		},
 
 		async searchContent(input) {

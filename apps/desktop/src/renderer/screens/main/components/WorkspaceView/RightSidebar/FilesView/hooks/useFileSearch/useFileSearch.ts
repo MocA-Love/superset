@@ -8,6 +8,16 @@ interface UseFileSearchParams {
 	includePattern?: string;
 	excludePattern?: string;
 	limit?: number;
+	/** Absolute paths currently open in the editor; boosted in ranking. */
+	openFilePaths?: string[];
+	/** Absolute paths recently viewed, most-recent-first; boosted in ranking. */
+	recentFilePaths?: string[];
+	/**
+	 * Logical caller identity. Defaults to "files-tab"; Cmd+P passes
+	 * "quick-open" so the two UI surfaces don't cancel each other's searches
+	 * when they land on the same workspace concurrently.
+	 */
+	scopeId?: string;
 }
 
 export function useFileSearch({
@@ -16,6 +26,9 @@ export function useFileSearch({
 	includePattern = "",
 	excludePattern = "",
 	limit = SEARCH_RESULT_LIMIT,
+	openFilePaths,
+	recentFilePaths,
+	scopeId = "files-tab",
 }: UseFileSearchParams) {
 	const trimmedQuery = searchTerm.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
@@ -30,6 +43,9 @@ export function useFileSearch({
 				includePattern,
 				excludePattern,
 				limit,
+				openFilePaths,
+				recentFilePaths,
+				scopeId,
 			},
 			{
 				enabled: Boolean(workspaceId) && debouncedQuery.length > 0,

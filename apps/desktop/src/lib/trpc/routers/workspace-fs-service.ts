@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
 	createFsHostService,
 	type FsHostService,
@@ -7,12 +9,27 @@ import {
 	type WorkspaceFsPathError,
 } from "@superset/workspace-fs/host";
 import { TRPCError } from "@trpc/server";
+import { rgPath as bundledRgPath } from "@vscode/ripgrep";
 import { shell } from "electron";
 import { getWorkspace } from "./workspaces/utils/db-helpers";
-import { execWithShellEnv } from "./workspaces/utils/shell-env";
 import { getWorkspacePath } from "./workspaces/utils/worktree";
 
+const execFileAsync = promisify(execFile);
+
 const filesystemWatcherManager = new FsWatcherManager();
+
+// electron-builder packs node_modules into app.asar, but native binaries can't
+// execute from inside asar. We unpack @vscode/ripgrep via `asarUnpack` in
+// electron-builder.ts, and at runtime we rewrite the path from the asar view
+// to the asar.unpacked view so `execFile` can invoke it.
+const rgExecutablePath = bundledRgPath.includes(
+	`${path.sep}app.asar${path.sep}`,
+)
+	? bundledRgPath.replace(
+			`${path.sep}app.asar${path.sep}`,
+			`${path.sep}app.asar.unpacked${path.sep}`,
+		)
+	: bundledRgPath;
 
 const sharedHostServiceOptions = {
 	trashItem: async (absolutePath: string) => {
@@ -22,7 +39,10 @@ const sharedHostServiceOptions = {
 		args: string[],
 		options: { cwd: string; maxBuffer: number; signal?: AbortSignal },
 	) => {
-		const result = await execWithShellEnv("rg", args, {
+		// Shipping our own ripgrep (via @vscode/ripgrep) means users don't
+		// have to `brew install ripgrep` to get .gitignore-aware search.
+		// Matches VSCode's approach.
+		const result = await execFileAsync(rgExecutablePath, args, {
 			cwd: options.cwd,
 			maxBuffer: options.maxBuffer,
 			windowsHide: true,

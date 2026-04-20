@@ -7,6 +7,7 @@ import {
 	invalidateAllSearchIndexes,
 	patchSearchIndexesForRoot,
 	searchFiles,
+	warmupSearchIndex,
 } from "./search";
 
 const tempRoots: string[] = [];
@@ -131,6 +132,42 @@ describe("patchSearchIndexesForRoot", () => {
 		);
 	});
 
+	it("keeps gitignore-style build artifacts out of patch updates", async () => {
+		const rootPath = await createTempRoot();
+		const srcPath = path.join(rootPath, "src", "alpha.ts");
+		const distPath = path.join(rootPath, "dist", "alpha.js");
+
+		await fs.mkdir(path.dirname(srcPath), { recursive: true });
+		await fs.writeFile(srcPath, "export const alpha = 1;\n");
+
+		await searchFiles({
+			rootPath,
+			query: "alpha",
+		});
+
+		// Simulate a watcher event firing after a freshly-built artifact
+		// appears. The file is under `dist/` which ripgrep would drop on a
+		// full rebuild, so the incremental patch path must drop it too.
+		await fs.mkdir(path.dirname(distPath), { recursive: true });
+		await fs.writeFile(distPath, "export var alpha = 1;\n");
+
+		patchSearchIndexesForRoot(rootPath, [
+			createPatchEvent({
+				kind: "create",
+				absolutePath: distPath,
+				isDirectory: false,
+			}),
+		]);
+
+		const results = await searchFiles({
+			rootPath,
+			query: "alpha",
+		});
+		const paths = results.map((result) => result.absolutePath);
+		expect(paths).toContain(srcPath);
+		expect(paths.includes(distPath)).toEqual(false);
+	});
+
 	it("rebuilds search indexes after a directory rename", async () => {
 		const rootPath = await createTempRoot();
 		const oldDirectoryPath = path.join(rootPath, "old-dir");
@@ -240,5 +277,159 @@ describe("searchFiles", () => {
 			flatPath,
 			nestedPath,
 		]);
+	});
+
+	it("boosts open files above otherwise-equivalent fuzzy matches", async () => {
+		const rootPath = await createTempRoot();
+		const firstPath = path.join(rootPath, "src", "alpha.ts");
+		const secondPath = path.join(rootPath, "src", "beta.ts");
+
+		await fs.mkdir(path.dirname(firstPath), { recursive: true });
+		await fs.writeFile(firstPath, "export const alpha = 1;\n");
+		await fs.writeFile(secondPath, "export const beta = 1;\n");
+
+		const baselineBeta = await searchFiles({
+			rootPath,
+			query: "ts",
+			limit: 5,
+		});
+		invalidateAllSearchIndexes();
+
+		// "ts" matches both files with an identical fuzzy score, so ordering is
+		// dictated entirely by the MRU/open tiebreakers.
+		const withOpen = await searchFiles({
+			rootPath,
+			query: "ts",
+			limit: 5,
+			openFilePaths: [secondPath],
+		});
+
+		expect(withOpen[0]?.absolutePath).toEqual(secondPath);
+		expect(withOpen[0]?.score ?? 0).toBeGreaterThan(
+			baselineBeta[0]?.score ?? 0,
+		);
+	});
+
+	it("prefers recently viewed files on equal fuzzy score", async () => {
+		const rootPath = await createTempRoot();
+		const oldPath = path.join(rootPath, "old.ts");
+		const newPath = path.join(rootPath, "new.ts");
+
+		await fs.writeFile(oldPath, "export const value = 1;\n");
+		await fs.writeFile(newPath, "export const value = 2;\n");
+
+		const results = await searchFiles({
+			rootPath,
+			query: "ts",
+			limit: 5,
+			// Most-recent-first ordering: newPath is freshest, oldPath is stale.
+			recentFilePaths: [newPath, oldPath],
+		});
+
+		expect(results[0]?.absolutePath).toEqual(newPath);
+		expect(results[1]?.absolutePath).toEqual(oldPath);
+	});
+
+	it("does not cancel concurrent searches on the same root with different scopeIds", async () => {
+		const rootPath = await createTempRoot();
+		const alphaPath = path.join(rootPath, "alpha.ts");
+		const betaPath = path.join(rootPath, "beta.ts");
+
+		await fs.writeFile(alphaPath, "export const alpha = 1;\n");
+		await fs.writeFile(betaPath, "export const beta = 1;\n");
+
+		// Simulate Cmd+P and the Files tab both querying the same workspace
+		// at the same time. Prior to scopeId support, the second call would
+		// abort the first and the first search would return [].
+		const [quickOpen, filesTab] = await Promise.all([
+			searchFiles({
+				rootPath,
+				query: "alpha",
+				scopeId: "quick-open",
+			}),
+			searchFiles({
+				rootPath,
+				query: "beta",
+				scopeId: "files-tab",
+			}),
+		]);
+
+		expect(quickOpen[0]?.absolutePath).toEqual(alphaPath);
+		expect(filesTab[0]?.absolutePath).toEqual(betaPath);
+	});
+
+	it("surfaces unexpected ripgrep failures instead of silently falling back", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "alpha.ts"),
+			"export const alpha = 1;\n",
+		);
+
+		let threw = false;
+		try {
+			await searchFiles({
+				rootPath,
+				query: "alpha",
+				runRipgrep: async () => {
+					// Simulate the exact shape of an argv-parse error (rg exits 2
+					// when it doesn't understand a flag). Pre-hardening, this
+					// failure silently degraded to fast-glob.
+					const error = new Error(
+						"Command failed: rg: unexpected argument for option '--follow'",
+					) as Error & { code?: number };
+					error.code = 2;
+					throw error;
+				},
+			});
+		} catch {
+			threw = true;
+		}
+
+		expect(threw).toEqual(true);
+	});
+
+	it("invokes ripgrep without the invalid --follow=false flag", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "alpha.ts"),
+			"export const alpha = 1;\n",
+		);
+
+		const capturedArgs: string[][] = [];
+		await searchFiles({
+			rootPath,
+			query: "alpha",
+			runRipgrep: async (args) => {
+				capturedArgs.push(args);
+				return { stdout: "alpha.ts\0" };
+			},
+		});
+
+		expect(capturedArgs).toHaveLength(1);
+		const args = capturedArgs[0] ?? [];
+		// `--follow=false` is not a valid ripgrep flag; passing it makes rg exit
+		// with code 2 and our fallback hides the error. Guard against regressions.
+		expect(args.some((arg) => arg.startsWith("--follow"))).toEqual(false);
+		expect(args).toContain("--files");
+		expect(args).toContain("--null");
+	});
+
+	it("warmupSearchIndex populates the cache without returning matches", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "alpha.ts"),
+			"export const a = 1;\n",
+		);
+
+		await warmupSearchIndex({ rootPath });
+
+		// If warmup landed in the cache, the subsequent searchFiles call never
+		// needs to rebuild; this just asserts results are still correct.
+		const results = await searchFiles({
+			rootPath,
+			query: "alpha",
+			limit: 5,
+		});
+		expect(results[0]?.relativePath).toEqual("alpha.ts");
 	});
 });

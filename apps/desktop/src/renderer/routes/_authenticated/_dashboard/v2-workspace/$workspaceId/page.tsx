@@ -489,12 +489,23 @@ function WorkspaceContent({
 		[store],
 	);
 
+	const openFilePathsList = useMemo(
+		() => Array.from(openFilePaths),
+		[openFilePaths],
+	);
+	const recentFilePathsList = useMemo(
+		() => recentFiles.map((file) => file.absolutePath),
+		[recentFiles],
+	);
+
 	// FORK NOTE: fork uses the richer `useCommandPalette` (supports filters,
 	// cross-workspace open, scope switching) instead of upstream's simple
 	// boolean-state palette.
 	const commandPalette = useCommandPalette({
 		workspaceId,
 		navigate,
+		openFilePaths: openFilePathsList,
+		recentFilePaths: recentFilePathsList,
 		onSelectFile: ({ close, filePath, targetWorkspaceId }) => {
 			close();
 			if (targetWorkspaceId !== workspaceId) {
