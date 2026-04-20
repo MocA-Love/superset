@@ -2,30 +2,32 @@ import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+	browserAutomationBindings,
+	type SelectBrowserAutomationBinding,
+} from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
+import { and, eq, ne } from "drizzle-orm";
+import { localDb } from "main/lib/local-db";
+import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
+import { getTerminalHostClient } from "main/lib/terminal-host/client";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
 /**
  * Browser automation bindings router.
  *
- * Stores the paneId -> sessionId assignment for browser pane automation,
- * and exposes MCP-readiness detection by reading the user's agent config
- * files (Claude Code / Codex) for the `superset-browser` entry.
+ * Bindings persist in local-db so they survive app restarts: the terminal
+ * daemon re-attaches terminal panes and TODO-Agent sessions keep running,
+ * so losing the binding would force a re-connect on every launch.
  *
- * State is in-memory and process-local. Persistence across app restarts
- * is intentionally out of scope for Phase 1; the binding is re-established
- * by the user next time they open the Connect dialog.
+ * Also exposes MCP-readiness detection by reading the user's agent config
+ * files (Claude Code / Codex) for the `superset-browser` entry.
  */
 
-export interface BrowserAutomationBinding {
-	paneId: string;
-	sessionId: string;
-	connectedAt: number;
-}
+export type BrowserAutomationBinding = SelectBrowserAutomationBinding;
 
 class BindingStore {
-	private readonly byPane = new Map<string, BrowserAutomationBinding>();
 	private readonly emitter = new EventEmitter();
 
 	constructor() {
@@ -35,41 +37,86 @@ class BindingStore {
 	}
 
 	list(): BrowserAutomationBinding[] {
-		return Array.from(this.byPane.values());
+		return localDb.select().from(browserAutomationBindings).all();
 	}
 
 	get(paneId: string): BrowserAutomationBinding | null {
-		return this.byPane.get(paneId) ?? null;
+		return (
+			localDb
+				.select()
+				.from(browserAutomationBindings)
+				.where(eq(browserAutomationBindings.paneId, paneId))
+				.get() ?? null
+		);
 	}
 
 	getBySessionId(sessionId: string): BrowserAutomationBinding | null {
-		for (const b of this.byPane.values()) {
-			if (b.sessionId === sessionId) return b;
-		}
-		return null;
+		return (
+			localDb
+				.select()
+				.from(browserAutomationBindings)
+				.where(eq(browserAutomationBindings.sessionId, sessionId))
+				.get() ?? null
+		);
 	}
 
-	set(paneId: string, sessionId: string): { previousPaneId: string | null } {
-		let previousPaneId: string | null = null;
-		for (const [pid, binding] of this.byPane.entries()) {
-			if (binding.sessionId === sessionId && pid !== paneId) {
-				previousPaneId = pid;
-				this.byPane.delete(pid);
-			}
+	set(
+		paneId: string,
+		sessionId: string,
+		sessionKind: string,
+	): { previousPaneId: string | null } {
+		// Remove any existing binding that points at the same session on a
+		// different pane so we enforce 1 session ↔ 1 pane.
+		const existingOtherPane = localDb
+			.select()
+			.from(browserAutomationBindings)
+			.where(
+				and(
+					eq(browserAutomationBindings.sessionId, sessionId),
+					ne(browserAutomationBindings.paneId, paneId),
+				),
+			)
+			.get();
+		const previousPaneId = existingOtherPane?.paneId ?? null;
+		if (previousPaneId) {
+			localDb
+				.delete(browserAutomationBindings)
+				.where(eq(browserAutomationBindings.paneId, previousPaneId))
+				.run();
 		}
-		this.byPane.set(paneId, {
+		const row = {
 			paneId,
 			sessionId,
+			sessionKind,
 			connectedAt: Date.now(),
-		});
+		};
+		// Drizzle SQLite upsert via onConflictDoUpdate
+		localDb
+			.insert(browserAutomationBindings)
+			.values(row)
+			.onConflictDoUpdate({
+				target: browserAutomationBindings.paneId,
+				set: {
+					sessionId: row.sessionId,
+					sessionKind: row.sessionKind,
+					connectedAt: row.connectedAt,
+				},
+			})
+			.run();
 		this.emitChange();
 		return { previousPaneId };
 	}
 
 	remove(paneId: string): boolean {
-		const existed = this.byPane.delete(paneId);
-		if (existed) this.emitChange();
-		return existed;
+		const result = localDb
+			.delete(browserAutomationBindings)
+			.where(eq(browserAutomationBindings.paneId, paneId))
+			.run();
+		if (result.changes > 0) {
+			this.emitChange();
+			return true;
+		}
+		return false;
 	}
 
 	private emitChange() {
@@ -104,6 +151,54 @@ function detectSupersetBrowserMcp(filePath: string): boolean {
 const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 const CODEX_CONFIG_PATH = join(homedir(), ".codex", "config.toml");
 
+export interface TerminalAgentSession {
+	paneId: string;
+	workspaceId: string;
+	pid: number;
+	provider: "Claude" | "Codex";
+	command: string;
+	lastAttachedAt?: string;
+}
+
+/**
+ * Walk every live terminal session's PTY process tree and return the ones
+ * that currently have a `claude` or `codex` child process. Used so the
+ * Browser Automation UI can treat "the claude I started in this terminal
+ * tab" as an LLM session that is connectable to a browser pane.
+ */
+async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
+	const client = getTerminalHostClient();
+	const { sessions } = await client.listSessions();
+	const out: TerminalAgentSession[] = [];
+	await Promise.all(
+		sessions.map(async (s) => {
+			if (!s.isAlive || typeof s.pid !== "number") return;
+			const pids = await getProcessTree(s.pid);
+			// Skip the shell itself (root pid) when matching names so typing
+			// `claude` at the prompt inside zsh does not cause the shell's
+			// argv to trigger a match.
+			const names = await Promise.all(
+				pids
+					.filter((p) => p !== s.pid)
+					.map(async (p) => ({ pid: p, name: await getProcessName(p) })),
+			);
+			const match = names.find(
+				({ name }) => name === "claude" || name === "codex",
+			);
+			if (!match) return;
+			out.push({
+				paneId: s.paneId,
+				workspaceId: s.workspaceId,
+				pid: match.pid,
+				provider: match.name === "codex" ? "Codex" : "Claude",
+				command: match.name,
+				lastAttachedAt: s.lastAttachedAt,
+			});
+		}),
+	);
+	return out;
+}
+
 export const createBrowserAutomationRouter = () => {
 	return router({
 		getMcpStatus: publicProcedure
@@ -130,6 +225,10 @@ export const createBrowserAutomationRouter = () => {
 				};
 			}),
 
+		listTerminalAgentSessions: publicProcedure.query(() =>
+			detectTerminalAgentSessions(),
+		),
+
 		listBindings: publicProcedure.query(() => bindingStore.list()),
 
 		getBindingByPane: publicProcedure
@@ -145,9 +244,12 @@ export const createBrowserAutomationRouter = () => {
 				z.object({
 					paneId: z.string(),
 					sessionId: z.string(),
+					sessionKind: z.enum(["todo-agent", "terminal"]).default("todo-agent"),
 				}),
 			)
-			.mutation(({ input }) => bindingStore.set(input.paneId, input.sessionId)),
+			.mutation(({ input }) =>
+				bindingStore.set(input.paneId, input.sessionId, input.sessionKind),
+			),
 
 		removeBinding: publicProcedure
 			.input(z.object({ paneId: z.string() }))

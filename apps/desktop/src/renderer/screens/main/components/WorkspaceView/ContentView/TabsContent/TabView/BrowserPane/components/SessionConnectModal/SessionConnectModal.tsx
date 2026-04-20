@@ -99,6 +99,9 @@ export function SessionConnectModal({
 			const result = await setBinding.mutateAsync({
 				paneId,
 				sessionId: session.id,
+				sessionKind: session.id.startsWith("terminal:")
+					? "terminal"
+					: "todo-agent",
 			});
 			await utils.browserAutomation.listBindings.invalidate();
 			if (result.previousPaneId) {
@@ -183,8 +186,8 @@ export function SessionConnectModal({
 
 						{sessions.length === 0 ? (
 							<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
-								No running LLM sessions found in this app. Start a TODO-Agent
-								session (Claude) or open a chat pane, then return here.
+								No running LLM sessions found. Start a TODO-Agent session or run
+								`claude` / `codex` in any terminal pane, then return here.
 							</div>
 						) : (
 							<div className="flex flex-col gap-2">

@@ -5,30 +5,45 @@ import {
 	formatRelativeTime,
 	type McpStatus,
 } from "renderer/stores/browser-automation";
+import { useTabsStore } from "renderer/stores/tabs/store";
 
 /**
  * Aggregates browser-automation session and binding data from the
- * main-process tRPC routers. Sessions are derived from the TODO-agent
- * session list (each row is a running Claude/Codex worker), and their
- * MCP readiness is resolved against the user's Claude/Codex config
- * files.
+ * main-process tRPC routers. Sessions come from two sources:
  *
- * `enabled` controls the expensive queries (sessions + MCP status). The
- * binding query and its subscription always run because `ConnectButton`
- * is mounted for every browser pane and needs to reflect the binding
- * state without expensive polling.
+ *   1. TODO-Agent sessions (Claude Code workers the supervisor is running).
+ *   2. Terminal panes that currently have a `claude` or `codex` child
+ *      process. The binding key for this kind is the terminal's paneId so
+ *      that it self-heals across shell re-spawns inside the same pane.
+ *
+ * MCP readiness is resolved against the user's Claude/Codex config files.
+ *
+ * `enabled` controls the expensive queries. The binding query and its
+ * subscription always run because `ConnectButton` is mounted for every
+ * browser pane and needs to reflect the binding state without polling.
  */
 export function useBrowserAutomationData({
 	enabled = true,
 }: {
 	enabled?: boolean;
 } = {}) {
+	const panes = useTabsStore((s) => s.panes);
+
 	const { data: todoSessions = [], refetch: refetchSessions } =
 		electronTrpc.todoAgent.listAll.useQuery(undefined, {
 			enabled,
 			refetchOnWindowFocus: enabled,
 			refetchInterval: enabled ? 15000 : false,
 		});
+	const { data: terminalAgents = [] } =
+		electronTrpc.browserAutomation.listTerminalAgentSessions.useQuery(
+			undefined,
+			{
+				enabled,
+				refetchOnWindowFocus: enabled,
+				refetchInterval: enabled ? 10000 : false,
+			},
+		);
 	const { data: mcpStatus } =
 		electronTrpc.browserAutomation.getMcpStatus.useQuery(
 			{},
@@ -60,13 +75,11 @@ export function useBrowserAutomationData({
 			"verifying",
 			"waiting",
 		]);
-		return todoSessions
+		const todo: AutomationSession[] = todoSessions
 			.filter((s) => liveStatuses.has(s.status))
 			.map((s) => {
 				// Todo-agent rows always represent Claude Code workers (see
-				// todo-daemon/claude-code-runner.ts). We label them as Claude
-				// here; Codex workers would be represented by a different row
-				// type if/when they land.
+				// todo-daemon/claude-code-runner.ts).
 				const provider = "Claude" as const;
 				const mcp: McpStatus = mcpStatus
 					? mcpStatus.claudeReady
@@ -88,7 +101,33 @@ export function useBrowserAutomationData({
 					mcpStatus: mcp,
 				};
 			});
-	}, [todoSessions, mcpStatus]);
+
+		const terminal: AutomationSession[] = terminalAgents.map((t) => {
+			const pane = panes[t.paneId];
+			const mcp: McpStatus = mcpStatus
+				? t.provider === "Codex"
+					? mcpStatus.codexReady
+						? "ready"
+						: "missing"
+					: mcpStatus.claudeReady
+						? "ready"
+						: "missing"
+				: "unknown";
+			return {
+				id: `terminal:${t.paneId}`,
+				displayName: pane?.userTitle || pane?.name || `Terminal ${t.command}`,
+				provider: t.provider,
+				kind: "Terminal",
+				branchOrContextLabel: t.command,
+				lastActiveAt: t.lastAttachedAt
+					? formatRelativeTime(Date.parse(t.lastAttachedAt))
+					: "active",
+				mcpStatus: mcp,
+			};
+		});
+
+		return [...todo, ...terminal];
+	}, [todoSessions, terminalAgents, mcpStatus, panes]);
 
 	const bindingsByPane = useMemo(() => {
 		const map: Record<string, string> = {};
