@@ -77,12 +77,14 @@ export function BrowserPane({
 	const isFullscreen = useBrowserFullscreenStore(
 		(s) => s.fullscreenPaneId === paneId,
 	);
-	const connectModal = useBrowserAutomationStore((s) => s.connectModal);
+	// Narrow the subscription so BrowserPane (and its webview tree) does not
+	// re-render every time the modal's selectedSessionId changes.
+	const isConnectOpenForThisPane = useBrowserAutomationStore(
+		(s) => s.connectModal.isOpen && s.connectModal.paneId === paneId,
+	);
 	const closeConnectModal = useBrowserAutomationStore(
 		(s) => s.closeConnectModal,
 	);
-	const isConnectOpenForThisPane =
-		connectModal.isOpen && connectModal.paneId === paneId;
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
 	const { mutate: setZoomLevel } =

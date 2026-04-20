@@ -74,6 +74,11 @@ export function SessionConnectModal({
 			currentBinding && sessions.some((s) => s.id === currentBinding);
 		const fallback =
 			(bindingIsLive ? currentBinding : null) ?? sessions[0]?.id ?? null;
+		// Avoid a re-render loop while queries are still resolving: if the
+		// computed fallback is already what we have selected, don't touch
+		// the store. Otherwise a changing `sessions` identity on each load
+		// pass would keep rewriting `null → null`.
+		if (fallback === selectedSessionId) return;
 		setSelectedSession(fallback);
 	}, [
 		open,
