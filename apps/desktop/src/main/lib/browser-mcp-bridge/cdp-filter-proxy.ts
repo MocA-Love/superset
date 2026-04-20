@@ -596,8 +596,38 @@ async function proxyBrowserUpgrade(
 				return;
 			}
 
-			// Other Target.* methods (setAutoAttach, setDiscoverTargets,
-			// detachFromTarget, activateTarget, …): forward.
+			// Bound-only scope enforcement for target-addressed methods.
+			if (method === "Target.activateTarget" && id !== undefined) {
+				const tid = (msg.params as { targetId?: string } | undefined)
+					?.targetId;
+				if (tid && tid !== boundTargetId) {
+					rejectRequest(
+						id,
+						"Target.activateTarget for other targets is refused by the Superset CDP filter.",
+					);
+					return;
+				}
+				pendingMethods.set(id, method);
+				sendToUpstream(msg);
+				return;
+			}
+			if (method === "Target.detachFromTarget" && id !== undefined) {
+				const sid = (msg.params as { sessionId?: string } | undefined)
+					?.sessionId;
+				if (sid && !allowedSessionIds.has(sid)) {
+					rejectRequest(
+						id,
+						"Target.detachFromTarget for unknown sessions is refused by the Superset CDP filter.",
+					);
+					return;
+				}
+				pendingMethods.set(id, method);
+				sendToUpstream(msg);
+				return;
+			}
+
+			// Other Target.* methods (setDiscoverTargets, exposeDevToo-
+			// lsProtocol, sendMessageToTarget, …): forward.
 			if (id !== undefined) pendingMethods.set(id, method);
 			sendToUpstream(msg);
 		});
@@ -618,9 +648,31 @@ async function proxyBrowserUpgrade(
 			// them on this single WS; without this check, their DOM,
 			// network, and runtime events would leak to the client.
 			if (msg.sessionId) {
-				if (allowedSessionIds.has(msg.sessionId)) {
-					sendToClient(msg);
+				if (!allowedSessionIds.has(msg.sessionId)) return;
+				// Nested auto-attach: under flatten:true, Chromium
+				// delivers child `Target.attachedToTarget` events as
+				// session-scoped frames on the parent's sessionId. The
+				// inner `params.sessionId` is the child (worker /
+				// dedicated-worker / iframe-OOPIF / prerender). Since
+				// the parent (= bound page session) is already allowed,
+				// treat the child as transitively allowed and register
+				// its sessionId so the subsequent session-scoped frames
+				// for that child aren't dropped. Puppeteer's TargetMana-
+				// ger.ts:425 and browser-use's SessionManager both rely
+				// on this event chain — without it, `puppeteer.connect()`
+				// hangs and worker / iframe tooling silently breaks.
+				if (msg.method === "Target.attachedToTarget") {
+					const childSid = (
+						msg.params as { sessionId?: string } | undefined
+					)?.sessionId;
+					if (childSid) allowedSessionIds.add(childSid);
+				} else if (msg.method === "Target.detachedFromTarget") {
+					const childSid = (
+						msg.params as { sessionId?: string } | undefined
+					)?.sessionId;
+					if (childSid) allowedSessionIds.delete(childSid);
 				}
+				sendToClient(msg);
 				return;
 			}
 
