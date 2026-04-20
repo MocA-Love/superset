@@ -160,21 +160,49 @@ function isEnabledMcpEntry(value: unknown): boolean {
  * enabled entry. Each file is parsed as JSON and we look under
  * `mcpServers[name]`.
  */
-function detectClaudeMcpInFile(filePath: string): boolean {
+function mcpServersInObject(obj: unknown): Record<string, unknown> | null {
+	if (!obj || typeof obj !== "object") return null;
+	const candidate = (obj as Record<string, unknown>).mcpServers;
+	if (!candidate || typeof candidate !== "object") return null;
+	return candidate as Record<string, unknown>;
+}
+
+/**
+ * Claude `~/.claude.json` holds MCP entries in two places:
+ *   - top-level `mcpServers[name]` (user scope)
+ *   - `projects[<path>].mcpServers[name]` (local scope, default for
+ *     `claude mcp add`)
+ * We accept either. Other config files (`.claude/settings.json`,
+ * `<project>/.mcp.json`) only use the top-level shape.
+ */
+function detectClaudeMcpInFile(
+	filePath: string,
+	opts?: { workspacePaths?: readonly string[] },
+): boolean {
 	try {
 		const contents = readFileSync(filePath, "utf8");
 		const parsed = JSON.parse(contents) as unknown;
-		if (!parsed || typeof parsed !== "object") return false;
-		const mcp = (parsed as Record<string, unknown>).mcpServers;
-		if (!mcp || typeof mcp !== "object") return false;
-		return isEnabledMcpEntry((mcp as Record<string, unknown>)[SERVER_NAME]);
+		const topLevel = mcpServersInObject(parsed);
+		if (topLevel && isEnabledMcpEntry(topLevel[SERVER_NAME])) return true;
+		const projects = (parsed as Record<string, unknown> | null)?.projects;
+		if (projects && typeof projects === "object" && opts?.workspacePaths) {
+			for (const wsPath of opts.workspacePaths) {
+				const project = (projects as Record<string, unknown>)[wsPath];
+				const entries = mcpServersInObject(project);
+				if (entries && isEnabledMcpEntry(entries[SERVER_NAME])) return true;
+			}
+		}
+		return false;
 	} catch {
 		return false;
 	}
 }
 
-function detectClaudeMcp(paths: readonly string[]): boolean {
-	return paths.some(detectClaudeMcpInFile);
+function detectClaudeMcp(
+	paths: readonly string[],
+	opts?: { workspacePaths?: readonly string[] },
+): boolean {
+	return paths.some((p) => detectClaudeMcpInFile(p, opts));
 }
 
 /**
@@ -183,7 +211,15 @@ function detectClaudeMcp(paths: readonly string[]): boolean {
  * can be considered per-session without letting one configured project
  * make sessions from other projects look ready.
  */
-function collectProjectMcpJsonPathsByWorkspace(): Record<string, string> {
+interface WorkspacePathInfo {
+	base: string;
+	mcpJsonPath: string;
+}
+
+function collectWorkspacePathsByWorkspaceId(): Record<
+	string,
+	WorkspacePathInfo
+> {
 	try {
 		const rows = localDb
 			.select({
@@ -195,11 +231,14 @@ function collectProjectMcpJsonPathsByWorkspace(): Record<string, string> {
 			.leftJoin(projects, eq(projects.id, workspaces.projectId))
 			.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
 			.all();
-		const out: Record<string, string> = {};
+		const out: Record<string, WorkspacePathInfo> = {};
 		for (const row of rows) {
 			const base = row.worktreePath ?? row.mainRepoPath ?? null;
 			if (row.workspaceId && base) {
-				out[row.workspaceId] = join(base, ".mcp.json");
+				out[row.workspaceId] = {
+					base,
+					mcpJsonPath: join(base, ".mcp.json"),
+				};
 			}
 		}
 		return out;
@@ -315,18 +354,24 @@ async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
 export const createBrowserAutomationRouter = () => {
 	return router({
 		getMcpStatus: publicProcedure.query(() => {
-			// Claude readiness is resolved in two dimensions:
-			//   - `claudeHomeReady`: user/legacy files in $HOME.
-			//   - `claudeReadyByWorkspaceId`: per-workspace `.mcp.json` probe
-			//     (keyed by workspaceId) so a single configured project does
-			//     not make sessions from other projects look ready.
-			// A session is ready when its home check OR its workspace probe
-			// finds the entry; callers combine the two by workspaceId.
+			// Claude readiness is resolved in two dimensions so a single
+			// configured project never makes sessions from other projects
+			// look ready:
+			//   - `claudeHomeReady`: only the top-level (user-scope)
+			//     mcpServers in $HOME files.
+			//   - `claudeReadyByWorkspaceId`: for each workspace, check
+			//     * `~/.claude.json` under `projects[<workspace path>]`
+			//       (local scope, where `claude mcp add` lands by default)
+			//     * `<workspace>/.mcp.json` (project scope)
 			const claudeHomeReady = detectClaudeMcp(CLAUDE_CONFIG_PATHS);
-			const projectPaths = collectProjectMcpJsonPathsByWorkspace();
+			const wsInfo = collectWorkspacePathsByWorkspaceId();
 			const claudeReadyByWorkspaceId: Record<string, boolean> = {};
-			for (const [workspaceId, path] of Object.entries(projectPaths)) {
-				claudeReadyByWorkspaceId[workspaceId] = detectClaudeMcpInFile(path);
+			for (const [workspaceId, info] of Object.entries(wsInfo)) {
+				const localScope = detectClaudeMcpInFile(CLAUDE_USER_JSON_PATH, {
+					workspacePaths: [info.base],
+				});
+				const projectScope = detectClaudeMcpInFile(info.mcpJsonPath);
+				claudeReadyByWorkspaceId[workspaceId] = localScope || projectScope;
 			}
 			const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
 			return {
