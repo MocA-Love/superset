@@ -54,9 +54,6 @@ export function GroupStrip() {
 	const setPaneStatus = useTabsStore((s) => s.setPaneStatus);
 	const enterBulkMode = useTabBulkSelectionStore((s) => s.enterBulkMode);
 	const exitBulkMode = useTabBulkSelectionStore((s) => s.exitBulkMode);
-	const removeFromBulkSelection = useTabBulkSelectionStore(
-		(s) => s.removeFromSelection,
-	);
 	const pruneBulkSelection = useTabBulkSelectionStore((s) => s.pruneSelection);
 	const bulkSelectionWorkspaceId = useTabBulkSelectionStore(
 		(s) => s.workspaceId,
@@ -285,7 +282,10 @@ export function GroupStrip() {
 	};
 
 	const handleCloseGroup = (tabId: string) => {
-		removeFromBulkSelection(tabId);
+		// 選択からの除外は close が確定したタイミング (= tabs 配列から消える)
+		// で pruneSelection effect が自動的に行うため、ここでは事前削除しない。
+		// dirty タブで pending-close フローがキャンセルされてもタブは残るので、
+		// 選択状態だけ外れる不整合を防ぐ。
 		requestTabClose(tabId);
 	};
 
