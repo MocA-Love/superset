@@ -46,6 +46,27 @@ const sentryMiddleware = t.middleware(async ({ next, path, type }) => {
 				return result;
 			}
 
+			// User-environment errors bubbled out through tRPC. These tell us
+			// nothing actionable about the app itself — they're about the user's
+			// disk, their gh CLI auth, or the remote they were pushing to.
+			const message =
+				originalError instanceof Error ? originalError.message : "";
+			const USER_ENV_NOISE_PATTERNS = [
+				// Disk full (ELECTRON-25)
+				"ENOSPC: no space left on device",
+				// gh CLI auth/network failures against external repos (ELECTRON-R/18)
+				"Command failed: gh ",
+				// Git push rejections and remote connectivity (ELECTRON-P/16/21/22)
+				"the remote end hung up unexpectedly",
+				"ssh_dispatch_run_fatal",
+				"Operation timed out",
+				"! [rejected]",
+				"failed to push some refs",
+			];
+			if (USER_ENV_NOISE_PATTERNS.some((pattern) => message.includes(pattern))) {
+				return result;
+			}
+
 			try {
 				const Sentry = await import("@sentry/electron/main");
 
