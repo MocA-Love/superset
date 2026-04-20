@@ -15,7 +15,6 @@ import { app } from "electron";
 import { localDb } from "main/lib/local-db";
 import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
-import { getTodoSessionStore } from "main/todo-agent/session-store";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
@@ -427,6 +426,17 @@ export const createBrowserAutomationRouter = () => {
 		 * against the live status whitelist.
 		 */
 		listBindingLiveness: publicProcedure.query(async () => {
+			// Sweep out any persisted todo-agent bindings — those were
+			// allowed by an earlier build but the MCP bridge cannot resolve
+			// them yet. Leaving them would show up as "Connected" on the
+			// ConnectButton even though no session is reachable. After the
+			// sweep, re-read.
+			const stored = bindingStore.list();
+			for (const b of stored) {
+				if (b.sessionKind === "todo-agent") {
+					bindingStore.remove(b.paneId);
+				}
+			}
 			const bindings = bindingStore.list();
 			if (bindings.length === 0)
 				return [] as Array<{
@@ -438,23 +448,9 @@ export const createBrowserAutomationRouter = () => {
 			const hasTerminalBinding = bindings.some(
 				(b) => b.sessionKind === "terminal",
 			);
-			const hasTodoBinding = bindings.some((b) => b.sessionKind !== "terminal");
-			const liveTodoIds = hasTodoBinding
-				? new Set(
-						getTodoSessionStore()
-							.listAll()
-							.filter((s) =>
-								["running", "preparing", "verifying", "waiting"].includes(
-									s.status,
-								),
-							)
-							.map((s) => s.id),
-					)
-				: new Set<string>();
 			// Only probe the terminal daemon when at least one binding actually
 			// points at a terminal — otherwise every Connect button's 15s poll
-			// would wake the terminal-host and walk every PTY's process tree
-			// just to confirm TODO-Agent liveness we already have in memory.
+			// would wake the terminal-host and walk every PTY's process tree.
 			const liveTerminalIds = hasTerminalBinding
 				? new Set(
 						(await detectTerminalAgentSessions()).map(
@@ -466,7 +462,7 @@ export const createBrowserAutomationRouter = () => {
 				const live =
 					b.sessionKind === "terminal"
 						? liveTerminalIds.has(b.sessionId)
-						: liveTodoIds.has(b.sessionId);
+						: false;
 				return {
 					paneId: b.paneId,
 					sessionId: b.sessionId,
