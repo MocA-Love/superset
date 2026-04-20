@@ -57,6 +57,7 @@ export function GroupStrip() {
 	const removeFromBulkSelection = useTabBulkSelectionStore(
 		(s) => s.removeFromSelection,
 	);
+	const pruneBulkSelection = useTabBulkSelectionStore((s) => s.pruneSelection);
 	const bulkSelectionWorkspaceId = useTabBulkSelectionStore(
 		(s) => s.workspaceId,
 	);
@@ -367,6 +368,13 @@ export function GroupStrip() {
 			exitBulkMode();
 		}
 	}, [activeWorkspaceId, bulkSelectionWorkspaceId, exitBulkMode, tabs.length]);
+
+	// 選択中のタブが editorCoordinator 経由など外部で消えた場合に
+	// phantom selection が残らないよう、現在のタブ集合で選択を pruning する
+	useEffect(() => {
+		if (bulkSelectionWorkspaceId !== activeWorkspaceId) return;
+		pruneBulkSelection(tabs.map((t) => t.id));
+	}, [activeWorkspaceId, bulkSelectionWorkspaceId, pruneBulkSelection, tabs]);
 
 	const useCompactAddButton =
 		useCompactTerminalAddButton ?? DEFAULT_USE_COMPACT_TERMINAL_ADD_BUTTON;

@@ -11,6 +11,7 @@ interface TabBulkSelectionActions {
 	toggleSelect: (tabId: string) => void;
 	setSelection: (tabIds: string[]) => void;
 	removeFromSelection: (tabId: string) => void;
+	pruneSelection: (validTabIds: string[]) => void;
 }
 
 export const useTabBulkSelectionStore = create<
@@ -39,6 +40,19 @@ export const useTabBulkSelectionStore = create<
 			if (!state.selectedTabIds.has(tabId)) return state;
 			const next = new Set(state.selectedTabIds);
 			next.delete(tabId);
+			return { selectedTabIds: next };
+		}),
+	pruneSelection: (validTabIds) =>
+		set((state) => {
+			if (state.selectedTabIds.size === 0) return state;
+			const valid = new Set(validTabIds);
+			let changed = false;
+			const next = new Set<string>();
+			for (const id of state.selectedTabIds) {
+				if (valid.has(id)) next.add(id);
+				else changed = true;
+			}
+			if (!changed) return state;
 			return { selectedTabIds: next };
 		}),
 }));
