@@ -32,12 +32,16 @@ describe("AgentCommandExecutionCoordinator", () => {
 		expect(coordinator.isClaimed("cmd-3")).toBe(true);
 	});
 
-	it("keeps a fallback lease even when timeoutAt is already expired", () => {
-		const coordinator = new AgentCommandExecutionCoordinator(50);
+	it("uses a short grace lease when timeoutAt is already expired", async () => {
+		const coordinator = new AgentCommandExecutionCoordinator(50, 20);
 		const alreadyExpired = new Date(Date.now() - 1_000);
 
 		expect(coordinator.claim("cmd-4", alreadyExpired)).toBe(true);
 		expect(coordinator.claim("cmd-4", alreadyExpired)).toBe(false);
 		expect(coordinator.isClaimed("cmd-4")).toBe(true);
+
+		await Bun.sleep(30);
+
+		expect(coordinator.claim("cmd-4", alreadyExpired)).toBe(true);
 	});
 });

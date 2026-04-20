@@ -3,11 +3,15 @@ interface ClaimEntry {
 }
 
 const DEFAULT_CLAIM_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_EXPIRED_TIMEOUT_GRACE_MS = 5_000;
 
 export class AgentCommandExecutionCoordinator {
 	private readonly claims = new Map<string, ClaimEntry>();
 
-	constructor(private readonly defaultClaimTtlMs = DEFAULT_CLAIM_TTL_MS) {}
+	constructor(
+		private readonly defaultClaimTtlMs = DEFAULT_CLAIM_TTL_MS,
+		private readonly expiredTimeoutGraceMs = DEFAULT_EXPIRED_TIMEOUT_GRACE_MS,
+	) {}
 
 	claim(commandId: string, timeoutAt?: Date | string | null): boolean {
 		this.pruneExpiredClaims();
@@ -43,7 +47,7 @@ export class AgentCommandExecutionCoordinator {
 	}
 
 	private resolveExpiry(timeoutAt?: Date | string | null): number {
-		const fallbackExpiry = Date.now() + this.defaultClaimTtlMs;
+		const now = Date.now();
 		const parsed =
 			timeoutAt instanceof Date
 				? timeoutAt.getTime()
@@ -51,9 +55,12 @@ export class AgentCommandExecutionCoordinator {
 					? Date.parse(timeoutAt)
 					: Number.NaN;
 		if (Number.isFinite(parsed)) {
-			return Math.max(parsed, fallbackExpiry);
+			if (parsed > now) {
+				return parsed;
+			}
+			return now + this.expiredTimeoutGraceMs;
 		}
-		return fallbackExpiry;
+		return now + this.defaultClaimTtlMs;
 	}
 }
 

@@ -1,5 +1,6 @@
 import { ScheduleFireToasts } from "renderer/features/todo-agent/ScheduleFireToasts";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit/useTearoffInit";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
 import { AgentHooks } from "../AgentHooks";
 
@@ -9,7 +10,14 @@ import { AgentHooks } from "../AgentHooks";
  * scoped orchestration and global toasts.
  */
 export function MainWindowEffects() {
-	if (isTearoffWindow()) {
+	const isTearoff = isTearoffWindow();
+	const { data: shouldOwnEffectsInTearoff } =
+		electronTrpc.window.shouldOwnSingletonEffects.useQuery(undefined, {
+			enabled: isTearoff,
+			refetchInterval: 1_000,
+		});
+
+	if (isTearoff && !shouldOwnEffectsInTearoff) {
 		return null;
 	}
 

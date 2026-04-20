@@ -57,7 +57,7 @@ export const createAppRouter = (
 		auth: createAuthRouter(),
 		autoUpdate: createAutoUpdateRouter(),
 		cache: createCacheRouter(),
-		window: createWindowRouter(getWindow),
+		window: createWindowRouter(getWindow, wm),
 		projects: createProjectsRouter(getWindow),
 		workspaces: createWorkspacesRouter(),
 		terminal: createTerminalRouter(),

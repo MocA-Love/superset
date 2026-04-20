@@ -109,6 +109,40 @@ export class WindowManager {
 		return this.windows.get("main") ?? null;
 	}
 
+	private getWindowId(targetWindow: BrowserWindow): string | null {
+		for (const [windowId, window] of this.windows.entries()) {
+			if (window === targetWindow) {
+				return windowId;
+			}
+		}
+		return null;
+	}
+
+	shouldWindowOwnSingletonEffects(targetWindow: BrowserWindow): boolean {
+		const currentWindowId = this.getWindowId(targetWindow);
+		if (!currentWindowId) {
+			return false;
+		}
+
+		if (currentWindowId === "main") {
+			return true;
+		}
+
+		const mainWindow = this.getMain();
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			return false;
+		}
+
+		const fallbackOwnerId = Array.from(this.windows.entries())
+			.filter(
+				([windowId, window]) => windowId !== "main" && !window.isDestroyed(),
+			)
+			.map(([windowId]) => windowId)
+			.sort()[0];
+
+		return fallbackOwnerId === currentWindowId;
+	}
+
 	getAll(): Map<string, BrowserWindow> {
 		return new Map(this.windows);
 	}
