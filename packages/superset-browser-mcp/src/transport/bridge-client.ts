@@ -97,6 +97,7 @@ export class BridgeClient {
 		};
 
 		let response: Response;
+		let reloaded = false;
 		try {
 			const info = this.load();
 			response = await perform(info);
@@ -107,11 +108,26 @@ export class BridgeClient {
 			// once more; if that still fails, surface the friendly
 			// BridgeUnavailableError instead of a raw fs/fetch exception.
 			this.reset();
+			reloaded = true;
 			try {
 				const fresh = this.load();
 				response = await perform(fresh);
 			} catch (retryError) {
 				throw new BridgeUnavailableError(retryError ?? error);
+			}
+		}
+		// A Superset restart may keep the same port but rotate the secret.
+		// Treat auth failures as a stale-runtime-info signal and reload
+		// once before surfacing the error. Skip if we already reloaded
+		// above (e.g. Superset is genuinely returning 401 for a valid
+		// fresh secret).
+		if (!reloaded && (response.status === 401 || response.status === 403)) {
+			this.reset();
+			try {
+				const fresh = this.load();
+				response = await perform(fresh);
+			} catch {
+				// fall through to the generic error path below
 			}
 		}
 		if (!response.ok) {
