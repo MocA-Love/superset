@@ -726,9 +726,8 @@ export const createBrowserAutomationRouter = () => {
 						reason: "cdp-disabled" as const,
 					};
 				}
-				const { ensureSessionEndpoint } = await import(
-					"main/lib/browser-mcp-bridge/cdp-filter-proxy"
-				);
+				const { ensureSessionEndpoint, getBrowserUseConfigPath } =
+					await import("main/lib/browser-mcp-bridge/cdp-filter-proxy");
 				const sessionPort = await ensureSessionEndpoint(input.sessionId);
 				return {
 					available: true as const,
@@ -736,6 +735,7 @@ export const createBrowserAutomationRouter = () => {
 					targetId,
 					httpBase: `http://127.0.0.1:${sessionPort}`,
 					wsEndpoint: `ws://127.0.0.1:${sessionPort}/devtools/page/${targetId}`,
+					browserUseConfigPath: getBrowserUseConfigPath(input.sessionId),
 				};
 			}),
 

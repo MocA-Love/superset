@@ -52,6 +52,64 @@ import { resolveCdpPort } from "./cdp-port";
  */
 
 const STORE_PATH = join(SUPERSET_HOME_DIR, "browser-mcp-sessions.json");
+const BROWSER_USE_CONFIG_DIR = join(
+	SUPERSET_HOME_DIR,
+	"browser-use-configs",
+);
+
+/**
+ * Write a per-session browser-use config file so the official
+ * `uvx ... browser-use --mcp` launch picks up our proxy.
+ *
+ * Context: browser-use's CLI does parse `--cdp-url`, but its `--mcp`
+ * branch (skill_cli/main.py ~line 2280 in 0.12.x) routes to
+ * `browser_use.mcp.server:main` without forwarding `--cdp-url`. The
+ * only officially supported way to point the MCP server at an
+ * existing CDP endpoint is via the `BROWSER_USE_CONFIG_PATH` env var
+ * pointing at a JSON config whose default `browser_profile` entry
+ * carries `cdp_url` (browser_use/config.py:101-103, 283-288,
+ * 421-432 and mcp/server.py:578,601). We generate that file here,
+ * keyed by sessionId so each LLM session gets its own.
+ */
+function browserUseConfigPathFor(sessionId: string): string {
+	return join(BROWSER_USE_CONFIG_DIR, `${sessionId}.json`);
+}
+
+function writeBrowserUseConfig(sessionId: string, port: number): void {
+	const profileId = `superset-${sessionId}`;
+	const payload = {
+		browser_profile: {
+			[profileId]: {
+				id: profileId,
+				default: true,
+				// Give browser-use the HTTP base. It will hit
+				// /json/version through our proxy, which rewrites the
+				// browser WS URL to our filtered endpoint. This keeps
+				// the URL stable across Chromium restarts (targetId
+				// changes, but port doesn't).
+				cdp_url: `http://127.0.0.1:${port}`,
+			},
+		},
+		llm: {},
+		agent: {},
+	};
+	try {
+		mkdirSync(BROWSER_USE_CONFIG_DIR, { recursive: true });
+		const path = browserUseConfigPathFor(sessionId);
+		writeFileSync(path, JSON.stringify(payload, null, 2), { mode: 0o600 });
+		try {
+			chmodSync(path, 0o600);
+		} catch {
+			/* best effort */
+		}
+	} catch (error) {
+		console.warn("[cdp-filter-proxy] failed to write browser-use config:", error);
+	}
+}
+
+export function getBrowserUseConfigPath(sessionId: string): string {
+	return browserUseConfigPathFor(sessionId);
+}
 
 interface SessionRecord {
 	sessionId: string;
@@ -769,6 +827,9 @@ export async function ensureSessionEndpoint(
 	const existing = records.get(sessionId);
 	if (existing && servers.has(sessionId)) {
 		existing.lastUsedAt = Date.now();
+		// Re-assert the browser-use config on every hit so restarts
+		// and manual edits can't silently leave it stale.
+		writeBrowserUseConfig(sessionId, existing.port);
 		return existing.port;
 	}
 	// Serialize concurrent calls for the same sessionId — otherwise both
@@ -789,6 +850,7 @@ export async function ensureSessionEndpoint(
 		};
 		records.set(sessionId, record);
 		persist();
+		writeBrowserUseConfig(sessionId, port);
 		return port;
 	})().finally(() => {
 		inFlight.delete(sessionId);

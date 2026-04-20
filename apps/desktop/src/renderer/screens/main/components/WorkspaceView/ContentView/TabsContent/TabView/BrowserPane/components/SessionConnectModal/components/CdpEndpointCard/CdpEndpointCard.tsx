@@ -56,12 +56,14 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 	}
 
 	const chromeDevtoolsCmd = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
-	// browser-use ships its own MCP mode via `uvx --from "browser-use[cli]"`.
-	// CDP endpoint is passed via the same `--cdp-url` flag that the CLI
-	// accepts. Port + token are stable across Superset restarts (see
-	// server.ts / cdp-filter-proxy.ts), so this registration only has to
-	// be done once per install.
-	const browserUseCmd = `claude mcp add browser-use -s user -- uvx --from "browser-use[cli]" browser-use --mcp --cdp-url ${data.wsEndpoint}`;
+	// browser-use's `--mcp` branch intentionally ignores `--cdp-url`
+	// (skill_cli/main.py ~2280 routes straight to the MCP main without
+	// forwarding the flag). The only officially supported injection
+	// point is a config file referenced via BROWSER_USE_CONFIG_PATH
+	// (see browser_use/config.py and mcp/server.py). The desktop app
+	// writes that file per session at `data.browserUseConfigPath` and
+	// we point browser-use at it here.
+	const browserUseCmd = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
 
 	return (
 		<div className="rounded-xl border p-3 bg-card/60 flex flex-col gap-3">
