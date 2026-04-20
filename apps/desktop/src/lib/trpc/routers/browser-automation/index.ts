@@ -726,26 +726,16 @@ export const createBrowserAutomationRouter = () => {
 						reason: "cdp-disabled" as const,
 					};
 				}
-				const { mintCdpToken } = await import(
+				const { ensureSessionEndpoint } = await import(
 					"main/lib/browser-mcp-bridge/cdp-filter-proxy"
 				);
-				const token = mintCdpToken(input.sessionId);
-				const handle = (
-					await import("main/lib/browser-mcp-bridge/server")
-				).getBrowserMcpBridge();
-				const bridgePort = handle?.port;
-				if (!bridgePort) {
-					return {
-						available: false as const,
-						reason: "bridge-not-running" as const,
-					};
-				}
+				const sessionPort = await ensureSessionEndpoint(input.sessionId);
 				return {
 					available: true as const,
 					paneId: binding.paneId,
 					targetId,
-					httpBase: `http://127.0.0.1:${bridgePort}/cdp/${token}`,
-					wsEndpoint: `ws://127.0.0.1:${bridgePort}/cdp/${token}/devtools/page/${targetId}`,
+					httpBase: `http://127.0.0.1:${sessionPort}`,
+					wsEndpoint: `ws://127.0.0.1:${sessionPort}/devtools/page/${targetId}`,
 				};
 			}),
 
