@@ -62,11 +62,8 @@ export class BridgeClient {
 		path: string,
 		body?: unknown,
 	): Promise<T> {
-		const info = this.load();
-		const url = `http://127.0.0.1:${info.port}${path}`;
-		let response: Response;
-		try {
-			response = await fetch(url, {
+		const perform = async (info: RuntimeInfo): Promise<Response> =>
+			fetch(`http://127.0.0.1:${info.port}${path}`, {
 				method,
 				headers: {
 					"content-type": "application/json",
@@ -75,20 +72,21 @@ export class BridgeClient {
 				},
 				body: body === undefined ? undefined : JSON.stringify(body),
 			});
+
+		let response: Response;
+		try {
+			const info = this.load();
+			response = await perform(info);
 		} catch (error) {
-			// Stale port / app restarted: retry once after re-reading the file.
+			// ENOENT / JSON parse / connection refused: Superset may have
+			// been started after this MCP, restarted on a new port, or the
+			// SUPERSET_HOME_DIR env was wrong. Drop the cached file and try
+			// once more; if that still fails, surface the friendly
+			// BridgeUnavailableError instead of a raw fs/fetch exception.
 			this.reset();
 			try {
 				const fresh = this.load();
-				response = await fetch(`http://127.0.0.1:${fresh.port}${path}`, {
-					method,
-					headers: {
-						"content-type": "application/json",
-						authorization: `Bearer ${fresh.secret}`,
-						"x-superset-mcp-ppid": String(this.ppid),
-					},
-					body: body === undefined ? undefined : JSON.stringify(body),
-				});
+				response = await perform(fresh);
 			} catch (retryError) {
 				throw new BridgeUnavailableError(retryError ?? error);
 			}
