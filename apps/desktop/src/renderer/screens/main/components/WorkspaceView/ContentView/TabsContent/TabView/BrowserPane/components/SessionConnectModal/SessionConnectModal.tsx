@@ -162,7 +162,7 @@ export function SessionConnectModal({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!max-w-[820px] sm:!max-w-[820px] p-0 gap-0 overflow-hidden">
+			<DialogContent className="!max-w-[min(1640px,95vw)] sm:!max-w-[min(1640px,95vw)] p-0 gap-0 overflow-hidden">
 				<DialogHeader className="px-5 py-4 border-b">
 					<DialogTitle className="text-sm">
 						Connect browser automation
@@ -172,7 +172,7 @@ export function SessionConnectModal({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[380px] max-h-[560px]">
+				<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
 					<div className="overflow-y-auto p-4 border-r">
 						<div className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2.5 mb-3">
 							<div className="flex size-7 items-center justify-center rounded-md bg-brand/15 text-brand text-sm font-bold">

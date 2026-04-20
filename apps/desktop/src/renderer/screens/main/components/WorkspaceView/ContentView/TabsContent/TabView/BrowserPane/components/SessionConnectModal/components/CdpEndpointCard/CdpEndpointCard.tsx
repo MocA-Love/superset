@@ -58,7 +58,12 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 	}
 
 	const chromeDevtoolsCmd = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
-	const browserUseCmd = `browser-use --cdp-url ${data.wsEndpoint}`;
+	// browser-use ships its own MCP mode via `uvx --from "browser-use[cli]"`.
+	// CDP endpoint is passed via the same `--cdp-url` flag that the CLI
+	// accepts. Port + token are stable across Superset restarts (see
+	// server.ts / cdp-filter-proxy.ts), so this registration only has to
+	// be done once per install.
+	const browserUseCmd = `claude mcp add browser-use -s user -- uvx --from "browser-use[cli]" browser-use --mcp --cdp-url ${data.wsEndpoint}`;
 
 	return (
 		<div className="rounded-xl border p-3 bg-card/60 flex flex-col gap-3">
@@ -149,7 +154,7 @@ function CommandBlock({
 		<div className="mt-2">
 			<div className="text-[11px] font-medium">{title}</div>
 			<div className="mt-1 flex items-center gap-2">
-				<pre className="flex-1 rounded-md border bg-black/40 p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
+				<pre className="flex-1 min-w-0 max-w-full rounded-md border bg-black/40 p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
 					{cmd}
 				</pre>
 				<Button size="sm" variant="outline" onClick={onCopy}>
