@@ -9,6 +9,7 @@ import { createAnalyticsRouter } from "./analytics";
 import { createAuthRouter } from "./auth";
 import { createAutoUpdateRouter } from "./auto-update";
 import { createBrowserRouter } from "./browser/browser";
+import { createBrowserAutomationRouter } from "./browser-automation";
 import { createBrowserHistoryRouter } from "./browser-history";
 import { createCacheRouter } from "./cache";
 import { createChangesRouter } from "./changes";
@@ -53,6 +54,7 @@ export const createAppRouter = (
 		aivis: createAivisRouter(),
 		analytics: createAnalyticsRouter(),
 		browser: createBrowserRouter(),
+		browserAutomation: createBrowserAutomationRouter(),
 		browserHistory: createBrowserHistoryRouter(),
 		auth: createAuthRouter(),
 		autoUpdate: createAutoUpdateRouter(),

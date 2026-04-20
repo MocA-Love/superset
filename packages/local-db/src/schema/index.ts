@@ -1,3 +1,4 @@
+export * from "./browser-automation-bindings";
 export * from "./relations";
 export * from "./schema";
 export * from "./todo-prompt-presets";

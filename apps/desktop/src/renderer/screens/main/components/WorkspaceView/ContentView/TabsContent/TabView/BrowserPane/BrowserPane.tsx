@@ -5,6 +5,7 @@ import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 import {
 	findBookmarkByUrl,
 	useBrowserBookmarksStore,
@@ -21,7 +22,9 @@ import {
 } from "./components/BrowserFindOverlay";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
+import { ConnectButton } from "./components/ConnectButton";
 import { ExtensionToolbar } from "./components/ExtensionToolbar";
+import { SessionConnectModal } from "./components/SessionConnectModal";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
 
@@ -73,6 +76,14 @@ export function BrowserPane({
 	);
 	const isFullscreen = useBrowserFullscreenStore(
 		(s) => s.fullscreenPaneId === paneId,
+	);
+	// Narrow the subscription so BrowserPane (and its webview tree) does not
+	// re-render every time the modal's selectedSessionId changes.
+	const isConnectOpenForThisPane = useBrowserAutomationStore(
+		(s) => s.connectModal.isOpen && s.connectModal.paneId === paneId,
+	);
+	const closeConnectModal = useBrowserAutomationStore(
+		(s) => s.closeConnectModal,
 	);
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
@@ -294,6 +305,8 @@ export function BrowserPane({
 							onPopOut={handlers.onPopOut}
 							leadingActions={
 								<>
+									<ConnectButton paneId={paneId} />
+									<div className="mx-1 h-3.5 w-px bg-muted-foreground/60" />
 									<div className="flex items-center gap-0.5">
 										<Tooltip>
 											<TooltipTrigger asChild>
@@ -423,6 +436,12 @@ export function BrowserPane({
 					)}
 				</div>
 			</div>
+			<SessionConnectModal
+				open={isConnectOpenForThisPane}
+				onOpenChange={(open) => {
+					if (!open) closeConnectModal();
+				}}
+			/>
 		</BasePaneWindow>
 	);
 }

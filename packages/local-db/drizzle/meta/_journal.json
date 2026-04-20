@@ -470,6 +470,13 @@
       "when": 1776600000000,
       "tag": "0066_add_aivis_speaking_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1776676242652,
+      "tag": "0067_add_browser_automation_bindings",
+      "breakpoints": true
     }
   ]
 }
