@@ -463,6 +463,27 @@ function SetupPanel({
 	onCopy: () => void;
 }) {
 	const snippet = getSnippetForSession(session, serverCommand);
+	// `available: false` means the Superset install cannot start the MCP
+	// locally yet (e.g. packaged build before the @superset/superset-browser-mcp
+	// package ships on npm). Surface that state instead of handing the user
+	// a command that would fail.
+	if (serverCommand && !serverCommand.available) {
+		return (
+			<div className="flex flex-col gap-3">
+				<div className="rounded-xl border p-3 bg-card/60">
+					<div className="text-xs font-semibold">
+						Browser MCP is not yet available in this build
+					</div>
+					<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+						The <code>@superset/superset-browser-mcp</code> package needs to
+						ship before this release can register the MCP for you. Until then
+						run the browser automation from a dev build, or check back once the
+						next desktop release lands.
+					</div>
+				</div>
+			</div>
+		);
+	}
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="rounded-xl border p-3 bg-card/60">

@@ -4,11 +4,16 @@ import { join } from "node:path";
 
 /**
  * Runtime info written by the Superset app on startup to
- * ~/.superset/browser-mcp.json:
- *   { port: number, secret: string }
- * This MCP server reads that file to discover where to talk to the app.
+ * `$SUPERSET_HOME_DIR/browser-mcp.json` (workspace-scoped so multiple
+ * Superset instances do not collide). Defaults to `~/.superset` when the
+ * env var is not set. This MCP server reads that file to discover where
+ * to talk to the app.
  */
-const RUNTIME_INFO_PATH = join(homedir(), ".superset", "browser-mcp.json");
+function runtimeInfoPath(): string {
+	const home = process.env.SUPERSET_HOME_DIR?.trim();
+	const base = home && home.length > 0 ? home : join(homedir(), ".superset");
+	return join(base, "browser-mcp.json");
+}
 
 interface RuntimeInfo {
 	port: number;
@@ -16,10 +21,10 @@ interface RuntimeInfo {
 }
 
 function readRuntimeInfo(): RuntimeInfo {
-	const contents = readFileSync(RUNTIME_INFO_PATH, "utf8");
+	const contents = readFileSync(runtimeInfoPath(), "utf8");
 	const parsed = JSON.parse(contents) as RuntimeInfo;
 	if (typeof parsed.port !== "number" || typeof parsed.secret !== "string") {
-		throw new Error(`Invalid ${RUNTIME_INFO_PATH}: expected { port, secret }`);
+		throw new Error(`Invalid ${runtimeInfoPath()}: expected { port, secret }`);
 	}
 	return parsed;
 }

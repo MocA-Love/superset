@@ -6,16 +6,18 @@ import {
 	type Server,
 	type ServerResponse,
 } from "node:http";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { app } from "electron";
+import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
 import { getBoundPaneForSession, resolvePpidToSession } from "./pane-resolver";
 
 /**
  * HTTP bridge between the `packages/superset-browser-mcp` MCP server and
  * this Electron app. The MCP discovers the app via a runtime info file at
- * ~/.superset/browser-mcp.json written here.
+ * `${SUPERSET_HOME_DIR}/browser-mcp.json` (workspace-scoped) — this lets
+ * multiple Superset instances with different `SUPERSET_WORKSPACE_NAME`
+ * values coexist without overwriting each other's port/secret.
  *
  * Requests carry the MCP process's PPID in `x-superset-mcp-ppid`. We use
  * that to resolve the LLM session and then the bound paneId on every call,
@@ -23,8 +25,7 @@ import { getBoundPaneForSession, resolvePpidToSession } from "./pane-resolver";
  * UI — the MCP follows whatever pane is currently bound".
  */
 
-const RUNTIME_DIR = join(homedir(), ".superset");
-const RUNTIME_INFO_PATH = join(RUNTIME_DIR, "browser-mcp.json");
+const RUNTIME_INFO_PATH = join(SUPERSET_HOME_DIR, "browser-mcp.json");
 const CONSOLE_BUFFER_LIMIT = 500;
 
 interface ConsoleEntry {
