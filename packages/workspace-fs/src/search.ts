@@ -550,22 +550,26 @@ async function listFilesWithRipgrep({
 		const err = error as NodeJS.ErrnoException & {
 			code?: string | number | null;
 		};
-		// ENOENT: ripgrep binary missing. Any other failure also falls back
-		// because we prefer degraded-but-working results over a broken search.
-		if (err.code === "ENOENT") {
-			return null;
-		}
+		// Exit 1 means "no files" which is still a legitimate result.
 		const exitCode =
 			typeof err.code === "number"
 				? err.code
 				: typeof err.code === "string" && /^\d+$/.test(err.code)
 					? Number.parseInt(err.code, 10)
 					: null;
-		// Exit 1 means "no files" which is still a legitimate result.
 		if (exitCode === 1) {
 			return [];
 		}
-		return null;
+		// ENOENT (binary missing) is the only failure mode we silently absorb
+		// via the fast-glob fallback. This keeps the package usable in test
+		// environments and any consumer that doesn't bundle its own rg. Every
+		// other failure -- wrong flag, buffer overflow, permission denied --
+		// must surface instead of being masked as a quietly-degraded search;
+		// that's how the `--follow=false` regression hid for a whole PR.
+		if (err.code === "ENOENT") {
+			return null;
+		}
+		throw error;
 	}
 }
 

@@ -358,6 +358,36 @@ describe("searchFiles", () => {
 		expect(filesTab[0]?.absolutePath).toEqual(betaPath);
 	});
 
+	it("surfaces unexpected ripgrep failures instead of silently falling back", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "alpha.ts"),
+			"export const alpha = 1;\n",
+		);
+
+		let threw = false;
+		try {
+			await searchFiles({
+				rootPath,
+				query: "alpha",
+				runRipgrep: async () => {
+					// Simulate the exact shape of an argv-parse error (rg exits 2
+					// when it doesn't understand a flag). Pre-hardening, this
+					// failure silently degraded to fast-glob.
+					const error = new Error(
+						"Command failed: rg: unexpected argument for option '--follow'",
+					) as Error & { code?: number };
+					error.code = 2;
+					throw error;
+				},
+			});
+		} catch {
+			threw = true;
+		}
+
+		expect(threw).toEqual(true);
+	});
+
 	it("invokes ripgrep without the invalid --follow=false flag", async () => {
 		const rootPath = await createTempRoot();
 		await fs.writeFile(
