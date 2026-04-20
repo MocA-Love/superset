@@ -94,6 +94,7 @@ export interface TerminalWriteInput {
 	paneId: string;
 	data: string;
 	throwOnError?: boolean;
+	interactive?: boolean;
 }
 
 export interface TerminalWriteCallbacks {

@@ -923,17 +923,24 @@ export class Session {
 	 *   responses from the renderer's xterm to terminal queries the shell
 	 *   sent during startup (DA, DSR). If queued and flushed later they
 	 *   appear as typed text like `?62;4;9;22c`.
-	 * - **Everything else** is forwarded directly to the PTY. This allows
-	 *   interactive prompts that appear during shell initialization (e.g.
-	 *   oh-my-zsh update confirmation) to receive user input normally.
+	 * - **Interactive writes** (user keyboard input, `interactive: true`) are
+	 *   forwarded directly so prompts during initialization (e.g. oh-my-zsh
+	 *   update confirmation) can receive user input normally.
+	 * - **Everything else** (preset/programmatic commands) is buffered and
+	 *   flushed in FIFO order once readiness resolves, ensuring they run at
+	 *   the first shell prompt rather than mid-initialization.
 	 */
-	write(data: string): void {
+	write(data: string, options?: { interactive?: boolean }): void {
 		if (!this.subprocess || !this.subprocessReady) {
 			throw new Error("PTY not spawned");
 		}
 		if (this.shellReadyState === "pending") {
 			if (data.startsWith("\x1b")) return;
-			this.sendWriteToSubprocess(data);
+			if (options?.interactive) {
+				this.sendWriteToSubprocess(data);
+			} else {
+				this.preReadyStdinQueue.push(data);
+			}
 			return;
 		}
 		this.sendWriteToSubprocess(data);
