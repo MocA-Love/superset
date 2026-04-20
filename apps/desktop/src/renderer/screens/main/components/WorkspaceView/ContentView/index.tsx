@@ -9,6 +9,7 @@ import { ContentHeader } from "./ContentHeader";
 import { PresetsBar } from "./components/PresetsBar";
 import { TabsContent } from "./TabsContent";
 import { GroupStrip } from "./TabsContent/GroupStrip";
+import { BulkActionBar } from "./TabsContent/GroupStrip/components/BulkActionBar";
 
 interface ContentViewProps {
 	workspaceId: string;
@@ -46,6 +47,7 @@ export function ContentView({
 					<GroupStrip />
 				</ContentHeader>
 			)}
+			{!isBrowserFullscreen && <BulkActionBar workspaceId={workspaceId} />}
 			{showPresetsBar && !isBrowserFullscreen && <PresetsBar />}
 			<TabsContent
 				workspaceId={workspaceId}

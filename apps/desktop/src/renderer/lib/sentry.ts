@@ -48,9 +48,7 @@ export async function initSentry(): Promise<void> {
 			tracesSampleRate: 0.1,
 			beforeSend(event) {
 				const message = event.exception?.values?.[0]?.value ?? "";
-				if (
-					NOISY_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
-				) {
+				if (NOISY_ERROR_PATTERNS.some((pattern) => message.includes(pattern))) {
 					return null;
 				}
 				return event;

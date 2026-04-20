@@ -230,7 +230,10 @@ export class TodoDaemonClient extends EventEmitter {
 					},
 					{
 						captureMessage: true,
-						fingerprint: ["todo.agent.main", "todo-daemon-client-authenticated"],
+						fingerprint: [
+							"todo.agent.main",
+							"todo-daemon-client-authenticated",
+						],
 					},
 				);
 				return;
@@ -733,7 +736,10 @@ export class TodoDaemonClient extends EventEmitter {
 				},
 				{
 					captureMessage: true,
-					fingerprint: ["todo.agent.main", "todo-daemon-client-rehydrate-success"],
+					fingerprint: [
+						"todo.agent.main",
+						"todo-daemon-client-rehydrate-success",
+					],
 				},
 			);
 			return response;
@@ -743,7 +749,10 @@ export class TodoDaemonClient extends EventEmitter {
 				"todo-daemon-client-rehydrate-failed",
 				undefined,
 				{
-					fingerprint: ["todo.agent.main", "todo-daemon-client-rehydrate-failed"],
+					fingerprint: [
+						"todo.agent.main",
+						"todo-daemon-client-rehydrate-failed",
+					],
 				},
 			);
 			throw error;

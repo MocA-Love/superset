@@ -216,7 +216,11 @@ export function TodoModal({
 				},
 				{
 					captureMessage: true,
-					fingerprint: ["todo.agent.renderer", "todo-create-submit", "todo-modal"],
+					fingerprint: [
+						"todo.agent.renderer",
+						"todo-create-submit",
+						"todo-modal",
+					],
 				},
 			);
 			const created = await create.mutateAsync({
@@ -277,7 +281,11 @@ export function TodoModal({
 					errorMessage: message,
 				},
 				{
-					fingerprint: ["todo.agent.renderer", "todo-create-submit-failed", "todo-modal"],
+					fingerprint: [
+						"todo.agent.renderer",
+						"todo-create-submit-failed",
+						"todo-modal",
+					],
 				},
 			);
 			toast.error(message);

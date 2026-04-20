@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Mock — Terminal Tab Bulk Actions (Issue #346)</title>
+		<script src="https://cdn.tailwindcss.com"></script>
+		<style>
+			:root {
+				--background: #0b0b0c;
+				--foreground: #ededed;
+				--muted: #1a1a1c;
+				--muted-foreground: #9ca3af;
+				--border: #2a2a2d;
+				--tertiary: #3a3a3d;
+				--primary: #3b82f6;
+				--ring: #3b82f6;
+			}
+			html,
+			body {
+				background: var(--background);
+				color: var(--foreground);
+				font-family:
+					ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+					"Helvetica Neue", Arial;
+			}
+			.bg-background {
+				background: var(--background);
+			}
+			.bg-muted {
+				background: var(--muted);
+			}
+			.bg-border {
+				background: var(--border);
+			}
+			.bg-tertiary {
+				background: var(--tertiary);
+			}
+			.text-foreground {
+				color: var(--foreground);
+			}
+			.text-muted-foreground {
+				color: var(--muted-foreground);
+			}
+			.border-border {
+				border-color: var(--border);
+			}
+			.ring-ring {
+				--tw-ring-color: var(--ring);
+			}
+
+			/* xterm-ish terminal background */
+			.terminal-area {
+				background: #050506;
+				font-family:
+					"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+					monospace;
+				color: #d4d4d4;
+			}
+			.cursor-blink {
+				animation: blink 1s step-end infinite;
+			}
+			@keyframes blink {
+				50% {
+					opacity: 0;
+				}
+			}
+
+			.context-menu {
+				min-width: 220px;
+				background: #161618;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				padding: 4px;
+				box-shadow:
+					0 10px 30px rgba(0, 0, 0, 0.5),
+					0 0 0 1px rgba(255, 255, 255, 0.02);
+			}
+			.context-menu .item {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 6px 8px;
+				font-size: 13px;
+				border-radius: 4px;
+				cursor: default;
+				color: var(--foreground);
+			}
+			.context-menu .item:hover {
+				background: rgba(255, 255, 255, 0.06);
+			}
+			.context-menu .item.danger:hover {
+				background: rgba(239, 68, 68, 0.15);
+				color: #fca5a5;
+			}
+			.context-menu .sep {
+				height: 1px;
+				background: var(--border);
+				margin: 4px 0;
+			}
+			.context-menu .label {
+				padding: 4px 8px 6px;
+				font-size: 11px;
+				color: var(--muted-foreground);
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+			}
+			.context-menu .item .right {
+				margin-left: auto;
+				color: var(--muted-foreground);
+				font-size: 11px;
+			}
+
+			.color-swatch {
+				width: 18px;
+				height: 18px;
+				border-radius: 4px;
+				border: 1px solid rgba(255, 255, 255, 0.1);
+				cursor: pointer;
+			}
+			.color-swatch.selected {
+				outline: 2px solid var(--ring);
+				outline-offset: 1px;
+			}
+
+			.checkbox {
+				appearance: none;
+				width: 16px;
+				height: 16px;
+				border-radius: 3px;
+				border: 1px solid #4b5563;
+				background: transparent;
+				position: relative;
+				cursor: pointer;
+				flex-shrink: 0;
+			}
+			.checkbox:checked {
+				background: var(--primary);
+				border-color: var(--primary);
+			}
+			.checkbox:checked::after {
+				content: "";
+				position: absolute;
+				left: 4px;
+				top: 1px;
+				width: 5px;
+				height: 9px;
+				border: solid white;
+				border-width: 0 2px 2px 0;
+				transform: rotate(45deg);
+			}
+
+			.tab {
+				position: relative;
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 0 32px 0 12px;
+				height: 100%;
+				border-right: 1px solid var(--border);
+				font-size: 13px;
+				color: rgba(156, 163, 175, 0.7);
+				cursor: pointer;
+				flex-shrink: 0;
+				transition: background 0.12s;
+			}
+			.tab:hover {
+				color: var(--muted-foreground);
+				background: rgba(58, 58, 61, 0.2);
+			}
+			.tab.active {
+				color: var(--foreground);
+				background: rgba(42, 42, 45, 0.3);
+			}
+			.tab .x-btn {
+				position: absolute;
+				right: 4px;
+				top: 50%;
+				transform: translateY(-50%);
+				width: 22px;
+				height: 22px;
+				border-radius: 4px;
+				display: none;
+				align-items: center;
+				justify-content: center;
+				color: var(--muted-foreground);
+			}
+			.tab:hover .x-btn {
+				display: inline-flex;
+			}
+			.tab .x-btn:hover {
+				background: rgba(255, 255, 255, 0.08);
+				color: var(--foreground);
+			}
+			.tab .selection-check {
+				display: none;
+			}
+			body.bulk-mode .tab .selection-check {
+				display: inline-flex;
+			}
+			body.bulk-mode .tab .x-btn {
+				display: none;
+			}
+			.tab.bulk-selected {
+				outline: 1.5px solid var(--primary);
+				outline-offset: -2px;
+				background: rgba(59, 130, 246, 0.1);
+			}
+
+			.dot {
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: #6b7280;
+			}
+			.dot.running {
+				background: #22c55e;
+			}
+			.dot.warn {
+				background: #eab308;
+			}
+
+			.dialog-backdrop {
+				position: fixed;
+				inset: 0;
+				background: rgba(0, 0, 0, 0.6);
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				z-index: 50;
+			}
+			.dialog {
+				width: 460px;
+				background: #141416;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+			}
+			.btn {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				padding: 6px 12px;
+				border-radius: 6px;
+				font-size: 13px;
+				border: 1px solid var(--border);
+				background: transparent;
+				color: var(--foreground);
+				cursor: pointer;
+			}
+			.btn:hover {
+				background: rgba(255, 255, 255, 0.04);
+			}
+			.btn.primary {
+				background: var(--primary);
+				border-color: var(--primary);
+				color: white;
+			}
+			.btn.primary:hover {
+				background: #2563eb;
+			}
+			.btn.danger {
+				background: #dc2626;
+				border-color: #dc2626;
+				color: white;
+			}
+			.btn.danger:hover {
+				background: #b91c1c;
+			}
+
+			.toolbar {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 6px 10px;
+				background: #131315;
+				border-bottom: 1px solid var(--border);
+				border-top: 1px solid var(--border);
+			}
+			.toolbar .count {
+				font-size: 12px;
+				color: var(--muted-foreground);
+			}
+		</style>
+	</head>
+	<body class="min-h-screen">
+		<!-- ========================== Layout ========================== -->
+		<div class="flex h-screen">
+			<!-- Sidebar -->
+			<aside
+				class="w-56 shrink-0 bg-[#0e0e10] border-r border-border flex flex-col"
+			>
+				<div
+					class="px-3 py-3 text-xs uppercase tracking-wider text-muted-foreground"
+				>
+					Workspace
+				</div>
+				<div class="px-2 space-y-0.5 text-sm">
+					<div
+						class="px-2 py-1.5 rounded bg-[#1a1a1c] text-foreground flex items-center gap-2"
+					>
+						<span
+							class="w-2 h-2 rounded-full"
+							style="background: #3b82f6"
+						></span>
+						superset
+					</div>
+					<div
+						class="px-2 py-1.5 rounded text-muted-foreground hover:bg-[#161618] flex items-center gap-2"
+					>
+						<span
+							class="w-2 h-2 rounded-full"
+							style="background: #22c55e"
+						></span>
+						web
+					</div>
+					<div
+						class="px-2 py-1.5 rounded text-muted-foreground hover:bg-[#161618] flex items-center gap-2"
+					>
+						<span
+							class="w-2 h-2 rounded-full"
+							style="background: #f97316"
+						></span>
+						mobile
+					</div>
+				</div>
+				<div class="mt-auto p-3 text-[11px] text-muted-foreground">
+					mock.html — Issue #346
+				</div>
+			</aside>
+
+			<!-- Main -->
+			<main class="flex-1 flex flex-col min-w-0">
+				<!-- Tab strip -->
+				<div
+					class="h-9 flex items-center bg-[#0e0e10] border-b border-border overflow-x-auto"
+					id="tab-strip"
+				>
+					<!-- tabs injected -->
+				</div>
+
+				<!-- Bulk-action toolbar (shown only in bulk mode) -->
+				<div id="bulk-toolbar" class="toolbar hidden">
+					<button class="btn" onclick="exitBulkMode()">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path d="M18 6 6 18M6 6l12 12" />
+						</svg>
+						キャンセル
+					</button>
+					<span class="count" id="selection-count">0 件選択中</span>
+					<div class="ml-auto flex items-center gap-2">
+						<button class="btn" onclick="selectAll()">すべて選択</button>
+						<button class="btn" onclick="invertSelection()">選択反転</button>
+						<button class="btn" onclick="openBulkColor()">
+							<svg
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+								<circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+								<circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+								<circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+								<path
+									d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+								/>
+							</svg>
+							一括で色を設定
+						</button>
+						<button class="btn danger" onclick="openBulkClose()">
+							<svg
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+							</svg>
+							一括クローズ
+						</button>
+					</div>
+				</div>
+
+				<!-- Terminal area -->
+				<div class="flex-1 terminal-area p-4 text-sm overflow-auto">
+					<div id="active-terminal-name" class="text-muted-foreground mb-2">
+						—
+					</div>
+					<pre class="whitespace-pre leading-5">
+$ bun dev
+$ DESKTOP_VITE_PORT=5222 bun run dev
+
+  vite v6.3.1  dev server running at:
+  > Local: http://localhost:5222
+
+[electron] Main process started
+[electron] Preload loaded
+[electron] Renderer ready (1234ms)
+$ <span class="cursor-blink">▍</span></pre
+					>
+				</div>
+			</main>
+		</div>
+
+		<!-- ========================== Context Menu (existing single-tab) ========================== -->
+		<div
+			id="ctx-single"
+			class="context-menu hidden absolute"
+			style="position: absolute"
+		>
+			<div class="item" onclick="action('rename')">
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path
+						d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+					/></svg
+				>Rename
+			</div>
+			<div class="item" onclick="openColorSubmenu(event)">
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+					<circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+					<circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+					<circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+					<path
+						d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+					/></svg
+				>Set Color
+				<span class="right">▸</span>
+			</div>
+			<div class="sep"></div>
+			<div class="item" onclick="action('mark-unread')">
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path
+						d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"
+					/>
+					<path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+					<line x1="2" y1="2" x2="22" y2="22" /></svg
+				>Mark as Unread
+			</div>
+			<div class="sep"></div>
+			<!-- NEW: bulk-mode trigger -->
+			<div class="label">複数選択</div>
+			<div class="item" onclick="enterBulkMode()">
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path
+						d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"
+					/></svg
+				>選択モードに入る…
+			</div>
+			<div class="sep"></div>
+			<div class="item danger" onclick="action('close')">
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path d="M18 6 6 18M6 6l12 12" /></svg
+				>Close
+			</div>
+		</div>
+
+		<!-- Color submenu (existing single-tab) -->
+		<div id="ctx-color" class="context-menu hidden">
+			<div class="grid grid-cols-6 gap-1.5 p-1.5" id="color-grid"></div>
+		</div>
+
+		<!-- ========================== Bulk: Set Color dialog ========================== -->
+		<div id="bulk-color-dialog" class="dialog-backdrop hidden">
+			<div class="dialog">
+				<div class="px-5 py-4 border-b border-border">
+					<div class="text-base font-medium">一括で色を設定</div>
+					<div class="text-xs text-muted-foreground mt-1">
+						<span id="bulk-color-count">0</span> 件のターミナルに色を適用します
+					</div>
+				</div>
+				<div class="px-5 py-5">
+					<div class="grid grid-cols-6 gap-2" id="bulk-color-grid"></div>
+					<div class="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
+						<button
+							class="btn"
+							onclick="setBulkColor(null)"
+							style="padding: 4px 10px"
+						>
+							色をリセット
+						</button>
+					</div>
+				</div>
+				<div
+					class="px-5 py-3 border-t border-border flex items-center justify-end gap-2"
+				>
+					<button class="btn" onclick="closeBulkColor()">キャンセル</button>
+					<button class="btn primary" onclick="applyBulkColor()">適用</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- ========================== Bulk: Close confirm dialog ========================== -->
+		<div id="bulk-close-dialog" class="dialog-backdrop hidden">
+			<div class="dialog">
+				<div class="px-5 py-4 border-b border-border">
+					<div class="text-base font-medium">一括クローズ</div>
+					<div class="text-xs text-muted-foreground mt-1">
+						選択した <span id="bulk-close-count">0</span> 件のターミナルを閉じます
+					</div>
+				</div>
+				<div class="px-5 py-4">
+					<div
+						id="bulk-close-list"
+						class="text-sm space-y-1 max-h-48 overflow-y-auto"
+					></div>
+					<label
+						class="flex items-center gap-2 text-xs text-muted-foreground mt-4"
+					>
+						<input type="checkbox" class="checkbox" id="bulk-close-skip" />
+						実行中のプロセスがあっても確認せず閉じる
+					</label>
+				</div>
+				<div
+					class="px-5 py-3 border-t border-border flex items-center justify-end gap-2"
+				>
+					<button class="btn" onclick="closeBulkClose()">キャンセル</button>
+					<button class="btn danger" onclick="applyBulkClose()">
+						選択を閉じる
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			const PROJECT_COLORS = [
+				{ name: "Red", value: "#ef4444" },
+				{ name: "Orange", value: "#f97316" },
+				{ name: "Yellow", value: "#eab308" },
+				{ name: "Lime", value: "#84cc16" },
+				{ name: "Green", value: "#22c55e" },
+				{ name: "Teal", value: "#14b8a6" },
+				{ name: "Cyan", value: "#06b6d4" },
+				{ name: "Blue", value: "#3b82f6" },
+				{ name: "Indigo", value: "#6366f1" },
+				{ name: "Purple", value: "#a855f7" },
+				{ name: "Pink", value: "#ec4899" },
+				{ name: "Slate", value: "#64748b" },
+			];
+
+			const tabs = [
+				{ id: "t1", name: "bun dev", color: "#3b82f6", status: "running" },
+				{ id: "t2", name: "vite", color: null, status: "running" },
+				{ id: "t3", name: "test:watch", color: "#22c55e", status: "warn" },
+				{ id: "t4", name: "drizzle", color: null, status: null },
+				{ id: "t5", name: "logs", color: "#a855f7", status: null },
+				{ id: "t6", name: "shell", color: null, status: null },
+			];
+			let activeId = "t1";
+			const selected = new Set();
+			let pendingBulkColor = null;
+			let ctxTabId = null;
+
+			function renderTabs() {
+				const strip = document.getElementById("tab-strip");
+				strip.innerHTML = "";
+				for (const t of tabs) {
+					const el = document.createElement("div");
+					el.className = "tab" + (t.id === activeId ? " active" : "");
+					if (selected.has(t.id)) el.classList.add("bulk-selected");
+					if (t.color) {
+						el.style.backgroundColor =
+							t.color + (t.id === activeId ? "30" : "18");
+						el.style.color = "var(--foreground)";
+					}
+					el.innerHTML = `
+            <input type="checkbox" class="checkbox selection-check" ${selected.has(t.id) ? "checked" : ""} data-id="${t.id}">
+            <span class="truncate">${t.name}</span>
+            ${
+						t.status
+							? `<span class="dot ${t.status}" title="${t.status}"></span>`
+							: ""
+					}
+            <span class="x-btn" data-close="${t.id}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </span>
+          `;
+					el.addEventListener("click", (e) => {
+						if (e.target.closest("[data-close]")) {
+							removeTab(t.id);
+							return;
+						}
+						if (document.body.classList.contains("bulk-mode")) {
+							toggleSelect(t.id);
+							return;
+						}
+						activeId = t.id;
+						renderTabs();
+						document.getElementById("active-terminal-name").textContent =
+							"● " + t.name;
+					});
+					el.addEventListener("contextmenu", (e) => {
+						e.preventDefault();
+						ctxTabId = t.id;
+						if (!document.body.classList.contains("bulk-mode")) {
+							activeId = t.id;
+							renderTabs();
+						}
+						openContextMenu(e.clientX, e.clientY);
+					});
+					strip.appendChild(el);
+				}
+				document
+					.querySelectorAll(".selection-check")
+					.forEach((cb) =>
+						cb.addEventListener("change", (e) =>
+							toggleSelect(e.target.dataset.id),
+						),
+					);
+				updateSelectionCount();
+			}
+
+			function removeTab(id) {
+				const i = tabs.findIndex((t) => t.id === id);
+				if (i >= 0) tabs.splice(i, 1);
+				selected.delete(id);
+				if (activeId === id && tabs[0]) activeId = tabs[0].id;
+				renderTabs();
+			}
+
+			// ----- context menu -----
+			function openContextMenu(x, y) {
+				const menu = document.getElementById("ctx-single");
+				menu.style.left = x + "px";
+				menu.style.top = y + "px";
+				menu.classList.remove("hidden");
+				document.getElementById("ctx-color").classList.add("hidden");
+			}
+			function closeContextMenu() {
+				document.getElementById("ctx-single").classList.add("hidden");
+				document.getElementById("ctx-color").classList.add("hidden");
+			}
+			document.addEventListener("click", (e) => {
+				if (!e.target.closest(".context-menu")) closeContextMenu();
+			});
+
+			function action(kind) {
+				if (kind === "close") removeTab(ctxTabId);
+				if (kind === "rename") {
+					const t = tabs.find((x) => x.id === ctxTabId);
+					const v = prompt("新しい名前", t?.name);
+					if (v && t) {
+						t.name = v;
+						renderTabs();
+					}
+				}
+				closeContextMenu();
+			}
+
+			function openColorSubmenu(e) {
+				const sub = document.getElementById("ctx-color");
+				const src = document.getElementById("ctx-single");
+				const r = src.getBoundingClientRect();
+				sub.style.position = "absolute";
+				sub.style.left = r.right + 4 + "px";
+				sub.style.top = r.top + "px";
+				sub.classList.remove("hidden");
+				renderColorGrid("color-grid", (c) => {
+					const t = tabs.find((x) => x.id === ctxTabId);
+					if (t) t.color = c;
+					renderTabs();
+					closeContextMenu();
+				});
+				e.stopPropagation();
+			}
+
+			function renderColorGrid(targetId, onPick) {
+				const g = document.getElementById(targetId);
+				g.innerHTML = "";
+				for (const c of PROJECT_COLORS) {
+					const s = document.createElement("div");
+					s.className = "color-swatch";
+					s.style.background = c.value;
+					s.title = c.name;
+					if (pendingBulkColor === c.value) s.classList.add("selected");
+					s.addEventListener("click", () => onPick(c.value));
+					g.appendChild(s);
+				}
+			}
+
+			// ----- bulk mode -----
+			function enterBulkMode() {
+				document.body.classList.add("bulk-mode");
+				document.getElementById("bulk-toolbar").classList.remove("hidden");
+				if (ctxTabId) selected.add(ctxTabId);
+				renderTabs();
+				closeContextMenu();
+			}
+			function exitBulkMode() {
+				document.body.classList.remove("bulk-mode");
+				document.getElementById("bulk-toolbar").classList.add("hidden");
+				selected.clear();
+				renderTabs();
+			}
+			function toggleSelect(id) {
+				if (selected.has(id)) selected.delete(id);
+				else selected.add(id);
+				renderTabs();
+			}
+			function selectAll() {
+				tabs.forEach((t) => selected.add(t.id));
+				renderTabs();
+			}
+			function invertSelection() {
+				tabs.forEach((t) =>
+					selected.has(t.id) ? selected.delete(t.id) : selected.add(t.id),
+				);
+				renderTabs();
+			}
+			function updateSelectionCount() {
+				document.getElementById("selection-count").textContent =
+					selected.size + " 件選択中";
+			}
+
+			// ----- bulk: set color -----
+			function openBulkColor() {
+				if (selected.size === 0) return;
+				pendingBulkColor = null;
+				document.getElementById("bulk-color-count").textContent = selected.size;
+				renderColorGrid("bulk-color-grid", (c) => {
+					pendingBulkColor = c;
+					renderColorGrid("bulk-color-grid", arguments.callee);
+				});
+				document.getElementById("bulk-color-dialog").classList.remove("hidden");
+			}
+			function closeBulkColor() {
+				document.getElementById("bulk-color-dialog").classList.add("hidden");
+			}
+			function setBulkColor(c) {
+				pendingBulkColor = c;
+				applyBulkColor();
+			}
+			function applyBulkColor() {
+				for (const id of selected) {
+					const t = tabs.find((x) => x.id === id);
+					if (t) t.color = pendingBulkColor;
+				}
+				closeBulkColor();
+				renderTabs();
+			}
+
+			// ----- bulk: close -----
+			function openBulkClose() {
+				if (selected.size === 0) return;
+				document.getElementById("bulk-close-count").textContent = selected.size;
+				const list = document.getElementById("bulk-close-list");
+				list.innerHTML = "";
+				for (const id of selected) {
+					const t = tabs.find((x) => x.id === id);
+					if (!t) continue;
+					const row = document.createElement("div");
+					row.className =
+						"flex items-center gap-2 px-2 py-1 rounded bg-[#0e0e10] border border-border";
+					row.innerHTML = `
+            <span class="w-2 h-2 rounded-full" style="background:${t.color || "#6b7280"}"></span>
+            <span>${t.name}</span>
+            ${t.status === "running" ? `<span class="ml-auto text-[11px] text-yellow-400">実行中</span>` : ""}
+          `;
+					list.appendChild(row);
+				}
+				document.getElementById("bulk-close-dialog").classList.remove("hidden");
+			}
+			function closeBulkClose() {
+				document.getElementById("bulk-close-dialog").classList.add("hidden");
+			}
+			function applyBulkClose() {
+				const ids = Array.from(selected);
+				for (const id of ids) removeTab(id);
+				closeBulkClose();
+				exitBulkMode();
+			}
+
+			renderTabs();
+			document.getElementById("active-terminal-name").textContent =
+				"● bun dev";
+		</script>
+	</body>
+</html>
