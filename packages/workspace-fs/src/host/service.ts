@@ -220,6 +220,7 @@ export function createFsHostService(
 				limit: input.limit,
 				openFilePaths: input.openFilePaths,
 				recentFilePaths: input.recentFilePaths,
+				scopeId: input.scopeId,
 				runRipgrep: options.runRipgrep,
 			});
 			return { matches };

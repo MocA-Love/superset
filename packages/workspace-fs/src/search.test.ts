@@ -132,6 +132,42 @@ describe("patchSearchIndexesForRoot", () => {
 		);
 	});
 
+	it("keeps gitignore-style build artifacts out of patch updates", async () => {
+		const rootPath = await createTempRoot();
+		const srcPath = path.join(rootPath, "src", "alpha.ts");
+		const distPath = path.join(rootPath, "dist", "alpha.js");
+
+		await fs.mkdir(path.dirname(srcPath), { recursive: true });
+		await fs.writeFile(srcPath, "export const alpha = 1;\n");
+
+		await searchFiles({
+			rootPath,
+			query: "alpha",
+		});
+
+		// Simulate a watcher event firing after a freshly-built artifact
+		// appears. The file is under `dist/` which ripgrep would drop on a
+		// full rebuild, so the incremental patch path must drop it too.
+		await fs.mkdir(path.dirname(distPath), { recursive: true });
+		await fs.writeFile(distPath, "export var alpha = 1;\n");
+
+		patchSearchIndexesForRoot(rootPath, [
+			createPatchEvent({
+				kind: "create",
+				absolutePath: distPath,
+				isDirectory: false,
+			}),
+		]);
+
+		const results = await searchFiles({
+			rootPath,
+			query: "alpha",
+		});
+		const paths = results.map((result) => result.absolutePath);
+		expect(paths).toContain(srcPath);
+		expect(paths.includes(distPath)).toEqual(false);
+	});
+
 	it("rebuilds search indexes after a directory rename", async () => {
 		const rootPath = await createTempRoot();
 		const oldDirectoryPath = path.join(rootPath, "old-dir");
@@ -292,6 +328,34 @@ describe("searchFiles", () => {
 
 		expect(results[0]?.absolutePath).toEqual(newPath);
 		expect(results[1]?.absolutePath).toEqual(oldPath);
+	});
+
+	it("does not cancel concurrent searches on the same root with different scopeIds", async () => {
+		const rootPath = await createTempRoot();
+		const alphaPath = path.join(rootPath, "alpha.ts");
+		const betaPath = path.join(rootPath, "beta.ts");
+
+		await fs.writeFile(alphaPath, "export const alpha = 1;\n");
+		await fs.writeFile(betaPath, "export const beta = 1;\n");
+
+		// Simulate Cmd+P and the Files tab both querying the same workspace
+		// at the same time. Prior to scopeId support, the second call would
+		// abort the first and the first search would return [].
+		const [quickOpen, filesTab] = await Promise.all([
+			searchFiles({
+				rootPath,
+				query: "alpha",
+				scopeId: "quick-open",
+			}),
+			searchFiles({
+				rootPath,
+				query: "beta",
+				scopeId: "files-tab",
+			}),
+		]);
+
+		expect(quickOpen[0]?.absolutePath).toEqual(alphaPath);
+		expect(filesTab[0]?.absolutePath).toEqual(betaPath);
 	});
 
 	it("invokes ripgrep without the invalid --follow=false flag", async () => {

@@ -1,5 +1,5 @@
 import type { UseNavigateResult } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "renderer/hooks/useDebouncedValue";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
@@ -76,20 +76,19 @@ export function useCommandPalette({
 		},
 	);
 
-	// Kick off a background index build the first time Cmd+P is opened for a
-	// given workspace. The underlying cache has a TTL, so a subsequent open
-	// that lands inside the window gets instant results instead of waiting on
-	// ripgrep's initial traversal.
+	// Kick off a background index build whenever Cmd+P is opened. The backend
+	// deduplicates concurrent builds via its in-flight Promise cache and the
+	// TTL (30s), so firing this on every open is cheap and keeps results
+	// instant even after the cache expires between uses.
 	const warmupMutation =
 		electronTrpc.filesystem.warmupSearchIndex.useMutation();
-	const warmedWorkspaceRef = useRef<string | null>(null);
+	const warmupMutate = warmupMutation.mutate;
 	useEffect(() => {
-		if (!open || !workspaceId || warmedWorkspaceRef.current === workspaceId) {
+		if (!open || !workspaceId) {
 			return;
 		}
-		warmedWorkspaceRef.current = workspaceId;
-		warmupMutation.mutate({ workspaceId });
-	}, [open, workspaceId, warmupMutation.mutate]);
+		warmupMutate({ workspaceId });
+	}, [open, workspaceId, warmupMutate]);
 
 	// Build roots array for multi-workspace search
 	const roots = useMemo(() => {
@@ -165,6 +164,7 @@ export function useCommandPalette({
 		limit: SEARCH_LIMIT,
 		openFilePaths: openFilePathsList,
 		recentFilePaths: recentFilePathsList,
+		scopeId: "quick-open",
 	});
 
 	// Multi-workspace search. Note that MRU/open boosts aren't forwarded here
@@ -180,6 +180,7 @@ export function useCommandPalette({
 						includePattern,
 						excludePattern,
 						limit: SEARCH_LIMIT,
+						scopeId: "quick-open-global",
 					}),
 				)
 			: [],

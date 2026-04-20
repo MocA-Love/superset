@@ -59,6 +59,7 @@ export interface FsService {
 		limit?: number;
 		openFilePaths?: string[];
 		recentFilePaths?: string[];
+		scopeId?: string;
 	}): Promise<{ matches: FsSearchMatch[] }>;
 
 	warmupSearchIndex(input: { includeHidden?: boolean }): Promise<{ ok: true }>;
@@ -149,6 +150,7 @@ export interface FsRequestMap {
 			limit?: number;
 			openFilePaths?: string[];
 			recentFilePaths?: string[];
+			scopeId?: string;
 		};
 		output: { matches: FsSearchMatch[] };
 	};

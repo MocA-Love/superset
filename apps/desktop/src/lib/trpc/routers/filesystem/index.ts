@@ -330,6 +330,7 @@ export const createFilesystemRouter = () => {
 					limit: z.number().optional(),
 					openFilePaths: z.array(z.string()).optional(),
 					recentFilePaths: z.array(z.string()).optional(),
+					scopeId: z.string().optional(),
 				}),
 			)
 			.query(async ({ input }) => {
@@ -348,6 +349,7 @@ export const createFilesystemRouter = () => {
 						limit: input.limit,
 						openFilePaths: input.openFilePaths,
 						recentFilePaths: input.recentFilePaths,
+						scopeId: input.scopeId,
 					});
 				});
 			}),

@@ -262,6 +262,7 @@ export const filesystemRouter = router({
 				limit: z.number().optional(),
 				openFilePaths: z.array(z.string()).optional(),
 				recentFilePaths: z.array(z.string()).optional(),
+				scopeId: z.string().optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {

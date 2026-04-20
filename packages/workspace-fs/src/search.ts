@@ -62,6 +62,34 @@ const FALLBACK_IGNORE_PATTERNS = [
 	"**/coverage/**",
 ];
 
+// Returns `null` as soon as `signal` fires, without waiting on `promise`.
+// Shared async work (e.g. the memoized index build) keeps running for other
+// awaiters; only the cancelled caller short-circuits.
+async function raceWithAbort<T>(
+	promise: Promise<T>,
+	signal: AbortSignal,
+): Promise<T | null> {
+	if (signal.aborted) {
+		return null;
+	}
+	return await new Promise<T | null>((resolve, reject) => {
+		const onAbort = () => {
+			resolve(null);
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(
+			(value) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(signal.aborted ? null : value);
+			},
+			(error) => {
+				signal.removeEventListener("abort", onAbort);
+				reject(error);
+			},
+		);
+	});
+}
+
 // Yields the macro-task queue so pending IPC / keystroke-driven searchFiles
 // calls can actually run and abort us via `activeFileSearchControllers`.
 // `queueMicrotask` / `await Promise.resolve()` would NOT suffice here because
@@ -137,6 +165,12 @@ export interface SearchFilesOptions {
 	 * plus a tiebreaker by list position, like VSCode's MRU weighting.
 	 */
 	recentFilePaths?: string[];
+	/**
+	 * Logical identifier for the caller (e.g. "quick-open", "files-tab"). Each
+	 * scope owns its own AbortController, so concurrent queries from different
+	 * UI surfaces on the same workspace don't cancel each other's searches.
+	 */
+	scopeId?: string;
 	/**
 	 * Optional ripgrep runner override. When omitted, the platform `rg` binary
 	 * is invoked. A fast-glob fallback kicks in if ripgrep is unavailable.
@@ -426,7 +460,12 @@ function replaceTextContent(
 	return text.replace(regex, replacement);
 }
 
-const defaultIgnoreMatchers = DEFAULT_IGNORE_PATTERNS.map(globToRegExp);
+// Patch updates run on every watcher event and cannot afford to parse each
+// workspace's .gitignore. We reuse the fast-glob fallback list here so newly
+// created build artifacts in gitignored directories (dist/, .next/, etc.)
+// don't leak into the visible index between full rebuilds. ripgrep's
+// .gitignore awareness still wins on full rebuilds since it is stricter.
+const patchIgnoreMatchers = FALLBACK_IGNORE_PATTERNS.map(globToRegExp);
 
 function createPathFilterMatcher({
 	includePattern,
@@ -556,6 +595,11 @@ async function buildSearchIndex({
 	const normalizedRootPath = normalizeAbsolutePath(rootPath);
 	const runner = runRipgrep ?? defaultRunRipgrep;
 
+	// Intentionally NOT forwarding a per-caller signal here: this build is
+	// memoized via `searchIndexBuilds` and other concurrent callers depend on
+	// the same Promise. Killing the shared rg subprocess because one caller
+	// cancelled would fail unrelated queries. Instead, individual callers
+	// race `getSearchIndex` against their own signal in `searchFiles`.
 	let entries = await listFilesWithRipgrep({
 		rootPath: normalizedRootPath,
 		includeHidden,
@@ -964,7 +1008,7 @@ function shouldIndexRelativePath(
 		return false;
 	}
 
-	return !defaultIgnoreMatchers.some((matcher) => matcher.test(normalizedPath));
+	return !patchIgnoreMatchers.some((matcher) => matcher.test(normalizedPath));
 }
 
 function applySearchPatchEvent({
@@ -1146,6 +1190,7 @@ export async function searchFiles({
 	limit = 20,
 	openFilePaths,
 	recentFilePaths,
+	scopeId,
 	runRipgrep,
 	signal,
 }: SearchFilesOptions): Promise<FsSearchMatch[]> {
@@ -1154,15 +1199,16 @@ export async function searchFiles({
 		return [];
 	}
 
-	// Replace any in-flight scoring loop for the same workspace so renderer
-	// keystrokes don't pile up on a large index. We don't reuse the
-	// caller-supplied signal directly because multiple concurrent queries on
-	// the same root should still interrupt each other.
+	// Each UI surface (Cmd+P, Files tab, etc.) gets its own cancellation
+	// channel so their searches don't clobber each other when they land on
+	// the same workspace. When no scopeId is provided we fall back to the
+	// rootPath, preserving prior behavior for callers that don't scope.
 	const normalizedRootPath = normalizeAbsolutePath(rootPath);
-	const prevController = activeFileSearchControllers.get(normalizedRootPath);
+	const controllerKey = `${normalizedRootPath}::${scopeId ?? ""}`;
+	const prevController = activeFileSearchControllers.get(controllerKey);
 	prevController?.abort();
 	const controller = new AbortController();
-	activeFileSearchControllers.set(normalizedRootPath, controller);
+	activeFileSearchControllers.set(controllerKey, controller);
 	const onExternalAbort = () => controller.abort();
 	if (signal) {
 		if (signal.aborted) {
@@ -1174,18 +1220,26 @@ export async function searchFiles({
 
 	const cleanup = () => {
 		signal?.removeEventListener("abort", onExternalAbort);
-		if (activeFileSearchControllers.get(normalizedRootPath) === controller) {
-			activeFileSearchControllers.delete(normalizedRootPath);
+		if (activeFileSearchControllers.get(controllerKey) === controller) {
+			activeFileSearchControllers.delete(controllerKey);
 		}
 	};
 
 	try {
-		const index = await getSearchIndex({
-			rootPath: normalizedRootPath,
-			includeHidden,
-			runRipgrep,
-		});
-		if (controller.signal.aborted) {
+		// Race the shared index build against our controller so a follow-up
+		// keystroke that aborts us returns immediately instead of waiting on
+		// a long cold-start ripgrep walk. The underlying build keeps running
+		// for any other caller that's also awaiting it -- only our own await
+		// short-circuits.
+		const index = await raceWithAbort(
+			getSearchIndex({
+				rootPath: normalizedRootPath,
+				includeHidden,
+				runRipgrep,
+			}),
+			controller.signal,
+		);
+		if (!index || controller.signal.aborted) {
 			return [];
 		}
 
