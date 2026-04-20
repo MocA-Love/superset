@@ -22,12 +22,13 @@ interface CdpEndpointResponse {
 }
 
 /**
- * This MCP is intentionally kept minimal. The plan (see ./plan.md in
- * the repo root) is to expose the bound pane as a filtered CDP endpoint
- * so users can drive it with mature external browser MCPs
- * (chrome-devtools-mcp, browser-use, playwright-mcp). The tools here
- * are only the metadata shim LLMs need to verify the binding; the CDP
- * endpoint itself ships in follow-up PRs.
+ * This MCP is intentionally kept minimal. Browser automation primitives
+ * (click / navigate / screenshot / DOM inspection) are delegated to
+ * mature external CDP-speaking MCPs — chrome-devtools-mcp, browser-use,
+ * playwright-mcp, etc. — connected to the bound pane via the filtered
+ * CDP endpoint that `get_cdp_endpoint` returns. The two tools here are
+ * the handoff: `get_cdp_endpoint` for the URL, `get_connected_pane` as
+ * a metadata sanity check.
  */
 export function registerTools(server: McpServer, client: BridgeClient): void {
 	server.registerTool(
