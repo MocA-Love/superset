@@ -16,6 +16,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type AutomationSession,
 	getSnippetForSession,
+	type ServerCommand,
 	useBrowserAutomationStore,
 } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -143,10 +144,14 @@ export function SessionConnectModal({
 		}
 	};
 
+	const serverCommand = mcpStatus?.serverCommand;
+
 	const handleCopySnippet = async () => {
 		if (!session) return;
 		try {
-			await navigator.clipboard.writeText(getSnippetForSession(session));
+			await navigator.clipboard.writeText(
+				getSnippetForSession(session, serverCommand),
+			);
 			toast.success("Configuration snippet copied");
 		} catch {
 			toast.error("Failed to copy snippet");
@@ -244,6 +249,7 @@ export function SessionConnectModal({
 											? (mcpStatus?.codexConfigPath ?? null)
 											: (mcpStatus?.claudeConfigPath ?? null)
 									}
+									serverCommand={serverCommand}
 									onCopy={handleCopySnippet}
 								/>
 							)
@@ -448,13 +454,15 @@ function DetailItem({
 function SetupPanel({
 	session,
 	mcpConfigPath,
+	serverCommand,
 	onCopy,
 }: {
 	session: AutomationSession;
 	mcpConfigPath: string | null;
+	serverCommand?: ServerCommand;
 	onCopy: () => void;
 }) {
-	const snippet = getSnippetForSession(session);
+	const snippet = getSnippetForSession(session, serverCommand);
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="rounded-xl border p-3 bg-card/60">
