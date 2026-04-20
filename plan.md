@@ -43,6 +43,9 @@
 
 ## Phase B PR ロードマップ
 
+> **Status (2026-04-21):** PR1 / PR2 / PR3 マージ済。PR4 (本 PR) で
+> プラン上の last-mile クリーンアップを行い、Phase B 完了。
+
 ### PR1: CDP エンドポイント公開（pane → Chromium targetId 解決）
 
 - Superset 起動時に `--remote-debugging-port=0` (ランダム port) を有効化
@@ -98,7 +101,7 @@
 - Connect 後の pane 情報画面 (ReadyPanel) にも「この pane の CDP endpoint」
   リンクを常設し、別の LLM クライアントから直接叩けるように
 
-### PR4: 古い自作 tools の整理
+### PR4: 古い自作 tools の整理 (本 PR)
 
 - PR1〜3 で代替が整い次第、以下の MCP tools を deprecated にするか削除:
   - `navigate` / `screenshot` / `evaluate_js` / `get_console_logs`
