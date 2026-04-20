@@ -249,18 +249,33 @@ export const createBrowserAutomationRouter = () => {
 					sessionKind: string;
 					live: boolean;
 				}>;
-			const liveTodoIds = new Set(
-				getTodoSessionStore()
-					.listAll()
-					.filter((s) =>
-						["running", "preparing", "verifying", "waiting"].includes(s.status),
+			const hasTerminalBinding = bindings.some(
+				(b) => b.sessionKind === "terminal",
+			);
+			const hasTodoBinding = bindings.some((b) => b.sessionKind !== "terminal");
+			const liveTodoIds = hasTodoBinding
+				? new Set(
+						getTodoSessionStore()
+							.listAll()
+							.filter((s) =>
+								["running", "preparing", "verifying", "waiting"].includes(
+									s.status,
+								),
+							)
+							.map((s) => s.id),
 					)
-					.map((s) => s.id),
-			);
-			const terminalAgents = await detectTerminalAgentSessions();
-			const liveTerminalIds = new Set(
-				terminalAgents.map((t) => `terminal:${t.paneId}`),
-			);
+				: new Set<string>();
+			// Only probe the terminal daemon when at least one binding actually
+			// points at a terminal — otherwise every Connect button's 15s poll
+			// would wake the terminal-host and walk every PTY's process tree
+			// just to confirm TODO-Agent liveness we already have in memory.
+			const liveTerminalIds = hasTerminalBinding
+				? new Set(
+						(await detectTerminalAgentSessions()).map(
+							(t) => `terminal:${t.paneId}`,
+						),
+					)
+				: new Set<string>();
 			return bindings.map((b) => {
 				const live =
 					b.sessionKind === "terminal"
