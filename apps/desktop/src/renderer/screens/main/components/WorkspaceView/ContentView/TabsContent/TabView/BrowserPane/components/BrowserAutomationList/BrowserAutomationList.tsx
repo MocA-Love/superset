@@ -41,9 +41,15 @@ export function BrowserAutomationList({
 		);
 	}, [panes, tabs, workspaceId]);
 
-	const connectedCount = browserPanes.filter(
-		(p) => bindingsByPane[p.id],
-	).length;
+	// A binding only counts as "connected" if the bound session is still in
+	// the live session list. Stale bindings render as `Unassigned` in the
+	// row below, so summing raw bindings would show a misleading higher
+	// count.
+	const liveSessionIds = new Set(sessions.map((s) => s.id));
+	const connectedCount = browserPanes.filter((p) => {
+		const sid = bindingsByPane[p.id];
+		return sid && liveSessionIds.has(sid);
+	}).length;
 	const needsSetupCount = sessions.filter(
 		(s) => s.mcpStatus === "missing",
 	).length;

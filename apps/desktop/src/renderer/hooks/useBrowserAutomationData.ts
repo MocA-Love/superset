@@ -92,7 +92,7 @@ export function useBrowserAutomationData({
 					id: s.id,
 					displayName,
 					provider,
-					kind: "Terminal",
+					kind: "TODO-Agent",
 					branchOrContextLabel: branchOrContext,
 					lastActiveAt: formatRelativeTime(s.updatedAt ?? s.createdAt),
 					mcpStatus: mcp,
