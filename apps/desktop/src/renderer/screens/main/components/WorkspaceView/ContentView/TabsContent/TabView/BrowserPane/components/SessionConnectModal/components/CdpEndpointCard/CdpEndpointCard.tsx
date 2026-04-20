@@ -59,10 +59,11 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 
 	const chromeDevtoolsCmd = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
 	// browser-use ships its own MCP mode via `uvx --from "browser-use[cli]"`.
-	// CDP endpoint is passed via BROWSER_USE_CDP_URL; set once per install —
-	// port + token are stable across Superset restarts (see server.ts /
-	// cdp-filter-proxy.ts).
-	const browserUseCmd = `claude mcp add browser-use -s user -e BROWSER_USE_CDP_URL=${data.wsEndpoint} -- uvx --from "browser-use[cli]" browser-use --mcp`;
+	// CDP endpoint is passed via the same `--cdp-url` flag that the CLI
+	// accepts. Port + token are stable across Superset restarts (see
+	// server.ts / cdp-filter-proxy.ts), so this registration only has to
+	// be done once per install.
+	const browserUseCmd = `claude mcp add browser-use -s user -- uvx --from "browser-use[cli]" browser-use --mcp --cdp-url ${data.wsEndpoint}`;
 
 	return (
 		<div className="rounded-xl border p-3 bg-card/60 flex flex-col gap-3">

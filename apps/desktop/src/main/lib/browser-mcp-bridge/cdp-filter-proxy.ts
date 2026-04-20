@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
@@ -90,6 +90,15 @@ function persist(): void {
 		writeFileSync(TOKEN_STORE_PATH, JSON.stringify(payload, null, 2), {
 			mode: 0o600,
 		});
+		// writeFileSync's `mode` only applies to new files. If the file
+		// already existed with broader permissions (backup/restore, etc.)
+		// we still need to tighten it so long-lived /cdp/<token>
+		// credentials never leak to other local users.
+		try {
+			chmodSync(TOKEN_STORE_PATH, 0o600);
+		} catch {
+			/* best-effort */
+		}
 	} catch (error) {
 		console.warn("[cdp-filter-proxy] failed to persist tokens:", error);
 	}
