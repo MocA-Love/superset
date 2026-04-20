@@ -79,7 +79,11 @@ export async function resolvePpidToSession(
 	}
 	const todo = resolveFromTodoAgent(ppid);
 	const resolved = todo ?? (await resolveFromTerminalPanes(ppid));
-	cache.set(ppid, { resolved, at: Date.now() });
+	// Only cache hits. A null result can be caused by a transient
+	// listSessions failure or a brief race before the todo-agent worker
+	// has registered its PID; caching that would lock the MCP out for
+	// the TTL and surface "No browser pane bound" until it expired.
+	if (resolved) cache.set(ppid, { resolved, at: Date.now() });
 	return resolved;
 }
 
