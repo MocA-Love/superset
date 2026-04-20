@@ -66,17 +66,16 @@ export const useBrowserAutomationStore = create<BrowserAutomationUiState>(
 
 export function getSnippetForSession(session: AutomationSession): string {
 	if (session.provider === "Codex") {
+		// TOML is section-based, so appending this block to an existing
+		// config.toml is safe. The bin comes from packages/desktop-mcp.
 		return `[mcp_servers.superset-browser]
-command = "superset-browser-mcp"
+command = "desktop-mcp"
 args = []`;
 	}
-	return `{
-  "mcpServers": {
-    "superset-browser": {
-      "command": "superset-browser-mcp"
-    }
-  }
-}`;
+	// For Claude Code we recommend `claude mcp add` so the user's
+	// ~/.claude.json is updated in-place instead of manually merging a
+	// standalone JSON document (which would produce invalid JSON).
+	return `claude mcp add superset-browser -s local -- desktop-mcp`;
 }
 
 function formatRelativeTime(ts: number | null | undefined): string {

@@ -467,22 +467,40 @@ function SetupPanel({
 					server to {session.provider}, then reload this session.
 				</div>
 				<ol className="mt-2 pl-4 list-decimal text-[12px] leading-relaxed text-muted-foreground">
-					<li>
-						Open{" "}
-						{mcpConfigPath ? (
-							<code className="rounded bg-muted px-1">{mcpConfigPath}</code>
-						) : (
-							"your agent config file"
-						)}
-						.
-					</li>
-					<li>
-						Append the <code>superset-browser</code> MCP server block below.
-					</li>
-					<li>
-						Restart {session.displayName} (or run the agent again) so the new
-						entry is picked up.
-					</li>
+					{session.provider === "Claude" ? (
+						<>
+							<li>
+								Run the command below in a terminal that has the{" "}
+								<code>claude</code> CLI installed. It will register{" "}
+								<code>superset-browser</code> in{" "}
+								<code className="rounded bg-muted px-1">~/.claude.json</code>{" "}
+								without hand-editing JSON.
+							</li>
+							<li>
+								Restart {session.displayName} (or run <code>/mcp</code> in the
+								session) so the new entry is picked up.
+							</li>
+						</>
+					) : (
+						<>
+							<li>
+								Open{" "}
+								{mcpConfigPath ? (
+									<code className="rounded bg-muted px-1">{mcpConfigPath}</code>
+								) : (
+									"your Codex config file"
+								)}
+								.
+							</li>
+							<li>
+								Append the <code>[mcp_servers.superset-browser]</code> section
+								below. TOML section-append is safe against existing content.
+							</li>
+							<li>
+								Restart {session.displayName} so the new entry is picked up.
+							</li>
+						</>
+					)}
 				</ol>
 				<pre className="mt-2 rounded-md border bg-black/40 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
 					{snippet}
