@@ -20,6 +20,7 @@ import {
 	useBrowserAutomationStore,
 } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { CdpEndpointCard } from "./components/CdpEndpointCard";
 import { McpInstallPanel } from "./components/McpInstallPanel";
 
 interface SessionConnectModalProps {
@@ -242,6 +243,7 @@ export function SessionConnectModal({
 											? (panes[assignedPaneIdForSelected]?.name ?? null)
 											: null
 									}
+									attachedToThisPane={session.id === currentBinding}
 								/>
 							) : (
 								<SetupPanel
@@ -414,21 +416,26 @@ function ReadyPanel({
 	paneName,
 	reassigning,
 	previousPaneName,
+	attachedToThisPane,
 }: {
 	session: AutomationSession;
 	paneName: string;
 	reassigning: boolean;
 	previousPaneName: string | null;
+	attachedToThisPane: boolean;
 }) {
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="rounded-xl border p-3 bg-card/60">
 				<div className="text-xs font-semibold">
-					Selected session is ready to connect
+					{attachedToThisPane
+						? "Session is attached to this pane"
+						: "Selected session is ready to connect"}
 				</div>
 				<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-					This session already has the browser automation MCP entry, so the
-					connect action will immediately bind the pane to this owner.
+					{attachedToThisPane
+						? "Drive the pane from this session by pointing an external browser MCP at the CDP endpoint below."
+						: "This session already has the browser automation MCP entry, so the connect action will immediately bind the pane to this owner."}
 				</div>
 				<div className="mt-3 grid grid-cols-2 gap-2">
 					<DetailItem label="Owner">
@@ -443,6 +450,7 @@ function ReadyPanel({
 					</DetailItem>
 				</div>
 			</div>
+			{attachedToThisPane && <CdpEndpointCard sessionId={session.id} />}
 		</div>
 	);
 }
