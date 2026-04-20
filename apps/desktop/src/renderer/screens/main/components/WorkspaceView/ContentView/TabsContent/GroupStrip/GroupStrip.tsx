@@ -18,6 +18,7 @@ import { usePresets } from "renderer/react-query/presets";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { requestTabClose } from "renderer/stores/editor-state/editorCoordinator";
+import { useTabBulkSelectionStore } from "renderer/stores/tab-bulk-selection-store";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useTabsWithPresets } from "renderer/stores/tabs/useTabsWithPresets";
 import {
@@ -51,6 +52,14 @@ export function GroupStrip() {
 	const movePaneToNewTab = useTabsStore((s) => s.movePaneToNewTab);
 	const reorderTabs = useTabsStore((s) => s.reorderTabs);
 	const setPaneStatus = useTabsStore((s) => s.setPaneStatus);
+	const enterBulkMode = useTabBulkSelectionStore((s) => s.enterBulkMode);
+	const exitBulkMode = useTabBulkSelectionStore((s) => s.exitBulkMode);
+	const removeFromBulkSelection = useTabBulkSelectionStore(
+		(s) => s.removeFromSelection,
+	);
+	const bulkSelectionWorkspaceId = useTabBulkSelectionStore(
+		(s) => s.workspaceId,
+	);
 
 	const setTabAutoTitle = useTabsStore((s) => s.setTabAutoTitle);
 	const setPaneAutoTitle = useTabsStore((s) => s.setPaneAutoTitle);
@@ -275,8 +284,17 @@ export function GroupStrip() {
 	};
 
 	const handleCloseGroup = (tabId: string) => {
+		removeFromBulkSelection(tabId);
 		requestTabClose(tabId);
 	};
+
+	const handleEnterBulkMode = useCallback(
+		(tabId: string) => {
+			if (!activeWorkspaceId) return;
+			enterBulkMode(activeWorkspaceId, tabId);
+		},
+		[activeWorkspaceId, enterBulkMode],
+	);
 
 	const handleRenameGroup = (tabId: string, newName: string) => {
 		renameTab(tabId, newName);
@@ -335,6 +353,21 @@ export function GroupStrip() {
 		requestAnimationFrame(updateOverflow);
 	}, [updateOverflow]);
 
+	useEffect(() => {
+		if (
+			bulkSelectionWorkspaceId &&
+			bulkSelectionWorkspaceId !== activeWorkspaceId
+		) {
+			exitBulkMode();
+		}
+	}, [activeWorkspaceId, bulkSelectionWorkspaceId, exitBulkMode]);
+
+	useEffect(() => {
+		if (bulkSelectionWorkspaceId === activeWorkspaceId && tabs.length === 0) {
+			exitBulkMode();
+		}
+	}, [activeWorkspaceId, bulkSelectionWorkspaceId, exitBulkMode, tabs.length]);
+
 	const useCompactAddButton =
 		useCompactTerminalAddButton ?? DEFAULT_USE_COMPACT_TERMINAL_ADD_BUTTON;
 
@@ -389,6 +422,7 @@ export function GroupStrip() {
 											onMarkAsUnread={() => handleMarkTabAsUnread(tab.id)}
 											onPaneDrop={(paneId) => movePaneToTab(paneId, tab.id)}
 											onReorder={handleReorderTabs}
+											onEnterBulkMode={() => handleEnterBulkMode(tab.id)}
 										/>
 									</div>
 								);
