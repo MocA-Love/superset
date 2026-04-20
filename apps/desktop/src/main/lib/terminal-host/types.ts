@@ -190,6 +190,8 @@ export interface CancelCreateOrAttachRequest {
 export interface WriteRequest {
 	sessionId: string;
 	data: string;
+	/** True when the write originates from direct user keyboard input. */
+	interactive?: boolean;
 }
 
 /**
