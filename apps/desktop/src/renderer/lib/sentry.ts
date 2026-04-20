@@ -46,9 +46,7 @@ export async function initSentry(): Promise<void> {
 			beforeSend(event) {
 				const firstException = event.exception?.values?.[0];
 				const message = firstException?.value ?? "";
-				if (
-					NOISY_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
-				) {
+				if (NOISY_ERROR_PATTERNS.some((pattern) => message.includes(pattern))) {
 					return null;
 				}
 				// xterm.js v6 internal race: rAF fires after terminal dispose when
@@ -64,9 +62,7 @@ export async function initSentry(): Promise<void> {
 					)
 				) {
 					const frames = firstException?.stacktrace?.frames ?? [];
-					const fromXterm = frames.some((f) =>
-						f.filename?.includes("xterm"),
-					);
+					const fromXterm = frames.some((f) => f.filename?.includes("xterm"));
 					if (fromXterm) {
 						return null;
 					}

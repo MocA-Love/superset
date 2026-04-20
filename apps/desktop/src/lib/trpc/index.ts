@@ -73,7 +73,9 @@ const sentryMiddleware = t.middleware(async ({ next, path, type }) => {
 				"! [rejected]",
 				"failed to push some refs",
 			];
-			if (USER_ENV_NOISE_PATTERNS.some((pattern) => message.includes(pattern))) {
+			if (
+				USER_ENV_NOISE_PATTERNS.some((pattern) => message.includes(pattern))
+			) {
 				return result;
 			}
 
