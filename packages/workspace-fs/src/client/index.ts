@@ -51,6 +51,9 @@ export function createFsClient(transport: FsClientTransport): FsService {
 		async searchFiles(input) {
 			return await transport.request("searchFiles", input);
 		},
+		async warmupSearchIndex(input) {
+			return await transport.request("warmupSearchIndex", input);
+		},
 		async searchContent(input) {
 			return await transport.request("searchContent", input);
 		},

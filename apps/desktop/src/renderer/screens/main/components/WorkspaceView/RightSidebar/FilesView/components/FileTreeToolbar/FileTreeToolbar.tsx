@@ -1,7 +1,7 @@
 import { Button } from "@superset/ui/button";
 import { Input } from "@superset/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import {
 	LuChevronsDownUp,
 	LuFilePlus,
@@ -11,7 +11,6 @@ import {
 	LuX,
 } from "react-icons/lu";
 import { useFileExplorerStore } from "renderer/stores/file-explorer";
-import { SEARCH_DEBOUNCE_MS } from "../../constants";
 
 interface FileTreeToolbarProps {
 	searchTerm: string;
@@ -33,48 +32,18 @@ export function FileTreeToolbar({
 	isRefreshing = false,
 }: FileTreeToolbarProps) {
 	const { showFileTooltips, toggleFileTooltips } = useFileExplorerStore();
-	const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
-	const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	useEffect(() => {
-		if (debounceTimeoutRef.current) {
-			clearTimeout(debounceTimeoutRef.current);
-			debounceTimeoutRef.current = null;
-		}
-		setLocalSearchTerm(searchTerm);
-	}, [searchTerm]);
-
-	useEffect(() => {
-		return () => {
-			if (debounceTimeoutRef.current) {
-				clearTimeout(debounceTimeoutRef.current);
-			}
-		};
-	}, []);
-
+	// Debounce lives entirely in `useFileSearch` so the input stays responsive
+	// and we avoid the two-layer debounce chain that previously delayed renders
+	// unpredictably depending on stale closures.
 	const handleSearchChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
-			const value = e.target.value;
-			setLocalSearchTerm(value);
-
-			if (debounceTimeoutRef.current) {
-				clearTimeout(debounceTimeoutRef.current);
-			}
-
-			debounceTimeoutRef.current = setTimeout(() => {
-				onSearchChange(value);
-				debounceTimeoutRef.current = null;
-			}, SEARCH_DEBOUNCE_MS);
+			onSearchChange(e.target.value);
 		},
 		[onSearchChange],
 	);
 
 	const handleClearSearch = useCallback(() => {
-		setLocalSearchTerm("");
-		if (debounceTimeoutRef.current) {
-			clearTimeout(debounceTimeoutRef.current);
-			debounceTimeoutRef.current = null;
-		}
 		onSearchChange("");
 	}, [onSearchChange]);
 
@@ -84,11 +53,11 @@ export function FileTreeToolbar({
 				<Input
 					type="text"
 					placeholder="Search files..."
-					value={localSearchTerm}
+					value={searchTerm}
 					onChange={handleSearchChange}
 					className="h-7 text-xs pr-7"
 				/>
-				{localSearchTerm && (
+				{searchTerm && (
 					<button
 						type="button"
 						onClick={handleClearSearch}

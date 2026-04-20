@@ -57,7 +57,11 @@ export interface FsService {
 		includePattern?: string;
 		excludePattern?: string;
 		limit?: number;
+		openFilePaths?: string[];
+		recentFilePaths?: string[];
 	}): Promise<{ matches: FsSearchMatch[] }>;
+
+	warmupSearchIndex(input: { includeHidden?: boolean }): Promise<{ ok: true }>;
 
 	searchContent(input: {
 		query: string;
@@ -143,8 +147,16 @@ export interface FsRequestMap {
 			includePattern?: string;
 			excludePattern?: string;
 			limit?: number;
+			openFilePaths?: string[];
+			recentFilePaths?: string[];
 		};
 		output: { matches: FsSearchMatch[] };
+	};
+	warmupSearchIndex: {
+		input: {
+			includeHidden?: boolean;
+		};
+		output: { ok: true };
 	};
 	searchContent: {
 		input: {

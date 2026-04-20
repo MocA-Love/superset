@@ -7,6 +7,7 @@ import {
 	invalidateAllSearchIndexes,
 	patchSearchIndexesForRoot,
 	searchFiles,
+	warmupSearchIndex,
 } from "./search";
 
 const tempRoots: string[] = [];
@@ -240,5 +241,75 @@ describe("searchFiles", () => {
 			flatPath,
 			nestedPath,
 		]);
+	});
+
+	it("boosts open files above otherwise-equivalent fuzzy matches", async () => {
+		const rootPath = await createTempRoot();
+		const firstPath = path.join(rootPath, "src", "alpha.ts");
+		const secondPath = path.join(rootPath, "src", "beta.ts");
+
+		await fs.mkdir(path.dirname(firstPath), { recursive: true });
+		await fs.writeFile(firstPath, "export const alpha = 1;\n");
+		await fs.writeFile(secondPath, "export const beta = 1;\n");
+
+		const baselineBeta = await searchFiles({
+			rootPath,
+			query: "ts",
+			limit: 5,
+		});
+		invalidateAllSearchIndexes();
+
+		// "ts" matches both files with an identical fuzzy score, so ordering is
+		// dictated entirely by the MRU/open tiebreakers.
+		const withOpen = await searchFiles({
+			rootPath,
+			query: "ts",
+			limit: 5,
+			openFilePaths: [secondPath],
+		});
+
+		expect(withOpen[0]?.absolutePath).toEqual(secondPath);
+		expect(withOpen[0]?.score ?? 0).toBeGreaterThan(
+			baselineBeta[0]?.score ?? 0,
+		);
+	});
+
+	it("prefers recently viewed files on equal fuzzy score", async () => {
+		const rootPath = await createTempRoot();
+		const oldPath = path.join(rootPath, "old.ts");
+		const newPath = path.join(rootPath, "new.ts");
+
+		await fs.writeFile(oldPath, "export const value = 1;\n");
+		await fs.writeFile(newPath, "export const value = 2;\n");
+
+		const results = await searchFiles({
+			rootPath,
+			query: "ts",
+			limit: 5,
+			// Most-recent-first ordering: newPath is freshest, oldPath is stale.
+			recentFilePaths: [newPath, oldPath],
+		});
+
+		expect(results[0]?.absolutePath).toEqual(newPath);
+		expect(results[1]?.absolutePath).toEqual(oldPath);
+	});
+
+	it("warmupSearchIndex populates the cache without returning matches", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "alpha.ts"),
+			"export const a = 1;\n",
+		);
+
+		await warmupSearchIndex({ rootPath });
+
+		// If warmup landed in the cache, the subsequent searchFiles call never
+		// needs to rebuild; this just asserts results are still correct.
+		const results = await searchFiles({
+			rootPath,
+			query: "alpha",
+			limit: 5,
+		});
+		expect(results[0]?.relativePath).toEqual("alpha.ts");
 	});
 });

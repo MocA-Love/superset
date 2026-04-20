@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import fg from "fast-glob";
-import Fuse from "fuse.js";
 import { readFile as readFsFile, writeFile as writeFsFile } from "./fs";
 import {
 	compareItemsByFuzzyScore,
@@ -33,12 +32,29 @@ const MAX_PREVIEW_LENGTH = 160;
 const KEYWORD_SEARCH_CANDIDATE_MULTIPLIER = 4;
 const KEYWORD_SEARCH_MAX_COUNT_PER_FILE = 3;
 const KEYWORD_SEARCH_RIPGREP_BUFFER_BYTES = 10 * 1024 * 1024;
+const FILE_LISTING_RIPGREP_BUFFER_BYTES = 64 * 1024 * 1024;
 
+// Matches VSCode's Quick Open "boost by recency" behavior. Fuzzy scores are
+// already in the thousands for label-prefix hits, so boost values here are
+// calibrated to nudge ordering without dominating unrelated fuzzy winners.
+const MRU_SCORE_BOOST = 1_000;
+const OPEN_FILE_SCORE_BOOST = 2_000;
+
+// How often to yield to the event loop during the scoring hot loop. Lets
+// cancellation propagate and keeps the renderer responsive on huge indexes.
+const SCORE_YIELD_INTERVAL = 2_048;
+
+const activeFileSearchControllers = new Map<string, AbortController>();
 const activeSearchControllers = new Map<string, AbortController>();
 
-export const DEFAULT_IGNORE_PATTERNS = [
-	"**/node_modules/**",
-	"**/.git/**",
+// These are the only truly universal ignores. `.gitignore` / `.rgignore`
+// semantics are delegated to ripgrep when available (see `listFilesRipgrep`).
+// The fast-glob fallback keeps a wider hardcoded list because it lacks
+// gitignore support and would otherwise drown the index in build artifacts.
+export const DEFAULT_IGNORE_PATTERNS = ["**/node_modules/**", "**/.git/**"];
+
+const FALLBACK_IGNORE_PATTERNS = [
+	...DEFAULT_IGNORE_PATTERNS,
 	"**/dist/**",
 	"**/build/**",
 	"**/.next/**",
@@ -52,19 +68,10 @@ interface SearchIndexEntry {
 	name: string;
 	/** Parent directory path (pre-computed for fuzzy scorer). */
 	description: string | undefined;
-	lowerName: string;
-	lowerRelativePath: string;
-	compactName: string;
-	compactRelativePath: string;
 }
 
 interface FileSearchIndex {
 	items: SearchIndexEntry[];
-	fuse: Fuse<SearchIndexEntry>;
-	itemsByLowerName: Map<string, SearchIndexEntry[]>;
-	itemsByCompactName: Map<string, SearchIndexEntry[]>;
-	itemsByLowerRelativePath: Map<string, SearchIndexEntry[]>;
-	itemsByCompactRelativePath: Map<string, SearchIndexEntry[]>;
 }
 
 interface FileSearchCacheEntry {
@@ -106,6 +113,36 @@ export interface SearchFilesOptions {
 	includePattern?: string;
 	excludePattern?: string;
 	limit?: number;
+	/**
+	 * Absolute paths that are currently open in the editor. Matches receive a
+	 * large score boost so the user's current context floats to the top,
+	 * matching VSCode's Quick Open behavior.
+	 */
+	openFilePaths?: string[];
+	/**
+	 * Absolute paths ordered most-recent-first. Matches receive a recency boost
+	 * plus a tiebreaker by list position, like VSCode's MRU weighting.
+	 */
+	recentFilePaths?: string[];
+	/**
+	 * Optional ripgrep runner override. When omitted, the platform `rg` binary
+	 * is invoked. A fast-glob fallback kicks in if ripgrep is unavailable.
+	 */
+	runRipgrep?: (
+		args: string[],
+		options: RunRipgrepOptions,
+	) => Promise<{ stdout: string }>;
+	/** Abort signal used to interrupt long scoring loops. */
+	signal?: AbortSignal;
+}
+
+export interface WarmupSearchIndexOptions {
+	rootPath: string;
+	includeHidden?: boolean;
+	runRipgrep?: (
+		args: string[],
+		options: RunRipgrepOptions,
+	) => Promise<{ stdout: string }>;
 }
 
 export interface RunRipgrepOptions {
@@ -156,26 +193,6 @@ const searchIndexCache = new Map<string, FileSearchCacheEntry>();
 const searchIndexBuilds = new Map<string, Promise<FileSearchIndex>>();
 const searchIndexVersions = new Map<string, number>();
 
-function createFileSearchFuse(
-	items: SearchIndexEntry[],
-): Fuse<SearchIndexEntry> {
-	return new Fuse(items, {
-		keys: [
-			{ name: "name", weight: 2 },
-			{ name: "relativePath", weight: 1 },
-			{ name: "compactName", weight: 1.8 },
-			{ name: "compactRelativePath", weight: 0.9 },
-		],
-		threshold: 0.4,
-		includeScore: true,
-		ignoreLocation: true,
-	});
-}
-
-function normalizeSearchText(input: string): string {
-	return input.toLowerCase().replace(/[\\/\s._-]+/g, "");
-}
-
 function createSearchIndexEntry(
 	rootPath: string,
 	relativePath: string,
@@ -186,64 +203,17 @@ function createSearchIndexEntry(
 	);
 	const name = path.basename(normalizedRelativePath);
 	const dir = normalizedRelativePath.slice(0, -(name.length + 1));
-	const lowerName = name.toLowerCase();
-	const lowerRelativePath = normalizedRelativePath.toLowerCase();
 
 	return {
 		absolutePath,
 		relativePath: normalizedRelativePath,
 		name,
 		description: dir || undefined,
-		lowerName,
-		lowerRelativePath,
-		compactName: normalizeSearchText(name),
-		compactRelativePath: normalizeSearchText(normalizedRelativePath),
 	};
-}
-
-function addSearchIndexMapEntry(
-	index: Map<string, SearchIndexEntry[]>,
-	key: string,
-	item: SearchIndexEntry,
-): void {
-	const existing = index.get(key);
-	if (existing) {
-		existing.push(item);
-		return;
-	}
-
-	index.set(key, [item]);
 }
 
 function createFileSearchIndex(items: SearchIndexEntry[]): FileSearchIndex {
-	const itemsByLowerName = new Map<string, SearchIndexEntry[]>();
-	const itemsByCompactName = new Map<string, SearchIndexEntry[]>();
-	const itemsByLowerRelativePath = new Map<string, SearchIndexEntry[]>();
-	const itemsByCompactRelativePath = new Map<string, SearchIndexEntry[]>();
-
-	for (const item of items) {
-		addSearchIndexMapEntry(itemsByLowerName, item.lowerName, item);
-		addSearchIndexMapEntry(itemsByCompactName, item.compactName, item);
-		addSearchIndexMapEntry(
-			itemsByLowerRelativePath,
-			item.lowerRelativePath,
-			item,
-		);
-		addSearchIndexMapEntry(
-			itemsByCompactRelativePath,
-			item.compactRelativePath,
-			item,
-		);
-	}
-
-	return {
-		items,
-		fuse: createFileSearchFuse(items),
-		itemsByLowerName,
-		itemsByCompactName,
-		itemsByLowerRelativePath,
-		itemsByCompactRelativePath,
-	};
+	return { items };
 }
 
 function getSearchCacheKey({
@@ -485,20 +455,101 @@ function matchesPathFilters(
 	return true;
 }
 
-async function buildSearchIndex({
+interface BuildSearchIndexOptions extends SearchIndexKeyOptions {
+	runRipgrep?: SearchFilesOptions["runRipgrep"];
+}
+
+async function listFilesWithRipgrep({
 	rootPath,
 	includeHidden,
-}: SearchIndexKeyOptions): Promise<FileSearchIndex> {
-	const normalizedRootPath = normalizeAbsolutePath(rootPath);
-	const entries = await fg("**/*", {
-		cwd: normalizedRootPath,
+	runRipgrep,
+}: {
+	rootPath: string;
+	includeHidden: boolean;
+	runRipgrep: NonNullable<SearchFilesOptions["runRipgrep"]>;
+}): Promise<string[] | null> {
+	const args = ["--files", "--null", "--no-messages", "--follow=false"];
+	if (includeHidden) {
+		// Match VSCode's "show hidden/ignored" behavior: when the caller
+		// explicitly opts into hidden files, drop both dotfile and gitignore
+		// filtering so users can reach every file on disk.
+		args.push("--hidden", "--no-ignore");
+	}
+	// Even when gitignore is respected, always prune version-control metadata
+	// and node_modules so the index stays bounded on huge monorepos.
+	for (const pattern of DEFAULT_IGNORE_PATTERNS) {
+		args.push("--glob", `!${pattern}`);
+	}
+
+	try {
+		const { stdout } = await runRipgrep(args, {
+			cwd: rootPath,
+			maxBuffer: FILE_LISTING_RIPGREP_BUFFER_BYTES,
+		});
+		return stdout
+			.split("\0")
+			.map((entry) => entry.trim())
+			.filter((entry) => entry.length > 0);
+	} catch (error) {
+		const err = error as NodeJS.ErrnoException & {
+			code?: string | number | null;
+		};
+		// ENOENT: ripgrep binary missing. Any other failure also falls back
+		// because we prefer degraded-but-working results over a broken search.
+		if (err.code === "ENOENT") {
+			return null;
+		}
+		const exitCode =
+			typeof err.code === "number"
+				? err.code
+				: typeof err.code === "string" && /^\d+$/.test(err.code)
+					? Number.parseInt(err.code, 10)
+					: null;
+		// Exit 1 means "no files" which is still a legitimate result.
+		if (exitCode === 1) {
+			return [];
+		}
+		return null;
+	}
+}
+
+async function listFilesWithFastGlob({
+	rootPath,
+	includeHidden,
+}: {
+	rootPath: string;
+	includeHidden: boolean;
+}): Promise<string[]> {
+	return await fg("**/*", {
+		cwd: rootPath,
 		onlyFiles: true,
 		dot: includeHidden,
 		followSymbolicLinks: false,
 		unique: true,
 		suppressErrors: true,
-		ignore: DEFAULT_IGNORE_PATTERNS,
+		ignore: includeHidden ? DEFAULT_IGNORE_PATTERNS : FALLBACK_IGNORE_PATTERNS,
 	});
+}
+
+async function buildSearchIndex({
+	rootPath,
+	includeHidden,
+	runRipgrep,
+}: BuildSearchIndexOptions): Promise<FileSearchIndex> {
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	const runner = runRipgrep ?? defaultRunRipgrep;
+
+	let entries = await listFilesWithRipgrep({
+		rootPath: normalizedRootPath,
+		includeHidden,
+		runRipgrep: runner,
+	});
+	if (!entries) {
+		entries = await listFilesWithFastGlob({
+			rootPath: normalizedRootPath,
+			includeHidden,
+		});
+	}
 
 	const items: SearchIndexEntry[] = entries.map((relativePath) =>
 		createSearchIndexEntry(normalizedRootPath, relativePath),
@@ -508,7 +559,7 @@ async function buildSearchIndex({
 }
 
 async function getSearchIndex(
-	options: SearchIndexKeyOptions,
+	options: BuildSearchIndexOptions,
 ): Promise<FileSearchIndex> {
 	const cacheKey = getSearchCacheKey(options);
 	const cached = searchIndexCache.get(cacheKey);
@@ -565,78 +616,6 @@ async function getSearchIndex(
 
 function safeSearchLimit(limit: number | undefined): number {
 	return Math.max(1, Math.min(limit ?? 20, MAX_SEARCH_RESULTS));
-}
-
-function compareFileSearchMatches(
-	left: { item: SearchIndexEntry; score: number },
-	right: { item: SearchIndexEntry; score: number },
-): number {
-	if (left.score !== right.score) {
-		return right.score - left.score;
-	}
-
-	if (left.item.name.length !== right.item.name.length) {
-		return left.item.name.length - right.item.name.length;
-	}
-
-	if (left.item.relativePath.length !== right.item.relativePath.length) {
-		return left.item.relativePath.length - right.item.relativePath.length;
-	}
-
-	return left.item.relativePath.localeCompare(right.item.relativePath);
-}
-
-function _collectExactFileSearchMatches({
-	index,
-	query,
-	pathMatcher,
-	limit,
-}: {
-	index: FileSearchIndex;
-	query: string;
-	pathMatcher: PathFilterMatcher;
-	limit: number;
-}): Array<{ item: SearchIndexEntry; score: number }> {
-	const lowerQuery = query.toLowerCase();
-	const normalizedPathQuery = normalizePathForGlob(lowerQuery);
-	const compactQuery = normalizeSearchText(query);
-	const matchesByPath = new Map<
-		string,
-		{ item: SearchIndexEntry; score: number }
-	>();
-
-	const addMatches = (
-		items: SearchIndexEntry[] | undefined,
-		score: number,
-	): void => {
-		const candidates = items ?? [];
-
-		for (const item of candidates) {
-			if (
-				pathMatcher.hasFilters &&
-				!matchesPathFilters(item.relativePath, pathMatcher)
-			) {
-				continue;
-			}
-
-			const existing = matchesByPath.get(item.absolutePath);
-			if (!existing || existing.score < score) {
-				matchesByPath.set(item.absolutePath, { item, score });
-			}
-		}
-	};
-
-	addMatches(index.itemsByLowerName.get(lowerQuery), 1);
-	addMatches(index.itemsByLowerRelativePath.get(normalizedPathQuery), 0.995);
-
-	if (compactQuery.length > 0) {
-		addMatches(index.itemsByCompactName.get(compactQuery), 0.99);
-		addMatches(index.itemsByCompactRelativePath.get(compactQuery), 0.985);
-	}
-
-	return Array.from(matchesByPath.values())
-		.sort(compareFileSearchMatches)
-		.slice(0, limit);
 }
 
 function isBinaryContent(buffer: Buffer): boolean {
@@ -1105,6 +1084,42 @@ const searchEntryAccessor: IItemAccessor<SearchIndexEntry> = {
 	},
 };
 
+function buildRecencyLookup(paths: readonly string[] | undefined): {
+	has: (absolutePath: string) => boolean;
+	indexOf: (absolutePath: string) => number;
+} {
+	if (!paths || paths.length === 0) {
+		return {
+			has: () => false,
+			indexOf: () => -1,
+		};
+	}
+	const lookup = new Map<string, number>();
+	for (let index = 0; index < paths.length; index++) {
+		const entry = paths[index];
+		if (typeof entry === "string" && entry.length > 0) {
+			const normalized = normalizeAbsolutePath(entry);
+			if (!lookup.has(normalized)) {
+				lookup.set(normalized, index);
+			}
+		}
+	}
+	return {
+		has: (absolutePath: string) => lookup.has(absolutePath),
+		indexOf: (absolutePath: string) => lookup.get(absolutePath) ?? -1,
+	};
+}
+
+export async function warmupSearchIndex(
+	options: WarmupSearchIndexOptions,
+): Promise<void> {
+	await getSearchIndex({
+		rootPath: options.rootPath,
+		includeHidden: options.includeHidden ?? false,
+		runRipgrep: options.runRipgrep,
+	});
+}
+
 export async function searchFiles({
 	rootPath,
 	query,
@@ -1112,71 +1127,166 @@ export async function searchFiles({
 	includePattern = "",
 	excludePattern = "",
 	limit = 20,
+	openFilePaths,
+	recentFilePaths,
+	runRipgrep,
+	signal,
 }: SearchFilesOptions): Promise<FsSearchMatch[]> {
 	const trimmedQuery = query.trim().replace(/^\.\//, "");
 	if (!trimmedQuery) {
 		return [];
 	}
 
-	const index = await getSearchIndex({
-		rootPath,
-		includeHidden,
-	});
-	const pathMatcher = createPathFilterMatcher({
-		includePattern,
-		excludePattern,
-	});
-	const safeLimit = safeSearchLimit(limit);
-
-	const searchableItems = pathMatcher.hasFilters
-		? index.items.filter((item) =>
-				matchesPathFilters(item.relativePath, pathMatcher),
-			)
-		: index.items;
-
-	if (searchableItems.length === 0) {
-		return [];
-	}
-
-	// Use VS Code fuzzy scorer for all file search (exact + fuzzy unified).
-	// The scorer naturally ranks exact matches highest, so no separate
-	// exact-match fast path is needed. This ensures consistent scoring
-	// across workspaces for cross-workspace ranking.
-	const prepared = prepareQuery(trimmedQuery);
-	const cache: FuzzyScorerCache = {};
-
-	const scored: Array<{ item: SearchIndexEntry; score: number }> = [];
-	for (const item of searchableItems) {
-		const itemScore = scoreItemFuzzy(
-			item,
-			prepared,
-			true,
-			searchEntryAccessor,
-			cache,
-		);
-		if (itemScore.score > 0) {
-			scored.push({ item, score: itemScore.score });
+	// Replace any in-flight scoring loop for the same workspace so renderer
+	// keystrokes don't pile up on a large index. We don't reuse the
+	// caller-supplied signal directly because multiple concurrent queries on
+	// the same root should still interrupt each other.
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	const prevController = activeFileSearchControllers.get(normalizedRootPath);
+	prevController?.abort();
+	const controller = new AbortController();
+	activeFileSearchControllers.set(normalizedRootPath, controller);
+	const onExternalAbort = () => controller.abort();
+	if (signal) {
+		if (signal.aborted) {
+			controller.abort();
+		} else {
+			signal.addEventListener("abort", onExternalAbort, { once: true });
 		}
 	}
 
-	scored.sort((a, b) =>
-		compareItemsByFuzzyScore(
-			a.item,
-			b.item,
-			prepared,
-			true,
-			searchEntryAccessor,
-			cache,
-		),
-	);
+	const cleanup = () => {
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeFileSearchControllers.get(normalizedRootPath) === controller) {
+			activeFileSearchControllers.delete(normalizedRootPath);
+		}
+	};
 
-	return scored.slice(0, safeLimit).map((result) => ({
-		absolutePath: result.item.absolutePath,
-		relativePath: result.item.relativePath,
-		name: result.item.name,
-		kind: "file" as const,
-		score: result.score,
-	}));
+	try {
+		const index = await getSearchIndex({
+			rootPath: normalizedRootPath,
+			includeHidden,
+			runRipgrep,
+		});
+		if (controller.signal.aborted) {
+			return [];
+		}
+
+		const pathMatcher = createPathFilterMatcher({
+			includePattern,
+			excludePattern,
+		});
+		const safeLimit = safeSearchLimit(limit);
+
+		const searchableItems = pathMatcher.hasFilters
+			? index.items.filter((item) =>
+					matchesPathFilters(item.relativePath, pathMatcher),
+				)
+			: index.items;
+
+		if (searchableItems.length === 0) {
+			return [];
+		}
+
+		const openLookup = buildRecencyLookup(openFilePaths);
+		const recentLookup = buildRecencyLookup(recentFilePaths);
+
+		// VS Code fuzzy scorer covers exact + fuzzy in one unified pass. Score
+		// additions below implement Quick Open's MRU/open-file boost: currently
+		// open files float up the most, then recently viewed files, with MRU
+		// position used as the tiebreaker between otherwise-equal scores.
+		const prepared = prepareQuery(trimmedQuery);
+		const cache: FuzzyScorerCache = {};
+
+		type ScoredMatch = {
+			item: SearchIndexEntry;
+			baseScore: number;
+			boostedScore: number;
+			recencyIndex: number;
+		};
+		const scored: ScoredMatch[] = [];
+
+		for (let index2 = 0; index2 < searchableItems.length; index2++) {
+			if (
+				index2 > 0 &&
+				index2 % SCORE_YIELD_INTERVAL === 0 &&
+				controller.signal.aborted
+			) {
+				return [];
+			}
+
+			const item = searchableItems[index2];
+			if (!item) {
+				continue;
+			}
+
+			const itemScore = scoreItemFuzzy(
+				item,
+				prepared,
+				true,
+				searchEntryAccessor,
+				cache,
+			);
+			if (itemScore.score <= 0) {
+				continue;
+			}
+
+			let boosted = itemScore.score;
+			if (openLookup.has(item.absolutePath)) {
+				boosted += OPEN_FILE_SCORE_BOOST;
+			}
+			const recencyIndex = recentLookup.indexOf(item.absolutePath);
+			if (recencyIndex >= 0) {
+				boosted += MRU_SCORE_BOOST;
+			}
+
+			scored.push({
+				item,
+				baseScore: itemScore.score,
+				boostedScore: boosted,
+				recencyIndex,
+			});
+		}
+
+		if (controller.signal.aborted) {
+			return [];
+		}
+
+		scored.sort((a, b) => {
+			if (a.boostedScore !== b.boostedScore) {
+				return b.boostedScore - a.boostedScore;
+			}
+			// Recency tiebreaker: lower index (more recent) wins, unseen (-1)
+			// always loses to a listed entry.
+			if (a.recencyIndex !== b.recencyIndex) {
+				if (a.recencyIndex < 0) {
+					return 1;
+				}
+				if (b.recencyIndex < 0) {
+					return -1;
+				}
+				return a.recencyIndex - b.recencyIndex;
+			}
+			return compareItemsByFuzzyScore(
+				a.item,
+				b.item,
+				prepared,
+				true,
+				searchEntryAccessor,
+				cache,
+			);
+		});
+
+		return scored.slice(0, safeLimit).map((result) => ({
+			absolutePath: result.item.absolutePath,
+			relativePath: result.item.relativePath,
+			name: result.item.name,
+			kind: "file" as const,
+			score: result.boostedScore,
+		}));
+	} finally {
+		cleanup();
+	}
 }
 
 export async function searchContent({

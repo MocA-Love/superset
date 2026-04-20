@@ -6,12 +6,20 @@ interface UseWorkspaceFileSearchParams {
 	workspaceId: string;
 	searchTerm: string;
 	limit?: number;
+	includePattern?: string;
+	excludePattern?: string;
+	openFilePaths?: string[];
+	recentFilePaths?: string[];
 }
 
 export function useWorkspaceFileSearch({
 	workspaceId,
 	searchTerm,
 	limit = SEARCH_RESULT_LIMIT,
+	includePattern = "",
+	excludePattern = "",
+	openFilePaths,
+	recentFilePaths,
 }: UseWorkspaceFileSearchParams) {
 	const trimmedQuery = searchTerm.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
@@ -24,6 +32,10 @@ export function useWorkspaceFileSearch({
 				workspaceId,
 				query: debouncedQuery,
 				limit,
+				includePattern,
+				excludePattern,
+				openFilePaths,
+				recentFilePaths,
 			},
 			{
 				enabled: debouncedQuery.length > 0,

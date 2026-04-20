@@ -8,6 +8,10 @@ interface UseFileSearchParams {
 	includePattern?: string;
 	excludePattern?: string;
 	limit?: number;
+	/** Absolute paths currently open in the editor; boosted in ranking. */
+	openFilePaths?: string[];
+	/** Absolute paths recently viewed, most-recent-first; boosted in ranking. */
+	recentFilePaths?: string[];
 }
 
 export function useFileSearch({
@@ -16,6 +20,8 @@ export function useFileSearch({
 	includePattern = "",
 	excludePattern = "",
 	limit = SEARCH_RESULT_LIMIT,
+	openFilePaths,
+	recentFilePaths,
 }: UseFileSearchParams) {
 	const trimmedQuery = searchTerm.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
@@ -30,6 +36,8 @@ export function useFileSearch({
 				includePattern,
 				excludePattern,
 				limit,
+				openFilePaths,
+				recentFilePaths,
 			},
 			{
 				enabled: Boolean(workspaceId) && debouncedQuery.length > 0,
