@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { getProcessEnvWithShellPath } from "lib/trpc/routers/workspaces/utils/shell-env";
 
 function unescapeTomlBasicString(raw: string): string {
 	return raw.replace(
@@ -48,7 +49,22 @@ function parseFirstTomlString(line: string | undefined): string {
 	return extractTomlStrings(line)[0] ?? "";
 }
 
-const execFile = promisify(execFileCb);
+const execFileRaw = promisify(execFileCb);
+
+/**
+ * Run a CLI (`claude` / `codex`) with the login-shell PATH merged in so
+ * macOS GUI launches (Dock / Finder) can still find tools installed
+ * under $HOME/.local/bin, homebrew, nvm, etc. that a non-shell Electron
+ * launch misses.
+ */
+async function execFile(
+	command: string,
+	args: readonly string[],
+): Promise<{ stdout: string; stderr: string }> {
+	return execFileRaw(command, [...args], {
+		env: await getProcessEnvWithShellPath(),
+	});
+}
 
 const SERVER_NAME = "superset-browser";
 
