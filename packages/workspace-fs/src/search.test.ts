@@ -294,6 +294,32 @@ describe("searchFiles", () => {
 		expect(results[1]?.absolutePath).toEqual(oldPath);
 	});
 
+	it("invokes ripgrep without the invalid --follow=false flag", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "alpha.ts"),
+			"export const alpha = 1;\n",
+		);
+
+		const capturedArgs: string[][] = [];
+		await searchFiles({
+			rootPath,
+			query: "alpha",
+			runRipgrep: async (args) => {
+				capturedArgs.push(args);
+				return { stdout: "alpha.ts\0" };
+			},
+		});
+
+		expect(capturedArgs).toHaveLength(1);
+		const args = capturedArgs[0] ?? [];
+		// `--follow=false` is not a valid ripgrep flag; passing it makes rg exit
+		// with code 2 and our fallback hides the error. Guard against regressions.
+		expect(args.some((arg) => arg.startsWith("--follow"))).toEqual(false);
+		expect(args).toContain("--files");
+		expect(args).toContain("--null");
+	});
+
 	it("warmupSearchIndex populates the cache without returning matches", async () => {
 		const rootPath = await createTempRoot();
 		await fs.writeFile(

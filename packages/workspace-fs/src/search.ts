@@ -62,6 +62,19 @@ const FALLBACK_IGNORE_PATTERNS = [
 	"**/coverage/**",
 ];
 
+// Yields the macro-task queue so pending IPC / keystroke-driven searchFiles
+// calls can actually run and abort us via `activeFileSearchControllers`.
+// `queueMicrotask` / `await Promise.resolve()` would NOT suffice here because
+// microtasks run before the next macrotask, so external events never get a
+// chance to surface.
+const yieldToEventLoop =
+	typeof setImmediate === "function"
+		? (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve))
+		: (): Promise<void> =>
+				new Promise<void>((resolve) => {
+					setTimeout(resolve, 0);
+				});
+
 interface SearchIndexEntry {
 	absolutePath: string;
 	relativePath: string;
@@ -468,7 +481,11 @@ async function listFilesWithRipgrep({
 	includeHidden: boolean;
 	runRipgrep: NonNullable<SearchFilesOptions["runRipgrep"]>;
 }): Promise<string[] | null> {
-	const args = ["--files", "--null", "--no-messages", "--follow=false"];
+	// ripgrep does not follow symlinks by default, so we omit any follow
+	// flag entirely -- `--follow=false` is not a valid form and exits with
+	// code 2 ("unexpected argument for option '--follow'"), which would make
+	// every invocation silently fall back to fast-glob.
+	const args = ["--files", "--null", "--no-messages"];
 	if (includeHidden) {
 		// Match VSCode's "show hidden/ignored" behavior: when the caller
 		// explicitly opts into hidden files, drop both dotfile and gitignore
@@ -1207,12 +1224,16 @@ export async function searchFiles({
 		const scored: ScoredMatch[] = [];
 
 		for (let index2 = 0; index2 < searchableItems.length; index2++) {
-			if (
-				index2 > 0 &&
-				index2 % SCORE_YIELD_INTERVAL === 0 &&
-				controller.signal.aborted
-			) {
-				return [];
+			if (index2 > 0 && index2 % SCORE_YIELD_INTERVAL === 0) {
+				// Genuinely hand control back to the event loop so a follow-up
+				// keystroke can land on the main thread and synchronously abort
+				// this controller before we score the next batch. Without this
+				// yield the "cancellation" check below never observes an abort
+				// triggered by subsequent queries on the same root.
+				await yieldToEventLoop();
+				if (controller.signal.aborted) {
+					return [];
+				}
 			}
 
 			const item = searchableItems[index2];
