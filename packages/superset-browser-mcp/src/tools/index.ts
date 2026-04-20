@@ -35,7 +35,7 @@ export function registerTools(server: McpServer, client: BridgeClient): void {
 		{
 			title: "Get CDP endpoint for the bound browser pane",
 			description:
-				"Return the Chrome DevTools Protocol (CDP) endpoint for the currently bound browser pane. Plug the returned `webSocketDebuggerUrl` (or `httpBase`) into any browser automation MCP that speaks CDP — chrome-devtools-mcp, browser-use, playwright-mcp, etc. — to drive the pane directly. PR1 stage: the endpoint is the raw Chromium CDP, so external tools will see every page target; a filter proxy is planned for the next PR.",
+				"Return the Chrome DevTools Protocol (CDP) endpoint for the currently bound browser pane. Plug the returned `webSocketDebuggerUrl` (or `httpBase`) into any browser automation MCP that speaks CDP — chrome-devtools-mcp, browser-use, playwright-mcp, etc. — to drive the pane directly. The endpoint is proxied through a per-session filter so external tools only ever see the bound pane; sibling panes / devtools / the workspace shell stay hidden.",
 			inputSchema: {},
 		},
 		async () => {
@@ -50,8 +50,8 @@ export function registerTools(server: McpServer, client: BridgeClient): void {
 				data.url ? `  current URL: ${data.url}` : undefined,
 				data.title ? `  title      : ${data.title}` : undefined,
 				data.filtered
-					? ""
-					: "  NOTE: This endpoint exposes the full Chromium instance, not just this pane. Filter proxy is coming in a follow-up release.",
+					? "  Endpoint is pane-filtered: only this pane is visible to the CDP client."
+					: "  NOTE: This endpoint exposes the full Chromium instance (filter proxy disabled).",
 			]
 				.filter(Boolean)
 				.join("\n");

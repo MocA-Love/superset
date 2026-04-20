@@ -8,8 +8,14 @@ import {
 } from "node:http";
 import { dirname, join } from "node:path";
 import { app } from "electron";
+import { WebSocketServer } from "ws";
 import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
+import {
+	handleCdpHttp,
+	handleCdpUpgrade,
+	mintCdpToken,
+} from "./cdp-filter-proxy";
 import { resolveCdpPort } from "./cdp-port";
 import { getBoundPaneForSession, resolvePpidToSession } from "./pane-resolver";
 
@@ -108,7 +114,7 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 
 	const server: Server = createServer(async (req, res) => {
 		try {
-			// Require loopback + shared secret.
+			// Require loopback for every route.
 			const remote = req.socket.remoteAddress ?? "";
 			if (
 				remote !== "127.0.0.1" &&
@@ -117,12 +123,23 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 			) {
 				return send(res, 403, { error: "loopback only" });
 			}
+
+			const url = new URL(req.url ?? "/", "http://localhost");
+
+			// CDP filter proxy paths authenticate via an unguessable URL
+			// token, so they skip the Bearer header external browser MCPs
+			// (chrome-devtools-mcp / browser-use / playwright-mcp) cannot
+			// easily be taught to send.
+			if (url.pathname.startsWith("/cdp/")) {
+				const handled = await handleCdpHttp(req, res);
+				if (handled) return;
+				return send(res, 404, { error: "not found" });
+			}
+
 			const auth = req.headers.authorization ?? "";
 			if (auth !== `Bearer ${secret}`) {
 				return send(res, 401, { error: "bad token" });
 			}
-
-			const url = new URL(req.url ?? "/", "http://localhost");
 
 			if (req.method === "POST" && url.pathname === "/mcp/register") {
 				return send(res, 200, { ok: true });
@@ -147,19 +164,21 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 					});
 				}
 				const wc = browserManager.getWebContents(resolved.paneId);
+				const token = mintCdpToken(resolved.sessionId);
+				const bridgePort = port;
 				return send(res, 200, {
 					paneId: resolved.paneId,
 					sessionId: resolved.sessionId,
 					targetId,
 					cdpPort,
-					httpBase: `http://127.0.0.1:${cdpPort}`,
-					webSocketDebuggerUrl: `ws://127.0.0.1:${cdpPort}/devtools/page/${targetId}`,
+					// The filter proxy runs on the bridge port (loopback) and
+					// masks every other Chromium target, so external browser
+					// MCPs only ever see the pane bound to this session.
+					httpBase: `http://127.0.0.1:${bridgePort}/cdp/${token}`,
+					webSocketDebuggerUrl: `ws://127.0.0.1:${bridgePort}/cdp/${token}/devtools/page/${targetId}`,
 					url: wc?.getURL() ?? null,
 					title: wc?.getTitle() ?? null,
-					// PR2 will wrap this behind a pane-filter proxy so other panes
-					// are invisible to the external MCP. For PR1 the endpoint is
-					// the raw Chromium CDP — callers see every target.
-					filtered: false,
+					filtered: true,
 				});
 			}
 
@@ -195,6 +214,26 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
+	});
+
+	// Standalone WebSocketServer (noServer) that the upgrade handler
+	// pipes client sockets into once it has resolved the /cdp/<token>/…
+	// path. Outgoing frames flow to an upstream Chromium WS managed by
+	// cdp-filter-proxy.
+	const wss = new WebSocketServer({ noServer: true });
+	server.on("upgrade", (req, socket, head) => {
+		const remote = req.socket.remoteAddress ?? "";
+		if (
+			remote !== "127.0.0.1" &&
+			remote !== "::1" &&
+			remote !== "::ffff:127.0.0.1"
+		) {
+			socket.destroy();
+			return;
+		}
+		void handleCdpUpgrade(req, socket, head, wss).then((handled) => {
+			if (!handled) socket.destroy();
+		});
 	});
 
 	await new Promise<void>((resolve, reject) => {
