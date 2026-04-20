@@ -1,19 +1,21 @@
 import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
-import { findTodoAgentSessionByPid } from "./pid-registry";
 
 /**
  * PID-based automatic mapping from an MCP process's PPID (the Claude /
- * Codex CLI that spawned the MCP) to a Superset session and therefore a
- * bound browser pane.
+ * Codex CLI that spawned the MCP) to a Superset session and therefore
+ * a bound browser pane.
  *
- * Resolution order:
- *   1. A todo-agent worker PID registered with this exact PID.
- *   2. A terminal pane whose PTY process tree contains this PID.
+ * Resolution today walks every live terminal pane's PTY process tree
+ * for the PPID. TODO-Agent worker resolution will be added in a
+ * follow-up that pipes the worker PID through the daemon-bridge IPC
+ * (the daemon is a separate process, so an in-process registry cannot
+ * reach this main-process code).
  *
- * The first match wins. The mapping is cached briefly so we do not re-walk
- * every terminal's /proc tree on every MCP tool call.
+ * Positive resolutions are cached briefly so we do not re-walk process
+ * trees on every tool call. Negative resolutions are NOT cached — a
+ * miss can be a transient listSessions failure or a brief race.
  */
 export interface ResolvedSession {
 	sessionId: string;
@@ -24,7 +26,7 @@ export interface ResolvedSession {
 const CACHE_TTL_MS = 5_000;
 
 interface CacheEntry {
-	resolved: ResolvedSession | null;
+	resolved: ResolvedSession;
 	at: number;
 }
 
@@ -45,10 +47,11 @@ async function resolveFromTerminalPanes(
 	}
 	for (const s of sessions) {
 		if (!s.isAlive || typeof s.pid !== "number") continue;
-		const tree = await getProcessTree(s.pid);
-		if (tree.includes(ppid)) {
-			// Validate the PPID actually looks like an agent so we don't
-			// snap random terminal children into sessions.
+		// A single pane's process tree / name lookup can race with
+		// exit; swallow the per-pane failure and try the next one.
+		try {
+			const tree = await getProcessTree(s.pid);
+			if (!tree.includes(ppid)) continue;
 			const name = await getProcessName(ppid).catch(() => "");
 			if (name === "claude" || name === "codex" || name.includes("node")) {
 				return {
@@ -57,15 +60,9 @@ async function resolveFromTerminalPanes(
 					paneId: s.paneId,
 				};
 			}
+		} catch {
+			// Keep scanning — other panes may still match.
 		}
-	}
-	return null;
-}
-
-function resolveFromTodoAgent(ppid: number): ResolvedSession | null {
-	const sessionId = findTodoAgentSessionByPid(ppid);
-	if (sessionId) {
-		return { sessionId, kind: "todo-agent" };
 	}
 	return null;
 }
@@ -77,12 +74,7 @@ export async function resolvePpidToSession(
 	if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
 		return cached.resolved;
 	}
-	const todo = resolveFromTodoAgent(ppid);
-	const resolved = todo ?? (await resolveFromTerminalPanes(ppid));
-	// Only cache hits. A null result can be caused by a transient
-	// listSessions failure or a brief race before the todo-agent worker
-	// has registered its PID; caching that would lock the MCP out for
-	// the TTL and surface "No browser pane bound" until it expired.
+	const resolved = await resolveFromTerminalPanes(ppid);
 	if (resolved) cache.set(ppid, { resolved, at: Date.now() });
 	return resolved;
 }

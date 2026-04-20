@@ -428,25 +428,15 @@ export class TodoSupervisorEngine {
 					remoteControlEnabled,
 					onChild: (child) => {
 						run.currentChild = child;
-						const childPid = child.pid;
-						if (typeof childPid === "number" && childPid > 0) {
-							// Publish the Claude worker PID so the browser-mcp
-							// bridge can map MCP processes (spawned under this
-							// Claude) back to this TODO-Agent session without
-							// walking PTY trees.
-							void import("../lib/browser-mcp-bridge/pid-registry").then(
-								({ registerTodoAgentWorker }) => {
-									registerTodoAgentWorker(currentSession.id, childPid);
-								},
-							);
-							child.once("exit", () => {
-								void import("../lib/browser-mcp-bridge/pid-registry").then(
-									({ unregisterTodoAgentWorker }) => {
-										unregisterTodoAgentWorker(childPid);
-									},
-								);
-							});
-						}
+						// NOTE: browser-mcp bridge PID-based mapping for
+						// TODO-Agent workers is not wired here — the daemon
+						// runs in a separate process from main, so
+						// pid-registry writes would not be visible to the
+						// bridge. TODO-Agent MCP resolution will be added in
+						// a follow-up that pipes the PID through the
+						// daemon-bridge IPC. Terminal-pane claude/codex
+						// sessions continue to resolve automatically via
+						// the PTY process tree.
 					},
 				});
 				run.currentChild = null;

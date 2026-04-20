@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
@@ -53,7 +53,13 @@ async function ensureDebuggerAttached(
 		await wc.debugger.sendCommand("Page.enable");
 		await wc.debugger.sendCommand("Runtime.enable");
 		await wc.debugger.sendCommand("Log.enable").catch(() => {});
-		wc.debugger.on("message", (_event, method, params) => {
+		// Capture the listener refs so we can detach them on `detach`,
+		// otherwise re-attaching the same pane double-fires console events.
+		const onMessage = (
+			_event: Electron.Event,
+			method: string,
+			params: unknown,
+		) => {
 			if (
 				method === "Runtime.consoleAPICalled" ||
 				method === "Log.entryAdded"
@@ -76,13 +82,39 @@ async function ensureDebuggerAttached(
 				if (buf.length > CONSOLE_BUFFER_LIMIT) buf.shift();
 				consoleByPane.set(paneId, buf);
 			}
-		});
-		wc.debugger.on("detach", () => {
+		};
+		const onDetach = () => {
 			attachedPanes.delete(paneId);
-		});
+			wc.debugger.off("message", onMessage);
+			wc.debugger.off("detach", onDetach);
+		};
+		wc.debugger.on("message", onMessage);
+		wc.debugger.on("detach", onDetach);
 		attachedPanes.add(paneId);
 	}
 	return wc;
+}
+
+// Allow only network-facing schemes in navigate — blocks file:, javascript:,
+// about:, chrome: etc that could leak local content or escalate via tool use.
+const ALLOWED_NAVIGATE_PROTOCOLS = new Set(["http:", "https:"]);
+
+function validateNavigateUrl(raw: unknown): URL | { error: string } {
+	if (typeof raw !== "string" || raw.length === 0) {
+		return { error: "url required" };
+	}
+	let parsed: URL;
+	try {
+		parsed = new URL(raw);
+	} catch {
+		return { error: "url must be an absolute URL" };
+	}
+	if (!ALLOWED_NAVIGATE_PROTOCOLS.has(parsed.protocol)) {
+		return {
+			error: `protocol ${parsed.protocol} is not allowed; use http(s)`,
+		};
+	}
+	return parsed;
 }
 
 async function resolvePaneFromRequest(
@@ -191,11 +223,17 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 				const resolved = await resolvePaneFromRequest(req);
 				if ("error" in resolved)
 					return send(res, resolved.status, { error: resolved.error });
-				const body = await readJson<{ url?: string }>(req);
-				if (!body.url) return send(res, 400, { error: "url required" });
+				const body = await readJson<{ url?: unknown }>(req);
+				const target = validateNavigateUrl(body.url);
+				if ("error" in target) return send(res, 400, { error: target.error });
 				const wc = await ensureDebuggerAttached(resolved.paneId);
-				await wc.debugger.sendCommand("Page.navigate", { url: body.url });
-				return send(res, 200, { paneId: resolved.paneId, url: body.url });
+				await wc.debugger.sendCommand("Page.navigate", {
+					url: target.toString(),
+				});
+				return send(res, 200, {
+					paneId: resolved.paneId,
+					url: target.toString(),
+				});
 			}
 
 			if (req.method === "POST" && url.pathname === "/mcp/screenshot") {
@@ -279,6 +317,14 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 	writeFileSync(RUNTIME_INFO_PATH, JSON.stringify({ port, secret }, null, 2), {
 		mode: 0o600,
 	});
+	// writeFileSync's mode only applies to new files — an existing
+	// runtime file from a previous run could still be world-readable.
+	// Force 0600 on every start so the shared secret stays locked down.
+	try {
+		chmodSync(RUNTIME_INFO_PATH, 0o600);
+	} catch {
+		/* best-effort */
+	}
 
 	app.on("will-quit", () => {
 		server.close();

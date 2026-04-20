@@ -38,7 +38,7 @@ export function registerTools(server: McpServer, client: BridgeClient): void {
 		{
 			title: "Get connected browser pane",
 			description:
-				"Return the currently bound browser pane for this Claude session. Reports whether a pane is bound, its URL and title.",
+				"Return the currently bound browser pane for this LLM session. Reports whether a pane is bound, its URL and title.",
 			inputSchema: {},
 		},
 		async () => {
@@ -49,7 +49,7 @@ export function registerTools(server: McpServer, client: BridgeClient): void {
 						type: "text",
 						text: data.bound
 							? `Bound to pane ${data.paneId} (${data.url ?? "blank"}): ${data.title ?? ""}`
-							: "No browser pane is bound to this Claude session. Open the Connect dialog in the Superset UI to pick one.",
+							: "No browser pane is bound to this LLM session. Open the Connect dialog in the Superset UI to pick one.",
 					},
 				],
 			};
@@ -61,7 +61,7 @@ export function registerTools(server: McpServer, client: BridgeClient): void {
 		{
 			title: "Navigate the bound browser pane",
 			description:
-				"Navigate the browser pane that the user has bound to this Claude session to the given URL. The binding is managed in the Superset UI.",
+				"Navigate the browser pane that the user has bound to this LLM session to the given URL. The binding is managed in the Superset UI.",
 			inputSchema: {
 				url: z.string().describe("Absolute URL (must include scheme)"),
 			},
