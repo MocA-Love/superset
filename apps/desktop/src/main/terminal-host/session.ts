@@ -923,8 +923,9 @@ export class Session {
 	 *   responses from the renderer's xterm to terminal queries the shell
 	 *   sent during startup (DA, DSR). If queued and flushed later they
 	 *   appear as typed text like `?62;4;9;22c`.
-	 * - **Everything else** (preset commands, user input) is buffered and
-	 *   flushed in FIFO order once readiness resolves.
+	 * - **Everything else** is forwarded directly to the PTY. This allows
+	 *   interactive prompts that appear during shell initialization (e.g.
+	 *   oh-my-zsh update confirmation) to receive user input normally.
 	 */
 	write(data: string): void {
 		if (!this.subprocess || !this.subprocessReady) {
@@ -932,7 +933,7 @@ export class Session {
 		}
 		if (this.shellReadyState === "pending") {
 			if (data.startsWith("\x1b")) return;
-			this.preReadyStdinQueue.push(data);
+			this.sendWriteToSubprocess(data);
 			return;
 		}
 		this.sendWriteToSubprocess(data);

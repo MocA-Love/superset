@@ -70,7 +70,10 @@ export const reportBootError = (message: string, error?: unknown) => {
 	// explicitly so a boot crash always lands in the dashboard.
 	reportError(error ?? new Error(message), {
 		severity: "fatal",
-		tags: { subsystem: "boot", mounted: hasMounted ? "post-mount" : "pre-mount" },
+		tags: {
+			subsystem: "boot",
+			mounted: hasMounted ? "post-mount" : "pre-mount",
+		},
 		context: { message },
 	});
 	if (hasMounted) return;

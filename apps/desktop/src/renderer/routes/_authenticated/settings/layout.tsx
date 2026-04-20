@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { RouteErrorBoundary } from "renderer/components/RouteErrorBoundary";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type SettingsSection,
@@ -13,7 +14,6 @@ import {
 	useSettingsOriginRoute,
 	useSettingsSearchQuery,
 } from "renderer/stores/settings-state";
-import { RouteErrorBoundary } from "renderer/components/RouteErrorBoundary";
 import { SearchResultsBanner } from "./components/SearchResultsBanner";
 import { SettingsSidebar } from "./components/SettingsSidebar";
 import {

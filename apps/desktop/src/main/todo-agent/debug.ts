@@ -1,6 +1,6 @@
 import type { SelectTodoSession } from "@superset/local-db";
-import type { TodoStreamEvent } from "./types";
 import { createMainDebugChannel } from "../lib/debug-channel";
+import type { TodoStreamEvent } from "./types";
 
 const DEBUG_TODO_AGENT = process.env.SUPERSET_TODO_DEBUG === "1";
 
@@ -32,7 +32,7 @@ export function getTodoSessionDebugData(
 		| "claudeSessionId"
 		| "verdictReason"
 		| "waitingReason"
-	>
+	>,
 ) {
 	return {
 		sessionId: session.id,

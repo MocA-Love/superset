@@ -76,14 +76,10 @@ export function startTodoAgentDaemonBridge(): Promise<void> {
 			console.warn(
 				"[todo-agent] daemon disconnected — will reconnect on next RPC",
 			);
-			todoAgentMainDebug.warn(
-				"todo-daemon-bridge-disconnected",
-				undefined,
-				{
-					captureMessage: true,
-					fingerprint: ["todo.agent.main", "todo-daemon-bridge-disconnected"],
-				},
-			);
+			todoAgentMainDebug.warn("todo-daemon-bridge-disconnected", undefined, {
+				captureMessage: true,
+				fingerprint: ["todo.agent.main", "todo-daemon-bridge-disconnected"],
+			});
 		});
 		client.on("error", (error) => {
 			console.warn("[todo-agent] daemon client error", error);
@@ -98,25 +94,17 @@ export function startTodoAgentDaemonBridge(): Promise<void> {
 		});
 	}
 	connectPromise = (async () => {
-		todoAgentMainDebug.info(
-			"todo-daemon-bridge-init",
-			undefined,
-			{
-				captureMessage: true,
-				fingerprint: ["todo.agent.main", "todo-daemon-bridge-init"],
-			},
-		);
+		todoAgentMainDebug.info("todo-daemon-bridge-init", undefined, {
+			captureMessage: true,
+			fingerprint: ["todo.agent.main", "todo-daemon-bridge-init"],
+		});
 		try {
 			await client.ensureConnected();
 			await client.rehydrate();
-			todoAgentMainDebug.info(
-				"todo-daemon-bridge-init-success",
-				undefined,
-				{
-					captureMessage: true,
-					fingerprint: ["todo.agent.main", "todo-daemon-bridge-init-success"],
-				},
-			);
+			todoAgentMainDebug.info("todo-daemon-bridge-init-success", undefined, {
+				captureMessage: true,
+				fingerprint: ["todo.agent.main", "todo-daemon-bridge-init-success"],
+			});
 		} catch (error) {
 			console.warn("[todo-agent] daemon bridge failed to initialize", error);
 			todoAgentMainDebug.captureException(
