@@ -31,8 +31,23 @@ import { resolveCdpPort } from "./cdp-port";
  * to the single pane bound to the owning session and transparently
  * proxies `/devtools/page/<targetId>` to Chromium.
  *
- * Security surface: loopback only, kernel-assigned port (unguessable),
- * no path-embedded credentials — the port itself is the capability.
+ * Security surface: loopback only, kernel-assigned port, no
+ * path-embedded credentials — the port itself is the capability.
+ *
+ * Threat model: puppeteer's `connect({ browserURL })` composes
+ * `new URL("/json/version", browserURL)`, which per WHATWG URL spec
+ * drops any path, query, or auth on the base URL. It also does not
+ * forward custom HTTP headers to `/json/version`. That rules out
+ * path-token, query-token, and Bearer-header auth on this proxy — any
+ * such secret would be silently stripped before Chromium is asked for
+ * its target list. We therefore rely on the standard Chrome DevTools
+ * security model: loopback binding + single-user-machine assumption.
+ * A hostile *local* process on the same user account that can read
+ * `~/.superset/browser-mcp-sessions.json` (0600) or port-scan loopback
+ * can drive the bound pane; this matches Chromium's own
+ * `--remote-debugging-port` threat model and is explicitly not in
+ * scope for this proxy to fix. Multi-user hosts should not run
+ * Superset desktop with browser automation enabled.
  */
 
 const STORE_PATH = join(SUPERSET_HOME_DIR, "browser-mcp-sessions.json");
@@ -51,6 +66,7 @@ interface PersistedFile {
 
 const records = new Map<string, SessionRecord>();
 const servers = new Map<string, Server>();
+const inFlight = new Map<string, Promise<number>>();
 let hydrated = false;
 
 function hydrate(): void {
@@ -324,19 +340,30 @@ export async function ensureSessionEndpoint(
 		existing.lastUsedAt = Date.now();
 		return existing.port;
 	}
-	const { server, port, wss } = await bindSessionServer(existing?.port);
-	wireRequestHandler(server, sessionId);
-	wireUpgradeHandler(server, wss, sessionId);
-	servers.set(sessionId, server);
-	const record: SessionRecord = {
-		sessionId,
-		port,
-		createdAt: existing?.createdAt ?? Date.now(),
-		lastUsedAt: Date.now(),
-	};
-	records.set(sessionId, record);
-	persist();
-	return port;
+	// Serialize concurrent calls for the same sessionId — otherwise both
+	// callers miss `servers.has(...)` and each bind a different port,
+	// then clobber each other in the maps.
+	const pending = inFlight.get(sessionId);
+	if (pending) return pending;
+	const promise = (async () => {
+		const { server, port, wss } = await bindSessionServer(existing?.port);
+		wireRequestHandler(server, sessionId);
+		wireUpgradeHandler(server, wss, sessionId);
+		servers.set(sessionId, server);
+		const record: SessionRecord = {
+			sessionId,
+			port,
+			createdAt: existing?.createdAt ?? Date.now(),
+			lastUsedAt: Date.now(),
+		};
+		records.set(sessionId, record);
+		persist();
+		return port;
+	})().finally(() => {
+		inFlight.delete(sessionId);
+	});
+	inFlight.set(sessionId, promise);
+	return promise;
 }
 
 export function getSessionEndpointPort(sessionId: string): number | null {
