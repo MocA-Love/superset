@@ -4,7 +4,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
 	browserAutomationBindings,
+	projects,
 	type SelectBrowserAutomationBinding,
+	workspaces,
+	worktrees,
 } from "@superset/local-db";
 import { observable } from "@trpc/server/observable";
 import { and, eq, ne } from "drizzle-orm";
@@ -175,6 +178,33 @@ function detectClaudeMcp(paths: readonly string[]): boolean {
 }
 
 /**
+ * Enumerate all `<workspace>/.mcp.json` candidate paths so per-project
+ * MCP definitions (the output of `claude mcp add -s project ...`) are
+ * considered when deciding whether the browser MCP is configured.
+ */
+function collectProjectMcpJsonPaths(): string[] {
+	try {
+		const rows = localDb
+			.selectDistinct({
+				worktreePath: worktrees.path,
+				mainRepoPath: projects.mainRepoPath,
+			})
+			.from(workspaces)
+			.leftJoin(projects, eq(projects.id, workspaces.projectId))
+			.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
+			.all();
+		const paths = new Set<string>();
+		for (const row of rows) {
+			const base = row.worktreePath ?? row.mainRepoPath ?? null;
+			if (base) paths.add(join(base, ".mcp.json"));
+		}
+		return Array.from(paths);
+	} catch {
+		return [];
+	}
+}
+
+/**
  * Codex: ~/.codex/config.toml uses `[mcp_servers.<name>]` table sections.
  * We avoid pulling in a TOML parser just for this one check — instead we
  * isolate the `[mcp_servers.superset-browser]` section and verify it has
@@ -184,8 +214,18 @@ function detectClaudeMcp(paths: readonly string[]): boolean {
 function detectCodexMcp(filePath: string): boolean {
 	try {
 		const contents = readFileSync(filePath, "utf8");
+		// TOML accepts several equivalent header forms for the same table:
+		//   [mcp_servers.superset-browser]
+		//   [mcp_servers."superset-browser"]
+		//   [mcp_servers.'superset-browser']
+		//   ["mcp_servers".superset-browser]   (rarely used)
+		// The regex below matches the common shapes; it is not a full TOML
+		// parser but is strict enough that typos and unrelated keys don't
+		// match.
+		const q = `["']`;
+		const name = SERVER_NAME.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 		const sectionRe = new RegExp(
-			String.raw`(^|\n)\[mcp_servers\.${SERVER_NAME}\]\s*\n([\s\S]*?)(?=\n\[|$)`,
+			String.raw`(^|\n)\[\s*(?:mcp_servers\.(?:${name}|${q}${name}${q})|${q}mcp_servers${q}\.${name})\s*\]\s*\n([\s\S]*?)(?=\n\[|$)`,
 		);
 		const match = contents.match(sectionRe);
 		if (!match) return false;
@@ -277,7 +317,11 @@ export const createBrowserAutomationRouter = () => {
 				}),
 			)
 			.query(({ input }) => {
-				const claudeReady = detectClaudeMcp(CLAUDE_CONFIG_PATHS);
+				const projectMcpPaths = collectProjectMcpJsonPaths();
+				const claudeReady = detectClaudeMcp([
+					...CLAUDE_CONFIG_PATHS,
+					...projectMcpPaths,
+				]);
 				const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
 				const resolved =
 					input.provider === "Claude"
