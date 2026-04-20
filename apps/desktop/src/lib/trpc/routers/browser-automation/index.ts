@@ -11,6 +11,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
+import { getTodoSessionStore } from "main/todo-agent/session-store";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
@@ -230,6 +231,49 @@ export const createBrowserAutomationRouter = () => {
 		),
 
 		listBindings: publicProcedure.query(() => bindingStore.list()),
+
+		/**
+		 * Cheap resolver used by the per-pane `ConnectButton` to decide
+		 * whether a stored binding still maps to a live worker. Runs once
+		 * per window (React Query dedupes the call) so many Connect buttons
+		 * cost one main-process query total. Terminal bindings are resolved
+		 * by scanning the PTY process tree; TODO-Agent bindings by matching
+		 * against the live status whitelist.
+		 */
+		listBindingLiveness: publicProcedure.query(async () => {
+			const bindings = bindingStore.list();
+			if (bindings.length === 0)
+				return [] as Array<{
+					paneId: string;
+					sessionId: string;
+					sessionKind: string;
+					live: boolean;
+				}>;
+			const liveTodoIds = new Set(
+				getTodoSessionStore()
+					.listAll()
+					.filter((s) =>
+						["running", "preparing", "verifying", "waiting"].includes(s.status),
+					)
+					.map((s) => s.id),
+			);
+			const terminalAgents = await detectTerminalAgentSessions();
+			const liveTerminalIds = new Set(
+				terminalAgents.map((t) => `terminal:${t.paneId}`),
+			);
+			return bindings.map((b) => {
+				const live =
+					b.sessionKind === "terminal"
+						? liveTerminalIds.has(b.sessionId)
+						: liveTodoIds.has(b.sessionId);
+				return {
+					paneId: b.paneId,
+					sessionId: b.sessionId,
+					sessionKind: b.sessionKind,
+					live,
+				};
+			});
+		}),
 
 		getBindingByPane: publicProcedure
 			.input(z.object({ paneId: z.string() }))

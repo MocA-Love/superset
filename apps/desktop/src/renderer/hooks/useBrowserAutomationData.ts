@@ -58,12 +58,9 @@ export function useBrowserAutomationData({
 			// Binding changes are pushed via onBindingsChanged, so no polling.
 			refetchOnWindowFocus: false,
 		});
-	const utils = electronTrpc.useUtils();
-	electronTrpc.browserAutomation.onBindingsChanged.useSubscription(undefined, {
-		onData: () => {
-			utils.browserAutomation.listBindings.invalidate();
-		},
-	});
+	// The binding subscription is centralized in `useBrowserBindingsSync`
+	// (mounted once in ContentView), so this hook does not open one per
+	// consumer.
 
 	const sessions: AutomationSession[] = useMemo(() => {
 		// Only sessions that have a live worker (or are actively scheduled to

@@ -1,4 +1,5 @@
 import type { ExternalApp } from "@superset/local-db";
+import { useBrowserBindingsSync } from "renderer/hooks/useBrowserBindingsSync";
 import { isTearoffWindow } from "renderer/hooks/useTearoffInit";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
@@ -35,6 +36,7 @@ export function ContentView({
 		electronTrpc.settings.getShowPresetsBar.useQuery();
 	const listViewOpen = useBrowserAutomationStore((s) => s.listViewOpen);
 	const setListViewOpen = useBrowserAutomationStore((s) => s.setListViewOpen);
+	useBrowserBindingsSync();
 
 	return (
 		<div className="h-full flex flex-col overflow-hidden">
