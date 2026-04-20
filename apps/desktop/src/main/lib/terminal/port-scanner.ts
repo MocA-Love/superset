@@ -243,3 +243,33 @@ export async function getProcessName(pid: number): Promise<string> {
 		return "unknown";
 	}
 }
+
+/**
+ * Full argv of a process (space-joined). Useful when `comm` alone is
+ * ambiguous — e.g. the `claude` / `codex` CLIs often appear under
+ * `comm=node` because they are spawned as `node /path/to/bin/claude …`.
+ */
+export async function getProcessCommand(pid: number): Promise<string> {
+	const platform = os.platform();
+	if (platform === "win32") {
+		try {
+			const { stdout } = await execAsync(
+				`wmic process where processid=${pid} get commandline 2>nul`,
+				{ timeout: EXEC_TIMEOUT_MS },
+			);
+			const lines = stdout.trim().split("\n");
+			return lines.length >= 2 ? lines.slice(1).join(" ").trim() : "";
+		} catch {
+			return "";
+		}
+	}
+	try {
+		const { stdout } = await execAsync(
+			`ps -p ${pid} -o args= 2>/dev/null || true`,
+			{ timeout: EXEC_TIMEOUT_MS },
+		);
+		return stdout.trim();
+	} catch {
+		return "";
+	}
+}

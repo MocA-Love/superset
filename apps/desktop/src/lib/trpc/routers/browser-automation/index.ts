@@ -13,7 +13,11 @@ import { observable } from "@trpc/server/observable";
 import { and, eq, ne } from "drizzle-orm";
 import { app } from "electron";
 import { localDb } from "main/lib/local-db";
-import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
+import {
+	getProcessCommand,
+	getProcessName,
+	getProcessTree,
+} from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
@@ -414,29 +418,61 @@ async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
 		sessions.map(async (s) => {
 			if (!s.isAlive || typeof s.pid !== "number") return;
 			const pids = await getProcessTree(s.pid);
-			// Skip the shell itself (root pid) when matching names so typing
-			// `claude` at the prompt inside zsh does not cause the shell's
-			// argv to trigger a match.
-			const names = await Promise.all(
+			// Skip the shell itself (root pid). For each child we read BOTH
+			// comm (short name) AND args (full argv). Many claude / codex
+			// installs appear as comm=node with args=node /usr/local/.../claude,
+			// so a comm-only match misses them.
+			const probes = await Promise.all(
 				pids
 					.filter((p) => p !== s.pid)
-					.map(async (p) => ({ pid: p, name: await getProcessName(p) })),
+					.map(async (p) => {
+						const [name, command] = await Promise.all([
+							getProcessName(p),
+							getProcessCommand(p),
+						]);
+						return { pid: p, name, command };
+					}),
 			);
-			const match = names.find(
-				({ name }) => name === "claude" || name === "codex",
-			);
+			const match = probes.find((p) => classifyAgent(p.name, p.command));
 			if (!match) return;
+			const provider = classifyAgent(match.name, match.command);
+			if (!provider) return;
 			out.push({
 				paneId: s.paneId,
 				workspaceId: s.workspaceId,
 				pid: match.pid,
-				provider: match.name === "codex" ? "Codex" : "Claude",
+				provider,
 				command: match.name,
 				lastAttachedAt: s.lastAttachedAt,
 			});
 		}),
 	);
 	return out;
+}
+
+/**
+ * Is the process a `claude` or `codex` CLI? Checks both the short
+ * process name and the full argv. The CLIs are commonly installed as
+ * thin wrappers that `exec node /path/to/bin/claude ...`, which makes
+ * the short name "node" — argv catches that.
+ */
+function classifyAgent(
+	name: string,
+	command: string,
+): "Claude" | "Codex" | null {
+	const lname = name.toLowerCase();
+	if (lname === "codex") return "Codex";
+	if (lname === "claude") return "Claude";
+	// Fall back to argv matching. Only accept tokens whose basename is
+	// exactly claude / codex (so a random node script that has "claude"
+	// as a substring does not match).
+	const tokens = command.split(/\s+/).filter(Boolean);
+	for (const token of tokens) {
+		const base = token.replace(/\\/g, "/").split("/").pop() ?? token;
+		if (base === "codex" || base === "codex.js") return "Codex";
+		if (base === "claude" || base === "claude.js") return "Claude";
+	}
+	return null;
 }
 
 /**

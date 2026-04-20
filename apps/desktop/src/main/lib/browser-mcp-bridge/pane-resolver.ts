@@ -1,4 +1,8 @@
-import { getProcessName, getProcessTree } from "main/lib/terminal/port-scanner";
+import {
+	getProcessCommand,
+	getProcessName,
+	getProcessTree,
+} from "main/lib/terminal/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
 
@@ -52,8 +56,20 @@ async function resolveFromTerminalPanes(
 		try {
 			const tree = await getProcessTree(s.pid);
 			if (!tree.includes(ppid)) continue;
-			const name = await getProcessName(ppid).catch(() => "");
-			if (name === "claude" || name === "codex" || name.includes("node")) {
+			// Accept the pane if our parent looks like claude / codex
+			// (either directly, or as a node-wrapped CLI we can spot by
+			// argv). comm alone is not enough because node CLIs commonly
+			// appear as comm=node with the real entrypoint in argv.
+			const [name, command] = await Promise.all([
+				getProcessName(ppid).catch(() => ""),
+				getProcessCommand(ppid).catch(() => ""),
+			]);
+			const lname = name.toLowerCase();
+			const looksAgent =
+				lname === "claude" ||
+				lname === "codex" ||
+				/\b(claude|codex)(?:\.js)?\b/.test(command);
+			if (looksAgent || lname.includes("node")) {
 				return {
 					sessionId: `terminal:${s.paneId}`,
 					kind: "terminal",
