@@ -22,6 +22,8 @@ interface SearchFileGroupProps {
 	query: string;
 	isRegex: boolean;
 	caseSensitive: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
 	isReplacing: boolean;
 	showReplaceAction: boolean;
 	showParentPath?: boolean;
@@ -75,6 +77,8 @@ export const SearchFileGroup = memo(function SearchFileGroup({
 	query,
 	isRegex,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	isReplacing,
 	showReplaceAction,
 	showParentPath = true,
@@ -233,6 +237,8 @@ export const SearchFileGroup = memo(function SearchFileGroup({
 								query={query}
 								isRegex={isRegex}
 								caseSensitive={caseSensitive}
+								wholeWord={wholeWord}
+								multiline={multiline}
 								isReplaceEnabled={showReplaceAction && !isReplacing}
 								variant={
 									isTreeVariant ? "tree" : isListVariant ? "list" : "default"

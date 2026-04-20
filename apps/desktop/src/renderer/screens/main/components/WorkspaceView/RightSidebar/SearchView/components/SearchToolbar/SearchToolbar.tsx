@@ -3,9 +3,9 @@ import { Input } from "@superset/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import type { ReactNode, RefObject } from "react";
-import { LuReplace, LuSearch, LuX } from "react-icons/lu";
+import { LuReplace, LuSearch, LuWholeWord, LuX } from "react-icons/lu";
 import { PiTextAa } from "react-icons/pi";
-import { TbRegex } from "react-icons/tb";
+import { TbArrowAutofitContent, TbRegex } from "react-icons/tb";
 
 interface SearchToolbarProps {
 	searchInputRef: RefObject<HTMLInputElement | null>;
@@ -16,6 +16,8 @@ interface SearchToolbarProps {
 	excludePattern: string;
 	isRegex: boolean;
 	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
 	canReplaceAll: boolean;
 	isReplacing: boolean;
 	onQueryChange: (value: string) => void;
@@ -25,6 +27,8 @@ interface SearchToolbarProps {
 	onToggleReplace: () => void;
 	onToggleRegex: () => void;
 	onToggleCaseSensitive: () => void;
+	onToggleWholeWord: () => void;
+	onToggleMultiline: () => void;
 	onReplaceAll: () => void;
 }
 
@@ -70,6 +74,8 @@ export function SearchToolbar({
 	excludePattern,
 	isRegex,
 	caseSensitive,
+	wholeWord,
+	multiline,
 	canReplaceAll,
 	isReplacing,
 	onQueryChange,
@@ -79,6 +85,8 @@ export function SearchToolbar({
 	onToggleReplace,
 	onToggleRegex,
 	onToggleCaseSensitive,
+	onToggleWholeWord,
+	onToggleMultiline,
 	onReplaceAll,
 }: SearchToolbarProps) {
 	return (
@@ -118,12 +126,28 @@ export function SearchToolbar({
 					<PiTextAa className="size-4" />
 				</ToggleIconButton>
 				<ToggleIconButton
+					label="Match whole word"
+					isActive={wholeWord}
+					onClick={onToggleWholeWord}
+				>
+					<LuWholeWord className="size-4" />
+				</ToggleIconButton>
+				<ToggleIconButton
 					label="Use regular expression"
 					isActive={isRegex}
 					onClick={onToggleRegex}
 				>
 					<TbRegex className="size-4" />
 				</ToggleIconButton>
+				{isRegex ? (
+					<ToggleIconButton
+						label="Multiline regex (pattern may span newlines)"
+						isActive={multiline}
+						onClick={onToggleMultiline}
+					>
+						<TbArrowAutofitContent className="size-4" />
+					</ToggleIconButton>
+				) : null}
 			</div>
 
 			{replaceOpen ? (

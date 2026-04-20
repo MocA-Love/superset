@@ -72,6 +72,9 @@ export interface FsService {
 		limit?: number;
 		isRegex?: boolean;
 		caseSensitive?: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
+		scopeId?: string;
 	}): Promise<{ matches: FsContentMatch[] }>;
 
 	replaceContent(input: {
@@ -82,6 +85,8 @@ export interface FsService {
 		excludePattern?: string;
 		isRegex?: boolean;
 		caseSensitive?: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
 		paths?: string[];
 	}): Promise<FsReplaceContentResult>;
 
@@ -169,6 +174,9 @@ export interface FsRequestMap {
 			limit?: number;
 			isRegex?: boolean;
 			caseSensitive?: boolean;
+			wholeWord?: boolean;
+			multiline?: boolean;
+			scopeId?: string;
 		};
 		output: { matches: FsContentMatch[] };
 	};
@@ -181,6 +189,8 @@ export interface FsRequestMap {
 			excludePattern?: string;
 			isRegex?: boolean;
 			caseSensitive?: boolean;
+			wholeWord?: boolean;
+			multiline?: boolean;
 			paths?: string[];
 		};
 		output: FsReplaceContentResult;

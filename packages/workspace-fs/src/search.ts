@@ -207,6 +207,24 @@ export interface SearchContentOptions {
 	limit?: number;
 	isRegex?: boolean;
 	caseSensitive?: boolean;
+	/**
+	 * VSCode's "Match whole word" toggle. Wraps the query in word boundaries
+	 * (`\b`) so `foo` does not match `foobar`. Orthogonal to `isRegex`.
+	 */
+	wholeWord?: boolean;
+	/**
+	 * VSCode's multiline regex mode. Only meaningful when `isRegex` is true;
+	 * lets the pattern span newlines and makes `.` match them.
+	 */
+	multiline?: boolean;
+	/**
+	 * Logical caller identity (e.g. "search-tab"). Each scope owns its own
+	 * AbortController so the Search tab, Cmd+P and Files tab don't cancel
+	 * each other's queries when they land on the same workspace.
+	 */
+	scopeId?: string;
+	/** External cancel signal; forwarded to the internal controller. */
+	signal?: AbortSignal;
 	runRipgrep?: (
 		args: string[],
 		options: RunRipgrepOptions,
@@ -222,6 +240,10 @@ export interface ReplaceContentOptions {
 	excludePattern?: string;
 	isRegex?: boolean;
 	caseSensitive?: boolean;
+	/** Matches the corresponding flag on `SearchContentOptions`. */
+	wholeWord?: boolean;
+	/** Matches the corresponding flag on `SearchContentOptions`. */
+	multiline?: boolean;
 	paths?: string[];
 }
 
@@ -386,17 +408,28 @@ function compileSearchPattern({
 	query,
 	isRegex = false,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 }: Pick<
 	SearchContentOptions,
-	"query" | "isRegex" | "caseSensitive"
+	"query" | "isRegex" | "caseSensitive" | "wholeWord" | "multiline"
 >): CompiledSearchPattern {
 	const resolvedCaseSensitive = resolveCaseSensitive(
 		query,
 		caseSensitive,
 		isRegex,
 	);
-	const flags = resolvedCaseSensitive ? "gu" : "giu";
-	const source = isRegex ? query : escapeRegExp(query);
+	// `s` (dotall) + `m` (anchors per line) only ship when the caller opts
+	// into multiline mode. This keeps simple searches behaving exactly as
+	// before while letting regex users match across newlines.
+	let flags = resolvedCaseSensitive ? "gu" : "giu";
+	if (isRegex && multiline) {
+		flags += "sm";
+	}
+	let source = isRegex ? query : escapeRegExp(query);
+	if (wholeWord) {
+		source = `\\b(?:${source})\\b`;
+	}
 
 	return {
 		isRegex,
@@ -741,18 +774,47 @@ async function searchContentWithRipgrep({
 	limit,
 	isRegex,
 	caseSensitive,
+	wholeWord,
+	multiline,
 	useSmartCase,
 	runRipgrep,
-}: Required<Omit<SearchContentOptions, "runRipgrep">> & {
+	scopeId,
+	signal,
+}: {
+	rootPath: string;
+	query: string;
+	includeHidden: boolean;
+	includePattern: string;
+	excludePattern: string;
+	limit: number;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
 	useSmartCase: boolean;
 	runRipgrep: NonNullable<SearchContentOptions["runRipgrep"]>;
+	scopeId?: string;
+	signal?: AbortSignal;
 }): Promise<InternalContentMatch[]> {
-	const prevController = activeSearchControllers.get(rootPath);
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	// Scope the cancellation channel so the Search tab, Cmd+P and Files tab
+	// never preempt each other when they happen to land on the same
+	// workspace simultaneously.
+	const controllerKey = `${normalizedRootPath}::${scopeId ?? "default"}`;
+	const prevController = activeSearchControllers.get(controllerKey);
 	if (prevController) {
 		prevController.abort();
 	}
 	const controller = new AbortController();
-	activeSearchControllers.set(rootPath, controller);
+	activeSearchControllers.set(controllerKey, controller);
+	const onExternalAbort = () => controller.abort();
+	if (signal) {
+		if (signal.aborted) {
+			controller.abort();
+		} else {
+			signal.addEventListener("abort", onExternalAbort, { once: true });
+		}
+	}
 
 	const safeLimit = safeSearchLimit(limit);
 	const maxCandidates = safeLimit * KEYWORD_SEARCH_CANDIDATE_MULTIPLIER;
@@ -773,6 +835,12 @@ async function searchContentWithRipgrep({
 		} else {
 			args.push("--ignore-case");
 		}
+		if (multiline) {
+			// `--multiline` lets the regex cross newlines, `--multiline-dotall`
+			// makes `.` match them. We couple them so behavior matches VSCode's
+			// "multi-line" toggle.
+			args.push("--multiline", "--multiline-dotall");
+		}
 	} else {
 		if (caseSensitive) {
 			args.push("--case-sensitive");
@@ -782,6 +850,10 @@ async function searchContentWithRipgrep({
 			args.push("--ignore-case");
 		}
 		args.push("--fixed-strings");
+	}
+
+	if (wholeWord) {
+		args.push("--word-regexp");
 	}
 
 	if (includeHidden) {
@@ -804,7 +876,7 @@ async function searchContentWithRipgrep({
 
 	try {
 		const { stdout } = await runRipgrep(args, {
-			cwd: normalizeAbsolutePath(rootPath),
+			cwd: normalizedRootPath,
 			maxBuffer: KEYWORD_SEARCH_RIPGREP_BUFFER_BYTES,
 			signal: controller.signal,
 		});
@@ -840,7 +912,7 @@ async function searchContentWithRipgrep({
 			}
 
 			const pathData = "path" in data ? data.path : null;
-			const relativePath =
+			const rawPath =
 				typeof pathData === "object" &&
 				pathData !== null &&
 				"text" in pathData &&
@@ -848,9 +920,15 @@ async function searchContentWithRipgrep({
 					? pathData.text
 					: null;
 
-			if (!relativePath) {
+			if (!rawPath) {
 				continue;
 			}
+
+			// ripgrep echoes the `.` target we pass as CWD, so every path comes
+			// back prefixed with `./`. Strip it so relativePath looks identical
+			// across ripgrep and fast-glob code paths (tests match on exact
+			// strings).
+			const relativePath = normalizePathForGlob(rawPath);
 
 			const lineNumber =
 				"line_number" in data && typeof data.line_number === "number"
@@ -880,10 +958,7 @@ async function searchContentWithRipgrep({
 				}
 			}
 
-			const absolutePath = path.join(
-				normalizeAbsolutePath(rootPath),
-				relativePath,
-			);
+			const absolutePath = path.join(normalizedRootPath, relativePath);
 			const id = `${absolutePath}:${lineNumber}:${column}`;
 			if (seen.has(id)) {
 				continue;
@@ -900,14 +975,16 @@ async function searchContentWithRipgrep({
 			});
 		}
 
-		if (activeSearchControllers.get(rootPath) === controller) {
-			activeSearchControllers.delete(rootPath);
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeSearchControllers.get(controllerKey) === controller) {
+			activeSearchControllers.delete(controllerKey);
 		}
 
 		return rankContentMatches(matches, query, safeLimit, isRegex);
 	} catch (error) {
-		if (activeSearchControllers.get(rootPath) === controller) {
-			activeSearchControllers.delete(rootPath);
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeSearchControllers.get(controllerKey) === controller) {
+			activeSearchControllers.delete(controllerKey);
 		}
 
 		if (error instanceof Error && error.name === "AbortError") {
@@ -1371,12 +1448,20 @@ export async function searchFiles({
 export async function searchContent({
 	rootPath,
 	query,
-	includeHidden = true,
+	// `searchFiles` defaults to `false` here; keeping this `true` would be
+	// surprising, but callers (SearchView) already pass `false` explicitly
+	// and flipping the default could affect other unknown consumers. Leave
+	// as-is but let the flag propagate honestly.
+	includeHidden = false,
 	includePattern = "",
 	excludePattern = "",
 	limit = 20,
 	isRegex = false,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
+	scopeId,
+	signal,
 	runRipgrep = defaultRunRipgrep,
 }: SearchContentOptions): Promise<FsContentMatch[]> {
 	const trimmedQuery = query.trim();
@@ -1390,6 +1475,8 @@ export async function searchContent({
 			query: trimmedQuery,
 			isRegex,
 			caseSensitive,
+			wholeWord,
+			multiline,
 		});
 
 		internalMatches = await searchContentWithRipgrep({
@@ -1401,8 +1488,12 @@ export async function searchContent({
 			limit,
 			isRegex,
 			caseSensitive: pattern.caseSensitive,
+			wholeWord,
+			multiline,
 			useSmartCase: !isRegex && caseSensitive === undefined,
 			runRipgrep,
+			scopeId,
+			signal,
 		});
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") {
@@ -1413,6 +1504,8 @@ export async function searchContent({
 			query: trimmedQuery,
 			isRegex,
 			caseSensitive,
+			wholeWord,
+			multiline,
 		});
 		const index = await getSearchIndex({
 			rootPath,
@@ -1447,11 +1540,13 @@ export async function replaceContent({
 	rootPath,
 	query,
 	replacement,
-	includeHidden = true,
+	includeHidden = false,
 	includePattern = "",
 	excludePattern = "",
 	isRegex = false,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	paths,
 }: ReplaceContentOptions): Promise<FsReplaceContentResult> {
 	const trimmedQuery = query.trim();
@@ -1470,6 +1565,8 @@ export async function replaceContent({
 		query: trimmedQuery,
 		isRegex,
 		caseSensitive,
+		wholeWord,
+		multiline,
 	});
 	const index = await getSearchIndex({
 		rootPath: normalizedRootPath,

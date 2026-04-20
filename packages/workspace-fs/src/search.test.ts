@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+import { rgPath as bundledRgPath } from "@vscode/ripgrep";
 import type { SearchPatchEvent } from "./search";
 import {
 	invalidateAllSearchIndexes,
 	patchSearchIndexesForRoot,
+	replaceContent,
+	searchContent,
 	searchFiles,
 	warmupSearchIndex,
 } from "./search";
@@ -22,9 +27,13 @@ afterEach(async () => {
 });
 
 async function createTempRoot(): Promise<string> {
-	const rootPath = await fs.mkdtemp(
-		path.join(os.tmpdir(), "workspace-fs-search-"),
-	);
+	// On macOS, os.tmpdir() resolves to `/var/folders/...` which is itself a
+	// symlink to `/private/var/folders/...`. workspace-fs' write path calls
+	// fs.realpath() and enforces that the result lives under the workspace
+	// root; without this realpath call the tempdir symlink would trip that
+	// check every time.
+	const raw = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-fs-search-"));
+	const rootPath = await fs.realpath(raw);
 	tempRoots.push(rootPath);
 	return rootPath;
 }
@@ -32,6 +41,26 @@ async function createTempRoot(): Promise<string> {
 function createPatchEvent(event: SearchPatchEvent): SearchPatchEvent {
 	return event;
 }
+
+// The test environment doesn't have `rg` on PATH (CI agents rarely do), so
+// `defaultRunRipgrep` would throw ENOENT and the caller silently falls back
+// to the synchronous scan path. That fallback can't exercise ripgrep-only
+// features like `--multiline`, so tests that need those opt into the
+// bundled @vscode/ripgrep binary explicitly.
+const execFileAsync = promisify(execFile);
+const bundledRunRipgrep = async (
+	args: string[],
+	options: { cwd: string; maxBuffer: number; signal?: AbortSignal },
+): Promise<{ stdout: string }> => {
+	const result = await execFileAsync(bundledRgPath, args, {
+		cwd: options.cwd,
+		encoding: "utf8",
+		maxBuffer: options.maxBuffer,
+		windowsHide: true,
+		signal: options.signal,
+	});
+	return { stdout: result.stdout };
+};
 
 describe("patchSearchIndexesForRoot", () => {
 	it("adds created files to an existing visible search index", async () => {
@@ -431,5 +460,146 @@ describe("searchFiles", () => {
 			limit: 5,
 		});
 		expect(results[0]?.relativePath).toEqual("alpha.ts");
+	});
+});
+
+describe("searchContent", () => {
+	it("respects .gitignore via ripgrep when includeHidden=false", async () => {
+		const rootPath = await createTempRoot();
+		// ripgrep only honors `.gitignore` inside a git repository (everywhere
+		// else it looks for `.ignore`). Workspaces are always git worktrees in
+		// production, so set one up here to mirror the real environment.
+		await execFileAsync("git", ["init", "--quiet"], { cwd: rootPath });
+		await fs.mkdir(path.join(rootPath, "dist"), { recursive: true });
+		await fs.writeFile(path.join(rootPath, "src.ts"), "const TOKEN = 1;\n");
+		await fs.writeFile(
+			path.join(rootPath, "dist", "bundled.ts"),
+			"const TOKEN = 2;\n",
+		);
+		await fs.writeFile(path.join(rootPath, ".gitignore"), "dist/\n");
+
+		const results = await searchContent({
+			rootPath,
+			query: "TOKEN",
+			includeHidden: false,
+			runRipgrep: bundledRunRipgrep,
+		});
+		const paths = results.map((r) => r.relativePath);
+		expect(paths).toContain("src.ts");
+		expect(paths.includes("dist/bundled.ts")).toEqual(false);
+	});
+
+	it("reveals .gitignore'd files when includeHidden=true", async () => {
+		const rootPath = await createTempRoot();
+		await execFileAsync("git", ["init", "--quiet"], { cwd: rootPath });
+		await fs.mkdir(path.join(rootPath, "dist"), { recursive: true });
+		await fs.writeFile(
+			path.join(rootPath, "dist", "bundled.ts"),
+			"const TOKEN = 2;\n",
+		);
+		await fs.writeFile(path.join(rootPath, ".gitignore"), "dist/\n");
+
+		const results = await searchContent({
+			rootPath,
+			query: "TOKEN",
+			includeHidden: true,
+			runRipgrep: bundledRunRipgrep,
+		});
+		expect(results.map((r) => r.relativePath)).toContain("dist/bundled.ts");
+	});
+
+	it("wholeWord=true does not match substrings", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "a.ts"),
+			"const foo = 1;\nconst foobar = 2;\n",
+		);
+
+		const results = await searchContent({
+			rootPath,
+			query: "foo",
+			wholeWord: true,
+			runRipgrep: bundledRunRipgrep,
+		});
+		// Only the `foo` line should match; `foobar` must be filtered out.
+		expect(results).toHaveLength(1);
+		expect(results[0]?.line).toEqual(1);
+	});
+
+	it("multiline=true lets regex span newlines", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(
+			path.join(rootPath, "a.ts"),
+			"function foo() {\n  return 1;\n}\n",
+		);
+
+		const results = await searchContent({
+			rootPath,
+			query: "function foo\\(\\).*return",
+			isRegex: true,
+			multiline: true,
+			runRipgrep: bundledRunRipgrep,
+		});
+		expect(results.length).toBeGreaterThan(0);
+	});
+
+	it("scoped cancellation does not cross-cancel Search tab and Quick Open", async () => {
+		const rootPath = await createTempRoot();
+		await fs.writeFile(path.join(rootPath, "a.ts"), "ALPHA\n");
+		await fs.writeFile(path.join(rootPath, "b.ts"), "BETA\n");
+
+		const [alpha, beta] = await Promise.all([
+			searchContent({
+				rootPath,
+				query: "ALPHA",
+				scopeId: "search-tab",
+				runRipgrep: bundledRunRipgrep,
+			}),
+			searchContent({
+				rootPath,
+				query: "BETA",
+				scopeId: "quick-open",
+				runRipgrep: bundledRunRipgrep,
+			}),
+		]);
+
+		expect(alpha[0]?.relativePath).toEqual("a.ts");
+		expect(beta[0]?.relativePath).toEqual("b.ts");
+	});
+});
+
+describe("replaceContent", () => {
+	it("supports regex capture group replacements ($1)", async () => {
+		const rootPath = await createTempRoot();
+		const filePath = path.join(rootPath, "a.ts");
+		await fs.writeFile(filePath, "const foo = 1;\nconst bar = 2;\n");
+
+		const result = await replaceContent({
+			rootPath,
+			query: "(foo|bar)",
+			replacement: "$1Name",
+			isRegex: true,
+		});
+		expect(result.filesUpdated).toEqual(1);
+
+		const updated = await fs.readFile(filePath, "utf8");
+		expect(updated).toEqual("const fooName = 1;\nconst barName = 2;\n");
+	});
+
+	it("wholeWord replacement does not touch substring hits", async () => {
+		const rootPath = await createTempRoot();
+		const filePath = path.join(rootPath, "a.ts");
+		await fs.writeFile(filePath, "foo + foobar\n");
+
+		const result = await replaceContent({
+			rootPath,
+			query: "foo",
+			replacement: "BAR",
+			wholeWord: true,
+		});
+		expect(result.filesUpdated).toEqual(1);
+
+		const updated = await fs.readFile(filePath, "utf8");
+		expect(updated).toEqual("BAR + foobar\n");
 	});
 });

@@ -11,6 +11,8 @@ interface SearchMatchItemProps {
 	query: string;
 	isRegex: boolean;
 	caseSensitive: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
 	isReplaceEnabled: boolean;
 	variant?: "default" | "tree" | "list";
 	onOpen: (absolutePath: string, line: number, column: number) => void;
@@ -24,6 +26,8 @@ export const SearchMatchItem = memo(function SearchMatchItem({
 	query,
 	isRegex,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	isReplaceEnabled,
 	variant = "default",
 	onOpen,
@@ -34,8 +38,14 @@ export const SearchMatchItem = memo(function SearchMatchItem({
 	const primaryMatch = lineMatch.matches[0];
 	const highlightedText = useMemo(
 		() =>
-			highlightSearchText(lineMatch.preview, { query, isRegex, caseSensitive }),
-		[lineMatch.preview, query, isRegex, caseSensitive],
+			highlightSearchText(lineMatch.preview, {
+				query,
+				isRegex,
+				caseSensitive,
+				wholeWord,
+				multiline,
+			}),
+		[lineMatch.preview, query, isRegex, caseSensitive, wholeWord, multiline],
 	);
 	const hoverActions: RowHoverAction[] = [
 		...(isReplaceEnabled

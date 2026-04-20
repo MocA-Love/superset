@@ -130,6 +130,9 @@ const searchContentInputSchema = z.object({
 	limit: z.number().optional(),
 	isRegex: z.boolean().optional(),
 	caseSensitive: z.boolean().optional(),
+	wholeWord: z.boolean().optional(),
+	multiline: z.boolean().optional(),
+	scopeId: z.string().optional(),
 });
 
 const replaceContentInputSchema = z.object({
@@ -141,6 +144,8 @@ const replaceContentInputSchema = z.object({
 	excludePattern: z.string().optional(),
 	isRegex: z.boolean().optional(),
 	caseSensitive: z.boolean().optional(),
+	wholeWord: z.boolean().optional(),
+	multiline: z.boolean().optional(),
 	paths: z.array(z.string()).optional(),
 });
 
@@ -388,6 +393,9 @@ export const createFilesystemRouter = () => {
 						limit: input.limit,
 						isRegex: input.isRegex,
 						caseSensitive: input.caseSensitive,
+						wholeWord: input.wholeWord,
+						multiline: input.multiline,
+						scopeId: input.scopeId,
 					});
 				});
 			}),
@@ -415,6 +423,8 @@ export const createFilesystemRouter = () => {
 						excludePattern: input.excludePattern,
 						isRegex: input.isRegex,
 						caseSensitive: input.caseSensitive,
+						wholeWord: input.wholeWord,
+						multiline: input.multiline,
 						paths: input.paths,
 					});
 				});

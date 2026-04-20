@@ -213,6 +213,8 @@ export function SearchView({
 	const [replaceOpen, setReplaceOpen] = useState(false);
 	const [isRegex, setIsRegex] = useState(false);
 	const [caseSensitive, setCaseSensitive] = useState(false);
+	const [wholeWord, setWholeWord] = useState(false);
+	const [multiline, setMultiline] = useState(false);
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 	const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
 	const [ignoredMatchIds, setIgnoredMatchIds] = useState<Record<string, true>>(
@@ -263,6 +265,12 @@ export function SearchView({
 			excludePattern,
 			isRegex,
 			caseSensitive,
+			wholeWord,
+			// `multiline` only meaningfully applies to regex patterns in VSCode,
+			// so we drop it entirely when the user isn't in regex mode. This
+			// lets the regex toggle control visibility and avoids wasted
+			// ripgrep calls with `--multiline` on fixed strings.
+			multiline: isRegex && multiline,
 			enabled: isActive,
 		});
 
@@ -282,7 +290,7 @@ export function SearchView({
 		() => collectFolderPaths(treeResults),
 		[treeResults],
 	);
-	const searchResultResetKey = `${query}\u0000${includePattern}\u0000${excludePattern}\u0000${isRegex}\u0000${caseSensitive}`;
+	const searchResultResetKey = `${query}\u0000${includePattern}\u0000${excludePattern}\u0000${isRegex}\u0000${caseSensitive}\u0000${wholeWord}\u0000${multiline}`;
 
 	const copySupersetLink = useCallback(
 		({
@@ -430,6 +438,8 @@ export function SearchView({
 					excludePattern,
 					isRegex,
 					caseSensitive,
+					wholeWord,
+					multiline: isRegex && multiline,
 					paths,
 				});
 
@@ -464,11 +474,13 @@ export function SearchView({
 			excludePattern,
 			includePattern,
 			isRegex,
+			multiline,
 			query,
 			replacement,
 			replaceMutation,
 			utils.filesystem.searchContent,
 			validationError,
+			wholeWord,
 			workspaceId,
 		],
 	);
@@ -503,6 +515,8 @@ export function SearchView({
 						line: lineMatch.line,
 						isRegex,
 						caseSensitive,
+						wholeWord,
+						multiline: isRegex && multiline,
 					},
 				);
 
@@ -552,10 +566,12 @@ export function SearchView({
 		[
 			caseSensitive,
 			isRegex,
+			multiline,
 			query,
 			replacement,
 			utils,
 			validationError,
+			wholeWord,
 			workspaceId,
 			writeFileMutation,
 		],
@@ -629,6 +645,8 @@ export function SearchView({
 				excludePattern={excludePattern}
 				isRegex={isRegex}
 				caseSensitive={caseSensitive}
+				wholeWord={wholeWord}
+				multiline={multiline}
 				canReplaceAll={canReplaceAll && totalMatches > 0}
 				isReplacing={replaceMutation.isPending || writeFileMutation.isPending}
 				onQueryChange={setQuery}
@@ -642,6 +660,8 @@ export function SearchView({
 				onToggleReplace={() => setReplaceOpen((current) => !current)}
 				onToggleRegex={() => setIsRegex((current) => !current)}
 				onToggleCaseSensitive={() => setCaseSensitive((current) => !current)}
+				onToggleWholeWord={() => setWholeWord((current) => !current)}
+				onToggleMultiline={() => setMultiline((current) => !current)}
 				onReplaceAll={() => {
 					void runReplace();
 				}}
@@ -800,6 +820,8 @@ export function SearchView({
 												query={query}
 												isRegex={isRegex}
 												caseSensitive={caseSensitive}
+												wholeWord={wholeWord}
+												multiline={isRegex && multiline}
 												isReplacing={
 													replaceMutation.isPending ||
 													writeFileMutation.isPending
@@ -832,6 +854,8 @@ export function SearchView({
 												query={query}
 												isRegex={isRegex}
 												caseSensitive={caseSensitive}
+												wholeWord={wholeWord}
+												multiline={isRegex && multiline}
 												isReplacing={
 													replaceMutation.isPending ||
 													writeFileMutation.isPending

@@ -36,6 +36,7 @@
 	"devDependencies": {
 		"@superset/typescript": "workspace:*",
 		"@types/node": "^24.9.1",
+		"@vscode/ripgrep": "^1.15.9",
 		"typescript": "^5.9.3"
 	}
 }

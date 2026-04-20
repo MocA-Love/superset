@@ -13,6 +13,8 @@ interface UseContentSearchParams {
 	excludePattern: string;
 	isRegex: boolean;
 	caseSensitive: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
 	enabled?: boolean;
 	limit?: number;
 }
@@ -24,6 +26,8 @@ export function useContentSearch({
 	excludePattern,
 	isRegex,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	enabled = true,
 	limit = DEFAULT_SEARCH_LIMIT,
 }: UseContentSearchParams) {
@@ -46,6 +50,11 @@ export function useContentSearch({
 			limit,
 			isRegex,
 			caseSensitive,
+			wholeWord,
+			multiline,
+			// Isolated cancellation channel so the Search tab doesn't abort
+			// Cmd+P / Files tab queries happening on the same workspace.
+			scopeId: "search-tab",
 		},
 		{
 			enabled:

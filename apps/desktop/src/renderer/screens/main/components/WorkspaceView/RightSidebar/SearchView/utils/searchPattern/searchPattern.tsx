@@ -4,25 +4,36 @@ function escapeRegExp(input: string): string {
 	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export interface SearchPatternOptions {
+	query: string;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
+}
+
 export function createSearchRegExp({
 	query,
 	isRegex,
 	caseSensitive,
-}: {
-	query: string;
-	isRegex: boolean;
-	caseSensitive: boolean;
-}): RegExp | null {
+	wholeWord = false,
+	multiline = false,
+}: SearchPatternOptions): RegExp | null {
 	const trimmedQuery = query.trim();
 	if (!trimmedQuery) {
 		return null;
 	}
 
 	try {
-		return new RegExp(
-			isRegex ? trimmedQuery : escapeRegExp(trimmedQuery),
-			caseSensitive ? "gu" : "giu",
-		);
+		let source = isRegex ? trimmedQuery : escapeRegExp(trimmedQuery);
+		if (wholeWord) {
+			source = `\\b(?:${source})\\b`;
+		}
+		let flags = caseSensitive ? "gu" : "giu";
+		if (isRegex && multiline) {
+			flags += "sm";
+		}
+		return new RegExp(source, flags);
 	} catch {
 		return null;
 	}
@@ -61,6 +72,8 @@ export function replaceSingleSearchMatchInContent(
 		column,
 		isRegex,
 		caseSensitive,
+		wholeWord = false,
+		multiline = false,
 	}: {
 		query: string;
 		replacement: string;
@@ -68,12 +81,16 @@ export function replaceSingleSearchMatchInContent(
 		column: number;
 		isRegex: boolean;
 		caseSensitive: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
 	},
 ): string | null {
 	const regex = createSearchRegExp({
 		query,
 		isRegex,
 		caseSensitive,
+		wholeWord,
+		multiline,
 	});
 	if (!regex) {
 		return null;
@@ -112,18 +129,24 @@ export function replaceSearchMatchesInLineInContent(
 		line,
 		isRegex,
 		caseSensitive,
+		wholeWord = false,
+		multiline = false,
 	}: {
 		query: string;
 		replacement: string;
 		line: number;
 		isRegex: boolean;
 		caseSensitive: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
 	},
 ): string | null {
 	const regex = createSearchRegExp({
 		query,
 		isRegex,
 		caseSensitive,
+		wholeWord,
+		multiline,
 	});
 	if (!regex) {
 		return null;
@@ -174,16 +197,22 @@ export function highlightSearchText(
 		query,
 		isRegex,
 		caseSensitive,
+		wholeWord = false,
+		multiline = false,
 	}: {
 		query: string;
 		isRegex: boolean;
 		caseSensitive: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
 	},
 ): ReactNode {
 	const regex = createSearchRegExp({
 		query,
 		isRegex,
 		caseSensitive,
+		wholeWord,
+		multiline,
 	});
 	if (!regex) {
 		return text;

@@ -245,6 +245,9 @@ export function createFsHostService(
 				limit: input.limit,
 				isRegex: input.isRegex,
 				caseSensitive: input.caseSensitive,
+				wholeWord: input.wholeWord,
+				multiline: input.multiline,
+				scopeId: input.scopeId,
 				runRipgrep: options.runRipgrep,
 			});
 			return { matches };
@@ -260,6 +263,8 @@ export function createFsHostService(
 				excludePattern: input.excludePattern,
 				isRegex: input.isRegex,
 				caseSensitive: input.caseSensitive,
+				wholeWord: input.wholeWord,
+				multiline: input.multiline,
 				paths: input.paths,
 			});
 		},

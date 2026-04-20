@@ -23,6 +23,8 @@ interface SearchTreeNodeProps {
 	query: string;
 	isRegex: boolean;
 	caseSensitive: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
 	isReplacing: boolean;
 	showReplaceAction: boolean;
 	openGroups: Record<string, boolean>;
@@ -43,6 +45,8 @@ export const SearchTreeNode = memo(function SearchTreeNode({
 	query,
 	isRegex,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	isReplacing,
 	showReplaceAction,
 	openGroups,
@@ -69,6 +73,8 @@ export const SearchTreeNode = memo(function SearchTreeNode({
 					query={query}
 					isRegex={isRegex}
 					caseSensitive={caseSensitive}
+					wholeWord={wholeWord}
+					multiline={multiline}
 					isReplacing={isReplacing}
 					showReplaceAction={showReplaceAction}
 					showParentPath={false}
@@ -124,6 +130,8 @@ export const SearchTreeNode = memo(function SearchTreeNode({
 							query={query}
 							isRegex={isRegex}
 							caseSensitive={caseSensitive}
+							wholeWord={wholeWord}
+							multiline={multiline}
 							isReplacing={isReplacing}
 							showReplaceAction={showReplaceAction}
 							openGroups={openGroups}
