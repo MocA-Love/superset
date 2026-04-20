@@ -438,6 +438,16 @@ async function proxyBrowserUpgrade(
 		// Map outgoing request id → original method so we can filter
 		// responses for Target.getTargets etc. Chromium echoes `id` back.
 		const pendingMethods = new Map<number, string>();
+		// SessionIds we have actually surfaced to the client via
+		// Target.attachedToTarget. After stripping the `filter` from
+		// client-issued Target.setAutoAttach requests (see below),
+		// Chromium auto-attaches to many non-bound targets (other
+		// panes, workers, tab wrappers, …) and emits session-scoped
+		// frames for all of them on this single WS. We drop any
+		// session-scoped frame whose sessionId we never taught the
+		// client, which keeps cross-pane DOM/network/etc. traffic from
+		// leaking.
+		const allowedSessionIds = new Set<string>();
 
 		const closeBoth = (): void => {
 			try {
@@ -482,10 +492,14 @@ async function proxyBrowserUpgrade(
 			} catch {
 				return;
 			}
-			// Session-scoped frames: always forward (Page/DOM/Runtime/etc
-			// speak to an already-attached page).
+			// Session-scoped frames: forward only if the sessionId is
+			// one we surfaced to the client. Otherwise the client is
+			// trying (or has been tricked into) operating on a session
+			// it shouldn't know about.
 			if (msg.sessionId) {
-				sendToUpstream(msg);
+				if (allowedSessionIds.has(msg.sessionId)) {
+					sendToUpstream(msg);
+				}
 				return;
 			}
 			const method = msg.method ?? "";
@@ -507,6 +521,25 @@ async function proxyBrowserUpgrade(
 						`${method} is not permitted by the Superset CDP filter`,
 					);
 				}
+				return;
+			}
+
+			// setAutoAttach: strip the `filter` field so Chromium does
+			// NOT honour a client-side `{type:'page', exclude:true}`
+			// exclusion. Puppeteer (and therefore chrome-devtools-mcp)
+			// sends that filter assuming it will attach to a `tab`
+			// wrapper and then nest-attach to pages. Electron's
+			// embedded Chromium does not always expose that tab
+			// wrapper, so the nested attach never happens and
+			// `puppeteer.connect()` hangs. By stripping the filter we
+			// force a top-level page attach that our downstream Target
+			// event filter keeps scoped to the bound pane.
+			if (method === "Target.setAutoAttach" && id !== undefined) {
+				const original = (msg.params ?? {}) as Record<string, unknown>;
+				const rewritten: Record<string, unknown> = { ...original };
+				if ("filter" in rewritten) delete rewritten.filter;
+				pendingMethods.set(id, method);
+				sendToUpstream({ id, method, params: rewritten });
 				return;
 			}
 
@@ -578,9 +611,16 @@ async function proxyBrowserUpgrade(
 			} catch {
 				return;
 			}
-			// Session-scoped event/response: always forward.
+			// Session-scoped event/response: forward only for sessions
+			// the client knows about. Stripping the setAutoAttach
+			// filter causes Chromium to auto-attach to unrelated
+			// panes/workers/tabs and emit session-scoped frames for
+			// them on this single WS; without this check, their DOM,
+			// network, and runtime events would leak to the client.
 			if (msg.sessionId) {
-				sendToClient(msg);
+				if (allowedSessionIds.has(msg.sessionId)) {
+					sendToClient(msg);
+				}
 				return;
 			}
 
@@ -598,6 +638,10 @@ async function proxyBrowserUpgrade(
 						result: { ...msg.result, targetInfos: filtered },
 					});
 					return;
+				}
+				if (origMethod === "Target.attachToTarget" && msg.result) {
+					const sid = (msg.result as { sessionId?: string }).sessionId;
+					if (sid) allowedSessionIds.add(sid);
 				}
 				if (origMethod === "Target.getTargetInfo" && msg.result?.targetInfo) {
 					if (!isTargetInfoForBound(msg.result.targetInfo, boundTargetId)) {
@@ -631,10 +675,20 @@ async function proxyBrowserUpgrade(
 				return;
 			}
 			if (method === "Target.attachedToTarget") {
-				const tid = (
-					msg.params as { targetInfo?: { targetId?: string } } | undefined
-				)?.targetInfo?.targetId;
+				const params = msg.params as
+					| { sessionId?: string; targetInfo?: { targetId?: string } }
+					| undefined;
+				const tid = params?.targetInfo?.targetId;
 				if (tid !== boundTargetId) return;
+				if (params?.sessionId) allowedSessionIds.add(params.sessionId);
+				sendToClient(msg);
+				return;
+			}
+			if (method === "Target.detachedFromTarget") {
+				const sid = (msg.params as { sessionId?: string } | undefined)
+					?.sessionId;
+				if (!sid || !allowedSessionIds.has(sid)) return;
+				allowedSessionIds.delete(sid);
 				sendToClient(msg);
 				return;
 			}
