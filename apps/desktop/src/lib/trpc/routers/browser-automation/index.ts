@@ -134,16 +134,55 @@ class BindingStore {
 
 export const bindingStore = new BindingStore();
 
-/**
- * Detect whether the given agent config file exposes the
- * `superset-browser` MCP entry. We do a conservative string check so
- * this works for both JSON (Claude) and TOML (Codex) without pulling
- * in a TOML parser.
- */
-function detectSupersetBrowserMcp(filePath: string): boolean {
+const SERVER_NAME = "superset-browser";
+
+function isEnabledMcpEntry(value: unknown): boolean {
+	if (value == null || typeof value !== "object") return false;
+	const entry = value as Record<string, unknown>;
+	if (entry.disabled === true) return false;
+	// An entry needs at minimum a command/url/args hint to be usable.
+	return (
+		typeof entry.command === "string" ||
+		typeof entry.url === "string" ||
+		Array.isArray(entry.args)
+	);
+}
+
+/** Claude: ~/.claude/settings.json is JSON with `mcpServers[name]`. */
+function detectClaudeMcp(filePath: string): boolean {
 	try {
 		const contents = readFileSync(filePath, "utf8");
-		return contents.includes("superset-browser");
+		const parsed = JSON.parse(contents) as unknown;
+		if (!parsed || typeof parsed !== "object") return false;
+		const mcp = (parsed as Record<string, unknown>).mcpServers;
+		if (!mcp || typeof mcp !== "object") return false;
+		return isEnabledMcpEntry((mcp as Record<string, unknown>)[SERVER_NAME]);
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Codex: ~/.codex/config.toml uses `[mcp_servers.<name>]` table sections.
+ * We avoid pulling in a TOML parser just for this one check — instead we
+ * isolate the `[mcp_servers.superset-browser]` section and verify it has
+ * at least one usable field (`command`, `url`, `args`) and is not marked
+ * `disabled = true`. Comment lines (starting with `#`) are ignored.
+ */
+function detectCodexMcp(filePath: string): boolean {
+	try {
+		const contents = readFileSync(filePath, "utf8");
+		const sectionRe = new RegExp(
+			String.raw`(^|\n)\[mcp_servers\.${SERVER_NAME}\]\s*\n([\s\S]*?)(?=\n\[|$)`,
+		);
+		const match = contents.match(sectionRe);
+		if (!match) return false;
+		const body = match[2]
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0 && !line.startsWith("#"));
+		if (body.some((line) => /^disabled\s*=\s*true\b/.test(line))) return false;
+		return body.some((line) => /^(command|url|args)\s*=/.test(line));
 	} catch {
 		return false;
 	}
@@ -168,8 +207,23 @@ export interface TerminalAgentSession {
  * tab" as an LLM session that is connectable to a browser pane.
  */
 async function detectTerminalAgentSessions(): Promise<TerminalAgentSession[]> {
-	const client = getTerminalHostClient();
-	const { sessions } = await client.listSessions();
+	let sessions: Awaited<
+		ReturnType<ReturnType<typeof getTerminalHostClient>["listSessions"]>
+	>["sessions"];
+	try {
+		const client = getTerminalHostClient();
+		const response = await client.listSessions();
+		sessions = response.sessions;
+	} catch (error) {
+		// Terminal-host daemon is intermittently unavailable (restart races,
+		// IPC errors). Degrade gracefully so liveness data for non-terminal
+		// bindings is still returned instead of rejecting the whole query.
+		console.warn(
+			"[browser-automation] terminal listSessions failed, skipping terminal probe:",
+			error,
+		);
+		return [];
+	}
 	const out: TerminalAgentSession[] = [];
 	await Promise.all(
 		sessions.map(async (s) => {
@@ -209,8 +263,8 @@ export const createBrowserAutomationRouter = () => {
 				}),
 			)
 			.query(({ input }) => {
-				const claudeReady = detectSupersetBrowserMcp(CLAUDE_SETTINGS_PATH);
-				const codexReady = detectSupersetBrowserMcp(CODEX_CONFIG_PATH);
+				const claudeReady = detectClaudeMcp(CLAUDE_SETTINGS_PATH);
+				const codexReady = detectCodexMcp(CODEX_CONFIG_PATH);
 				const resolved =
 					input.provider === "Claude"
 						? claudeReady
