@@ -64,18 +64,36 @@ export const useBrowserAutomationStore = create<BrowserAutomationUiState>(
 	}),
 );
 
-export function getSnippetForSession(session: AutomationSession): string {
+export interface ServerCommand {
+	command: string;
+	args: string[];
+	available: boolean;
+}
+
+function tomlString(value: string): string {
+	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function shellQuote(value: string): string {
+	return /^[\w@./:+-]+$/.test(value)
+		? value
+		: `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+export function getSnippetForSession(
+	session: AutomationSession,
+	server?: ServerCommand,
+): string {
+	const cmd = server?.command ?? "desktop-mcp";
+	const args = server?.args ?? [];
 	if (session.provider === "Codex") {
-		// TOML is section-based, so appending this block to an existing
-		// config.toml is safe. The bin comes from packages/desktop-mcp.
+		const argsToml = args.map(tomlString).join(", ");
 		return `[mcp_servers.superset-browser]
-command = "desktop-mcp"
-args = []`;
+command = ${tomlString(cmd)}
+args = [${argsToml}]`;
 	}
-	// For Claude Code we recommend `claude mcp add` so the user's
-	// ~/.claude.json is updated in-place instead of manually merging a
-	// standalone JSON document (which would produce invalid JSON).
-	return `claude mcp add superset-browser -s local -- desktop-mcp`;
+	const parts = [cmd, ...args].map(shellQuote).join(" ");
+	return `claude mcp add superset-browser -s local -- ${parts}`;
 }
 
 function formatRelativeTime(ts: number | null | undefined): string {
