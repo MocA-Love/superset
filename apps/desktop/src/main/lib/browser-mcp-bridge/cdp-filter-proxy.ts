@@ -1,74 +1,94 @@
-import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+	createServer,
+	type IncomingMessage,
+	type Server,
+	type ServerResponse,
+} from "node:http";
 import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
-import { WebSocket, type WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
 import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
 import { resolveCdpPort } from "./cdp-port";
 
 /**
- * CDP (Chrome DevTools Protocol) filter proxy.
+ * CDP (Chrome DevTools Protocol) filter proxy — per-session edition.
  *
- * External browser automation MCPs (chrome-devtools-mcp / browser-use /
- * playwright-mcp / …) speak CDP over HTTP + WebSocket. Chromium exposes
- * every page target on its loopback debugging port, which would leak
- * sibling Superset panes / devtools / the workspace shell to whichever
- * LLM is attached.
+ * External browser-automation MCPs (chrome-devtools-mcp / browser-use /
+ * playwright-mcp / …) that use puppeteer internally expect a
+ * `browserURL = http://host:port` *without* a path. They compose
+ * `/json/version` against it, which strips any path prefix. Putting
+ * the session token in the path therefore does not survive the client
+ * side.
  *
- * This proxy sits in front of Chromium and presents only the bound
- * pane as if it were the sole browser target, keyed by a short-lived
- * per-session token in the URL. The upstream Chromium target the
- * proxy forwards to is resolved at request time from the current
- * session -> pane binding, so hot-swapping the binding in the UI
- * reroutes the same filtered endpoint without the external client
- * needing to reconnect (for HTTP) or noticing the switch beyond a
- * single socket reset (for WebSocket).
+ * So instead we give every LLM session its own dedicated loopback
+ * HTTP+WS server. The port is persistent per session (saved in
+ * `$SUPERSET_HOME_DIR/browser-mcp-sessions.json`) so the URL the user
+ * registered into their external MCP stays valid across Superset
+ * restarts. The server filters Chromium's `/json(/*)?` listing down
+ * to the single pane bound to the owning session and transparently
+ * proxies `/devtools/page/<targetId>` to Chromium.
+ *
+ * Security surface: loopback only, kernel-assigned port, no
+ * path-embedded credentials — the port itself is the capability.
+ *
+ * Threat model: puppeteer's `connect({ browserURL })` composes
+ * `new URL("/json/version", browserURL)`, which per WHATWG URL spec
+ * drops any path, query, or auth on the base URL. It also does not
+ * forward custom HTTP headers to `/json/version`. That rules out
+ * path-token, query-token, and Bearer-header auth on this proxy — any
+ * such secret would be silently stripped before Chromium is asked for
+ * its target list. We therefore rely on the standard Chrome DevTools
+ * security model: loopback binding + single-user-machine assumption.
+ * A hostile *local* process on the same user account that can read
+ * `~/.superset/browser-mcp-sessions.json` (0600) or port-scan loopback
+ * can drive the bound pane; this matches Chromium's own
+ * `--remote-debugging-port` threat model and is explicitly not in
+ * scope for this proxy to fix. Multi-user hosts should not run
+ * Superset desktop with browser automation enabled.
  */
 
-const TOKEN_BYTES = 24;
-const TOKEN_STORE_PATH = join(SUPERSET_HOME_DIR, "browser-mcp-tokens.json");
+const STORE_PATH = join(SUPERSET_HOME_DIR, "browser-mcp-sessions.json");
 
-interface TokenEntry {
+interface SessionRecord {
 	sessionId: string;
+	port: number;
 	createdAt: number;
 	lastUsedAt: number;
 }
 
-const tokensBySession = new Map<string, string>();
-const entriesByToken = new Map<string, TokenEntry>();
-let hydrated = false;
-
-interface PersistedTokenFile {
-	version: 1;
-	entries: Array<TokenEntry & { token: string }>;
+interface PersistedFile {
+	version: 2;
+	sessions: SessionRecord[];
 }
 
-/**
- * Load previously-minted tokens from disk. Tokens survive app
- * restarts so the URL a user registered once into their external
- * browser MCP (chrome-devtools-mcp / browser-use) stays valid.
- */
+const records = new Map<string, SessionRecord>();
+const servers = new Map<string, Server>();
+const inFlight = new Map<string, Promise<number>>();
+let hydrated = false;
+
 function hydrate(): void {
 	if (hydrated) return;
 	hydrated = true;
 	try {
-		const raw = readFileSync(TOKEN_STORE_PATH, "utf8");
-		const parsed = JSON.parse(raw) as Partial<PersistedTokenFile>;
-		if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) return;
-		for (const e of parsed.entries) {
+		const raw = readFileSync(STORE_PATH, "utf8");
+		const parsed = JSON.parse(raw) as Partial<PersistedFile>;
+		if (parsed?.version !== 2 || !Array.isArray(parsed.sessions)) return;
+		for (const s of parsed.sessions) {
 			if (
-				typeof e.token === "string" &&
-				e.token.length >= TOKEN_BYTES * 2 &&
-				typeof e.sessionId === "string"
+				typeof s.sessionId === "string" &&
+				typeof s.port === "number" &&
+				Number.isInteger(s.port) &&
+				s.port > 0 &&
+				s.port < 65_536
 			) {
-				tokensBySession.set(e.sessionId, e.token);
-				entriesByToken.set(e.token, {
-					sessionId: e.sessionId,
-					createdAt: e.createdAt ?? Date.now(),
-					lastUsedAt: e.lastUsedAt ?? Date.now(),
+				records.set(s.sessionId, {
+					sessionId: s.sessionId,
+					port: s.port,
+					createdAt: s.createdAt ?? Date.now(),
+					lastUsedAt: s.lastUsedAt ?? Date.now(),
 				});
 			}
 		}
@@ -79,76 +99,76 @@ function hydrate(): void {
 
 function persist(): void {
 	try {
-		const payload: PersistedTokenFile = {
-			version: 1,
-			entries: Array.from(entriesByToken.entries()).map(([token, entry]) => ({
-				token,
-				...entry,
-			})),
+		const payload: PersistedFile = {
+			version: 2,
+			sessions: Array.from(records.values()),
 		};
-		mkdirSync(dirname(TOKEN_STORE_PATH), { recursive: true });
-		writeFileSync(TOKEN_STORE_PATH, JSON.stringify(payload, null, 2), {
+		mkdirSync(dirname(STORE_PATH), { recursive: true });
+		writeFileSync(STORE_PATH, JSON.stringify(payload, null, 2), {
 			mode: 0o600,
 		});
-		// writeFileSync's `mode` only applies to new files. If the file
-		// already existed with broader permissions (backup/restore, etc.)
-		// we still need to tighten it so long-lived /cdp/<token>
-		// credentials never leak to other local users.
+		// writeFileSync mode only applies to new files; force 0600 so an
+		// existing file from an earlier run with looser permissions is
+		// re-tightened.
 		try {
-			chmodSync(TOKEN_STORE_PATH, 0o600);
+			chmodSync(STORE_PATH, 0o600);
 		} catch {
 			/* best-effort */
 		}
 	} catch (error) {
-		console.warn("[cdp-filter-proxy] failed to persist tokens:", error);
+		console.warn("[cdp-filter-proxy] failed to persist sessions:", error);
 	}
 }
 
-export function mintCdpToken(sessionId: string): string {
-	hydrate();
-	const existing = tokensBySession.get(sessionId);
-	if (existing) {
-		const entry = entriesByToken.get(existing);
-		if (entry) entry.lastUsedAt = Date.now();
-		return existing;
-	}
-	const token = randomBytes(TOKEN_BYTES).toString("hex");
-	tokensBySession.set(sessionId, token);
-	entriesByToken.set(token, {
-		sessionId,
-		createdAt: Date.now(),
-		lastUsedAt: Date.now(),
+async function tryBind(server: Server, port: number): Promise<number | null> {
+	return new Promise((resolve) => {
+		const onError = (): void => {
+			server.off("error", onError);
+			resolve(null);
+		};
+		server.once("error", onError);
+		server.listen(port, "127.0.0.1", () => {
+			server.off("error", onError);
+			const addr = server.address();
+			if (!addr || typeof addr === "string") {
+				resolve(null);
+				return;
+			}
+			resolve(addr.port);
+		});
 	});
-	persist();
-	return token;
 }
 
-function resolveTokenToPane(
-	token: string,
-): { sessionId: string; paneId: string; targetId: string } | null {
-	hydrate();
-	const entry = entriesByToken.get(token);
-	if (!entry) return null;
-	entry.lastUsedAt = Date.now();
-	const binding = bindingStore.getBySessionId(entry.sessionId);
+async function bindSessionServer(
+	preferredPort: number | undefined,
+): Promise<{ server: Server; port: number; wss: WebSocketServer }> {
+	const server = createServer();
+	// Try preferred port first so restarts reuse the one the user
+	// registered with; fall back to any free port on conflict.
+	const bound =
+		(preferredPort && (await tryBind(server, preferredPort))) ||
+		(await tryBind(server, 0));
+	if (!bound) {
+		throw new Error("cdp-filter-proxy: failed to bind loopback port");
+	}
+	const wss = new WebSocketServer({ noServer: true });
+	return { server, port: bound, wss };
+}
+
+function resolveBindingForSession(
+	sessionId: string,
+): { paneId: string; targetId: string } | null {
+	const binding = bindingStore.getBySessionId(sessionId);
 	if (!binding) return null;
 	const targetId = browserManager.getCdpTargetId(binding.paneId);
 	if (!targetId) return null;
-	return { sessionId: entry.sessionId, paneId: binding.paneId, targetId };
+	return { paneId: binding.paneId, targetId };
 }
 
-const CDP_PATH_PATTERN =
-	/^\/cdp\/([0-9a-f]{32,})(\/json(?:\/version|\/list|\/protocol)?|\/devtools\/page\/[^/]+)?$/;
-
-interface ParsedPath {
-	token: string;
-	subPath: string;
-}
-
-function parseCdpPath(pathname: string): ParsedPath | null {
-	const match = pathname.match(CDP_PATH_PATTERN);
-	if (!match) return null;
-	return { token: match[1], subPath: match[2] ?? "" };
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+	res.statusCode = status;
+	res.setHeader("content-type", "application/json");
+	res.end(JSON.stringify(body));
 }
 
 async function fetchUpstreamJson(path: string): Promise<unknown> {
@@ -163,120 +183,112 @@ async function fetchUpstreamJson(path: string): Promise<unknown> {
 	return (await res.json()) as unknown;
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-	res.statusCode = status;
-	res.setHeader("content-type", "application/json");
-	res.end(JSON.stringify(body));
-}
-
-/**
- * Return true if the request was fully handled here; false otherwise
- * so the outer bridge can fall through to its own routes.
- */
-export async function handleCdpHttp(
-	req: IncomingMessage,
-	res: ServerResponse,
-): Promise<boolean> {
-	const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-	const parsed = parseCdpPath(pathname);
-	if (!parsed) return false;
-	const resolved = resolveTokenToPane(parsed.token);
-	if (!resolved) {
-		sendJson(res, 404, {
-			error:
-				"Unknown or expired CDP token, or no pane is bound to the session.",
-		});
-		return true;
-	}
-
-	try {
-		if (parsed.subPath === "/json/version") {
-			const body = (await fetchUpstreamJson("/json/version")) as Record<
-				string,
-				unknown
-			>;
-			// Chromium's /json/version response carries the browser-level
-			// `webSocketDebuggerUrl` for the root CDP target. Leaving it in
-			// would let a caller with a valid /cdp/<token> URL bypass the
-			// per-pane filter entirely by attaching straight to
-			// ws://127.0.0.1:<raw>/devtools/browser/... . Strip it so the
-			// only ws path the caller ever sees is the token-scoped one.
-			const { webSocketDebuggerUrl: _unused, ...safe } = body;
-			void _unused;
-			sendJson(res, 200, safe);
-			return true;
-		}
-		if (parsed.subPath === "/json/protocol") {
-			const body = await fetchUpstreamJson("/json/protocol");
-			sendJson(res, 200, body);
-			return true;
-		}
-		if (parsed.subPath === "/json" || parsed.subPath === "/json/list") {
-			// Return the bound pane as the only visible target.
-			const port = await resolveCdpPort();
-			if (!port) throw new Error("Chromium CDP port not available");
-			const rawList = (await fetchUpstreamJson("/json/list")) as Array<
-				Record<string, unknown>
-			>;
-			const filtered = rawList.filter(
-				(item) => (item as { id?: string }).id === resolved.targetId,
-			);
-			// Rewrite ws/frontend URLs so callers see the token-scoped path
-			// and never call Chromium directly.
-			const host = req.headers.host ?? "127.0.0.1";
-			const rewritten = filtered.map((item) => {
-				const out = { ...item };
-				const id = resolved.targetId;
-				out.webSocketDebuggerUrl = `ws://${host}/cdp/${parsed.token}/devtools/page/${id}`;
-				out.devtoolsFrontendUrl = `http://${host}/cdp/${parsed.token}/devtools/page/${id}`;
-				return out;
+function wireRequestHandler(server: Server, sessionId: string): void {
+	server.on("request", async (req, res) => {
+		try {
+			const remote = req.socket.remoteAddress ?? "";
+			if (
+				remote !== "127.0.0.1" &&
+				remote !== "::1" &&
+				remote !== "::ffff:127.0.0.1"
+			) {
+				return sendJson(res, 403, { error: "loopback only" });
+			}
+			const url = new URL(req.url ?? "/", "http://localhost");
+			const pathname = url.pathname.replace(/\/$/, "") || "/";
+			if (pathname === "/json/version") {
+				const body = (await fetchUpstreamJson("/json/version")) as Record<
+					string,
+					unknown
+				>;
+				// Chromium's /json/version exposes the browser-level
+				// `webSocketDebuggerUrl` pointing at the raw CDP port, which
+				// would bypass the filter. Drop it.
+				const { webSocketDebuggerUrl: _drop, ...safe } = body;
+				void _drop;
+				return sendJson(res, 200, safe);
+			}
+			if (pathname === "/json/protocol") {
+				const body = await fetchUpstreamJson("/json/protocol");
+				return sendJson(res, 200, body);
+			}
+			if (pathname === "/json" || pathname === "/json/list") {
+				const resolved = resolveBindingForSession(sessionId);
+				if (!resolved) return sendJson(res, 200, []);
+				const raw = (await fetchUpstreamJson("/json/list")) as Array<
+					Record<string, unknown>
+				>;
+				const host = req.headers.host ?? "127.0.0.1";
+				const out = raw
+					.filter((t) => (t as { id?: string }).id === resolved.targetId)
+					.map((t) => {
+						const id = resolved.targetId;
+						return {
+							...t,
+							webSocketDebuggerUrl: `ws://${host}/devtools/page/${id}`,
+							devtoolsFrontendUrl: `http://${host}/devtools/page/${id}`,
+						};
+					});
+				return sendJson(res, 200, out);
+			}
+			// Plain HTTP access to /devtools/page/<id> is not a real CDP
+			// entry point — it needs a WS upgrade which is handled below.
+			return sendJson(res, 404, { error: "not found" });
+		} catch (error) {
+			console.error("[cdp-filter-proxy] request error:", error);
+			return sendJson(res, 502, {
+				error: error instanceof Error ? error.message : String(error),
 			});
-			sendJson(res, 200, rewritten);
-			return true;
 		}
-		// /devtools/page/<id> accessed via plain HTTP — not valid CDP, the
-		// upgrade handler deals with the WebSocket case.
-		sendJson(res, 404, { error: "not found" });
-		return true;
-	} catch (error) {
-		sendJson(res, 502, {
-			error: error instanceof Error ? error.message : String(error),
-		});
-		return true;
-	}
+	});
 }
 
-/**
- * Return true if the upgrade request targets the CDP proxy and was
- * consumed. The caller only needs to wire `server.on('upgrade', ...)`
- * once and let us decide.
- */
-export async function handleCdpUpgrade(
+function wireUpgradeHandler(
+	server: Server,
+	wss: WebSocketServer,
+	sessionId: string,
+): void {
+	server.on("upgrade", async (req, socket, head) => {
+		const remote = req.socket.remoteAddress ?? "";
+		if (
+			remote !== "127.0.0.1" &&
+			remote !== "::1" &&
+			remote !== "::ffff:127.0.0.1"
+		) {
+			socket.destroy();
+			return;
+		}
+		const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+		if (!/^\/devtools\/page\/[^/]+$/.test(pathname)) {
+			socket.destroy();
+			return;
+		}
+		const resolved = resolveBindingForSession(sessionId);
+		if (!resolved) {
+			socket.destroy();
+			return;
+		}
+		const port = await resolveCdpPort();
+		if (!port) {
+			socket.destroy();
+			return;
+		}
+		void proxyUpgrade(req, socket, head, wss, port, resolved.targetId);
+	});
+}
+
+async function proxyUpgrade(
 	req: IncomingMessage,
 	socket: Duplex,
 	head: Buffer,
 	wss: WebSocketServer,
-): Promise<boolean> {
-	const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-	const parsed = parseCdpPath(pathname);
-	if (!parsed) return false;
-	if (!parsed.subPath.startsWith("/devtools/page/")) {
-		socket.destroy();
-		return true;
-	}
-	const resolved = resolveTokenToPane(parsed.token);
-	if (!resolved) {
-		socket.destroy();
-		return true;
-	}
-	const port = await resolveCdpPort();
-	if (!port) {
-		socket.destroy();
-		return true;
-	}
+	chromiumPort: number,
+	targetId: string,
+): Promise<void> {
 	wss.handleUpgrade(req, socket, head, (clientWs) => {
-		const upstreamUrl = `ws://127.0.0.1:${port}/devtools/page/${resolved.targetId}`;
-		const upstream = new WebSocket(upstreamUrl);
+		const upstream = new WebSocket(
+			`ws://127.0.0.1:${chromiumPort}/devtools/page/${targetId}`,
+		);
 		const closeBoth = (): void => {
 			try {
 				clientWs.close();
@@ -289,10 +301,6 @@ export async function handleCdpUpgrade(
 				/* ignore */
 			}
 		};
-		// CDP clients typically ship their first command immediately after
-		// the handshake, so wire the client handler BEFORE upstream opens
-		// and buffer frames until upstream is ready. Otherwise early frames
-		// get dropped and the attach looks stalled.
 		const pending: Array<Parameters<typeof upstream.send>[0]> = [];
 		clientWs.on("message", (data) => {
 			if (upstream.readyState === WebSocket.OPEN) {
@@ -316,5 +324,60 @@ export async function handleCdpUpgrade(
 		clientWs.on("error", closeBoth);
 		clientWs.on("close", closeBoth);
 	});
-	return true;
+}
+
+/**
+ * Ensure a dedicated loopback server exists for this LLM session and
+ * return the port it is bound to. Idempotent — re-calls return the
+ * same port for the same session, even across Superset restarts.
+ */
+export async function ensureSessionEndpoint(
+	sessionId: string,
+): Promise<number> {
+	hydrate();
+	const existing = records.get(sessionId);
+	if (existing && servers.has(sessionId)) {
+		existing.lastUsedAt = Date.now();
+		return existing.port;
+	}
+	// Serialize concurrent calls for the same sessionId — otherwise both
+	// callers miss `servers.has(...)` and each bind a different port,
+	// then clobber each other in the maps.
+	const pending = inFlight.get(sessionId);
+	if (pending) return pending;
+	const promise = (async () => {
+		const { server, port, wss } = await bindSessionServer(existing?.port);
+		wireRequestHandler(server, sessionId);
+		wireUpgradeHandler(server, wss, sessionId);
+		servers.set(sessionId, server);
+		const record: SessionRecord = {
+			sessionId,
+			port,
+			createdAt: existing?.createdAt ?? Date.now(),
+			lastUsedAt: Date.now(),
+		};
+		records.set(sessionId, record);
+		persist();
+		return port;
+	})().finally(() => {
+		inFlight.delete(sessionId);
+	});
+	inFlight.set(sessionId, promise);
+	return promise;
+}
+
+export function getSessionEndpointPort(sessionId: string): number | null {
+	hydrate();
+	return records.get(sessionId)?.port ?? null;
+}
+
+export function stopAllSessionEndpoints(): void {
+	for (const server of servers.values()) {
+		try {
+			server.close();
+		} catch {
+			/* ignore */
+		}
+	}
+	servers.clear();
 }
