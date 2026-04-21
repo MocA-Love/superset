@@ -318,16 +318,19 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 				);
 			}
 
-			// Route browser panes to the WebContentsView-backed pane
-			// by default. Users can fall back to the legacy <webview>
-			// implementation by setting localStorage
-			// "superset.browserLegacy"="1" (debug escape hatch only;
-			// the legacy pane has known multi-tab instability).
+			// Route browser panes to the legacy <webview>-based
+			// BrowserPane. The WebContentsView-backed v3 is a
+			// work-in-progress — many features (bookmarks / zoom /
+			// fullscreen / find-in-page / dialogs / context menu /
+			// extension toolbar / MCP tab integration) are not yet
+			// ported, so v3 is kept as opt-in via
+			// localStorage "superset.browserV3"="1" until feature
+			// parity lands.
 			if (paneInfo.type === "webview") {
-				const useLegacy =
+				const useV3 =
 					typeof localStorage !== "undefined" &&
-					localStorage.getItem("superset.browserLegacy") === "1";
-				if (!useLegacy) {
+					localStorage.getItem("superset.browserV3") === "1";
+				if (useV3) {
 					const initialUrl =
 						(paneInfo.data as { url?: string } | undefined)?.url ??
 						"about:blank";
