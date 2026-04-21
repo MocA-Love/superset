@@ -152,6 +152,8 @@ export function CommandPalette({
 			}
 			filtersOpen={filtersOpen}
 			onFiltersOpenChange={onFiltersOpenChange}
+			contentClassName="sm:max-w-5xl top-[12%] translate-y-0"
+			listClassName="max-h-[600px]"
 			includePattern={includePattern}
 			onIncludePatternChange={onIncludePatternChange}
 			excludePattern={excludePattern}

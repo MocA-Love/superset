@@ -8,6 +8,7 @@ import {
 } from "@superset/ui/command";
 import { Input } from "@superset/ui/input";
 import { Spinner } from "@superset/ui/spinner";
+import { cn } from "@superset/ui/utils";
 import type { ReactNode } from "react";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 
@@ -38,6 +39,10 @@ interface SearchDialogProps<TItem extends SearchDialogItem> {
 	headerExtra?: ReactNode;
 	preResultsSection?: ReactNode;
 	hasPreResults?: boolean;
+	/** Extra Tailwind classes for the DialogContent wrapper (size / position). */
+	contentClassName?: string;
+	/** Extra Tailwind classes for CommandList (controls result-area height). */
+	listClassName?: string;
 }
 
 export function SearchDialog<TItem extends SearchDialogItem>({
@@ -63,6 +68,8 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 	headerExtra,
 	preResultsSection,
 	hasPreResults,
+	contentClassName,
+	listClassName,
 }: SearchDialogProps<TItem>) {
 	return (
 		<CommandDialog
@@ -73,6 +80,7 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 			description={description}
 			showCloseButton={false}
 			commandProps={{ shouldFilter: false }}
+			className={contentClassName}
 		>
 			<div className="relative">
 				<CommandInput
@@ -121,7 +129,7 @@ export function SearchDialog<TItem extends SearchDialogItem>({
 				</div>
 			) : null}
 			{headerExtra}
-			<CommandList>
+			<CommandList className={cn(listClassName)}>
 				{query.trim().length > 0 &&
 					!isLoading &&
 					results.length === 0 &&
