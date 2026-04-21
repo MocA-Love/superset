@@ -152,7 +152,7 @@ export function CommandPalette({
 			}
 			filtersOpen={filtersOpen}
 			onFiltersOpenChange={onFiltersOpenChange}
-			contentClassName="sm:max-w-5xl top-[12%] translate-y-0"
+			contentClassName="sm:max-w-5xl top-[30%] translate-y-0"
 			listClassName="max-h-[600px]"
 			includePattern={includePattern}
 			onIncludePatternChange={onIncludePatternChange}
@@ -167,13 +167,20 @@ export function CommandPalette({
 			hasPreResults={filteredRecent.length > 0}
 			headerExtra={
 				<div className="flex items-center gap-1">
+					<ScopeToggle
+						scope={scope}
+						onScopeChange={onScopeChange}
+						workspaceName={workspaceName}
+					/>
 					{onToggleIncludeIgnored && (
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
 									variant="ghost"
 									size="icon"
-									className={`size-6 ${includeIgnored ? "bg-accent" : ""}`}
+									className={`ml-auto size-6 ${
+										includeIgnored ? "bg-accent" : ""
+									}`}
 									onClick={onToggleIncludeIgnored}
 								>
 									{includeIgnored ? (
@@ -190,11 +197,6 @@ export function CommandPalette({
 							</TooltipContent>
 						</Tooltip>
 					)}
-					<ScopeToggle
-						scope={scope}
-						onScopeChange={onScopeChange}
-						workspaceName={workspaceName}
-					/>
 				</div>
 			}
 			renderItem={(file) => {
