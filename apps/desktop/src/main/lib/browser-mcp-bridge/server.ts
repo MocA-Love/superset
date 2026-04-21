@@ -87,19 +87,19 @@ function readPersistedPort(): number | null {
 }
 
 async function listenPreferringStablePort(server: Server): Promise<number> {
-	// 1. Try the port used last run (so external MCP registrations stay
-	//    valid across restarts).
+	// The gateway URL is now always http://127.0.0.1:47834, so prefer
+	// that first even if an older build persisted a different port in
+	// browser-mcp.json (e.g. 49939 from the per-session port era). Only
+	// fall back to the persisted value if 47834 is taken, then to a
+	// kernel-assigned port.
 	const previous = readPersistedPort();
-	const candidates = [previous, PREFERRED_BRIDGE_PORT].filter(
-		(p): p is number => typeof p === "number",
+	const candidates = [PREFERRED_BRIDGE_PORT, previous].filter(
+		(p, i, arr): p is number => typeof p === "number" && arr.indexOf(p) === i,
 	);
 	for (const candidate of candidates) {
 		const bound = await tryListen(server, candidate);
 		if (bound) return bound;
 	}
-	// 2. Fall back to a kernel-assigned port. The user will have to
-	//    re-register external MCPs with the new URL, but the app still
-	//    comes up cleanly instead of hanging on a conflict.
 	const bound = await tryListen(server, 0);
 	if (bound) return bound;
 	throw new Error("browser-mcp-bridge: could not bind any loopback port");
