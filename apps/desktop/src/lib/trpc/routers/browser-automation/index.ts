@@ -726,16 +726,31 @@ export const createBrowserAutomationRouter = () => {
 						reason: "cdp-disabled" as const,
 					};
 				}
-				const { ensureSessionEndpoint, getBrowserUseConfigPath } =
-					await import("main/lib/browser-mcp-bridge/cdp-filter-proxy");
-				const sessionPort = await ensureSessionEndpoint(input.sessionId);
+				const { getBrowserMcpBridge } = await import(
+					"main/lib/browser-mcp-bridge/server"
+				);
+				const { getGlobalBrowserUseConfigPath } = await import(
+					"main/lib/browser-mcp-bridge/cdp-gateway"
+				);
+				const bridge = getBrowserMcpBridge();
+				if (!bridge) {
+					return {
+						available: false as const,
+						reason: "bridge-not-running" as const,
+					};
+				}
+				// The URL is the same for every LLM session; per-connection
+				// peer-PID resolution is how the gateway knows which pane
+				// to route to. That is why registering these MCPs once is
+				// enough even across Superset restarts, pane rebindings,
+				// and new terminal panes.
 				return {
 					available: true as const,
 					paneId: binding.paneId,
 					targetId,
-					httpBase: `http://127.0.0.1:${sessionPort}`,
-					wsEndpoint: `ws://127.0.0.1:${sessionPort}/devtools/page/${targetId}`,
-					browserUseConfigPath: getBrowserUseConfigPath(input.sessionId),
+					httpBase: `http://127.0.0.1:${bridge.port}`,
+					wsEndpoint: `ws://127.0.0.1:${bridge.port}/devtools/page/${targetId}`,
+					browserUseConfigPath: getGlobalBrowserUseConfigPath(),
 				};
 			}),
 

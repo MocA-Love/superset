@@ -1,7 +1,10 @@
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
+import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
+import { SUPERSET_HOME_DIR } from "../app-environment";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
 import { browserManager } from "../browser/browser-manager";
 import {
@@ -49,6 +52,55 @@ import { resolvePeerPidFromRemotePort } from "./peer-pid";
  */
 
 const wss = new WebSocketServer({ noServer: true });
+
+/* ---------------------------------------------------------------- */
+/* Global browser-use config (stable across all sessions).           */
+/*                                                                   */
+/* browser-use's --mcp branch ignores --cdp-url and only honours the */
+/* default browser_profile entry in the JSON pointed to by           */
+/* BROWSER_USE_CONFIG_PATH. Since the gateway URL is now stable      */
+/* (session is resolved per-connection, not per-port), one config   */
+/* file suffices for every Superset install and never has to be      */
+/* updated by the UI.                                                */
+/* ---------------------------------------------------------------- */
+
+const GLOBAL_BROWSER_USE_CONFIG_PATH = join(
+	SUPERSET_HOME_DIR,
+	"browser-use-mcp.json",
+);
+
+export function getGlobalBrowserUseConfigPath(): string {
+	return GLOBAL_BROWSER_USE_CONFIG_PATH;
+}
+
+export function ensureGlobalBrowserUseConfig(bridgePort: number): void {
+	const payload = {
+		browser_profile: {
+			"superset-gateway": {
+				id: "superset-gateway",
+				default: true,
+				cdp_url: `http://127.0.0.1:${bridgePort}`,
+			},
+		},
+		llm: {},
+		agent: {},
+	};
+	try {
+		mkdirSync(dirname(GLOBAL_BROWSER_USE_CONFIG_PATH), { recursive: true });
+		writeFileSync(
+			GLOBAL_BROWSER_USE_CONFIG_PATH,
+			JSON.stringify(payload, null, 2),
+			{ mode: 0o600 },
+		);
+		try {
+			chmodSync(GLOBAL_BROWSER_USE_CONFIG_PATH, 0o600);
+		} catch {
+			/* best effort */
+		}
+	} catch (error) {
+		console.warn("[cdp-gateway] failed to write global browser-use config:", error);
+	}
+}
 
 const socketSessions = new WeakMap<
 	Socket,

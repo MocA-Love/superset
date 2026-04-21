@@ -15,6 +15,7 @@ import {
 	stopAllSessionEndpoints,
 } from "./cdp-filter-proxy";
 import {
+	ensureGlobalBrowserUseConfig,
 	handleCdpGatewayRequest,
 	handleCdpGatewayUpgrade,
 	isCdpGatewayPath,
@@ -272,6 +273,11 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 	});
 
 	const port = await listenPreferringStablePort(server);
+
+	// One-shot: write the global browser-use config pointing at this
+	// gateway. Same file for every session; session routing happens
+	// per connection via peer-PID.
+	ensureGlobalBrowserUseConfig(port);
 
 	mkdirSync(dirname(RUNTIME_INFO_PATH), { recursive: true });
 	writeFileSync(RUNTIME_INFO_PATH, JSON.stringify({ port, secret }, null, 2), {
