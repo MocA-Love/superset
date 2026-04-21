@@ -6,7 +6,16 @@ declare module "bun:test" {
 		callback: () => void | Promise<void>,
 	): void;
 
-	export function it(name: string, callback: () => void | Promise<void>): void;
+	interface ItFn {
+		(name: string, callback: () => void | Promise<void>): void;
+		skip(name: string, callback: () => void | Promise<void>): void;
+		skipIf(condition: boolean): (
+			name: string,
+			callback: () => void | Promise<void>,
+		) => void;
+	}
+
+	export const it: ItFn;
 
 	export function expect<T>(actual: T): {
 		toContain(expected: unknown): void;
