@@ -249,6 +249,15 @@ export async function proxyBrowserUpgrade(
 		// target is destroyed.
 		const allowedTargetIds = new Set<string>(ctx.boundTargetIds());
 		const childToParent = new Map<string, string>();
+		// Internal requests the proxy issues (e.g. to proactively
+		// attach to a newly-spawned secondary tab so Chromium emits
+		// Target.attachedToTarget even when its own auto-attach logic
+		// skips Electron <webview>-sourced targets). Responses with
+		// these ids must NOT reach the client because it never knew
+		// about them.
+		const INTERNAL_REQ_BASE = 0x7fff_0000;
+		let internalReqSeq = 0;
+		const internalPendingIds = new Set<number>();
 		const refreshBound = (): void => {
 			for (const tid of ctx.boundTargetIds()) allowedTargetIds.add(tid);
 		};
@@ -543,7 +552,29 @@ export async function proxyBrowserUpgrade(
 					console.log(
 						`[cdp #${connId}] createTarget: responding id=${id} targetId=${shortTid(newTargetId)}`,
 					);
+					// Admit the new tab into the scope so subsequent
+					// events (attachedToTarget, targetInfoChanged,
+					// Page.frameNavigated, …) survive the root filter.
+					allowedTargetIds.add(newTargetId);
+					childToParent.set(newTargetId, ctx.primaryTargetId);
 					sendToClient({ id, result: { targetId: newTargetId } });
+					// Chromium's auto-attach does not fire for Electron
+					// <webview> targets we just created via the renderer
+					// side-channel, so puppeteer's newPage() would hang
+					// forever waiting for Target.attachedToTarget.
+					// Proactively attach here (via an internal id the
+					// client will never see a response for) so Chromium
+					// emits the attachedToTarget event that our filter
+					// then forwards to the client as if auto-attach had
+					// produced it.
+					internalReqSeq += 1;
+					const internalId = INTERNAL_REQ_BASE + internalReqSeq;
+					internalPendingIds.add(internalId);
+					sendToUpstream({
+						id: internalId,
+						method: "Target.attachToTarget",
+						params: { targetId: newTargetId, flatten: true },
+					});
 				});
 				return;
 			}
@@ -662,6 +693,22 @@ export async function proxyBrowserUpgrade(
 			}
 
 			if (typeof msg.id === "number") {
+				if (internalPendingIds.has(msg.id)) {
+					internalPendingIds.delete(msg.id);
+					// Proactive Target.attachToTarget reply. The
+					// resulting Target.attachedToTarget event has
+					// already been delivered separately and is what
+					// the client actually cares about; swallow the
+					// response to avoid forwarding an id the client
+					// never issued.
+					const sid = (msg.result as { sessionId?: string } | undefined)
+						?.sessionId;
+					if (sid) allowedSessionIds.add(sid);
+					console.log(
+						`[cdp #${connId}] internal attach response id=${msg.id} sid=${shortSid(sid)} consumed`,
+					);
+					return;
+				}
 				const origMethod = pendingMethods.get(msg.id);
 				pendingMethods.delete(msg.id);
 				console.log(
