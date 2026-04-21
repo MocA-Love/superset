@@ -99,14 +99,38 @@ async function resolveSessionForSocket(socket: Socket): Promise<string | null> {
 			socket.remoteAddress !== "::1" &&
 			socket.remoteAddress !== "::ffff:127.0.0.1"
 		) {
+			console.log("[cdp-gateway] reject non-loopback", socket.remoteAddress);
 			return null;
 		}
 		const remotePort = socket.remotePort;
 		if (typeof remotePort !== "number") return null;
 		const peerPid = await resolvePeerPidFromRemotePort(remotePort, process.pid);
-		if (!peerPid) return null;
+		if (!peerPid) {
+			console.log(
+				"[cdp-gateway] peer-PID lookup failed for remotePort",
+				remotePort,
+			);
+			return null;
+		}
 		const session = await resolvePidToSession(peerPid);
-		return session?.sessionId ?? null;
+		if (!session?.sessionId) {
+			console.log(
+				"[cdp-gateway] peerPid",
+				peerPid,
+				"did not resolve to any Superset terminal pane",
+			);
+			return null;
+		}
+		const binding = bindingStore.getBySessionId(session.sessionId);
+		console.log(
+			"[cdp-gateway] resolved peerPid",
+			peerPid,
+			"→ session",
+			session.sessionId,
+			"binding=",
+			binding ? binding.paneId : "(none)",
+		);
+		return session.sessionId;
 	})();
 	socketSessions.set(socket, promise);
 	return promise;
@@ -233,6 +257,12 @@ export async function handleCdpGatewayRequest(
 	try {
 		const resolved = await resolveForSocket(req.socket as Socket);
 		if (!resolved) {
+			console.log(
+				"[cdp-gateway] 409 for",
+				pathname,
+				"| current bindings:",
+				bindingStore.list().map((b) => `${b.sessionId}→${b.paneId}`),
+			);
 			sendJson(res, 409, {
 				error:
 					"このLLMセッションにはブラウザペインが接続されていません。Supersetの「Connect」で対象ペインをアタッチしてください。",
