@@ -454,6 +454,29 @@ export async function proxyBrowserUpgrade(
 					`[cdp #${connId}] →up sid=${shortSid(msg.sessionId)} id=${id ?? "-"} ${method}${summary ? ` ${summary}` : ""}${allowed ? "" : " [DROPPED unknown sid]"}`,
 				);
 				if (allowed) {
+					// Session-scoped messages must still go through the
+					// permission gate. Puppeteer / cdp-use send the
+					// majority of page-domain commands (Debugger.*,
+					// Network.*, Storage.*, DOMStorage.*, …) on a child
+					// session, not the root session, so checking only
+					// the root path would let permissive-gated methods
+					// slip through under any preset — including the
+					// "Secure" default. (Raised in CodeRabbit review on
+					// PR #371.)
+					const perm = checkMethodPermitted(
+						method,
+						permissionStore.getActiveToggles(),
+					);
+					if (!perm.allowed) {
+						if (id !== undefined) {
+							rejectRequest(
+								id,
+								perm.reason ??
+									`${method} is not permitted by the Superset CDP filter`,
+							);
+						}
+						return;
+					}
 					// Page.bringToFront is session-scoped; surface it as
 					// a renderer-side tab activation so the tab bar
 					// follows the MCP.

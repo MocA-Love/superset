@@ -899,18 +899,31 @@ class BrowserManager extends EventEmitter {
 	 * Handle webContents download events. Save to ~/Downloads with
 	 * the suggested filename (de-duplicated) and emit a toast-style
 	 * event so the renderer can surface the completion to the user.
-	 * Chrome shows a persistent download bar; for now a toast per
-	 * completion is the MVP.
+	 *
+	 * All Superset browser panes share the persist:superset session,
+	 * so the `will-download` listener is registered exactly once per
+	 * session, not per pane. Registering per-pane would pile up
+	 * duplicate handlers across pane open / re-register / tearoff
+	 * lifecycles and fire setSavePath+emit N times per download.
+	 * (Raised in CodeRabbit review on PR #371.)
 	 */
 	private setupDownloadHandler(paneId: string, wc: Electron.WebContents): void {
-		const session = wc.session;
-		const handler = (_event: Electron.Event, item: Electron.DownloadItem) => {
+		this.ensureDownloadHandlerForSession(wc.session);
+		// Track which pane last triggered a download on this session so
+		// the single handler can emit pane-scoped events.
+		this.lastDownloadInitiator = paneId;
+	}
+
+	private downloadHandlerInstalled = new WeakSet<Electron.Session>();
+	private lastDownloadInitiator: string | null = null;
+
+	private ensureDownloadHandlerForSession(session: Electron.Session): void {
+		if (this.downloadHandlerInstalled.has(session)) return;
+		this.downloadHandlerInstalled.add(session);
+		session.on("will-download", (_event, item, webContents) => {
 			const downloadsDir = app.getPath("downloads");
 			const suggested = item.getFilename() || "download";
 			let target = join(downloadsDir, suggested);
-			// Best-effort de-dupe: append a timestamp when the target
-			// already exists. Synchronous fs.existsSync keeps the
-			// handler race-free against concurrent downloads.
 			try {
 				const fs = require("node:fs") as typeof import("node:fs");
 				if (fs.existsSync(target)) {
@@ -926,6 +939,15 @@ class BrowserManager extends EventEmitter {
 				/* best effort */
 			}
 			item.setSavePath(target);
+			// Attribute the event to whichever pane owns the
+			// initiating webContents if we can resolve it; fall back
+			// to the last pane that registered a webContents on this
+			// session. This replaces the old duplicate-handler scheme.
+			const paneId =
+				(webContents &&
+					this.getPaneIdForWebContents(webContents.id)) ||
+				this.lastDownloadInitiator;
+			if (!paneId) return;
 			this.emit(`download-started:${paneId}`, {
 				filename: basename(target),
 				targetPath: target,
@@ -938,14 +960,7 @@ class BrowserManager extends EventEmitter {
 					state,
 				});
 			});
-		};
-		session.on("will-download", handler);
-		// No teardown: the session is shared across panes
-		// (persist:superset). Attaching the same handler for multiple
-		// panes is idempotent-enough because every pane's webContents
-		// routes the download through the same session; we emit per
-		// paneId using the event's frame owner. In the common case
-		// where only one pane is downloading at a time this is fine.
+		});
 	}
 
 	private setupContextMenu(paneId: string, wc: Electron.WebContents): void {
