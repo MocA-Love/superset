@@ -12,7 +12,6 @@ import { HiMiniPlus, HiOutlineClipboardDocumentList } from "react-icons/hi2";
 import { LuFolderInput, LuFolderPlus, LuLayers, LuPlus } from "react-icons/lu";
 import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
 import { useHotkeyDisplay } from "renderer/hotkeys";
-import { FolderFirstImportModal } from "renderer/routes/_authenticated/_dashboard/components/AddRepositoryModals/components/FolderFirstImportModal";
 import { useFolderFirstImport } from "renderer/routes/_authenticated/_dashboard/components/AddRepositoryModals/hooks/useFolderFirstImport";
 import { OrganizationDropdown } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/OrganizationDropdown";
 import { useTasksFilterStore } from "renderer/routes/_authenticated/_dashboard/tasks/stores/tasks-filter-state";
@@ -146,12 +145,6 @@ export function DashboardSidebarHeader({
 						New Workspace ({shortcutText})
 					</TooltipContent>
 				</Tooltip>
-
-				<FolderFirstImportModal
-					state={folderImport.state}
-					onCancel={folderImport.cancel}
-					onConfirmCreateAsNew={folderImport.confirmCreateAsNew}
-				/>
 			</div>
 		);
 	}
@@ -234,12 +227,6 @@ export function DashboardSidebarHeader({
 					{shortcutText}
 				</span>
 			</button>
-
-			<FolderFirstImportModal
-				state={folderImport.state}
-				onCancel={folderImport.cancel}
-				onConfirmCreateAsNew={folderImport.confirmCreateAsNew}
-			/>
 		</div>
 	);
 }
