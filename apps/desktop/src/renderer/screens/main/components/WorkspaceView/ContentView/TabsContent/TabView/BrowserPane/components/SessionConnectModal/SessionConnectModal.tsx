@@ -197,8 +197,8 @@ export function SessionConnectModal({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!max-w-[min(1640px,95vw)] sm:!max-w-[min(1640px,95vw)] p-0 gap-0 overflow-hidden">
-				<DialogHeader className="px-5 py-4 border-b">
+			<DialogContent className="!max-w-[min(1640px,95vw)] sm:!max-w-[min(1640px,95vw)] h-[min(840px,85vh)] p-0 gap-0 overflow-hidden flex flex-col">
+				<DialogHeader className="px-5 py-4 border-b shrink-0">
 					<DialogTitle className="text-sm">
 						Connect browser automation
 					</DialogTitle>
@@ -230,111 +230,106 @@ export function SessionConnectModal({
 					</div>
 				</DialogHeader>
 
+				{activeTab !== "permissions" && (
+					<WorkspaceBindingsSummary
+						sessions={sessions}
+						bindingsByPane={bindingsByPane}
+						workspaceId={workspaceId}
+						onOpenAllPanes={() => setActiveTab("workspace")}
+						activeTab={activeTab}
+					/>
+				)}
+
 				{activeTab === "permissions" ? (
-					<PermissionsTab />
+					<div className="flex-1 min-h-0">
+						<PermissionsTab />
+					</div>
 				) : activeTab === "workspace" ? (
-					<>
-						<WorkspaceBindingsSummary
-							sessions={sessions}
-							bindingsByPane={bindingsByPane}
-							workspaceId={workspaceId}
-							onOpenAllPanes={() => setActiveTab("workspace")}
-							activeTab={activeTab}
-						/>
+					<div className="flex-1 min-h-0">
 						<WorkspacePanesTab
 							workspaceId={workspaceId}
 							onClose={() => onOpenChange(false)}
 							onSwitchToSessions={() => setActiveTab("sessions")}
 						/>
-					</>
+					</div>
 				) : (
-					<>
-						<WorkspaceBindingsSummary
-							sessions={sessions}
-							bindingsByPane={bindingsByPane}
-							workspaceId={workspaceId}
-							onOpenAllPanes={() => setActiveTab("workspace")}
-							activeTab={activeTab}
-						/>
-						<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
-							<div className="overflow-y-auto p-4 border-r">
-								<PaneIdentityCard
-									paneName={paneName}
-									paneUrl={paneUrl}
-									currentSession={currentSession}
-									hasBinding={Boolean(currentBinding)}
-									onDisconnect={currentBinding ? handleDisconnect : undefined}
-									disconnectPending={removeBinding.isPending}
-								/>
+					<div className="flex-1 min-h-0 grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)]">
+						<div className="overflow-y-auto p-4 border-r">
+							<PaneIdentityCard
+								paneName={paneName}
+								paneUrl={paneUrl}
+								currentSession={currentSession}
+								hasBinding={Boolean(currentBinding)}
+								onDisconnect={currentBinding ? handleDisconnect : undefined}
+								disconnectPending={removeBinding.isPending}
+							/>
 
-								<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">
-									Running sessions
+							<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">
+								Running sessions
+							</div>
+
+							{sessions.length === 0 ? (
+								<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+									No running LLM sessions found. Start a TODO-Agent session or
+									run `claude` / `codex` in any terminal pane, then return here.
 								</div>
-
-								{sessions.length === 0 ? (
-									<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
-										No running LLM sessions found. Start a TODO-Agent session or
-										run `claude` / `codex` in any terminal pane, then return
-										here.
-									</div>
-								) : (
-									<div className="flex flex-col gap-2">
-										{sessions.map((s) => {
-											const otherPaneId = Object.entries(bindingsByPane).find(
-												([pid, sid]) => sid === s.id && pid !== paneId,
-											)?.[0];
-											const otherPaneName = otherPaneId
-												? (panes[otherPaneId]?.name ?? null)
-												: null;
-											return (
-												<SessionCard
-													key={s.id}
-													session={s}
-													isSelected={s.id === selectedSessionId}
-													attachedToThisPane={s.id === currentBinding}
-													assignedElsewherePaneName={otherPaneName}
-													onSelect={() => setSelectedSession(s.id)}
-												/>
-											);
-										})}
-									</div>
-								)}
-							</div>
-
-							<div className="overflow-y-auto p-4 bg-muted/20">
-								{session ? (
-									session.mcpStatus === "ready" ? (
-										<ReadyPanel
-											session={session}
-											paneName={paneName}
-											reassigning={Boolean(assignedPaneIdForSelected)}
-											previousPaneName={
-												assignedPaneIdForSelected
-													? (panes[assignedPaneIdForSelected]?.name ?? null)
-													: null
-											}
-											attachedToThisPane={session.id === currentBinding}
-										/>
-									) : (
-										<SetupPanel
-											session={session}
-											mcpConfigPath={
-												session.provider === "Codex"
-													? (mcpStatus?.codexConfigPath ?? null)
-													: (mcpStatus?.claudeConfigPath ?? null)
-											}
-											serverCommand={serverCommand}
-											onCopy={handleCopySnippet}
-										/>
-									)
-								) : (
-									<div className="text-xs text-muted-foreground">
-										Select a session to see details.
-									</div>
-								)}
-							</div>
+							) : (
+								<div className="flex flex-col gap-2">
+									{sessions.map((s) => {
+										const otherPaneId = Object.entries(bindingsByPane).find(
+											([pid, sid]) => sid === s.id && pid !== paneId,
+										)?.[0];
+										const otherPaneName = otherPaneId
+											? (panes[otherPaneId]?.name ?? null)
+											: null;
+										return (
+											<SessionCard
+												key={s.id}
+												session={s}
+												isSelected={s.id === selectedSessionId}
+												attachedToThisPane={s.id === currentBinding}
+												assignedElsewherePaneName={otherPaneName}
+												onSelect={() => setSelectedSession(s.id)}
+											/>
+										);
+									})}
+								</div>
+							)}
 						</div>
-					</>
+
+						<div className="overflow-y-auto p-4 bg-muted/20">
+							{session ? (
+								session.mcpStatus === "ready" ? (
+									<ReadyPanel
+										session={session}
+										paneName={paneName}
+										reassigning={Boolean(assignedPaneIdForSelected)}
+										previousPaneName={
+											assignedPaneIdForSelected
+												? (panes[assignedPaneIdForSelected]?.name ?? null)
+												: null
+										}
+										attachedToThisPane={session.id === currentBinding}
+									/>
+								) : (
+									<SetupPanel
+										session={session}
+										mcpConfigPath={
+											session.provider === "Codex"
+												? (mcpStatus?.codexConfigPath ?? null)
+												: (mcpStatus?.claudeConfigPath ?? null)
+										}
+										serverCommand={serverCommand}
+										onCopy={handleCopySnippet}
+									/>
+								)
+							) : (
+								<div className="text-xs text-muted-foreground">
+									Select a session to see details.
+								</div>
+							)}
+						</div>
+					</div>
 				)}
 
 				{activeTab === "sessions" && (
