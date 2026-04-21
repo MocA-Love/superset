@@ -261,6 +261,8 @@ class BrowserManager extends EventEmitter {
 			"now",
 			Array.from(set),
 		);
+		// Notify any in-flight Target.createTarget waiters in the gateway.
+		this.emit(`tab-target-added:${paneId}`, targetId);
 	}
 
 	removePaneTabTarget(paneId: string, targetId: string): void {

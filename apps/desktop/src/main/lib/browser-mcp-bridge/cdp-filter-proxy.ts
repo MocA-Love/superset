@@ -365,16 +365,32 @@ export async function proxyBrowserUpgrade(
 					typeof params?.url === "string" && params.url !== ""
 						? params.url
 						: "about:blank";
-				// Emit a renderer-side "create tab" request. The
-				// BrowserPane subscribes via browser.onCreateTabRequested
-				// and creates a real <webview> tab, which then registers
-				// its webContents and targetId with browserManager. Once
-				// that targetId lands in the bound set the MCP's next
-				// `Target.getTargets` / `Target.attachToTarget` will find
-				// it. We respond synchronously with the primary targetId
-				// so puppeteer's newPage path resolves; subsequent
-				// auto-attach events for the new tab surface the real
-				// targetId to the client through our normal filter.
+				// Tell the renderer to spawn a real new <webview> tab
+				// for this pane. Wait for browser-manager to register
+				// the new targetId (via addPaneTabTarget → tab-target-
+				// added event) before responding, so the MCP gets the
+				// new tab's id and not the primary's. Without this the
+				// MCP attaches to whatever id we hand back and ends up
+				// driving the wrong tab (the user-reported "新しいタブで
+				// 検索すると最初のタブで検索される" behaviour).
+				const waitForNewTab = (): Promise<string> => {
+					return new Promise((resolveTarget) => {
+						const handler = (newTargetId: string) => {
+							browserManager.off(eventName, handler);
+							clearTimeout(timer);
+							resolveTarget(newTargetId);
+						};
+						const eventName = `tab-target-added:${ctx.paneId}`;
+						browserManager.on(eventName, handler);
+						const timer = setTimeout(() => {
+							browserManager.off(eventName, handler);
+							console.warn(
+								"[cdp-filter-proxy] Target.createTarget timed out waiting for new tab; falling back to primary",
+							);
+							resolveTarget(ctx.primaryTargetId);
+						}, 8000);
+					});
+				};
 				try {
 					browserManager.emit(`create-tab-requested:${ctx.paneId}`, {
 						url: nextUrl,
@@ -382,7 +398,9 @@ export async function proxyBrowserUpgrade(
 				} catch {
 					/* best effort */
 				}
-				sendToClient({ id, result: { targetId: ctx.primaryTargetId } });
+				void waitForNewTab().then((newTargetId) => {
+					sendToClient({ id, result: { targetId: newTargetId } });
+				});
 				return;
 			}
 
