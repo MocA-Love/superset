@@ -170,6 +170,38 @@ function rewriteTargetInfoType<T extends { type?: string } | undefined>(
 	return info;
 }
 
+function shortSid(sid: string | undefined): string {
+	if (!sid) return "(root)";
+	return sid.slice(0, 8);
+}
+
+function shortTid(tid: string | undefined): string {
+	if (!tid) return "?";
+	return tid.slice(0, 8);
+}
+
+function summarizeParams(method: string, params: unknown): string {
+	if (!params || typeof params !== "object") return "";
+	const p = params as Record<string, unknown>;
+	const parts: string[] = [];
+	if (typeof p.url === "string") parts.push(`url=${p.url.slice(0, 60)}`);
+	if (typeof p.targetId === "string") parts.push(`tid=${shortTid(p.targetId)}`);
+	if (typeof p.sessionId === "string")
+		parts.push(`sid=${shortSid(p.sessionId)}`);
+	if (typeof p.expression === "string")
+		parts.push(`js=${p.expression.slice(0, 40)}…`);
+	if (typeof p.text === "string") parts.push(`text=${p.text.slice(0, 30)}`);
+	if (typeof p.x === "number" && typeof p.y === "number")
+		parts.push(`xy=${p.x},${p.y}`);
+	if (typeof p.newWindow === "boolean") parts.push(`newWindow=${p.newWindow}`);
+	if (typeof p.background === "boolean")
+		parts.push(`background=${p.background}`);
+	void method;
+	return parts.join(" ");
+}
+
+let cdpConnSeq = 0;
+
 export async function proxyBrowserUpgrade(
 	req: IncomingMessage,
 	socket: Duplex,
@@ -178,13 +210,12 @@ export async function proxyBrowserUpgrade(
 	chromiumPort: number,
 	ctx: BoundContext,
 ): Promise<void> {
+	cdpConnSeq += 1;
+	const connId = cdpConnSeq;
 	console.log(
-		"[cdp-filter-proxy] proxyBrowserUpgrade pane",
-		ctx.paneId,
-		"primaryTargetId",
-		ctx.primaryTargetId,
-		"boundSet",
-		Array.from(ctx.boundTargetIds()),
+		`[cdp #${connId}] proxyBrowserUpgrade pane=${ctx.paneId} primary=${shortTid(
+			ctx.primaryTargetId,
+		)} bound=${Array.from(ctx.boundTargetIds()).map(shortTid).join(",")}`,
 	);
 	let chromiumBrowserWs: string;
 	try {
@@ -271,11 +302,15 @@ export async function proxyBrowserUpgrade(
 				return;
 			}
 			const id = typeof msg.id === "number" ? msg.id : undefined;
+			const summary = summarizeParams(msg.method ?? "", msg.params);
 			if (msg.sessionId) {
-				if (allowedSessionIds.has(msg.sessionId)) {
+				const allowed = allowedSessionIds.has(msg.sessionId);
+				console.log(
+					`[cdp #${connId}] →up sid=${shortSid(msg.sessionId)} id=${id ?? "-"} ${msg.method ?? "?"}${summary ? ` ${summary}` : ""}${allowed ? "" : " [DROPPED unknown sid]"}`,
+				);
+				if (allowed) {
 					sendToUpstream(msg);
 				} else if (id !== undefined) {
-					// Don't hang the caller on a stale / unknown sessionId.
 					rejectRequest(
 						id,
 						"The supplied CDP sessionId is not authorized for this Superset session (the session may have been detached or belong to another pane).",
@@ -284,6 +319,9 @@ export async function proxyBrowserUpgrade(
 				return;
 			}
 			const method = msg.method ?? "";
+			console.log(
+				`[cdp #${connId}] →up (root) id=${id ?? "-"} ${method}${summary ? ` ${summary}` : ""}`,
+			);
 			const bound = ctx.boundTargetIds();
 
 			if (
@@ -378,6 +416,9 @@ export async function proxyBrowserUpgrade(
 						const handler = (newTargetId: string) => {
 							browserManager.off(eventName, handler);
 							clearTimeout(timer);
+							console.log(
+								`[cdp #${connId}] createTarget: new tab targetId=${shortTid(newTargetId)} (full=${newTargetId})`,
+							);
 							resolveTarget(newTargetId);
 						};
 						const eventName = `tab-target-added:${ctx.paneId}`;
@@ -385,12 +426,15 @@ export async function proxyBrowserUpgrade(
 						const timer = setTimeout(() => {
 							browserManager.off(eventName, handler);
 							console.warn(
-								"[cdp-filter-proxy] Target.createTarget timed out waiting for new tab; falling back to primary",
+								`[cdp #${connId}] createTarget: TIMEOUT waiting for new tab; falling back to primary`,
 							);
 							resolveTarget(ctx.primaryTargetId);
 						}, 8000);
 					});
 				};
+				console.log(
+					`[cdp #${connId}] createTarget: spawning new tab with url=${nextUrl}, waiting for tab-target-added on pane ${ctx.paneId}`,
+				);
 				try {
 					browserManager.emit(`create-tab-requested:${ctx.paneId}`, {
 						url: nextUrl,
@@ -399,6 +443,9 @@ export async function proxyBrowserUpgrade(
 					/* best effort */
 				}
 				void waitForNewTab().then((newTargetId) => {
+					console.log(
+						`[cdp #${connId}] createTarget: responding id=${id} targetId=${shortTid(newTargetId)}`,
+					);
 					sendToClient({ id, result: { targetId: newTargetId } });
 				});
 				return;
@@ -462,9 +509,18 @@ export async function proxyBrowserUpgrade(
 				return;
 			}
 			const bound = ctx.boundTargetIds();
+			const summary = summarizeParams(msg.method ?? "", msg.params);
 
 			if (msg.sessionId) {
-				if (!allowedSessionIds.has(msg.sessionId)) return;
+				if (!allowedSessionIds.has(msg.sessionId)) {
+					console.log(
+						`[cdp #${connId}] ←dn sid=${shortSid(msg.sessionId)} ${msg.method ?? "?"} [DROPPED unknown sid]`,
+					);
+					return;
+				}
+				console.log(
+					`[cdp #${connId}] ←dn sid=${shortSid(msg.sessionId)} id=${msg.id ?? "-"} ${msg.method ?? "(response)"}${summary ? ` ${summary}` : ""}`,
+				);
 				if (msg.method === "Target.attachedToTarget") {
 					const childSid = (msg.params as { sessionId?: string } | undefined)
 						?.sessionId;
@@ -481,6 +537,9 @@ export async function proxyBrowserUpgrade(
 			if (typeof msg.id === "number") {
 				const origMethod = pendingMethods.get(msg.id);
 				pendingMethods.delete(msg.id);
+				console.log(
+					`[cdp #${connId}] ←dn (root) id=${msg.id} response-to=${origMethod ?? "?"}${msg.error ? ` ERROR=${msg.error.message}` : ""}`,
+				);
 				if (origMethod === "Target.getTargets" && msg.result) {
 					const infos = (msg.result.targetInfos ?? []) as Array<
 						{ type?: string } & Record<string, unknown>
@@ -550,7 +609,15 @@ export async function proxyBrowserUpgrade(
 					| undefined;
 				const info = params?.targetInfo;
 				const tid = info?.targetId ?? params?.targetId;
-				if (!tid || !bound.has(tid)) return;
+				if (!tid || !bound.has(tid)) {
+					console.log(
+						`[cdp #${connId}] ←dn (root) ${method} tid=${shortTid(tid)} [DROPPED not in bound]`,
+					);
+					return;
+				}
+				console.log(
+					`[cdp #${connId}] ←dn (root) ${method} tid=${shortTid(tid)} type=${info?.type ?? "?"}`,
+				);
 				if (info) {
 					sendToClient({
 						...msg,
@@ -572,8 +639,16 @@ export async function proxyBrowserUpgrade(
 					  }
 					| undefined;
 				const tid = params?.targetInfo?.targetId;
-				if (!tid || !bound.has(tid)) return;
+				if (!tid || !bound.has(tid)) {
+					console.log(
+						`[cdp #${connId}] ←dn (root) attachedToTarget tid=${shortTid(tid)} [DROPPED not in bound]`,
+					);
+					return;
+				}
 				if (params?.sessionId) allowedSessionIds.add(params.sessionId);
+				console.log(
+					`[cdp #${connId}] ←dn (root) attachedToTarget tid=${shortTid(tid)} sid=${shortSid(params?.sessionId)} (allowed=${allowedSessionIds.size})`,
+				);
 				sendToClient({
 					...msg,
 					params: {
@@ -588,6 +663,9 @@ export async function proxyBrowserUpgrade(
 					?.sessionId;
 				if (!sid || !allowedSessionIds.has(sid)) return;
 				allowedSessionIds.delete(sid);
+				console.log(
+					`[cdp #${connId}] ←dn (root) detachedFromTarget sid=${shortSid(sid)} (allowed=${allowedSessionIds.size})`,
+				);
 				sendToClient(msg);
 				return;
 			}

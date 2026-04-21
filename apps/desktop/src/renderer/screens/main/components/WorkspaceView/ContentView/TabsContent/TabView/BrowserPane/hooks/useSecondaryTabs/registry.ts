@@ -198,10 +198,26 @@ class SecondaryTabRegistry {
 
 		const handleDomReady = () => {
 			const id = webview.getWebContentsId();
+			console.log(
+				"[v1 secondary-tabs] dom-ready pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"webContentsId=",
+				id,
+			);
 			if (entry.webContentsId !== id) {
 				entry.webContentsId = id;
 				electronTrpcClient.browser.registerTab
 					.mutate({ paneId, tabId, webContentsId: id })
+					.then(() =>
+						console.log(
+							"[v1 secondary-tabs] registerTab OK pane=",
+							paneId,
+							"tab=",
+							tabId,
+						),
+					)
 					.catch((err) =>
 						console.error("[v1 secondary-tabs] registerTab failed:", err),
 					);

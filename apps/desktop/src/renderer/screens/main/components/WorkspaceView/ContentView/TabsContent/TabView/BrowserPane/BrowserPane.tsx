@@ -287,7 +287,17 @@ export function BrowserPane({
 		{ paneId },
 		{
 			onData: (evt) => {
+				console.log(
+					"[BrowserPane v1] create-tab-requested url=",
+					evt.url,
+					"pane=",
+					paneId,
+				);
 				const tabId = secondaryTabRegistry.createTab(paneId, evt.url);
+				console.log(
+					"[BrowserPane v1] secondaryTabRegistry.createTab returned tabId=",
+					tabId,
+				);
 				if (tabId) setActiveTabId(tabId);
 			},
 		},
