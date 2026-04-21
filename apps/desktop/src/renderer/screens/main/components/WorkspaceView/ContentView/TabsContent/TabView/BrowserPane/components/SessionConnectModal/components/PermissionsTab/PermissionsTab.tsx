@@ -166,7 +166,7 @@ export function PermissionsTab() {
 	};
 
 	return (
-		<div className="grid grid-cols-[240px_1fr] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
+		<div className="grid grid-cols-[240px_1fr] h-full min-h-0">
 			<div className="overflow-y-auto p-3 border-r">
 				<div className="flex items-center justify-between mb-2">
 					<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">

@@ -234,18 +234,18 @@ export function SessionConnectModal({
 					</div>
 				</DialogHeader>
 
-				{activeTab !== "permissions" && (
-					<WorkspaceBindingsSummary
-						sessions={sessions}
-						bindingsByPane={bindingsByPane}
-						workspaceId={workspaceId}
-						onShowSetup={() => {
-							setActiveTab("sessions");
-							setSetupRevealToken((n) => n + 1);
-						}}
-						activeTab={activeTab}
-					/>
-				)}
+				{/* Always render the summary bar so the right-side "Show setup
+				    commands" button stays in a fixed position across tabs. */}
+				<WorkspaceBindingsSummary
+					sessions={sessions}
+					bindingsByPane={bindingsByPane}
+					workspaceId={workspaceId}
+					onShowSetup={() => {
+						setActiveTab("sessions");
+						setSetupRevealToken((n) => n + 1);
+					}}
+					activeTab={activeTab}
+				/>
 
 				{activeTab === "permissions" ? (
 					<div className="flex-1 min-h-0">
@@ -615,7 +615,7 @@ function WorkspacePanesTab({
 	}, [panes, tabs, workspaceId]);
 
 	return (
-		<div className="min-h-[min(570px,70vh)] max-h-[min(840px,85vh)] overflow-y-auto">
+		<div className="h-full overflow-y-auto">
 			{browserPanes.length === 0 ? (
 				<div className="text-xs text-muted-foreground text-center py-10">
 					No browser panes in this workspace.
