@@ -1,0 +1,420 @@
+import { electronTrpcClient } from "renderer/lib/trpc-client";
+import { sanitizeUrl } from "../usePersistentWebview/runtime";
+
+/**
+ * Secondary-tab registry for the v1 BrowserPane.
+ *
+ * v1's persistent webview machinery (usePersistentWebview + tabs-store
+ * `browser`) is designed around a single primary webview per pane and
+ * is deeply integrated with bookmarks, history, find-in-page, zoom,
+ * etc. Rather than untangle that singleton assumption, this sidecar
+ * runs alongside it: it owns *additional* webviews that share the
+ * pane's placeholder. The primary stays in usePersistentWebview; when
+ * the user (or an external CDP MCP via Target.createTarget) opens a
+ * secondary tab, we spawn another <webview> and overlay it atop the
+ * same placeholder.
+ *
+ * The pane's PaneTabBar decides which tab is active and tells this
+ * registry to show/hide accordingly; the primary is hidden from the
+ * outside by flipping the primary webview's CSS visibility.
+ */
+
+export interface SecondaryTabState {
+	tabId: string;
+	url: string;
+	title: string;
+	faviconUrl: string | null;
+	isLoading: boolean;
+}
+
+interface TabEntry {
+	tabId: string;
+	webview: Electron.WebviewTag;
+	state: SecondaryTabState;
+	webContentsId: number | null;
+	detachHandlers: () => void;
+}
+
+interface PaneGroup {
+	tabs: TabEntry[];
+	activeTabId: string | null;
+	placeholder: HTMLElement | null;
+	resizeObserver: ResizeObserver | null;
+	visible: boolean;
+}
+
+const ROOT_ID = "browser-secondary-tab-root";
+
+let tabIdSeq = 0;
+function nextTabId(): string {
+	tabIdSeq += 1;
+	return `tab-${Date.now().toString(36)}-${tabIdSeq.toString(36)}`;
+}
+
+class SecondaryTabRegistry {
+	private groups = new Map<string, PaneGroup>();
+	private listenersByPaneId = new Map<string, Set<() => void>>();
+	private root: HTMLDivElement | null = null;
+	private globalListenersInstalled = false;
+
+	private ensureRoot(): HTMLDivElement {
+		if (this.root?.isConnected) return this.root;
+		const existing = document.getElementById(ROOT_ID) as HTMLDivElement | null;
+		if (existing) {
+			this.root = existing;
+			return existing;
+		}
+		const el = document.createElement("div");
+		el.id = ROOT_ID;
+		el.style.position = "fixed";
+		el.style.top = "0";
+		el.style.left = "0";
+		el.style.width = "0";
+		el.style.height = "0";
+		el.style.pointerEvents = "none";
+		el.style.zIndex = "0";
+		document.body.appendChild(el);
+		this.root = el;
+		this.installGlobal();
+		return el;
+	}
+
+	private installGlobal(): void {
+		if (this.globalListenersInstalled) return;
+		this.globalListenersInstalled = true;
+		window.addEventListener("resize", () => {
+			for (const g of this.groups.values()) {
+				if (g.placeholder) this.layout(g);
+			}
+		});
+	}
+
+	private notify(paneId: string): void {
+		const set = this.listenersByPaneId.get(paneId);
+		if (!set) return;
+		for (const l of set) l();
+	}
+
+	private getListeners(paneId: string): Set<() => void> {
+		let set = this.listenersByPaneId.get(paneId);
+		if (!set) {
+			set = new Set();
+			this.listenersByPaneId.set(paneId, set);
+		}
+		return set;
+	}
+
+	private layout(group: PaneGroup): void {
+		if (!group.placeholder) return;
+		const rect = group.placeholder.getBoundingClientRect();
+		for (const tab of group.tabs) {
+			const w = tab.webview;
+			w.style.top = `${rect.top}px`;
+			w.style.left = `${rect.left}px`;
+			w.style.width = `${rect.width}px`;
+			w.style.height = `${rect.height}px`;
+			const isActive = group.visible && tab.tabId === group.activeTabId;
+			w.style.visibility = isActive ? "visible" : "hidden";
+			w.style.pointerEvents = isActive ? "auto" : "none";
+		}
+	}
+
+	private patchState(
+		paneId: string,
+		tabId: string,
+		patch: Partial<SecondaryTabState>,
+	): void {
+		const group = this.groups.get(paneId);
+		const tab = group?.tabs.find((t) => t.tabId === tabId);
+		if (!tab) return;
+		let changed = false;
+		for (const key in patch) {
+			const k = key as keyof SecondaryTabState;
+			if (tab.state[k] !== patch[k]) {
+				changed = true;
+				break;
+			}
+		}
+		if (!changed) return;
+		tab.state = { ...tab.state, ...patch };
+		this.notify(paneId);
+	}
+
+	private spawnTab(paneId: string, url: string, tabId: string): TabEntry {
+		const webview = document.createElement("webview") as Electron.WebviewTag;
+		webview.setAttribute("partition", "persist:superset");
+		webview.setAttribute("allowpopups", "");
+		webview.setAttribute("webpreferences", "transparent=no");
+		webview.style.position = "fixed";
+		webview.style.top = "0";
+		webview.style.left = "0";
+		webview.style.width = "0";
+		webview.style.height = "0";
+		webview.style.margin = "0";
+		webview.style.padding = "0";
+		webview.style.border = "none";
+		webview.style.visibility = "hidden";
+		webview.style.pointerEvents = "auto";
+		webview.src = sanitizeUrl(url);
+
+		const entry: TabEntry = {
+			tabId,
+			webview,
+			state: {
+				tabId,
+				url,
+				title: "",
+				faviconUrl: null,
+				isLoading: false,
+			},
+			webContentsId: null,
+			detachHandlers: () => {},
+		};
+
+		const handleDomReady = () => {
+			const id = webview.getWebContentsId();
+			if (entry.webContentsId !== id) {
+				entry.webContentsId = id;
+				electronTrpcClient.browser.registerTab
+					.mutate({ paneId, tabId, webContentsId: id })
+					.catch((err) =>
+						console.error("[v1 secondary-tabs] registerTab failed:", err),
+					);
+			}
+		};
+		const handleDidStartLoading = () => {
+			this.patchState(paneId, tabId, { isLoading: true });
+		};
+		const handleDidStopLoading = () => {
+			const u = webview.getURL() ?? "";
+			const t = webview.getTitle() ?? "";
+			this.patchState(paneId, tabId, { isLoading: false, url: u, title: t });
+		};
+		const handleDidNav = (e: Electron.DidNavigateEvent) => {
+			this.patchState(paneId, tabId, {
+				url: e.url ?? "",
+				title: webview.getTitle() ?? "",
+				isLoading: false,
+			});
+		};
+		const handleDidNavInPage = (e: Electron.DidNavigateInPageEvent) => {
+			this.patchState(paneId, tabId, {
+				url: e.url ?? "",
+				title: webview.getTitle() ?? "",
+			});
+		};
+		const handleTitle = (e: Electron.PageTitleUpdatedEvent) => {
+			this.patchState(paneId, tabId, { title: e.title ?? "" });
+		};
+		const handleFavicon = (e: Electron.PageFaviconUpdatedEvent) => {
+			const favicon = e.favicons?.[0] ?? null;
+			if (favicon !== entry.state.faviconUrl) {
+				this.patchState(paneId, tabId, { faviconUrl: favicon });
+			}
+		};
+
+		webview.addEventListener("dom-ready", handleDomReady);
+		webview.addEventListener("did-start-loading", handleDidStartLoading);
+		webview.addEventListener("did-stop-loading", handleDidStopLoading);
+		webview.addEventListener("did-navigate", handleDidNav as EventListener);
+		webview.addEventListener(
+			"did-navigate-in-page",
+			handleDidNavInPage as EventListener,
+		);
+		webview.addEventListener(
+			"page-title-updated",
+			handleTitle as EventListener,
+		);
+		webview.addEventListener(
+			"page-favicon-updated",
+			handleFavicon as EventListener,
+		);
+
+		entry.detachHandlers = () => {
+			webview.removeEventListener("dom-ready", handleDomReady);
+			webview.removeEventListener("did-start-loading", handleDidStartLoading);
+			webview.removeEventListener("did-stop-loading", handleDidStopLoading);
+			webview.removeEventListener(
+				"did-navigate",
+				handleDidNav as EventListener,
+			);
+			webview.removeEventListener(
+				"did-navigate-in-page",
+				handleDidNavInPage as EventListener,
+			);
+			webview.removeEventListener(
+				"page-title-updated",
+				handleTitle as EventListener,
+			);
+			webview.removeEventListener(
+				"page-favicon-updated",
+				handleFavicon as EventListener,
+			);
+		};
+
+		return entry;
+	}
+
+	attach(paneId: string, placeholder: HTMLElement): void {
+		const root = this.ensureRoot();
+		let group = this.groups.get(paneId);
+		if (!group) {
+			group = {
+				tabs: [],
+				activeTabId: null,
+				placeholder,
+				resizeObserver: null,
+				visible: false,
+			};
+			this.groups.set(paneId, group);
+		} else {
+			group.placeholder = placeholder;
+		}
+		for (const tab of group.tabs) {
+			if (!tab.webview.isConnected) root.appendChild(tab.webview);
+		}
+		group.resizeObserver?.disconnect();
+		const ref = group;
+		const observer = new ResizeObserver(() => this.layout(ref));
+		observer.observe(placeholder);
+		group.resizeObserver = observer;
+		this.layout(group);
+	}
+
+	detach(paneId: string): void {
+		const group = this.groups.get(paneId);
+		if (!group) return;
+		group.resizeObserver?.disconnect();
+		group.resizeObserver = null;
+		group.placeholder = null;
+		group.visible = false;
+		for (const tab of group.tabs) {
+			tab.webview.style.visibility = "hidden";
+		}
+	}
+
+	destroy(paneId: string): void {
+		const group = this.groups.get(paneId);
+		if (!group) return;
+		group.resizeObserver?.disconnect();
+		for (const tab of group.tabs) {
+			tab.detachHandlers();
+			tab.webview.remove();
+			electronTrpcClient.browser.unregisterTab
+				.mutate({ paneId, tabId: tab.tabId })
+				.catch(() => {});
+		}
+		this.groups.delete(paneId);
+		this.listenersByPaneId.delete(paneId);
+	}
+
+	setVisible(paneId: string, visible: boolean): void {
+		const group = this.groups.get(paneId);
+		if (!group) return;
+		group.visible = visible;
+		this.layout(group);
+	}
+
+	createTab(paneId: string, url: string): string | null {
+		this.ensureRoot();
+		let group = this.groups.get(paneId);
+		if (!group) {
+			group = {
+				tabs: [],
+				activeTabId: null,
+				placeholder: null,
+				resizeObserver: null,
+				visible: false,
+			};
+			this.groups.set(paneId, group);
+		}
+		const tabId = nextTabId();
+		const entry = this.spawnTab(paneId, url, tabId);
+		group.tabs.push(entry);
+		if (this.root) this.root.appendChild(entry.webview);
+		group.activeTabId = tabId;
+		group.visible = true;
+		this.layout(group);
+		this.notify(paneId);
+		return tabId;
+	}
+
+	closeTab(paneId: string, tabId: string): void {
+		const group = this.groups.get(paneId);
+		if (!group) return;
+		const idx = group.tabs.findIndex((t) => t.tabId === tabId);
+		if (idx < 0) return;
+		const [removed] = group.tabs.splice(idx, 1);
+		removed.detachHandlers();
+		removed.webview.remove();
+		electronTrpcClient.browser.unregisterTab
+			.mutate({ paneId, tabId: removed.tabId })
+			.catch(() => {});
+		if (group.activeTabId === tabId) {
+			group.activeTabId =
+				group.tabs[Math.min(idx, group.tabs.length - 1)]?.tabId ?? null;
+		}
+		this.layout(group);
+		this.notify(paneId);
+	}
+
+	activateTab(paneId: string, tabId: string): void {
+		const group = this.groups.get(paneId);
+		if (!group) return;
+		if (!group.tabs.some((t) => t.tabId === tabId)) return;
+		if (group.activeTabId === tabId) return;
+		group.activeTabId = tabId;
+		group.visible = true;
+		this.layout(group);
+		this.notify(paneId);
+	}
+
+	listTabs(paneId: string): SecondaryTabState[] {
+		const group = this.groups.get(paneId);
+		if (!group) return [];
+		return group.tabs.map((t) => ({ ...t.state }));
+	}
+
+	getActiveTabId(paneId: string): string | null {
+		return this.groups.get(paneId)?.activeTabId ?? null;
+	}
+
+	onTabsChange(paneId: string, listener: () => void): () => void {
+		const set = this.getListeners(paneId);
+		set.add(listener);
+		return () => set.delete(listener);
+	}
+
+	navigateActive(paneId: string, url: string): void {
+		const group = this.groups.get(paneId);
+		const tab = group?.tabs.find((t) => t.tabId === group.activeTabId);
+		if (!tab) return;
+		tab.webview.loadURL(sanitizeUrl(url)).catch(() => {});
+	}
+
+	goBackActive(paneId: string): void {
+		const group = this.groups.get(paneId);
+		const tab = group?.tabs.find((t) => t.tabId === group.activeTabId);
+		if (tab?.webview.canGoBack()) tab.webview.goBack();
+	}
+
+	goForwardActive(paneId: string): void {
+		const group = this.groups.get(paneId);
+		const tab = group?.tabs.find((t) => t.tabId === group.activeTabId);
+		if (tab?.webview.canGoForward()) tab.webview.goForward();
+	}
+
+	reloadActive(paneId: string): void {
+		const group = this.groups.get(paneId);
+		const tab = group?.tabs.find((t) => t.tabId === group.activeTabId);
+		tab?.webview.reload();
+	}
+}
+
+export const secondaryTabRegistry: SecondaryTabRegistry =
+	(import.meta.hot?.data?.v1SecondaryTabRegistry as
+		| SecondaryTabRegistry
+		| undefined) ?? new SecondaryTabRegistry();
+if (import.meta.hot) {
+	import.meta.hot.data.v1SecondaryTabRegistry = secondaryTabRegistry;
+}

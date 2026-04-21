@@ -20,6 +20,7 @@ import {
 	BrowserFindOverlay,
 	type BrowserFindOverlayHandle,
 } from "./components/BrowserFindOverlay";
+import { BrowserTabBar } from "./components/BrowserTabBar";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
 import { ConnectButton } from "./components/ConnectButton";
@@ -27,6 +28,8 @@ import { ExtensionToolbar } from "./components/ExtensionToolbar";
 import { SessionConnectModal } from "./components/SessionConnectModal";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
+import { getPersistentWebview } from "./hooks/usePersistentWebview/runtime";
+import { secondaryTabRegistry } from "./hooks/useSecondaryTabs";
 
 interface BrowserPaneProps {
 	paneId: string;
@@ -240,6 +243,64 @@ export function BrowserPane({
 		openDevTools({ paneId });
 	}, [openDevTools, paneId]);
 
+	// -- Secondary tabs -----------------------------------------------------
+	//
+	// v1's primary webview lives in usePersistentWebview + tabs-store. This
+	// BrowserPane also hosts a secondary tab registry for anything beyond
+	// the primary (user-opened via the overflow menu, or CDP-opened via an
+	// external MCP's Target.createTarget). When a secondary tab is active,
+	// we hide the primary webview via CSS and the secondary registry
+	// overlays its own webview atop the same placeholder (containerRef).
+
+	const [activeTabId, setActiveTabId] = useState("primary");
+	const secondaryContainerRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		const el = secondaryContainerRef.current;
+		if (!el) return;
+		secondaryTabRegistry.attach(paneId, el);
+		return () => secondaryTabRegistry.detach(paneId);
+	}, [paneId]);
+
+	useEffect(() => {
+		return () => secondaryTabRegistry.destroy(paneId);
+	}, [paneId]);
+
+	const setPrimaryWebviewVisible = useCallback(
+		(visible: boolean) => {
+			const primary = getPersistentWebview(paneId);
+			if (primary) {
+				primary.style.visibility = visible ? "visible" : "hidden";
+				primary.style.pointerEvents = visible ? "auto" : "none";
+			}
+		},
+		[paneId],
+	);
+
+	useEffect(() => {
+		if (activeTabId === "primary") {
+			secondaryTabRegistry.setVisible(paneId, false);
+			setPrimaryWebviewVisible(true);
+		} else {
+			setPrimaryWebviewVisible(false);
+			secondaryTabRegistry.activateTab(paneId, activeTabId);
+			secondaryTabRegistry.setVisible(paneId, true);
+		}
+	}, [activeTabId, paneId, setPrimaryWebviewVisible]);
+
+	// External CDP MCPs issue Target.createTarget → bridge emits
+	// create-tab-requested on the pane. Spawn a real secondary tab so
+	// the gateway's bound-set picks up the new targetId.
+	electronTrpc.browser.onCreateTabRequested.useSubscription(
+		{ paneId },
+		{
+			onData: (evt) => {
+				const tabId = secondaryTabRegistry.createTab(paneId, evt.url);
+				if (tabId) setActiveTabId(tabId);
+			},
+		},
+	);
+
 	const [isEditingUrl, setIsEditingUrl] = useState(false);
 
 	useEffect(() => {
@@ -397,11 +458,24 @@ export function BrowserPane({
 				{!isFullscreen && (
 					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
 				)}
+				<BrowserTabBar
+					paneId={paneId}
+					primaryUrl={currentUrl}
+					primaryTitle={pageTitle}
+					primaryFaviconUrl={currentFaviconUrl ?? null}
+					primaryIsLoading={isLoading}
+					activeTabId={activeTabId}
+					onActivate={setActiveTabId}
+				/>
 				<div className="relative flex flex-1 min-h-0">
 					<div
 						ref={containerRef}
 						className="h-full w-full"
 						style={{ flex: 1 }}
+					/>
+					<div
+						ref={secondaryContainerRef}
+						className="absolute inset-0 pointer-events-none"
 					/>
 					<BrowserFindOverlay
 						ref={findOverlayRef}

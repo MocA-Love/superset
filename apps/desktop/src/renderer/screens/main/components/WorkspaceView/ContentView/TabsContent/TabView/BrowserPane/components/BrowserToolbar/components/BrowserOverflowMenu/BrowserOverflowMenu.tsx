@@ -14,6 +14,7 @@ import {
 	TbDots,
 	TbDownload,
 	TbFolderPlus,
+	TbPlus,
 	TbReload,
 	TbTrash,
 	TbUpload,
@@ -26,6 +27,7 @@ import {
 	importBrowserBookmarksFromHtml,
 } from "renderer/stores/browser-bookmarks-html";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { secondaryTabRegistry } from "../../../../hooks/useSecondaryTabs";
 import { BookmarkFolderDialog } from "../../../BookmarkFolderDialog";
 
 interface BrowserOverflowMenuProps {
@@ -178,6 +180,16 @@ export function BrowserOverflowMenu({
 						scheduleNewFolderDialogOpen();
 					}}
 				>
+					<DropdownMenuItem
+						onClick={() =>
+							secondaryTabRegistry.createTab(paneId, "about:blank")
+						}
+						className="gap-2"
+					>
+						<TbPlus className="size-4" />
+						New Tab
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						onClick={handleScreenshot}
 						disabled={!hasPage}
