@@ -420,7 +420,14 @@ export function SearchView({
 		validationError === null &&
 		!replaceMutation.isPending &&
 		!writeFileMutation.isPending;
-	const canInlineReplace = hasQuery && validationError === null;
+	// The per-match inline replace applies the regex line by line, so a
+	// multiline pattern (e.g. `foo\nbar`) that matched across newlines can
+	// never be applied by that code path — it would simply report the hit
+	// as out-of-date. "Replace all" still works because the backend replaces
+	// against the full file content. Disable inline replace in that case so
+	// users don't silently hit the stale-match error.
+	const canInlineReplace =
+		hasQuery && validationError === null && !(isRegex && multiline);
 
 	const runReplace = useCallback(
 		async (paths?: string[]) => {
