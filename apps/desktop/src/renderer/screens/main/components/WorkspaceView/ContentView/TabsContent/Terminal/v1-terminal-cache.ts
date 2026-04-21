@@ -54,6 +54,9 @@ export interface CachedTerminal {
 	subscriptionErrorHandler: ((error: unknown) => void) | null;
 	/** ResizeObserver for the attached container. Managed by attach/detach. */
 	resizeObserver: ResizeObserver | null;
+	/** rAF-batched write buffer: data accumulates here until the next frame. */
+	rafWriteBuffer: string;
+	rafWriteId: ReturnType<typeof requestAnimationFrame> | null;
 }
 
 const cache = new Map<string, CachedTerminal>();
@@ -95,6 +98,8 @@ export function getOrCreate(
 		resizeObserver: null,
 		lastCols: xterm.cols,
 		lastRows: xterm.rows,
+		rafWriteBuffer: "",
+		rafWriteId: null,
 	};
 
 	cache.set(paneId, entry);
@@ -212,6 +217,48 @@ export function updateAppearance(
 	};
 }
 
+// --- rAF write buffer ---
+
+/**
+ * Batch xterm.write calls into one per animation frame to reduce the number
+ * of parser/render cycles. Callers accumulate data here; the actual write
+ * fires in the next rAF, coalescing all chunks that arrived within ~16 ms.
+ */
+export function scheduleWrite(paneId: string, data: string): void {
+	const entry = cache.get(paneId);
+	if (!entry) return;
+	entry.rafWriteBuffer += data;
+	if (entry.rafWriteId === null) {
+		entry.rafWriteId = requestAnimationFrame(() => {
+			const e = cache.get(paneId);
+			if (!e) return;
+			if (e.rafWriteBuffer) {
+				e.xterm.write(e.rafWriteBuffer);
+				e.rafWriteBuffer = "";
+			}
+			e.rafWriteId = null;
+		});
+	}
+}
+
+/**
+ * Immediately flush any buffered data to xterm, cancelling the pending rAF.
+ * Must be called before processing exit/error/disconnect events so that
+ * trailing output is rendered before the exit banner or pane disposal.
+ */
+export function flushWrite(paneId: string): void {
+	const entry = cache.get(paneId);
+	if (!entry) return;
+	if (entry.rafWriteId !== null) {
+		cancelAnimationFrame(entry.rafWriteId);
+		entry.rafWriteId = null;
+	}
+	if (entry.rafWriteBuffer) {
+		entry.xterm.write(entry.rafWriteBuffer);
+		entry.rafWriteBuffer = "";
+	}
+}
+
 // --- Stream subscription ---
 
 function routeEvent(
@@ -243,8 +290,9 @@ function routeEvent(
 			data: { paneId },
 		});
 		logTerminalWrite("hidden-stream-data", event.data.length, { paneId });
-		entry.xterm.write(event.data);
+		scheduleWrite(paneId, event.data);
 	} else {
+		flushWrite(paneId);
 		entry.pendingLifecycleEvents.push(event);
 	}
 }
@@ -402,6 +450,9 @@ export function dispose(paneId: string): void {
 
 	entry.resizeObserver?.disconnect();
 	entry.subscription?.unsubscribe();
+	if (entry.rafWriteId !== null) {
+		cancelAnimationFrame(entry.rafWriteId);
+	}
 	entry.cleanupCreation();
 	entry.xterm.dispose();
 	cache.delete(paneId);
@@ -415,6 +466,8 @@ if (hot) {
 		| undefined;
 	if (existing) {
 		for (const [k, v] of existing) {
+			v.rafWriteBuffer ??= "";
+			v.rafWriteId ??= null;
 			cache.set(k, v);
 		}
 	}

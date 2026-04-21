@@ -55,7 +55,7 @@ interface AggregateState {
 	timer: ReturnType<typeof setTimeout> | null;
 }
 
-const DEFAULT_AGGREGATE_INTERVAL_MS = 1_000;
+const DEFAULT_AGGREGATE_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_STRING_LENGTH = 500;
 
 function truncateString(value: string, maxLength: number): string {
