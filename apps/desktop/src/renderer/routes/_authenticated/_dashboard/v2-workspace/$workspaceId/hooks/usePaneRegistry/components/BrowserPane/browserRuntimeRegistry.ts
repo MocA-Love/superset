@@ -149,25 +149,25 @@ class BrowserRuntimeRegistryImpl {
 		for (const tab of group.tabs) {
 			const w = tab.webview;
 			const isActive = tab.tabId === group.activeTabId;
-			// Inactive tabs are pushed off-screen rather than
-			// `visibility:hidden` so Chromium does not flip the
-			// underlying webContents into the page-lifecycle "hidden"
-			// state. External CDP MCPs (browser-use, chrome-devtools-
-			// mcp) drive sites that frequently pause work while hidden
-			// (IntersectionObserver, requestAnimationFrame, deferred
-			// load), which presents to the user as the MCP hanging.
+			// All tabs share the same rect. Active/inactive is expressed
+			// via opacity + z-index + pointer-events. We avoid
+			// visibility:hidden (triggers page-lifecycle "hidden"
+			// state → CDP MCPs hang) AND avoid moving inactive tabs
+			// off-screen (Electron's <webview> tag does not always
+			// re-position its native GuestView compositor on CSS
+			// top/left changes, leaving the GuestView rendering at
+			// whichever tab painted first regardless of which the
+			// tab bar currently flags active).
+			w.style.top = `${rect.top}px`;
+			w.style.left = `${rect.left}px`;
+			w.style.width = `${rect.width}px`;
+			w.style.height = `${rect.height}px`;
 			if (group.visible && isActive) {
-				w.style.top = `${rect.top}px`;
-				w.style.left = `${rect.left}px`;
-				w.style.width = `${rect.width}px`;
-				w.style.height = `${rect.height}px`;
+				w.style.opacity = "1";
 				w.style.zIndex = "100";
 				w.style.pointerEvents = "auto";
 			} else {
-				w.style.top = "-100000px";
-				w.style.left = "-100000px";
-				w.style.width = `${rect.width}px`;
-				w.style.height = `${rect.height}px`;
+				w.style.opacity = "0";
 				w.style.zIndex = "0";
 				w.style.pointerEvents = "none";
 			}
@@ -274,8 +274,9 @@ class BrowserRuntimeRegistryImpl {
 		webview.style.margin = "0";
 		webview.style.padding = "0";
 		webview.style.border = "none";
-		webview.style.visibility = "hidden";
-		webview.style.pointerEvents = "auto";
+		webview.style.visibility = "visible";
+		webview.style.opacity = "0";
+		webview.style.pointerEvents = "none";
 		const sanitized = sanitizeUrl(initialUrl);
 		console.log(
 			"[tab-diag v2] createTabEntry pane=",
@@ -530,12 +531,11 @@ class BrowserRuntimeRegistryImpl {
 		group.resizeObserver?.disconnect();
 		group.resizeObserver = null;
 		group.visible = false;
-		// Keep tabs Chromium-visible (just off-screen) so CDP MCPs
+		// Keep tabs Chromium-visible (opacity:0 only) so CDP MCPs
 		// that drive them through pane detach don't stall on
 		// document.hidden.
 		for (const t of group.tabs) {
-			t.webview.style.top = "-100000px";
-			t.webview.style.left = "-100000px";
+			t.webview.style.opacity = "0";
 			t.webview.style.pointerEvents = "none";
 			t.webview.style.visibility = "visible";
 		}
