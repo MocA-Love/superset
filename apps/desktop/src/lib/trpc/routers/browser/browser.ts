@@ -440,7 +440,10 @@ export const createBrowserRouter = () => {
 				);
 
 				const mediaAccess =
-					input.value === "allow" ? await requestMediaAccess(input.kind) : null;
+					input.value === "allow" &&
+					(input.kind === "microphone" || input.kind === "camera")
+						? await requestMediaAccess(input.kind)
+						: null;
 
 				return {
 					...sitePermissions,

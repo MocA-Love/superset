@@ -1,7 +1,11 @@
-import type { SitePermissionKind } from "@superset/local-db";
 import { shell, systemPreferences } from "electron";
 
-const MEDIA_ACCESS_SETTINGS_URLS: Record<SitePermissionKind, string> = {
+// Only microphone / camera are meaningful here — the rest of
+// SitePermissionKind (geolocation / notifications / clipboard-read)
+// does not have a native macOS media-access equivalent.
+type MediaKind = "microphone" | "camera";
+
+const MEDIA_ACCESS_SETTINGS_URLS: Record<MediaKind, string> = {
 	microphone:
 		"x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
 	camera:
@@ -14,7 +18,7 @@ interface RequestMediaAccessResult {
 }
 
 export async function requestMediaAccess(
-	kind: SitePermissionKind,
+	kind: MediaKind,
 ): Promise<RequestMediaAccessResult> {
 	if (process.platform !== "darwin") {
 		return {

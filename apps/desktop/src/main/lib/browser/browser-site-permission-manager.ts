@@ -17,6 +17,9 @@ const DEFAULT_SITE_PERMISSIONS: Record<
 > = {
 	microphone: "ask",
 	camera: "ask",
+	geolocation: "ask",
+	notifications: "ask",
+	"clipboard-read": "ask",
 };
 
 interface SitePermissionRequestEvent {

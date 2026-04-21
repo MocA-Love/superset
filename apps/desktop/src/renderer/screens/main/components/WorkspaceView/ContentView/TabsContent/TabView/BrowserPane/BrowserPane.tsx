@@ -365,7 +365,7 @@ export function BrowserPane({
 			onData: (evt) => {
 				if (evt.tabId === null) {
 					secondaryTabRegistry.showPrimary(paneId);
-					setActiveTabId(null);
+					setActiveTabId("primary");
 				} else {
 					secondaryTabRegistry.activateTab(paneId, evt.tabId);
 					setActiveTabId(evt.tabId);
