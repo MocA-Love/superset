@@ -254,10 +254,18 @@ class BrowserManager extends EventEmitter {
 			this.paneTabTargetIds.set(paneId, set);
 		}
 		set.add(targetId);
+		console.log(
+			"[browser-manager] addPaneTabTarget",
+			paneId,
+			targetId,
+			"now",
+			Array.from(set),
+		);
 	}
 
 	removePaneTabTarget(paneId: string, targetId: string): void {
 		this.paneTabTargetIds.get(paneId)?.delete(targetId);
+		console.log("[browser-manager] removePaneTabTarget", paneId, targetId);
 	}
 
 	listPanesWithCdpTargets(): Array<{ paneId: string; targetId: string }> {
@@ -326,7 +334,29 @@ class BrowserManager extends EventEmitter {
 				targetId.length > 0 &&
 				currentId === expectedWebContentsId
 			) {
+				const previous = this.paneTargetIds.get(paneId);
 				this.paneTargetIds.set(paneId, targetId);
+				console.log(
+					"[browser-manager] captured primary targetId pane",
+					paneId,
+					"wc",
+					expectedWebContentsId,
+					"targetId",
+					targetId,
+					"previous",
+					previous,
+				);
+			} else {
+				console.log(
+					"[browser-manager] discarded captured targetId pane",
+					paneId,
+					"expectedWc",
+					expectedWebContentsId,
+					"currentWc",
+					currentId,
+					"targetId",
+					targetId,
+				);
 			}
 		} catch (error) {
 			console.warn(

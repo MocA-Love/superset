@@ -473,6 +473,16 @@ export async function proxyBrowserUpgrade(
 							return tid !== undefined && bound.has(tid);
 						})
 						.map((i) => rewriteTargetInfoType(i));
+					console.log(
+						"[cdp-filter-proxy] Target.getTargets upstream returned",
+						infos.length,
+						"infos | bound set",
+						Array.from(bound),
+						"| filtered to",
+						filtered.length,
+						"| upstream ids:",
+						infos.map((i) => `${i.type}:${targetIdOf(i)}`),
+					);
 					sendToClient({
 						...msg,
 						result: { ...msg.result, targetInfos: filtered },
@@ -598,8 +608,25 @@ export async function proxyBrowserUpgrade(
 			console.warn("[cdp-filter-proxy] browser upstream error", err);
 			closeBoth();
 		});
-		upstream.on("close", closeBoth);
-		clientWs.on("error", closeBoth);
-		clientWs.on("close", closeBoth);
+		upstream.on("close", (code, reason) => {
+			console.log(
+				"[cdp-filter-proxy] upstream WS closed",
+				code,
+				reason?.toString?.() ?? "",
+			);
+			closeBoth();
+		});
+		clientWs.on("error", (err) => {
+			console.warn("[cdp-filter-proxy] client WS error", err);
+			closeBoth();
+		});
+		clientWs.on("close", (code, reason) => {
+			console.log(
+				"[cdp-filter-proxy] client WS closed",
+				code,
+				reason?.toString?.() ?? "",
+			);
+			closeBoth();
+		});
 	});
 }

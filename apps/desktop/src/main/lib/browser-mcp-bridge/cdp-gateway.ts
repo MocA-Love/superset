@@ -170,6 +170,12 @@ function registerConnection(sessionId: string, ws: WebSocket): void {
 function closeConnectionsForSession(sessionId: string): void {
 	const set = sessionConnections.get(sessionId);
 	if (!set) return;
+	console.log(
+		"[cdp-gateway] M3 closing",
+		set.size,
+		"connections for session",
+		sessionId,
+	);
 	for (const ws of Array.from(set)) {
 		try {
 			ws.close(1000, "superset: binding changed, reconnect");
