@@ -35,9 +35,9 @@ export function BrowserTabBar({ paneId }: BrowserTabBarProps) {
 		browserRuntimeRegistry.createTab(paneId, "about:blank");
 	}, [paneId]);
 
-	// Hide the bar when there is a single primary tab and the user has
-	// not opened any additional tabs yet — keeps the BrowserPane looking
-	// exactly like before for simple cases.
+	// Hide the strip when there is only the primary tab. Manual "new
+	// tab" from the overflow menu (see BrowserOverflowMenu) is the
+	// escape hatch for opening the first additional tab.
 	if (tabs.length <= 1) return null;
 
 	return (

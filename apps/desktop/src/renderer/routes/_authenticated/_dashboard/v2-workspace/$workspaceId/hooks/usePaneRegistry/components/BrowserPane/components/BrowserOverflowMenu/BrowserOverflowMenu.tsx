@@ -10,11 +10,13 @@ import {
 	TbClock,
 	TbCopy,
 	TbDots,
+	TbPlus,
 	TbReload,
 	TbTrash,
 } from "react-icons/tb";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
+import { browserRuntimeRegistry } from "../../browserRuntimeRegistry";
 
 interface BrowserOverflowMenuProps {
 	paneId: string;
@@ -72,6 +74,16 @@ export function BrowserOverflowMenu({
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-48">
+				<DropdownMenuItem
+					onClick={() =>
+						browserRuntimeRegistry.createTab(paneId, "about:blank")
+					}
+					className="gap-2"
+				>
+					<TbPlus className="size-4" />
+					New Tab
+				</DropdownMenuItem>
+				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					onClick={handleScreenshot}
 					disabled={!hasPage}

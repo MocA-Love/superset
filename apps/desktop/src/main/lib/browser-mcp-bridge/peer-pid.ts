@@ -1,4 +1,5 @@
 import { exec } from "node:child_process";
+import { platform } from "node:os";
 import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
@@ -24,6 +25,16 @@ export async function resolvePeerPidFromRemotePort(
 	ownPid: number,
 ): Promise<number | null> {
 	if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65_535) {
+		return null;
+	}
+	const plat = platform();
+	if (plat !== "darwin" && plat !== "linux") {
+		// Windows / other platforms: lsof is unavailable. The gateway
+		// is not supported on these platforms; the caller will surface
+		// the same 409 as "no binding" so external MCPs receive a
+		// clean error instead of hanging. Windows support is tracked
+		// separately and will plug into this resolver via a
+		// platform-specific implementation (netstat / GetTcpTable2).
 		return null;
 	}
 	try {

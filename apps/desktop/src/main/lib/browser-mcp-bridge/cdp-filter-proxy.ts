@@ -182,6 +182,12 @@ export async function proxyBrowserUpgrade(
 		const upstream = new WebSocket(chromiumBrowserWs);
 		const pendingMethods = new Map<number, string>();
 		const allowedSessionIds = new Set<string>();
+		// Frames the client sends before Chromium's browser WS reaches
+		// OPEN. CDP clients (puppeteer, cdp-use) typically fire
+		// `Target.setDiscoverTargets` / `Target.setAutoAttach` the
+		// instant our handshake completes, so dropping them would
+		// deadlock `connect()`. `proxyPageUpgrade` buffers the same way.
+		const pendingUpstream: unknown[] = [];
 		if (ctx.onClose) ctx.onClose(clientWs);
 
 		const closeBoth = (): void => {
@@ -206,6 +212,10 @@ export async function proxyBrowserUpgrade(
 			}
 		};
 		const sendToUpstream = (obj: unknown): void => {
+			if (upstream.readyState === WebSocket.CONNECTING) {
+				pendingUpstream.push(obj);
+				return;
+			}
 			if (upstream.readyState !== WebSocket.OPEN) return;
 			try {
 				upstream.send(JSON.stringify(obj));
@@ -213,6 +223,16 @@ export async function proxyBrowserUpgrade(
 				/* ignore */
 			}
 		};
+		upstream.on("open", () => {
+			for (const obj of pendingUpstream) {
+				try {
+					upstream.send(JSON.stringify(obj));
+				} catch {
+					/* ignore */
+				}
+			}
+			pendingUpstream.length = 0;
+		});
 		const rejectRequest = (id: number, message: string): void => {
 			sendToClient({ id, error: { code: -32601, message } });
 		};
@@ -224,12 +244,20 @@ export async function proxyBrowserUpgrade(
 			} catch {
 				return;
 			}
+			const id = typeof msg.id === "number" ? msg.id : undefined;
 			if (msg.sessionId) {
-				if (allowedSessionIds.has(msg.sessionId)) sendToUpstream(msg);
+				if (allowedSessionIds.has(msg.sessionId)) {
+					sendToUpstream(msg);
+				} else if (id !== undefined) {
+					// Don't hang the caller on a stale / unknown sessionId.
+					rejectRequest(
+						id,
+						"The supplied CDP sessionId is not authorized for this Superset session (the session may have been detached or belong to another pane).",
+					);
+				}
 				return;
 			}
 			const method = msg.method ?? "";
-			const id = typeof msg.id === "number" ? msg.id : undefined;
 			const bound = ctx.boundTargetIds();
 
 			if (
@@ -341,10 +369,35 @@ export async function proxyBrowserUpgrade(
 			if (method === "Target.detachFromTarget" && id !== undefined) {
 				const sid = (msg.params as { sessionId?: string } | undefined)
 					?.sessionId;
+				const tid = targetIdOf(msg.params);
+				if ((sid && !allowedSessionIds.has(sid)) || (tid && !bound.has(tid))) {
+					rejectRequest(
+						id,
+						"Target.detachFromTarget outside the bound scope is refused by the Superset CDP filter.",
+					);
+					return;
+				}
+				pendingMethods.set(id, method);
+				sendToUpstream(msg);
+				return;
+			}
+
+			// Remaining Target.* methods that address a specific target or
+			// session (e.g. sendMessageToTarget, setRemoteLocations). Verify
+			// any supplied targetId / sessionId are inside scope before
+			// forwarding.
+			if (method.startsWith("Target.") && id !== undefined) {
+				const tid = targetIdOf(msg.params);
+				const sid = (msg.params as { sessionId?: string } | undefined)
+					?.sessionId;
+				if (tid && !bound.has(tid)) {
+					rejectRequest(id, `${method} targetId is outside the bound scope.`);
+					return;
+				}
 				if (sid && !allowedSessionIds.has(sid)) {
 					rejectRequest(
 						id,
-						"Target.detachFromTarget for unknown sessions is refused by the Superset CDP filter.",
+						`${method} sessionId is not authorized for this Superset session.`,
 					);
 					return;
 				}
@@ -449,6 +502,34 @@ export async function proxyBrowserUpgrade(
 					?.sessionId;
 				if (!sid || !allowedSessionIds.has(sid)) return;
 				allowedSessionIds.delete(sid);
+				sendToClient(msg);
+				return;
+			}
+			// Target.receivedMessageFromTarget carries a session-scoped
+			// payload on the browser-level socket (the non-flatten path).
+			// Drop it when the inner sessionId or targetId is outside our
+			// scope so we don't leak another pane's CDP traffic.
+			if (method === "Target.receivedMessageFromTarget") {
+				const params = msg.params as
+					| { sessionId?: string; targetId?: string }
+					| undefined;
+				if (params?.sessionId && !allowedSessionIds.has(params.sessionId))
+					return;
+				if (params?.targetId && !bound.has(params.targetId)) return;
+				sendToClient(msg);
+				return;
+			}
+			// Any other Target.* event that mentions a targetId /
+			// sessionId must also be scoped.
+			if (method.startsWith("Target.")) {
+				const tid =
+					targetIdOf(msg.params) ??
+					(msg.params as { targetInfo?: { targetId?: string } } | undefined)
+						?.targetInfo?.targetId;
+				const sid = (msg.params as { sessionId?: string } | undefined)
+					?.sessionId;
+				if (tid && !bound.has(tid)) return;
+				if (sid && !allowedSessionIds.has(sid)) return;
 				sendToClient(msg);
 				return;
 			}

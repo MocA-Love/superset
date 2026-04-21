@@ -81,14 +81,16 @@ export function ensureGlobalBrowserUseConfig(bridgePort: number): void {
 	}
 }
 
-const socketSessions = new WeakMap<
-	Socket,
-	Promise<{ paneId: string; sessionId: string } | null>
->();
+/**
+ * Session resolution is keyed to the TCP socket (peer-PID lookup is
+ * expensive and the socket identifies a single external MCP process),
+ * but the paneId binding is intentionally NOT cached — a keep-alive
+ * HTTP connection crossing a pane rebind must pick up the new pane on
+ * the next request.
+ */
+const socketSessions = new WeakMap<Socket, Promise<string | null>>();
 
-async function resolveForSocket(
-	socket: Socket,
-): Promise<{ paneId: string; sessionId: string } | null> {
+async function resolveSessionForSocket(socket: Socket): Promise<string | null> {
 	const cached = socketSessions.get(socket);
 	if (cached) return cached;
 	const promise = (async () => {
@@ -104,13 +106,20 @@ async function resolveForSocket(
 		const peerPid = await resolvePeerPidFromRemotePort(remotePort, process.pid);
 		if (!peerPid) return null;
 		const session = await resolvePidToSession(peerPid);
-		if (!session?.paneId) return null;
-		const binding = bindingStore.getBySessionId(session.sessionId);
-		if (!binding) return null;
-		return { paneId: binding.paneId, sessionId: session.sessionId };
+		return session?.sessionId ?? null;
 	})();
 	socketSessions.set(socket, promise);
 	return promise;
+}
+
+async function resolveForSocket(
+	socket: Socket,
+): Promise<{ paneId: string; sessionId: string } | null> {
+	const sessionId = await resolveSessionForSocket(socket);
+	if (!sessionId) return null;
+	const binding = bindingStore.getBySessionId(sessionId);
+	if (!binding) return null;
+	return { paneId: binding.paneId, sessionId };
 }
 
 /* ---------------------------------------------------------------- */
