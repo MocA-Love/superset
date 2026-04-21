@@ -189,6 +189,110 @@ export function CdpEndpointCard({
 	);
 }
 
+/**
+ * Standalone version of the "Example setup" section that works even
+ * when no session is bound yet — the WebSocket/HTTP base are not
+ * known until a binding exists, so the commands are rendered with
+ * placeholder tokens that the user substitutes after binding.
+ * Intended use: the "Show setup commands" button in the summary bar
+ * wants to reveal setup instructions even before the user has bound
+ * a session.
+ */
+export function PlaceholderSetupCommandsCard({
+	revealToken,
+	onDismiss,
+}: {
+	revealToken?: number;
+	onDismiss?: () => void;
+}) {
+	const [open, setOpen] = useState(true);
+	useEffect(() => {
+		if (revealToken !== undefined && revealToken > 0) setOpen(true);
+	}, [revealToken]);
+
+	const copy = async (value: string, label: string): Promise<void> => {
+		try {
+			await navigator.clipboard.writeText(value);
+			toast.success(`${label} copied`);
+		} catch {
+			toast.error(`Failed to copy ${label.toLowerCase()}`);
+		}
+	};
+
+	const HTTP = "http://127.0.0.1:<port>";
+	const CFG = "<BROWSER_USE_CONFIG_PATH>";
+	const chromeClaude = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${HTTP}`;
+	const chromeCodex = `codex mcp add chrome-devtools-mcp -- npx -y chrome-devtools-mcp --browser-url ${HTTP}`;
+	const useClaude = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${CFG} -- uvx --from "browser-use[cli]" browser-use --mcp`;
+	const useCodex = `codex mcp add browser-use --env BROWSER_USE_CONFIG_PATH=${CFG} -- uvx --from "browser-use[cli]" browser-use --mcp`;
+
+	return (
+		<div className="rounded-xl border border-dashed p-3 bg-card/40 flex flex-col gap-3">
+			<div className="flex items-start gap-2">
+				<div className="flex-1 min-w-0">
+					<div className="text-xs font-semibold">Setup commands (template)</div>
+					<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+						外部ブラウザ MCP (chrome-devtools-mcp / browser-use) を登録する
+						ためのテンプレートです。プレースホルダ部分 (
+						<code className="rounded bg-muted px-1">{HTTP}</code> /{" "}
+						<code className="rounded bg-muted px-1">{CFG}</code>)
+						は、セッションを bind すると実際の値に置き換わって CDP endpoint
+						カードに表示されます。
+					</div>
+				</div>
+				{onDismiss && (
+					<button
+						type="button"
+						onClick={onDismiss}
+						className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/40"
+					>
+						×
+					</button>
+				)}
+			</div>
+
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				className="flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground"
+			>
+				{open ? (
+					<LuChevronUp className="size-3" />
+				) : (
+					<LuChevronDown className="size-3" />
+				)}
+				Example setup
+			</button>
+			{open && (
+				<div>
+					<CommandBlock
+						title="chrome-devtools-mcp (Claude Code)"
+						cmd={chromeClaude}
+						onCopy={() => copy(chromeClaude, "chrome-devtools-mcp command")}
+					/>
+					<CommandBlock
+						title="chrome-devtools-mcp (Codex)"
+						cmd={chromeCodex}
+						onCopy={() =>
+							copy(chromeCodex, "chrome-devtools-mcp (codex) command")
+						}
+					/>
+					<CommandBlock
+						title="browser-use (Claude Code)"
+						cmd={useClaude}
+						onCopy={() => copy(useClaude, "browser-use command")}
+					/>
+					<CommandBlock
+						title="browser-use (Codex)"
+						cmd={useCodex}
+						onCopy={() => copy(useCodex, "browser-use (codex) command")}
+					/>
+				</div>
+			)}
+		</div>
+	);
+}
+
 function UrlRow({
 	label,
 	value,

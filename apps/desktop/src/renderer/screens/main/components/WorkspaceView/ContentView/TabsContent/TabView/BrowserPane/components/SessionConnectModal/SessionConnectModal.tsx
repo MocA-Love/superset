@@ -27,7 +27,10 @@ import {
 	useBrowserAutomationStore,
 } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
-import { CdpEndpointCard } from "./components/CdpEndpointCard";
+import {
+	CdpEndpointCard,
+	PlaceholderSetupCommandsCard,
+} from "./components/CdpEndpointCard";
 import { McpInstallPanel } from "./components/McpInstallPanel";
 import { PermissionsTab } from "./components/PermissionsTab";
 
@@ -304,7 +307,13 @@ export function SessionConnectModal({
 							)}
 						</div>
 
-						<div className="overflow-y-auto p-4 bg-muted/20">
+						<div className="overflow-y-auto p-4 bg-muted/20 flex flex-col gap-3">
+							{setupRevealToken > 0 && session?.id !== currentBinding && (
+								<PlaceholderSetupCommandsCard
+									revealToken={setupRevealToken}
+									onDismiss={() => setSetupRevealToken(0)}
+								/>
+							)}
 							{session ? (
 								session.mcpStatus === "ready" ? (
 									<ReadyPanel
