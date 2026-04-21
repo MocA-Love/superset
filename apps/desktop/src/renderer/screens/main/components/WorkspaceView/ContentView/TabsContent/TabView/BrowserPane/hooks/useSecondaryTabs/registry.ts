@@ -116,33 +116,28 @@ class SecondaryTabRegistry {
 		for (const tab of group.tabs) {
 			const w = tab.webview;
 			const isActive = group.visible && tab.tabId === group.activeTabId;
-			// All tabs share the same rect; active/inactive is expressed
-			// via opacity + z-index + pointer-events. We deliberately
-			// avoid:
-			//   - visibility:hidden / display:none — these trigger
-			//     Chromium's page-lifecycle "hidden" state, which makes
-			//     CDP MCPs (browser-use / chrome-devtools-mcp) appear
-			//     to hang while sites throttle work on
-			//     IntersectionObserver / requestAnimationFrame / "wait
-			//     until visible" load paths.
-			//   - moving inactive tabs off-screen — Electron's
-			//     <webview> tag does not reliably re-position the
-			//     native GuestView compositor when only CSS top/left
-			//     change, so the inactive tab's GuestView would stay
-			//     compositing at the active rect and the user would
-			//     see whichever tab happened to paint first regardless
-			//     of which one the tab-bar flagged "active".
-			// opacity:0 pauses neither the renderer nor the page
-			// lifecycle and reliably hides the widget.
-			w.style.top = `${rect.top}px`;
-			w.style.left = `${rect.left}px`;
-			w.style.width = `${rect.width}px`;
-			w.style.height = `${rect.height}px`;
+			// Inactive tabs must leave the viewport entirely. Keeping
+			// them at rect with opacity:0 / pointer-events:none does
+			// NOT work: Electron's <webview> native GuestView
+			// compositor intercepts wheel / right-click / keyboard
+			// focus regardless of CSS pointer-events, which would
+			// break scroll / context menu / URL bar suggestions on
+			// whatever should be below. Push them off-screen.
+			// visibility stays "visible" so page-lifecycle stays
+			// "visible" for background CDP automation.
 			if (isActive) {
+				w.style.top = `${rect.top}px`;
+				w.style.left = `${rect.left}px`;
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
 				w.style.opacity = "1";
 				w.style.zIndex = "100";
 				w.style.pointerEvents = "auto";
 			} else {
+				w.style.top = "-100000px";
+				w.style.left = "-100000px";
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
 				w.style.opacity = "0";
 				w.style.zIndex = "0";
 				w.style.pointerEvents = "none";
@@ -407,10 +402,12 @@ class SecondaryTabRegistry {
 		group.resizeObserver = null;
 		group.placeholder = null;
 		group.visible = false;
-		// Hide via opacity rather than visibility:hidden to keep
-		// Chromium's page-lifecycle state "visible" so external CDP
-		// MCPs driving these tabs don't stall when the pane detaches.
+		// Push off-screen so the GuestView stops intercepting events
+		// but stays Chromium-visible so page-lifecycle remains
+		// "visible" (CDP MCPs keep working).
 		for (const tab of group.tabs) {
+			tab.webview.style.top = "-100000px";
+			tab.webview.style.left = "-100000px";
 			tab.webview.style.opacity = "0";
 			tab.webview.style.pointerEvents = "none";
 			tab.webview.style.visibility = "visible";

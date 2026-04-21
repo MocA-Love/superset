@@ -149,24 +149,26 @@ class BrowserRuntimeRegistryImpl {
 		for (const tab of group.tabs) {
 			const w = tab.webview;
 			const isActive = tab.tabId === group.activeTabId;
-			// All tabs share the same rect. Active/inactive is expressed
-			// via opacity + z-index + pointer-events. We avoid
-			// visibility:hidden (triggers page-lifecycle "hidden"
-			// state → CDP MCPs hang) AND avoid moving inactive tabs
-			// off-screen (Electron's <webview> tag does not always
-			// re-position its native GuestView compositor on CSS
-			// top/left changes, leaving the GuestView rendering at
-			// whichever tab painted first regardless of which the
-			// tab bar currently flags active).
-			w.style.top = `${rect.top}px`;
-			w.style.left = `${rect.left}px`;
-			w.style.width = `${rect.width}px`;
-			w.style.height = `${rect.height}px`;
+			// Inactive tabs must leave the viewport entirely:
+			// opacity:0 / pointer-events:none is not enough because
+			// Electron <webview>'s native GuestView compositor still
+			// captures wheel / right-click / focus, blocking scroll /
+			// context menu / interactions on whatever's supposed to
+			// be below. visibility stays "visible" so Chromium does
+			// not flip page-lifecycle to hidden.
 			if (group.visible && isActive) {
+				w.style.top = `${rect.top}px`;
+				w.style.left = `${rect.left}px`;
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
 				w.style.opacity = "1";
 				w.style.zIndex = "100";
 				w.style.pointerEvents = "auto";
 			} else {
+				w.style.top = "-100000px";
+				w.style.left = "-100000px";
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
 				w.style.opacity = "0";
 				w.style.zIndex = "0";
 				w.style.pointerEvents = "none";
@@ -531,10 +533,11 @@ class BrowserRuntimeRegistryImpl {
 		group.resizeObserver?.disconnect();
 		group.resizeObserver = null;
 		group.visible = false;
-		// Keep tabs Chromium-visible (opacity:0 only) so CDP MCPs
-		// that drive them through pane detach don't stall on
-		// document.hidden.
+		// Off-screen + opacity:0 so GuestView stops intercepting
+		// events but page-lifecycle stays "visible" for CDP MCPs.
 		for (const t of group.tabs) {
+			t.webview.style.top = "-100000px";
+			t.webview.style.left = "-100000px";
 			t.webview.style.opacity = "0";
 			t.webview.style.pointerEvents = "none";
 			t.webview.style.visibility = "visible";
