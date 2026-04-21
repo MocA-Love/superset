@@ -66,6 +66,11 @@ class BrowserRuntimeRegistryImpl {
 	private groups = new Map<string, PaneGroup>();
 	private stateListenersByPaneId = new Map<string, Set<() => void>>();
 	private tabsListenersByPaneId = new Map<string, Set<() => void>>();
+	// Snapshot caches so useSyncExternalStore returns stable references
+	// until something actually changes — without this the array
+	// identity flips every render and React aborts the BrowserPane
+	// with "Maximum update depth exceeded".
+	private tabsSnapshots = new Map<string, BrowserTabSummary[]>();
 	private rootContainer: HTMLDivElement | null = null;
 	private globalListenersInstalled = false;
 
@@ -160,6 +165,7 @@ class BrowserRuntimeRegistryImpl {
 	}
 
 	private notifyTabs(paneId: string) {
+		this.tabsSnapshots.delete(paneId);
 		const set = this.tabsListenersByPaneId.get(paneId);
 		if (!set) return;
 		for (const l of set) l();
@@ -519,17 +525,26 @@ class BrowserRuntimeRegistryImpl {
 		return () => set.delete(listener);
 	}
 
+	private static EMPTY_TABS: BrowserTabSummary[] = Object.freeze(
+		[] as BrowserTabSummary[],
+	) as BrowserTabSummary[];
+
 	listTabs(paneId: string): BrowserTabSummary[] {
+		const cached = this.tabsSnapshots.get(paneId);
+		if (cached) return cached;
 		const group = this.groups.get(paneId);
-		if (!group) return [];
-		return group.tabs.map((t) => ({
-			tabId: t.tabId,
-			url: t.state.currentUrl,
-			title: t.state.pageTitle,
-			faviconUrl: t.state.faviconUrl,
-			isLoading: t.state.isLoading,
-			isActive: t.tabId === group.activeTabId,
-		}));
+		const next = group
+			? group.tabs.map((t) => ({
+					tabId: t.tabId,
+					url: t.state.currentUrl,
+					title: t.state.pageTitle,
+					faviconUrl: t.state.faviconUrl,
+					isLoading: t.state.isLoading,
+					isActive: t.tabId === group.activeTabId,
+				}))
+			: BrowserRuntimeRegistryImpl.EMPTY_TABS;
+		this.tabsSnapshots.set(paneId, next);
+		return next;
 	}
 
 	onTabsChange(paneId: string, listener: () => void): () => void {

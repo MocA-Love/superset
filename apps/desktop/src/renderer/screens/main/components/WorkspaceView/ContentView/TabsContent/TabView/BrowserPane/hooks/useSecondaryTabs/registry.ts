@@ -54,6 +54,11 @@ function nextTabId(): string {
 class SecondaryTabRegistry {
 	private groups = new Map<string, PaneGroup>();
 	private listenersByPaneId = new Map<string, Set<() => void>>();
+	// Snapshot cache so useSyncExternalStore's getSnapshot returns the
+	// same array reference until something actually changes — without
+	// this, every render schedules another render and React aborts with
+	// "Maximum update depth exceeded".
+	private snapshots = new Map<string, SecondaryTabState[]>();
 	private root: HTMLDivElement | null = null;
 	private globalListenersInstalled = false;
 
@@ -90,6 +95,7 @@ class SecondaryTabRegistry {
 	}
 
 	private notify(paneId: string): void {
+		this.snapshots.delete(paneId);
 		const set = this.listenersByPaneId.get(paneId);
 		if (!set) return;
 		for (const l of set) l();
@@ -369,10 +375,19 @@ class SecondaryTabRegistry {
 		this.notify(paneId);
 	}
 
+	private static EMPTY: SecondaryTabState[] = Object.freeze(
+		[] as SecondaryTabState[],
+	) as SecondaryTabState[];
+
 	listTabs(paneId: string): SecondaryTabState[] {
+		const cached = this.snapshots.get(paneId);
+		if (cached) return cached;
 		const group = this.groups.get(paneId);
-		if (!group) return [];
-		return group.tabs.map((t) => ({ ...t.state }));
+		const next = group
+			? group.tabs.map((t) => ({ ...t.state }))
+			: SecondaryTabRegistry.EMPTY;
+		this.snapshots.set(paneId, next);
+		return next;
 	}
 
 	getActiveTabId(paneId: string): string | null {
