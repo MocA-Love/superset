@@ -247,7 +247,6 @@ export function SessionConnectModal({
 						setActiveTab("sessions");
 						setSetupRevealToken((n) => n + 1);
 					}}
-					activeTab={activeTab}
 				/>
 
 				{activeTab === "permissions" ? (
@@ -424,13 +423,11 @@ function WorkspaceBindingsSummary({
 	bindingsByPane,
 	workspaceId,
 	onShowSetup,
-	activeTab,
 }: {
 	sessions: AutomationSession[];
 	bindingsByPane: Record<string, string>;
 	workspaceId: string | null;
 	onShowSetup: () => void;
-	activeTab: "sessions" | "workspace" | "permissions";
 }) {
 	const panes = useTabsStore((s) => s.panes);
 	const tabs = useTabsStore((s) => s.tabs);
