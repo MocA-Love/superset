@@ -3,11 +3,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
-import { WebSocketServer } from "ws";
-import { SUPERSET_HOME_DIR } from "../app-environment";
+import { WebSocket, WebSocketServer } from "ws";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
+import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
 import {
+	type BoundContext,
 	browserWsIdFor,
 	fetchUpstreamJson,
 	proxyBrowserUpgrade,
@@ -21,48 +22,23 @@ import { resolvePeerPidFromRemotePort } from "./peer-pid";
 /**
  * Single-port CDP gateway.
  *
- * Shares the bridge's HTTP server on port 47834 and serves the
- * endpoints external CDP MCPs (chrome-devtools-mcp, browser-use,
- * playwright-mcp) expect:
+ * Serves the endpoints external CDP MCPs expect (`/json/*`,
+ * `/devtools/browser/<id>`, `/devtools/page/<id>`) on the bridge port
+ * (47834) and resolves which LLM session (and therefore which bound
+ * pane) the caller belongs to *per connection* via a loopback peer-PID
+ * walk — so the registration URL stays constant across Superset / OS
+ * restarts, pane rebindings, and new terminal panes.
  *
- *   GET /json/version            — rewritten browser WS URL
- *   GET /json, /json/list        — filtered to bound pane
- *   GET /json/protocol           — forwarded
- *   WS  /devtools/browser/<id>   — filtered browser-level CDP
- *   WS  /devtools/page/<id>      — page-level CDP for bound target
+ * Security: loopback-only. The peer-PID walk additionally requires the
+ * caller to descend from a live Superset terminal pane.
  *
- * Unlike the deprecated per-session port model — which baked a
- * specific LLM session into a dedicated HTTP+WS server — the gateway
- * resolves the calling LLM session *per connection* by walking the
- * TCP peer PID up through the Superset terminal PTY process tree.
- * This lets the external MCP registration URL stay constant across
- * sessions, Superset / macOS restarts, pane rebindings, and new
- * terminal panes.
- *
- * Security: loopback-only. The peer-PID walk additionally requires
- * the caller to descend from a live Superset terminal pane; any
- * local process outside that tree is rejected. This is strictly
- * stronger than Chromium's own `--remote-debugging-port` model.
- *
- * These endpoints are *explicitly* authentication-free because
- * puppeteer composes `new URL("/json/version", browserURL)` and
- * drops any path/query/Authorization-header from the base URL, so
- * no secret-in-URL / Bearer scheme can survive. Capability is the
+ * These endpoints are unauthenticated because puppeteer composes
+ * `new URL("/json/version", browserURL)` and drops any path/query/
+ * Authorization header from the base URL. Capability is instead the
  * peer-PID tree-descendant check.
  */
 
 const wss = new WebSocketServer({ noServer: true });
-
-/* ---------------------------------------------------------------- */
-/* Global browser-use config (stable across all sessions).           */
-/*                                                                   */
-/* browser-use's --mcp branch ignores --cdp-url and only honours the */
-/* default browser_profile entry in the JSON pointed to by           */
-/* BROWSER_USE_CONFIG_PATH. Since the gateway URL is now stable      */
-/* (session is resolved per-connection, not per-port), one config   */
-/* file suffices for every Superset install and never has to be      */
-/* updated by the UI.                                                */
-/* ---------------------------------------------------------------- */
 
 const GLOBAL_BROWSER_USE_CONFIG_PATH = join(
 	SUPERSET_HOME_DIR,
@@ -98,7 +74,10 @@ export function ensureGlobalBrowserUseConfig(bridgePort: number): void {
 			/* best effort */
 		}
 	} catch (error) {
-		console.warn("[cdp-gateway] failed to write global browser-use config:", error);
+		console.warn(
+			"[cdp-gateway] failed to write global browser-use config:",
+			error,
+		);
 	}
 }
 
@@ -137,6 +116,90 @@ async function resolveForSocket(
 	return promise;
 }
 
+/* ---------------------------------------------------------------- */
+/* M3: close active CDP connections for a session when its binding   */
+/* changes, so external MCPs reconnect next tool call and            */
+/* transparently pick up the new pane.                               */
+/* ---------------------------------------------------------------- */
+
+const sessionConnections = new Map<string, Set<WebSocket>>();
+
+function registerConnection(sessionId: string, ws: WebSocket): void {
+	let set = sessionConnections.get(sessionId);
+	if (!set) {
+		set = new Set<WebSocket>();
+		sessionConnections.set(sessionId, set);
+	}
+	set.add(ws);
+	ws.on("close", () => {
+		set?.delete(ws);
+		if (set && set.size === 0) sessionConnections.delete(sessionId);
+	});
+}
+
+function closeConnectionsForSession(sessionId: string): void {
+	const set = sessionConnections.get(sessionId);
+	if (!set) return;
+	for (const ws of Array.from(set)) {
+		try {
+			ws.close(1000, "superset: binding changed, reconnect");
+		} catch {
+			/* ignore */
+		}
+	}
+	sessionConnections.delete(sessionId);
+}
+
+let bindingChangeWatcherInstalled = false;
+const lastBindingBySession = new Map<string, string>();
+
+function installBindingChangeWatcher(): void {
+	if (bindingChangeWatcherInstalled) return;
+	bindingChangeWatcherInstalled = true;
+	for (const b of bindingStore.list()) {
+		lastBindingBySession.set(b.sessionId, b.paneId);
+	}
+	bindingStore.onChange((list) => {
+		const next = new Map<string, string>();
+		for (const b of list) next.set(b.sessionId, b.paneId);
+		// Session removed → close.
+		for (const [sid] of lastBindingBySession) {
+			if (!next.has(sid)) closeConnectionsForSession(sid);
+		}
+		// Pane changed → close so client reconnects with new binding.
+		for (const [sid, paneId] of next) {
+			const prev = lastBindingBySession.get(sid);
+			if (prev && prev !== paneId) closeConnectionsForSession(sid);
+		}
+		lastBindingBySession.clear();
+		for (const [k, v] of next) lastBindingBySession.set(k, v);
+	});
+}
+
+function makeBoundContext(resolved: {
+	paneId: string;
+	sessionId: string;
+}): BoundContext | null {
+	const primary = browserManager.getCdpTargetId(resolved.paneId);
+	if (!primary) return null;
+	return {
+		paneId: resolved.paneId,
+		primaryTargetId: primary,
+		boundTargetIds: () => {
+			// M1/M2 bridge: ask browserManager for the pane's current
+			// target set. In single-tab mode this is a singleton; with
+			// multi-tab enabled it returns every tab. Falls back to the
+			// primary when no registry is available.
+			const all = browserManager.getPaneTargetIds?.(resolved.paneId);
+			if (all && all.size > 0) return all;
+			return new Set([primary]);
+		},
+		onClose: (ws) => {
+			registerConnection(resolved.sessionId, ws);
+		},
+	};
+}
+
 export function isCdpGatewayPath(pathname: string): boolean {
 	const p = pathname.replace(/\/$/, "") || "/";
 	return (
@@ -158,6 +221,7 @@ export async function handleCdpGatewayRequest(
 	req: IncomingMessage,
 	res: ServerResponse,
 ): Promise<void> {
+	installBindingChangeWatcher();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname.replace(/\/$/, "") || "/";
 	try {
@@ -169,8 +233,8 @@ export async function handleCdpGatewayRequest(
 			});
 			return;
 		}
-		const targetId = browserManager.getCdpTargetId(resolved.paneId);
-		if (!targetId) {
+		const primary = browserManager.getCdpTargetId(resolved.paneId);
+		if (!primary) {
 			sendJson(res, 503, {
 				error:
 					"バインド済みペインのCDPターゲット準備がまだ完了していません。少し待って再試行してください。",
@@ -201,13 +265,22 @@ export async function handleCdpGatewayRequest(
 		const raw = (await fetchUpstreamJson("/json/list")) as Array<
 			Record<string, unknown>
 		>;
+		const boundSet =
+			browserManager.getPaneTargetIds?.(resolved.paneId) ??
+			new Set([primary]);
 		const out = raw
-			.filter((t) => (t as { id?: string }).id === targetId)
-			.map((t) => ({
-				...t,
-				webSocketDebuggerUrl: `ws://${host}/devtools/page/${targetId}`,
-				devtoolsFrontendUrl: `http://${host}/devtools/page/${targetId}`,
-			}));
+			.filter((t) => {
+				const id = (t as { id?: string }).id;
+				return typeof id === "string" && boundSet.has(id);
+			})
+			.map((t) => {
+				const id = (t as { id?: string }).id ?? primary;
+				return {
+					...t,
+					webSocketDebuggerUrl: `ws://${host}/devtools/page/${id}`,
+					devtoolsFrontendUrl: `http://${host}/devtools/page/${id}`,
+				};
+			});
 		sendJson(res, 200, out);
 	} catch (error) {
 		console.error("[cdp-gateway] request error:", error);
@@ -222,6 +295,7 @@ export async function handleCdpGatewayUpgrade(
 	socket: Duplex,
 	head: Buffer,
 ): Promise<void> {
+	installBindingChangeWatcher();
 	const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
 	const isBrowserPath = /^\/devtools\/browser\/[^/]+$/.test(pathname);
 	const isPagePath = /^\/devtools\/page\/[^/]+$/.test(pathname);
@@ -243,8 +317,8 @@ export async function handleCdpGatewayUpgrade(
 		socket.destroy();
 		return;
 	}
-	const targetId = browserManager.getCdpTargetId(resolved.paneId);
-	if (!targetId) {
+	const ctx = makeBoundContext(resolved);
+	if (!ctx) {
 		socket.destroy();
 		return;
 	}
@@ -259,11 +333,15 @@ export async function handleCdpGatewayUpgrade(
 			socket.destroy();
 			return;
 		}
-		void proxyBrowserUpgrade(req, socket, head, wss, port, {
-			paneId: resolved.paneId,
-			targetId,
-		});
+		void proxyBrowserUpgrade(req, socket, head, wss, port, ctx);
 		return;
 	}
-	void proxyPageUpgrade(req, socket, head, wss, port, targetId);
+	// Page-level upgrade: ensure the requested target is in the bound set.
+	const m = pathname.match(/^\/devtools\/page\/([^/]+)$/);
+	const tid = m?.[1];
+	if (!tid || !ctx.boundTargetIds().has(tid)) {
+		socket.destroy();
+		return;
+	}
+	void proxyPageUpgrade(req, socket, head, wss, port, tid);
 }

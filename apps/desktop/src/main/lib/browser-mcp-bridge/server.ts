@@ -11,10 +11,6 @@ import { app } from "electron";
 import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
 import {
-	ensureSessionEndpoint,
-	stopAllSessionEndpoints,
-} from "./cdp-filter-proxy";
-import {
 	ensureGlobalBrowserUseConfig,
 	handleCdpGatewayRequest,
 	handleCdpGatewayUpgrade,
@@ -209,20 +205,20 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 					});
 				}
 				const wc = browserManager.getWebContents(resolved.paneId);
-				// Each LLM session gets its own loopback HTTP+WS server
-				// dedicated to that session's bound pane. Puppeteer-based
-				// CDP clients (chrome-devtools-mcp, browser-use) compose
-				// `/json/version` off `browserURL` and drop any path
-				// prefix, so a path-scoped token cannot survive — a whole
-				// dedicated port IS the capability.
-				const sessionPort = await ensureSessionEndpoint(resolved.sessionId);
+				// Since M1 the CDP data plane lives on this same bridge
+				// port (47834); the gateway routes each incoming
+				// connection by peer-PID. One stable URL works for every
+				// session and survives restarts / rebindings.
+				const gatewayPort = await import(
+					"./server"
+				).then((m) => m.getBrowserMcpBridge()?.port ?? port);
 				return send(res, 200, {
 					paneId: resolved.paneId,
 					sessionId: resolved.sessionId,
 					targetId,
 					cdpPort,
-					httpBase: `http://127.0.0.1:${sessionPort}`,
-					webSocketDebuggerUrl: `ws://127.0.0.1:${sessionPort}/devtools/page/${targetId}`,
+					httpBase: `http://127.0.0.1:${gatewayPort}`,
+					webSocketDebuggerUrl: `ws://127.0.0.1:${gatewayPort}/devtools/page/${targetId}`,
 					url: wc?.getURL() ?? null,
 					title: wc?.getTitle() ?? null,
 					filtered: true,
@@ -294,7 +290,6 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 
 	app.on("will-quit", () => {
 		server.close();
-		stopAllSessionEndpoints();
 	});
 
 	current = {

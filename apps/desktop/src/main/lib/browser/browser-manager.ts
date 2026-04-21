@@ -93,6 +93,12 @@ class BrowserManager extends EventEmitter {
 	 * underlying webContents.
 	 */
 	private paneTargetIds = new Map<string, string>();
+	/**
+	 * Secondary per-pane CDP targetIds owned by "tabs" beyond the
+	 * pane's primary webview. M2 multi-tab wiring populates these; M1
+	 * leaves the map empty and the filter runs in single-target mode.
+	 */
+	private paneTabTargetIds = new Map<string, Set<string>>();
 	private paneIdMarkerListeners = new Map<string, () => void>();
 	private consoleLogs = new Map<string, ConsoleEntry[]>();
 	private consoleListeners = new Map<string, () => void>();
@@ -219,6 +225,37 @@ class BrowserManager extends EventEmitter {
 	 */
 	getCdpTargetId(paneId: string): string | null {
 		return this.paneTargetIds.get(paneId) ?? null;
+	}
+
+	/**
+	 * Return the full set of Chromium CDP targetIds that belong to a
+	 * pane. For single-tab panes this is the singleton primary
+	 * targetId; when multi-tab support is wired in M2 the registry
+	 * will populate additional tab ids through addPaneTabTarget /
+	 * removePaneTabTarget (see below). Returning undefined lets the
+	 * gateway fall back to the primary-only path.
+	 */
+	getPaneTargetIds(paneId: string): Set<string> | undefined {
+		const extras = this.paneTabTargetIds.get(paneId);
+		const primary = this.paneTargetIds.get(paneId);
+		if (!primary && !extras) return undefined;
+		const set = new Set<string>();
+		if (primary) set.add(primary);
+		if (extras) for (const id of extras) set.add(id);
+		return set;
+	}
+
+	addPaneTabTarget(paneId: string, targetId: string): void {
+		let set = this.paneTabTargetIds.get(paneId);
+		if (!set) {
+			set = new Set<string>();
+			this.paneTabTargetIds.set(paneId, set);
+		}
+		set.add(targetId);
+	}
+
+	removePaneTabTarget(paneId: string, targetId: string): void {
+		this.paneTabTargetIds.get(paneId)?.delete(targetId);
 	}
 
 	listPanesWithCdpTargets(): Array<{ paneId: string; targetId: string }> {
