@@ -56,6 +56,11 @@ export function SessionConnectModal({
 
 	const pane = useTabsStore((s) => (paneId ? s.panes[paneId] : null));
 	const panes = useTabsStore((s) => s.panes);
+	const tabs = useTabsStore((s) => s.tabs);
+	const workspaceId = useMemo(() => {
+		if (!pane) return null;
+		return tabs.find((t) => t.id === pane.tabId)?.workspaceId ?? null;
+	}, [pane, tabs]);
 
 	const session = selectedSessionId
 		? (sessions.find((s) => s.id === selectedSessionId) ?? null)
@@ -199,6 +204,7 @@ export function SessionConnectModal({
 						<WorkspaceBindingsSummary
 							sessions={sessions}
 							bindingsByPane={bindingsByPane}
+							workspaceId={workspaceId}
 							onOpenAllPanes={() => {
 								onOpenChange(false);
 								setListViewOpen(true);
@@ -210,6 +216,7 @@ export function SessionConnectModal({
 									paneName={paneName}
 									paneUrl={paneUrl}
 									currentSession={currentSession}
+									hasBinding={Boolean(currentBinding)}
 									onDisconnect={currentBinding ? handleDisconnect : undefined}
 									disconnectPending={removeBinding.isPending}
 								/>
@@ -354,23 +361,32 @@ function TabButton({
 function WorkspaceBindingsSummary({
 	sessions,
 	bindingsByPane,
+	workspaceId,
 	onOpenAllPanes,
 }: {
 	sessions: AutomationSession[];
 	bindingsByPane: Record<string, string>;
+	workspaceId: string | null;
 	onOpenAllPanes: () => void;
 }) {
 	const panes = useTabsStore((s) => s.panes);
 	const tabs = useTabsStore((s) => s.tabs);
 	const liveSessionIds = new Set(sessions.map((s) => s.id));
+	// Scope to the current pane's workspace so the summary stays in sync
+	// with BrowserAutomationList (which is already workspace-scoped).
+	// Falling back to the full set when workspaceId is null keeps the
+	// counts non-empty during transient states, but the expected path is
+	// always to filter.
 	const browserPanes = useMemo(() => {
 		const tabById = new Map(tabs.map((t) => [t.id, t]));
 		return Object.values(panes).filter((p) => {
 			if (p.type !== "webview") return false;
 			const tab = tabById.get(p.tabId);
-			return Boolean(tab);
+			if (!tab) return false;
+			if (workspaceId && tab.workspaceId !== workspaceId) return false;
+			return true;
 		});
-	}, [panes, tabs]);
+	}, [panes, tabs, workspaceId]);
 
 	const connected = browserPanes.filter((p) => {
 		const sid = bindingsByPane[p.id];
@@ -414,23 +430,42 @@ function PaneIdentityCard({
 	paneName,
 	paneUrl,
 	currentSession,
+	hasBinding,
 	onDisconnect,
 	disconnectPending,
 }: {
 	paneName: string;
 	paneUrl: string;
 	currentSession: AutomationSession | null;
+	hasBinding: boolean;
 	onDisconnect?: () => void;
 	disconnectPending?: boolean;
 }) {
 	const isConnected = currentSession !== null;
+	// Stale binding: binding record exists but the target session is no
+	// longer in the live set (e.g. the claude/codex process exited).
+	// Surface this explicitly and keep Disconnect available so the user
+	// can clear it without first rebinding to another session.
+	const isStale = hasBinding && !isConnected;
+	const statusLabel = isConnected
+		? "Connected"
+		: isStale
+			? "Session ended"
+			: "Unassigned";
+	const statusClass = isConnected
+		? "bg-emerald-500/15 text-emerald-300"
+		: isStale
+			? "bg-amber-500/15 text-amber-300"
+			: "bg-muted text-muted-foreground";
 	return (
 		<div
 			className={cn(
 				"rounded-xl border p-3 mb-3",
 				isConnected
 					? "border-brand/30 bg-brand/5"
-					: "border-border bg-muted/40",
+					: isStale
+						? "border-amber-500/30 bg-amber-500/5"
+						: "border-border bg-muted/40",
 			)}
 		>
 			<div className="flex items-start gap-3">
@@ -443,12 +478,10 @@ function PaneIdentityCard({
 						<span
 							className={cn(
 								"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-								isConnected
-									? "bg-emerald-500/15 text-emerald-300"
-									: "bg-muted text-muted-foreground",
+								statusClass,
 							)}
 						>
-							{isConnected ? "Connected" : "Unassigned"}
+							{statusLabel}
 						</span>
 					</div>
 					<div className="text-[11px] text-muted-foreground truncate">
@@ -465,6 +498,11 @@ function PaneIdentityCard({
 									({currentSession.provider})
 								</span>
 							</>
+						) : isStale ? (
+							<span className="text-amber-300/80">
+								Previous session has ended — disconnect to clear, or pick a new
+								one below.
+							</span>
 						) : (
 							<span className="text-muted-foreground">
 								No session is driving this pane yet.
@@ -472,7 +510,7 @@ function PaneIdentityCard({
 						)}
 					</div>
 				</div>
-				{isConnected && onDisconnect && (
+				{hasBinding && onDisconnect && (
 					<button
 						type="button"
 						onClick={onDisconnect}
