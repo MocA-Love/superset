@@ -140,9 +140,16 @@ class BrowserManager extends EventEmitter {
 		this.paneTargetIds.delete(paneId);
 		const wc = webContents.fromId(webContentsId);
 		if (wc) {
-			// Keep throttling enabled so parked/offscreen persistent webviews don't
-			// run at full speed in the background.
-			wc.setBackgroundThrottling(true);
+			// External CDP MCPs (chrome-devtools-mcp, browser-use) may
+			// drive this primary webview while its BrowserPane is
+			// off-screen, the parent BrowserWindow is minimised, or
+			// the pane is obscured. Chromium's LifecycleWatcher and
+			// many sites gate work on document.hidden /
+			// requestAnimationFrame / IntersectionObserver, all of
+			// which freeze under background throttling. Keep throttling
+			// off so automation stays responsive; the perf cost of an
+			// idle pane is negligible.
+			wc.setBackgroundThrottling(false);
 			wc.setWindowOpenHandler(({ url, disposition }) => {
 				if (!url || url === "about:blank") {
 					return { action: "deny" as const };

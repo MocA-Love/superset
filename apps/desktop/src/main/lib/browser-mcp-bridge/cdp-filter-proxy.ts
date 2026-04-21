@@ -384,6 +384,7 @@ export async function proxyBrowserUpgrade(
 			if (
 				method === "Target.disposeBrowserContext" ||
 				method === "Target.createBrowserContext" ||
+				method === "Target.getBrowserContexts" ||
 				method === "Browser.close" ||
 				method === "Browser.crash" ||
 				method === "Browser.crashGpuProcess" ||
@@ -393,7 +394,25 @@ export async function proxyBrowserUpgrade(
 				method === "Page.setWebLifecycleState" ||
 				// Page.close terminates the underlying webContents — same
 				// concern as Browser.close at page granularity.
-				method === "Page.close"
+				method === "Page.close" ||
+				// BrowserContext-addressed storage / permission APIs.
+				// Every Superset pane shares the `persist:superset`
+				// Electron partition, so honouring these would silently
+				// apply the client's cookies/storage/permission deltas
+				// to every other pane in the workspace. Reject until we
+				// ship per-pane partitions.
+				method === "Browser.grantPermissions" ||
+				method === "Browser.resetPermissions" ||
+				method === "Browser.setPermission" ||
+				method === "Storage.clearDataForOrigin" ||
+				method === "Storage.clearDataForStorageKey" ||
+				method === "Storage.clearCookies" ||
+				method === "Storage.setCookies" ||
+				method === "Storage.setCookie" ||
+				method === "Network.clearBrowserCookies" ||
+				method === "Network.clearBrowserCache" ||
+				method === "Network.setCookies" ||
+				method === "Network.setCookie"
 			) {
 				if (id !== undefined) {
 					rejectRequest(
@@ -781,6 +800,7 @@ export async function proxyBrowserUpgrade(
 								type?: string;
 								targetId?: string;
 								openerId?: string;
+								attached?: boolean;
 							};
 							targetId?: string;
 					  }
@@ -797,6 +817,43 @@ export async function proxyBrowserUpgrade(
 				console.log(
 					`[cdp #${connId}] ←dn (root) ${method} tid=${shortTid(tid)} type=${info?.type ?? "?"}`,
 				);
+				// Chromium's own auto-attach logic can miss Electron-
+				// hosted targets (webview-derived pages, Service
+				// Workers / Shared Workers / Dedicated Workers scoped
+				// to the bound page, popup windows, prerender targets)
+				// — puppeteer and playwright both only materialise
+				// Page / Worker / ServiceWorker objects from
+				// attachedToTarget, so a target that is merely
+				// announced via targetCreated but never attached stays
+				// invisible to the MCP. Proactively attach any
+				// newly-created target whose type is one of the
+				// relevant kinds and which we have not already
+				// attached to. Chromium emits the real
+				// attachedToTarget that our filter then forwards.
+				const t = info?.type;
+				if (
+					method === "Target.targetCreated" &&
+					tid &&
+					info?.attached !== true &&
+					(t === "page" ||
+						t === "service_worker" ||
+						t === "shared_worker" ||
+						t === "worker" ||
+						t === "prerender" ||
+						t === "webview")
+				) {
+					internalReqSeq += 1;
+					const internalId = INTERNAL_REQ_BASE + internalReqSeq;
+					internalPendingIds.add(internalId);
+					console.log(
+						`[cdp #${connId}] proactive attach tid=${shortTid(tid)} type=${t} internalId=${internalId}`,
+					);
+					sendToUpstream({
+						id: internalId,
+						method: "Target.attachToTarget",
+						params: { targetId: tid, flatten: true },
+					});
+				}
 				if (info) {
 					sendToClient({
 						...msg,
