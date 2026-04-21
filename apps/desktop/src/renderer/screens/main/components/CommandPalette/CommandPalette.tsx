@@ -166,7 +166,7 @@ export function CommandPalette({
 			preResultsSection={preResultsSection}
 			hasPreResults={filteredRecent.length > 0}
 			headerExtra={
-				<div className="flex items-center gap-1">
+				<div className="flex items-center gap-1 pr-2">
 					<ScopeToggle
 						scope={scope}
 						onScopeChange={onScopeChange}
