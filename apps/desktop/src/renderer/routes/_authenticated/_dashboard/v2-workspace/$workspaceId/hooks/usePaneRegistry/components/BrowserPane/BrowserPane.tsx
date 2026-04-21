@@ -59,7 +59,12 @@ export function BrowserPane({ ctx }: BrowserPaneProps) {
 			{ paneId },
 			{
 				onData: (evt) => {
-					browserRuntimeRegistry.createTab(paneId, evt.url);
+					const tabId = browserRuntimeRegistry.createTab(paneId, evt.url);
+					if (tabId && evt.requestId) {
+						electronTrpcClient.browser.acknowledgeTabCreated
+							.mutate({ paneId, requestId: evt.requestId, tabId })
+							.catch(() => {});
+					}
 				},
 				onError: () => {
 					/* subscription errors surface in console */

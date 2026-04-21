@@ -258,6 +258,10 @@ export async function proxyBrowserUpgrade(
 		const INTERNAL_REQ_BASE = 0x7fff_0000;
 		let internalReqSeq = 0;
 		const internalPendingIds = new Set<number>();
+		// Timers for in-flight Target.createTarget waits; cleared on
+		// WS close so a tardy renderer response can't leak timers /
+		// resolve a dead connection.
+		const pendingCreateTimers = new Set<NodeJS.Timeout>();
 		const refreshBound = (): void => {
 			for (const tid of ctx.boundTargetIds()) allowedTargetIds.add(tid);
 		};
@@ -291,6 +295,8 @@ export async function proxyBrowserUpgrade(
 		if (ctx.onClose) ctx.onClose(clientWs);
 
 		const closeBoth = (): void => {
+			for (const t of pendingCreateTimers) clearTimeout(t);
+			pendingCreateTimers.clear();
 			try {
 				clientWs.close();
 			} catch {
@@ -536,33 +542,47 @@ export async function proxyBrowserUpgrade(
 				// MCP attaches to whatever id we hand back and ends up
 				// driving the wrong tab (the user-reported "新しいタブで
 				// 検索すると最初のタブで検索される" behaviour).
+				// Correlate this createTarget with the renderer reply
+				// so concurrent createTarget calls (e.g. browser-use
+				// and chrome-devtools-mcp opening tabs at the same
+				// time) don't race each other onto the same new-tab
+				// event.
+				const requestId = `req-${connId}-${Date.now().toString(36)}-${id}`;
 				const waitForNewTab = (): Promise<string> => {
 					return new Promise((resolveTarget) => {
-						const handler = (newTargetId: string) => {
+						const handler = (payload: {
+							requestId?: string;
+							targetId: string;
+						}) => {
+							if (payload.requestId !== requestId) return;
 							browserManager.off(eventName, handler);
 							clearTimeout(timer);
+							pendingCreateTimers.delete(timer);
 							console.log(
-								`[cdp #${connId}] createTarget: new tab targetId=${shortTid(newTargetId)} (full=${newTargetId})`,
+								`[cdp #${connId}] createTarget: new tab targetId=${shortTid(payload.targetId)} (req=${requestId})`,
 							);
-							resolveTarget(newTargetId);
+							resolveTarget(payload.targetId);
 						};
-						const eventName = `tab-target-added:${ctx.paneId}`;
+						const eventName = `tab-target-added-for:${ctx.paneId}`;
 						browserManager.on(eventName, handler);
 						const timer = setTimeout(() => {
 							browserManager.off(eventName, handler);
+							pendingCreateTimers.delete(timer);
 							console.warn(
-								`[cdp #${connId}] createTarget: TIMEOUT waiting for new tab; falling back to primary`,
+								`[cdp #${connId}] createTarget: TIMEOUT waiting for new tab req=${requestId}`,
 							);
 							resolveTarget(ctx.primaryTargetId);
 						}, 8000);
+						pendingCreateTimers.add(timer);
 					});
 				};
 				console.log(
-					`[cdp #${connId}] createTarget: spawning new tab with url=${nextUrl}, waiting for tab-target-added on pane ${ctx.paneId}`,
+					`[cdp #${connId}] createTarget: spawning new tab url=${nextUrl} req=${requestId}`,
 				);
 				try {
 					browserManager.emit(`create-tab-requested:${ctx.paneId}`, {
 						url: nextUrl,
+						requestId,
 					});
 				} catch {
 					/* best effort */

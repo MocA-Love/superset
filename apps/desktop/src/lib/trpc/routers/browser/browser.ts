@@ -61,13 +61,37 @@ export const createBrowserRouter = () => {
 		onCreateTabRequested: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
-				return observable<{ url: string }>((emit) => {
-					const handler = (data: { url: string }) => emit.next(data);
+				return observable<{ url: string; requestId?: string }>((emit) => {
+					const handler = (data: { url: string; requestId?: string }) =>
+						emit.next(data);
 					browserManager.on(`create-tab-requested:${input.paneId}`, handler);
 					return () => {
 						browserManager.off(`create-tab-requested:${input.paneId}`, handler);
 					};
 				});
+			}),
+
+		/**
+		 * Called by the renderer after spawning the secondary tab so
+		 * the gateway can correlate concurrent Target.createTarget
+		 * requests with their respective new tab targetIds. `requestId`
+		 * came in on the matching create-tab-requested event.
+		 */
+		acknowledgeTabCreated: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string(),
+					requestId: z.string(),
+					tabId: z.string(),
+				}),
+			)
+			.mutation(({ input }) => {
+				browserManager.acknowledgeTabCreated(
+					input.paneId,
+					input.requestId,
+					input.tabId,
+				);
+				return { success: true };
 			}),
 
 		navigate: publicProcedure

@@ -93,7 +93,7 @@ const socketSessions = new WeakMap<Socket, Promise<string | null>>();
 async function resolveSessionForSocket(socket: Socket): Promise<string | null> {
 	const cached = socketSessions.get(socket);
 	if (cached) return cached;
-	const promise = (async () => {
+	const attempt = (async () => {
 		if (
 			socket.remoteAddress !== "127.0.0.1" &&
 			socket.remoteAddress !== "::1" &&
@@ -132,8 +132,12 @@ async function resolveSessionForSocket(socket: Socket): Promise<string | null> {
 		);
 		return session.sessionId;
 	})();
-	socketSessions.set(socket, promise);
-	return promise;
+	// Only memoise positive resolutions. A negative result can be a
+	// transient race (claude still forking, lsof evicted) and we
+	// don't want to poison a long-lived keep-alive socket forever.
+	const result = await attempt;
+	if (result) socketSessions.set(socket, Promise.resolve(result));
+	return result;
 }
 
 async function resolveForSocket(
@@ -188,16 +192,48 @@ function closeConnectionsForSession(sessionId: string): void {
 
 let bindingChangeWatcherInstalled = false;
 const lastBindingBySession = new Map<string, string>();
+const paneTargetWatchersInstalled = new Set<string>();
+
+function closeConnectionsForPane(paneId: string): void {
+	const sessions = bindingStore
+		.list()
+		.filter((b) => b.paneId === paneId)
+		.map((b) => b.sessionId);
+	if (sessions.length === 0) return;
+	console.log(
+		"[cdp-gateway] pane-target-set-changed → closing connections for",
+		sessions.length,
+		"session(s) bound to pane",
+		paneId,
+	);
+	for (const sid of sessions) closeConnectionsForSession(sid);
+}
+
+function ensurePaneTargetWatcher(paneId: string): void {
+	if (paneTargetWatchersInstalled.has(paneId)) return;
+	paneTargetWatchersInstalled.add(paneId);
+	browserManager.on(`pane-target-set-changed:${paneId}`, () => {
+		// Any shrink / grow / primary-swap of the pane's target set
+		// invalidates the per-connection allow-list snapshot held by
+		// existing proxy connections. Force them to close so the next
+		// tool call reconnects with a fresh bound set.
+		closeConnectionsForPane(paneId);
+	});
+}
 
 function installBindingChangeWatcher(): void {
 	if (bindingChangeWatcherInstalled) return;
 	bindingChangeWatcherInstalled = true;
 	for (const b of bindingStore.list()) {
 		lastBindingBySession.set(b.sessionId, b.paneId);
+		ensurePaneTargetWatcher(b.paneId);
 	}
 	bindingStore.onChange((list) => {
 		const next = new Map<string, string>();
-		for (const b of list) next.set(b.sessionId, b.paneId);
+		for (const b of list) {
+			next.set(b.sessionId, b.paneId);
+			ensurePaneTargetWatcher(b.paneId);
+		}
 		// Session removed → close.
 		for (const [sid] of lastBindingBySession) {
 			if (!next.has(sid)) closeConnectionsForSession(sid);

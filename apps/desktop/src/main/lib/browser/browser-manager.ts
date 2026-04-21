@@ -209,7 +209,17 @@ class BrowserManager extends EventEmitter {
 		}
 		this.paneWebContentsIds.delete(paneId);
 		this.paneTargetIds.delete(paneId);
+		this.paneTabTargetIds.delete(paneId);
+		// Sweep per-tab maps keyed by paneId::tabId.
+		const tabPrefix = `${paneId}::`;
+		for (const key of [...this.paneTabTargetIdByKey.keys()]) {
+			if (key.startsWith(tabPrefix)) this.paneTabTargetIdByKey.delete(key);
+		}
+		for (const key of [...this.paneTabWebContents.keys()]) {
+			if (key.startsWith(tabPrefix)) this.paneTabWebContents.delete(key);
+		}
 		this.consoleLogs.delete(paneId);
+		this.emit(`pane-target-set-changed:${paneId}`, { action: "clear" });
 	}
 
 	unregisterAll(): void {
@@ -270,11 +280,16 @@ class BrowserManager extends EventEmitter {
 		);
 		// Notify any in-flight Target.createTarget waiters in the gateway.
 		this.emit(`tab-target-added:${paneId}`, targetId);
+		this.emit(`pane-target-set-changed:${paneId}`, { action: "add", targetId });
 	}
 
 	removePaneTabTarget(paneId: string, targetId: string): void {
 		this.paneTabTargetIds.get(paneId)?.delete(targetId);
 		console.log("[browser-manager] removePaneTabTarget", paneId, targetId);
+		this.emit(`pane-target-set-changed:${paneId}`, {
+			action: "remove",
+			targetId,
+		});
 	}
 
 	listPanesWithCdpTargets(): Array<{ paneId: string; targetId: string }> {
@@ -355,6 +370,12 @@ class BrowserManager extends EventEmitter {
 					"previous",
 					previous,
 				);
+				if (previous !== targetId) {
+					this.emit(`pane-target-set-changed:${paneId}`, {
+						action: "primary",
+						targetId,
+					});
+				}
 			} else {
 				console.log(
 					"[browser-manager] discarded captured targetId pane",
@@ -441,6 +462,41 @@ class BrowserManager extends EventEmitter {
 		if (targetId) this.removePaneTabTarget(paneId, targetId);
 		this.paneTabTargetIdByKey.delete(key);
 		this.paneTabWebContents.delete(key);
+	}
+
+	/**
+	 * Correlate a renderer-side tab spawn (result of a
+	 * create-tab-requested event) with its Chromium CDP targetId for
+	 * the gateway's Target.createTarget waiter. Requires registerTab
+	 * to have already captured the targetId; if it hasn't yet,
+	 * listen for the next addPaneTabTarget on the pane and use that.
+	 */
+	acknowledgeTabCreated(
+		paneId: string,
+		requestId: string,
+		tabId: string,
+	): void {
+		const key = this.tabKey(paneId, tabId);
+		const existing = this.paneTabTargetIdByKey.get(key);
+		if (existing) {
+			this.emit(`tab-target-added-for:${paneId}`, {
+				requestId,
+				targetId: existing,
+			});
+			return;
+		}
+		const handler = (addedTargetId: string) => {
+			const current = this.paneTabTargetIdByKey.get(key);
+			if (current !== addedTargetId) return;
+			this.off(`tab-target-added:${paneId}`, handler);
+			this.emit(`tab-target-added-for:${paneId}`, {
+				requestId,
+				targetId: addedTargetId,
+			});
+		};
+		this.on(`tab-target-added:${paneId}`, handler);
+		// Safety: drop the listener after 10s so it can't leak.
+		setTimeout(() => this.off(`tab-target-added:${paneId}`, handler), 10_000);
 	}
 
 	private tabKey(paneId: string, tabId: string): string {

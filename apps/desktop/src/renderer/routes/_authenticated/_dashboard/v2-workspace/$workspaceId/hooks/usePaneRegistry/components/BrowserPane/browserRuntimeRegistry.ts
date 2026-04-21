@@ -489,7 +489,15 @@ class BrowserRuntimeRegistryImpl {
 		group.resizeObserver?.disconnect();
 		group.resizeObserver = null;
 		group.visible = false;
-		for (const t of group.tabs) t.webview.style.visibility = "hidden";
+		// Keep tabs Chromium-visible (just off-screen) so CDP MCPs
+		// that drive them through pane detach don't stall on
+		// document.hidden.
+		for (const t of group.tabs) {
+			t.webview.style.top = "-100000px";
+			t.webview.style.left = "-100000px";
+			t.webview.style.pointerEvents = "none";
+			t.webview.style.visibility = "visible";
+		}
 	}
 
 	destroy(paneId: string): void {

@@ -329,8 +329,14 @@ class SecondaryTabRegistry {
 		group.resizeObserver = null;
 		group.placeholder = null;
 		group.visible = false;
+		// Stay off-screen rather than visibility:hidden to keep
+		// Chromium's page-lifecycle state "visible" so external CDP
+		// MCPs driving these tabs don't stall when the pane detaches.
 		for (const tab of group.tabs) {
-			tab.webview.style.visibility = "hidden";
+			tab.webview.style.top = "-100000px";
+			tab.webview.style.left = "-100000px";
+			tab.webview.style.pointerEvents = "none";
+			tab.webview.style.visibility = "visible";
 		}
 	}
 

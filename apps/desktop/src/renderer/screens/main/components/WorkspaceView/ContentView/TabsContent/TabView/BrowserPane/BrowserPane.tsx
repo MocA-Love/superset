@@ -283,6 +283,9 @@ export function BrowserPane({
 	// External CDP MCPs issue Target.createTarget → bridge emits
 	// create-tab-requested on the pane. Spawn a real secondary tab so
 	// the gateway's bound-set picks up the new targetId.
+	const { mutate: ackTabCreated } =
+		electronTrpc.browser.acknowledgeTabCreated.useMutation();
+
 	electronTrpc.browser.onCreateTabRequested.useSubscription(
 		{ paneId },
 		{
@@ -292,13 +295,20 @@ export function BrowserPane({
 					evt.url,
 					"pane=",
 					paneId,
+					"req=",
+					evt.requestId,
 				);
 				const tabId = secondaryTabRegistry.createTab(paneId, evt.url);
 				console.log(
 					"[BrowserPane v1] secondaryTabRegistry.createTab returned tabId=",
 					tabId,
 				);
-				if (tabId) setActiveTabId(tabId);
+				if (tabId) {
+					setActiveTabId(tabId);
+					if (evt.requestId) {
+						ackTabCreated({ paneId, requestId: evt.requestId, tabId });
+					}
+				}
 			},
 		},
 	);
