@@ -28,6 +28,7 @@ import { ExtensionToolbar } from "./components/ExtensionToolbar";
 import { SessionConnectModal } from "./components/SessionConnectModal";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
+import { getPersistentWrapper } from "./hooks/usePersistentWebview/runtime";
 import { secondaryTabRegistry } from "./hooks/useSecondaryTabs";
 
 interface BrowserPaneProps {
@@ -266,17 +267,33 @@ export function BrowserPane({
 	}, [paneId]);
 
 	useEffect(() => {
-		// We never CSS-hide the primary — that would put its
-		// underlying webContents into Chromium's page-lifecycle
-		// "hidden" state, which causes external CDP MCPs to appear to
-		// hang on sites that pause work while hidden. The active
-		// secondary tab simply z-index-overlays the primary; when
-		// activeTabId === "primary" we just hide all secondaries.
+		// Electron's <webview> tag uses a native BrowserPlugin
+		// compositor that does NOT reliably respect CSS z-index when
+		// two webview elements overlap (the primary managed by
+		// usePersistentWebview lives in a different DOM parent from
+		// the secondary-tab registry's webviews). The primary ends
+		// up painting on top regardless of z-index, so we can't hide
+		// it with stacking alone.
+		//
+		// Instead, fade the primary's wrapper to opacity:0 while a
+		// secondary tab is active. opacity:0 does NOT trigger
+		// Chromium's page-lifecycle "hidden" state (only display:none
+		// / visibility:hidden do), so external CDP MCPs driving the
+		// primary keep working in the background.
+		const primaryWrapper = getPersistentWrapper(paneId);
 		if (activeTabId === "primary") {
 			secondaryTabRegistry.setVisible(paneId, false);
+			if (primaryWrapper) {
+				primaryWrapper.style.opacity = "1";
+				primaryWrapper.style.pointerEvents = "auto";
+			}
 		} else {
 			secondaryTabRegistry.activateTab(paneId, activeTabId);
 			secondaryTabRegistry.setVisible(paneId, true);
+			if (primaryWrapper) {
+				primaryWrapper.style.opacity = "0";
+				primaryWrapper.style.pointerEvents = "none";
+			}
 		}
 	}, [activeTabId, paneId]);
 
