@@ -5,8 +5,8 @@ import { useTabsStore } from "renderer/stores/tabs/store";
 import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { DEBUG_TERMINAL } from "../config";
 import { logTerminalWrite, terminalRendererDebug } from "../debug";
-import { flushWrite, scheduleWrite } from "../v1-terminal-cache";
 import type { TerminalExitReason, TerminalStreamEvent } from "../types";
+import { flushWrite, scheduleWrite } from "../v1-terminal-cache";
 
 export interface UseTerminalStreamOptions {
 	paneId: string;

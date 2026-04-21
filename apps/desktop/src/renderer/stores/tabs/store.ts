@@ -61,7 +61,10 @@ import {
 	resolveActiveTabIdForWorkspace,
 	resolveFileViewerMode,
 } from "./utils";
-import { killTerminalForPane, releaseTerminalCache } from "./utils/terminal-cleanup";
+import {
+	killTerminalForPane,
+	releaseTerminalCache,
+} from "./utils/terminal-cleanup";
 
 const DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE = 50;
 
