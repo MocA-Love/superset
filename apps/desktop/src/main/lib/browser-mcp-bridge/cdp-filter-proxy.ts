@@ -340,11 +340,29 @@ export async function proxyBrowserUpgrade(
 				return;
 			}
 
-			// setAutoAttach: strip the `filter` field so Chromium does
-			// NOT honour a client-side `{type:'page', exclude:true}`
-			// exclusion that would wait for a tab wrapper Electron's
-			// embedded Chromium does not always expose.
-			if (method === "Target.setAutoAttach" && id !== undefined) {
+			// Strip the `filter` field from Target.setAutoAttach AND
+			// Target.setDiscoverTargets:
+			// - puppeteer (chrome-devtools-mcp) sends setAutoAttach with
+			//   `[{type:'page', exclude:true}]` waiting for a `tab`
+			//   wrapper Electron does not expose, which would hang
+			//   `connect()`.
+			// - browser-use (cdp-use) sends setDiscoverTargets with
+			//   `[{type:'page'}]`. Electron's <webview> is reported as
+			//   `type:'webview'`, so the bound primary is excluded from
+			//   discovery, Target.getTargets returns no matches, and
+			//   browser-use's SessionManager errors with "Root CDP
+			//   client not initialized" — the user-reported "セッション
+			//   が切れている" symptom.
+			// Removing the filter forces Chromium to surface every type;
+			// our downstream Target event/result filter still scopes
+			// the client's view to bound targetIds and rewrites
+			// type=webview → page so puppeteer/cdp-use treat it as a
+			// regular page.
+			if (
+				(method === "Target.setAutoAttach" ||
+					method === "Target.setDiscoverTargets") &&
+				id !== undefined
+			) {
 				const original = (msg.params ?? {}) as Record<string, unknown>;
 				const rewritten: Record<string, unknown> = { ...original };
 				if ("filter" in rewritten) delete rewritten.filter;
