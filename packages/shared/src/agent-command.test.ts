@@ -60,4 +60,17 @@ describe("buildAgentPromptCommand", () => {
 		expect(command).toStartWith("pi \"$(cat <<'SUPERSET_PROMPT_pi1234'");
 		expect(command).not.toContain("pi -p");
 	});
+
+	it("uses Kimi prompt mode with yolo auto-approval", () => {
+		const command = buildAgentPromptCommand({
+			prompt: "hello",
+			randomId: "kimi-1234",
+			agent: "kimi",
+		});
+
+		expect(command).toStartWith(
+			"kimi --prompt \"$(cat <<'SUPERSET_PROMPT_kimi1234'",
+		);
+		expect(command).toEndWith(')" --yolo');
+	});
 });
