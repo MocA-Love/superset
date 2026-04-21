@@ -14,6 +14,7 @@ import { rgPath as bundledRgPath } from "@vscode/ripgrep";
 // fallback path.
 const BUNDLED_RG_AVAILABLE = existsSync(bundledRgPath);
 const itIfRg = it.skipIf(!BUNDLED_RG_AVAILABLE);
+
 import type { RunRipgrepStream, SearchPatchEvent } from "./search";
 import {
 	invalidateAllSearchIndexes,
@@ -649,33 +650,36 @@ describe("replaceContent", () => {
 });
 
 describe("searchContentStream", () => {
-	itIfRg("yields each match incrementally as ripgrep produces them", async () => {
-		const rootPath = await createTempRoot();
-		// Spread matches across multiple files so ripgrep flushes between
-		// them; this is the scenario where streaming actually pays off.
-		for (let fileIndex = 0; fileIndex < 5; fileIndex++) {
-			await fs.writeFile(
-				path.join(rootPath, `file-${fileIndex}.ts`),
-				"export const NEEDLE = 1;\n",
-			);
-		}
+	itIfRg(
+		"yields each match incrementally as ripgrep produces them",
+		async () => {
+			const rootPath = await createTempRoot();
+			// Spread matches across multiple files so ripgrep flushes between
+			// them; this is the scenario where streaming actually pays off.
+			for (let fileIndex = 0; fileIndex < 5; fileIndex++) {
+				await fs.writeFile(
+					path.join(rootPath, `file-${fileIndex}.ts`),
+					"export const NEEDLE = 1;\n",
+				);
+			}
 
-		const matches = [];
-		for await (const match of searchContentStream({
-			rootPath,
-			query: "NEEDLE",
-			spawnRipgrep: bundledSpawnRipgrep,
-		})) {
-			matches.push(match);
-		}
+			const matches = [];
+			for await (const match of searchContentStream({
+				rootPath,
+				query: "NEEDLE",
+				spawnRipgrep: bundledSpawnRipgrep,
+			})) {
+				matches.push(match);
+			}
 
-		expect(matches.length).toEqual(5);
-		for (const match of matches) {
-			expect(match.relativePath.startsWith("file-")).toEqual(true);
-			expect(match.line).toEqual(1);
-			expect(match.preview.includes("NEEDLE")).toEqual(true);
-		}
-	});
+			expect(matches.length).toEqual(5);
+			for (const match of matches) {
+				expect(match.relativePath.startsWith("file-")).toEqual(true);
+				expect(match.line).toEqual(1);
+				expect(match.preview.includes("NEEDLE")).toEqual(true);
+			}
+		},
+	);
 
 	itIfRg("honors limit so runaway queries terminate", async () => {
 		const rootPath = await createTempRoot();

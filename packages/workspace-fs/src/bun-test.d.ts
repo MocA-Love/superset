@@ -9,10 +9,9 @@ declare module "bun:test" {
 	interface ItFn {
 		(name: string, callback: () => void | Promise<void>): void;
 		skip(name: string, callback: () => void | Promise<void>): void;
-		skipIf(condition: boolean): (
-			name: string,
-			callback: () => void | Promise<void>,
-		) => void;
+		skipIf(
+			condition: boolean,
+		): (name: string, callback: () => void | Promise<void>) => void;
 	}
 
 	export const it: ItFn;
