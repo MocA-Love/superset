@@ -34,14 +34,17 @@ const workspaceDependencies = Object.keys(dependencies).filter((dependency) =>
 );
 
 // Sentry plugin for uploading sourcemaps (only in CI with auth token)
-const sentryPlugin = process.env.SENTRY_AUTH_TOKEN
-	? sentryVitePlugin({
-			org: "maguro-bot-corp",
-			project: "electron",
-			authToken: process.env.SENTRY_AUTH_TOKEN,
-			release: { name: version },
-		})
-	: null;
+const sentryPlugin =
+	process.env.SENTRY_AUTH_TOKEN &&
+	process.env.SENTRY_ORG &&
+	process.env.SENTRY_PROJECT
+		? sentryVitePlugin({
+				org: process.env.SENTRY_ORG,
+				project: process.env.SENTRY_PROJECT,
+				authToken: process.env.SENTRY_AUTH_TOKEN,
+				release: { name: version },
+			})
+		: null;
 
 export default defineConfig({
 	main: {
