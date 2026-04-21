@@ -18,6 +18,7 @@ import {
 import { resolveCdpPort } from "./cdp-port";
 import { resolvePidToSession } from "./pane-resolver";
 import { resolvePeerPidFromRemotePort } from "./peer-pid";
+import { permissionStore } from "./permissions";
 
 /**
  * Single-port CDP gateway.
@@ -221,9 +222,28 @@ function ensurePaneTargetWatcher(paneId: string): void {
 	});
 }
 
+function closeAllConnections(reason: string): void {
+	const sessionIds = Array.from(sessionConnections.keys());
+	if (sessionIds.length === 0) return;
+	console.log(
+		`[cdp-gateway] ${reason} → closing all connections across ${sessionIds.length} session(s)`,
+	);
+	for (const sid of sessionIds) closeConnectionsForSession(sid);
+}
+
+let permissionWatcherInstalled = false;
+function installPermissionWatcher(): void {
+	if (permissionWatcherInstalled) return;
+	permissionWatcherInstalled = true;
+	permissionStore.on("activeChanged", (presetId) => {
+		closeAllConnections(`permission preset changed to ${presetId}`);
+	});
+}
+
 function installBindingChangeWatcher(): void {
 	if (bindingChangeWatcherInstalled) return;
 	bindingChangeWatcherInstalled = true;
+	installPermissionWatcher();
 	for (const b of bindingStore.list()) {
 		lastBindingBySession.set(b.sessionId, b.paneId);
 		ensurePaneTargetWatcher(b.paneId);

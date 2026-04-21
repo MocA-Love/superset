@@ -11,6 +11,7 @@ import { createAutoUpdateRouter } from "./auto-update";
 import { createBrowserRouter } from "./browser/browser";
 import { createBrowserAutomationRouter } from "./browser-automation";
 import { createBrowserHistoryRouter } from "./browser-history";
+import { createBrowserPermissionsRouter } from "./browser-permissions";
 import { createCacheRouter } from "./cache";
 import { createChangesRouter } from "./changes";
 import { createChatRuntimeServiceRouter } from "./chat-runtime-service";
@@ -56,6 +57,7 @@ export const createAppRouter = (
 		browser: createBrowserRouter(),
 		browserAutomation: createBrowserAutomationRouter(),
 		browserHistory: createBrowserHistoryRouter(),
+		browserPermissions: createBrowserPermissionsRouter(),
 		auth: createAuthRouter(),
 		autoUpdate: createAutoUpdateRouter(),
 		cache: createCacheRouter(),

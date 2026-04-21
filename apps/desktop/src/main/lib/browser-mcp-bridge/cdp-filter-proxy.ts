@@ -4,6 +4,11 @@ import type { Duplex } from "node:stream";
 import { type RawData, WebSocket, type WebSocketServer } from "ws";
 import { browserManager } from "../browser/browser-manager";
 import { resolveCdpPort } from "./cdp-port";
+import {
+	checkMethodPermitted,
+	isPrivilegedSchemeAllowed,
+	permissionStore,
+} from "./permissions";
 
 /**
  * CDP filter helpers reused by the single-port gateway (cdp-gateway.ts).
@@ -196,8 +201,47 @@ function summarizeParams(method: string, params: unknown): string {
 	if (typeof p.newWindow === "boolean") parts.push(`newWindow=${p.newWindow}`);
 	if (typeof p.background === "boolean")
 		parts.push(`background=${p.background}`);
+	// Input/keyboard/focus diagnostics for the "keys leaked into the
+	// Superset terminal pane" bug. Knowing whether the MCP sent the
+	// event as root-scoped vs child-session-scoped is the key signal:
+	// root-scoped Input.* targets whichever webContents currently
+	// holds OS focus in the host BrowserWindow, which on a
+	// multi-pane Superset window can be the xterm.js terminal pane
+	// instead of the bound <webview>.
+	if (method.startsWith("Input.")) {
+		if (typeof p.type === "string") parts.push(`ev=${p.type}`);
+		if (typeof p.key === "string") parts.push(`key=${p.key}`);
+		if (typeof p.code === "string") parts.push(`code=${p.code}`);
+		if (typeof p.windowsVirtualKeyCode === "number")
+			parts.push(`vk=${p.windowsVirtualKeyCode}`);
+		if (typeof p.button === "string") parts.push(`btn=${p.button}`);
+	}
 	void method;
 	return parts.join(" ");
+}
+
+/**
+ * Method names whose dispatch we want explicit, high-visibility
+ * logging for. These are the CDP calls implicated in the reported
+ * "MCP typed into the terminal pane instead of the browser" bug:
+ * - Input.* delivers synthetic keyboard/mouse events. If sent on the
+ *   root session (no `sessionId` / `msg.sessionId`) they hit the host
+ *   BrowserWindow's focused webContents, which may be Superset's own
+ *   terminal pane rather than the bound <webview>.
+ * - Page.bringToFront / Target.activateTarget can pull OS focus over
+ *   from the bound <webview> onto another webContents, setting up
+ *   the focus-miss for the next Input.* call.
+ * - DOM.focus / Runtime.evaluate("element.focus()") can have the
+ *   same effect but are harder to detect; we log them at normal
+ *   verbosity only.
+ */
+function isFocusAffectingMethod(method: string): boolean {
+	return (
+		method.startsWith("Input.") ||
+		method === "Page.bringToFront" ||
+		method === "Target.activateTarget" ||
+		method === "Emulation.setFocusEmulationEnabled"
+	);
 }
 
 let cdpConnSeq = 0;
@@ -283,8 +327,28 @@ export async function proxyBrowserUpgrade(
 		};
 		const dropTarget = (tid: string | undefined): void => {
 			if (!tid) return;
-			allowedTargetIds.delete(tid);
-			childToParent.delete(tid);
+			// Recursively drop descendants: childToParent maps child
+			// targetId -> parent targetId, so any entry whose parent
+			// is (transitively) tid should also be evicted. Without
+			// this, popup/worker/prerender children of a closed tab
+			// stay in allowedTargetIds forever, leaking scope
+			// long-term on long-lived MCP connections.
+			const queue: string[] = [tid];
+			const visited = new Set<string>();
+			while (queue.length > 0) {
+				const cur = queue.shift() as string;
+				if (visited.has(cur)) continue;
+				visited.add(cur);
+				allowedTargetIds.delete(cur);
+				for (const [child, parent] of childToParent) {
+					if (parent === cur && !visited.has(child)) queue.push(child);
+				}
+				childToParent.delete(cur);
+			}
+			// Also clear any childToParent entry whose parent is now gone.
+			for (const [child, parent] of Array.from(childToParent)) {
+				if (visited.has(parent)) childToParent.delete(child);
+			}
 		};
 		// Frames the client sends before Chromium's browser WS reaches
 		// OPEN. CDP clients (puppeteer, cdp-use) typically fire
@@ -356,11 +420,33 @@ export async function proxyBrowserUpgrade(
 				return;
 			}
 			const id = typeof msg.id === "number" ? msg.id : undefined;
-			const summary = summarizeParams(msg.method ?? "", msg.params);
+			const method = msg.method ?? "";
+			const summary = summarizeParams(method, msg.params);
+			const paramsSid =
+				typeof (msg.params as { sessionId?: unknown } | undefined)
+					?.sessionId === "string"
+					? ((msg.params as { sessionId?: string }).sessionId as string)
+					: undefined;
+			if (isFocusAffectingMethod(method)) {
+				// High-visibility log line for focus/input-related calls.
+				// We care specifically whether the MCP carried the event
+				// on the webview's child session (msg.sessionId set, or
+				// params.sessionId set for non-flatten paths) or on the
+				// root session. Root-scoped Input.* is the smoking gun
+				// for the terminal-leak bug.
+				const scope = msg.sessionId
+					? `child-flatten sid=${shortSid(msg.sessionId)}`
+					: paramsSid
+						? `child-params sid=${shortSid(paramsSid)}`
+						: "ROOT";
+				console.warn(
+					`[cdp #${connId}] [focus/input] →up ${method} scope=${scope} id=${id ?? "-"}${summary ? ` ${summary}` : ""}`,
+				);
+			}
 			if (msg.sessionId) {
 				const allowed = allowedSessionIds.has(msg.sessionId);
 				console.log(
-					`[cdp #${connId}] →up sid=${shortSid(msg.sessionId)} id=${id ?? "-"} ${msg.method ?? "?"}${summary ? ` ${summary}` : ""}${allowed ? "" : " [DROPPED unknown sid]"}`,
+					`[cdp #${connId}] →up sid=${shortSid(msg.sessionId)} id=${id ?? "-"} ${method}${summary ? ` ${summary}` : ""}${allowed ? "" : " [DROPPED unknown sid]"}`,
 				);
 				if (allowed) {
 					sendToUpstream(msg);
@@ -372,7 +458,6 @@ export async function proxyBrowserUpgrade(
 				}
 				return;
 			}
-			const method = msg.method ?? "";
 			console.log(
 				`[cdp #${connId}] →up (root) id=${id ?? "-"} ${method}${summary ? ` ${summary}` : ""}`,
 			);
@@ -387,43 +472,20 @@ export async function proxyBrowserUpgrade(
 			// puppeteer / cdp-use legitimately need to drive.
 			const bound = allowedTargetIds;
 
-			if (
-				method === "Target.disposeBrowserContext" ||
-				method === "Target.createBrowserContext" ||
-				method === "Target.getBrowserContexts" ||
-				method === "Browser.close" ||
-				method === "Browser.crash" ||
-				method === "Browser.crashGpuProcess" ||
-				// Page.setWebLifecycleState lets the client move the
-				// page into "frozen" or "discarded" state, which would
-				// trash the user-visible pane out from under them.
-				method === "Page.setWebLifecycleState" ||
-				// Page.close terminates the underlying webContents — same
-				// concern as Browser.close at page granularity.
-				method === "Page.close" ||
-				// BrowserContext-addressed storage / permission APIs.
-				// Every Superset pane shares the `persist:superset`
-				// Electron partition, so honouring these would silently
-				// apply the client's cookies/storage/permission deltas
-				// to every other pane in the workspace. Reject until we
-				// ship per-pane partitions.
-				method === "Browser.grantPermissions" ||
-				method === "Browser.resetPermissions" ||
-				method === "Browser.setPermission" ||
-				method === "Storage.clearDataForOrigin" ||
-				method === "Storage.clearDataForStorageKey" ||
-				method === "Storage.clearCookies" ||
-				method === "Storage.setCookies" ||
-				method === "Storage.setCookie" ||
-				method === "Network.clearBrowserCookies" ||
-				method === "Network.clearBrowserCache" ||
-				method === "Network.setCookies" ||
-				method === "Network.setCookie"
-			) {
+			// Permission check: consults the active preset's toggles.
+			// Always-denied methods (Browser.close, Page.close, etc.)
+			// are baked into permissions.ts; toggle-gated methods flip
+			// with user-selected preset.
+			const perm = checkMethodPermitted(
+				method,
+				permissionStore.getActiveToggles(),
+			);
+			if (!perm.allowed) {
 				if (id !== undefined) {
 					rejectRequest(
 						id,
-						`${method} is not permitted by the Superset CDP filter`,
+						perm.reason ??
+							`${method} is not permitted by the Superset CDP filter`,
 					);
 				}
 				return;
@@ -534,6 +596,32 @@ export async function proxyBrowserUpgrade(
 					typeof params?.url === "string" && params.url !== ""
 						? params.url
 						: "about:blank";
+				// Allow only http(s) and about:blank by default. The
+				// "privilegedSchemes" permission toggle lets the user
+				// opt in to file://, chrome://, devtools://,
+				// javascript:, data: — these either escape the pane
+				// (privileged schemes) or let the client execute
+				// arbitrary code with the bound origin's privileges.
+				if (nextUrl !== "about:blank") {
+					let parsed: URL | null = null;
+					try {
+						parsed = new URL(nextUrl);
+					} catch {
+						parsed = null;
+					}
+					const scheme = parsed?.protocol ?? "";
+					const isSafeScheme = scheme === "http:" || scheme === "https:";
+					if (
+						!isSafeScheme &&
+						!isPrivilegedSchemeAllowed(permissionStore.getActiveToggles())
+					) {
+						rejectRequest(
+							id,
+							`Target.createTarget url scheme ${scheme || "(invalid)"} requires the "privilegedSchemes" permission toggle.`,
+						);
+						return;
+					}
+				}
 				// Tell the renderer to spawn a real new <webview> tab
 				// for this pane. Wait for browser-manager to register
 				// the new targetId (via addPaneTabTarget → tab-target-
@@ -548,7 +636,7 @@ export async function proxyBrowserUpgrade(
 				// time) don't race each other onto the same new-tab
 				// event.
 				const requestId = `req-${connId}-${Date.now().toString(36)}-${id}`;
-				const waitForNewTab = (): Promise<string> => {
+				const waitForNewTab = (): Promise<string | null> => {
 					return new Promise((resolveTarget) => {
 						const handler = (payload: {
 							requestId?: string;
@@ -571,7 +659,13 @@ export async function proxyBrowserUpgrade(
 							console.warn(
 								`[cdp #${connId}] createTarget: TIMEOUT waiting for new tab req=${requestId}`,
 							);
-							resolveTarget(ctx.primaryTargetId);
+							// Surface a real error rather than silently
+							// falling back to the primary targetId. A
+							// fallback makes the client think a new tab
+							// was created and then drive the primary,
+							// which looks like "the MCP opened a tab
+							// but then searched in the old one".
+							resolveTarget(null);
 						}, 8000);
 						pendingCreateTimers.add(timer);
 					});
@@ -588,6 +682,13 @@ export async function proxyBrowserUpgrade(
 					/* best effort */
 				}
 				void waitForNewTab().then((newTargetId) => {
+					if (!newTargetId) {
+						rejectRequest(
+							id,
+							"Target.createTarget timed out waiting for the renderer to spawn a new tab.",
+						);
+						return;
+					}
 					console.log(
 						`[cdp #${connId}] createTarget: responding id=${id} targetId=${shortTid(newTargetId)}`,
 					);
@@ -856,6 +957,7 @@ export async function proxyBrowserUpgrade(
 					tid &&
 					info?.attached !== true &&
 					(t === "page" ||
+						t === "iframe" ||
 						t === "service_worker" ||
 						t === "shared_worker" ||
 						t === "worker" ||
