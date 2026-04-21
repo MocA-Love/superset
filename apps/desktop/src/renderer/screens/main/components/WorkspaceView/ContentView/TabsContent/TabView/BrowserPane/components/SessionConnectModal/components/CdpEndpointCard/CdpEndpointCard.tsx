@@ -44,7 +44,9 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 				? "Chromium has not finished attaching to this pane yet. Reload the pane and retry."
 				: data?.reason === "cdp-disabled"
 					? "This build did not enable --remote-debugging-port."
-					: "Bind a pane first to expose a CDP endpoint.";
+					: data?.reason === "bridge-not-running"
+						? "Superset の browser MCP bridge がまだ起動していません。少し待って再試行してください。"
+						: "Bind a pane first to expose a CDP endpoint.";
 		return (
 			<div className="rounded-xl border p-3 bg-card/60">
 				<div className="text-xs font-semibold">CDP endpoint unavailable</div>
@@ -56,12 +58,14 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 	}
 
 	const chromeDevtoolsCmd = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
-	// browser-use ships its own MCP mode via `uvx --from "browser-use[cli]"`.
-	// CDP endpoint is passed via the same `--cdp-url` flag that the CLI
-	// accepts. Port + token are stable across Superset restarts (see
-	// server.ts / cdp-filter-proxy.ts), so this registration only has to
-	// be done once per install.
-	const browserUseCmd = `claude mcp add browser-use -s user -- uvx --from "browser-use[cli]" browser-use --mcp --cdp-url ${data.wsEndpoint}`;
+	// browser-use's `--mcp` branch intentionally ignores `--cdp-url`
+	// (skill_cli/main.py ~2280 routes straight to the MCP main without
+	// forwarding the flag). The only officially supported injection
+	// point is a config file referenced via BROWSER_USE_CONFIG_PATH
+	// (see browser_use/config.py and mcp/server.py). The desktop app
+	// writes that file per session at `data.browserUseConfigPath` and
+	// we point browser-use at it here.
+	const browserUseCmd = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
 
 	return (
 		<div className="rounded-xl border p-3 bg-card/60 flex flex-col gap-3">
@@ -70,10 +74,14 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 					External browser MCP endpoint
 				</div>
 				<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-					This session is bound to pane{" "}
-					<code className="rounded bg-muted px-1">{data.paneId}</code>. Point
-					any CDP-speaking browser MCP (chrome-devtools-mcp / browser-use /
-					playwright-mcp) at the URL below — it only exposes this pane.
+					Bound to pane{" "}
+					<code className="rounded bg-muted px-1">{data.paneId}</code>. 以下の
+					setup コマンドは **一度だけ** 実行すれば OK です。登録 URL
+					は全セッション 共通で、接続ごとに呼び出し元のターミナル →
+					LLMセッション → アタッチ中ペインを peer-PID
+					解決してルーティングするため、 Superset / macOS
+					の再起動、ペインの閉じ直し、別ターミナルから起動し直し等で MCP
+					を登録し直す必要はありません。
 				</div>
 			</div>
 

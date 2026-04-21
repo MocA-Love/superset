@@ -95,6 +95,56 @@ export async function resolvePpidToSession(
 	return resolved;
 }
 
+/**
+ * Like resolvePpidToSession but walks by process-tree *inclusion*
+ * rather than by PPID identity, and skips the claude/codex name check.
+ *
+ * Use this when the caller holds the PID of an arbitrary descendant of
+ * a Superset terminal pane (e.g. a loopback peer PID obtained from
+ * lsof). The MCP's immediate parent is often `npx`, `uvx`, or a node
+ * wrapper rather than Claude / Codex itself, so the
+ * looksAgent heuristic would reject the caller. The descendant has
+ * to have been launched from inside a Superset terminal pane anyway —
+ * that is itself the security boundary, and tree-inclusion is
+ * sufficient evidence of that.
+ */
+export async function resolvePidToSession(
+	pid: number,
+): Promise<ResolvedSession | null> {
+	if (!Number.isFinite(pid) || pid <= 0) return null;
+	const cached = cache.get(pid);
+	if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+		return cached.resolved;
+	}
+	let sessions: Awaited<
+		ReturnType<ReturnType<typeof getTerminalHostClient>["listSessions"]>
+	>["sessions"];
+	try {
+		const client = getTerminalHostClient();
+		const res = await client.listSessions();
+		sessions = res.sessions;
+	} catch {
+		return null;
+	}
+	for (const s of sessions) {
+		if (!s.isAlive || typeof s.pid !== "number") continue;
+		try {
+			const tree = await getProcessTree(s.pid);
+			if (!tree.includes(pid)) continue;
+			const resolved: ResolvedSession = {
+				sessionId: `terminal:${s.paneId}`,
+				kind: "terminal",
+				paneId: s.paneId,
+			};
+			cache.set(pid, { resolved, at: Date.now() });
+			return resolved;
+		} catch {
+			// Next pane.
+		}
+	}
+	return null;
+}
+
 export function getBoundPaneForSession(sessionId: string): string | null {
 	const binding = bindingStore.getBySessionId(sessionId);
 	return binding?.paneId ?? null;
