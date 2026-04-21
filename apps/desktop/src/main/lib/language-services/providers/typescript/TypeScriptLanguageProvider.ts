@@ -2,6 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { SessionDisposedError } from "lib/errors";
 import { resolveShikiLanguageFromFilePath } from "shared/language-registry";
 import { languageDiagnosticsStore } from "../../diagnostics-store";
 import type {
@@ -531,7 +532,7 @@ export class TypeScriptLanguageProvider implements LanguageServiceProvider {
 		}
 
 		for (const request of session.requestResolvers.values()) {
-			request.reject(new Error("TypeScript session disposed"));
+			request.reject(new SessionDisposedError());
 		}
 		session.requestResolvers.clear();
 
