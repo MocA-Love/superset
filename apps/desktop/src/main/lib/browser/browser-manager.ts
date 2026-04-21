@@ -386,6 +386,15 @@ class BrowserManager extends EventEmitter {
 	): Promise<void> {
 		const wc = webContents.fromId(webContentsId);
 		if (!wc || wc.isDestroyed()) return;
+		// Tabs are routinely off-screen while another tab is active.
+		// External CDP MCPs (browser-use, chrome-devtools-mcp) need
+		// the inactive tab's webContents to keep timers / network /
+		// JS running so navigation doesn't stall waiting for visibility.
+		try {
+			wc.setBackgroundThrottling(false);
+		} catch {
+			/* best-effort */
+		}
 		this.paneTabWebContents.set(this.tabKey(paneId, tabId), webContentsId);
 		let attached = false;
 		try {

@@ -28,7 +28,6 @@ import { ExtensionToolbar } from "./components/ExtensionToolbar";
 import { SessionConnectModal } from "./components/SessionConnectModal";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
-import { getPersistentWebview } from "./hooks/usePersistentWebview/runtime";
 import { secondaryTabRegistry } from "./hooks/useSecondaryTabs";
 
 interface BrowserPaneProps {
@@ -266,27 +265,20 @@ export function BrowserPane({
 		return () => secondaryTabRegistry.destroy(paneId);
 	}, [paneId]);
 
-	const setPrimaryWebviewVisible = useCallback(
-		(visible: boolean) => {
-			const primary = getPersistentWebview(paneId);
-			if (primary) {
-				primary.style.visibility = visible ? "visible" : "hidden";
-				primary.style.pointerEvents = visible ? "auto" : "none";
-			}
-		},
-		[paneId],
-	);
-
 	useEffect(() => {
+		// We never CSS-hide the primary — that would put its
+		// underlying webContents into Chromium's page-lifecycle
+		// "hidden" state, which causes external CDP MCPs to appear to
+		// hang on sites that pause work while hidden. The active
+		// secondary tab simply z-index-overlays the primary; when
+		// activeTabId === "primary" we just hide all secondaries.
 		if (activeTabId === "primary") {
 			secondaryTabRegistry.setVisible(paneId, false);
-			setPrimaryWebviewVisible(true);
 		} else {
-			setPrimaryWebviewVisible(false);
 			secondaryTabRegistry.activateTab(paneId, activeTabId);
 			secondaryTabRegistry.setVisible(paneId, true);
 		}
-	}, [activeTabId, paneId, setPrimaryWebviewVisible]);
+	}, [activeTabId, paneId]);
 
 	// External CDP MCPs issue Target.createTarget → bridge emits
 	// create-tab-requested on the pane. Spawn a real secondary tab so

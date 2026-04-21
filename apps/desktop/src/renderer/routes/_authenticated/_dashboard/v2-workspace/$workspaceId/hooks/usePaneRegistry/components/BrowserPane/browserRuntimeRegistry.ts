@@ -148,13 +148,30 @@ class BrowserRuntimeRegistryImpl {
 		const rect = group.placeholder.getBoundingClientRect();
 		for (const tab of group.tabs) {
 			const w = tab.webview;
-			w.style.top = `${rect.top}px`;
-			w.style.left = `${rect.left}px`;
-			w.style.width = `${rect.width}px`;
-			w.style.height = `${rect.height}px`;
 			const isActive = tab.tabId === group.activeTabId;
-			w.style.visibility = group.visible && isActive ? "visible" : "hidden";
-			w.style.pointerEvents = isActive ? "auto" : "none";
+			// Inactive tabs are pushed off-screen rather than
+			// `visibility:hidden` so Chromium does not flip the
+			// underlying webContents into the page-lifecycle "hidden"
+			// state. External CDP MCPs (browser-use, chrome-devtools-
+			// mcp) drive sites that frequently pause work while hidden
+			// (IntersectionObserver, requestAnimationFrame, deferred
+			// load), which presents to the user as the MCP hanging.
+			if (group.visible && isActive) {
+				w.style.top = `${rect.top}px`;
+				w.style.left = `${rect.left}px`;
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
+				w.style.zIndex = "100";
+				w.style.pointerEvents = "auto";
+			} else {
+				w.style.top = "-100000px";
+				w.style.left = "-100000px";
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
+				w.style.zIndex = "0";
+				w.style.pointerEvents = "none";
+			}
+			w.style.visibility = "visible";
 		}
 	}
 

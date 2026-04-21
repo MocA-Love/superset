@@ -115,13 +115,32 @@ class SecondaryTabRegistry {
 		const rect = group.placeholder.getBoundingClientRect();
 		for (const tab of group.tabs) {
 			const w = tab.webview;
-			w.style.top = `${rect.top}px`;
-			w.style.left = `${rect.left}px`;
-			w.style.width = `${rect.width}px`;
-			w.style.height = `${rect.height}px`;
 			const isActive = group.visible && tab.tabId === group.activeTabId;
-			w.style.visibility = isActive ? "visible" : "hidden";
-			w.style.pointerEvents = isActive ? "auto" : "none";
+			// Inactive tabs are pushed far off-screen rather than
+			// `visibility:hidden`. Hiding via CSS triggers Chromium's
+			// page-lifecycle "hidden" state on the underlying
+			// webContents, which makes external CDP MCPs (browser-use
+			// etc.) appear to hang while the page they're driving is
+			// throttled by the site itself (IntersectionObserver,
+			// requestAnimationFrame pauses, "wait until visible" load
+			// patterns, …). Keeping the webview at its real size but
+			// offscreen avoids that without showing it to the user.
+			if (isActive) {
+				w.style.top = `${rect.top}px`;
+				w.style.left = `${rect.left}px`;
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
+				w.style.zIndex = "100";
+				w.style.pointerEvents = "auto";
+			} else {
+				w.style.top = "-100000px";
+				w.style.left = "-100000px";
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
+				w.style.zIndex = "0";
+				w.style.pointerEvents = "none";
+			}
+			w.style.visibility = "visible";
 		}
 	}
 
