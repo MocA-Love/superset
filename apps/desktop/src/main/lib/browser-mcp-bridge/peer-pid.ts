@@ -38,32 +38,56 @@ export async function resolvePeerPidFromRemotePort(
 		return null;
 	}
 	try {
-		const { stdout } = await execAsync(
-			`lsof -nP -iTCP:${remotePort} -sTCP:ESTABLISHED 2>/dev/null || true`,
-			{ timeout: 3_000, maxBuffer: 1024 * 1024 },
-		);
+		const cmd = `lsof -nP -iTCP:${remotePort} -sTCP:ESTABLISHED 2>/dev/null || true`;
+		const { stdout } = await execAsync(cmd, {
+			timeout: 3_000,
+			maxBuffer: 1024 * 1024,
+		});
 		const text = stdout.trim();
+		console.log(
+			"[peer-pid] lsof for remotePort",
+			remotePort,
+			"ownPid",
+			ownPid,
+			"\n",
+			text || "(empty)",
+		);
 		if (!text) return null;
 		const lines = text.split("\n").slice(1); // skip header
 		for (const line of lines) {
 			const cols = line.trim().split(/\s+/);
-			// Format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
-			// NAME: 127.0.0.1:<localPort>->127.0.0.1:<peerPort> (ESTABLISHED)
 			if (cols.length < 9) continue;
 			const pid = Number.parseInt(cols[1] ?? "", 10);
 			if (!Number.isFinite(pid) || pid <= 0) continue;
-			if (pid === ownPid) continue; // this is our own (server) socket entry
+			if (pid === ownPid) continue;
 			const name = cols.slice(8).join(" ");
-			// The peer process is the one whose LOCAL endpoint is
-			// 127.0.0.1:<remotePort>. The `->` separator is always
-			// present on ESTABLISHED sockets.
 			const match = name.match(
 				/^(?:\[::1\]|127\.0\.0\.1):(\d+)->(?:\[::1\]|127\.0\.0\.1):(\d+)/,
 			);
-			if (!match) continue;
+			if (!match) {
+				console.log(
+					"[peer-pid] skip entry without loopback arrow: pid",
+					pid,
+					"name",
+					name,
+				);
+				continue;
+			}
 			const localPort = Number.parseInt(match[1] ?? "", 10);
+			console.log(
+				"[peer-pid] candidate pid",
+				pid,
+				"localPort",
+				localPort,
+				"remotePort target",
+				remotePort,
+			);
 			if (localPort === remotePort) return pid;
 		}
+		console.log(
+			"[peer-pid] no entry matched localPort === remotePort",
+			remotePort,
+		);
 		return null;
 	} catch {
 		return null;

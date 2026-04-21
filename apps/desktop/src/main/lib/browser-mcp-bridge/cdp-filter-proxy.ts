@@ -160,6 +160,14 @@ export async function proxyBrowserUpgrade(
 	chromiumPort: number,
 	ctx: BoundContext,
 ): Promise<void> {
+	console.log(
+		"[cdp-filter-proxy] proxyBrowserUpgrade pane",
+		ctx.paneId,
+		"primaryTargetId",
+		ctx.primaryTargetId,
+		"boundSet",
+		Array.from(ctx.boundTargetIds()),
+	);
 	let chromiumBrowserWs: string;
 	try {
 		const ver = (await fetchUpstreamJson("/json/version")) as {
