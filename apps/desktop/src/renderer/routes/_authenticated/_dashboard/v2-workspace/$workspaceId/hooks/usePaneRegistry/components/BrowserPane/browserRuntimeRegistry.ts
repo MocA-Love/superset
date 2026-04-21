@@ -276,7 +276,20 @@ class BrowserRuntimeRegistryImpl {
 		webview.style.border = "none";
 		webview.style.visibility = "hidden";
 		webview.style.pointerEvents = "auto";
-		webview.src = sanitizeUrl(initialUrl);
+		const sanitized = sanitizeUrl(initialUrl);
+		console.log(
+			"[tab-diag v2] createTabEntry pane=",
+			paneId,
+			"tab=",
+			tabId,
+			"isPrimary=",
+			isPrimary,
+			"incomingUrl=",
+			initialUrl,
+			"sanitized=",
+			sanitized,
+		);
+		webview.src = sanitized;
 
 		const entry: TabEntry = {
 			tabId,
@@ -332,6 +345,14 @@ class BrowserRuntimeRegistryImpl {
 		};
 
 		const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
+			console.log(
+				"[tab-diag v2] did-navigate pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				e.url,
+			);
 			const url = e.url ?? "";
 			const title = webview.getTitle() ?? "";
 			this.setTabState(paneId, tabId, {
@@ -372,6 +393,18 @@ class BrowserRuntimeRegistryImpl {
 		};
 
 		const handleDidFailLoad = (e: Electron.DidFailLoadEvent) => {
+			console.warn(
+				"[tab-diag v2] did-fail-load pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				e.validatedURL,
+				"errorCode=",
+				e.errorCode,
+				"errorDesc=",
+				e.errorDescription,
+			);
 			if (e.errorCode === -3) return; // ERR_ABORTED
 			this.setTabState(paneId, tabId, {
 				isLoading: false,

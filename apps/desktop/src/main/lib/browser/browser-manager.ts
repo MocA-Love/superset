@@ -489,6 +489,16 @@ class BrowserManager extends EventEmitter {
 	): void {
 		const key = this.tabKey(paneId, tabId);
 		const existing = this.paneTabTargetIdByKey.get(key);
+		console.log(
+			"[tab-diag] acknowledgeTabCreated pane=",
+			paneId,
+			"tab=",
+			tabId,
+			"req=",
+			requestId,
+			"existingTarget=",
+			existing ?? "(waiting)",
+		);
 		if (existing) {
 			this.emit(`tab-target-added-for:${paneId}`, {
 				requestId,

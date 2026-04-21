@@ -739,6 +739,9 @@ export async function proxyBrowserUpgrade(
 					`[cdp #${connId}] createTarget: spawning new tab url=${nextUrl} req=${requestId}`,
 				);
 				try {
+					console.log(
+						`[tab-diag] createTarget→emit pane=${ctx.paneId} url=${nextUrl} req=${requestId} bg=${params?.background === true}`,
+					);
 					browserManager.emit(`create-tab-requested:${ctx.paneId}`, {
 						url: nextUrl,
 						requestId,

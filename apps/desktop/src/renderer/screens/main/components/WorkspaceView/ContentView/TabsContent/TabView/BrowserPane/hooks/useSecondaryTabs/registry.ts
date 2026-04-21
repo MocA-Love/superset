@@ -180,7 +180,18 @@ class SecondaryTabRegistry {
 		webview.style.border = "none";
 		webview.style.visibility = "hidden";
 		webview.style.pointerEvents = "auto";
-		webview.src = sanitizeUrl(url);
+		const sanitized = sanitizeUrl(url);
+		console.log(
+			"[tab-diag v1] spawnTab pane=",
+			paneId,
+			"tab=",
+			tabId,
+			"incomingUrl=",
+			url,
+			"sanitized=",
+			sanitized,
+		);
+		webview.src = sanitized;
 
 		const entry: TabEntry = {
 			tabId,
@@ -224,14 +235,56 @@ class SecondaryTabRegistry {
 			}
 		};
 		const handleDidStartLoading = () => {
+			console.log(
+				"[tab-diag v1] did-start-loading pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				webview.getURL?.(),
+			);
 			this.patchState(paneId, tabId, { isLoading: true });
 		};
 		const handleDidStopLoading = () => {
 			const u = webview.getURL() ?? "";
 			const t = webview.getTitle() ?? "";
+			console.log(
+				"[tab-diag v1] did-stop-loading pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				u,
+				"title=",
+				t,
+			);
 			this.patchState(paneId, tabId, { isLoading: false, url: u, title: t });
 		};
+		const handleDidFailLoad = (
+			e: Electron.DidFailLoadEvent & { validatedURL?: string },
+		) => {
+			console.warn(
+				"[tab-diag v1] did-fail-load pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				e.validatedURL ?? webview.getURL?.(),
+				"errorCode=",
+				e.errorCode,
+				"errorDesc=",
+				e.errorDescription,
+			);
+		};
 		const handleDidNav = (e: Electron.DidNavigateEvent) => {
+			console.log(
+				"[tab-diag v1] did-navigate pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				e.url,
+			);
 			this.patchState(paneId, tabId, {
 				url: e.url ?? "",
 				title: webview.getTitle() ?? "",
@@ -257,6 +310,7 @@ class SecondaryTabRegistry {
 		webview.addEventListener("dom-ready", handleDomReady);
 		webview.addEventListener("did-start-loading", handleDidStartLoading);
 		webview.addEventListener("did-stop-loading", handleDidStopLoading);
+		webview.addEventListener("did-fail-load", handleDidFailLoad as EventListener);
 		webview.addEventListener("did-navigate", handleDidNav as EventListener);
 		webview.addEventListener(
 			"did-navigate-in-page",
@@ -287,6 +341,10 @@ class SecondaryTabRegistry {
 			webview.removeEventListener("dom-ready", handleDomReady);
 			webview.removeEventListener("did-start-loading", handleDidStartLoading);
 			webview.removeEventListener("did-stop-loading", handleDidStopLoading);
+			webview.removeEventListener(
+				"did-fail-load",
+				handleDidFailLoad as EventListener,
+			);
 			webview.removeEventListener(
 				"did-navigate",
 				handleDidNav as EventListener,
