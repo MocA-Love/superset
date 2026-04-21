@@ -178,6 +178,16 @@ export function BrowserOverflowMenu({
 						scheduleNewFolderDialogOpen();
 					}}
 				>
+					{/*
+					 * Manual "New Tab" is intentionally hidden while the
+					 * v1 <webview>-based multi-tab UX is known-broken
+					 * (scroll / right-click / URL-suggestion clicks can
+					 * be captured by the wrong GuestView). MCP-driven
+					 * tab creation still works internally; the proper
+					 * fix is the WebContentsView migration on
+					 * feature/browser-webcontentsview-v3.
+					 * TODO(issue): re-enable once v3 lands.
+					 */}
 					<DropdownMenuItem
 						onClick={handleScreenshot}
 						disabled={!hasPage}

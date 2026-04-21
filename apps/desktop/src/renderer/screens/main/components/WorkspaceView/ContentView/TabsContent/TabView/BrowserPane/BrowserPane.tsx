@@ -1,6 +1,13 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
@@ -20,6 +27,7 @@ import {
 	BrowserFindOverlay,
 	type BrowserFindOverlayHandle,
 } from "./components/BrowserFindOverlay";
+import { BrowserTabBar } from "./components/BrowserTabBar";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
 import { ConnectButton } from "./components/ConnectButton";
@@ -27,6 +35,8 @@ import { ExtensionToolbar } from "./components/ExtensionToolbar";
 import { SessionConnectModal } from "./components/SessionConnectModal";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
+import { getPersistentWrapper } from "./hooks/usePersistentWebview/runtime";
+import { secondaryTabRegistry } from "./hooks/useSecondaryTabs";
 
 interface BrowserPaneProps {
 	paneId: string;
@@ -240,6 +250,130 @@ export function BrowserPane({
 		openDevTools({ paneId });
 	}, [openDevTools, paneId]);
 
+	// -- Secondary tabs -----------------------------------------------------
+	//
+	// v1's primary webview lives in usePersistentWebview + tabs-store. This
+	// BrowserPane also hosts a secondary tab registry for anything beyond
+	// the primary (user-opened via the overflow menu, or CDP-opened via an
+	// external MCP's Target.createTarget). When a secondary tab is active,
+	// we hide the primary webview via CSS and the secondary registry
+	// overlays its own webview atop the same placeholder (containerRef).
+
+	const [activeTabId, setActiveTabId] = useState("primary");
+	const secondaryContainerRef = useRef<HTMLDivElement | null>(null);
+
+	// Subscribe to the secondary tab registry so the toolbar's URL
+	// bar / loading spinner / nav buttons can reflect whichever tab
+	// is currently active (primary vs one of the secondaries).
+	const secondaryTabs = useSyncExternalStore(
+		useCallback(
+			(cb) => secondaryTabRegistry.onTabsChange(paneId, cb),
+			[paneId],
+		),
+		useCallback(() => secondaryTabRegistry.listTabs(paneId), [paneId]),
+	);
+	const activeSecondary =
+		activeTabId === "primary"
+			? null
+			: (secondaryTabs.find((t) => t.tabId === activeTabId) ?? null);
+
+	useEffect(() => {
+		const el = secondaryContainerRef.current;
+		if (!el) return;
+		secondaryTabRegistry.attach(paneId, el);
+		return () => secondaryTabRegistry.detach(paneId);
+	}, [paneId]);
+
+	useEffect(() => {
+		return () => secondaryTabRegistry.destroy(paneId);
+	}, [paneId]);
+
+	useEffect(() => {
+		// Electron's <webview> tag uses a native BrowserPlugin
+		// compositor that does NOT reliably respect CSS z-index when
+		// two webview elements overlap (the primary managed by
+		// usePersistentWebview lives in a different DOM parent from
+		// the secondary-tab registry's webviews). The primary ends
+		// up painting on top regardless of z-index, so we can't hide
+		// it with stacking alone.
+		//
+		// Instead, fade the primary's wrapper to opacity:0 while a
+		// secondary tab is active. opacity:0 does NOT trigger
+		// Chromium's page-lifecycle "hidden" state (only display:none
+		// / visibility:hidden do), so external CDP MCPs driving the
+		// primary keep working in the background.
+		const primaryWrapper = getPersistentWrapper(paneId);
+		if (activeTabId === "primary") {
+			secondaryTabRegistry.setVisible(paneId, false);
+			if (primaryWrapper) {
+				primaryWrapper.style.opacity = "1";
+				primaryWrapper.style.pointerEvents = "auto";
+			}
+		} else {
+			secondaryTabRegistry.activateTab(paneId, activeTabId);
+			secondaryTabRegistry.setVisible(paneId, true);
+			if (primaryWrapper) {
+				primaryWrapper.style.opacity = "0";
+				primaryWrapper.style.pointerEvents = "none";
+			}
+		}
+	}, [activeTabId, paneId]);
+
+	// External CDP MCPs issue Target.createTarget → bridge emits
+	// create-tab-requested on the pane. Spawn a real secondary tab so
+	// the gateway's bound-set picks up the new targetId.
+	const { mutate: ackTabCreated } =
+		electronTrpc.browser.acknowledgeTabCreated.useMutation();
+
+	electronTrpc.browser.onCreateTabRequested.useSubscription(
+		{ paneId },
+		{
+			onData: (evt) => {
+				console.log(
+					"[BrowserPane v1] create-tab-requested url=",
+					evt.url,
+					"pane=",
+					paneId,
+					"req=",
+					evt.requestId,
+					"bg=",
+					evt.background,
+				);
+				const tabId = secondaryTabRegistry.createTab(paneId, evt.url, {
+					background: evt.background === true,
+				});
+				console.log(
+					"[BrowserPane v1] secondaryTabRegistry.createTab returned tabId=",
+					tabId,
+				);
+				if (tabId) {
+					if (!evt.background) setActiveTabId(tabId);
+					if (evt.requestId) {
+						ackTabCreated({ paneId, requestId: evt.requestId, tabId });
+					}
+				}
+			},
+		},
+	);
+
+	// MCP may flip tabs via Target.activateTarget / Page.bringToFront.
+	// Mirror that into the BrowserPane's tab bar so what the MCP drives
+	// matches what the user sees (Chrome's tab strip follows CDP).
+	electronTrpc.browser.onActivateTabRequested.useSubscription(
+		{ paneId },
+		{
+			onData: (evt) => {
+				if (evt.tabId === null) {
+					secondaryTabRegistry.showPrimary(paneId);
+					setActiveTabId("primary");
+				} else {
+					secondaryTabRegistry.activateTab(paneId, evt.tabId);
+					setActiveTabId(evt.tabId);
+				}
+			},
+		},
+	);
+
 	const [isEditingUrl, setIsEditingUrl] = useState(false);
 
 	useEffect(() => {
@@ -281,17 +415,41 @@ export function BrowserPane({
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
 						paneId={paneId}
-						currentUrl={currentUrl}
-						pageTitle={pageTitle}
-						isLoading={isLoading}
-						hasPage={!isBlankPage}
-						isBookmarked={Boolean(currentBookmark)}
-						canGoBack={canGoBack}
-						canGoForward={canGoForward}
-						onGoBack={goBack}
-						onGoForward={goForward}
-						onReload={reload}
-						onNavigate={navigateTo}
+						currentUrl={activeSecondary ? activeSecondary.url : currentUrl}
+						pageTitle={activeSecondary ? activeSecondary.title : pageTitle}
+						isLoading={activeSecondary ? activeSecondary.isLoading : isLoading}
+						hasPage={
+							activeSecondary
+								? Boolean(
+										activeSecondary.url &&
+											activeSecondary.url !== "about:blank",
+									)
+								: !isBlankPage
+						}
+						isBookmarked={activeSecondary ? false : Boolean(currentBookmark)}
+						canGoBack={activeSecondary ? true : canGoBack}
+						canGoForward={activeSecondary ? true : canGoForward}
+						onGoBack={
+							activeSecondary
+								? () => secondaryTabRegistry.goBackActive(paneId)
+								: goBack
+						}
+						onGoForward={
+							activeSecondary
+								? () => secondaryTabRegistry.goForwardActive(paneId)
+								: goForward
+						}
+						onReload={
+							activeSecondary
+								? () => secondaryTabRegistry.reloadActive(paneId)
+								: reload
+						}
+						onNavigate={
+							activeSecondary
+								? (url: string) =>
+										secondaryTabRegistry.navigateActive(paneId, url)
+								: navigateTo
+						}
 						onToggleBookmark={handleToggleBookmark}
 						onEditingChange={setIsEditingUrl}
 					/>
@@ -397,11 +555,40 @@ export function BrowserPane({
 				{!isFullscreen && (
 					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
 				)}
+				{/*
+				 * The multi-tab UI is hidden while the v1
+				 * <webview>-backed implementation has known
+				 * manual-switch instability (scroll / right-click /
+				 * URL-suggestion click capture by the wrong
+				 * GuestView). The tab-bar + registry code is kept
+				 * because MCP-driven tab creation (Target.createTarget
+				 * etc.) still routes through it — external MCPs can
+				 * still open and drive tabs, the user just can't
+				 * manually switch between them here. The proper fix
+				 * lives on feature/browser-webcontentsview-v3
+				 * (WebContentsView migration).
+				 * TODO(issue): re-enable once v3 reaches parity.
+				 */}
+				{false && (
+					<BrowserTabBar
+						paneId={paneId}
+						primaryUrl={currentUrl}
+						primaryTitle={pageTitle}
+						primaryFaviconUrl={currentFaviconUrl ?? null}
+						primaryIsLoading={isLoading}
+						activeTabId={activeTabId}
+						onActivate={setActiveTabId}
+					/>
+				)}
 				<div className="relative flex flex-1 min-h-0">
 					<div
 						ref={containerRef}
 						className="h-full w-full"
 						style={{ flex: 1 }}
+					/>
+					<div
+						ref={secondaryContainerRef}
+						className="absolute inset-0 pointer-events-none"
 					/>
 					<BrowserFindOverlay
 						ref={findOverlayRef}

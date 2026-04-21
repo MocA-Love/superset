@@ -114,6 +114,7 @@ export async function resolvePidToSession(
 	if (!Number.isFinite(pid) || pid <= 0) return null;
 	const cached = cache.get(pid);
 	if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+		console.log("[pane-resolver] cache hit for pid", pid, "→", cached.resolved);
 		return cached.resolved;
 	}
 	let sessions: Awaited<
@@ -123,13 +124,36 @@ export async function resolvePidToSession(
 		const client = getTerminalHostClient();
 		const res = await client.listSessions();
 		sessions = res.sessions;
-	} catch {
+	} catch (err) {
+		console.log("[pane-resolver] listSessions failed:", err);
 		return null;
 	}
+	console.log(
+		"[pane-resolver] resolvePidToSession pid",
+		pid,
+		"sessions:",
+		sessions.map((s) => ({
+			paneId: s.paneId,
+			pid: s.pid,
+			isAlive: s.isAlive,
+		})),
+	);
 	for (const s of sessions) {
 		if (!s.isAlive || typeof s.pid !== "number") continue;
 		try {
 			const tree = await getProcessTree(s.pid);
+			console.log(
+				"[pane-resolver] pane",
+				s.paneId,
+				"pty pid",
+				s.pid,
+				"tree size",
+				tree.length,
+				"includes target?",
+				tree.includes(pid),
+				"tree sample:",
+				tree.slice(0, 10),
+			);
 			if (!tree.includes(pid)) continue;
 			const resolved: ResolvedSession = {
 				sessionId: `terminal:${s.paneId}`,
@@ -138,10 +162,15 @@ export async function resolvePidToSession(
 			};
 			cache.set(pid, { resolved, at: Date.now() });
 			return resolved;
-		} catch {
-			// Next pane.
+		} catch (err) {
+			console.log(
+				"[pane-resolver] getProcessTree failed for pane",
+				s.paneId,
+				err,
+			);
 		}
 	}
+	console.log("[pane-resolver] pid", pid, "not found in any pane tree");
 	return null;
 }
 

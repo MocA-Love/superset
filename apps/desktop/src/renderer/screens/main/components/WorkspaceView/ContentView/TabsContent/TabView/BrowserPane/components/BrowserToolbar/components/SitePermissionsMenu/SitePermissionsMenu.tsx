@@ -194,6 +194,9 @@ export function SitePermissionsMenu({
 										permissions: {
 											microphone: "ask",
 											camera: "ask",
+											geolocation: "ask",
+											notifications: "ask",
+											"clipboard-read": "ask",
 										},
 									}
 								: current,

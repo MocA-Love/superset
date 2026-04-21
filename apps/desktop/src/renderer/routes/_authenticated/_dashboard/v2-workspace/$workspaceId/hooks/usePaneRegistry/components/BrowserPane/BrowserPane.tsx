@@ -59,7 +59,35 @@ export function BrowserPane({ ctx }: BrowserPaneProps) {
 			{ paneId },
 			{
 				onData: (evt) => {
-					browserRuntimeRegistry.createTab(paneId, evt.url);
+					const tabId = browserRuntimeRegistry.createTab(paneId, evt.url, {
+						background: evt.background === true,
+					});
+					if (tabId && evt.requestId) {
+						electronTrpcClient.browser.acknowledgeTabCreated
+							.mutate({ paneId, requestId: evt.requestId, tabId })
+							.catch(() => {});
+					}
+				},
+				onError: () => {
+					/* subscription errors surface in console */
+				},
+			},
+		);
+		return () => sub.unsubscribe();
+	}, [paneId]);
+
+	// Mirror MCP-driven tab activation (Target.activateTarget /
+	// Page.bringToFront) onto the pane's tab bar.
+	useEffect(() => {
+		const sub = electronTrpcClient.browser.onActivateTabRequested.subscribe(
+			{ paneId },
+			{
+				onData: (evt) => {
+					if (evt.tabId === null) {
+						browserRuntimeRegistry.showPrimary?.(paneId);
+					} else {
+						browserRuntimeRegistry.activateTab?.(paneId, evt.tabId);
+					}
 				},
 				onError: () => {
 					/* subscription errors surface in console */

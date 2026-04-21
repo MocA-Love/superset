@@ -18,6 +18,7 @@ import {
 import { resolveCdpPort } from "./cdp-port";
 import { resolvePidToSession } from "./pane-resolver";
 import { resolvePeerPidFromRemotePort } from "./peer-pid";
+import { permissionStore } from "./permissions";
 
 /**
  * Single-port CDP gateway.
@@ -93,23 +94,51 @@ const socketSessions = new WeakMap<Socket, Promise<string | null>>();
 async function resolveSessionForSocket(socket: Socket): Promise<string | null> {
 	const cached = socketSessions.get(socket);
 	if (cached) return cached;
-	const promise = (async () => {
+	const attempt = (async () => {
 		if (
 			socket.remoteAddress !== "127.0.0.1" &&
 			socket.remoteAddress !== "::1" &&
 			socket.remoteAddress !== "::ffff:127.0.0.1"
 		) {
+			console.log("[cdp-gateway] reject non-loopback", socket.remoteAddress);
 			return null;
 		}
 		const remotePort = socket.remotePort;
 		if (typeof remotePort !== "number") return null;
 		const peerPid = await resolvePeerPidFromRemotePort(remotePort, process.pid);
-		if (!peerPid) return null;
+		if (!peerPid) {
+			console.log(
+				"[cdp-gateway] peer-PID lookup failed for remotePort",
+				remotePort,
+			);
+			return null;
+		}
 		const session = await resolvePidToSession(peerPid);
-		return session?.sessionId ?? null;
+		if (!session?.sessionId) {
+			console.log(
+				"[cdp-gateway] peerPid",
+				peerPid,
+				"did not resolve to any Superset terminal pane",
+			);
+			return null;
+		}
+		const binding = bindingStore.getBySessionId(session.sessionId);
+		console.log(
+			"[cdp-gateway] resolved peerPid",
+			peerPid,
+			"→ session",
+			session.sessionId,
+			"binding=",
+			binding ? binding.paneId : "(none)",
+		);
+		return session.sessionId;
 	})();
-	socketSessions.set(socket, promise);
-	return promise;
+	// Only memoise positive resolutions. A negative result can be a
+	// transient race (claude still forking, lsof evicted) and we
+	// don't want to poison a long-lived keep-alive socket forever.
+	const result = await attempt;
+	if (result) socketSessions.set(socket, Promise.resolve(result));
+	return result;
 }
 
 async function resolveForSocket(
@@ -146,6 +175,12 @@ function registerConnection(sessionId: string, ws: WebSocket): void {
 function closeConnectionsForSession(sessionId: string): void {
 	const set = sessionConnections.get(sessionId);
 	if (!set) return;
+	console.log(
+		"[cdp-gateway] M3 closing",
+		set.size,
+		"connections for session",
+		sessionId,
+	);
 	for (const ws of Array.from(set)) {
 		try {
 			ws.close(1000, "superset: binding changed, reconnect");
@@ -158,16 +193,67 @@ function closeConnectionsForSession(sessionId: string): void {
 
 let bindingChangeWatcherInstalled = false;
 const lastBindingBySession = new Map<string, string>();
+const paneTargetWatchersInstalled = new Set<string>();
+
+function closeConnectionsForPane(paneId: string): void {
+	const sessions = bindingStore
+		.list()
+		.filter((b) => b.paneId === paneId)
+		.map((b) => b.sessionId);
+	if (sessions.length === 0) return;
+	console.log(
+		"[cdp-gateway] pane-target-set-changed → closing connections for",
+		sessions.length,
+		"session(s) bound to pane",
+		paneId,
+	);
+	for (const sid of sessions) closeConnectionsForSession(sid);
+}
+
+function ensurePaneTargetWatcher(paneId: string): void {
+	if (paneTargetWatchersInstalled.has(paneId)) return;
+	paneTargetWatchersInstalled.add(paneId);
+	browserManager.on(`pane-target-set-changed:${paneId}`, () => {
+		// Any shrink / grow / primary-swap of the pane's target set
+		// invalidates the per-connection allow-list snapshot held by
+		// existing proxy connections. Force them to close so the next
+		// tool call reconnects with a fresh bound set.
+		closeConnectionsForPane(paneId);
+	});
+}
+
+function closeAllConnections(reason: string): void {
+	const sessionIds = Array.from(sessionConnections.keys());
+	if (sessionIds.length === 0) return;
+	console.log(
+		`[cdp-gateway] ${reason} → closing all connections across ${sessionIds.length} session(s)`,
+	);
+	for (const sid of sessionIds) closeConnectionsForSession(sid);
+}
+
+let permissionWatcherInstalled = false;
+function installPermissionWatcher(): void {
+	if (permissionWatcherInstalled) return;
+	permissionWatcherInstalled = true;
+	permissionStore.on("activeChanged", (presetId) => {
+		closeAllConnections(`permission preset changed to ${presetId}`);
+	});
+}
 
 function installBindingChangeWatcher(): void {
 	if (bindingChangeWatcherInstalled) return;
 	bindingChangeWatcherInstalled = true;
+	installPermissionWatcher();
 	for (const b of bindingStore.list()) {
 		lastBindingBySession.set(b.sessionId, b.paneId);
+		ensurePaneTargetWatcher(b.paneId);
 	}
 	bindingStore.onChange((list) => {
 		const next = new Map<string, string>();
-		for (const b of list) next.set(b.sessionId, b.paneId);
+		for (const b of list) {
+			next.set(b.sessionId, b.paneId);
+			ensurePaneTargetWatcher(b.paneId);
+		}
 		// Session removed → close.
 		for (const [sid] of lastBindingBySession) {
 			if (!next.has(sid)) closeConnectionsForSession(sid);
@@ -233,6 +319,12 @@ export async function handleCdpGatewayRequest(
 	try {
 		const resolved = await resolveForSocket(req.socket as Socket);
 		if (!resolved) {
+			console.log(
+				"[cdp-gateway] 409 for",
+				pathname,
+				"| current bindings:",
+				bindingStore.list().map((b) => `${b.sessionId}→${b.paneId}`),
+			);
 			sendJson(res, 409, {
 				error:
 					"このLLMセッションにはブラウザペインが接続されていません。Supersetの「Connect」で対象ペインをアタッチしてください。",
@@ -280,8 +372,17 @@ export async function handleCdpGatewayRequest(
 			})
 			.map((t) => {
 				const id = (t as { id?: string }).id ?? primary;
+				// Electron exposes its <webview> / BrowserView tags as
+				// `type: "webview"` in /json/list. puppeteer-core's
+				// `browser.pages()` only counts targets whose type is
+				// `page`, so leaving "webview" through would make
+				// chrome-devtools-mcp's `list_pages` / `evaluate_script`
+				// return empty even when the bound pane is alive. Rewrite
+				// the type on the way out.
+				const type = (t as { type?: string }).type;
 				return {
 					...t,
+					type: type === "webview" ? "page" : type,
 					webSocketDebuggerUrl: `ws://${host}/devtools/page/${id}`,
 					devtoolsFrontendUrl: `http://${host}/devtools/page/${id}`,
 				};

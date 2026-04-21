@@ -66,6 +66,11 @@ class BrowserRuntimeRegistryImpl {
 	private groups = new Map<string, PaneGroup>();
 	private stateListenersByPaneId = new Map<string, Set<() => void>>();
 	private tabsListenersByPaneId = new Map<string, Set<() => void>>();
+	// Snapshot caches so useSyncExternalStore returns stable references
+	// until something actually changes — without this the array
+	// identity flips every render and React aborts the BrowserPane
+	// with "Maximum update depth exceeded".
+	private tabsSnapshots = new Map<string, BrowserTabSummary[]>();
 	private rootContainer: HTMLDivElement | null = null;
 	private globalListenersInstalled = false;
 
@@ -143,13 +148,32 @@ class BrowserRuntimeRegistryImpl {
 		const rect = group.placeholder.getBoundingClientRect();
 		for (const tab of group.tabs) {
 			const w = tab.webview;
-			w.style.top = `${rect.top}px`;
-			w.style.left = `${rect.left}px`;
-			w.style.width = `${rect.width}px`;
-			w.style.height = `${rect.height}px`;
 			const isActive = tab.tabId === group.activeTabId;
-			w.style.visibility = group.visible && isActive ? "visible" : "hidden";
-			w.style.pointerEvents = isActive ? "auto" : "none";
+			// Inactive tabs must leave the viewport entirely:
+			// opacity:0 / pointer-events:none is not enough because
+			// Electron <webview>'s native GuestView compositor still
+			// captures wheel / right-click / focus, blocking scroll /
+			// context menu / interactions on whatever's supposed to
+			// be below. visibility stays "visible" so Chromium does
+			// not flip page-lifecycle to hidden.
+			if (group.visible && isActive) {
+				w.style.top = `${rect.top}px`;
+				w.style.left = `${rect.left}px`;
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
+				w.style.opacity = "1";
+				w.style.zIndex = "100";
+				w.style.pointerEvents = "auto";
+			} else {
+				w.style.top = "-100000px";
+				w.style.left = "-100000px";
+				w.style.width = `${rect.width}px`;
+				w.style.height = `${rect.height}px`;
+				w.style.opacity = "0";
+				w.style.zIndex = "0";
+				w.style.pointerEvents = "none";
+			}
+			w.style.visibility = "visible";
 		}
 	}
 
@@ -160,6 +184,7 @@ class BrowserRuntimeRegistryImpl {
 	}
 
 	private notifyTabs(paneId: string) {
+		this.tabsSnapshots.delete(paneId);
 		const set = this.tabsListenersByPaneId.get(paneId);
 		if (!set) return;
 		for (const l of set) l();
@@ -251,9 +276,23 @@ class BrowserRuntimeRegistryImpl {
 		webview.style.margin = "0";
 		webview.style.padding = "0";
 		webview.style.border = "none";
-		webview.style.visibility = "hidden";
-		webview.style.pointerEvents = "auto";
-		webview.src = sanitizeUrl(initialUrl);
+		webview.style.visibility = "visible";
+		webview.style.opacity = "0";
+		webview.style.pointerEvents = "none";
+		const sanitized = sanitizeUrl(initialUrl);
+		console.log(
+			"[tab-diag v2] createTabEntry pane=",
+			paneId,
+			"tab=",
+			tabId,
+			"isPrimary=",
+			isPrimary,
+			"incomingUrl=",
+			initialUrl,
+			"sanitized=",
+			sanitized,
+		);
+		webview.src = sanitized;
 
 		const entry: TabEntry = {
 			tabId,
@@ -309,6 +348,14 @@ class BrowserRuntimeRegistryImpl {
 		};
 
 		const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
+			console.log(
+				"[tab-diag v2] did-navigate pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				e.url,
+			);
 			const url = e.url ?? "";
 			const title = webview.getTitle() ?? "";
 			this.setTabState(paneId, tabId, {
@@ -349,6 +396,18 @@ class BrowserRuntimeRegistryImpl {
 		};
 
 		const handleDidFailLoad = (e: Electron.DidFailLoadEvent) => {
+			console.warn(
+				"[tab-diag v2] did-fail-load pane=",
+				paneId,
+				"tab=",
+				tabId,
+				"url=",
+				e.validatedURL,
+				"errorCode=",
+				e.errorCode,
+				"errorDesc=",
+				e.errorDescription,
+			);
 			if (e.errorCode === -3) return; // ERR_ABORTED
 			this.setTabState(paneId, tabId, {
 				isLoading: false,
@@ -384,7 +443,15 @@ class BrowserRuntimeRegistryImpl {
 			handleDidFailLoad as EventListener,
 		);
 
+		// Close tab when the guest page closes itself or Chromium
+		// destroys the webContents (MCP Target.closeTarget etc.).
+		const handleClose = () => {
+			this.closeTab(paneId, tabId);
+		};
+		webview.addEventListener("close", handleClose);
+
 		entry.detachHandlers = () => {
+			webview.removeEventListener("close", handleClose);
 			webview.removeEventListener("dom-ready", handleDomReady);
 			webview.removeEventListener("did-start-loading", handleDidStartLoading);
 			webview.removeEventListener("did-stop-loading", handleDidStopLoading);
@@ -466,7 +533,15 @@ class BrowserRuntimeRegistryImpl {
 		group.resizeObserver?.disconnect();
 		group.resizeObserver = null;
 		group.visible = false;
-		for (const t of group.tabs) t.webview.style.visibility = "hidden";
+		// Off-screen + opacity:0 so GuestView stops intercepting
+		// events but page-lifecycle stays "visible" for CDP MCPs.
+		for (const t of group.tabs) {
+			t.webview.style.top = "-100000px";
+			t.webview.style.left = "-100000px";
+			t.webview.style.opacity = "0";
+			t.webview.style.pointerEvents = "none";
+			t.webview.style.visibility = "visible";
+		}
 	}
 
 	destroy(paneId: string): void {
@@ -519,17 +594,26 @@ class BrowserRuntimeRegistryImpl {
 		return () => set.delete(listener);
 	}
 
+	private static EMPTY_TABS: BrowserTabSummary[] = Object.freeze(
+		[] as BrowserTabSummary[],
+	) as BrowserTabSummary[];
+
 	listTabs(paneId: string): BrowserTabSummary[] {
+		const cached = this.tabsSnapshots.get(paneId);
+		if (cached) return cached;
 		const group = this.groups.get(paneId);
-		if (!group) return [];
-		return group.tabs.map((t) => ({
-			tabId: t.tabId,
-			url: t.state.currentUrl,
-			title: t.state.pageTitle,
-			faviconUrl: t.state.faviconUrl,
-			isLoading: t.state.isLoading,
-			isActive: t.tabId === group.activeTabId,
-		}));
+		const next = group
+			? group.tabs.map((t) => ({
+					tabId: t.tabId,
+					url: t.state.currentUrl,
+					title: t.state.pageTitle,
+					faviconUrl: t.state.faviconUrl,
+					isLoading: t.state.isLoading,
+					isActive: t.tabId === group.activeTabId,
+				}))
+			: BrowserRuntimeRegistryImpl.EMPTY_TABS;
+		this.tabsSnapshots.set(paneId, next);
+		return next;
 	}
 
 	onTabsChange(paneId: string, listener: () => void): () => void {
@@ -538,7 +622,11 @@ class BrowserRuntimeRegistryImpl {
 		return () => set.delete(listener);
 	}
 
-	createTab(paneId: string, url?: string): string | null {
+	createTab(
+		paneId: string,
+		url?: string,
+		options?: { background?: boolean },
+	): string | null {
 		const root = this.ensureRootContainer();
 		const group = this.groups.get(paneId);
 		if (!group) return null;
@@ -551,11 +639,22 @@ class BrowserRuntimeRegistryImpl {
 		);
 		group.tabs.push(entry);
 		root.appendChild(entry.webview);
-		group.activeTabId = tabId;
+		if (!options?.background) {
+			group.activeTabId = tabId;
+		}
 		this.applyLayout(group);
 		this.notifyState(paneId);
 		this.notifyTabs(paneId);
 		return tabId;
+	}
+
+	/**
+	 * Activate the pane's primary tab (the one created during
+	 * register() with tabId "primary"). Used when the MCP flips
+	 * focus back to the primary via Target.activateTarget.
+	 */
+	showPrimary(paneId: string): void {
+		this.activateTab(paneId, "primary");
 	}
 
 	closeTab(paneId: string, tabId: string): void {

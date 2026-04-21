@@ -9,8 +9,8 @@ import {
 } from "@superset/ui/dialog";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { useEffect, useMemo } from "react";
-import { LuList } from "react-icons/lu";
+import { useEffect, useMemo, useState } from "react";
+import { LuList, LuShield } from "react-icons/lu";
 import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -22,6 +22,7 @@ import {
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { CdpEndpointCard } from "./components/CdpEndpointCard";
 import { McpInstallPanel } from "./components/McpInstallPanel";
+import { PermissionsTab } from "./components/PermissionsTab";
 
 interface SessionConnectModalProps {
 	open: boolean;
@@ -32,6 +33,9 @@ export function SessionConnectModal({
 	open,
 	onOpenChange,
 }: SessionConnectModalProps) {
+	const [activeTab, setActiveTab] = useState<"sessions" | "permissions">(
+		"sessions",
+	);
 	const paneId = useBrowserAutomationStore((s) => s.connectModal.paneId);
 	const selectedSessionId = useBrowserAutomationStore(
 		(s) => s.connectModal.selectedSessionId,
@@ -170,149 +174,198 @@ export function SessionConnectModal({
 					<DialogDescription className="text-xs">
 						Choose which running LLM session should control this browser pane.
 					</DialogDescription>
+					<div className="mt-3 flex items-center gap-1 border-b -mb-4 pb-0">
+						<TabButton
+							active={activeTab === "sessions"}
+							onClick={() => setActiveTab("sessions")}
+						>
+							<LuList className="size-3.5" />
+							Sessions
+						</TabButton>
+						<TabButton
+							active={activeTab === "permissions"}
+							onClick={() => setActiveTab("permissions")}
+						>
+							<LuShield className="size-3.5" />
+							Permissions
+						</TabButton>
+					</div>
 				</DialogHeader>
 
-				<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
-					<div className="overflow-y-auto p-4 border-r">
-						<div className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2.5 mb-3">
-							<div className="flex size-7 items-center justify-center rounded-md bg-brand/15 text-brand text-sm font-bold">
-								◎
-							</div>
-							<div className="min-w-0">
-								<div className="text-xs font-semibold truncate">{paneName}</div>
-								<div className="text-[11px] text-muted-foreground truncate">
-									{paneUrl}
+				{activeTab === "permissions" ? (
+					<PermissionsTab />
+				) : (
+					<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
+						<div className="overflow-y-auto p-4 border-r">
+							<div className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2.5 mb-3">
+								<div className="flex size-7 items-center justify-center rounded-md bg-brand/15 text-brand text-sm font-bold">
+									◎
 								</div>
+								<div className="min-w-0">
+									<div className="text-xs font-semibold truncate">
+										{paneName}
+									</div>
+									<div className="text-[11px] text-muted-foreground truncate">
+										{paneUrl}
+									</div>
+								</div>
+								<button
+									type="button"
+									onClick={() => {
+										// Close this dialog first so focus traps don't stack.
+										onOpenChange(false);
+										setListViewOpen(true);
+									}}
+									className="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+								>
+									<LuList className="size-3" />
+									All panes
+								</button>
 							</div>
-							<button
-								type="button"
-								onClick={() => {
-									// Close this dialog first so focus traps don't stack.
-									onOpenChange(false);
-									setListViewOpen(true);
-								}}
-								className="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-							>
-								<LuList className="size-3" />
-								All panes
-							</button>
-						</div>
 
-						<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">
-							Running sessions
-						</div>
-
-						{sessions.length === 0 ? (
-							<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
-								No running LLM sessions found. Start a TODO-Agent session or run
-								`claude` / `codex` in any terminal pane, then return here.
+							<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">
+								Running sessions
 							</div>
-						) : (
-							<div className="flex flex-col gap-2">
-								{sessions.map((s) => {
-									const otherPaneId = Object.entries(bindingsByPane).find(
-										([pid, sid]) => sid === s.id && pid !== paneId,
-									)?.[0];
-									const otherPaneName = otherPaneId
-										? (panes[otherPaneId]?.name ?? null)
-										: null;
-									return (
-										<SessionCard
-											key={s.id}
-											session={s}
-											isSelected={s.id === selectedSessionId}
-											attachedToThisPane={s.id === currentBinding}
-											assignedElsewherePaneName={otherPaneName}
-											onSelect={() => setSelectedSession(s.id)}
-										/>
-									);
-								})}
-							</div>
-						)}
-					</div>
 
-					<div className="overflow-y-auto p-4 bg-muted/20">
-						{session ? (
-							session.mcpStatus === "ready" ? (
-								<ReadyPanel
-									session={session}
-									paneName={paneName}
-									reassigning={Boolean(assignedPaneIdForSelected)}
-									previousPaneName={
-										assignedPaneIdForSelected
-											? (panes[assignedPaneIdForSelected]?.name ?? null)
-											: null
-									}
-									attachedToThisPane={session.id === currentBinding}
-								/>
+							{sessions.length === 0 ? (
+								<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+									No running LLM sessions found. Start a TODO-Agent session or
+									run `claude` / `codex` in any terminal pane, then return here.
+								</div>
 							) : (
-								<SetupPanel
-									session={session}
-									mcpConfigPath={
-										session.provider === "Codex"
-											? (mcpStatus?.codexConfigPath ?? null)
-											: (mcpStatus?.claudeConfigPath ?? null)
-									}
-									serverCommand={serverCommand}
-									onCopy={handleCopySnippet}
-								/>
-							)
-						) : (
-							<div className="text-xs text-muted-foreground">
-								Select a session to see details.
-							</div>
-						)}
-					</div>
-				</div>
+								<div className="flex flex-col gap-2">
+									{sessions.map((s) => {
+										const otherPaneId = Object.entries(bindingsByPane).find(
+											([pid, sid]) => sid === s.id && pid !== paneId,
+										)?.[0];
+										const otherPaneName = otherPaneId
+											? (panes[otherPaneId]?.name ?? null)
+											: null;
+										return (
+											<SessionCard
+												key={s.id}
+												session={s}
+												isSelected={s.id === selectedSessionId}
+												attachedToThisPane={s.id === currentBinding}
+												assignedElsewherePaneName={otherPaneName}
+												onSelect={() => setSelectedSession(s.id)}
+											/>
+										);
+									})}
+								</div>
+							)}
+						</div>
 
-				<DialogFooter className="px-5 py-3 border-t gap-2 flex !justify-between">
-					<div className="text-[11px] text-muted-foreground">
-						{session?.mcpStatus === "ready"
-							? assignedPaneIdForSelected
-								? `Connecting will reassign ${session.displayName} from ${panes[assignedPaneIdForSelected]?.name ?? "another pane"} to ${paneName}.`
-								: "Connecting binds this browser pane to the selected session only."
-							: session
-								? "Add the MCP entry first, then reopen or restart this session."
-								: sessions.length === 0
-									? "Start an LLM session, then pick it here."
-									: "Select a session from the left."}
+						<div className="overflow-y-auto p-4 bg-muted/20">
+							{session ? (
+								session.mcpStatus === "ready" ? (
+									<ReadyPanel
+										session={session}
+										paneName={paneName}
+										reassigning={Boolean(assignedPaneIdForSelected)}
+										previousPaneName={
+											assignedPaneIdForSelected
+												? (panes[assignedPaneIdForSelected]?.name ?? null)
+												: null
+										}
+										attachedToThisPane={session.id === currentBinding}
+									/>
+								) : (
+									<SetupPanel
+										session={session}
+										mcpConfigPath={
+											session.provider === "Codex"
+												? (mcpStatus?.codexConfigPath ?? null)
+												: (mcpStatus?.claudeConfigPath ?? null)
+										}
+										serverCommand={serverCommand}
+										onCopy={handleCopySnippet}
+									/>
+								)
+							) : (
+								<div className="text-xs text-muted-foreground">
+									Select a session to see details.
+								</div>
+							)}
+						</div>
 					</div>
-					<div className="flex items-center gap-2">
-						{currentBinding && (
+				)}
+
+				{activeTab === "sessions" && (
+					<DialogFooter className="px-5 py-3 border-t gap-2 flex !justify-between">
+						<div className="text-[11px] text-muted-foreground">
+							{session?.mcpStatus === "ready"
+								? assignedPaneIdForSelected
+									? `Connecting will reassign ${session.displayName} from ${panes[assignedPaneIdForSelected]?.name ?? "another pane"} to ${paneName}.`
+									: "Connecting binds this browser pane to the selected session only."
+								: session
+									? "Add the MCP entry first, then reopen or restart this session."
+									: sessions.length === 0
+										? "Start an LLM session, then pick it here."
+										: "Select a session from the left."}
+						</div>
+						<div className="flex items-center gap-2">
+							{currentBinding && (
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={handleDisconnect}
+									disabled={removeBinding.isPending}
+								>
+									Disconnect
+									{currentSession ? ` ${currentSession.displayName}` : ""}
+								</Button>
+							)}
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={handleDisconnect}
-								disabled={removeBinding.isPending}
+								onClick={() => onOpenChange(false)}
 							>
-								Disconnect
-								{currentSession ? ` ${currentSession.displayName}` : ""}
+								Cancel
 							</Button>
-						)}
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => onOpenChange(false)}
-						>
-							Cancel
-						</Button>
-						<Button
-							size="sm"
-							disabled={
-								!session ||
-								session.mcpStatus !== "ready" ||
-								setBinding.isPending
-							}
-							onClick={handleConnect}
-						>
-							{session?.mcpStatus === "ready"
-								? "Connect session"
-								: "Connect blocked"}
-						</Button>
-					</div>
-				</DialogFooter>
+							<Button
+								size="sm"
+								disabled={
+									!session ||
+									session.mcpStatus !== "ready" ||
+									setBinding.isPending
+								}
+								onClick={handleConnect}
+							>
+								{session?.mcpStatus === "ready"
+									? "Connect session"
+									: "Connect blocked"}
+							</Button>
+						</div>
+					</DialogFooter>
+				)}
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function TabButton({
+	active,
+	onClick,
+	children,
+}: {
+	active: boolean;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors",
+				active
+					? "border-brand text-foreground"
+					: "border-transparent text-muted-foreground hover:text-foreground",
+			)}
+		>
+			{children}
+		</button>
 	);
 }
 

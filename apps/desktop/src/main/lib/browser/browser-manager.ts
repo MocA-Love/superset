@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
+import { basename, join } from "node:path";
 import {
+	app,
 	type BrowserWindow,
 	clipboard,
+	dialog,
 	Menu,
 	nativeTheme,
 	shell,
@@ -140,9 +143,16 @@ class BrowserManager extends EventEmitter {
 		this.paneTargetIds.delete(paneId);
 		const wc = webContents.fromId(webContentsId);
 		if (wc) {
-			// Keep throttling enabled so parked/offscreen persistent webviews don't
-			// run at full speed in the background.
-			wc.setBackgroundThrottling(true);
+			// External CDP MCPs (chrome-devtools-mcp, browser-use) may
+			// drive this primary webview while its BrowserPane is
+			// off-screen, the parent BrowserWindow is minimised, or
+			// the pane is obscured. Chromium's LifecycleWatcher and
+			// many sites gate work on document.hidden /
+			// requestAnimationFrame / IntersectionObserver, all of
+			// which freeze under background throttling. Keep throttling
+			// off so automation stays responsive; the perf cost of an
+			// idle pane is negligible.
+			wc.setBackgroundThrottling(false);
 			wc.setWindowOpenHandler(({ url, disposition }) => {
 				if (!url || url === "about:blank") {
 					return { action: "deny" as const };
@@ -167,9 +177,15 @@ class BrowserManager extends EventEmitter {
 					};
 				}
 
-				// Regular target="_blank" links — open as a new browser tab
-				this.emit(`new-window:${paneId}`, url);
-				this.emit("new-window", { paneId, url });
+				// Regular target="_blank" / window.open() — open as a
+				// new secondary tab in the same pane so it stays within
+				// the MCP's bound scope (the pane's CDP session sees it
+				// via paneTabTargetIds and the user can drive it with
+				// the same binding). This matches Chrome's default
+				// target="_blank" UX (new tab, not new window). The old
+				// split-pane / workspace-tab behaviours are still
+				// reachable via the "Open in Split" context menu.
+				this.emit(`create-tab-requested:${paneId}`, { url });
 				return { action: "deny" as const };
 			});
 			this.setupPopupWindowHandler(paneId, wc);
@@ -178,6 +194,8 @@ class BrowserManager extends EventEmitter {
 			this.setupContextMenu(paneId, wc);
 			this.setupFindInPage(paneId, wc);
 			this.setupPaneIdMarker(paneId, wc);
+			this.setupJsDialogHandler(paneId, wc);
+			this.setupDownloadHandler(paneId, wc);
 			void this.captureCdpTargetId(paneId, wc);
 		}
 	}
@@ -202,7 +220,17 @@ class BrowserManager extends EventEmitter {
 		}
 		this.paneWebContentsIds.delete(paneId);
 		this.paneTargetIds.delete(paneId);
+		this.paneTabTargetIds.delete(paneId);
+		// Sweep per-tab maps keyed by paneId::tabId.
+		const tabPrefix = `${paneId}::`;
+		for (const key of [...this.paneTabTargetIdByKey.keys()]) {
+			if (key.startsWith(tabPrefix)) this.paneTabTargetIdByKey.delete(key);
+		}
+		for (const key of [...this.paneTabWebContents.keys()]) {
+			if (key.startsWith(tabPrefix)) this.paneTabWebContents.delete(key);
+		}
 		this.consoleLogs.delete(paneId);
+		this.emit(`pane-target-set-changed:${paneId}`, { action: "clear" });
 	}
 
 	unregisterAll(): void {
@@ -254,10 +282,25 @@ class BrowserManager extends EventEmitter {
 			this.paneTabTargetIds.set(paneId, set);
 		}
 		set.add(targetId);
+		console.log(
+			"[browser-manager] addPaneTabTarget",
+			paneId,
+			targetId,
+			"now",
+			Array.from(set),
+		);
+		// Notify any in-flight Target.createTarget waiters in the gateway.
+		this.emit(`tab-target-added:${paneId}`, targetId);
+		this.emit(`pane-target-set-changed:${paneId}`, { action: "add", targetId });
 	}
 
 	removePaneTabTarget(paneId: string, targetId: string): void {
 		this.paneTabTargetIds.get(paneId)?.delete(targetId);
+		console.log("[browser-manager] removePaneTabTarget", paneId, targetId);
+		this.emit(`pane-target-set-changed:${paneId}`, {
+			action: "remove",
+			targetId,
+		});
 	}
 
 	listPanesWithCdpTargets(): Array<{ paneId: string; targetId: string }> {
@@ -326,7 +369,35 @@ class BrowserManager extends EventEmitter {
 				targetId.length > 0 &&
 				currentId === expectedWebContentsId
 			) {
+				const previous = this.paneTargetIds.get(paneId);
 				this.paneTargetIds.set(paneId, targetId);
+				console.log(
+					"[browser-manager] captured primary targetId pane",
+					paneId,
+					"wc",
+					expectedWebContentsId,
+					"targetId",
+					targetId,
+					"previous",
+					previous,
+				);
+				if (previous !== targetId) {
+					this.emit(`pane-target-set-changed:${paneId}`, {
+						action: "primary",
+						targetId,
+					});
+				}
+			} else {
+				console.log(
+					"[browser-manager] discarded captured targetId pane",
+					paneId,
+					"expectedWc",
+					expectedWebContentsId,
+					"currentWc",
+					currentId,
+					"targetId",
+					targetId,
+				);
 			}
 		} catch (error) {
 			console.warn(
@@ -356,6 +427,15 @@ class BrowserManager extends EventEmitter {
 	): Promise<void> {
 		const wc = webContents.fromId(webContentsId);
 		if (!wc || wc.isDestroyed()) return;
+		// Tabs are routinely off-screen while another tab is active.
+		// External CDP MCPs (browser-use, chrome-devtools-mcp) need
+		// the inactive tab's webContents to keep timers / network /
+		// JS running so navigation doesn't stall waiting for visibility.
+		try {
+			wc.setBackgroundThrottling(false);
+		} catch {
+			/* best-effort */
+		}
 		this.paneTabWebContents.set(this.tabKey(paneId, tabId), webContentsId);
 		let attached = false;
 		try {
@@ -395,8 +475,118 @@ class BrowserManager extends EventEmitter {
 		this.paneTabWebContents.delete(key);
 	}
 
+	/**
+	 * Correlate a renderer-side tab spawn (result of a
+	 * create-tab-requested event) with its Chromium CDP targetId for
+	 * the gateway's Target.createTarget waiter. Requires registerTab
+	 * to have already captured the targetId; if it hasn't yet,
+	 * listen for the next addPaneTabTarget on the pane and use that.
+	 */
+	acknowledgeTabCreated(
+		paneId: string,
+		requestId: string,
+		tabId: string,
+	): void {
+		const key = this.tabKey(paneId, tabId);
+		const existing = this.paneTabTargetIdByKey.get(key);
+		console.log(
+			"[tab-diag] acknowledgeTabCreated pane=",
+			paneId,
+			"tab=",
+			tabId,
+			"req=",
+			requestId,
+			"existingTarget=",
+			existing ?? "(waiting)",
+		);
+		if (existing) {
+			this.emit(`tab-target-added-for:${paneId}`, {
+				requestId,
+				targetId: existing,
+			});
+			return;
+		}
+		const handler = (addedTargetId: string) => {
+			const current = this.paneTabTargetIdByKey.get(key);
+			if (current !== addedTargetId) return;
+			this.off(`tab-target-added:${paneId}`, handler);
+			this.emit(`tab-target-added-for:${paneId}`, {
+				requestId,
+				targetId: addedTargetId,
+			});
+		};
+		this.on(`tab-target-added:${paneId}`, handler);
+		// Safety: drop the listener after 10s so it can't leak.
+		setTimeout(() => this.off(`tab-target-added:${paneId}`, handler), 10_000);
+	}
+
 	private tabKey(paneId: string, tabId: string): string {
 		return `${paneId}::${tabId}`;
+	}
+
+	/**
+	 * Inverse of registerTab: given a CDP targetId and a paneId,
+	 * return the tabId the pane registered against that target.
+	 * Returns null for the pane's primary (host-level webContents)
+	 * target — callers typically treat that as "already the active
+	 * tab" and no-op.
+	 */
+	/**
+	 * Return the webContents id registered for a given (paneId, tabId)
+	 * tuple or the pane's primary if tabId is null. Used by the CDP
+	 * filter to force-focus the right webContents before dispatching
+	 * session-scoped Input.* events — Electron otherwise sometimes
+	 * routes synthetic key events to whichever widget has OS focus
+	 * (including the Superset terminal pane).
+	 */
+	getWebContentsIdForTab(paneId: string, tabId: string | null): number | null {
+		if (tabId === null) {
+			return this.paneWebContentsIds.get(paneId) ?? null;
+		}
+		return this.paneTabWebContents.get(this.tabKey(paneId, tabId)) ?? null;
+	}
+
+	getTabIdForTarget(paneId: string, targetId: string): string | null {
+		const prefix = `${paneId}::`;
+		for (const [key, tid] of this.paneTabTargetIdByKey) {
+			if (tid === targetId && key.startsWith(prefix)) {
+				return key.slice(prefix.length);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Find which pane (if any) a given CDP targetId belongs to. Used
+	 * by the CDP filter to route Target.activateTarget /
+	 * Page.bringToFront back to the renderer so the tab bar UI
+	 * follows MCP-driven tab switches (matches Chrome's behaviour).
+	 */
+	getPaneIdForTarget(targetId: string): string | null {
+		for (const [paneId, primary] of this.paneTargetIds) {
+			if (primary === targetId) return paneId;
+		}
+		for (const [key, tid] of this.paneTabTargetIdByKey) {
+			if (tid === targetId) {
+				const sep = key.indexOf("::");
+				if (sep > 0) return key.slice(0, sep);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Emit an activate-tab event for the given pane so subscribers
+	 * (the BrowserPane renderer) can flip their tab-bar UI. Called
+	 * by the CDP filter when MCP sends Target.activateTarget /
+	 * Page.bringToFront for a tab we know about.
+	 *
+	 * When tabId is null the pane's primary is meant (i.e. the
+	 * non-secondary tab driven by usePersistentWebview); the
+	 * renderer uses that to reveal the primary and hide secondaries.
+	 */
+	requestTabActivation(paneId: string, tabId: string | null): void {
+		this.emit(`activate-tab-requested:${paneId}`, { tabId });
 	}
 
 	getPaneIdForWebContents(webContentsId: number): string | null {
@@ -441,6 +631,22 @@ class BrowserManager extends EventEmitter {
 		const wc = this.getWebContents(paneId);
 		if (!wc) return;
 		wc.openDevTools({ mode: "detach" });
+	}
+
+	/**
+	 * Surface the native Electron print dialog for the pane. Called
+	 * from the renderer when the user hits Cmd+P, and also
+	 * indirectly via window.print() (Chromium routes that through
+	 * the webContents print event which Electron handles).
+	 */
+	print(paneId: string): void {
+		const wc = this.getWebContents(paneId);
+		if (!wc) return;
+		try {
+			wc.print({ silent: false, printBackground: true });
+		} catch (error) {
+			console.warn("[browser-manager] print failed:", error);
+		}
 	}
 
 	findInPage(
@@ -581,6 +787,178 @@ class BrowserManager extends EventEmitter {
 			} catch {
 				// webContents may be destroyed
 			}
+		});
+	}
+
+	/**
+	 * Surface JavaScript dialogs (alert / confirm / prompt /
+	 * beforeunload) as native Electron dialogs so the user can see
+	 * and respond to them. Without this Electron auto-dismisses
+	 * dialogs in webview-hosted content, which silently breaks sites
+	 * that use confirm/prompt for destructive actions and makes
+	 * beforeunload unloads invisible to the user.
+	 */
+	private setupJsDialogHandler(paneId: string, wc: Electron.WebContents): void {
+		// beforeunload: Electron only emits will-prevent-unload when
+		// the page asked for the confirmation; preventDefault tells
+		// Chromium to block the unload.
+		const handleBeforeUnload = (event: Electron.Event) => {
+			const owner = this.getOwnerWindow(paneId);
+			const choice = owner
+				? dialog.showMessageBoxSync(owner, {
+						type: "question",
+						buttons: ["Leave", "Stay"],
+						defaultId: 0,
+						cancelId: 1,
+						title: "Leave site?",
+						message: "Changes you made may not be saved.",
+					})
+				: 1;
+			if (choice === 1) event.preventDefault();
+		};
+		wc.on("will-prevent-unload", handleBeforeUnload);
+
+		// alert/confirm/prompt are surfaced through the internal
+		// `-run-dialog` event in recent Electron versions. The event
+		// signature is still undocumented, so we cast defensively.
+		type RunDialogArgs = [
+			event: Electron.Event & {
+				sender?: unknown;
+				preventDefault: () => void;
+			},
+			dialogType: "alert" | "confirm" | "prompt",
+			messageText: string,
+			defaultPromptText: string,
+			reply: (shouldContinue: boolean, userInput: string) => void,
+		];
+		const handleRunDialog = (...args: unknown[]) => {
+			const [event, dialogType, messageText, defaultPromptText, reply] =
+				args as RunDialogArgs;
+			event.preventDefault();
+			const owner = this.getOwnerWindow(paneId);
+			if (!owner) {
+				reply(false, "");
+				return;
+			}
+			if (dialogType === "alert") {
+				dialog
+					.showMessageBox(owner, {
+						type: "info",
+						buttons: ["OK"],
+						message: messageText || "",
+					})
+					.then(() => reply(true, ""))
+					.catch(() => reply(false, ""));
+			} else if (dialogType === "confirm") {
+				dialog
+					.showMessageBox(owner, {
+						type: "question",
+						buttons: ["OK", "Cancel"],
+						defaultId: 0,
+						cancelId: 1,
+						message: messageText || "",
+					})
+					.then(({ response }) => reply(response === 0, ""))
+					.catch(() => reply(false, ""));
+			} else {
+				// prompt: Electron doesn't have a first-class prompt
+				// dialog, so we approximate with showMessageBox +
+				// inputs aren't natively supported — best we can do is
+				// accept the default text on OK and empty on Cancel
+				// until a custom modal is wired up.
+				dialog
+					.showMessageBox(owner, {
+						type: "question",
+						buttons: ["OK", "Cancel"],
+						defaultId: 0,
+						cancelId: 1,
+						message: messageText || "",
+						detail: defaultPromptText
+							? `Default: ${defaultPromptText}`
+							: undefined,
+					})
+					.then(({ response }) =>
+						reply(response === 0, response === 0 ? defaultPromptText : ""),
+					)
+					.catch(() => reply(false, ""));
+			}
+		};
+		(wc as unknown as NodeJS.EventEmitter).on("-run-dialog", handleRunDialog);
+	}
+
+	private getOwnerWindow(paneId: string): BrowserWindow | null {
+		const wc = this.getWebContents(paneId);
+		if (!wc) return null;
+		const { BrowserWindow } = require("electron") as typeof import("electron");
+		return (
+			BrowserWindow.fromWebContents(wc) ?? BrowserWindow.getFocusedWindow()
+		);
+	}
+
+	/**
+	 * Handle webContents download events. Save to ~/Downloads with
+	 * the suggested filename (de-duplicated) and emit a toast-style
+	 * event so the renderer can surface the completion to the user.
+	 *
+	 * All Superset browser panes share the persist:superset session,
+	 * so the `will-download` listener is registered exactly once per
+	 * session, not per pane. Registering per-pane would pile up
+	 * duplicate handlers across pane open / re-register / tearoff
+	 * lifecycles and fire setSavePath+emit N times per download.
+	 * (Raised in CodeRabbit review on PR #371.)
+	 */
+	private setupDownloadHandler(paneId: string, wc: Electron.WebContents): void {
+		this.ensureDownloadHandlerForSession(wc.session);
+		// Track which pane last triggered a download on this session so
+		// the single handler can emit pane-scoped events.
+		this.lastDownloadInitiator = paneId;
+	}
+
+	private downloadHandlerInstalled = new WeakSet<Electron.Session>();
+	private lastDownloadInitiator: string | null = null;
+
+	private ensureDownloadHandlerForSession(session: Electron.Session): void {
+		if (this.downloadHandlerInstalled.has(session)) return;
+		this.downloadHandlerInstalled.add(session);
+		session.on("will-download", (_event, item, webContents) => {
+			const downloadsDir = app.getPath("downloads");
+			const suggested = item.getFilename() || "download";
+			let target = join(downloadsDir, suggested);
+			try {
+				const fs = require("node:fs") as typeof import("node:fs");
+				if (fs.existsSync(target)) {
+					const ext = suggested.includes(".")
+						? suggested.slice(suggested.lastIndexOf("."))
+						: "";
+					const stem = ext
+						? suggested.slice(0, suggested.length - ext.length)
+						: suggested;
+					target = join(downloadsDir, `${stem}-${Date.now()}${ext}`);
+				}
+			} catch {
+				/* best effort */
+			}
+			item.setSavePath(target);
+			// Attribute the event to whichever pane owns the
+			// initiating webContents if we can resolve it; fall back
+			// to the last pane that registered a webContents on this
+			// session. This replaces the old duplicate-handler scheme.
+			const paneId =
+				(webContents && this.getPaneIdForWebContents(webContents.id)) ||
+				this.lastDownloadInitiator;
+			if (!paneId) return;
+			this.emit(`download-started:${paneId}`, {
+				filename: basename(target),
+				targetPath: target,
+				url: item.getURL(),
+			});
+			item.on("done", (_e, state) => {
+				this.emit(`download-finished:${paneId}`, {
+					filename: basename(target),
+					targetPath: target,
+					state,
+				});
+			});
 		});
 	}
 
