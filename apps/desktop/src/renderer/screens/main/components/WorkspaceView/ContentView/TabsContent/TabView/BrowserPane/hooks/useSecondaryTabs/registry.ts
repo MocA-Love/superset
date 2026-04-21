@@ -362,7 +362,11 @@ class SecondaryTabRegistry {
 		this.layout(group);
 	}
 
-	createTab(paneId: string, url: string): string | null {
+	createTab(
+		paneId: string,
+		url: string,
+		options?: { background?: boolean },
+	): string | null {
 		this.ensureRoot();
 		let group = this.groups.get(paneId);
 		if (!group) {
@@ -379,8 +383,14 @@ class SecondaryTabRegistry {
 		const entry = this.spawnTab(paneId, url, tabId);
 		group.tabs.push(entry);
 		if (this.root) this.root.appendChild(entry.webview);
-		group.activeTabId = tabId;
-		group.visible = true;
+		// Honour the CDP createTarget `background` flag: when set,
+		// the new tab is spawned but the active tab stays put. When
+		// unset (Chrome default for createTarget when called by MCP)
+		// the new tab takes focus.
+		if (!options?.background) {
+			group.activeTabId = tabId;
+			group.visible = true;
+		}
 		this.layout(group);
 		this.notify(paneId);
 		return tabId;
@@ -412,6 +422,21 @@ class SecondaryTabRegistry {
 		if (group.activeTabId === tabId) return;
 		group.activeTabId = tabId;
 		group.visible = true;
+		this.layout(group);
+		this.notify(paneId);
+	}
+
+	/**
+	 * Hide any secondary tabs for this pane so the pane's primary
+	 * (managed by usePersistentWebview) becomes visible. Used when
+	 * MCP activates the primary target via Target.activateTarget.
+	 */
+	showPrimary(paneId: string): void {
+		const group = this.groups.get(paneId);
+		if (!group) return;
+		if (group.activeTabId === null && !group.visible) return;
+		group.activeTabId = null;
+		group.visible = false;
 		this.layout(group);
 		this.notify(paneId);
 	}

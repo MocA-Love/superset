@@ -61,12 +61,42 @@ export const createBrowserRouter = () => {
 		onCreateTabRequested: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
-				return observable<{ url: string; requestId?: string }>((emit) => {
-					const handler = (data: { url: string; requestId?: string }) =>
-						emit.next(data);
+				return observable<{
+					url: string;
+					requestId?: string;
+					background?: boolean;
+				}>((emit) => {
+					const handler = (data: {
+						url: string;
+						requestId?: string;
+						background?: boolean;
+					}) => emit.next(data);
 					browserManager.on(`create-tab-requested:${input.paneId}`, handler);
 					return () => {
 						browserManager.off(`create-tab-requested:${input.paneId}`, handler);
+					};
+				});
+			}),
+
+		/**
+		 * Subscribe to MCP-driven tab activation requests for a pane.
+		 * The CDP filter emits these when an external MCP sends
+		 * Target.activateTarget or Page.bringToFront; the renderer
+		 * flips its tab-bar UI to match. tabId=null means the pane's
+		 * primary (the non-secondary tab managed by
+		 * usePersistentWebview).
+		 */
+		onActivateTabRequested: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ tabId: string | null }>((emit) => {
+					const handler = (data: { tabId: string | null }) => emit.next(data);
+					browserManager.on(`activate-tab-requested:${input.paneId}`, handler);
+					return () => {
+						browserManager.off(
+							`activate-tab-requested:${input.paneId}`,
+							handler,
+						);
 					};
 				});
 			}),
@@ -135,6 +165,42 @@ export const createBrowserRouter = () => {
 			.mutation(async ({ input }) => {
 				const base64 = await browserManager.screenshot(input.paneId);
 				return { base64 };
+			}),
+
+		print: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.mutation(({ input }) => {
+				browserManager.print(input.paneId);
+				return { success: true };
+			}),
+
+		onDownload: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{
+					kind: "started" | "finished";
+					filename: string;
+					targetPath: string;
+					url?: string;
+					state?: string;
+				}>((emit) => {
+					const started = (data: {
+						filename: string;
+						targetPath: string;
+						url: string;
+					}) => emit.next({ kind: "started", ...data });
+					const finished = (data: {
+						filename: string;
+						targetPath: string;
+						state: string;
+					}) => emit.next({ kind: "finished", ...data });
+					browserManager.on(`download-started:${input.paneId}`, started);
+					browserManager.on(`download-finished:${input.paneId}`, finished);
+					return () => {
+						browserManager.off(`download-started:${input.paneId}`, started);
+						browserManager.off(`download-finished:${input.paneId}`, finished);
+					};
+				});
 			}),
 
 		evaluateJS: publicProcedure

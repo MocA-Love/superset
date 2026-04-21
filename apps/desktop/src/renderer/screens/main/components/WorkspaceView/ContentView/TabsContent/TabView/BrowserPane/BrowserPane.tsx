@@ -297,17 +297,39 @@ export function BrowserPane({
 					paneId,
 					"req=",
 					evt.requestId,
+					"bg=",
+					evt.background,
 				);
-				const tabId = secondaryTabRegistry.createTab(paneId, evt.url);
+				const tabId = secondaryTabRegistry.createTab(paneId, evt.url, {
+					background: evt.background === true,
+				});
 				console.log(
 					"[BrowserPane v1] secondaryTabRegistry.createTab returned tabId=",
 					tabId,
 				);
 				if (tabId) {
-					setActiveTabId(tabId);
+					if (!evt.background) setActiveTabId(tabId);
 					if (evt.requestId) {
 						ackTabCreated({ paneId, requestId: evt.requestId, tabId });
 					}
+				}
+			},
+		},
+	);
+
+	// MCP may flip tabs via Target.activateTarget / Page.bringToFront.
+	// Mirror that into the BrowserPane's tab bar so what the MCP drives
+	// matches what the user sees (Chrome's tab strip follows CDP).
+	electronTrpc.browser.onActivateTabRequested.useSubscription(
+		{ paneId },
+		{
+			onData: (evt) => {
+				if (evt.tabId === null) {
+					secondaryTabRegistry.showPrimary(paneId);
+					setActiveTabId(null);
+				} else {
+					secondaryTabRegistry.activateTab(paneId, evt.tabId);
+					setActiveTabId(evt.tabId);
 				}
 			},
 		},

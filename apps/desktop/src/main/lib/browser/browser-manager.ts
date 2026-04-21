@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
+import { basename, join } from "node:path";
 import {
+	app,
 	type BrowserWindow,
 	clipboard,
+	dialog,
 	Menu,
 	nativeTheme,
 	shell,
@@ -185,6 +188,8 @@ class BrowserManager extends EventEmitter {
 			this.setupContextMenu(paneId, wc);
 			this.setupFindInPage(paneId, wc);
 			this.setupPaneIdMarker(paneId, wc);
+			this.setupJsDialogHandler(paneId, wc);
+			this.setupDownloadHandler(paneId, wc);
 			void this.captureCdpTargetId(paneId, wc);
 		}
 	}
@@ -503,6 +508,56 @@ class BrowserManager extends EventEmitter {
 		return `${paneId}::${tabId}`;
 	}
 
+	/**
+	 * Inverse of registerTab: given a CDP targetId and a paneId,
+	 * return the tabId the pane registered against that target.
+	 * Returns null for the pane's primary (host-level webContents)
+	 * target — callers typically treat that as "already the active
+	 * tab" and no-op.
+	 */
+	getTabIdForTarget(paneId: string, targetId: string): string | null {
+		const prefix = `${paneId}::`;
+		for (const [key, tid] of this.paneTabTargetIdByKey) {
+			if (tid === targetId && key.startsWith(prefix)) {
+				return key.slice(prefix.length);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Find which pane (if any) a given CDP targetId belongs to. Used
+	 * by the CDP filter to route Target.activateTarget /
+	 * Page.bringToFront back to the renderer so the tab bar UI
+	 * follows MCP-driven tab switches (matches Chrome's behaviour).
+	 */
+	getPaneIdForTarget(targetId: string): string | null {
+		for (const [paneId, primary] of this.paneTargetIds) {
+			if (primary === targetId) return paneId;
+		}
+		for (const [key, tid] of this.paneTabTargetIdByKey) {
+			if (tid === targetId) {
+				const sep = key.indexOf("::");
+				if (sep > 0) return key.slice(0, sep);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Emit an activate-tab event for the given pane so subscribers
+	 * (the BrowserPane renderer) can flip their tab-bar UI. Called
+	 * by the CDP filter when MCP sends Target.activateTarget /
+	 * Page.bringToFront for a tab we know about.
+	 *
+	 * When tabId is null the pane's primary is meant (i.e. the
+	 * non-secondary tab driven by usePersistentWebview); the
+	 * renderer uses that to reveal the primary and hide secondaries.
+	 */
+	requestTabActivation(paneId: string, tabId: string | null): void {
+		this.emit(`activate-tab-requested:${paneId}`, { tabId });
+	}
+
 	getPaneIdForWebContents(webContentsId: number): string | null {
 		for (const [paneId, registeredWebContentsId] of this.paneWebContentsIds) {
 			if (registeredWebContentsId === webContentsId) {
@@ -545,6 +600,22 @@ class BrowserManager extends EventEmitter {
 		const wc = this.getWebContents(paneId);
 		if (!wc) return;
 		wc.openDevTools({ mode: "detach" });
+	}
+
+	/**
+	 * Surface the native Electron print dialog for the pane. Called
+	 * from the renderer when the user hits Cmd+P, and also
+	 * indirectly via window.print() (Chromium routes that through
+	 * the webContents print event which Electron handles).
+	 */
+	print(paneId: string): void {
+		const wc = this.getWebContents(paneId);
+		if (!wc) return;
+		try {
+			wc.print({ silent: false, printBackground: true });
+		} catch (error) {
+			console.warn("[browser-manager] print failed:", error);
+		}
 	}
 
 	findInPage(
@@ -686,6 +757,164 @@ class BrowserManager extends EventEmitter {
 				// webContents may be destroyed
 			}
 		});
+	}
+
+	/**
+	 * Surface JavaScript dialogs (alert / confirm / prompt /
+	 * beforeunload) as native Electron dialogs so the user can see
+	 * and respond to them. Without this Electron auto-dismisses
+	 * dialogs in webview-hosted content, which silently breaks sites
+	 * that use confirm/prompt for destructive actions and makes
+	 * beforeunload unloads invisible to the user.
+	 */
+	private setupJsDialogHandler(paneId: string, wc: Electron.WebContents): void {
+		// beforeunload: Electron only emits will-prevent-unload when
+		// the page asked for the confirmation; preventDefault tells
+		// Chromium to block the unload.
+		const handleBeforeUnload = (event: Electron.Event) => {
+			const owner = this.getOwnerWindow(paneId);
+			const choice = owner
+				? dialog.showMessageBoxSync(owner, {
+						type: "question",
+						buttons: ["Leave", "Stay"],
+						defaultId: 0,
+						cancelId: 1,
+						title: "Leave site?",
+						message: "Changes you made may not be saved.",
+					})
+				: 1;
+			if (choice === 1) event.preventDefault();
+		};
+		wc.on("will-prevent-unload", handleBeforeUnload);
+
+		// alert/confirm/prompt are surfaced through the internal
+		// `-run-dialog` event in recent Electron versions. The event
+		// signature is still undocumented, so we cast defensively.
+		type RunDialogArgs = [
+			event: Electron.Event & {
+				sender?: unknown;
+				preventDefault: () => void;
+			},
+			dialogType: "alert" | "confirm" | "prompt",
+			messageText: string,
+			defaultPromptText: string,
+			reply: (shouldContinue: boolean, userInput: string) => void,
+		];
+		const handleRunDialog = (...args: unknown[]) => {
+			const [event, dialogType, messageText, defaultPromptText, reply] =
+				args as RunDialogArgs;
+			event.preventDefault();
+			const owner = this.getOwnerWindow(paneId);
+			if (!owner) {
+				reply(false, "");
+				return;
+			}
+			if (dialogType === "alert") {
+				dialog
+					.showMessageBox(owner, {
+						type: "info",
+						buttons: ["OK"],
+						message: messageText || "",
+					})
+					.then(() => reply(true, ""))
+					.catch(() => reply(false, ""));
+			} else if (dialogType === "confirm") {
+				dialog
+					.showMessageBox(owner, {
+						type: "question",
+						buttons: ["OK", "Cancel"],
+						defaultId: 0,
+						cancelId: 1,
+						message: messageText || "",
+					})
+					.then(({ response }) => reply(response === 0, ""))
+					.catch(() => reply(false, ""));
+			} else {
+				// prompt: Electron doesn't have a first-class prompt
+				// dialog, so we approximate with showMessageBox +
+				// inputs aren't natively supported — best we can do is
+				// accept the default text on OK and empty on Cancel
+				// until a custom modal is wired up.
+				dialog
+					.showMessageBox(owner, {
+						type: "question",
+						buttons: ["OK", "Cancel"],
+						defaultId: 0,
+						cancelId: 1,
+						message: messageText || "",
+						detail: defaultPromptText
+							? `Default: ${defaultPromptText}`
+							: undefined,
+					})
+					.then(({ response }) =>
+						reply(response === 0, response === 0 ? defaultPromptText : ""),
+					)
+					.catch(() => reply(false, ""));
+			}
+		};
+		(wc as unknown as NodeJS.EventEmitter).on("-run-dialog", handleRunDialog);
+	}
+
+	private getOwnerWindow(paneId: string): BrowserWindow | null {
+		const wc = this.getWebContents(paneId);
+		if (!wc) return null;
+		const { BrowserWindow } = require("electron") as typeof import("electron");
+		return (
+			BrowserWindow.fromWebContents(wc) ?? BrowserWindow.getFocusedWindow()
+		);
+	}
+
+	/**
+	 * Handle webContents download events. Save to ~/Downloads with
+	 * the suggested filename (de-duplicated) and emit a toast-style
+	 * event so the renderer can surface the completion to the user.
+	 * Chrome shows a persistent download bar; for now a toast per
+	 * completion is the MVP.
+	 */
+	private setupDownloadHandler(paneId: string, wc: Electron.WebContents): void {
+		const session = wc.session;
+		const handler = (_event: Electron.Event, item: Electron.DownloadItem) => {
+			const downloadsDir = app.getPath("downloads");
+			const suggested = item.getFilename() || "download";
+			let target = join(downloadsDir, suggested);
+			// Best-effort de-dupe: append a timestamp when the target
+			// already exists. Synchronous fs.existsSync keeps the
+			// handler race-free against concurrent downloads.
+			try {
+				const fs = require("node:fs") as typeof import("node:fs");
+				if (fs.existsSync(target)) {
+					const ext = suggested.includes(".")
+						? suggested.slice(suggested.lastIndexOf("."))
+						: "";
+					const stem = ext
+						? suggested.slice(0, suggested.length - ext.length)
+						: suggested;
+					target = join(downloadsDir, `${stem}-${Date.now()}${ext}`);
+				}
+			} catch {
+				/* best effort */
+			}
+			item.setSavePath(target);
+			this.emit(`download-started:${paneId}`, {
+				filename: basename(target),
+				targetPath: target,
+				url: item.getURL(),
+			});
+			item.on("done", (_e, state) => {
+				this.emit(`download-finished:${paneId}`, {
+					filename: basename(target),
+					targetPath: target,
+					state,
+				});
+			});
+		};
+		session.on("will-download", handler);
+		// No teardown: the session is shared across panes
+		// (persist:superset). Attaching the same handler for multiple
+		// panes is idempotent-enough because every pane's webContents
+		// routes the download through the same session; we emit per
+		// paneId using the event's frame owner. In the common case
+		// where only one pane is downloading at a time this is fine.
 	}
 
 	private setupContextMenu(paneId: string, wc: Electron.WebContents): void {

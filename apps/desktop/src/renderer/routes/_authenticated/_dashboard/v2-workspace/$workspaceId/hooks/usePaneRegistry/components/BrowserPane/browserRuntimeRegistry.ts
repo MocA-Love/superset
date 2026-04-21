@@ -578,7 +578,11 @@ class BrowserRuntimeRegistryImpl {
 		return () => set.delete(listener);
 	}
 
-	createTab(paneId: string, url?: string): string | null {
+	createTab(
+		paneId: string,
+		url?: string,
+		options?: { background?: boolean },
+	): string | null {
 		const root = this.ensureRootContainer();
 		const group = this.groups.get(paneId);
 		if (!group) return null;
@@ -591,11 +595,22 @@ class BrowserRuntimeRegistryImpl {
 		);
 		group.tabs.push(entry);
 		root.appendChild(entry.webview);
-		group.activeTabId = tabId;
+		if (!options?.background) {
+			group.activeTabId = tabId;
+		}
 		this.applyLayout(group);
 		this.notifyState(paneId);
 		this.notifyTabs(paneId);
 		return tabId;
+	}
+
+	/**
+	 * Activate the pane's primary tab (the one created during
+	 * register() with tabId "primary"). Used when the MCP flips
+	 * focus back to the primary via Target.activateTarget.
+	 */
+	showPrimary(paneId: string): void {
+		this.activateTab(paneId, "primary");
 	}
 
 	closeTab(paneId: string, tabId: string): void {

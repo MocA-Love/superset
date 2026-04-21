@@ -283,6 +283,10 @@ export async function proxyBrowserUpgrade(
 		const upstream = new WebSocket(chromiumBrowserWs);
 		const pendingMethods = new Map<number, string>();
 		const allowedSessionIds = new Set<string>();
+		// Track the targetId each admitted child session belongs to so
+		// session-scoped methods (Page.bringToFront, Page.navigate, …)
+		// can be routed back to a pane when UI bridging is needed.
+		const sessionIdToTargetId = new Map<string, string>();
 		// Allowed targetIds: starts as the bound set, but grows
 		// transitively: any target whose `openerId` is already allowed
 		// is admitted too. Without this, real children of the bound
@@ -449,6 +453,19 @@ export async function proxyBrowserUpgrade(
 					`[cdp #${connId}] →up sid=${shortSid(msg.sessionId)} id=${id ?? "-"} ${method}${summary ? ` ${summary}` : ""}${allowed ? "" : " [DROPPED unknown sid]"}`,
 				);
 				if (allowed) {
+					// Page.bringToFront is session-scoped; surface it as
+					// a renderer-side tab activation so the tab bar
+					// follows the MCP.
+					if (method === "Page.bringToFront") {
+						const tid = sessionIdToTargetId.get(msg.sessionId);
+						if (tid) {
+							const paneForTid = browserManager.getPaneIdForTarget(tid);
+							if (paneForTid) {
+								const tabId = browserManager.getTabIdForTarget(paneForTid, tid);
+								browserManager.requestTabActivation(paneForTid, tabId);
+							}
+						}
+					}
 					sendToUpstream(msg);
 				} else if (id !== undefined) {
 					rejectRequest(
@@ -544,6 +561,18 @@ export async function proxyBrowserUpgrade(
 						"Target.activateTarget for other targets is refused by the Superset CDP filter.",
 					);
 					return;
+				}
+				// Bridge MCP-driven tab activation into the renderer
+				// tab-bar so the user sees the same tab the MCP is
+				// driving (matches Chrome's tab-strip-follows-CDP
+				// behaviour). The renderer flips its activeTabId on
+				// receipt of the activate-tab-requested event.
+				if (tid) {
+					const paneForTid = browserManager.getPaneIdForTarget(tid);
+					if (paneForTid) {
+						const tabId = browserManager.getTabIdForTarget(paneForTid, tid);
+						browserManager.requestTabActivation(paneForTid, tabId);
+					}
 				}
 				pendingMethods.set(id, method);
 				sendToUpstream(msg);
@@ -677,6 +706,7 @@ export async function proxyBrowserUpgrade(
 					browserManager.emit(`create-tab-requested:${ctx.paneId}`, {
 						url: nextUrl,
 						requestId,
+						background: params?.background === true,
 					});
 				} catch {
 					/* best effort */
@@ -1044,6 +1074,9 @@ export async function proxyBrowserUpgrade(
 					return;
 				}
 				if (params?.sessionId) allowedSessionIds.add(params.sessionId);
+				if (params?.sessionId && tid) {
+					sessionIdToTargetId.set(params.sessionId, tid);
+				}
 				console.log(
 					`[cdp #${connId}] ←dn (root) attachedToTarget tid=${shortTid(tid)} sid=${shortSid(params?.sessionId)} (allowed=${allowedSessionIds.size})`,
 				);
