@@ -10,7 +10,7 @@ import {
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { useEffect, useMemo, useState } from "react";
-import { LuList, LuShield } from "react-icons/lu";
+import { LuList, LuPlug, LuShield } from "react-icons/lu";
 import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -195,100 +195,93 @@ export function SessionConnectModal({
 				{activeTab === "permissions" ? (
 					<PermissionsTab />
 				) : (
-					<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
-						<div className="overflow-y-auto p-4 border-r">
-							<div className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2.5 mb-3">
-								<div className="flex size-7 items-center justify-center rounded-md bg-brand/15 text-brand text-sm font-bold">
-									◎
+					<>
+						<WorkspaceBindingsSummary
+							sessions={sessions}
+							bindingsByPane={bindingsByPane}
+							onOpenAllPanes={() => {
+								onOpenChange(false);
+								setListViewOpen(true);
+							}}
+						/>
+						<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
+							<div className="overflow-y-auto p-4 border-r">
+								<PaneIdentityCard
+									paneName={paneName}
+									paneUrl={paneUrl}
+									currentSession={currentSession}
+									onDisconnect={currentBinding ? handleDisconnect : undefined}
+									disconnectPending={removeBinding.isPending}
+								/>
+
+								<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">
+									Running sessions
 								</div>
-								<div className="min-w-0">
-									<div className="text-xs font-semibold truncate">
-										{paneName}
+
+								{sessions.length === 0 ? (
+									<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+										No running LLM sessions found. Start a TODO-Agent session or
+										run `claude` / `codex` in any terminal pane, then return
+										here.
 									</div>
-									<div className="text-[11px] text-muted-foreground truncate">
-										{paneUrl}
-									</div>
-								</div>
-								<button
-									type="button"
-									onClick={() => {
-										// Close this dialog first so focus traps don't stack.
-										onOpenChange(false);
-										setListViewOpen(true);
-									}}
-									className="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-								>
-									<LuList className="size-3" />
-									All panes
-								</button>
-							</div>
-
-							<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">
-								Running sessions
-							</div>
-
-							{sessions.length === 0 ? (
-								<div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
-									No running LLM sessions found. Start a TODO-Agent session or
-									run `claude` / `codex` in any terminal pane, then return here.
-								</div>
-							) : (
-								<div className="flex flex-col gap-2">
-									{sessions.map((s) => {
-										const otherPaneId = Object.entries(bindingsByPane).find(
-											([pid, sid]) => sid === s.id && pid !== paneId,
-										)?.[0];
-										const otherPaneName = otherPaneId
-											? (panes[otherPaneId]?.name ?? null)
-											: null;
-										return (
-											<SessionCard
-												key={s.id}
-												session={s}
-												isSelected={s.id === selectedSessionId}
-												attachedToThisPane={s.id === currentBinding}
-												assignedElsewherePaneName={otherPaneName}
-												onSelect={() => setSelectedSession(s.id)}
-											/>
-										);
-									})}
-								</div>
-							)}
-						</div>
-
-						<div className="overflow-y-auto p-4 bg-muted/20">
-							{session ? (
-								session.mcpStatus === "ready" ? (
-									<ReadyPanel
-										session={session}
-										paneName={paneName}
-										reassigning={Boolean(assignedPaneIdForSelected)}
-										previousPaneName={
-											assignedPaneIdForSelected
-												? (panes[assignedPaneIdForSelected]?.name ?? null)
-												: null
-										}
-										attachedToThisPane={session.id === currentBinding}
-									/>
 								) : (
-									<SetupPanel
-										session={session}
-										mcpConfigPath={
-											session.provider === "Codex"
-												? (mcpStatus?.codexConfigPath ?? null)
-												: (mcpStatus?.claudeConfigPath ?? null)
-										}
-										serverCommand={serverCommand}
-										onCopy={handleCopySnippet}
-									/>
-								)
-							) : (
-								<div className="text-xs text-muted-foreground">
-									Select a session to see details.
-								</div>
-							)}
+									<div className="flex flex-col gap-2">
+										{sessions.map((s) => {
+											const otherPaneId = Object.entries(bindingsByPane).find(
+												([pid, sid]) => sid === s.id && pid !== paneId,
+											)?.[0];
+											const otherPaneName = otherPaneId
+												? (panes[otherPaneId]?.name ?? null)
+												: null;
+											return (
+												<SessionCard
+													key={s.id}
+													session={s}
+													isSelected={s.id === selectedSessionId}
+													attachedToThisPane={s.id === currentBinding}
+													assignedElsewherePaneName={otherPaneName}
+													onSelect={() => setSelectedSession(s.id)}
+												/>
+											);
+										})}
+									</div>
+								)}
+							</div>
+
+							<div className="overflow-y-auto p-4 bg-muted/20">
+								{session ? (
+									session.mcpStatus === "ready" ? (
+										<ReadyPanel
+											session={session}
+											paneName={paneName}
+											reassigning={Boolean(assignedPaneIdForSelected)}
+											previousPaneName={
+												assignedPaneIdForSelected
+													? (panes[assignedPaneIdForSelected]?.name ?? null)
+													: null
+											}
+											attachedToThisPane={session.id === currentBinding}
+										/>
+									) : (
+										<SetupPanel
+											session={session}
+											mcpConfigPath={
+												session.provider === "Codex"
+													? (mcpStatus?.codexConfigPath ?? null)
+													: (mcpStatus?.claudeConfigPath ?? null)
+											}
+											serverCommand={serverCommand}
+											onCopy={handleCopySnippet}
+										/>
+									)
+								) : (
+									<div className="text-xs text-muted-foreground">
+										Select a session to see details.
+									</div>
+								)}
+							</div>
 						</div>
-					</div>
+					</>
 				)}
 
 				{activeTab === "sessions" && (
@@ -305,17 +298,6 @@ export function SessionConnectModal({
 										: "Select a session from the left."}
 						</div>
 						<div className="flex items-center gap-2">
-							{currentBinding && (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={handleDisconnect}
-									disabled={removeBinding.isPending}
-								>
-									Disconnect
-									{currentSession ? ` ${currentSession.displayName}` : ""}
-								</Button>
-							)}
 							<Button
 								variant="outline"
 								size="sm"
@@ -369,6 +351,142 @@ function TabButton({
 	);
 }
 
+function WorkspaceBindingsSummary({
+	sessions,
+	bindingsByPane,
+	onOpenAllPanes,
+}: {
+	sessions: AutomationSession[];
+	bindingsByPane: Record<string, string>;
+	onOpenAllPanes: () => void;
+}) {
+	const panes = useTabsStore((s) => s.panes);
+	const tabs = useTabsStore((s) => s.tabs);
+	const liveSessionIds = new Set(sessions.map((s) => s.id));
+	const browserPanes = useMemo(() => {
+		const tabById = new Map(tabs.map((t) => [t.id, t]));
+		return Object.values(panes).filter((p) => {
+			if (p.type !== "webview") return false;
+			const tab = tabById.get(p.tabId);
+			return Boolean(tab);
+		});
+	}, [panes, tabs]);
+
+	const connected = browserPanes.filter((p) => {
+		const sid = bindingsByPane[p.id];
+		return sid && liveSessionIds.has(sid);
+	}).length;
+	const unassigned = browserPanes.length - connected;
+	const needsSetup = sessions.filter((s) => s.mcpStatus === "missing").length;
+
+	return (
+		<div className="px-5 py-2 border-b flex items-center gap-3 text-[11px] bg-muted/20">
+			<span className="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold">
+				Workspace bindings
+			</span>
+			<span className="flex items-center gap-1.5">
+				<span className="size-1.5 rounded-full bg-emerald-400" />
+				{connected} connected
+			</span>
+			<span className="flex items-center gap-1.5 text-muted-foreground">
+				<span className="size-1.5 rounded-full bg-muted-foreground/50" />
+				{unassigned} unassigned
+			</span>
+			{needsSetup > 0 && (
+				<span className="flex items-center gap-1.5 text-amber-400">
+					<span className="size-1.5 rounded-full bg-amber-400" />
+					{needsSetup} needs setup
+				</span>
+			)}
+			<button
+				type="button"
+				onClick={onOpenAllPanes}
+				className="ml-auto inline-flex items-center gap-1 text-brand hover:underline"
+			>
+				<LuList className="size-3" />
+				Open all panes view →
+			</button>
+		</div>
+	);
+}
+
+function PaneIdentityCard({
+	paneName,
+	paneUrl,
+	currentSession,
+	onDisconnect,
+	disconnectPending,
+}: {
+	paneName: string;
+	paneUrl: string;
+	currentSession: AutomationSession | null;
+	onDisconnect?: () => void;
+	disconnectPending?: boolean;
+}) {
+	const isConnected = currentSession !== null;
+	return (
+		<div
+			className={cn(
+				"rounded-xl border p-3 mb-3",
+				isConnected
+					? "border-brand/30 bg-brand/5"
+					: "border-border bg-muted/40",
+			)}
+		>
+			<div className="flex items-start gap-3">
+				<div className="flex size-9 items-center justify-center rounded-lg bg-brand/15 text-brand text-base font-bold shrink-0">
+					<LuPlug className="size-4" />
+				</div>
+				<div className="min-w-0 flex-1">
+					<div className="flex items-center gap-2">
+						<div className="text-[13px] font-semibold truncate">{paneName}</div>
+						<span
+							className={cn(
+								"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+								isConnected
+									? "bg-emerald-500/15 text-emerald-300"
+									: "bg-muted text-muted-foreground",
+							)}
+						>
+							{isConnected ? "Connected" : "Unassigned"}
+						</span>
+					</div>
+					<div className="text-[11px] text-muted-foreground truncate">
+						{paneUrl}
+					</div>
+					<div className="mt-1.5 text-[11px] flex items-center gap-1.5 flex-wrap">
+						{isConnected ? (
+							<>
+								<span className="text-muted-foreground">Driven by:</span>
+								<span className="font-medium">
+									{currentSession.displayName}
+								</span>
+								<span className="text-muted-foreground">
+									({currentSession.provider})
+								</span>
+							</>
+						) : (
+							<span className="text-muted-foreground">
+								No session is driving this pane yet.
+							</span>
+						)}
+					</div>
+				</div>
+				{isConnected && onDisconnect && (
+					<button
+						type="button"
+						onClick={onDisconnect}
+						disabled={disconnectPending}
+						className="h-7 px-2 rounded-md border text-[11px] shrink-0 hover:bg-muted/40 disabled:opacity-50"
+					>
+						Disconnect
+					</button>
+				)}
+			</div>
+		</div>
+	);
+}
+
 function SessionCard({
 	session,
 	isSelected,
@@ -397,23 +515,23 @@ function SessionCard({
 					? "bg-amber-500/15 text-amber-300"
 					: "bg-muted text-muted-foreground";
 	const pillLabel = attachedToThisPane
-		? "Attached"
+		? "● Driving this pane"
 		: assignedElsewherePaneName
-			? "Reassign"
+			? `Driving: ${assignedElsewherePaneName}`
 			: session.mcpStatus === "ready"
-				? "Ready"
+				? "Ready · Free"
 				: session.mcpStatus === "missing"
 					? "Needs MCP"
 					: "Unknown";
 	const note = attachedToThisPane
-		? "This session is currently driving this browser pane."
+		? null
 		: assignedElsewherePaneName
-			? `${session.displayName} is currently controlling ${assignedElsewherePaneName}. Connecting here moves ownership.`
-			: session.mcpStatus === "ready"
-				? "Browser MCP is configured. Connect will be immediate."
-				: session.mcpStatus === "missing"
-					? "This session does not currently expose the required browser automation MCP entry."
-					: "Could not verify MCP status for this session.";
+			? `Connecting here will move ownership from "${assignedElsewherePaneName}".`
+			: session.mcpStatus === "missing"
+				? "This session does not currently expose the required browser automation MCP entry."
+				: session.mcpStatus === "unknown"
+					? "Could not verify MCP status for this session."
+					: null;
 
 	return (
 		<button
@@ -432,35 +550,33 @@ function SessionCard({
 						{session.displayName}
 					</div>
 					<div className="text-[11px] text-muted-foreground truncate">
-						{session.provider} · {session.branchOrContextLabel}
+						{session.provider} · {session.kind} · {session.branchOrContextLabel}{" "}
+						· Last active {session.lastActiveAt}
 					</div>
 				</div>
 				<span
 					className={cn(
-						"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+						"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider max-w-[55%] truncate",
 						pillClass,
 					)}
+					title={pillLabel}
 				>
 					{pillLabel}
 				</span>
 			</div>
-			<div className="mt-2 flex flex-wrap gap-1.5">
-				<Tag>{session.kind}</Tag>
-				<Tag>{session.branchOrContextLabel}</Tag>
-				<Tag>Last active {session.lastActiveAt}</Tag>
-			</div>
-			<div className="mt-2 text-[11px] leading-snug text-muted-foreground">
-				{note}
-			</div>
+			{note && (
+				<div
+					className={cn(
+						"mt-2 text-[11px] leading-snug",
+						assignedElsewherePaneName
+							? "text-amber-300/80"
+							: "text-muted-foreground",
+					)}
+				>
+					{note}
+				</div>
+			)}
 		</button>
-	);
-}
-
-function Tag({ children }: { children: React.ReactNode }) {
-	return (
-		<span className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-			{children}
-		</span>
 	);
 }
 

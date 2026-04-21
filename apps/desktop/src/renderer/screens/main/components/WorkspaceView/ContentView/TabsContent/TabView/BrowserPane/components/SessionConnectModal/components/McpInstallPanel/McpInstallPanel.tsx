@@ -2,7 +2,7 @@ import { Button } from "@superset/ui/button";
 import { Checkbox } from "@superset/ui/checkbox";
 import { toast } from "@superset/ui/sonner";
 import { useState } from "react";
-import { LuInfo } from "react-icons/lu";
+import { LuCheck, LuChevronDown, LuInfo } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { ServerCommand } from "renderer/stores/browser-automation";
 
@@ -32,6 +32,23 @@ export function McpInstallPanel({ serverCommand }: McpInstallPanelProps) {
 
 	const [claudeChecked, setClaudeChecked] = useState(true);
 	const [codexChecked, setCodexChecked] = useState(false);
+	const [expanded, setExpanded] = useState(false);
+
+	// Collapse to a single "all good" banner when every CLI-found runtime is
+	// already installed with a matching command. Showing the full install UI
+	// in that case reads as "something is wrong" even though nothing is.
+	const claudeReady =
+		!state?.claude.cliFound ||
+		(state.claude.installed && state.claude.matchesExpected);
+	const codexReady =
+		!state?.codex.cliFound ||
+		(state.codex.installed && state.codex.matchesExpected);
+	const anyCliFound = canInstallClaude || canInstallCodex;
+	const allInstalled = anyCliFound && claudeReady && codexReady;
+	const readyLabels = [
+		canInstallClaude ? "Claude Code" : null,
+		canInstallCodex ? "Codex" : null,
+	].filter((v): v is string => v !== null);
 
 	if (serverCommand && !serverCommand.available) {
 		return (
@@ -79,6 +96,34 @@ export function McpInstallPanel({ serverCommand }: McpInstallPanelProps) {
 			);
 		}
 	};
+
+	if (allInstalled && !expanded) {
+		return (
+			<div className="flex flex-col gap-3">
+				<div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 flex items-center gap-2">
+					<LuCheck className="size-4 text-emerald-300 shrink-0" />
+					<div className="flex-1 min-w-0">
+						<div className="text-[12px] font-medium text-emerald-300">
+							Browser MCP is installed — ready to connect
+						</div>
+						{readyLabels.length > 0 && (
+							<div className="text-[10px] text-muted-foreground">
+								{readyLabels.join(" · ")}
+							</div>
+						)}
+					</div>
+					<button
+						type="button"
+						onClick={() => setExpanded(true)}
+						className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+					>
+						Manage
+						<LuChevronDown className="size-3" />
+					</button>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="flex flex-col gap-3">

@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>Connect Browser Automation — current UI mock</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    :root {
+        --background: #0b0b0f;
+        --card: #121218;
+        --muted: #1a1a22;
+        --muted-foreground: #8a8aa0;
+        --foreground: #e7e7ee;
+        --border: #26262f;
+        --brand: #7c5cff;
+    }
+    html, body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .bg-background { background: var(--background); }
+    .bg-card { background: var(--card); }
+    .bg-card\/60 { background: color-mix(in srgb, var(--card) 60%, transparent); }
+    .bg-muted { background: var(--muted); }
+    .bg-muted\/20 { background: color-mix(in srgb, var(--muted) 20%, transparent); }
+    .bg-muted\/40 { background: color-mix(in srgb, var(--muted) 40%, transparent); }
+    .bg-muted\/60 { background: color-mix(in srgb, var(--muted) 60%, transparent); }
+    .text-foreground { color: var(--foreground); }
+    .text-muted-foreground { color: var(--muted-foreground); }
+    .text-muted-foreground\/70 { color: color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
+    .text-brand { color: var(--brand); }
+    .bg-brand { background: var(--brand); }
+    .bg-brand\/5 { background: color-mix(in srgb, var(--brand) 5%, transparent); }
+    .bg-brand\/10 { background: color-mix(in srgb, var(--brand) 10%, transparent); }
+    .bg-brand\/15 { background: color-mix(in srgb, var(--brand) 15%, transparent); }
+    .border-brand\/30 { border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+    .border-brand\/40 { border-color: color-mix(in srgb, var(--brand) 40%, transparent); }
+    .border-brand { border-color: var(--brand); }
+    .border-border, .border { border-color: var(--border); }
+    .text-amber-300 { color: #fcd34d; }
+    .bg-amber-500\/15 { background: rgba(245,158,11,0.15); }
+    .text-emerald-300 { color: #6ee7b7; }
+    .bg-emerald-500\/15 { background: rgba(16,185,129,0.15); }
+    .dialog {
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    button { cursor: pointer; }
+    .tag { display: inline-flex; align-items: center; border-radius: 9999px; padding: 2px 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .pill { display: inline-flex; align-items: center; border-radius: 9999px; padding: 2px 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+    hr.sep { border: none; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body class="p-8">
+<div class="max-w-[1760px] mx-auto space-y-12">
+
+    <!-- ===================================================================
+         1) Connect browser automation modal (Sessions tab) — current UI
+         =================================================================== -->
+    <section>
+        <h2 class="text-sm font-semibold mb-3 text-muted-foreground">① Connect browser automation — Sessions タブ (現状)</h2>
+        <div class="dialog bg-background overflow-hidden" style="max-width: min(1640px, 95vw);">
+            <!-- Header -->
+            <div class="px-5 py-4 border-b">
+                <div class="text-sm font-semibold">Connect browser automation</div>
+                <div class="text-xs text-muted-foreground mt-0.5">Choose which running LLM session should control this browser pane.</div>
+                <div class="mt-3 flex items-center gap-1 border-b -mb-4 pb-0">
+                    <button class="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 border-brand text-foreground">
+                        <span>☰</span> Sessions
+                    </button>
+                    <button class="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 border-transparent text-muted-foreground">
+                        <span>🛡</span> Permissions
+                    </button>
+                </div>
+            </div>
+
+            <!-- Body: 2-col grid -->
+            <div class="grid" style="grid-template-columns: minmax(320px,1fr) minmax(280px,0.9fr); min-height: min(570px,70vh); max-height: min(840px,85vh);">
+                <!-- Left: pane header + session list -->
+                <div class="overflow-y-auto p-4 border-r">
+                    <!-- Pane identity + All panes -->
+                    <div class="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2.5 mb-3">
+                        <div class="flex w-7 h-7 items-center justify-center rounded-md bg-brand/15 text-brand text-sm font-bold">◎</div>
+                        <div class="min-w-0">
+                            <div class="text-xs font-semibold truncate">Browser · GitHub</div>
+                            <div class="text-[11px] text-muted-foreground truncate">https://github.com/MocA-Love/superset/pull/371</div>
+                        </div>
+                        <button class="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground">
+                            <span>☰</span> All panes
+                        </button>
+                    </div>
+
+                    <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">Running sessions</div>
+
+                    <div class="flex flex-col gap-2">
+                        <!-- Selected + attached to this pane -->
+                        <button class="text-left rounded-xl border border-brand/40 bg-brand/10 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">claude · feature/browser-mcp-target-filter</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">Claude · feature/browser-mcp-target-filter</div>
+                                </div>
+                                <span class="pill bg-brand/15 text-brand shrink-0">Attached</span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                <span class="tag bg-muted/60 text-muted-foreground">terminal</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">feature/browser-mcp-target-filter</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">Last active 2m ago</span>
+                            </div>
+                            <div class="mt-2 text-[11px] leading-snug text-muted-foreground">This session is currently driving this browser pane.</div>
+                        </button>
+
+                        <!-- Ready, not attached -->
+                        <button class="text-left rounded-xl border bg-card hover:bg-muted/40 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">codex · main</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">Codex · main</div>
+                                </div>
+                                <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0">Ready</span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                <span class="tag bg-muted/60 text-muted-foreground">terminal</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">main</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">Last active 10m ago</span>
+                            </div>
+                            <div class="mt-2 text-[11px] leading-snug text-muted-foreground">Browser MCP is configured. Connect will be immediate.</div>
+                        </button>
+
+                        <!-- Reassign (bound to other pane) -->
+                        <button class="text-left rounded-xl border bg-card hover:bg-muted/40 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">claude · issue-377</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">Claude · issue-377</div>
+                                </div>
+                                <span class="pill bg-amber-500/15 text-amber-300 shrink-0">Reassign</span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                <span class="tag bg-muted/60 text-muted-foreground">terminal</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">issue-377</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">Last active 1h ago</span>
+                            </div>
+                            <div class="mt-2 text-[11px] leading-snug text-muted-foreground">claude · issue-377 is currently controlling Browser · Docs. Connecting here moves ownership.</div>
+                        </button>
+
+                        <!-- Needs MCP -->
+                        <button class="text-left rounded-xl border bg-card hover:bg-muted/40 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">todo-agent · default</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">TODO-Agent · default</div>
+                                </div>
+                                <span class="pill bg-amber-500/15 text-amber-300 shrink-0">Needs MCP</span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                <span class="tag bg-muted/60 text-muted-foreground">todo-agent</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">default</span>
+                                <span class="tag bg-muted/60 text-muted-foreground">Last active 5m ago</span>
+                            </div>
+                            <div class="mt-2 text-[11px] leading-snug text-muted-foreground">This session does not currently expose the required browser automation MCP entry.</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right: detail panel (Ready + attached → shows CDP endpoint) -->
+                <div class="overflow-y-auto p-4 bg-muted/20">
+                    <div class="flex flex-col gap-3">
+                        <div class="rounded-xl border p-3 bg-card/60">
+                            <div class="text-xs font-semibold">Session is attached to this pane</div>
+                            <div class="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                                Drive the pane from this session by pointing an external browser MCP at the CDP endpoint below.
+                            </div>
+                            <div class="mt-3 grid grid-cols-2 gap-2">
+                                <div class="rounded-md bg-muted/40 p-2">
+                                    <span class="block text-[10px] uppercase tracking-wider text-muted-foreground/70">Owner</span>
+                                    <strong class="block mt-0.5 text-[12px] font-medium">claude · feature/browser-mcp-target-filter / Claude</strong>
+                                </div>
+                                <div class="rounded-md bg-muted/40 p-2">
+                                    <span class="block text-[10px] uppercase tracking-wider text-muted-foreground/70">Binding mode</span>
+                                    <strong class="block mt-0.5 text-[12px] font-medium">Exclusive control</strong>
+                                </div>
+                                <div class="rounded-md bg-muted/40 p-2">
+                                    <span class="block text-[10px] uppercase tracking-wider text-muted-foreground/70">Pane</span>
+                                    <strong class="block mt-0.5 text-[12px] font-medium">Browser · GitHub</strong>
+                                </div>
+                                <div class="rounded-md bg-muted/40 p-2">
+                                    <span class="block text-[10px] uppercase tracking-wider text-muted-foreground/70">Expected</span>
+                                    <strong class="block mt-0.5 text-[12px] font-medium">Toolbar badge updates instantly</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CDP endpoint card (shown when attachedToThisPane) -->
+                        <div class="rounded-xl border p-3 bg-card/60">
+                            <div class="flex items-center justify-between">
+                                <div class="text-xs font-semibold">CDP endpoint</div>
+                                <span class="pill bg-emerald-500/15 text-emerald-300">Ready</span>
+                            </div>
+                            <div class="mt-2 text-[11px] text-muted-foreground">Point an external MCP / puppeteer at this URL.</div>
+                            <div class="mt-2 flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+                                <code class="text-[11px] truncate">ws://127.0.0.1:47891/devtools/browser/abc123-filtered</code>
+                                <button class="ml-auto shrink-0 text-[11px] text-brand">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-5 py-3 border-t flex items-center justify-between gap-2">
+                <div class="text-[11px] text-muted-foreground">Connecting binds this browser pane to the selected session only.</div>
+                <div class="flex items-center gap-2">
+                    <button class="h-8 px-3 rounded-md border text-xs">Disconnect claude · feature/browser-mcp-target-filter</button>
+                    <button class="h-8 px-3 rounded-md border text-xs">Cancel</button>
+                    <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Connect session</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================================================================
+         2) Connect browser automation — session has Needs MCP (shows install panel)
+         =================================================================== -->
+    <section>
+        <h2 class="text-sm font-semibold mb-3 text-muted-foreground">② Connect browser automation — 選択セッションが Needs MCP (現状 / McpInstallPanel)</h2>
+        <div class="dialog bg-background overflow-hidden" style="max-width: min(1640px, 95vw);">
+            <div class="px-5 py-4 border-b">
+                <div class="text-sm font-semibold">Connect browser automation</div>
+                <div class="text-xs text-muted-foreground mt-0.5">Choose which running LLM session should control this browser pane.</div>
+            </div>
+
+            <div class="grid" style="grid-template-columns: minmax(320px,1fr) minmax(280px,0.9fr); min-height: min(570px,70vh);">
+                <div class="overflow-y-auto p-4 border-r">
+                    <div class="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2.5 mb-3">
+                        <div class="flex w-7 h-7 items-center justify-center rounded-md bg-brand/15 text-brand text-sm font-bold">◎</div>
+                        <div class="min-w-0">
+                            <div class="text-xs font-semibold truncate">Browser · localhost</div>
+                            <div class="text-[11px] text-muted-foreground truncate">http://localhost:3000</div>
+                        </div>
+                        <button class="ml-auto inline-flex items-center gap-1 rounded-md border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground">☰ All panes</button>
+                    </div>
+                    <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-2">Running sessions</div>
+                    <button class="w-full text-left rounded-xl border border-brand/40 bg-brand/10 p-3 mb-2">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-[13px] font-semibold">todo-agent · default</div>
+                                <div class="text-[11px] text-muted-foreground">TODO-Agent · default</div>
+                            </div>
+                            <span class="pill bg-amber-500/15 text-amber-300">Needs MCP</span>
+                        </div>
+                        <div class="mt-2 text-[11px] text-muted-foreground">This session does not currently expose the required browser automation MCP entry.</div>
+                    </button>
+                </div>
+
+                <div class="overflow-y-auto p-4 bg-muted/20">
+                    <!-- McpInstallPanel -->
+                    <div class="rounded-xl border p-3 bg-card/60">
+                        <div class="text-xs font-semibold">Install Superset Browser MCP</div>
+                        <div class="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                            Pick which LLM runtime(s) should be able to drive the browser pane.
+                            Installing is a one-shot operation; after this you just bind panes
+                            from the Connect dialog. Already-installed runtimes are kept
+                            idempotent — re-installing corrects stale paths.
+                        </div>
+                        <div class="mt-3 flex flex-col gap-2">
+                            <div class="flex items-start gap-2 rounded-md border p-2">
+                                <input type="checkbox" checked class="mt-0.5" />
+                                <span class="flex flex-col gap-0.5">
+                                    <span class="text-xs font-medium">Claude Code</span>
+                                    <span class="text-[11px] text-muted-foreground">✓ installed and up to date</span>
+                                </span>
+                            </div>
+                            <div class="flex items-start gap-2 rounded-md border p-2">
+                                <input type="checkbox" class="mt-0.5" />
+                                <span class="flex flex-col gap-0.5">
+                                    <span class="text-xs font-medium">Codex</span>
+                                    <span class="text-[11px] text-muted-foreground">codex CLI found, not yet installed</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex gap-2">
+                            <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Install</button>
+                        </div>
+                        <div class="mt-3 text-[10px] text-muted-foreground">
+                            ⓘ Will register the command <code class="rounded bg-muted px-1">/Applications/Superset.app/Contents/Resources/app.asar.unpacked/resources/superset-browser-mcp</code>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-5 py-3 border-t flex items-center justify-between gap-2">
+                <div class="text-[11px] text-muted-foreground">Add the MCP entry first, then reopen or restart this session.</div>
+                <div class="flex items-center gap-2">
+                    <button class="h-8 px-3 rounded-md border text-xs">Cancel</button>
+                    <button class="h-8 px-3 rounded-md text-xs font-medium opacity-50" style="background: var(--brand); color: white;" disabled>Connect blocked</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================================================================
+         3) All panes (BrowserAutomationList) — current UI
+         =================================================================== -->
+    <section>
+        <h2 class="text-sm font-semibold mb-3 text-muted-foreground">③ All panes ボタン押下時 (BrowserAutomationList / 現状)</h2>
+        <div class="dialog bg-background overflow-hidden" style="max-width: 640px;">
+            <div class="px-5 py-4 border-b">
+                <div class="text-sm font-semibold">Browser Automation</div>
+                <div class="text-xs text-muted-foreground mt-0.5">All browser panes in this workspace and their bound sessions.</div>
+            </div>
+
+            <div class="p-4 grid grid-cols-3 gap-2 border-b">
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <div class="text-xl font-bold tabular-nums">4</div>
+                    <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">Browser panes</div>
+                </div>
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <div class="text-xl font-bold tabular-nums">2</div>
+                    <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">Connected</div>
+                </div>
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <div class="text-xl font-bold tabular-nums">1</div>
+                    <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">Needs setup</div>
+                </div>
+            </div>
+
+            <div class="max-h-[420px] overflow-y-auto p-3 flex flex-col gap-2">
+                <div class="rounded-xl border border-brand/30 bg-brand/5 p-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-xs font-semibold truncate">Browser · GitHub</div>
+                            <div class="text-[11px] text-muted-foreground truncate">https://github.com/MocA-Love/superset/pull/371</div>
+                        </div>
+                        <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0">Connected</span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-muted-foreground">claude · feature/browser-mcp-target-filter · Claude · MCP ready</div>
+                    <div class="mt-3 flex gap-2">
+                        <button class="h-8 px-3 rounded-md border text-xs">Focus</button>
+                        <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Change</button>
+                    </div>
+                </div>
+
+                <div class="rounded-xl border p-3 bg-card/60">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-xs font-semibold truncate">Browser · Docs</div>
+                            <div class="text-[11px] text-muted-foreground truncate">https://docs.superset.sh/</div>
+                        </div>
+                        <span class="pill bg-muted text-muted-foreground shrink-0">Unassigned</span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-muted-foreground">Pick any running LLM session</div>
+                    <div class="mt-3 flex gap-2">
+                        <button class="h-8 px-3 rounded-md border text-xs">Focus</button>
+                        <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Connect</button>
+                    </div>
+                </div>
+
+                <div class="rounded-xl border border-brand/30 bg-brand/5 p-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-xs font-semibold truncate">Browser · localhost</div>
+                            <div class="text-[11px] text-muted-foreground truncate">http://localhost:3000</div>
+                        </div>
+                        <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0">Connected</span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-muted-foreground">codex · main · Codex · MCP ready</div>
+                    <div class="mt-3 flex gap-2">
+                        <button class="h-8 px-3 rounded-md border text-xs">Focus</button>
+                        <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Change</button>
+                    </div>
+                </div>
+
+                <div class="rounded-xl border p-3 bg-card/60">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-xs font-semibold truncate">Browser · Jira</div>
+                            <div class="text-[11px] text-muted-foreground truncate">about:blank</div>
+                        </div>
+                        <span class="pill bg-muted text-muted-foreground shrink-0">Unassigned</span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-muted-foreground">Pick any running LLM session</div>
+                    <div class="mt-3 flex gap-2">
+                        <button class="h-8 px-3 rounded-md border text-xs">Focus</button>
+                        <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Connect</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================================================================
+         Pain point annotation (ユーザーの声)
+         =================================================================== -->
+    <section class="rounded-xl border p-4 bg-card/60">
+        <h2 class="text-sm font-semibold mb-2">ユーザーが感じている問題点</h2>
+        <ul class="text-xs text-muted-foreground space-y-1.5 list-disc ml-5">
+            <li><b>どれがどのタブに繋がっているかわかりづらい:</b> Session 側は「Attached / Reassign」で自 pane / 他 pane を示すが、右カラムの detail は 1 件ずつしか見えない。"All panes" を開くまで全体像が掴めない。</li>
+            <li><b>すでに紐づいているものがどれかわかりづらい:</b> pane header に現在 bound なセッション名が直接表示されていない (<code>◎</code> + pane 名 + URL のみ)。Session カードの pill で初めて分かる。</li>
+            <li><b>MCP 追加済みなのに毎回インストール用スニペット/パネルが見える:</b> Needs MCP セッションを選ぶたびに <code>McpInstallPanel</code> が右カラム全域を占有。全 runtime が ✓ 済みでも "Install Superset Browser MCP" の見出しが残り、未設定かと勘違いする。</li>
+        </ul>
+    </section>
+
+    <hr class="sep my-8" />
+
+    <div class="rounded-xl p-4" style="background: linear-gradient(180deg, rgba(124,92,255,0.08), transparent);">
+        <h1 class="text-base font-semibold">改善案 (Proposed)</h1>
+        <p class="text-xs text-muted-foreground mt-1">上の3つの Pain Point を解消する方針。元の情報構造はできるだけ保ちつつ、"いま何が繋がっているか" をモーダルを開いた瞬間に一目で伝える。</p>
+        <ul class="text-xs text-muted-foreground mt-3 space-y-1 list-disc ml-5">
+            <li><b>Pain 1/2 を解消:</b> 左ペイン上部に「この pane の現在の binding」を専用カードで常時固定表示 + 全 session カードに "→ どの pane を駆動しているか" を明記。"All panes" のミニサマリもヘッダー直下に inline 展開 (開かずに全 pane の状態が見える)。</li>
+            <li><b>Pain 3 を解消:</b> MCP が「全 runtime ✓ 済み」の場合は右カラムをグリーンの 1 行バナー ("Browser MCP is installed — ready to connect") に畳む。"Manage installations" リンクを添えて必要時だけ詳細展開。未インストール runtime がある場合のみ現状の Install パネルを表示。</li>
+            <li><b>ついでの改善:</b> Session カードの pill に"pane 名"を添える (例: "Driving: Browser · Docs")。detail 右カラムは "Switch / Disconnect / Copy CDP" の3アクションに整理し情報密度を下げる。</li>
+        </ul>
+    </div>
+
+    <!-- ===================================================================
+         A) Improved Connect browser automation — Sessions tab
+         =================================================================== -->
+    <section>
+        <h2 class="text-sm font-semibold mb-3 text-muted-foreground">④ 改善案: Connect browser automation — Sessions タブ</h2>
+        <div class="dialog bg-background overflow-hidden" style="max-width: min(1640px, 95vw);">
+            <!-- Header -->
+            <div class="px-5 py-4 border-b">
+                <div class="text-sm font-semibold">Connect browser automation</div>
+                <div class="text-xs text-muted-foreground mt-0.5">Choose which running LLM session should control this browser pane.</div>
+                <div class="mt-3 flex items-center gap-1 border-b -mb-4 pb-0">
+                    <button class="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 border-brand text-foreground">☰ Sessions</button>
+                    <button class="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 border-transparent text-muted-foreground">🛡 Permissions</button>
+                </div>
+            </div>
+
+            <!-- NEW: workspace-wide binding summary bar (inline "All panes") -->
+            <div class="px-5 py-2.5 border-b flex items-center gap-3 text-[11px] bg-muted/20">
+                <span class="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold">Workspace bindings</span>
+                <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>2 connected</span>
+                <span class="flex items-center gap-1.5 text-muted-foreground"><span class="w-1.5 h-1.5 rounded-full bg-muted-foreground/50"></span>2 unassigned</span>
+                <span class="flex items-center gap-1.5 text-amber-300"><span class="w-1.5 h-1.5 rounded-full bg-amber-300"></span>1 needs setup</span>
+                <button class="ml-auto text-brand hover:underline">Open all panes view →</button>
+            </div>
+
+            <!-- Body -->
+            <div class="grid" style="grid-template-columns: minmax(360px,1fr) minmax(280px,0.9fr); min-height: min(570px,70vh); max-height: min(840px,85vh);">
+                <!-- Left -->
+                <div class="overflow-y-auto p-4 border-r">
+                    <!-- Pane identity now foregrounds the CURRENT binding -->
+                    <div class="rounded-xl border border-brand/30 bg-brand/5 p-3 mb-3">
+                        <div class="flex items-start gap-3">
+                            <div class="flex w-9 h-9 items-center justify-center rounded-lg bg-brand/15 text-brand text-base font-bold shrink-0">◎</div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2">
+                                    <div class="text-[13px] font-semibold truncate">Browser · GitHub</div>
+                                    <span class="pill bg-emerald-500/15 text-emerald-300">Connected</span>
+                                </div>
+                                <div class="text-[11px] text-muted-foreground truncate">https://github.com/MocA-Love/superset/pull/371</div>
+                                <div class="mt-1.5 text-[11px] flex items-center gap-1.5">
+                                    <span class="text-muted-foreground">Driven by:</span>
+                                    <span class="font-medium">claude · feature/browser-mcp-target-filter</span>
+                                    <span class="text-muted-foreground">(Claude)</span>
+                                </div>
+                            </div>
+                            <button class="h-7 px-2 rounded-md border text-[11px] shrink-0">Disconnect</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between px-1 mb-2">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Running sessions (4)</div>
+                        <div class="flex items-center gap-1 text-[10px]">
+                            <button class="px-1.5 py-0.5 rounded bg-muted text-foreground">All</button>
+                            <button class="px-1.5 py-0.5 rounded text-muted-foreground">Ready</button>
+                            <button class="px-1.5 py-0.5 rounded text-muted-foreground">Unbound</button>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <!-- Attached to THIS pane -->
+                        <button class="text-left rounded-xl border border-brand/40 bg-brand/10 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">claude · feature/browser-mcp-target-filter</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">Claude · terminal · Last active 2m ago</div>
+                                </div>
+                                <span class="pill bg-brand/15 text-brand shrink-0">● Driving this pane</span>
+                            </div>
+                        </button>
+
+                        <!-- Ready + free -->
+                        <button class="text-left rounded-xl border bg-card hover:bg-muted/40 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">codex · main</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">Codex · terminal · Last active 10m ago</div>
+                                </div>
+                                <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0">Ready · Free</span>
+                            </div>
+                        </button>
+
+                        <!-- Reassign -->
+                        <button class="text-left rounded-xl border bg-card hover:bg-muted/40 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">claude · issue-377</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">Claude · terminal · Last active 1h ago</div>
+                                </div>
+                                <span class="pill bg-amber-500/15 text-amber-300 shrink-0">Driving: Browser · Docs</span>
+                            </div>
+                            <div class="mt-1.5 text-[11px] leading-snug text-amber-300/80">Connecting here will move ownership from "Browser · Docs".</div>
+                        </button>
+
+                        <!-- Needs MCP -->
+                        <button class="text-left rounded-xl border bg-card hover:bg-muted/40 p-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[13px] font-semibold truncate">todo-agent · default</div>
+                                    <div class="text-[11px] text-muted-foreground truncate">TODO-Agent · Last active 5m ago</div>
+                                </div>
+                                <span class="pill bg-amber-500/15 text-amber-300 shrink-0">Needs MCP</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right -->
+                <div class="overflow-y-auto p-4 bg-muted/20">
+                    <!-- NEW: collapsed MCP status banner when everything is installed -->
+                    <div class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 mb-3 flex items-center gap-2">
+                        <span class="text-emerald-300 text-sm">✓</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[12px] font-medium text-emerald-300">Browser MCP is installed — ready to connect</div>
+                            <div class="text-[10px] text-muted-foreground">Claude Code · Codex</div>
+                        </div>
+                        <button class="text-[11px] text-muted-foreground hover:text-foreground">Manage ▾</button>
+                    </div>
+
+                    <div class="flex flex-col gap-3">
+                        <div class="rounded-xl border p-3 bg-card/60">
+                            <div class="flex items-center justify-between">
+                                <div class="text-xs font-semibold">claude · feature/browser-mcp-target-filter</div>
+                                <span class="pill bg-brand/15 text-brand">Driving this pane</span>
+                            </div>
+                            <div class="mt-1 text-[11px] text-muted-foreground">Already bound. Use the CDP endpoint below for external tools.</div>
+                            <div class="mt-3 flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+                                <code class="text-[11px] truncate">ws://127.0.0.1:47891/devtools/browser/abc123-filtered</code>
+                                <button class="ml-auto shrink-0 text-[11px] text-brand">Copy</button>
+                            </div>
+                            <div class="mt-3 flex gap-2">
+                                <button class="h-7 px-2 rounded-md border text-[11px]">Disconnect</button>
+                                <button class="h-7 px-2 rounded-md border text-[11px]">Move to another pane…</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-5 py-3 border-t flex items-center justify-between gap-2">
+                <div class="text-[11px] text-muted-foreground">This session is already driving this pane. Pick a different one to reassign.</div>
+                <div class="flex items-center gap-2">
+                    <button class="h-8 px-3 rounded-md border text-xs">Close</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================================================================
+         B) Improved Connect — Needs MCP (full install panel only when needed)
+         =================================================================== -->
+    <section>
+        <h2 class="text-sm font-semibold mb-3 text-muted-foreground">⑤ 改善案: Needs MCP セッション選択時 (全 runtime インストール済みならバナー、未済み runtime のみ展開)</h2>
+        <div class="dialog bg-background overflow-hidden" style="max-width: min(1640px, 95vw);">
+            <div class="px-5 py-4 border-b">
+                <div class="text-sm font-semibold">Connect browser automation</div>
+                <div class="text-xs text-muted-foreground mt-0.5">Choose which running LLM session should control this browser pane.</div>
+            </div>
+            <div class="grid" style="grid-template-columns: minmax(360px,1fr) minmax(280px,0.9fr); min-height: min(460px,60vh);">
+                <div class="overflow-y-auto p-4 border-r">
+                    <div class="rounded-xl border bg-muted/40 p-3 mb-3">
+                        <div class="text-[13px] font-semibold">Browser · localhost</div>
+                        <div class="text-[11px] text-muted-foreground truncate">http://localhost:3000</div>
+                        <div class="mt-1.5 text-[11px] text-muted-foreground">No session is driving this pane yet.</div>
+                    </div>
+                    <button class="w-full text-left rounded-xl border border-brand/40 bg-brand/10 p-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-[13px] font-semibold">todo-agent · default</div>
+                                <div class="text-[11px] text-muted-foreground">TODO-Agent · Last active 5m ago</div>
+                            </div>
+                            <span class="pill bg-amber-500/15 text-amber-300">Needs MCP</span>
+                        </div>
+                    </button>
+                </div>
+                <div class="overflow-y-auto p-4 bg-muted/20">
+                    <!-- Scoped: only TODO-Agent is missing; Claude/Codex banner stays collapsed -->
+                    <div class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 mb-3 flex items-center gap-2">
+                        <span class="text-emerald-300 text-sm">✓</span>
+                        <div class="flex-1 text-[12px] font-medium text-emerald-300">Claude Code / Codex: MCP ready</div>
+                        <button class="text-[11px] text-muted-foreground">Manage ▾</button>
+                    </div>
+
+                    <div class="rounded-xl border border-amber-500/30 p-3 bg-amber-500/5">
+                        <div class="flex items-center gap-2">
+                            <span class="pill bg-amber-500/15 text-amber-300">1 missing</span>
+                            <div class="text-xs font-semibold">TODO-Agent is missing the Browser MCP entry</div>
+                        </div>
+                        <div class="mt-1 text-[11px] text-muted-foreground leading-relaxed">This session type does not auto-install. Register it once, then restart the agent.</div>
+                        <div class="mt-3 flex gap-2">
+                            <button class="h-8 px-3 rounded-md text-xs font-medium" style="background: var(--brand); color: white;">Install for TODO-Agent</button>
+                            <button class="h-8 px-3 rounded-md border text-xs">Copy snippet</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-3 border-t flex items-center justify-between gap-2">
+                <div class="text-[11px] text-muted-foreground">Install the MCP entry, then reopen this session.</div>
+                <div class="flex items-center gap-2">
+                    <button class="h-8 px-3 rounded-md border text-xs">Cancel</button>
+                    <button class="h-8 px-3 rounded-md text-xs font-medium opacity-50" style="background: var(--brand); color: white;" disabled>Connect blocked</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================================================================
+         C) Improved All panes (BrowserAutomationList)
+         =================================================================== -->
+    <section>
+        <h2 class="text-sm font-semibold mb-3 text-muted-foreground">⑥ 改善案: All panes</h2>
+        <div class="dialog bg-background overflow-hidden" style="max-width: 720px;">
+            <div class="px-5 py-4 border-b">
+                <div class="text-sm font-semibold">Browser Automation — workspace overview</div>
+                <div class="text-xs text-muted-foreground mt-0.5">Every browser pane and which LLM session is driving it.</div>
+            </div>
+
+            <!-- Same 3 metrics but tighter + one-row status bar -->
+            <div class="px-4 py-3 border-b flex items-center gap-4 text-[11px]">
+                <span><b class="text-base tabular-nums">4</b> panes</span>
+                <span class="text-emerald-300"><b class="text-base tabular-nums">2</b> connected</span>
+                <span class="text-muted-foreground"><b class="text-base tabular-nums">2</b> unassigned</span>
+                <span class="text-amber-300"><b class="text-base tabular-nums">1</b> needs setup</span>
+                <button class="ml-auto text-[11px] px-2 py-1 rounded-md border">Install MCP…</button>
+            </div>
+
+            <!-- Table-ish row layout so pane ↔ session is obvious at a glance -->
+            <div class="max-h-[460px] overflow-y-auto">
+                <!-- Row: connected -->
+                <div class="flex items-center gap-3 px-4 py-3 border-b hover:bg-muted/20">
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-semibold truncate">Browser · GitHub</div>
+                        <div class="text-[11px] text-muted-foreground truncate">https://github.com/MocA-Love/superset/pull/371</div>
+                    </div>
+                    <div class="text-[11px] text-muted-foreground shrink-0">←</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-medium truncate">claude · feature/browser-mcp-target-filter</div>
+                        <div class="text-[10px] text-muted-foreground">Claude · MCP ready</div>
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                        <button class="h-7 px-2 rounded-md border text-[11px]">Focus</button>
+                        <button class="h-7 px-2 rounded-md border text-[11px]">Change</button>
+                        <button class="h-7 px-2 rounded-md border text-[11px] text-muted-foreground">⋯</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 px-4 py-3 border-b hover:bg-muted/20">
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-semibold truncate">Browser · localhost</div>
+                        <div class="text-[11px] text-muted-foreground truncate">http://localhost:3000</div>
+                    </div>
+                    <div class="text-[11px] text-muted-foreground shrink-0">←</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-medium truncate">codex · main</div>
+                        <div class="text-[10px] text-muted-foreground">Codex · MCP ready</div>
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                        <button class="h-7 px-2 rounded-md border text-[11px]">Focus</button>
+                        <button class="h-7 px-2 rounded-md border text-[11px]">Change</button>
+                        <button class="h-7 px-2 rounded-md border text-[11px] text-muted-foreground">⋯</button>
+                    </div>
+                </div>
+
+                <!-- Row: unassigned -->
+                <div class="flex items-center gap-3 px-4 py-3 border-b hover:bg-muted/20">
+                    <div class="w-2 h-2 rounded-full bg-muted-foreground/40 shrink-0"></div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-semibold truncate">Browser · Docs</div>
+                        <div class="text-[11px] text-muted-foreground truncate">https://docs.superset.sh/</div>
+                    </div>
+                    <div class="text-[11px] text-muted-foreground shrink-0">—</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[11px] text-muted-foreground italic">Unassigned — pick any running LLM session</div>
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                        <button class="h-7 px-2 rounded-md border text-[11px]">Focus</button>
+                        <button class="h-7 px-2 rounded-md text-[11px] font-medium" style="background: var(--brand); color: white;">Connect</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 px-4 py-3 hover:bg-muted/20">
+                    <div class="w-2 h-2 rounded-full bg-muted-foreground/40 shrink-0"></div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-semibold truncate">Browser · Jira</div>
+                        <div class="text-[11px] text-muted-foreground truncate">about:blank</div>
+                    </div>
+                    <div class="text-[11px] text-muted-foreground shrink-0">—</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[11px] text-muted-foreground italic">Unassigned</div>
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                        <button class="h-7 px-2 rounded-md border text-[11px]">Focus</button>
+                        <button class="h-7 px-2 rounded-md text-[11px] font-medium" style="background: var(--brand); color: white;">Connect</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-xl border p-4 bg-card/60">
+        <h2 class="text-sm font-semibold mb-2">改善ポイントまとめ (現状 ⇄ 改善後)</h2>
+        <div class="grid grid-cols-2 gap-4 text-xs">
+            <div>
+                <div class="font-semibold text-muted-foreground mb-1">Pain 1/2: 「どれがどのタブに繋がっているか」</div>
+                <ul class="list-disc ml-4 space-y-1 text-muted-foreground">
+                    <li>pane header を "Driven by: claude · …" 明示表示に変更 + Connected pill</li>
+                    <li>Reassign カードに "Driving: Browser · Docs" を pill で同居</li>
+                    <li>ヘッダー直下に workspace 全体の bindings サマリーバーを常駐 (2 connected / 2 unassigned / 1 needs setup)</li>
+                </ul>
+            </div>
+            <div>
+                <div class="font-semibold text-muted-foreground mb-1">Pain 3: 「MCP 追加済みなのに毎回スニペット」</div>
+                <ul class="list-disc ml-4 space-y-1 text-muted-foreground">
+                    <li>全 runtime ✓ なら 1 行のグリーンバナーに折り畳み</li>
+                    <li>"Manage ▾" で従来の Install パネルに展開可能</li>
+                    <li>欠けている runtime がある場合のみ、その runtime 名入りの amber パネルを表示</li>
+                </ul>
+            </div>
+            <div>
+                <div class="font-semibold text-muted-foreground mb-1">All panes の可読性</div>
+                <ul class="list-disc ml-4 space-y-1 text-muted-foreground">
+                    <li>カード羅列 → テーブル風の 1 行レイアウト (pane ← session を矢印で示す)</li>
+                    <li>ステータスドット (emerald / muted / amber) で一目判別</li>
+                </ul>
+            </div>
+            <div>
+                <div class="font-semibold text-muted-foreground mb-1">情報密度の最適化</div>
+                <ul class="list-disc ml-4 space-y-1 text-muted-foreground">
+                    <li>Session カードの 3 Tag 行 (kind / branch / last active) を sub-line 1 行に統合</li>
+                    <li>右カラム detail は Copy CDP / Disconnect / Move to another pane の3アクションに絞る</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+</div>
+</body>
+</html>
