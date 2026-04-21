@@ -920,6 +920,8 @@ export function WorkspacePage({
 								)
 							: undefined
 					}
+					includeIgnored={commandPalette.includeIgnored}
+					onToggleIncludeIgnored={commandPalette.toggleIncludeIgnored}
 				/>
 				<UnsavedChangesDialog
 					open={pendingTabClose !== null}

@@ -11,6 +11,7 @@ interface FileExplorerState {
 	sortBy: SortBy;
 	sortDirection: SortDirection;
 	showFileTooltips: boolean;
+	includeIgnored: boolean;
 	toggleFolder: (worktreePath: string, folderId: string) => void;
 	setExpandedFolders: (worktreePath: string, folderIds: string[]) => void;
 	expandFolder: (worktreePath: string, folderId: string) => void;
@@ -24,6 +25,7 @@ interface FileExplorerState {
 	setSortBy: (sortBy: SortBy) => void;
 	setSortDirection: (direction: SortDirection) => void;
 	toggleFileTooltips: () => void;
+	toggleIncludeIgnored: () => void;
 }
 
 export const useFileExplorerStore = create<FileExplorerState>()(
@@ -36,6 +38,7 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 				sortBy: "name",
 				sortDirection: "asc",
 				showFileTooltips: false,
+				includeIgnored: false,
 
 				toggleFolder: (worktreePath, folderId) => {
 					const current = get().expandedFolders[worktreePath] || [];
@@ -150,6 +153,10 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 				toggleFileTooltips: () => {
 					set({ showFileTooltips: !get().showFileTooltips });
 				},
+
+				toggleIncludeIgnored: () => {
+					set({ includeIgnored: !get().includeIgnored });
+				},
 			}),
 			{
 				name: "file-explorer-store",
@@ -158,6 +165,7 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 					sortDirection: state.sortDirection,
 					expandedFolders: state.expandedFolders,
 					showFileTooltips: state.showFileTooltips,
+					includeIgnored: state.includeIgnored,
 				}),
 			},
 		),

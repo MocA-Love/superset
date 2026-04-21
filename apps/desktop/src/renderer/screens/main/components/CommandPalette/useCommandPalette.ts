@@ -5,6 +5,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { useFileSearch } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/hooks/useFileSearch/useFileSearch";
+import { useFileExplorerStore } from "renderer/stores/file-explorer";
 import {
 	type SearchScope,
 	useSearchDialogStore,
@@ -155,6 +156,11 @@ export function useCommandPalette({
 		[recentFilePathsKey],
 	);
 
+	const includeIgnored = useFileExplorerStore((s) => s.includeIgnored);
+	const toggleIncludeIgnored = useFileExplorerStore(
+		(s) => s.toggleIncludeIgnored,
+	);
+
 	// Single-workspace search (existing behavior)
 	const singleSearch = useFileSearch({
 		workspaceId: open && scope === "workspace" ? workspaceId : undefined,
@@ -165,6 +171,7 @@ export function useCommandPalette({
 		openFilePaths: openFilePathsList,
 		recentFilePaths: recentFilePathsList,
 		scopeId: "quick-open",
+		includeIgnored,
 	});
 
 	// Multi-workspace search. Note that MRU/open boosts aren't forwarded here
@@ -181,6 +188,7 @@ export function useCommandPalette({
 						excludePattern,
 						limit: SEARCH_LIMIT,
 						scopeId: "quick-open-global",
+						includeHidden: includeIgnored,
 					}),
 				)
 			: [],
@@ -306,5 +314,7 @@ export function useCommandPalette({
 		isFetching,
 		scope,
 		setScope,
+		includeIgnored,
+		toggleIncludeIgnored,
 	};
 }

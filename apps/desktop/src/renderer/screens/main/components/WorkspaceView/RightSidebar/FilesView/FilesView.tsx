@@ -16,6 +16,7 @@ import { LuFile, LuFolder } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
+import { useFileExplorerStore } from "renderer/stores/file-explorer";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import {
 	retargetAbsolutePath,
@@ -407,6 +408,7 @@ export function FilesView() {
 			},
 		});
 
+	const includeIgnored = useFileExplorerStore((s) => s.includeIgnored);
 	const {
 		searchResults,
 		isFetching: isSearchFetching,
@@ -414,6 +416,7 @@ export function FilesView() {
 	} = useFileSearch({
 		workspaceId,
 		searchTerm,
+		includeIgnored,
 	});
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
