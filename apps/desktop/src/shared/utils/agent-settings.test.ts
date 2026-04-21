@@ -68,6 +68,20 @@ describe("resolveAgentConfigs", () => {
 		});
 	});
 
+	test("includes kimi as a built-in terminal config", () => {
+		const kimi = resolveAgentConfigs({}).find((preset) => preset.id === "kimi");
+
+		expect(kimi).toMatchObject({
+			id: "kimi",
+			kind: "terminal",
+			label: "Kimi",
+			command: "kimi --yolo",
+			promptCommand: "kimi --prompt",
+			promptCommandSuffix: "--yolo",
+			enabled: true,
+		});
+	});
+
 	test("uses amp as the built-in prompt command for Amp", () => {
 		const amp = resolveAgentConfigs({}).find((preset) => preset.id === "amp");
 
