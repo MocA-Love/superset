@@ -273,7 +273,13 @@ export const POST_COMMIT_COMMANDS = ["none", "push", "sync"] as const;
 
 export type PostCommitCommand = (typeof POST_COMMIT_COMMANDS)[number];
 
-export const SITE_PERMISSION_KINDS = ["microphone", "camera"] as const;
+export const SITE_PERMISSION_KINDS = [
+	"microphone",
+	"camera",
+	"geolocation",
+	"notifications",
+	"clipboard-read",
+] as const;
 
 export type SitePermissionKind = (typeof SITE_PERMISSION_KINDS)[number];
 

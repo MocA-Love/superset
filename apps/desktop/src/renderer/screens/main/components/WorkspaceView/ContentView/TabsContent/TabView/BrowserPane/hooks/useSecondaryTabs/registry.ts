@@ -271,7 +271,19 @@ class SecondaryTabRegistry {
 			handleFavicon as EventListener,
 		);
 
+		// Fires when the guest page attempts to close itself OR when
+		// Chromium destroys the underlying webContents (e.g. MCP sends
+		// Target.closeTarget for this tab's targetId). Without this
+		// listener the tab's webview element would stay dead in the
+		// DOM and the registry would still list it as alive, while the
+		// CDP filter has already pruned its targetId.
+		const handleClose = () => {
+			this.closeTab(paneId, tabId);
+		};
+		webview.addEventListener("close", handleClose);
+
 		entry.detachHandlers = () => {
+			webview.removeEventListener("close", handleClose);
 			webview.removeEventListener("dom-ready", handleDomReady);
 			webview.removeEventListener("did-start-loading", handleDidStartLoading);
 			webview.removeEventListener("did-stop-loading", handleDidStopLoading);

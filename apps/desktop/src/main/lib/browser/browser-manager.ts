@@ -177,9 +177,15 @@ class BrowserManager extends EventEmitter {
 					};
 				}
 
-				// Regular target="_blank" links — open as a new browser tab
-				this.emit(`new-window:${paneId}`, url);
-				this.emit("new-window", { paneId, url });
+				// Regular target="_blank" / window.open() — open as a
+				// new secondary tab in the same pane so it stays within
+				// the MCP's bound scope (the pane's CDP session sees it
+				// via paneTabTargetIds and the user can drive it with
+				// the same binding). This matches Chrome's default
+				// target="_blank" UX (new tab, not new window). The old
+				// split-pane / workspace-tab behaviours are still
+				// reachable via the "Open in Split" context menu.
+				this.emit(`create-tab-requested:${paneId}`, { url });
 				return { action: "deny" as const };
 			});
 			this.setupPopupWindowHandler(paneId, wc);

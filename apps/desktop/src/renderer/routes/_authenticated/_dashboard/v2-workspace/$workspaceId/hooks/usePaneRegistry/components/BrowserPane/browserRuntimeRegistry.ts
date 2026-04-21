@@ -407,7 +407,15 @@ class BrowserRuntimeRegistryImpl {
 			handleDidFailLoad as EventListener,
 		);
 
+		// Close tab when the guest page closes itself or Chromium
+		// destroys the webContents (MCP Target.closeTarget etc.).
+		const handleClose = () => {
+			this.closeTab(paneId, tabId);
+		};
+		webview.addEventListener("close", handleClose);
+
 		entry.detachHandlers = () => {
+			webview.removeEventListener("close", handleClose);
 			webview.removeEventListener("dom-ready", handleDomReady);
 			webview.removeEventListener("did-start-loading", handleDidStartLoading);
 			webview.removeEventListener("did-stop-loading", handleDidStopLoading);

@@ -53,6 +53,20 @@ function mediaTypeToPermissionKind(
 	return null;
 }
 
+/**
+ * Electron's `permission` string for non-media requests. We route a
+ * subset through the same user-consent flow so sites don't silently
+ * get (or fail to get) geolocation / notifications / clipboard-read.
+ */
+function electronPermissionToKind(
+	permission: string,
+): SitePermissionKind | null {
+	if (permission === "geolocation") return "geolocation";
+	if (permission === "notifications") return "notifications";
+	if (permission === "clipboard-read") return "clipboard-read";
+	return null;
+}
+
 class BrowserSitePermissionManager extends EventEmitter {
 	private initialized = false;
 	private lastRequestNotificationAt = new Map<string, number>();
@@ -68,45 +82,72 @@ class BrowserSitePermissionManager extends EventEmitter {
 
 		browserSession.setPermissionCheckHandler(
 			(webContents, permission, requestingOrigin, details) => {
-				if (permission !== "media") {
-					return false;
-				}
-
 				const origin =
 					normalizeOrigin(
 						(details as { securityOrigin?: string }).securityOrigin ?? "",
 					) ??
 					normalizeOrigin(requestingOrigin) ??
 					normalizeOrigin(webContents?.getURL() ?? "");
+				if (!origin) return false;
 
-				if (!origin) {
-					return false;
+				if (permission === "media") {
+					const permissionKind = mediaTypeToPermissionKind(
+						details.mediaType ?? "unknown",
+					);
+					if (!permissionKind) return false;
+					return this.getPermission(origin, permissionKind) === "allow";
 				}
-
-				const permissionKind = mediaTypeToPermissionKind(
-					details.mediaType ?? "unknown",
-				);
-				if (!permissionKind) {
-					return false;
-				}
-
-				return this.getPermission(origin, permissionKind) === "allow";
+				const kind = electronPermissionToKind(permission);
+				if (!kind) return false;
+				return this.getPermission(origin, kind) === "allow";
 			},
 		);
 
 		browserSession.setPermissionRequestHandler(
 			(webContents, permission, callback, details) => {
-				if (permission !== "media") {
-					callback(true);
-					return;
-				}
-
 				const origin =
 					normalizeOrigin(
 						(details as { securityOrigin?: string }).securityOrigin ?? "",
 					) ??
 					normalizeOrigin(details.requestingUrl ?? "") ??
 					normalizeOrigin(webContents.getURL());
+
+				if (permission !== "media") {
+					// Route non-media permissions (geolocation /
+					// notifications / clipboard-read) through the same
+					// user-consent flow as media. Permissions we don't
+					// recognise keep the previous permissive default so
+					// we don't regress sites that depend on them (e.g.
+					// midi, background-sync).
+					const kind = electronPermissionToKind(permission);
+					if (!kind) {
+						callback(true);
+						return;
+					}
+					if (!origin) {
+						callback(false);
+						return;
+					}
+					const stored = this.getPermission(origin, kind);
+					if (stored === "allow") {
+						callback(true);
+						return;
+					}
+					if (stored === "block") {
+						callback(false);
+						return;
+					}
+					const paneId = browserManager.getPaneIdForWebContents(webContents.id);
+					if (paneId) {
+						this.emitPermissionRequested({
+							paneId,
+							origin,
+							permissions: [kind],
+						});
+					}
+					callback(false);
+					return;
+				}
 
 				if (!origin) {
 					callback(false);
