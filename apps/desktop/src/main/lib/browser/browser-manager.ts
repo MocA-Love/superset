@@ -944,8 +944,7 @@ class BrowserManager extends EventEmitter {
 			// to the last pane that registered a webContents on this
 			// session. This replaces the old duplicate-handler scheme.
 			const paneId =
-				(webContents &&
-					this.getPaneIdForWebContents(webContents.id)) ||
+				(webContents && this.getPaneIdForWebContents(webContents.id)) ||
 				this.lastDownloadInitiator;
 			if (!paneId) return;
 			this.emit(`download-started:${paneId}`, {
