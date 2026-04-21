@@ -228,6 +228,17 @@ export function scheduleWrite(paneId: string, data: string): void {
 	const entry = cache.get(paneId);
 	if (!entry) return;
 	entry.rafWriteBuffer += data;
+	// Flush immediately if buffer exceeds 1MB — guards against unbounded growth
+	// when Electron's backgroundThrottling stops rAF (minimized/backgrounded window).
+	if (entry.rafWriteBuffer.length > 1_048_576) {
+		if (entry.rafWriteId !== null) {
+			cancelAnimationFrame(entry.rafWriteId);
+			entry.rafWriteId = null;
+		}
+		entry.xterm.write(entry.rafWriteBuffer);
+		entry.rafWriteBuffer = "";
+		return;
+	}
 	if (entry.rafWriteId === null) {
 		entry.rafWriteId = requestAnimationFrame(() => {
 			const e = cache.get(paneId);
