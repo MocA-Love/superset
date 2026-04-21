@@ -99,6 +99,8 @@ class BrowserManager extends EventEmitter {
 	 * leaves the map empty and the filter runs in single-target mode.
 	 */
 	private paneTabTargetIds = new Map<string, Set<string>>();
+	private paneTabTargetIdByKey = new Map<string, string>();
+	private paneTabWebContents = new Map<string, number>();
 	private paneIdMarkerListeners = new Map<string, () => void>();
 	private consoleLogs = new Map<string, ConsoleEntry[]>();
 	private consoleListeners = new Map<string, () => void>();
@@ -340,6 +342,61 @@ class BrowserManager extends EventEmitter {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Register a secondary tab webContents for a pane. Captures its
+	 * CDP targetId and adds it to the pane's tab target set so the
+	 * gateway exposes it via Target.getTargets / filter.
+	 */
+	async registerTab(
+		paneId: string,
+		tabId: string,
+		webContentsId: number,
+	): Promise<void> {
+		const wc = webContents.fromId(webContentsId);
+		if (!wc || wc.isDestroyed()) return;
+		this.paneTabWebContents.set(this.tabKey(paneId, tabId), webContentsId);
+		let attached = false;
+		try {
+			if (!wc.debugger.isAttached()) {
+				wc.debugger.attach("1.3");
+				attached = true;
+			}
+			const info = (await wc.debugger.sendCommand("Target.getTargetInfo")) as {
+				targetInfo?: { targetId?: string };
+			};
+			const targetId = info?.targetInfo?.targetId;
+			if (typeof targetId === "string" && targetId.length > 0) {
+				this.paneTabTargetIdByKey.set(this.tabKey(paneId, tabId), targetId);
+				this.addPaneTabTarget(paneId, targetId);
+			}
+		} catch (error) {
+			console.warn(
+				`[browser-manager] failed to capture tab CDP targetId for pane ${paneId} tab ${tabId}:`,
+				error,
+			);
+		} finally {
+			if (attached) {
+				try {
+					wc.debugger.detach();
+				} catch {
+					/* ignore */
+				}
+			}
+		}
+	}
+
+	unregisterTab(paneId: string, tabId: string): void {
+		const key = this.tabKey(paneId, tabId);
+		const targetId = this.paneTabTargetIdByKey.get(key);
+		if (targetId) this.removePaneTabTarget(paneId, targetId);
+		this.paneTabTargetIdByKey.delete(key);
+		this.paneTabWebContents.delete(key);
+	}
+
+	private tabKey(paneId: string, tabId: string): string {
+		return `${paneId}::${tabId}`;
 	}
 
 	getPaneIdForWebContents(webContentsId: number): string | null {

@@ -307,30 +307,26 @@ export async function proxyBrowserUpgrade(
 				const params = msg.params as
 					| { url?: string; background?: boolean; newWindow?: boolean }
 					| undefined;
-				const nextUrl = params?.url;
-				// If multi-tab is available (bound set has >1 targetId
-				// already, i.e. M2 is wired), forward the request so
-				// Chromium genuinely creates a new tab; the pane-side
-				// registry adds it to the bound set when Electron sees
-				// the new webContents. Otherwise fall back to the
-				// single-pane option B: redirect to loadURL on the
-				// bound pane.
-				if (bound.size > 1 || ctx.paneId === "multitab") {
-					pendingMethods.set(id, method);
-					sendToUpstream(msg);
-					return;
-				}
-				if (nextUrl && typeof nextUrl === "string" && nextUrl !== "") {
-					try {
-						const wc = browserManager.getWebContents(ctx.paneId);
-						if (wc && !wc.isDestroyed() && !/^about:blank$/i.test(nextUrl)) {
-							void wc.loadURL(nextUrl).catch(() => {
-								/* aborted nav */
-							});
-						}
-					} catch {
-						/* best-effort */
-					}
+				const nextUrl =
+					typeof params?.url === "string" && params.url !== ""
+						? params.url
+						: "about:blank";
+				// Emit a renderer-side "create tab" request. The
+				// BrowserPane subscribes via browser.onCreateTabRequested
+				// and creates a real <webview> tab, which then registers
+				// its webContents and targetId with browserManager. Once
+				// that targetId lands in the bound set the MCP's next
+				// `Target.getTargets` / `Target.attachToTarget` will find
+				// it. We respond synchronously with the primary targetId
+				// so puppeteer's newPage path resolves; subsequent
+				// auto-attach events for the new tab surface the real
+				// targetId to the client through our normal filter.
+				try {
+					browserManager.emit(`create-tab-requested:${ctx.paneId}`, {
+						url: nextUrl,
+					});
+				} catch {
+					/* best effort */
 				}
 				sendToClient({ id, result: { targetId: ctx.primaryTargetId } });
 				return;

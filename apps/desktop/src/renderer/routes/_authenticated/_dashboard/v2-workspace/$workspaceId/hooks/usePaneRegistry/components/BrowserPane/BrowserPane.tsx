@@ -1,7 +1,7 @@
 import type { RendererContext, Tab } from "@superset/panes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { TbDeviceDesktop } from "react-icons/tb";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import type { BrowserPaneData, PaneViewerData } from "../../../../types";
@@ -9,6 +9,7 @@ import type { BrowserPaneData, PaneViewerData } from "../../../../types";
 import { browserRuntimeRegistry } from "./browserRuntimeRegistry";
 import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
 import { BrowserOverflowMenu } from "./components/BrowserOverflowMenu";
+import { BrowserTabBar } from "./components/BrowserTabBar";
 import { BrowserToolbar } from "./components/BrowserToolbar";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
 
@@ -49,11 +50,35 @@ export function BrowserPane({ ctx }: BrowserPaneProps) {
 	const state = useBrowserState(paneId);
 	const { placeholderRef, reload } = usePersistentWebview({ paneId, ctx });
 
+	// External CDP MCPs (chrome-devtools-mcp / browser-use) issue
+	// `Target.createTarget` to open a new tab; the gateway's filter
+	// forwards that intent to us as a create-tab-requested event so we
+	// can spawn a real <webview> under the same pane.
+	useEffect(() => {
+		const sub = electronTrpcClient.browser.onCreateTabRequested.subscribe(
+			{ paneId },
+			{
+				onData: (evt) => {
+					browserRuntimeRegistry.createTab(paneId, evt.url);
+				},
+				onError: () => {
+					/* subscription errors surface in console */
+				},
+			},
+		);
+		return () => sub.unsubscribe();
+	}, [paneId]);
+
 	const isBlankPage = !state.currentUrl || state.currentUrl === "about:blank";
 
 	return (
-		<div className="relative flex flex-1 h-full">
-			<div ref={placeholderRef} className="w-full h-full" style={{ flex: 1 }} />
+		<div className="relative flex flex-col flex-1 h-full">
+			<BrowserTabBar paneId={paneId} />
+			<div
+				ref={placeholderRef}
+				className="w-full flex-1 min-h-0"
+				style={{ flex: 1 }}
+			/>
 			{state.error && !state.isLoading && (
 				<BrowserErrorOverlay error={state.error} onRetry={reload} />
 			)}

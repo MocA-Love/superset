@@ -26,6 +26,56 @@ export const createBrowserRouter = () => {
 				return { success: true };
 			}),
 
+		registerTab: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string(),
+					tabId: z.string(),
+					webContentsId: z.number(),
+				}),
+			)
+			.mutation(({ input }) => {
+				browserManager.registerTab(
+					input.paneId,
+					input.tabId,
+					input.webContentsId,
+				);
+				return { success: true };
+			}),
+
+		unregisterTab: publicProcedure
+			.input(z.object({ paneId: z.string(), tabId: z.string() }))
+			.mutation(({ input }) => {
+				browserManager.unregisterTab(input.paneId, input.tabId);
+				return { success: true };
+			}),
+
+		/**
+		 * Subscribe to external-create-tab requests for a pane. The CDP
+		 * gateway emits one of these whenever an external MCP issues
+		 * `Target.createTarget`; the renderer-side BrowserPane picks it
+		 * up and creates a real tab in its registry, which then
+		 * registers back via registerTab and populates the pane's tab
+		 * target set.
+		 */
+		onCreateTabRequested: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ url: string }>((emit) => {
+					const handler = (data: { url: string }) => emit.next(data);
+					browserManager.on(
+						`create-tab-requested:${input.paneId}`,
+						handler,
+					);
+					return () => {
+						browserManager.off(
+							`create-tab-requested:${input.paneId}`,
+							handler,
+						);
+					};
+				});
+			}),
+
 		navigate: publicProcedure
 			.input(z.object({ paneId: z.string(), url: z.string() }))
 			.mutation(({ input }) => {
