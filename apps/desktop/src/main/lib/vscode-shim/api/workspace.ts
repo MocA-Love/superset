@@ -123,6 +123,95 @@ function globToRegExp(glob: string): RegExp {
 	return new RegExp(source);
 }
 
+function findFirstBraceRange(
+	pattern: string,
+): { start: number; end: number; body: string } | null {
+	let braceStart = -1;
+	let depth = 0;
+
+	for (let index = 0; index < pattern.length; index += 1) {
+		const char = pattern[index];
+		if (char === "\\") {
+			index += 1;
+			continue;
+		}
+		if (char === "{") {
+			if (depth === 0) {
+				braceStart = index;
+			}
+			depth += 1;
+			continue;
+		}
+		if (char === "}") {
+			if (depth === 0 || braceStart < 0) {
+				continue;
+			}
+			depth -= 1;
+			if (depth === 0) {
+				return {
+					start: braceStart,
+					end: index,
+					body: pattern.slice(braceStart + 1, index),
+				};
+			}
+		}
+	}
+
+	return null;
+}
+
+function splitBraceOptions(body: string): string[] {
+	const options: string[] = [];
+	let depth = 0;
+	let current = "";
+
+	for (let index = 0; index < body.length; index += 1) {
+		const char = body[index];
+		if (char === "\\") {
+			current += char;
+			if (index + 1 < body.length) {
+				current += body[index + 1];
+				index += 1;
+			}
+			continue;
+		}
+		if (char === "{") {
+			depth += 1;
+			current += char;
+			continue;
+		}
+		if (char === "}") {
+			depth = Math.max(0, depth - 1);
+			current += char;
+			continue;
+		}
+		if (char === "," && depth === 0) {
+			options.push(current);
+			current = "";
+			continue;
+		}
+		current += char;
+	}
+
+	options.push(current);
+	return options;
+}
+
+function expandBracePatterns(pattern: string): string[] {
+	const braceRange = findFirstBraceRange(pattern);
+	if (!braceRange) {
+		return [pattern];
+	}
+
+	const prefix = pattern.slice(0, braceRange.start);
+	const suffix = pattern.slice(braceRange.end + 1);
+	const options = splitBraceOptions(braceRange.body);
+
+	return options.flatMap((option) =>
+		expandBracePatterns(`${prefix}${option}${suffix}`),
+	);
+}
+
 function compileGlobMatchers(pattern: string | null | undefined): RegExp[] {
 	if (!pattern) {
 		return [];
@@ -133,14 +222,7 @@ function compileGlobMatchers(pattern: string | null | undefined): RegExp[] {
 		return [];
 	}
 
-	const patterns =
-		normalized.startsWith("{") && normalized.endsWith("}")
-			? normalized
-					.slice(1, -1)
-					.split(",")
-					.map((entry) => entry.trim())
-					.filter(Boolean)
-			: [normalized];
+	const patterns = expandBracePatterns(normalized).filter(Boolean);
 
 	return patterns.map((entry) => globToRegExp(normalizeGlobPath(entry)));
 }
@@ -328,7 +410,9 @@ export const workspace = {
 		try {
 			const results: string[] = [];
 			const includeMatchers = compileGlobMatchers(include);
-			const excludeMatchers = compileGlobMatchers(exclude);
+			const excludeMatchers = compileGlobMatchers(
+				exclude === undefined ? "{**/.git,**/node_modules}" : exclude,
+			);
 
 			function walkDir(dir: string, depth: number): void {
 				if (depth > 15 || (maxResults && results.length >= maxResults)) return;
