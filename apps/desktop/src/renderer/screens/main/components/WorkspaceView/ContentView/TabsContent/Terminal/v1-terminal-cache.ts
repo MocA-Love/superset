@@ -241,6 +241,24 @@ export function scheduleWrite(paneId: string, data: string): void {
 	}
 }
 
+/**
+ * Immediately flush any buffered data to xterm, cancelling the pending rAF.
+ * Must be called before processing exit/error/disconnect events so that
+ * trailing output is rendered before the exit banner or pane disposal.
+ */
+export function flushWrite(paneId: string): void {
+	const entry = cache.get(paneId);
+	if (!entry) return;
+	if (entry.rafWriteId !== null) {
+		cancelAnimationFrame(entry.rafWriteId);
+		entry.rafWriteId = null;
+	}
+	if (entry.rafWriteBuffer) {
+		entry.xterm.write(entry.rafWriteBuffer);
+		entry.rafWriteBuffer = "";
+	}
+}
+
 // --- Stream subscription ---
 
 function routeEvent(

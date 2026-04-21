@@ -61,7 +61,7 @@ import {
 	resolveActiveTabIdForWorkspace,
 	resolveFileViewerMode,
 } from "./utils";
-import { killTerminalForPane } from "./utils/terminal-cleanup";
+import { killTerminalForPane, releaseTerminalCache } from "./utils/terminal-cleanup";
 
 const DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE = 50;
 
@@ -492,6 +492,7 @@ export const useTabsStore = create<TabsStore>()(
 					const newPanes = { ...state.panes };
 					for (const paneId of paneIds) {
 						delete newPanes[paneId];
+						releaseTerminalCache(paneId);
 					}
 
 					const newTabs = state.tabs.filter((t) => t.id !== tabId);
@@ -670,6 +671,7 @@ export const useTabsStore = create<TabsStore>()(
 								killTerminalForPane(paneId);
 							}
 							delete newPanes[paneId];
+							releaseTerminalCache(paneId);
 						}
 					}
 
@@ -1256,6 +1258,7 @@ export const useTabsStore = create<TabsStore>()(
 					const newPanes = { ...state.panes };
 					for (const id of paneIdsToRemove) {
 						delete newPanes[id];
+						releaseTerminalCache(id);
 					}
 
 					let newFocusedPaneIds = state.focusedPaneIds;
