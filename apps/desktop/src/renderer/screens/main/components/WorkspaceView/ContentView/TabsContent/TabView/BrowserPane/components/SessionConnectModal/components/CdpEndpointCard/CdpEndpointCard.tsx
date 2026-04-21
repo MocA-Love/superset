@@ -57,7 +57,8 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 		);
 	}
 
-	const chromeDevtoolsCmd = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
+	const chromeDevtoolsCmdClaude = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
+	const chromeDevtoolsCmdCodex = `codex mcp add chrome-devtools-mcp -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
 	// browser-use's `--mcp` branch intentionally ignores `--cdp-url`
 	// (skill_cli/main.py ~2280 routes straight to the MCP main without
 	// forwarding the flag). The only officially supported injection
@@ -65,7 +66,8 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 	// (see browser_use/config.py and mcp/server.py). The desktop app
 	// writes that file per session at `data.browserUseConfigPath` and
 	// we point browser-use at it here.
-	const browserUseCmd = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
+	const browserUseCmdClaude = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
+	const browserUseCmdCodex = `codex mcp add browser-use --env BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
 
 	return (
 		<div className="rounded-xl border p-3 bg-card/60 flex flex-col gap-3">
@@ -102,13 +104,27 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 				</div>
 				<CommandBlock
 					title="chrome-devtools-mcp (Claude Code)"
-					cmd={chromeDevtoolsCmd}
-					onCopy={() => copy(chromeDevtoolsCmd, "chrome-devtools-mcp command")}
+					cmd={chromeDevtoolsCmdClaude}
+					onCopy={() =>
+						copy(chromeDevtoolsCmdClaude, "chrome-devtools-mcp command")
+					}
 				/>
 				<CommandBlock
-					title="browser-use"
-					cmd={browserUseCmd}
-					onCopy={() => copy(browserUseCmd, "browser-use command")}
+					title="chrome-devtools-mcp (Codex)"
+					cmd={chromeDevtoolsCmdCodex}
+					onCopy={() =>
+						copy(chromeDevtoolsCmdCodex, "chrome-devtools-mcp (codex) command")
+					}
+				/>
+				<CommandBlock
+					title="browser-use (Claude Code)"
+					cmd={browserUseCmdClaude}
+					onCopy={() => copy(browserUseCmdClaude, "browser-use command")}
+				/>
+				<CommandBlock
+					title="browser-use (Codex)"
+					cmd={browserUseCmdCodex}
+					onCopy={() => copy(browserUseCmdCodex, "browser-use (codex) command")}
 				/>
 			</div>
 
