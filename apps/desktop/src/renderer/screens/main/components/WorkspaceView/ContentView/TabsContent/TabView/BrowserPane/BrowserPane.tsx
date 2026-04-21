@@ -1,6 +1,13 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { GlobeIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { LuMinus, LuPlus } from "react-icons/lu";
 import { TbDeviceDesktop } from "react-icons/tb";
 import type { MosaicBranch } from "react-mosaic-component";
@@ -255,6 +262,21 @@ export function BrowserPane({
 	const [activeTabId, setActiveTabId] = useState("primary");
 	const secondaryContainerRef = useRef<HTMLDivElement | null>(null);
 
+	// Subscribe to the secondary tab registry so the toolbar's URL
+	// bar / loading spinner / nav buttons can reflect whichever tab
+	// is currently active (primary vs one of the secondaries).
+	const secondaryTabs = useSyncExternalStore(
+		useCallback(
+			(cb) => secondaryTabRegistry.onTabsChange(paneId, cb),
+			[paneId],
+		),
+		useCallback(() => secondaryTabRegistry.listTabs(paneId), [paneId]),
+	);
+	const activeSecondary =
+		activeTabId === "primary"
+			? null
+			: (secondaryTabs.find((t) => t.tabId === activeTabId) ?? null);
+
 	useEffect(() => {
 		const el = secondaryContainerRef.current;
 		if (!el) return;
@@ -393,17 +415,45 @@ export function BrowserPane({
 				<div className="flex h-full w-full items-center justify-between min-w-0">
 					<BrowserToolbar
 						paneId={paneId}
-						currentUrl={currentUrl}
-						pageTitle={pageTitle}
-						isLoading={isLoading}
-						hasPage={!isBlankPage}
-						isBookmarked={Boolean(currentBookmark)}
-						canGoBack={canGoBack}
-						canGoForward={canGoForward}
-						onGoBack={goBack}
-						onGoForward={goForward}
-						onReload={reload}
-						onNavigate={navigateTo}
+						currentUrl={activeSecondary ? activeSecondary.url : currentUrl}
+						pageTitle={activeSecondary ? activeSecondary.title : pageTitle}
+						isLoading={
+							activeSecondary ? activeSecondary.isLoading : isLoading
+						}
+						hasPage={
+							activeSecondary
+								? Boolean(
+										activeSecondary.url &&
+											activeSecondary.url !== "about:blank",
+									)
+								: !isBlankPage
+						}
+						isBookmarked={
+							activeSecondary ? false : Boolean(currentBookmark)
+						}
+						canGoBack={activeSecondary ? true : canGoBack}
+						canGoForward={activeSecondary ? true : canGoForward}
+						onGoBack={
+							activeSecondary
+								? () => secondaryTabRegistry.goBackActive(paneId)
+								: goBack
+						}
+						onGoForward={
+							activeSecondary
+								? () => secondaryTabRegistry.goForwardActive(paneId)
+								: goForward
+						}
+						onReload={
+							activeSecondary
+								? () => secondaryTabRegistry.reloadActive(paneId)
+								: reload
+						}
+						onNavigate={
+							activeSecondary
+								? (url: string) =>
+										secondaryTabRegistry.navigateActive(paneId, url)
+								: navigateTo
+						}
 						onToggleBookmark={handleToggleBookmark}
 						onEditingChange={setIsEditingUrl}
 					/>
