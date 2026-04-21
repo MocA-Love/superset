@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { type RawData, WebSocket, type WebSocketServer } from "ws";
+import { webContents as electronWebContents } from "electron";
 import { browserManager } from "../browser/browser-manager";
 import { resolveCdpPort } from "./cdp-port";
 import {
@@ -463,6 +464,41 @@ export async function proxyBrowserUpgrade(
 							if (paneForTid) {
 								const tabId = browserManager.getTabIdForTarget(paneForTid, tid);
 								browserManager.requestTabActivation(paneForTid, tabId);
+							}
+						}
+					}
+					// Electron quirk: session-scoped CDP Input.* events
+					// SHOULD target the session's renderer, but on some
+					// platforms Chromium delivers synthetic key/mouse
+					// events to whichever widget currently holds
+					// Chromium-internal focus. If the user clicked the
+					// Superset terminal pane (xterm.js), the browser
+					// pane's webContents has lost internal focus and
+					// MCP keystrokes land in the terminal instead of
+					// the page. Force-focus the bound webContents right
+					// before forwarding Input.* so the synthetic events
+					// hit the intended target.
+					if (method.startsWith("Input.")) {
+						const tid = sessionIdToTargetId.get(msg.sessionId);
+						if (tid) {
+							const paneForTid = browserManager.getPaneIdForTarget(tid);
+							if (paneForTid) {
+								const tabId = browserManager.getTabIdForTarget(
+									paneForTid,
+									tid,
+								);
+								const wcId = browserManager.getWebContentsIdForTab(
+									paneForTid,
+									tabId,
+								);
+								if (wcId != null) {
+									const wc = electronWebContents.fromId(wcId);
+									try {
+										wc?.focus();
+									} catch {
+										/* webContents may be gone */
+									}
+								}
 							}
 						}
 					}

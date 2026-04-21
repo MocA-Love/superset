@@ -521,6 +521,21 @@ class BrowserManager extends EventEmitter {
 	 * target — callers typically treat that as "already the active
 	 * tab" and no-op.
 	 */
+	/**
+	 * Return the webContents id registered for a given (paneId, tabId)
+	 * tuple or the pane's primary if tabId is null. Used by the CDP
+	 * filter to force-focus the right webContents before dispatching
+	 * session-scoped Input.* events — Electron otherwise sometimes
+	 * routes synthetic key events to whichever widget has OS focus
+	 * (including the Superset terminal pane).
+	 */
+	getWebContentsIdForTab(paneId: string, tabId: string | null): number | null {
+		if (tabId === null) {
+			return this.paneWebContentsIds.get(paneId) ?? null;
+		}
+		return this.paneTabWebContents.get(this.tabKey(paneId, tabId)) ?? null;
+	}
+
 	getTabIdForTarget(paneId: string, targetId: string): string | null {
 		const prefix = `${paneId}::`;
 		for (const [key, tid] of this.paneTabTargetIdByKey) {
