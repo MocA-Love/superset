@@ -292,6 +292,7 @@ function routeEvent(
 		logTerminalWrite("hidden-stream-data", event.data.length, { paneId });
 		scheduleWrite(paneId, event.data);
 	} else {
+		flushWrite(paneId);
 		entry.pendingLifecycleEvents.push(event);
 	}
 }
@@ -465,6 +466,8 @@ if (hot) {
 		| undefined;
 	if (existing) {
 		for (const [k, v] of existing) {
+			v.rafWriteBuffer ??= "";
+			v.rafWriteId ??= null;
 			cache.set(k, v);
 		}
 	}
