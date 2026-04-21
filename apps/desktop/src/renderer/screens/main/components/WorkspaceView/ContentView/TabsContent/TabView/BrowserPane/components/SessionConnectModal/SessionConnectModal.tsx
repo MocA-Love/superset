@@ -16,6 +16,7 @@ import {
 	LuList,
 	LuPlug,
 	LuShield,
+	LuTerminal,
 } from "react-icons/lu";
 import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -63,6 +64,9 @@ export function SessionConnectModal({
 	const [activeTab, setActiveTab] = useState<
 		"sessions" | "workspace" | "permissions"
 	>("sessions");
+	// Incremented each time the user asks for setup commands from the
+	// summary bar; CdpEndpointCard listens and expands its section.
+	const [setupRevealToken, setSetupRevealToken] = useState(0);
 	const paneId = useBrowserAutomationStore((s) => s.connectModal.paneId);
 	const selectedSessionId = useBrowserAutomationStore(
 		(s) => s.connectModal.selectedSessionId,
@@ -235,7 +239,10 @@ export function SessionConnectModal({
 						sessions={sessions}
 						bindingsByPane={bindingsByPane}
 						workspaceId={workspaceId}
-						onOpenAllPanes={() => setActiveTab("workspace")}
+						onShowSetup={() => {
+							setActiveTab("sessions");
+							setSetupRevealToken((n) => n + 1);
+						}}
 						activeTab={activeTab}
 					/>
 				)}
@@ -310,6 +317,7 @@ export function SessionConnectModal({
 												: null
 										}
 										attachedToThisPane={session.id === currentBinding}
+										revealSetupToken={setupRevealToken}
 									/>
 								) : (
 									<SetupPanel
@@ -406,13 +414,13 @@ function WorkspaceBindingsSummary({
 	sessions,
 	bindingsByPane,
 	workspaceId,
-	onOpenAllPanes,
+	onShowSetup,
 	activeTab,
 }: {
 	sessions: AutomationSession[];
 	bindingsByPane: Record<string, string>;
 	workspaceId: string | null;
-	onOpenAllPanes: () => void;
+	onShowSetup: () => void;
 	activeTab: "sessions" | "workspace" | "permissions";
 }) {
 	const panes = useTabsStore((s) => s.panes);
@@ -460,16 +468,15 @@ function WorkspaceBindingsSummary({
 					{needsSetup} needs setup
 				</span>
 			)}
-			{activeTab !== "workspace" && (
-				<button
-					type="button"
-					onClick={onOpenAllPanes}
-					className="ml-auto inline-flex items-center gap-1 text-brand hover:underline"
-				>
-					<LuLayoutGrid className="size-3" />
-					Switch to Workspace view →
-				</button>
-			)}
+			<button
+				type="button"
+				onClick={onShowSetup}
+				className="ml-auto inline-flex items-center gap-1 text-brand hover:underline"
+				title="Show MCP setup commands (claude/codex mcp add …)"
+			>
+				<LuTerminal className="size-3" />
+				Show setup commands
+			</button>
 		</div>
 	);
 }
@@ -817,12 +824,14 @@ function ReadyPanel({
 	reassigning,
 	previousPaneName,
 	attachedToThisPane,
+	revealSetupToken,
 }: {
 	session: AutomationSession;
 	paneName: string;
 	reassigning: boolean;
 	previousPaneName: string | null;
 	attachedToThisPane: boolean;
+	revealSetupToken?: number;
 }) {
 	return (
 		<div className="flex flex-col gap-3">
@@ -852,7 +861,12 @@ function ReadyPanel({
 					</DetailItem>
 				</div>
 			</div>
-			{attachedToThisPane && <CdpEndpointCard sessionId={session.id} />}
+			{attachedToThisPane && (
+				<CdpEndpointCard
+					sessionId={session.id}
+					revealSetupToken={revealSetupToken}
+				/>
+			)}
 		</div>
 	);
 }

@@ -1,10 +1,24 @@
 import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
-import { LuCopy, LuExternalLink } from "react-icons/lu";
+import { useEffect, useState } from "react";
+import {
+	LuChevronDown,
+	LuChevronUp,
+	LuCopy,
+	LuExternalLink,
+} from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
 interface CdpEndpointCardProps {
 	sessionId: string;
+	/**
+	 * Increment to force the Example setup section open from outside
+	 * (e.g., the summary-bar "Show setup commands" button). The card
+	 * defaults to collapsed because once a session is bound the MCP
+	 * registration is a one-shot task; keeping four command blocks
+	 * permanently visible drowns out the actual status info.
+	 */
+	revealSetupToken?: number;
 }
 
 /**
@@ -15,12 +29,25 @@ interface CdpEndpointCardProps {
  * delegate actual browser control to those tools, so this is the
  * primary success-state UI once a pane is attached.
  */
-export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
+export function CdpEndpointCard({
+	sessionId,
+	revealSetupToken,
+}: CdpEndpointCardProps) {
 	const { data, isLoading } =
 		electronTrpc.browserAutomation.getCdpEndpointForSession.useQuery(
 			{ sessionId },
 			{ refetchInterval: 5_000 },
 		);
+
+	// Setup commands stay hidden by default. They re-appear when the
+	// user explicitly asks via the summary-bar button (revealSetupToken
+	// bumps) or the inline toggle.
+	const [setupOpen, setSetupOpen] = useState(false);
+	useEffect(() => {
+		if (revealSetupToken !== undefined && revealSetupToken > 0) {
+			setSetupOpen(true);
+		}
+	}, [revealSetupToken]);
 
 	const copy = async (value: string, label: string): Promise<void> => {
 		try {
@@ -99,33 +126,56 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 			/>
 
 			<div className="mt-1">
-				<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">
+				<button
+					type="button"
+					onClick={() => setSetupOpen((v) => !v)}
+					className="flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground"
+				>
+					{setupOpen ? (
+						<LuChevronUp className="size-3" />
+					) : (
+						<LuChevronDown className="size-3" />
+					)}
 					Example setup
-				</div>
-				<CommandBlock
-					title="chrome-devtools-mcp (Claude Code)"
-					cmd={chromeDevtoolsCmdClaude}
-					onCopy={() =>
-						copy(chromeDevtoolsCmdClaude, "chrome-devtools-mcp command")
-					}
-				/>
-				<CommandBlock
-					title="chrome-devtools-mcp (Codex)"
-					cmd={chromeDevtoolsCmdCodex}
-					onCopy={() =>
-						copy(chromeDevtoolsCmdCodex, "chrome-devtools-mcp (codex) command")
-					}
-				/>
-				<CommandBlock
-					title="browser-use (Claude Code)"
-					cmd={browserUseCmdClaude}
-					onCopy={() => copy(browserUseCmdClaude, "browser-use command")}
-				/>
-				<CommandBlock
-					title="browser-use (Codex)"
-					cmd={browserUseCmdCodex}
-					onCopy={() => copy(browserUseCmdCodex, "browser-use (codex) command")}
-				/>
+					{!setupOpen && (
+						<span className="ml-1 normal-case tracking-normal font-normal text-muted-foreground/60">
+							(一度だけ実行すれば OK — 必要なら開いて参照)
+						</span>
+					)}
+				</button>
+				{setupOpen && (
+					<div className="mt-1">
+						<CommandBlock
+							title="chrome-devtools-mcp (Claude Code)"
+							cmd={chromeDevtoolsCmdClaude}
+							onCopy={() =>
+								copy(chromeDevtoolsCmdClaude, "chrome-devtools-mcp command")
+							}
+						/>
+						<CommandBlock
+							title="chrome-devtools-mcp (Codex)"
+							cmd={chromeDevtoolsCmdCodex}
+							onCopy={() =>
+								copy(
+									chromeDevtoolsCmdCodex,
+									"chrome-devtools-mcp (codex) command",
+								)
+							}
+						/>
+						<CommandBlock
+							title="browser-use (Claude Code)"
+							cmd={browserUseCmdClaude}
+							onCopy={() => copy(browserUseCmdClaude, "browser-use command")}
+						/>
+						<CommandBlock
+							title="browser-use (Codex)"
+							cmd={browserUseCmdCodex}
+							onCopy={() =>
+								copy(browserUseCmdCodex, "browser-use (codex) command")
+							}
+						/>
+					</div>
+				)}
 			</div>
 
 			<div className="text-[10px] text-muted-foreground flex items-start gap-1">
