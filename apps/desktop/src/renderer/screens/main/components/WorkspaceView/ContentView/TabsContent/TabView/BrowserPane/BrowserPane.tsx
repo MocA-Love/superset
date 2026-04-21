@@ -417,9 +417,7 @@ export function BrowserPane({
 						paneId={paneId}
 						currentUrl={activeSecondary ? activeSecondary.url : currentUrl}
 						pageTitle={activeSecondary ? activeSecondary.title : pageTitle}
-						isLoading={
-							activeSecondary ? activeSecondary.isLoading : isLoading
-						}
+						isLoading={activeSecondary ? activeSecondary.isLoading : isLoading}
 						hasPage={
 							activeSecondary
 								? Boolean(
@@ -428,9 +426,7 @@ export function BrowserPane({
 									)
 								: !isBlankPage
 						}
-						isBookmarked={
-							activeSecondary ? false : Boolean(currentBookmark)
-						}
+						isBookmarked={activeSecondary ? false : Boolean(currentBookmark)}
 						canGoBack={activeSecondary ? true : canGoBack}
 						canGoForward={activeSecondary ? true : canGoForward}
 						onGoBack={
@@ -559,15 +555,31 @@ export function BrowserPane({
 				{!isFullscreen && (
 					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
 				)}
-				<BrowserTabBar
-					paneId={paneId}
-					primaryUrl={currentUrl}
-					primaryTitle={pageTitle}
-					primaryFaviconUrl={currentFaviconUrl ?? null}
-					primaryIsLoading={isLoading}
-					activeTabId={activeTabId}
-					onActivate={setActiveTabId}
-				/>
+				{/*
+				 * The multi-tab UI is hidden while the v1
+				 * <webview>-backed implementation has known
+				 * manual-switch instability (scroll / right-click /
+				 * URL-suggestion click capture by the wrong
+				 * GuestView). The tab-bar + registry code is kept
+				 * because MCP-driven tab creation (Target.createTarget
+				 * etc.) still routes through it — external MCPs can
+				 * still open and drive tabs, the user just can't
+				 * manually switch between them here. The proper fix
+				 * lives on feature/browser-webcontentsview-v3
+				 * (WebContentsView migration).
+				 * TODO(issue): re-enable once v3 reaches parity.
+				 */}
+				{false && (
+					<BrowserTabBar
+						paneId={paneId}
+						primaryUrl={currentUrl}
+						primaryTitle={pageTitle}
+						primaryFaviconUrl={currentFaviconUrl ?? null}
+						primaryIsLoading={isLoading}
+						activeTabId={activeTabId}
+						onActivate={setActiveTabId}
+					/>
+				)}
 				<div className="relative flex flex-1 min-h-0">
 					<div
 						ref={containerRef}
