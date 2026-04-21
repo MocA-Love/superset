@@ -239,6 +239,40 @@ export async function proxyBrowserUpgrade(
 		const upstream = new WebSocket(chromiumBrowserWs);
 		const pendingMethods = new Map<number, string>();
 		const allowedSessionIds = new Set<string>();
+		// Allowed targetIds: starts as the bound set, but grows
+		// transitively: any target whose `openerId` is already allowed
+		// is admitted too. Without this, real children of the bound
+		// page (popups, OOPIF iframes, dedicated/service workers
+		// scoped to the page, prerender) are dropped at the root
+		// filter even though clients legitimately need to interact
+		// with them. childToParent lets us prune the closure when a
+		// target is destroyed.
+		const allowedTargetIds = new Set<string>(ctx.boundTargetIds());
+		const childToParent = new Map<string, string>();
+		const refreshBound = (): void => {
+			for (const tid of ctx.boundTargetIds()) allowedTargetIds.add(tid);
+		};
+		const isAllowedTarget = (
+			info: { targetId?: string; openerId?: string } | undefined,
+			fallbackTargetId?: string,
+		): boolean => {
+			refreshBound();
+			const tid = info?.targetId ?? fallbackTargetId;
+			if (!tid) return false;
+			if (allowedTargetIds.has(tid)) return true;
+			const opener = info?.openerId;
+			if (opener && allowedTargetIds.has(opener)) {
+				allowedTargetIds.add(tid);
+				childToParent.set(tid, opener);
+				return true;
+			}
+			return false;
+		};
+		const dropTarget = (tid: string | undefined): void => {
+			if (!tid) return;
+			allowedTargetIds.delete(tid);
+			childToParent.delete(tid);
+		};
 		// Frames the client sends before Chromium's browser WS reaches
 		// OPEN. CDP clients (puppeteer, cdp-use) typically fire
 		// `Target.setDiscoverTargets` / `Target.setAutoAttach` the
@@ -290,8 +324,13 @@ export async function proxyBrowserUpgrade(
 			}
 			pendingUpstream.length = 0;
 		});
+		// Use -32000 (server error) instead of -32601 (method not
+		// found) so CDP clients (puppeteer / cdp-use) treat the
+		// rejection as a normal protocol failure instead of falling
+		// back to "method does not exist on this version of Chromium"
+		// retry/normalization paths.
 		const rejectRequest = (id: number, message: string): void => {
-			sendToClient({ id, error: { code: -32601, message } });
+			sendToClient({ id, error: { code: -32000, message } });
 		};
 
 		clientWs.on("message", (data: RawData) => {
@@ -322,14 +361,30 @@ export async function proxyBrowserUpgrade(
 			console.log(
 				`[cdp #${connId}] →up (root) id=${id ?? "-"} ${method}${summary ? ` ${summary}` : ""}`,
 			);
-			const bound = ctx.boundTargetIds();
+			refreshBound();
+			// `bound` here is the dynamic allow-list (bound primary +
+			// pane tab targets + transitively-admitted children of any
+			// of those via openerId). Children are added by the
+			// attachedToTarget event handler below; checking against
+			// this set instead of the static ctx.boundTargetIds()
+			// admits popups, OOPIF iframes, dedicated/service workers
+			// scoped to the bound page, and prerender targets that
+			// puppeteer / cdp-use legitimately need to drive.
+			const bound = allowedTargetIds;
 
 			if (
 				method === "Target.disposeBrowserContext" ||
 				method === "Target.createBrowserContext" ||
 				method === "Browser.close" ||
 				method === "Browser.crash" ||
-				method === "Browser.crashGpuProcess"
+				method === "Browser.crashGpuProcess" ||
+				// Page.setWebLifecycleState lets the client move the
+				// page into "frozen" or "discarded" state, which would
+				// trash the user-visible pane out from under them.
+				method === "Page.setWebLifecycleState" ||
+				// Page.close terminates the underlying webContents — same
+				// concern as Browser.close at page granularity.
+				method === "Page.close"
 			) {
 				if (id !== undefined) {
 					rejectRequest(
@@ -415,8 +470,32 @@ export async function proxyBrowserUpgrade(
 
 			if (method === "Target.createTarget" && id !== undefined) {
 				const params = msg.params as
-					| { url?: string; background?: boolean; newWindow?: boolean }
+					| {
+							url?: string;
+							background?: boolean;
+							newWindow?: boolean;
+							browserContextId?: string;
+							forTab?: boolean;
+					  }
 					| undefined;
+				// Reject the browserContextId / newWindow / forTab
+				// flavours: Superset doesn't expose multiple browser
+				// contexts (incognito) and never opens its own OS
+				// window for an MCP, so honouring those params would
+				// silently lie to the client about what was created.
+				// Tell the truth instead so puppeteer / playwright
+				// surface a clean error.
+				if (
+					params?.browserContextId ||
+					params?.newWindow === true ||
+					params?.forTab !== undefined
+				) {
+					rejectRequest(
+						id,
+						"Target.createTarget with browserContextId / newWindow / forTab is not supported by the Superset CDP filter; tabs are always created inside the bound pane.",
+					);
+					return;
+				}
 				const nextUrl =
 					typeof params?.url === "string" && params.url !== ""
 						? params.url
@@ -526,7 +605,16 @@ export async function proxyBrowserUpgrade(
 			} catch {
 				return;
 			}
-			const bound = ctx.boundTargetIds();
+			refreshBound();
+			// `bound` here is the dynamic allow-list (bound primary +
+			// pane tab targets + transitively-admitted children of any
+			// of those via openerId). Children are added by the
+			// attachedToTarget event handler below; checking against
+			// this set instead of the static ctx.boundTargetIds()
+			// admits popups, OOPIF iframes, dedicated/service workers
+			// scoped to the bound page, and prerender targets that
+			// puppeteer / cdp-use legitimately need to drive.
+			const bound = allowedTargetIds;
 			const summary = summarizeParams(msg.method ?? "", msg.params);
 
 			if (msg.sessionId) {
@@ -540,13 +628,34 @@ export async function proxyBrowserUpgrade(
 					`[cdp #${connId}] ←dn sid=${shortSid(msg.sessionId)} id=${msg.id ?? "-"} ${msg.method ?? "(response)"}${summary ? ` ${summary}` : ""}`,
 				);
 				if (msg.method === "Target.attachedToTarget") {
-					const childSid = (msg.params as { sessionId?: string } | undefined)
-						?.sessionId;
+					// Nested attach (worker / iframe / prerender of a
+					// target the parent session already owns). Trust
+					// the parent: admit both the child sessionId AND
+					// the child targetId via openerId so subsequent
+					// session-scoped frames + root events reach the
+					// client cleanly.
+					const params = msg.params as
+						| {
+								sessionId?: string;
+								targetInfo?: { targetId?: string; openerId?: string };
+						  }
+						| undefined;
+					const childSid = params?.sessionId;
 					if (childSid) allowedSessionIds.add(childSid);
+					const childTid = params?.targetInfo?.targetId;
+					if (childTid) {
+						allowedTargetIds.add(childTid);
+						const opener = params?.targetInfo?.openerId;
+						if (opener) childToParent.set(childTid, opener);
+					}
 				} else if (msg.method === "Target.detachedFromTarget") {
-					const childSid = (msg.params as { sessionId?: string } | undefined)
-						?.sessionId;
+					const params = msg.params as
+						| { sessionId?: string; targetId?: string }
+						| undefined;
+					const childSid = params?.sessionId;
 					if (childSid) allowedSessionIds.delete(childSid);
+					const childTid = params?.targetId;
+					if (childTid) dropTarget(childTid);
 				}
 				sendToClient(msg);
 				return;
@@ -615,19 +724,24 @@ export async function proxyBrowserUpgrade(
 			const method = msg.method ?? "";
 			if (
 				method === "Target.targetCreated" ||
-				method === "Target.targetDestroyed" ||
-				method === "Target.targetInfoChanged" ||
-				method === "Target.targetCrashed"
+				method === "Target.targetInfoChanged"
 			) {
+				// Admit the target if it is in scope OR if its
+				// `openerId` is in scope (popups, child pages, etc.).
 				const params = msg.params as
 					| {
-							targetInfo?: { type?: string; targetId?: string };
+							targetInfo?: {
+								type?: string;
+								targetId?: string;
+								openerId?: string;
+							};
 							targetId?: string;
 					  }
 					| undefined;
 				const info = params?.targetInfo;
+				const allowed = isAllowedTarget(info, params?.targetId);
 				const tid = info?.targetId ?? params?.targetId;
-				if (!tid || !bound.has(tid)) {
+				if (!allowed) {
 					console.log(
 						`[cdp #${connId}] ←dn (root) ${method} tid=${shortTid(tid)} [DROPPED not in bound]`,
 					);
@@ -649,15 +763,55 @@ export async function proxyBrowserUpgrade(
 				}
 				return;
 			}
+			if (
+				method === "Target.targetDestroyed" ||
+				method === "Target.targetCrashed"
+			) {
+				const params = msg.params as
+					| {
+							targetInfo?: { type?: string; targetId?: string };
+							targetId?: string;
+					  }
+					| undefined;
+				const info = params?.targetInfo;
+				const tid = info?.targetId ?? params?.targetId;
+				if (!tid || !bound.has(tid)) {
+					console.log(
+						`[cdp #${connId}] ←dn (root) ${method} tid=${shortTid(tid)} [DROPPED not in bound]`,
+					);
+					return;
+				}
+				console.log(
+					`[cdp #${connId}] ←dn (root) ${method} tid=${shortTid(tid)} type=${info?.type ?? "?"}`,
+				);
+				dropTarget(tid);
+				if (info) {
+					sendToClient({
+						...msg,
+						params: {
+							...params,
+							targetInfo: rewriteTargetInfoType(info),
+						},
+					});
+				} else {
+					sendToClient(msg);
+				}
+				return;
+			}
 			if (method === "Target.attachedToTarget") {
 				const params = msg.params as
 					| {
 							sessionId?: string;
-							targetInfo?: { type?: string; targetId?: string };
+							targetInfo?: {
+								type?: string;
+								targetId?: string;
+								openerId?: string;
+							};
 					  }
 					| undefined;
+				const allowed = isAllowedTarget(params?.targetInfo);
 				const tid = params?.targetInfo?.targetId;
-				if (!tid || !bound.has(tid)) {
+				if (!allowed) {
 					console.log(
 						`[cdp #${connId}] ←dn (root) attachedToTarget tid=${shortTid(tid)} [DROPPED not in bound]`,
 					);
@@ -670,8 +824,8 @@ export async function proxyBrowserUpgrade(
 				sendToClient({
 					...msg,
 					params: {
-						...params,
-						targetInfo: rewriteTargetInfoType(params.targetInfo),
+						...(params ?? {}),
+						targetInfo: rewriteTargetInfoType(params?.targetInfo),
 					},
 				});
 				return;
