@@ -229,10 +229,14 @@ export function PermissionsTab() {
 						<div className="shrink-0 p-4 pb-3 border-b bg-background">
 							<div className="flex items-end gap-2">
 								<div className="flex-1">
-									<Label className="text-[11px] text-muted-foreground">
+									<Label
+										htmlFor="permission-preset-name"
+										className="text-[11px] text-muted-foreground"
+									>
 										Preset name
 									</Label>
 									<Input
+										id="permission-preset-name"
 										value={draftName}
 										disabled={isBuiltin}
 										onChange={(e) => {
@@ -297,6 +301,7 @@ export function PermissionsTab() {
 												</div>
 											</div>
 											<Switch
+												aria-label={`${m.label} permission`}
 												checked={value}
 												disabled={isBuiltin}
 												onCheckedChange={(v: boolean) => handleToggle(key, v)}

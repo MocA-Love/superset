@@ -1,8 +1,8 @@
 import { createTRPCReact } from "@trpc/react-query";
 import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
-import type { AppRouter } from "./routers";
 import { SessionDisposedError } from "../errors";
+import type { AppRouter } from "./routers";
 import { NotGitRepoError } from "./routers/workspaces/utils/git";
 import { WorktreePathMissingError } from "./routers/workspaces/utils/git-client";
 

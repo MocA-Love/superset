@@ -9,6 +9,16 @@ import {
 } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
+/**
+ * POSIX shell single-quote a value so copy-pasted commands survive
+ * arbitrary characters (spaces in `~/Library/Application Support/…`,
+ * `'`, `$`, etc). We single-quote the whole string and break out for
+ * embedded single quotes via the canonical `'\''` trick.
+ */
+function shellQuote(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 interface CdpEndpointCardProps {
 	sessionId: string;
 	/**
@@ -84,8 +94,10 @@ export function CdpEndpointCard({
 		);
 	}
 
-	const chromeDevtoolsCmdClaude = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
-	const chromeDevtoolsCmdCodex = `codex mcp add chrome-devtools-mcp -- npx -y chrome-devtools-mcp --browser-url ${data.httpBase}`;
+	const httpBaseArg = shellQuote(data.httpBase);
+	const configPathArg = shellQuote(data.browserUseConfigPath);
+	const chromeDevtoolsCmdClaude = `claude mcp add chrome-devtools-mcp -s user -- npx -y chrome-devtools-mcp --browser-url ${httpBaseArg}`;
+	const chromeDevtoolsCmdCodex = `codex mcp add chrome-devtools-mcp -- npx -y chrome-devtools-mcp --browser-url ${httpBaseArg}`;
 	// browser-use's `--mcp` branch intentionally ignores `--cdp-url`
 	// (skill_cli/main.py ~2280 routes straight to the MCP main without
 	// forwarding the flag). The only officially supported injection
@@ -93,8 +105,8 @@ export function CdpEndpointCard({
 	// (see browser_use/config.py and mcp/server.py). The desktop app
 	// writes that file per session at `data.browserUseConfigPath` and
 	// we point browser-use at it here.
-	const browserUseCmdClaude = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
-	const browserUseCmdCodex = `codex mcp add browser-use --env BROWSER_USE_CONFIG_PATH=${data.browserUseConfigPath} -- uvx --from "browser-use[cli]" browser-use --mcp`;
+	const browserUseCmdClaude = `claude mcp add browser-use -s user -e BROWSER_USE_CONFIG_PATH=${configPathArg} -- uvx --from 'browser-use[cli]' browser-use --mcp`;
+	const browserUseCmdCodex = `codex mcp add browser-use --env BROWSER_USE_CONFIG_PATH=${configPathArg} -- uvx --from 'browser-use[cli]' browser-use --mcp`;
 
 	return (
 		<div className="rounded-xl border p-3 bg-card/60 flex flex-col gap-3">

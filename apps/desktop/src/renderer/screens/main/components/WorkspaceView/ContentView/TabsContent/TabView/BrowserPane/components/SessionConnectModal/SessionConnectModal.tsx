@@ -448,11 +448,15 @@ function WorkspaceBindingsSummary({
 		});
 	}, [panes, tabs, workspaceId]);
 
-	const connected = browserPanes.filter((p) => {
+	let connected = 0;
+	let stale = 0;
+	for (const p of browserPanes) {
 		const sid = bindingsByPane[p.id];
-		return sid && liveSessionIds.has(sid);
-	}).length;
-	const unassigned = browserPanes.length - connected;
+		if (!sid) continue;
+		if (liveSessionIds.has(sid)) connected++;
+		else stale++;
+	}
+	const unassigned = browserPanes.length - connected - stale;
 	const needsSetup = sessions.filter((s) => s.mcpStatus === "missing").length;
 
 	return (
@@ -468,6 +472,12 @@ function WorkspaceBindingsSummary({
 				<span className="size-1.5 rounded-full bg-muted-foreground/50" />
 				{unassigned} unassigned
 			</span>
+			{stale > 0 && (
+				<span className="flex items-center gap-1.5 text-amber-300">
+					<span className="size-1.5 rounded-full bg-amber-400" />
+					{stale} stale
+				</span>
+			)}
 			{needsSetup > 0 && (
 				<span className="flex items-center gap-1.5 text-amber-400">
 					<span className="size-1.5 rounded-full bg-amber-400" />
@@ -633,7 +643,16 @@ function WorkspacePanesTab({
 						? (sessions.find((s) => s.id === sessionId) ?? null)
 						: null;
 					const url = pane.browser?.currentUrl ?? pane.url ?? "about:blank";
+					// Three-state status, matching PaneIdentityCard:
+					// connected (live session), stale (binding exists but session
+					// dropped out of the live set), unassigned (no binding).
 					const isConnected = session !== null;
+					const isStale = sessionId != null && session === null;
+					const dotClass = isConnected
+						? "bg-emerald-400"
+						: isStale
+							? "bg-amber-400"
+							: "bg-muted-foreground/40";
 					const paneDisplay = pane.userTitle || pane.name;
 					return (
 						<div
@@ -643,12 +662,7 @@ function WorkspacePanesTab({
 								index !== browserPanes.length - 1 && "border-b",
 							)}
 						>
-							<span
-								className={cn(
-									"size-2 rounded-full shrink-0",
-									isConnected ? "bg-emerald-400" : "bg-muted-foreground/40",
-								)}
-							/>
+							<span className={cn("size-2 rounded-full shrink-0", dotClass)} />
 							<div className="min-w-0 flex-1">
 								<div
 									className="text-xs font-semibold truncate"
@@ -684,6 +698,10 @@ function WorkspacePanesTab({
 												: "MCP missing"}
 										</div>
 									</>
+								) : isStale ? (
+									<div className="text-[11px] text-amber-300/90 italic truncate">
+										Session ended — rebind or disconnect
+									</div>
 								) : (
 									<div className="text-[11px] text-muted-foreground italic truncate">
 										Unassigned — pick any running LLM session
@@ -716,7 +734,7 @@ function WorkspacePanesTab({
 										onSwitchToSessions();
 									}}
 								>
-									{isConnected ? "Change" : "Connect"}
+									{isConnected ? "Change" : isStale ? "Rebind" : "Connect"}
 								</Button>
 							</div>
 						</div>
