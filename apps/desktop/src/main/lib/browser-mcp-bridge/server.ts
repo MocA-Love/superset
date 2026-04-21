@@ -14,6 +14,12 @@ import {
 	ensureSessionEndpoint,
 	stopAllSessionEndpoints,
 } from "./cdp-filter-proxy";
+import {
+	handleCdpGatewayRequest,
+	handleCdpGatewayUpgrade,
+	isCdpGatewayPath,
+	isCdpGatewayUpgradePath,
+} from "./cdp-gateway";
 import { resolveCdpPort } from "./cdp-port";
 import { getBoundPaneForSession, resolvePpidToSession } from "./pane-resolver";
 
@@ -167,6 +173,13 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 
 			const url = new URL(req.url ?? "/", "http://localhost");
 
+			// CDP gateway routes are unauthenticated (external CDP MCPs
+			// compose URLs that drop the path, so no secret can survive).
+			// Their capability is the peer-PID tree-descendant check.
+			if (isCdpGatewayPath(url.pathname)) {
+				return handleCdpGatewayRequest(req, res);
+			}
+
 			const auth = req.headers.authorization ?? "";
 			if (auth !== `Bearer ${secret}`) {
 				return send(res, 401, { error: "bad token" });
@@ -244,6 +257,18 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
+	});
+
+	// CDP gateway WS upgrades land on /devtools/browser/<id> and
+	// /devtools/page/<id>. Route them to the gateway before the default
+	// socket.destroy() path kicks in.
+	server.on("upgrade", (req, socket, head) => {
+		const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+		if (isCdpGatewayUpgradePath(pathname)) {
+			void handleCdpGatewayUpgrade(req, socket, head);
+			return;
+		}
+		socket.destroy();
 	});
 
 	const port = await listenPreferringStablePort(server);

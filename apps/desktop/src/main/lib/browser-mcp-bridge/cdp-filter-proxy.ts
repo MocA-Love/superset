@@ -224,13 +224,13 @@ function resolveBindingForSession(
 	return { paneId: binding.paneId, targetId };
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
+export function sendJson(res: ServerResponse, status: number, body: unknown): void {
 	res.statusCode = status;
 	res.setHeader("content-type", "application/json");
 	res.end(JSON.stringify(body));
 }
 
-async function fetchUpstreamJson(path: string): Promise<unknown> {
+export async function fetchUpstreamJson(path: string): Promise<unknown> {
 	const port = await resolveCdpPort();
 	if (!port) throw new Error("Chromium CDP port not available");
 	const res = await fetch(`http://127.0.0.1:${port}${path}`);
@@ -248,7 +248,7 @@ async function fetchUpstreamJson(path: string): Promise<unknown> {
  */
 const browserWsIds = new Map<string, string>();
 
-function browserWsIdFor(sessionId: string): string {
+export function browserWsIdFor(sessionId: string): string {
 	let id = browserWsIds.get(sessionId);
 	if (!id) {
 		id = randomBytes(16).toString("hex");
@@ -367,7 +367,7 @@ function wireUpgradeHandler(
 	});
 }
 
-async function proxyPageUpgrade(
+export async function proxyPageUpgrade(
 	req: IncomingMessage,
 	socket: Duplex,
 	head: Buffer,
@@ -460,7 +460,7 @@ function isTargetInfoForBound(
 	);
 }
 
-async function proxyBrowserUpgrade(
+export async function proxyBrowserUpgrade(
 	req: IncomingMessage,
 	socket: Duplex,
 	head: Buffer,
