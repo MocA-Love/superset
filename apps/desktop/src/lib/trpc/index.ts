@@ -1,6 +1,7 @@
 import { createTRPCReact } from "@trpc/react-query";
 import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
+import { SessionDisposedError } from "../errors";
 import type { AppRouter } from "./routers";
 import { NotGitRepoError } from "./routers/workspaces/utils/git";
 import { WorktreePathMissingError } from "./routers/workspaces/utils/git-client";
@@ -40,8 +41,10 @@ const sentryMiddleware = t.middleware(async ({ next, path, type }) => {
 			if (
 				originalError instanceof NotGitRepoError ||
 				originalError instanceof WorktreePathMissingError ||
+				originalError instanceof SessionDisposedError ||
 				errorName === "NotGitRepoError" ||
-				errorName === "WorktreePathMissingError"
+				errorName === "WorktreePathMissingError" ||
+				errorName === "SessionDisposedError"
 			) {
 				return result;
 			}

@@ -8,6 +8,7 @@ import {
 } from "@superset/ui/dialog";
 import { cn } from "@superset/ui/utils";
 import { useMemo } from "react";
+import { LuArrowLeft } from "react-icons/lu";
 import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -41,81 +42,112 @@ export function BrowserAutomationList({
 		);
 	}, [panes, tabs, workspaceId]);
 
-	// A binding only counts as "connected" if the bound session is still in
-	// the live session list. Stale bindings render as `Unassigned` in the
-	// row below, so summing raw bindings would show a misleading higher
-	// count.
+	// Stale bindings (bound session no longer live) count as Unassigned.
 	const liveSessionIds = new Set(sessions.map((s) => s.id));
 	const connectedCount = browserPanes.filter((p) => {
 		const sid = bindingsByPane[p.id];
 		return sid && liveSessionIds.has(sid);
 	}).length;
+	const unassignedCount = browserPanes.length - connectedCount;
 	const needsSetupCount = sessions.filter(
 		(s) => s.mcpStatus === "missing",
 	).length;
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!max-w-[640px] sm:!max-w-[640px] p-0 gap-0 overflow-hidden">
+			<DialogContent className="!max-w-[720px] sm:!max-w-[720px] p-0 gap-0 overflow-hidden">
 				<DialogHeader className="px-5 py-4 border-b">
-					<DialogTitle className="text-sm">Browser Automation</DialogTitle>
+					<DialogTitle className="text-sm">
+						Browser Automation — workspace overview
+					</DialogTitle>
 					<DialogDescription className="text-xs">
-						All browser panes in this workspace and their bound sessions.
+						Every browser pane and which LLM session is driving it.
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="p-4 grid grid-cols-3 gap-2 border-b">
-					<Metric label="Browser panes" value={browserPanes.length} />
-					<Metric label="Connected" value={connectedCount} />
-					<Metric label="Needs setup" value={needsSetupCount} />
+				<div className="px-4 py-3 border-b flex items-center gap-4 text-[11px]">
+					<span>
+						<b className="text-base tabular-nums">{browserPanes.length}</b>{" "}
+						panes
+					</span>
+					<span className="text-emerald-300">
+						<b className="text-base tabular-nums">{connectedCount}</b> connected
+					</span>
+					<span className="text-muted-foreground">
+						<b className="text-base tabular-nums">{unassignedCount}</b>{" "}
+						unassigned
+					</span>
+					{needsSetupCount > 0 && (
+						<span className="text-amber-400">
+							<b className="text-base tabular-nums">{needsSetupCount}</b> needs
+							setup
+						</span>
+					)}
 				</div>
 
-				<div className="max-h-[420px] overflow-y-auto p-3 flex flex-col gap-2">
+				<div className="max-h-[460px] overflow-y-auto">
 					{browserPanes.length === 0 && (
 						<div className="text-xs text-muted-foreground text-center py-8">
 							No browser panes in this workspace.
 						</div>
 					)}
-					{browserPanes.map((pane) => {
+					{browserPanes.map((pane, index) => {
 						const sessionId = bindingsByPane[pane.id];
 						const session = sessionId
 							? (sessions.find((s) => s.id === sessionId) ?? null)
 							: null;
 						const url = pane.browser?.currentUrl ?? pane.url ?? "about:blank";
+						const isConnected = session !== null;
 						return (
 							<div
 								key={pane.id}
 								className={cn(
-									"rounded-xl border p-3 bg-card/60",
-									session && "border-brand/30 bg-brand/5",
+									"flex items-center gap-3 px-4 py-3 hover:bg-muted/20",
+									index !== browserPanes.length - 1 && "border-b",
 								)}
 							>
-								<div className="flex items-start justify-between gap-3">
-									<div className="min-w-0">
-										<div className="text-xs font-semibold truncate">
-											{pane.userTitle || pane.name}
-										</div>
-										<div className="text-[11px] text-muted-foreground truncate">
-											{url}
-										</div>
+								<span
+									className={cn(
+										"size-2 rounded-full shrink-0",
+										isConnected ? "bg-emerald-400" : "bg-muted-foreground/40",
+									)}
+								/>
+								<div className="min-w-0 flex-1">
+									<div className="text-xs font-semibold truncate">
+										{pane.userTitle || pane.name}
 									</div>
-									<span
-										className={cn(
-											"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-											session
-												? "bg-emerald-500/15 text-emerald-300"
-												: "bg-muted text-muted-foreground",
-										)}
-									>
-										{session ? "Connected" : "Unassigned"}
-									</span>
+									<div className="text-[11px] text-muted-foreground truncate">
+										{url}
+									</div>
 								</div>
-								<div className="mt-2 text-[11px] text-muted-foreground">
-									{session
-										? `${session.displayName} · ${session.provider} · ${session.mcpStatus === "ready" ? "MCP ready" : "MCP missing"}`
-										: "Pick any running LLM session"}
+								<LuArrowLeft
+									className={cn(
+										"size-3 shrink-0",
+										isConnected
+											? "text-muted-foreground"
+											: "text-muted-foreground/30",
+									)}
+								/>
+								<div className="min-w-0 flex-1">
+									{session ? (
+										<>
+											<div className="text-xs font-medium truncate">
+												{session.displayName}
+											</div>
+											<div className="text-[10px] text-muted-foreground truncate">
+												{session.provider} ·{" "}
+												{session.mcpStatus === "ready"
+													? "MCP ready"
+													: "MCP missing"}
+											</div>
+										</>
+									) : (
+										<div className="text-[11px] text-muted-foreground italic truncate">
+											Unassigned — pick any running LLM session
+										</div>
+									)}
 								</div>
-								<div className="mt-3 flex gap-2">
+								<div className="flex gap-1 shrink-0">
 									<Button
 										size="sm"
 										variant="outline"
@@ -129,20 +161,18 @@ export function BrowserAutomationList({
 									</Button>
 									<Button
 										size="sm"
+										variant={isConnected ? "outline" : "default"}
 										onClick={() => {
-											// SessionConnectModal is rendered inside each
-											// BrowserPane (gated by isConnectOpenForThisPane), so
-											// it only mounts when the owning tab/pane is active.
-											// Activate the target before opening the modal, or the
-											// dialog never appears if the pane lives on another
-											// tab.
+											// SessionConnectModal lives inside BrowserPane and only
+											// mounts for the active pane; activate the target pane
+											// before opening the modal.
 											setActiveTab(workspaceId, pane.tabId);
 											setFocusedPane(pane.tabId, pane.id);
 											openConnectModal(pane.id, sessionId);
 											onOpenChange(false);
 										}}
 									>
-										{session ? "Change" : "Connect"}
+										{isConnected ? "Change" : "Connect"}
 									</Button>
 								</div>
 							</div>
@@ -151,16 +181,5 @@ export function BrowserAutomationList({
 				</div>
 			</DialogContent>
 		</Dialog>
-	);
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-	return (
-		<div className="rounded-lg bg-muted/40 p-3">
-			<div className="text-xl font-bold tabular-nums">{value}</div>
-			<div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-				{label}
-			</div>
-		</div>
 	);
 }

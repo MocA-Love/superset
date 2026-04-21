@@ -1,1 +1,4 @@
-export { CdpEndpointCard } from "./CdpEndpointCard";
+export {
+	CdpEndpointCard,
+	PlaceholderSetupCommandsCard,
+} from "./CdpEndpointCard";
