@@ -58,6 +58,11 @@ const _textDocuments: TextDocument[] = [];
 const fileSystemProviders = new Map<string, unknown>();
 const textDocumentContentProviders = new Map<string, unknown>();
 const DEFAULT_FIND_EXCLUDE_GLOBS = ["**/.git", "**/node_modules"];
+const FILE_TYPE = {
+	File: 1,
+	Directory: 2,
+	SymbolicLink: 64,
+} as const;
 
 function normalizeGlobPath(value: string): string {
 	return value.split(path.sep).join("/");
@@ -322,14 +327,18 @@ export async function resolveTextDocumentContent(
 	}
 
 	const provider = textDocumentContentProviders.get(uri.scheme) as
-		| { provideTextDocumentContent?(uri: Uri): string | Promise<string> }
+		| {
+				provideTextDocumentContent?(
+					uri: Uri,
+				): string | undefined | Promise<string | undefined>;
+		  }
 		| undefined;
 	if (!provider?.provideTextDocumentContent) {
 		return undefined;
 	}
 
 	const content = await provider.provideTextDocumentContent(uri);
-	return typeof content === "string" ? content : "";
+	return typeof content === "string" ? content : undefined;
 }
 
 export function setWorkspacePath(folderPath: string): void {
@@ -860,10 +869,30 @@ export const workspace = {
 			const entries = await fs.promises.readdir(uri.fsPath, {
 				withFileTypes: true,
 			});
-			return entries.map((entry) => [
-				entry.name,
-				entry.isDirectory() ? 2 : entry.isSymbolicLink() ? 64 : 1,
-			]);
+			return Promise.all(
+				entries.map(async (entry) => {
+					if (entry.isDirectory()) {
+						return [entry.name, FILE_TYPE.Directory] as [string, number];
+					}
+
+					if (!entry.isSymbolicLink()) {
+						return [entry.name, FILE_TYPE.File] as [string, number];
+					}
+
+					const entryPath = path.join(uri.fsPath, entry.name);
+
+					try {
+						const stats = await fs.promises.stat(entryPath);
+						return [
+							entry.name,
+							(stats.isDirectory() ? FILE_TYPE.Directory : FILE_TYPE.File) |
+								FILE_TYPE.SymbolicLink,
+						] as [string, number];
+					} catch {
+						return [entry.name, FILE_TYPE.SymbolicLink] as [string, number];
+					}
+				}),
+			);
 		},
 		isWritableFileSystem(scheme: string): boolean | undefined {
 			return scheme === "file" ? true : undefined;
