@@ -63,15 +63,9 @@ export const createBrowserRouter = () => {
 			.subscription(({ input }) => {
 				return observable<{ url: string }>((emit) => {
 					const handler = (data: { url: string }) => emit.next(data);
-					browserManager.on(
-						`create-tab-requested:${input.paneId}`,
-						handler,
-					);
+					browserManager.on(`create-tab-requested:${input.paneId}`, handler);
 					return () => {
-						browserManager.off(
-							`create-tab-requested:${input.paneId}`,
-							handler,
-						);
+						browserManager.off(`create-tab-requested:${input.paneId}`, handler);
 					};
 				});
 			}),

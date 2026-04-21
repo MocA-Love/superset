@@ -23,11 +23,7 @@ export async function resolvePeerPidFromRemotePort(
 	remotePort: number,
 	ownPid: number,
 ): Promise<number | null> {
-	if (
-		!Number.isInteger(remotePort) ||
-		remotePort < 1 ||
-		remotePort > 65_535
-	) {
+	if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65_535) {
 		return null;
 	}
 	try {

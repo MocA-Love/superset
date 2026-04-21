@@ -76,11 +76,12 @@ export function CdpEndpointCard({ sessionId }: CdpEndpointCardProps) {
 				<div className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
 					Bound to pane{" "}
 					<code className="rounded bg-muted px-1">{data.paneId}</code>. 以下の
-					setup コマンドは **一度だけ** 実行すれば OK です。登録 URL は全セッション
-					共通で、接続ごとに呼び出し元のターミナル →
-					LLMセッション → アタッチ中ペインを peer-PID 解決してルーティングするため、
-					Superset / macOS の再起動、ペインの閉じ直し、別ターミナルから起動し直し等で
-					MCP を登録し直す必要はありません。
+					setup コマンドは **一度だけ** 実行すれば OK です。登録 URL
+					は全セッション 共通で、接続ごとに呼び出し元のターミナル →
+					LLMセッション → アタッチ中ペインを peer-PID
+					解決してルーティングするため、 Superset / macOS
+					の再起動、ペインの閉じ直し、別ターミナルから起動し直し等で MCP
+					を登録し直す必要はありません。
 				</div>
 			</div>
 

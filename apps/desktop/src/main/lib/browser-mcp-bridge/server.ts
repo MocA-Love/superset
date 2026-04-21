@@ -209,9 +209,9 @@ export async function startBrowserMcpBridge(): Promise<BridgeHandle> {
 				// port (47834); the gateway routes each incoming
 				// connection by peer-PID. One stable URL works for every
 				// session and survives restarts / rebindings.
-				const gatewayPort = await import(
-					"./server"
-				).then((m) => m.getBrowserMcpBridge()?.port ?? port);
+				const gatewayPort = await import("./server").then(
+					(m) => m.getBrowserMcpBridge()?.port ?? port,
+				);
 				return send(res, 200, {
 					paneId: resolved.paneId,
 					sessionId: resolved.sessionId,

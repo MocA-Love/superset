@@ -332,10 +332,7 @@ export async function proxyBrowserUpgrade(
 				return;
 			}
 
-			if (
-				method === "Target.getTargets" ||
-				method === "Target.getTargetInfo"
-			) {
+			if (method === "Target.getTargets" || method === "Target.getTargetInfo") {
 				if (id !== undefined) pendingMethods.set(id, method);
 				sendToUpstream(msg);
 				return;
@@ -425,8 +422,11 @@ export async function proxyBrowserUpgrade(
 				method === "Target.targetCrashed"
 			) {
 				const info =
-					(msg.params as { targetInfo?: unknown; targetId?: string } | undefined)
-						?.targetInfo ?? msg.params;
+					(
+						msg.params as
+							| { targetInfo?: unknown; targetId?: string }
+							| undefined
+					)?.targetInfo ?? msg.params;
 				const tid =
 					targetIdOf(info) ??
 					(msg.params as { targetId?: string } | undefined)?.targetId;

@@ -43,10 +43,8 @@ export function BrowserTabBar({ paneId }: BrowserTabBarProps) {
 	return (
 		<div className="flex h-7 items-center gap-0.5 border-b bg-muted/40 px-1 shrink-0 overflow-x-auto">
 			{tabs.map((t) => (
-				<button
+				<div
 					key={t.tabId}
-					type="button"
-					onClick={() => handleActivate(t.tabId)}
 					className={cn(
 						"group flex items-center gap-1.5 h-5 max-w-[180px] rounded px-1.5 text-[11px] shrink-0",
 						t.isActive
@@ -55,29 +53,29 @@ export function BrowserTabBar({ paneId }: BrowserTabBarProps) {
 					)}
 					title={t.title || t.url}
 				>
-					{t.faviconUrl ? (
-						<img
-							src={t.faviconUrl}
-							alt=""
-							className="size-3 shrink-0"
-						/>
-					) : (
-						<div className="size-3 shrink-0 rounded-sm bg-muted-foreground/20" />
-					)}
-					<span className="truncate">
-						{t.title || t.url || "New tab"}
-					</span>
+					<button
+						type="button"
+						onClick={() => handleActivate(t.tabId)}
+						className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
+					>
+						{t.faviconUrl ? (
+							<img src={t.faviconUrl} alt="" className="size-3 shrink-0" />
+						) : (
+							<div className="size-3 shrink-0 rounded-sm bg-muted-foreground/20" />
+						)}
+						<span className="truncate">{t.title || t.url || "New tab"}</span>
+					</button>
 					{tabs.length > 1 && (
-						<span
-							role="button"
-							tabIndex={-1}
+						<button
+							type="button"
 							onClick={(e) => handleClose(t.tabId, e)}
 							className="ml-0.5 opacity-60 hover:opacity-100"
+							aria-label="Close tab"
 						>
 							<LuX className="size-3" />
-						</span>
+						</button>
 					)}
-				</button>
+				</div>
 			))}
 			<button
 				type="button"

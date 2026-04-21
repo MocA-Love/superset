@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { dirname, join } from "node:path";
 import type { Duplex } from "node:stream";
-import { WebSocket, WebSocketServer } from "ws";
+import { type WebSocket, WebSocketServer } from "ws";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
 import { SUPERSET_HOME_DIR } from "../app-environment";
 import { browserManager } from "../browser/browser-manager";
@@ -101,10 +101,7 @@ async function resolveForSocket(
 		}
 		const remotePort = socket.remotePort;
 		if (typeof remotePort !== "number") return null;
-		const peerPid = await resolvePeerPidFromRemotePort(
-			remotePort,
-			process.pid,
-		);
+		const peerPid = await resolvePeerPidFromRemotePort(remotePort, process.pid);
 		if (!peerPid) return null;
 		const session = await resolvePidToSession(peerPid);
 		if (!session?.paneId) return null;
@@ -266,8 +263,7 @@ export async function handleCdpGatewayRequest(
 			Record<string, unknown>
 		>;
 		const boundSet =
-			browserManager.getPaneTargetIds?.(resolved.paneId) ??
-			new Set([primary]);
+			browserManager.getPaneTargetIds?.(resolved.paneId) ?? new Set([primary]);
 		const out = raw
 			.filter((t) => {
 				const id = (t as { id?: string }).id;
