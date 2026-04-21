@@ -10,7 +10,13 @@ import {
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { useEffect, useMemo, useState } from "react";
-import { LuList, LuPlug, LuShield } from "react-icons/lu";
+import {
+	LuArrowLeft,
+	LuLayoutGrid,
+	LuList,
+	LuPlug,
+	LuShield,
+} from "react-icons/lu";
 import { useBrowserAutomationData } from "renderer/hooks/useBrowserAutomationData";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -24,6 +30,27 @@ import { CdpEndpointCard } from "./components/CdpEndpointCard";
 import { McpInstallPanel } from "./components/McpInstallPanel";
 import { PermissionsTab } from "./components/PermissionsTab";
 
+/**
+ * pane.name / userTitle は長大な URL (特に Google 検索結果の query
+ * 付き) になることがあり、pill / DetailItem / footer 文言にそのまま流すと
+ * モーダルからはみ出す。URL は host + 先頭パスだけに縮め、それ以外は
+ * 40 文字でカットしてツールチップに全文を出すための補助。
+ */
+function shortenPaneLabel(raw: string, max = 40): string {
+	if (!raw) return raw;
+	try {
+		if (raw.startsWith("http://") || raw.startsWith("https://")) {
+			const url = new URL(raw);
+			const tail = `${url.pathname}${url.search ? "?…" : ""}`;
+			const short = `${url.host}${tail}`;
+			return short.length > max ? `${short.slice(0, max - 1)}…` : short;
+		}
+	} catch {
+		// fall through to generic truncation
+	}
+	return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
+}
+
 interface SessionConnectModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -33,9 +60,9 @@ export function SessionConnectModal({
 	open,
 	onOpenChange,
 }: SessionConnectModalProps) {
-	const [activeTab, setActiveTab] = useState<"sessions" | "permissions">(
-		"sessions",
-	);
+	const [activeTab, setActiveTab] = useState<
+		"sessions" | "workspace" | "permissions"
+	>("sessions");
 	const paneId = useBrowserAutomationStore((s) => s.connectModal.paneId);
 	const selectedSessionId = useBrowserAutomationStore(
 		(s) => s.connectModal.selectedSessionId,
@@ -43,7 +70,6 @@ export function SessionConnectModal({
 	const setSelectedSession = useBrowserAutomationStore(
 		(s) => s.setSelectedSession,
 	);
-	const setListViewOpen = useBrowserAutomationStore((s) => s.setListViewOpen);
 
 	const { sessions, bindingsByPane, mcpStatus } = useBrowserAutomationData({
 		enabled: open,
@@ -188,6 +214,13 @@ export function SessionConnectModal({
 							Sessions
 						</TabButton>
 						<TabButton
+							active={activeTab === "workspace"}
+							onClick={() => setActiveTab("workspace")}
+						>
+							<LuLayoutGrid className="size-3.5" />
+							Workspace
+						</TabButton>
+						<TabButton
 							active={activeTab === "permissions"}
 							onClick={() => setActiveTab("permissions")}
 						>
@@ -199,16 +232,29 @@ export function SessionConnectModal({
 
 				{activeTab === "permissions" ? (
 					<PermissionsTab />
+				) : activeTab === "workspace" ? (
+					<>
+						<WorkspaceBindingsSummary
+							sessions={sessions}
+							bindingsByPane={bindingsByPane}
+							workspaceId={workspaceId}
+							onOpenAllPanes={() => setActiveTab("workspace")}
+							activeTab={activeTab}
+						/>
+						<WorkspacePanesTab
+							workspaceId={workspaceId}
+							onClose={() => onOpenChange(false)}
+							onSwitchToSessions={() => setActiveTab("sessions")}
+						/>
+					</>
 				) : (
 					<>
 						<WorkspaceBindingsSummary
 							sessions={sessions}
 							bindingsByPane={bindingsByPane}
 							workspaceId={workspaceId}
-							onOpenAllPanes={() => {
-								onOpenChange(false);
-								setListViewOpen(true);
-							}}
+							onOpenAllPanes={() => setActiveTab("workspace")}
+							activeTab={activeTab}
 						/>
 						<div className="grid grid-cols-[minmax(320px,1fr)_minmax(280px,0.9fr)] min-h-[min(570px,70vh)] max-h-[min(840px,85vh)]">
 							<div className="overflow-y-auto p-4 border-r">
@@ -293,10 +339,13 @@ export function SessionConnectModal({
 
 				{activeTab === "sessions" && (
 					<DialogFooter className="px-5 py-3 border-t gap-2 flex !justify-between">
-						<div className="text-[11px] text-muted-foreground">
+						<div className="text-[11px] text-muted-foreground min-w-0 flex-1 line-clamp-2 break-words">
 							{session?.mcpStatus === "ready"
 								? assignedPaneIdForSelected
-									? `Connecting will reassign ${session.displayName} from ${panes[assignedPaneIdForSelected]?.name ?? "another pane"} to ${paneName}.`
+									? `Connecting will reassign ${session.displayName} from "${shortenPaneLabel(
+											panes[assignedPaneIdForSelected]?.name ?? "another pane",
+											32,
+										)}" to "${shortenPaneLabel(paneName, 32)}".`
 									: "Connecting binds this browser pane to the selected session only."
 								: session
 									? "Add the MCP entry first, then reopen or restart this session."
@@ -363,11 +412,13 @@ function WorkspaceBindingsSummary({
 	bindingsByPane,
 	workspaceId,
 	onOpenAllPanes,
+	activeTab,
 }: {
 	sessions: AutomationSession[];
 	bindingsByPane: Record<string, string>;
 	workspaceId: string | null;
 	onOpenAllPanes: () => void;
+	activeTab: "sessions" | "workspace" | "permissions";
 }) {
 	const panes = useTabsStore((s) => s.panes);
 	const tabs = useTabsStore((s) => s.tabs);
@@ -414,14 +465,16 @@ function WorkspaceBindingsSummary({
 					{needsSetup} needs setup
 				</span>
 			)}
-			<button
-				type="button"
-				onClick={onOpenAllPanes}
-				className="ml-auto inline-flex items-center gap-1 text-brand hover:underline"
-			>
-				<LuList className="size-3" />
-				Open all panes view →
-			</button>
+			{activeTab !== "workspace" && (
+				<button
+					type="button"
+					onClick={onOpenAllPanes}
+					className="ml-auto inline-flex items-center gap-1 text-brand hover:underline"
+				>
+					<LuLayoutGrid className="size-3" />
+					Switch to Workspace view →
+				</button>
+			)}
 		</div>
 	);
 }
@@ -474,7 +527,12 @@ function PaneIdentityCard({
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2">
-						<div className="text-[13px] font-semibold truncate">{paneName}</div>
+						<div
+							className="text-[13px] font-semibold truncate"
+							title={paneName}
+						>
+							{shortenPaneLabel(paneName, 50)}
+						</div>
 						<span
 							className={cn(
 								"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
@@ -525,6 +583,142 @@ function PaneIdentityCard({
 	);
 }
 
+function WorkspacePanesTab({
+	workspaceId,
+	onClose,
+	onSwitchToSessions,
+}: {
+	workspaceId: string | null;
+	onClose: () => void;
+	onSwitchToSessions: () => void;
+}) {
+	const panes = useTabsStore((s) => s.panes);
+	const tabs = useTabsStore((s) => s.tabs);
+	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
+	const setActiveTabInStore = useTabsStore((s) => s.setActiveTab);
+	const openConnectModal = useBrowserAutomationStore((s) => s.openConnectModal);
+	const { sessions, bindingsByPane } = useBrowserAutomationData({
+		enabled: true,
+	});
+
+	const browserPanes = useMemo(() => {
+		const tabById = new Map(tabs.map((t) => [t.id, t]));
+		return Object.values(panes).filter((p) => {
+			if (p.type !== "webview") return false;
+			const tab = tabById.get(p.tabId);
+			if (!tab) return false;
+			if (workspaceId && tab.workspaceId !== workspaceId) return false;
+			return true;
+		});
+	}, [panes, tabs, workspaceId]);
+
+	return (
+		<div className="min-h-[min(570px,70vh)] max-h-[min(840px,85vh)] overflow-y-auto">
+			{browserPanes.length === 0 ? (
+				<div className="text-xs text-muted-foreground text-center py-10">
+					No browser panes in this workspace.
+				</div>
+			) : (
+				browserPanes.map((pane, index) => {
+					const sessionId = bindingsByPane[pane.id];
+					const session = sessionId
+						? (sessions.find((s) => s.id === sessionId) ?? null)
+						: null;
+					const url = pane.browser?.currentUrl ?? pane.url ?? "about:blank";
+					const isConnected = session !== null;
+					const paneDisplay = pane.userTitle || pane.name;
+					return (
+						<div
+							key={pane.id}
+							className={cn(
+								"flex items-center gap-3 px-5 py-3 hover:bg-muted/20",
+								index !== browserPanes.length - 1 && "border-b",
+							)}
+						>
+							<span
+								className={cn(
+									"size-2 rounded-full shrink-0",
+									isConnected ? "bg-emerald-400" : "bg-muted-foreground/40",
+								)}
+							/>
+							<div className="min-w-0 flex-1">
+								<div
+									className="text-xs font-semibold truncate"
+									title={paneDisplay}
+								>
+									{shortenPaneLabel(paneDisplay, 50)}
+								</div>
+								<div
+									className="text-[11px] text-muted-foreground truncate"
+									title={url}
+								>
+									{url}
+								</div>
+							</div>
+							<LuArrowLeft
+								className={cn(
+									"size-3 shrink-0",
+									isConnected
+										? "text-muted-foreground"
+										: "text-muted-foreground/30",
+								)}
+							/>
+							<div className="min-w-0 flex-1">
+								{session ? (
+									<>
+										<div className="text-xs font-medium truncate">
+											{session.displayName}
+										</div>
+										<div className="text-[10px] text-muted-foreground truncate">
+											{session.provider} ·{" "}
+											{session.mcpStatus === "ready"
+												? "MCP ready"
+												: "MCP missing"}
+										</div>
+									</>
+								) : (
+									<div className="text-[11px] text-muted-foreground italic truncate">
+										Unassigned — pick any running LLM session
+									</div>
+								)}
+							</div>
+							<div className="flex gap-1 shrink-0">
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={() => {
+										if (workspaceId) {
+											setActiveTabInStore(workspaceId, pane.tabId);
+										}
+										setFocusedPane(pane.tabId, pane.id);
+										onClose();
+									}}
+								>
+									Focus
+								</Button>
+								<Button
+									size="sm"
+									variant={isConnected ? "outline" : "default"}
+									onClick={() => {
+										if (workspaceId) {
+											setActiveTabInStore(workspaceId, pane.tabId);
+										}
+										setFocusedPane(pane.tabId, pane.id);
+										openConnectModal(pane.id, sessionId);
+										onSwitchToSessions();
+									}}
+								>
+									{isConnected ? "Change" : "Connect"}
+								</Button>
+							</div>
+						</div>
+					);
+				})
+			)}
+		</div>
+	);
+}
+
 function SessionCard({
 	session,
 	isSelected,
@@ -552,19 +746,23 @@ function SessionCard({
 				: session.mcpStatus === "missing"
 					? "bg-amber-500/15 text-amber-300"
 					: "bg-muted text-muted-foreground";
+	const shortOtherPane = assignedElsewherePaneName
+		? shortenPaneLabel(assignedElsewherePaneName, 28)
+		: null;
 	const pillLabel = attachedToThisPane
 		? "● Driving this pane"
-		: assignedElsewherePaneName
-			? `Driving: ${assignedElsewherePaneName}`
+		: shortOtherPane
+			? `Driving: ${shortOtherPane}`
 			: session.mcpStatus === "ready"
 				? "Ready · Free"
 				: session.mcpStatus === "missing"
 					? "Needs MCP"
 					: "Unknown";
+	const pillTooltip = assignedElsewherePaneName ?? pillLabel;
 	const note = attachedToThisPane
 		? null
 		: assignedElsewherePaneName
-			? `Connecting here will move ownership from "${assignedElsewherePaneName}".`
+			? `Connecting here will move ownership from "${shortenPaneLabel(assignedElsewherePaneName, 60)}".`
 			: session.mcpStatus === "missing"
 				? "This session does not currently expose the required browser automation MCP entry."
 				: session.mcpStatus === "unknown"
@@ -594,10 +792,10 @@ function SessionCard({
 				</div>
 				<span
 					className={cn(
-						"shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider max-w-[55%] truncate",
+						"shrink-0 max-w-[50%] rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider overflow-hidden whitespace-nowrap text-ellipsis",
 						pillClass,
 					)}
-					title={pillLabel}
+					title={pillTooltip}
 				>
 					{pillLabel}
 				</span>
@@ -605,7 +803,7 @@ function SessionCard({
 			{note && (
 				<div
 					className={cn(
-						"mt-2 text-[11px] leading-snug",
+						"mt-2 text-[11px] leading-snug break-words",
 						assignedElsewherePaneName
 							? "text-amber-300/80"
 							: "text-muted-foreground",
@@ -649,10 +847,12 @@ function ReadyPanel({
 						{session.displayName} / {session.provider}
 					</DetailItem>
 					<DetailItem label="Binding mode">Exclusive control</DetailItem>
-					<DetailItem label="Pane">{paneName}</DetailItem>
+					<DetailItem label="Pane" title={paneName}>
+						{shortenPaneLabel(paneName, 60)}
+					</DetailItem>
 					<DetailItem label="Expected">
 						{reassigning
-							? `Moves from ${previousPaneName ?? "another pane"}`
+							? `Moves from ${shortenPaneLabel(previousPaneName ?? "another pane", 32)}`
 							: "Toolbar badge updates instantly"}
 					</DetailItem>
 				</div>
@@ -665,16 +865,21 @@ function ReadyPanel({
 function DetailItem({
 	label,
 	children,
+	title,
 }: {
 	label: string;
 	children: React.ReactNode;
+	title?: string;
 }) {
 	return (
-		<div className="rounded-md bg-muted/40 p-2">
+		<div className="rounded-md bg-muted/40 p-2 min-w-0">
 			<span className="block text-[10px] uppercase tracking-wider text-muted-foreground/70">
 				{label}
 			</span>
-			<strong className="block mt-0.5 text-[12px] font-medium">
+			<strong
+				className="block mt-0.5 text-[12px] font-medium break-words"
+				title={title}
+			>
 				{children}
 			</strong>
 		</div>

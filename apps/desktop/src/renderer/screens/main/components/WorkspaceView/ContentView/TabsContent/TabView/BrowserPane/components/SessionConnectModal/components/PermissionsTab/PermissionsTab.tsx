@@ -218,95 +218,103 @@ export function PermissionsTab() {
 				</div>
 			</div>
 
-			<div className="overflow-y-auto p-4">
+			<div className="flex flex-col min-h-0">
 				{!selected ? (
-					<div className="text-xs text-muted-foreground">
+					<div className="p-4 text-xs text-muted-foreground">
 						Select a preset on the left.
 					</div>
 				) : (
-					<div className="flex flex-col gap-4">
-						<div className="flex items-end gap-2">
-							<div className="flex-1">
-								<Label className="text-[11px] text-muted-foreground">
-									Preset name
-								</Label>
-								<Input
-									value={draftName}
-									disabled={isBuiltin}
-									onChange={(e) => {
-										setDraftName(e.target.value);
-										setDirty(true);
-									}}
-									className="mt-1 h-8 text-[13px]"
-								/>
-							</div>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={handleDuplicate}
-								disabled={savePreset.isPending}
-							>
-								<LuCopy className="size-3.5 mr-1" />
-								Duplicate
-							</Button>
-							{!isBuiltin && (
+					<>
+						{/* Sticky header: name input + duplicate/delete stay visible. */}
+						<div className="shrink-0 p-4 pb-3 border-b bg-background">
+							<div className="flex items-end gap-2">
+								<div className="flex-1">
+									<Label className="text-[11px] text-muted-foreground">
+										Preset name
+									</Label>
+									<Input
+										value={draftName}
+										disabled={isBuiltin}
+										onChange={(e) => {
+											setDraftName(e.target.value);
+											setDirty(true);
+										}}
+										className="mt-1 h-8 text-[13px]"
+									/>
+								</div>
 								<Button
 									type="button"
 									variant="outline"
 									size="sm"
-									onClick={handleDelete}
-									disabled={deletePreset.isPending || isActive}
-									title={
-										isActive
-											? "Activate a different preset first to delete this one"
-											: undefined
-									}
+									onClick={handleDuplicate}
+									disabled={savePreset.isPending}
 								>
-									<LuTrash2 className="size-3.5 mr-1" />
-									Delete
+									<LuCopy className="size-3.5 mr-1" />
+									Duplicate
 								</Button>
+								{!isBuiltin && (
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={handleDelete}
+										disabled={deletePreset.isPending || isActive}
+										title={
+											isActive
+												? "Activate a different preset first to delete this one"
+												: undefined
+										}
+									>
+										<LuTrash2 className="size-3.5 mr-1" />
+										Delete
+									</Button>
+								)}
+							</div>
+							{isBuiltin && (
+								<div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+									Built-in preset. Duplicate to customize.
+								</div>
 							)}
 						</div>
 
-						{isBuiltin && (
-							<div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
-								Built-in preset. Duplicate to customize.
-							</div>
-						)}
-
-						<div className="flex flex-col divide-y border rounded-md">
-							{toggleKeys.map((key) => {
-								const m = meta[key];
-								const value = draftToggles[key] === true;
-								return (
-									<div key={key} className="flex items-start gap-3 p-3">
-										<div className="flex-1 min-w-0">
-											<div className="text-[12px] font-medium">{m.label}</div>
-											<div className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
-												{m.description}
+						{/* Scrollable toggle list — only this region scrolls so the
+						    header and the Save/Activate action bar stay on screen
+						    even with many toggle rows. */}
+						<div className="flex-1 min-h-0 overflow-y-auto p-4">
+							<div className="flex flex-col divide-y border rounded-md">
+								{toggleKeys.map((key) => {
+									const m = meta[key];
+									const value = draftToggles[key] === true;
+									return (
+										<div key={key} className="flex items-start gap-3 p-3">
+											<div className="flex-1 min-w-0">
+												<div className="text-[12px] font-medium">{m.label}</div>
+												<div className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
+													{m.description}
+												</div>
+												<div className="mt-1 text-[10px] font-mono text-muted-foreground/70 truncate">
+													{m.methods.join(", ")}
+												</div>
 											</div>
-											<div className="mt-1 text-[10px] font-mono text-muted-foreground/70 truncate">
-												{m.methods.join(", ")}
-											</div>
+											<Switch
+												checked={value}
+												disabled={isBuiltin}
+												onCheckedChange={(v: boolean) => handleToggle(key, v)}
+											/>
 										</div>
-										<Switch
-											checked={value}
-											disabled={isBuiltin}
-											onCheckedChange={(v: boolean) => handleToggle(key, v)}
-										/>
-									</div>
-								);
-							})}
+									);
+								})}
+							</div>
 						</div>
 
-						<div className="flex items-center justify-between pt-2">
-							<div className="text-[11px] text-muted-foreground">
+						{/* Sticky action bar. */}
+						<div className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 border-t bg-background">
+							<div className="text-[11px] text-muted-foreground min-w-0 flex-1 line-clamp-2">
 								{isActive
-									? "This preset is currently active. Changes to toggles apply to all live MCP sessions after save (connections are force-reconnected)."
+									? "Active preset. Changes apply to all live MCP sessions after save."
 									: "Save, then click Activate to apply to MCP sessions."}
 							</div>
-							<div className="flex items-center gap-2">
+							<div className="flex items-center gap-2 shrink-0">
 								{!isBuiltin && (
 									<Button
 										type="button"
@@ -328,7 +336,7 @@ export function PermissionsTab() {
 								</Button>
 							</div>
 						</div>
-					</div>
+					</>
 				)}
 			</div>
 		</div>
