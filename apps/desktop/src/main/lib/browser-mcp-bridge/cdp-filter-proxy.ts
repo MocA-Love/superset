@@ -152,6 +152,24 @@ function targetIdOf(obj: unknown): string | undefined {
 	return typeof t === "string" ? t : undefined;
 }
 
+/**
+ * Electron's BrowserView / <webview> shows up in Chromium's CDP as
+ * `type: "webview"`. puppeteer-core's `browser.pages()` filters by
+ * `type === "page"`, so the unchanged type would make chrome-devtools-
+ * mcp's `list_pages` / `evaluate_script` see zero pages even when the
+ * bound pane is alive. We rewrite "webview" to "page" on the way out
+ * so external CDP clients treat the pane as a normal page target.
+ */
+function rewriteTargetInfoType<T extends { type?: string } | undefined>(
+	info: T,
+): T {
+	if (!info) return info;
+	if (info.type === "webview") {
+		return { ...info, type: "page" } as T;
+	}
+	return info;
+}
+
 export async function proxyBrowserUpgrade(
 	req: IncomingMessage,
 	socket: Duplex,
@@ -446,11 +464,15 @@ export async function proxyBrowserUpgrade(
 				const origMethod = pendingMethods.get(msg.id);
 				pendingMethods.delete(msg.id);
 				if (origMethod === "Target.getTargets" && msg.result) {
-					const infos = (msg.result.targetInfos ?? []) as unknown[];
-					const filtered = infos.filter((i) => {
-						const tid = targetIdOf(i);
-						return tid !== undefined && bound.has(tid);
-					});
+					const infos = (msg.result.targetInfos ?? []) as Array<
+						{ type?: string } & Record<string, unknown>
+					>;
+					const filtered = infos
+						.filter((i) => {
+							const tid = targetIdOf(i);
+							return tid !== undefined && bound.has(tid);
+						})
+						.map((i) => rewriteTargetInfoType(i));
 					sendToClient({
 						...msg,
 						result: { ...msg.result, targetInfos: filtered },
@@ -470,6 +492,16 @@ export async function proxyBrowserUpgrade(
 						});
 						return;
 					}
+					sendToClient({
+						...msg,
+						result: {
+							...msg.result,
+							targetInfo: rewriteTargetInfoType(
+								msg.result.targetInfo as { type?: string },
+							),
+						},
+					});
+					return;
 				}
 				sendToClient(msg);
 				return;
@@ -482,27 +514,45 @@ export async function proxyBrowserUpgrade(
 				method === "Target.targetInfoChanged" ||
 				method === "Target.targetCrashed"
 			) {
-				const info =
-					(
-						msg.params as
-							| { targetInfo?: unknown; targetId?: string }
-							| undefined
-					)?.targetInfo ?? msg.params;
-				const tid =
-					targetIdOf(info) ??
-					(msg.params as { targetId?: string } | undefined)?.targetId;
+				const params = msg.params as
+					| {
+							targetInfo?: { type?: string; targetId?: string };
+							targetId?: string;
+					  }
+					| undefined;
+				const info = params?.targetInfo;
+				const tid = info?.targetId ?? params?.targetId;
 				if (!tid || !bound.has(tid)) return;
-				sendToClient(msg);
+				if (info) {
+					sendToClient({
+						...msg,
+						params: {
+							...params,
+							targetInfo: rewriteTargetInfoType(info),
+						},
+					});
+				} else {
+					sendToClient(msg);
+				}
 				return;
 			}
 			if (method === "Target.attachedToTarget") {
 				const params = msg.params as
-					| { sessionId?: string; targetInfo?: { targetId?: string } }
+					| {
+							sessionId?: string;
+							targetInfo?: { type?: string; targetId?: string };
+					  }
 					| undefined;
 				const tid = params?.targetInfo?.targetId;
 				if (!tid || !bound.has(tid)) return;
 				if (params?.sessionId) allowedSessionIds.add(params.sessionId);
-				sendToClient(msg);
+				sendToClient({
+					...msg,
+					params: {
+						...params,
+						targetInfo: rewriteTargetInfoType(params.targetInfo),
+					},
+				});
 				return;
 			}
 			if (method === "Target.detachedFromTarget") {

@@ -163,7 +163,11 @@ export async function resolvePidToSession(
 			cache.set(pid, { resolved, at: Date.now() });
 			return resolved;
 		} catch (err) {
-			console.log("[pane-resolver] getProcessTree failed for pane", s.paneId, err);
+			console.log(
+				"[pane-resolver] getProcessTree failed for pane",
+				s.paneId,
+				err,
+			);
 		}
 	}
 	console.log("[pane-resolver] pid", pid, "not found in any pane tree");

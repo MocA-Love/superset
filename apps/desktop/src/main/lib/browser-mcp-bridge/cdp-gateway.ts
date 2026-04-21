@@ -310,8 +310,17 @@ export async function handleCdpGatewayRequest(
 			})
 			.map((t) => {
 				const id = (t as { id?: string }).id ?? primary;
+				// Electron exposes its <webview> / BrowserView tags as
+				// `type: "webview"` in /json/list. puppeteer-core's
+				// `browser.pages()` only counts targets whose type is
+				// `page`, so leaving "webview" through would make
+				// chrome-devtools-mcp's `list_pages` / `evaluate_script`
+				// return empty even when the bound pane is alive. Rewrite
+				// the type on the way out.
+				const type = (t as { type?: string }).type;
 				return {
 					...t,
+					type: type === "webview" ? "page" : type,
 					webSocketDebuggerUrl: `ws://${host}/devtools/page/${id}`,
 					devtoolsFrontendUrl: `http://${host}/devtools/page/${id}`,
 				};
