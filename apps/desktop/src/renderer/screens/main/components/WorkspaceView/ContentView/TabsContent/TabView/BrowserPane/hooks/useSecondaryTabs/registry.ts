@@ -313,10 +313,7 @@ class SecondaryTabRegistry {
 		webview.addEventListener("dom-ready", handleDomReady);
 		webview.addEventListener("did-start-loading", handleDidStartLoading);
 		webview.addEventListener("did-stop-loading", handleDidStopLoading);
-		webview.addEventListener(
-			"did-fail-load",
-			handleDidFailLoad as EventListener,
-		);
+		webview.addEventListener("did-fail-load", handleDidFailLoad as EventListener);
 		webview.addEventListener("did-navigate", handleDidNav as EventListener);
 		webview.addEventListener(
 			"did-navigate-in-page",

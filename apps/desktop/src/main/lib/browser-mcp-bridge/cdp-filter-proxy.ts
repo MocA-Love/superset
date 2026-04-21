@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
-import { webContents as electronWebContents } from "electron";
 import { type RawData, WebSocket, type WebSocketServer } from "ws";
+import { webContents as electronWebContents } from "electron";
 import { browserManager } from "../browser/browser-manager";
 import { resolveCdpPort } from "./cdp-port";
 import {
@@ -483,7 +483,10 @@ export async function proxyBrowserUpgrade(
 						if (tid) {
 							const paneForTid = browserManager.getPaneIdForTarget(tid);
 							if (paneForTid) {
-								const tabId = browserManager.getTabIdForTarget(paneForTid, tid);
+								const tabId = browserManager.getTabIdForTarget(
+									paneForTid,
+									tid,
+								);
 								const wcId = browserManager.getWebContentsIdForTab(
 									paneForTid,
 									tabId,

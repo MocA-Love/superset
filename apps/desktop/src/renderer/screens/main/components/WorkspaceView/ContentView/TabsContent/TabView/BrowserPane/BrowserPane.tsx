@@ -417,7 +417,9 @@ export function BrowserPane({
 						paneId={paneId}
 						currentUrl={activeSecondary ? activeSecondary.url : currentUrl}
 						pageTitle={activeSecondary ? activeSecondary.title : pageTitle}
-						isLoading={activeSecondary ? activeSecondary.isLoading : isLoading}
+						isLoading={
+							activeSecondary ? activeSecondary.isLoading : isLoading
+						}
 						hasPage={
 							activeSecondary
 								? Boolean(
@@ -426,7 +428,9 @@ export function BrowserPane({
 									)
 								: !isBlankPage
 						}
-						isBookmarked={activeSecondary ? false : Boolean(currentBookmark)}
+						isBookmarked={
+							activeSecondary ? false : Boolean(currentBookmark)
+						}
 						canGoBack={activeSecondary ? true : canGoBack}
 						canGoForward={activeSecondary ? true : canGoForward}
 						onGoBack={
