@@ -5,6 +5,7 @@ import { useTabsStore } from "renderer/stores/tabs/store";
 import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { DEBUG_TERMINAL } from "../config";
 import { logTerminalWrite, terminalRendererDebug } from "../debug";
+import { scheduleWrite } from "../v1-terminal-cache";
 import type { TerminalExitReason, TerminalStreamEvent } from "../types";
 
 export interface UseTerminalStreamOptions {
@@ -192,7 +193,7 @@ export function useTerminalStream({
 
 				updateModesRef.current(event.data);
 				logTerminalWrite("stream-data", event.data.length, { paneId });
-				xterm.write(event.data);
+				scheduleWrite(paneId, event.data);
 				updateCwdRef.current(event.data);
 			} else if (event.type === "exit") {
 				handleTerminalExit(event.exitCode, xterm, event.reason);

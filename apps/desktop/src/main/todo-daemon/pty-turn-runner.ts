@@ -78,7 +78,7 @@ const CLAUDE_BIN =
 const CLAUDE_PROJECTS_ROOT = path.join(os.homedir(), ".claude", "projects");
 
 /** How long we wait after spawn for the JSONL file to appear. */
-const JSONL_DISCOVERY_TIMEOUT_MS = 15_000;
+const JSONL_DISCOVERY_TIMEOUT_MS = 30_000;
 
 /** How often we poll the JSONL file for appended lines. */
 const JSONL_POLL_INTERVAL_MS = 250;
@@ -330,14 +330,19 @@ export async function runClaudeTurnPty(
 
 		if (!state.jsonlPath) {
 			const runtimeSid = hookSink.readRuntimeSessionId();
+			const foundJsonls = listJsonl(projectDir);
+			const foundStr =
+				foundJsonls.length > 0
+					? `projectDir に存在するファイル: ${foundJsonls.slice(0, 5).join(", ")}${foundJsonls.length > 5 ? ` 他${foundJsonls.length - 5}件` : ""}`
+					: "projectDir に .jsonl ファイルが見つかりません";
 			return {
 				result: null,
 				sessionId: state.claudeSessionId,
 				costUsd: null,
 				numTurns: null,
 				error: runtimeSid
-					? `Claude Code のセッション JSONL (${runtimeSid}.jsonl) が発見できませんでした`
-					: "SessionStart hook が発火しなかったため JSONL を同定できませんでした (PTY 起動は成功)",
+					? `Claude Code のセッション JSONL (${runtimeSid}.jsonl) が発見できませんでした — ${foundStr}`
+					: `SessionStart hook が発火しなかったため JSONL を同定できませんでした (PTY 起動は成功) — ${foundStr}`,
 				interrupted: false,
 				scheduledWakeup: null,
 			};
