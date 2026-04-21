@@ -4,14 +4,21 @@ import { LuEyeOff, LuLink, LuReplace } from "react-icons/lu";
 import type { RowHoverAction } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import { RowHoverActions } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/RowHoverActions";
 import type { SearchLineResult } from "../../types";
-import { highlightSearchText } from "../../utils/searchPattern/searchPattern";
+import {
+	buildLineReplacementSegments,
+	highlightSearchText,
+} from "../../utils/searchPattern/searchPattern";
 
 interface SearchMatchItemProps {
 	lineMatch: SearchLineResult;
 	query: string;
 	isRegex: boolean;
 	caseSensitive: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
 	isReplaceEnabled: boolean;
+	/** When set, render the line as a before/after diff preview. */
+	replacement?: string;
 	variant?: "default" | "tree" | "list";
 	onOpen: (absolutePath: string, line: number, column: number) => void;
 	onCopyLink: (lineMatch: SearchLineResult) => void;
@@ -24,7 +31,10 @@ export const SearchMatchItem = memo(function SearchMatchItem({
 	query,
 	isRegex,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	isReplaceEnabled,
+	replacement,
 	variant = "default",
 	onOpen,
 	onCopyLink,
@@ -32,10 +42,82 @@ export const SearchMatchItem = memo(function SearchMatchItem({
 	onIgnore,
 }: SearchMatchItemProps) {
 	const primaryMatch = lineMatch.matches[0];
+	const showPreview = typeof replacement === "string" && replacement.length > 0;
+	const previewSegments = useMemo(
+		() =>
+			showPreview
+				? buildLineReplacementSegments(lineMatch.preview, {
+						query,
+						replacement: replacement ?? "",
+						isRegex,
+						caseSensitive,
+						wholeWord,
+						multiline,
+					})
+				: null,
+		[
+			showPreview,
+			lineMatch.preview,
+			query,
+			replacement,
+			isRegex,
+			caseSensitive,
+			wholeWord,
+			multiline,
+		],
+	);
 	const highlightedText = useMemo(
 		() =>
-			highlightSearchText(lineMatch.preview, { query, isRegex, caseSensitive }),
-		[lineMatch.preview, query, isRegex, caseSensitive],
+			previewSegments
+				? (() => {
+						// Pre-compute running offsets so each segment gets a key that
+						// embeds its absolute position in the line. That keeps keys
+						// stable across renders without resorting to array indices
+						// (which Biome flags) and works even when consecutive segments
+						// share identical text.
+						let offset = 0;
+						return previewSegments.map((seg) => {
+							const key = `${seg.kind}-${offset}`;
+							offset += seg.text.length;
+							if (seg.kind === "text") {
+								return <span key={key}>{seg.text}</span>;
+							}
+							if (seg.kind === "match-before") {
+								return (
+									<del
+										key={key}
+										className="rounded bg-[var(--highlight-match)]/40 px-0.5 text-destructive line-through decoration-destructive/60"
+									>
+										{seg.text}
+									</del>
+								);
+							}
+							return (
+								<ins
+									key={key}
+									className="rounded bg-emerald-500/15 px-0.5 text-emerald-700 no-underline dark:text-emerald-300"
+								>
+									{seg.text}
+								</ins>
+							);
+						});
+					})()
+				: highlightSearchText(lineMatch.preview, {
+						query,
+						isRegex,
+						caseSensitive,
+						wholeWord,
+						multiline,
+					}),
+		[
+			previewSegments,
+			lineMatch.preview,
+			query,
+			isRegex,
+			caseSensitive,
+			wholeWord,
+			multiline,
+		],
 	);
 	const hoverActions: RowHoverAction[] = [
 		...(isReplaceEnabled

@@ -83,6 +83,21 @@ jobs:
         working-directory: apps/desktop
         run: bun run install:deps
 
+      # `bun install --ignore-scripts` skips postinstalls for safety; the
+      # @vscode/ripgrep package uses its postinstall to download the
+      # platform-specific ripgrep binary. workspace-fs tests that exercise
+      # the streaming / multiline paths need that binary, so run the
+      # postinstall explicitly for just this package.
+      - name: Download bundled ripgrep binary
+        run: |
+          rg_pkg=$(ls -d node_modules/.bun/@vscode+ripgrep@*/node_modules/@vscode/ripgrep | head -1)
+          if [ -z "$rg_pkg" ]; then
+            echo "::error::@vscode/ripgrep not found in node_modules"
+            exit 1
+          fi
+          node "$rg_pkg/lib/postinstall.js"
+          ls -la "$rg_pkg/bin" || true
+
       - name: Test
         env:
           RELAY_URL: https://relay.superset.sh

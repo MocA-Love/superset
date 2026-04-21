@@ -9,6 +9,23 @@ import type {
 	FsWriteResult,
 } from "../types";
 
+export interface FsContentStreamInput {
+	query: string;
+	includeHidden?: boolean;
+	includePattern?: string;
+	excludePattern?: string;
+	limit?: number;
+	isRegex?: boolean;
+	caseSensitive?: boolean;
+	wholeWord?: boolean;
+	multiline?: boolean;
+	scopeId?: string;
+}
+
+export interface FsContentStreamEvent {
+	match: FsContentMatch;
+}
+
 export interface FsService {
 	listDirectory(input: {
 		absolutePath: string;
@@ -72,6 +89,9 @@ export interface FsService {
 		limit?: number;
 		isRegex?: boolean;
 		caseSensitive?: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
+		scopeId?: string;
 	}): Promise<{ matches: FsContentMatch[] }>;
 
 	replaceContent(input: {
@@ -82,6 +102,8 @@ export interface FsService {
 		excludePattern?: string;
 		isRegex?: boolean;
 		caseSensitive?: boolean;
+		wholeWord?: boolean;
+		multiline?: boolean;
 		paths?: string[];
 	}): Promise<FsReplaceContentResult>;
 
@@ -89,6 +111,10 @@ export interface FsService {
 		absolutePath: string;
 		recursive?: boolean;
 	}): AsyncIterable<{ events: FsWatchEvent[] }>;
+
+	searchContentStream(
+		input: FsContentStreamInput,
+	): AsyncIterable<FsContentStreamEvent>;
 }
 
 export interface FsRequestMap {
@@ -169,6 +195,9 @@ export interface FsRequestMap {
 			limit?: number;
 			isRegex?: boolean;
 			caseSensitive?: boolean;
+			wholeWord?: boolean;
+			multiline?: boolean;
+			scopeId?: string;
 		};
 		output: { matches: FsContentMatch[] };
 	};
@@ -181,6 +210,8 @@ export interface FsRequestMap {
 			excludePattern?: string;
 			isRegex?: boolean;
 			caseSensitive?: boolean;
+			wholeWord?: boolean;
+			multiline?: boolean;
 			paths?: string[];
 		};
 		output: FsReplaceContentResult;
@@ -191,5 +222,9 @@ export interface FsSubscriptionMap {
 	watchPath: {
 		input: { absolutePath: string; recursive?: boolean };
 		event: { events: FsWatchEvent[] };
+	};
+	searchContentStream: {
+		input: FsContentStreamInput;
+		event: FsContentStreamEvent;
 	};
 }

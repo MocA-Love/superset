@@ -1,3 +1,4 @@
+import type { FsContentMatch } from "@superset/workspace-fs/host";
 import {
 	toErrorMessage,
 	WorkspaceFsPathError,
@@ -130,6 +131,9 @@ const searchContentInputSchema = z.object({
 	limit: z.number().optional(),
 	isRegex: z.boolean().optional(),
 	caseSensitive: z.boolean().optional(),
+	wholeWord: z.boolean().optional(),
+	multiline: z.boolean().optional(),
+	scopeId: z.string().optional(),
 });
 
 const replaceContentInputSchema = z.object({
@@ -141,6 +145,8 @@ const replaceContentInputSchema = z.object({
 	excludePattern: z.string().optional(),
 	isRegex: z.boolean().optional(),
 	caseSensitive: z.boolean().optional(),
+	wholeWord: z.boolean().optional(),
+	multiline: z.boolean().optional(),
 	paths: z.array(z.string()).optional(),
 });
 
@@ -388,6 +394,9 @@ export const createFilesystemRouter = () => {
 						limit: input.limit,
 						isRegex: input.isRegex,
 						caseSensitive: input.caseSensitive,
+						wholeWord: input.wholeWord,
+						multiline: input.multiline,
+						scopeId: input.scopeId,
 					});
 				});
 			}),
@@ -415,8 +424,87 @@ export const createFilesystemRouter = () => {
 						excludePattern: input.excludePattern,
 						isRegex: input.isRegex,
 						caseSensitive: input.caseSensitive,
+						wholeWord: input.wholeWord,
+						multiline: input.multiline,
 						paths: input.paths,
 					});
+				});
+			}),
+
+		searchContentStream: publicProcedure
+			.input(
+				z.object({
+					workspaceId: z.string(),
+					query: z.string(),
+					includeHidden: z.boolean().optional(),
+					includePattern: z.string().optional(),
+					excludePattern: z.string().optional(),
+					limit: z.number().optional(),
+					isRegex: z.boolean().optional(),
+					caseSensitive: z.boolean().optional(),
+					wholeWord: z.boolean().optional(),
+					multiline: z.boolean().optional(),
+					scopeId: z.string().optional(),
+				}),
+			)
+			.subscription(({ input }) => {
+				return observable<{ match: FsContentMatch }>((emit) => {
+					const trimmed = input.query.trim();
+					if (!trimmed) {
+						emit.complete();
+						return () => {};
+					}
+
+					const service = getServiceForWorkspace(input.workspaceId);
+					let isDisposed = false;
+					const stream = service.searchContentStream({
+						...input,
+						query: trimmed,
+					});
+					const iterator = stream[Symbol.asyncIterator]();
+
+					const runCleanup = () => {
+						isDisposed = true;
+						void iterator.return?.().catch((error) => {
+							console.error(
+								"[filesystem/searchContentStream] Cleanup failed:",
+								{ workspaceId: input.workspaceId, error },
+							);
+						});
+					};
+
+					void (async () => {
+						try {
+							while (!isDisposed) {
+								const next = await iterator.next();
+								if (next.done || isDisposed) {
+									if (!isDisposed) emit.complete();
+									return;
+								}
+								try {
+									emit.next(next.value);
+								} catch (error) {
+									if (isClosedStreamError(error)) {
+										runCleanup();
+										return;
+									}
+									throw error;
+								}
+							}
+						} catch (error) {
+							if (!isDisposed) {
+								try {
+									emit.error(error);
+								} catch {
+									// subscriber already gone; nothing else to do.
+								}
+							}
+						}
+					})();
+
+					return () => {
+						runCleanup();
+					};
 				});
 			}),
 

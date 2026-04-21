@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -198,6 +198,21 @@ export interface RunRipgrepOptions {
 	signal?: AbortSignal;
 }
 
+export interface RunRipgrepStreamOptions {
+	cwd: string;
+	signal?: AbortSignal;
+}
+
+/**
+ * Streaming ripgrep runner. Yields stdout chunks as they arrive so callers
+ * can parse match lines before the subprocess finishes. Implementations
+ * must honor the provided AbortSignal.
+ */
+export type RunRipgrepStream = (
+	args: string[],
+	options: RunRipgrepStreamOptions,
+) => AsyncIterable<string>;
+
 export interface SearchContentOptions {
 	rootPath: string;
 	query: string;
@@ -207,10 +222,30 @@ export interface SearchContentOptions {
 	limit?: number;
 	isRegex?: boolean;
 	caseSensitive?: boolean;
+	/**
+	 * VSCode's "Match whole word" toggle. Wraps the query in word boundaries
+	 * (`\b`) so `foo` does not match `foobar`. Orthogonal to `isRegex`.
+	 */
+	wholeWord?: boolean;
+	/**
+	 * VSCode's multiline regex mode. Only meaningful when `isRegex` is true;
+	 * lets the pattern span newlines and makes `.` match them.
+	 */
+	multiline?: boolean;
+	/**
+	 * Logical caller identity (e.g. "search-tab"). Each scope owns its own
+	 * AbortController so the Search tab, Cmd+P and Files tab don't cancel
+	 * each other's queries when they land on the same workspace.
+	 */
+	scopeId?: string;
+	/** External cancel signal; forwarded to the internal controller. */
+	signal?: AbortSignal;
 	runRipgrep?: (
 		args: string[],
 		options: RunRipgrepOptions,
 	) => Promise<{ stdout: string }>;
+	/** Streaming runner, used by searchContentStream. */
+	spawnRipgrep?: RunRipgrepStream;
 }
 
 export interface ReplaceContentOptions {
@@ -222,6 +257,10 @@ export interface ReplaceContentOptions {
 	excludePattern?: string;
 	isRegex?: boolean;
 	caseSensitive?: boolean;
+	/** Matches the corresponding flag on `SearchContentOptions`. */
+	wholeWord?: boolean;
+	/** Matches the corresponding flag on `SearchContentOptions`. */
+	multiline?: boolean;
 	paths?: string[];
 }
 
@@ -386,17 +425,28 @@ function compileSearchPattern({
 	query,
 	isRegex = false,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 }: Pick<
 	SearchContentOptions,
-	"query" | "isRegex" | "caseSensitive"
+	"query" | "isRegex" | "caseSensitive" | "wholeWord" | "multiline"
 >): CompiledSearchPattern {
 	const resolvedCaseSensitive = resolveCaseSensitive(
 		query,
 		caseSensitive,
 		isRegex,
 	);
-	const flags = resolvedCaseSensitive ? "gu" : "giu";
-	const source = isRegex ? query : escapeRegExp(query);
+	// `s` (dotall) + `m` (anchors per line) only ship when the caller opts
+	// into multiline mode. This keeps simple searches behaving exactly as
+	// before while letting regex users match across newlines.
+	let flags = resolvedCaseSensitive ? "gu" : "giu";
+	if (isRegex && multiline) {
+		flags += "sm";
+	}
+	let source = isRegex ? query : escapeRegExp(query);
+	if (wholeWord) {
+		source = `\\b(?:${source})\\b`;
+	}
 
 	return {
 		isRegex,
@@ -732,6 +782,68 @@ async function defaultRunRipgrep(
 	return { stdout: result.stdout };
 }
 
+// Streaming default runner. Uses `spawn` so stdout chunks can be consumed
+// before the process exits. Desktop overrides this to invoke the bundled
+// ripgrep binary instead of relying on PATH.
+async function* defaultSpawnRipgrep(
+	args: string[],
+	options: RunRipgrepStreamOptions,
+): AsyncIterable<string> {
+	const child = spawn("rg", args, {
+		cwd: options.cwd,
+		windowsHide: true,
+	});
+
+	const onAbort = () => {
+		// `spawn`'s `signal` option exists on modern Node, but we wire up the
+		// handler manually so we can treat the cancellation as a clean
+		// shutdown (no throw propagated to the generator consumer).
+		if (!child.killed) {
+			child.kill("SIGTERM");
+		}
+	};
+	const signal = options.signal;
+	if (signal) {
+		if (signal.aborted) {
+			onAbort();
+		} else {
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
+	}
+
+	try {
+		// Set encoding so `data` events arrive as strings instead of Buffers.
+		child.stdout.setEncoding("utf8");
+		for await (const chunk of child.stdout as AsyncIterable<string>) {
+			if (signal?.aborted) {
+				return;
+			}
+			yield chunk;
+		}
+		// Drain exit so any non-zero code turns into a real error (other than
+		// exit 1 which ripgrep uses for "no matches found").
+		await new Promise<void>((resolve, reject) => {
+			child.once("error", reject);
+			child.once("close", (code) => {
+				if (signal?.aborted || code === null || code === 0 || code === 1) {
+					resolve();
+				} else {
+					const err = new Error(`ripgrep exited with code ${code}`) as Error & {
+						code?: number;
+					};
+					err.code = code;
+					reject(err);
+				}
+			});
+		});
+	} finally {
+		signal?.removeEventListener("abort", onAbort);
+		if (!child.killed) {
+			child.kill("SIGTERM");
+		}
+	}
+}
+
 async function searchContentWithRipgrep({
 	rootPath,
 	query,
@@ -741,18 +853,47 @@ async function searchContentWithRipgrep({
 	limit,
 	isRegex,
 	caseSensitive,
+	wholeWord,
+	multiline,
 	useSmartCase,
 	runRipgrep,
-}: Required<Omit<SearchContentOptions, "runRipgrep">> & {
+	scopeId,
+	signal,
+}: {
+	rootPath: string;
+	query: string;
+	includeHidden: boolean;
+	includePattern: string;
+	excludePattern: string;
+	limit: number;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
 	useSmartCase: boolean;
 	runRipgrep: NonNullable<SearchContentOptions["runRipgrep"]>;
+	scopeId?: string;
+	signal?: AbortSignal;
 }): Promise<InternalContentMatch[]> {
-	const prevController = activeSearchControllers.get(rootPath);
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	// Scope the cancellation channel so the Search tab, Cmd+P and Files tab
+	// never preempt each other when they happen to land on the same
+	// workspace simultaneously.
+	const controllerKey = `${normalizedRootPath}::${scopeId ?? "default"}`;
+	const prevController = activeSearchControllers.get(controllerKey);
 	if (prevController) {
 		prevController.abort();
 	}
 	const controller = new AbortController();
-	activeSearchControllers.set(rootPath, controller);
+	activeSearchControllers.set(controllerKey, controller);
+	const onExternalAbort = () => controller.abort();
+	if (signal) {
+		if (signal.aborted) {
+			controller.abort();
+		} else {
+			signal.addEventListener("abort", onExternalAbort, { once: true });
+		}
+	}
 
 	const safeLimit = safeSearchLimit(limit);
 	const maxCandidates = safeLimit * KEYWORD_SEARCH_CANDIDATE_MULTIPLIER;
@@ -773,6 +914,12 @@ async function searchContentWithRipgrep({
 		} else {
 			args.push("--ignore-case");
 		}
+		if (multiline) {
+			// `--multiline` lets the regex cross newlines, `--multiline-dotall`
+			// makes `.` match them. We couple them so behavior matches VSCode's
+			// "multi-line" toggle.
+			args.push("--multiline", "--multiline-dotall");
+		}
 	} else {
 		if (caseSensitive) {
 			args.push("--case-sensitive");
@@ -782,6 +929,10 @@ async function searchContentWithRipgrep({
 			args.push("--ignore-case");
 		}
 		args.push("--fixed-strings");
+	}
+
+	if (wholeWord) {
+		args.push("--word-regexp");
 	}
 
 	if (includeHidden) {
@@ -804,7 +955,7 @@ async function searchContentWithRipgrep({
 
 	try {
 		const { stdout } = await runRipgrep(args, {
-			cwd: normalizeAbsolutePath(rootPath),
+			cwd: normalizedRootPath,
 			maxBuffer: KEYWORD_SEARCH_RIPGREP_BUFFER_BYTES,
 			signal: controller.signal,
 		});
@@ -840,7 +991,7 @@ async function searchContentWithRipgrep({
 			}
 
 			const pathData = "path" in data ? data.path : null;
-			const relativePath =
+			const rawPath =
 				typeof pathData === "object" &&
 				pathData !== null &&
 				"text" in pathData &&
@@ -848,9 +999,15 @@ async function searchContentWithRipgrep({
 					? pathData.text
 					: null;
 
-			if (!relativePath) {
+			if (!rawPath) {
 				continue;
 			}
+
+			// ripgrep echoes the `.` target we pass as CWD, so every path comes
+			// back prefixed with `./`. Strip it so relativePath looks identical
+			// across ripgrep and fast-glob code paths (tests match on exact
+			// strings).
+			const relativePath = normalizePathForGlob(rawPath);
 
 			const lineNumber =
 				"line_number" in data && typeof data.line_number === "number"
@@ -880,10 +1037,7 @@ async function searchContentWithRipgrep({
 				}
 			}
 
-			const absolutePath = path.join(
-				normalizeAbsolutePath(rootPath),
-				relativePath,
-			);
+			const absolutePath = path.join(normalizedRootPath, relativePath);
 			const id = `${absolutePath}:${lineNumber}:${column}`;
 			if (seen.has(id)) {
 				continue;
@@ -900,14 +1054,16 @@ async function searchContentWithRipgrep({
 			});
 		}
 
-		if (activeSearchControllers.get(rootPath) === controller) {
-			activeSearchControllers.delete(rootPath);
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeSearchControllers.get(controllerKey) === controller) {
+			activeSearchControllers.delete(controllerKey);
 		}
 
 		return rankContentMatches(matches, query, safeLimit, isRegex);
 	} catch (error) {
-		if (activeSearchControllers.get(rootPath) === controller) {
-			activeSearchControllers.delete(rootPath);
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeSearchControllers.get(controllerKey) === controller) {
+			activeSearchControllers.delete(controllerKey);
 		}
 
 		if (error instanceof Error && error.name === "AbortError") {
@@ -1371,12 +1527,20 @@ export async function searchFiles({
 export async function searchContent({
 	rootPath,
 	query,
-	includeHidden = true,
+	// `searchFiles` defaults to `false` here; keeping this `true` would be
+	// surprising, but callers (SearchView) already pass `false` explicitly
+	// and flipping the default could affect other unknown consumers. Leave
+	// as-is but let the flag propagate honestly.
+	includeHidden = false,
 	includePattern = "",
 	excludePattern = "",
 	limit = 20,
 	isRegex = false,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
+	scopeId,
+	signal,
 	runRipgrep = defaultRunRipgrep,
 }: SearchContentOptions): Promise<FsContentMatch[]> {
 	const trimmedQuery = query.trim();
@@ -1390,6 +1554,8 @@ export async function searchContent({
 			query: trimmedQuery,
 			isRegex,
 			caseSensitive,
+			wholeWord,
+			multiline,
 		});
 
 		internalMatches = await searchContentWithRipgrep({
@@ -1401,8 +1567,12 @@ export async function searchContent({
 			limit,
 			isRegex,
 			caseSensitive: pattern.caseSensitive,
+			wholeWord,
+			multiline,
 			useSmartCase: !isRegex && caseSensitive === undefined,
 			runRipgrep,
+			scopeId,
+			signal,
 		});
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") {
@@ -1413,6 +1583,8 @@ export async function searchContent({
 			query: trimmedQuery,
 			isRegex,
 			caseSensitive,
+			wholeWord,
+			multiline,
 		});
 		const index = await getSearchIndex({
 			rootPath,
@@ -1443,15 +1615,309 @@ export async function searchContent({
 	);
 }
 
+// Shared helper between the batched and streaming searchContent paths so
+// argv stays in sync when we add flags (wholeWord, multiline, etc.).
+function buildRipgrepSearchArgs({
+	query,
+	includeHidden,
+	includePattern,
+	excludePattern,
+	isRegex,
+	caseSensitive,
+	wholeWord,
+	multiline,
+	useSmartCase,
+}: {
+	query: string;
+	includeHidden: boolean;
+	includePattern: string;
+	excludePattern: string;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
+	useSmartCase: boolean;
+}): string[] {
+	const args = [
+		"--json",
+		"--line-number",
+		"--column",
+		"--no-messages",
+		"--max-filesize",
+		`${Math.floor(MAX_KEYWORD_FILE_SIZE_BYTES / 1024)}K`,
+		"--max-count",
+		String(KEYWORD_SEARCH_MAX_COUNT_PER_FILE),
+	];
+
+	if (isRegex) {
+		args.push(caseSensitive ? "--case-sensitive" : "--ignore-case");
+		if (multiline) {
+			args.push("--multiline", "--multiline-dotall");
+		}
+	} else {
+		if (caseSensitive) {
+			args.push("--case-sensitive");
+		} else if (useSmartCase) {
+			args.push("--smart-case");
+		} else {
+			args.push("--ignore-case");
+		}
+		args.push("--fixed-strings");
+	}
+
+	if (wholeWord) {
+		args.push("--word-regexp");
+	}
+	if (includeHidden) {
+		args.push("--hidden", "--no-ignore");
+	}
+	for (const pattern of DEFAULT_IGNORE_PATTERNS) {
+		args.push("--glob", `!${pattern}`);
+	}
+	for (const pattern of parseGlobPatterns(includePattern)) {
+		args.push("--glob", normalizePathForGlob(pattern));
+	}
+	for (const pattern of parseGlobPatterns(excludePattern)) {
+		args.push("--glob", `!${normalizePathForGlob(pattern)}`);
+	}
+
+	args.push(query, ".");
+	return args;
+}
+
+interface RgJsonMatch {
+	absolutePath: string;
+	relativePath: string;
+	name: string;
+	line: number;
+	column: number;
+	preview: string;
+}
+
+// Parses one line of ripgrep `--json` output. Returns the match, or null
+// for begin/end/summary/unparsable lines.
+function parseRipgrepMatchLine(
+	rawLine: string,
+	normalizedRootPath: string,
+): RgJsonMatch | null {
+	if (!rawLine) {
+		return null;
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawLine);
+	} catch {
+		return null;
+	}
+
+	if (
+		typeof parsed !== "object" ||
+		parsed === null ||
+		!("type" in parsed) ||
+		parsed.type !== "match" ||
+		!("data" in parsed)
+	) {
+		return null;
+	}
+
+	const data = parsed.data;
+	if (typeof data !== "object" || data === null) {
+		return null;
+	}
+
+	const pathData = "path" in data ? data.path : null;
+	const rawPath =
+		typeof pathData === "object" &&
+		pathData !== null &&
+		"text" in pathData &&
+		typeof pathData.text === "string"
+			? pathData.text
+			: null;
+	if (!rawPath) {
+		return null;
+	}
+
+	const relativePath = normalizePathForGlob(rawPath);
+	const lineNumber =
+		"line_number" in data && typeof data.line_number === "number"
+			? data.line_number
+			: 1;
+
+	const linesData = "lines" in data ? data.lines : null;
+	const lineText =
+		typeof linesData === "object" &&
+		linesData !== null &&
+		"text" in linesData &&
+		typeof linesData.text === "string"
+			? linesData.text
+			: "";
+
+	const submatches = "submatches" in data ? data.submatches : null;
+	let column = 1;
+	if (Array.isArray(submatches) && submatches.length > 0) {
+		const firstSubmatch = submatches[0];
+		if (
+			typeof firstSubmatch === "object" &&
+			firstSubmatch !== null &&
+			"start" in firstSubmatch &&
+			typeof firstSubmatch.start === "number"
+		) {
+			column = firstSubmatch.start + 1;
+		}
+	}
+
+	return {
+		absolutePath: path.join(normalizedRootPath, relativePath),
+		relativePath,
+		name: path.basename(relativePath),
+		line: lineNumber,
+		column,
+		preview: formatPreviewLine(lineText.replace(/\r?\n$/, "")),
+	};
+}
+
+export interface SearchContentStreamOptions
+	extends Omit<SearchContentOptions, "runRipgrep" | "limit"> {
+	/** Maximum matches emitted before the stream ends. Defaults to 500. */
+	limit?: number;
+}
+
+/**
+ * VSCode-style streaming search: yields each match as ripgrep reports it
+ * instead of buffering the full result set. Falls back to throwing if the
+ * underlying binary is missing — callers expecting a legacy environment
+ * without rg should continue to use `searchContent`.
+ */
+export async function* searchContentStream({
+	rootPath,
+	query,
+	includeHidden = false,
+	includePattern = "",
+	excludePattern = "",
+	limit = MAX_SEARCH_RESULTS,
+	isRegex = false,
+	caseSensitive,
+	wholeWord = false,
+	multiline = false,
+	scopeId,
+	signal,
+	spawnRipgrep = defaultSpawnRipgrep,
+}: SearchContentStreamOptions): AsyncIterable<FsContentMatch> {
+	const trimmedQuery = query.trim();
+	if (!trimmedQuery) {
+		return;
+	}
+
+	const normalizedRootPath = normalizeAbsolutePath(rootPath);
+	const controllerKey = `${normalizedRootPath}::${scopeId ?? "default"}::stream`;
+	const prev = activeSearchControllers.get(controllerKey);
+	prev?.abort();
+	const controller = new AbortController();
+	activeSearchControllers.set(controllerKey, controller);
+	const onExternalAbort = () => controller.abort();
+	if (signal) {
+		if (signal.aborted) {
+			controller.abort();
+		} else {
+			signal.addEventListener("abort", onExternalAbort, { once: true });
+		}
+	}
+
+	const pattern = compileSearchPattern({
+		query: trimmedQuery,
+		isRegex,
+		caseSensitive,
+		wholeWord,
+		multiline,
+	});
+	const args = buildRipgrepSearchArgs({
+		query: trimmedQuery,
+		includeHidden,
+		includePattern,
+		excludePattern,
+		isRegex,
+		caseSensitive: pattern.caseSensitive,
+		wholeWord,
+		multiline,
+		useSmartCase: !isRegex && caseSensitive === undefined,
+	});
+
+	const safeLimit = safeSearchLimit(limit);
+	const seen = new Set<string>();
+	let emitted = 0;
+	let buffer = "";
+
+	try {
+		for await (const chunk of spawnRipgrep(args, {
+			cwd: normalizedRootPath,
+			signal: controller.signal,
+		})) {
+			if (controller.signal.aborted) {
+				return;
+			}
+			buffer += chunk;
+			let newlineIndex = buffer.indexOf("\n");
+			while (newlineIndex !== -1) {
+				const line = buffer.slice(0, newlineIndex);
+				buffer = buffer.slice(newlineIndex + 1);
+				const match = parseRipgrepMatchLine(line, normalizedRootPath);
+				if (match) {
+					const id = `${match.absolutePath}:${match.line}:${match.column}`;
+					if (!seen.has(id)) {
+						seen.add(id);
+						emitted += 1;
+						yield {
+							absolutePath: match.absolutePath,
+							relativePath: match.relativePath,
+							line: match.line,
+							column: match.column,
+							preview: match.preview,
+						};
+						if (emitted >= safeLimit) {
+							controller.abort();
+							return;
+						}
+					}
+				}
+				newlineIndex = buffer.indexOf("\n");
+			}
+		}
+		// Trailing partial line (no newline at EOF).
+		if (buffer && !controller.signal.aborted) {
+			const match = parseRipgrepMatchLine(buffer, normalizedRootPath);
+			if (match) {
+				const id = `${match.absolutePath}:${match.line}:${match.column}`;
+				if (!seen.has(id) && emitted < safeLimit) {
+					yield {
+						absolutePath: match.absolutePath,
+						relativePath: match.relativePath,
+						line: match.line,
+						column: match.column,
+						preview: match.preview,
+					};
+				}
+			}
+		}
+	} finally {
+		signal?.removeEventListener("abort", onExternalAbort);
+		if (activeSearchControllers.get(controllerKey) === controller) {
+			activeSearchControllers.delete(controllerKey);
+		}
+	}
+}
+
 export async function replaceContent({
 	rootPath,
 	query,
 	replacement,
-	includeHidden = true,
+	includeHidden = false,
 	includePattern = "",
 	excludePattern = "",
 	isRegex = false,
 	caseSensitive,
+	wholeWord = false,
+	multiline = false,
 	paths,
 }: ReplaceContentOptions): Promise<FsReplaceContentResult> {
 	const trimmedQuery = query.trim();
@@ -1470,6 +1936,8 @@ export async function replaceContent({
 		query: trimmedQuery,
 		isRegex,
 		caseSensitive,
+		wholeWord,
+		multiline,
 	});
 	const index = await getSearchIndex({
 		rootPath: normalizedRootPath,
