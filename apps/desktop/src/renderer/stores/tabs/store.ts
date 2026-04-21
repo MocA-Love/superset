@@ -960,7 +960,9 @@ export const useTabsStore = create<TabsStore>()(
 						const isSameFile =
 							pathsMatch(existingFileViewer.filePath, options.filePath) &&
 							existingFileViewer.diffCategory === options.diffCategory &&
-							existingFileViewer.commitHash === options.commitHash;
+							existingFileViewer.commitHash === options.commitHash &&
+							existingFileViewer.inlineOriginalContentKey ===
+								options.inlineOriginalContentKey;
 
 						if (paneDocument?.dirty && !isSameFile) {
 							set({
@@ -1052,6 +1054,10 @@ export const useTabsStore = create<TabsStore>()(
 										diffCategory: options.diffCategory,
 										commitHash: options.commitHash,
 										oldPath: options.oldPath,
+										inlineOriginalContent:
+											options.inlineOriginalContent,
+										inlineOriginalContentKey:
+											options.inlineOriginalContentKey,
 										initialLine: options.line,
 										initialColumn: options.column,
 										displayName: options.displayName,

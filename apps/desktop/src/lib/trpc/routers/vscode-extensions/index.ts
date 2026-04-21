@@ -41,6 +41,15 @@ const KNOWN_EXTENSIONS = [
 			"https://marketplace.visualstudio.com/items?itemName=openai.chatgpt",
 		viewType: "chatgpt.sidebarView",
 	},
+	{
+		id: "moonshot-ai.kimi-code",
+		name: "Kimi Code",
+		publisher: "Moonshot AI",
+		description: "AI coding assistant by Moonshot AI",
+		marketplaceUrl:
+			"https://marketplace.visualstudio.com/items?itemName=moonshot-ai.kimi-code",
+		viewType: "kimi.webview",
+	},
 ] as const;
 
 function getExtensionsDir(): string {
@@ -514,11 +523,17 @@ export const createVscodeExtensionsRouter = () => {
 					leftUri: string;
 					rightUri: string;
 					title?: string;
+					leftContent?: string;
 				}>((emit) => {
 					const manager = getExtensionHostManager();
 					const handler = (
 						wsId: string,
-						data: { leftUri: string; rightUri: string; title?: string },
+						data: {
+							leftUri: string;
+							rightUri: string;
+							title?: string;
+							leftContent?: string;
+						},
 					) => {
 						if (input?.workspaceId && wsId !== input.workspaceId) return;
 						emit.next(data);

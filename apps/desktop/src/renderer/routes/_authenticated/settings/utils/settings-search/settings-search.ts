@@ -1231,7 +1231,7 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		section: "vscodeExtensions",
 		title: "VS Code Extensions",
 		description:
-			"Manage VS Code extensions like Claude Code and ChatGPT running inside Superset",
+			"Manage VS Code extensions like Claude Code, ChatGPT, and Kimi Code running inside Superset",
 		keywords: [
 			"vscode",
 			"vs code",
@@ -1239,6 +1239,7 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"claude",
 			"chatgpt",
 			"codex",
+			"kimi",
 			"ai",
 			"install",
 			"manage",
