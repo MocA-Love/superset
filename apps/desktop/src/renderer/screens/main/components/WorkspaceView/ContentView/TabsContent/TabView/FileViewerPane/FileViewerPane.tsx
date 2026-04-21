@@ -185,6 +185,8 @@ export function FileViewerPane({
 	const diffCategory = fileViewer?.diffCategory;
 	const commitHash = fileViewer?.commitHash;
 	const oldPath = fileViewer?.oldPath;
+	const inlineOriginalContent = fileViewer?.inlineOriginalContent;
+	const inlineOriginalContentKey = fileViewer?.inlineOriginalContentKey;
 	const initialLine = fileViewer?.initialLine;
 	const initialColumn = fileViewer?.initialColumn;
 
@@ -213,8 +215,16 @@ export function FileViewerPane({
 				diffCategory,
 				commitHash,
 				oldPath,
+				inlineOriginalContentKey,
 			}),
-		[normalizedWorkspaceId, filePath, diffCategory, commitHash, oldPath],
+		[
+			normalizedWorkspaceId,
+			filePath,
+			diffCategory,
+			commitHash,
+			oldPath,
+			inlineOriginalContentKey,
+		],
 	);
 	const documentState = useEditorDocumentsStore(
 		(state) => state.documents[documentKey],
@@ -272,6 +282,7 @@ export function FileViewerPane({
 		diffCategory,
 		commitHash,
 		oldPath,
+		inlineOriginalContent,
 	});
 
 	useEffect(() => {
@@ -292,6 +303,7 @@ export function FileViewerPane({
 				diffCategory,
 				commitHash,
 				oldPath,
+				inlineOriginalContentKey,
 			},
 			{
 				preserveDocumentState,
@@ -310,6 +322,7 @@ export function FileViewerPane({
 		diffCategory,
 		commitHash,
 		oldPath,
+		inlineOriginalContentKey,
 	]);
 
 	const { handleSaveFile, isSaving } = useFileSave({

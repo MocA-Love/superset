@@ -189,6 +189,9 @@ export interface VscodeExtensionContext {
 	globalState: Memento;
 	workspaceState: Memento;
 	secrets: SecretStorage;
+	storageUri: Uri | undefined;
+	globalStorageUri: Uri;
+	logUri: Uri;
 	storagePath: string | undefined;
 	globalStoragePath: string;
 	logPath: string;
@@ -223,6 +226,9 @@ export function createExtensionContext(
 		globalState: new Memento(path.join(globalStoragePath, "state.json")),
 		workspaceState: new Memento(path.join(storagePath, "state.json")),
 		secrets: new SecretStorage(path.join(globalStoragePath, "secrets.json")),
+		storageUri: Uri.file(storagePath),
+		globalStorageUri: Uri.file(globalStoragePath),
+		logUri: Uri.file(logPath),
 		storagePath,
 		globalStoragePath,
 		logPath,

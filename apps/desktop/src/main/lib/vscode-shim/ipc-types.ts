@@ -40,7 +40,13 @@ export type WorkerToMainMessage =
 			html: string | null;
 	  }
 	| { type: "open-file"; filePath: string; line?: number }
-	| { type: "open-diff"; leftUri: string; rightUri: string; title?: string }
+	| {
+			type: "open-diff";
+			leftUri: string;
+			rightUri: string;
+			title?: string;
+			leftContent?: string;
+	  }
 	| {
 			type: "show-dialog";
 			requestId: string;

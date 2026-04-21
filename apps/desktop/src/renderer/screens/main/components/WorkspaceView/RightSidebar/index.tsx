@@ -44,6 +44,7 @@ import {
 	LuSparkles,
 	LuX,
 } from "react-icons/lu";
+import { SiOpenai } from "react-icons/si";
 import { HotkeyLabel } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
@@ -107,6 +108,10 @@ const RIGHT_SIDEBAR_TAB_METADATA: Record<
 	},
 	[RightSidebarTab.Codex]: {
 		label: "Codex",
+		icon: SiOpenai,
+	},
+	[RightSidebarTab.Kimi]: {
+		label: "Kimi",
 		icon: LuSparkles,
 	},
 };
@@ -300,6 +305,7 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 	);
 	const showClaudeCodeTab = installedExtensionIds.has("anthropic.claude-code");
 	const showCodexTab = installedExtensionIds.has("openai.chatgpt");
+	const showKimiTab = installedExtensionIds.has("moonshot-ai.kimi-code");
 	const hasProblemErrors = (workspaceDiagnostics?.summary.errorCount ?? 0) > 0;
 	const dockerComposeFiles = dockerComposeFilesQuery.data;
 	const isResolvingDockerVisibility =
@@ -334,6 +340,9 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 				if (tabId === RightSidebarTab.Codex) {
 					return showCodexTab;
 				}
+				if (tabId === RightSidebarTab.Kimi) {
+					return showKimiTab;
+				}
 				return true;
 			})
 			.map((tabId) => ({
@@ -349,6 +358,7 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 		showDockerTab,
 		showClaudeCodeTab,
 		showCodexTab,
+		showKimiTab,
 	]);
 
 	useEffect(() => {
@@ -848,6 +858,24 @@ export function RightSidebar({ isActive = true }: { isActive?: boolean }) {
 						isActive={rightSidebarTab === RightSidebarTab.Codex}
 						persistenceId={createVscodeExtensionSidebarPersistenceId(
 							"chatgpt.sidebarView",
+						)}
+					/>
+				</div>
+			)}
+			{showKimiTab && (
+				<div
+					className={
+						rightSidebarTab === RightSidebarTab.Kimi
+							? "flex-1 min-h-0 flex flex-col overflow-hidden"
+							: "hidden"
+					}
+				>
+					<VscodeExtensionView
+						viewType="kimi.webview"
+						extensionId="moonshot-ai.kimi-code"
+						isActive={rightSidebarTab === RightSidebarTab.Kimi}
+						persistenceId={createVscodeExtensionSidebarPersistenceId(
+							"kimi.webview",
 						)}
 					/>
 				</div>

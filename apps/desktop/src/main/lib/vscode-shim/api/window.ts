@@ -20,6 +20,7 @@ import {
 	type WebviewOptions,
 	type WebviewPanel,
 } from "./webview";
+import { setActiveWorkspaceTextDocument } from "./workspace";
 
 interface TextEditor {
 	readonly document: {
@@ -27,6 +28,8 @@ interface TextEditor {
 		fileName: string;
 		getText(range?: unknown): string;
 		languageId: string;
+		isDirty?: boolean;
+		isUntitled?: boolean;
 	};
 	readonly selection: {
 		readonly start: { line: number; character: number };
@@ -36,6 +39,14 @@ interface TextEditor {
 	};
 	readonly selections: Array<unknown>;
 	readonly viewColumn: number | undefined;
+	edit(
+		callback: (builder: {
+			insert(
+				position: { line: number; character: number },
+				value: string,
+			): void;
+		}) => void,
+	): Promise<boolean>;
 }
 
 interface Terminal {
@@ -65,20 +76,25 @@ const _openFileEmitter = new EventEmitter<{
 	line?: number;
 }>();
 export const onOpenFile = _openFileEmitter.event;
+export function fireOpenFile(filePath: string, line?: number): void {
+	_openFileEmitter.fire({ filePath, line });
+}
 
 // Emits when vscode.diff is called - renderer listens to open diff viewer
 const _openDiffEmitter = new EventEmitter<{
 	leftUri: string;
 	rightUri: string;
 	title?: string;
+	leftContent?: string;
 }>();
 export const onOpenDiff = _openDiffEmitter.event;
 export function fireOpenDiff(
 	leftUri: string,
 	rightUri: string,
 	title?: string,
+	leftContent?: string,
 ): void {
-	_openDiffEmitter.fire({ leftUri, rightUri, title });
+	_openDiffEmitter.fire({ leftUri, rightUri, title, leftContent });
 }
 
 // IPC send function — injected from worker process so dialog calls go via main
@@ -132,6 +148,7 @@ export function setActiveTextEditor(
 
 	if (!filePath) {
 		_activeTextEditor = undefined;
+		setActiveWorkspaceTextDocument(null);
 	} else {
 		const uri = Uri.file(filePath);
 		_activeTextEditor = {
@@ -146,6 +163,8 @@ export function setActiveTextEditor(
 					}
 				},
 				languageId: languageId ?? "plaintext",
+				isDirty: false,
+				isUntitled: false,
 			},
 			selection: {
 				start: { line: 0, character: 0 },
@@ -155,7 +174,48 @@ export function setActiveTextEditor(
 			},
 			selections: [],
 			viewColumn: 1,
+			async edit(callback) {
+				const inserts: Array<{
+					position: { line: number; character: number };
+					value: string;
+				}> = [];
+				callback({
+					insert(position, value) {
+						inserts.push({ position, value });
+					},
+				});
+				if (inserts.length === 0) {
+					return true;
+				}
+
+				try {
+					const fs = require("node:fs") as typeof import("node:fs");
+					const content = fs.readFileSync(filePath, "utf-8");
+					const lines = content.split("\n");
+					const sortedInserts = [...inserts].sort((left, right) => {
+						const lineDelta = right.position.line - left.position.line;
+						return lineDelta !== 0
+							? lineDelta
+							: right.position.character - left.position.character;
+					});
+
+					for (const insert of sortedInserts) {
+						const line = lines[insert.position.line] ?? "";
+						lines[insert.position.line] =
+							line.slice(0, insert.position.character) +
+							insert.value +
+							line.slice(insert.position.character);
+					}
+
+					fs.writeFileSync(filePath, lines.join("\n"), "utf-8");
+					return true;
+				} catch (error) {
+					shimWarn("[vscode-shim] TextEditor.edit failed:", error);
+					return false;
+				}
+			},
 		};
+		setActiveWorkspaceTextDocument(filePath, languageId);
 		// Update visible editors
 		_visibleTextEditors.length = 0;
 		_visibleTextEditors.push(_activeTextEditor);
@@ -274,16 +334,30 @@ export const window = {
 	async showQuickPick(
 		items:
 			| string[]
-			| Array<{ label: string; description?: string; detail?: string }>
+			| Array<{
+					label: string;
+					description?: string;
+					detail?: string;
+					kind?: number;
+			  }>
 			| Promise<
 					| string[]
-					| Array<{ label: string; description?: string; detail?: string }>
+					| Array<{
+							label: string;
+							description?: string;
+							detail?: string;
+							kind?: number;
+					  }>
 			  >,
 		options?: { placeHolder?: string; canPickMany?: boolean },
 	): Promise<string | { label: string } | undefined> {
 		const resolved = await items;
 		if (!resolved || resolved.length === 0) return undefined;
-		const labels = resolved.map((item) =>
+		const selectableItems = resolved.filter((item) => {
+			return typeof item === "string" || item.kind !== -1;
+		});
+		if (selectableItems.length === 0) return undefined;
+		const labels = selectableItems.map((item) =>
 			typeof item === "string" ? item : item.label,
 		);
 		if (!_sendToMain) {
@@ -301,7 +375,7 @@ export const window = {
 			});
 		});
 		if (selectedIndex < 0) return undefined;
-		return resolved[selectedIndex];
+		return selectableItems[selectedIndex];
 	},
 
 	async showInputBox(_options?: {
@@ -361,11 +435,11 @@ export const window = {
 
 		// Notify renderer to open the file in file viewer
 		if (uri.scheme === "file" && uri.fsPath) {
-			_openFileEmitter.fire({
-				filePath: uri.fsPath,
-				line: (_options as { selection?: { start?: { line?: number } } })
-					?.selection?.start?.line,
-			});
+			fireOpenFile(
+				uri.fsPath,
+				(_options as { selection?: { start?: { line?: number } } })?.selection
+					?.start?.line,
+			);
 		}
 
 		// Return a minimal editor stub
@@ -377,6 +451,8 @@ export const window = {
 					return "";
 				},
 				languageId: "plaintext",
+				isDirty: false,
+				isUntitled: false,
 			},
 			selection: {
 				start: { line: 0, character: 0 },
@@ -386,6 +462,9 @@ export const window = {
 			},
 			selections: [],
 			viewColumn: 1,
+			async edit(_callback) {
+				return false;
+			},
 		};
 	},
 
