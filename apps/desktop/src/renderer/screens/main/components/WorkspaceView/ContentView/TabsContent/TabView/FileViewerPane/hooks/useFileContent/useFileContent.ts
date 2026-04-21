@@ -207,7 +207,10 @@ export function useFileContent({
 
 	const diffData = useMemo(() => {
 		if (isGitDiff) return gitDiffData;
-		if (isUnstagedDiff && (inlineOriginalContent !== undefined || gitOriginal)) {
+		if (
+			isUnstagedDiff &&
+			(inlineOriginalContent !== undefined || gitOriginal)
+		) {
 			let modifiedContent = "";
 			if (workingCopy) {
 				if (workingCopy.exceededLimit) {

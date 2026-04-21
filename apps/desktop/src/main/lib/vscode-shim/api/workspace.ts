@@ -219,8 +219,7 @@ export function setActiveWorkspaceTextDocument(
 	const doc: TextDocument = {
 		uri: Uri.file(filePath),
 		fileName: filePath,
-		languageId:
-			languageId ?? (path.extname(filePath).slice(1) || "plaintext"),
+		languageId: languageId ?? (path.extname(filePath).slice(1) || "plaintext"),
 		version: 1,
 		lineCount: content.split("\n").length,
 		isDirty: false,
@@ -296,8 +295,7 @@ export const workspace = {
 	},
 
 	async openTextDocument(uriOrPath: Uri | string): Promise<TextDocument> {
-		const uri =
-			typeof uriOrPath === "string" ? Uri.file(uriOrPath) : uriOrPath;
+		const uri = typeof uriOrPath === "string" ? Uri.file(uriOrPath) : uriOrPath;
 		const filePath = uri.scheme === "file" ? uri.fsPath : uri.path;
 		const content = (await resolveTextDocumentContent(uri)) ?? "";
 		const lines = content.split("\n");
@@ -672,11 +670,7 @@ export const workspace = {
 			});
 			return entries.map((entry) => [
 				entry.name,
-				entry.isDirectory()
-					? 2
-					: entry.isSymbolicLink()
-						? 64
-						: 1,
+				entry.isDirectory() ? 2 : entry.isSymbolicLink() ? 64 : 1,
 			]);
 		},
 		isWritableFileSystem(scheme: string): boolean | undefined {

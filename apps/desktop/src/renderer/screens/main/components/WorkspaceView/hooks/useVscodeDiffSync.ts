@@ -27,9 +27,8 @@ export function useVscodeDiffSync() {
 					diffCategory: "unstaged",
 					useRightSidebarOpenViewWidth: true,
 					inlineOriginalContent: data.leftContent,
-					inlineOriginalContentKey: data.leftContent !== undefined
-						? data.leftUri
-						: undefined,
+					inlineOriginalContentKey:
+						data.leftContent !== undefined ? data.leftUri : undefined,
 					...(isRename ? { oldPath: data.leftUri } : {}),
 				});
 			},

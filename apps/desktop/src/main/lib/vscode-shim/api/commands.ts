@@ -4,8 +4,8 @@
 
 import { shimLog, shimWarn } from "./debug-log";
 import { Disposable } from "./event-emitter";
-import { fireOpenDiff, fireOpenFile } from "./window";
 import { Uri } from "./uri";
+import { fireOpenDiff, fireOpenFile } from "./window";
 import { resolveTextDocumentContent } from "./workspace";
 
 const UNHANDLED = Symbol("unhandled");

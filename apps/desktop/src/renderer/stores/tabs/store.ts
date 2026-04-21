@@ -1054,10 +1054,8 @@ export const useTabsStore = create<TabsStore>()(
 										diffCategory: options.diffCategory,
 										commitHash: options.commitHash,
 										oldPath: options.oldPath,
-										inlineOriginalContent:
-											options.inlineOriginalContent,
-										inlineOriginalContentKey:
-											options.inlineOriginalContentKey,
+										inlineOriginalContent: options.inlineOriginalContent,
+										inlineOriginalContentKey: options.inlineOriginalContentKey,
 										initialLine: options.line,
 										initialColumn: options.column,
 										displayName: options.displayName,
