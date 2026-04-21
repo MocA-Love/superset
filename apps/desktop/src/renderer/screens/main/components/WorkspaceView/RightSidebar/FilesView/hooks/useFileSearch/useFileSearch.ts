@@ -18,6 +18,12 @@ interface UseFileSearchParams {
 	 * when they land on the same workspace concurrently.
 	 */
 	scopeId?: string;
+	/**
+	 * When true, the search index drops dotfile and .gitignore filtering so
+	 * ignored files show up in results. Backend already caches both indexes
+	 * independently, so flipping this doesn't invalidate the other cache.
+	 */
+	includeIgnored?: boolean;
 }
 
 export function useFileSearch({
@@ -29,6 +35,7 @@ export function useFileSearch({
 	openFilePaths,
 	recentFilePaths,
 	scopeId = "files-tab",
+	includeIgnored = false,
 }: UseFileSearchParams) {
 	const trimmedQuery = searchTerm.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
@@ -46,6 +53,7 @@ export function useFileSearch({
 				openFilePaths,
 				recentFilePaths,
 				scopeId,
+				includeHidden: includeIgnored,
 			},
 			{
 				enabled: Boolean(workspaceId) && debouncedQuery.length > 0,

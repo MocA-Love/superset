@@ -734,6 +734,8 @@ function WorkspaceContent({
 				scope={commandPalette.scope}
 				searchResults={commandPalette.searchResults}
 				workspaceName={workspaceName}
+				includeIgnored={commandPalette.includeIgnored}
+				onToggleIncludeIgnored={commandPalette.toggleIncludeIgnored}
 			/>
 		</FileDocumentStoreProvider>
 	);

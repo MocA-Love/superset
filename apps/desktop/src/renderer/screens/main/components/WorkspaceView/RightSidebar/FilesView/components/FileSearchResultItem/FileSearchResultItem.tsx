@@ -137,21 +137,21 @@ export function FileSearchResultItem({
 			onKeyDown={handleKeyDown}
 		>
 			<span className="flex items-center justify-center w-4 h-4 shrink-0" />
-			<div className="flex flex-col min-w-0 flex-1 gap-0.5">
+			<div className="flex items-center gap-1.5 min-w-0 flex-1">
+				<FileIcon
+					fileName={entry.name}
+					isDirectory={entry.isDirectory}
+					className="size-4 shrink-0"
+				/>
+				<span className="shrink-0 text-xs truncate max-w-[60%]">
+					{entry.name}
+				</span>
 				<span
-					className="text-[10px] text-muted-foreground truncate"
+					className="flex-1 min-w-0 text-[11px] text-muted-foreground truncate"
 					title={entry.relativePath}
 				>
 					{folderLabelDisplay}
 				</span>
-				<div className="flex items-center gap-1 min-w-0">
-					<FileIcon
-						fileName={entry.name}
-						isDirectory={entry.isDirectory}
-						className="size-4 shrink-0"
-					/>
-					<span className="flex-1 min-w-0 text-xs truncate">{entry.name}</span>
-				</div>
 			</div>
 		</div>
 	);

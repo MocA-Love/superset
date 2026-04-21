@@ -4,6 +4,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback } from "react";
 import {
 	LuChevronsDownUp,
+	LuEye,
+	LuEyeOff,
 	LuFilePlus,
 	LuFolderPlus,
 	LuMessageSquareText,
@@ -31,7 +33,12 @@ export function FileTreeToolbar({
 	onRefresh,
 	isRefreshing = false,
 }: FileTreeToolbarProps) {
-	const { showFileTooltips, toggleFileTooltips } = useFileExplorerStore();
+	const {
+		showFileTooltips,
+		toggleFileTooltips,
+		includeIgnored,
+		toggleIncludeIgnored,
+	} = useFileExplorerStore();
 
 	// Debounce lives entirely in `useFileSearch` so the input stays responsive
 	// and we avoid the two-layer debounce chain that previously delayed renders
@@ -128,6 +135,28 @@ export function FileTreeToolbar({
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent side="bottom">Refresh</TooltipContent>
+				</Tooltip>
+
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							className={`size-6 ${includeIgnored ? "bg-accent" : ""}`}
+							onClick={toggleIncludeIgnored}
+						>
+							{includeIgnored ? (
+								<LuEye className="size-3.5" />
+							) : (
+								<LuEyeOff className="size-3.5" />
+							)}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">
+						{includeIgnored
+							? "Hide .gitignored & hidden files"
+							: "Show .gitignored & hidden files"}
+					</TooltipContent>
 				</Tooltip>
 
 				<Tooltip>

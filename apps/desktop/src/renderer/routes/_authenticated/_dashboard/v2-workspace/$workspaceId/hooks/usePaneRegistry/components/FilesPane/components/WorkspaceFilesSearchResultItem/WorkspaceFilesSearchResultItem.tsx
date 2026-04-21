@@ -63,21 +63,21 @@ export function WorkspaceFilesSearchResultItem({
 			type="button"
 		>
 			<span className="flex h-4 w-4 shrink-0 items-center justify-center" />
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div className="flex min-w-0 flex-1 items-center gap-1.5">
+				<FileIcon
+					className="size-4 shrink-0"
+					fileName={entry.name}
+					isDirectory={entry.isDirectory}
+				/>
+				<span className="max-w-[60%] shrink-0 truncate text-xs">
+					{entry.name}
+				</span>
 				<span
-					className="truncate text-[10px] text-muted-foreground"
+					className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
 					title={entry.relativePath}
 				>
 					{folderLabelDisplay}
 				</span>
-				<div className="flex min-w-0 items-center gap-1">
-					<FileIcon
-						className="size-4 shrink-0"
-						fileName={entry.name}
-						isDirectory={entry.isDirectory}
-					/>
-					<span className="min-w-0 flex-1 truncate text-xs">{entry.name}</span>
-				</div>
 			</div>
 		</button>
 	);

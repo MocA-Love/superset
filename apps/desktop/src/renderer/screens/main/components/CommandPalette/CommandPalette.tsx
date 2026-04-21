@@ -1,5 +1,8 @@
+import { Button } from "@superset/ui/button";
 import { CommandSeparator } from "@superset/ui/command";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useMemo } from "react";
+import { LuEye, LuEyeOff } from "react-icons/lu";
 import {
 	RECENT_DISPLAY_LIMIT,
 	type RecentFile,
@@ -47,6 +50,8 @@ interface CommandPaletteProps {
 	workspaceName?: string;
 	recentlyViewedFiles?: RecentFile[];
 	openFilePaths?: Set<string>;
+	includeIgnored?: boolean;
+	onToggleIncludeIgnored?: () => void;
 }
 
 export function CommandPalette({
@@ -68,6 +73,8 @@ export function CommandPalette({
 	workspaceName,
 	recentlyViewedFiles,
 	openFilePaths,
+	includeIgnored = false,
+	onToggleIncludeIgnored,
 }: CommandPaletteProps) {
 	const trimmedQuery = query.trim();
 	const hasQuery = trimmedQuery.length > 0;
@@ -145,6 +152,8 @@ export function CommandPalette({
 			}
 			filtersOpen={filtersOpen}
 			onFiltersOpenChange={onFiltersOpenChange}
+			contentClassName="sm:max-w-5xl top-[12%] translate-y-0"
+			listClassName="max-h-[600px]"
 			includePattern={includePattern}
 			onIncludePatternChange={onIncludePatternChange}
 			excludePattern={excludePattern}
@@ -157,11 +166,36 @@ export function CommandPalette({
 			preResultsSection={preResultsSection}
 			hasPreResults={filteredRecent.length > 0}
 			headerExtra={
-				<ScopeToggle
-					scope={scope}
-					onScopeChange={onScopeChange}
-					workspaceName={workspaceName}
-				/>
+				<div className="flex items-center gap-1">
+					{onToggleIncludeIgnored && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									className={`size-6 ${includeIgnored ? "bg-accent" : ""}`}
+									onClick={onToggleIncludeIgnored}
+								>
+									{includeIgnored ? (
+										<LuEye className="size-3.5" />
+									) : (
+										<LuEyeOff className="size-3.5" />
+									)}
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								{includeIgnored
+									? "Hide .gitignored & hidden files"
+									: "Show .gitignored & hidden files"}
+							</TooltipContent>
+						</Tooltip>
+					)}
+					<ScopeToggle
+						scope={scope}
+						onScopeChange={onScopeChange}
+						workspaceName={workspaceName}
+					/>
+				</div>
 			}
 			renderItem={(file) => {
 				return (
