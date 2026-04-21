@@ -79,10 +79,19 @@ function handleBuiltinCommand(
 				return undefined;
 			}
 
-			return resolveTextDocumentContent(resolvedLeftUri).then((leftContent) => {
-				fireOpenDiff(left, right, title, leftContent);
-				return undefined;
-			});
+			return resolveTextDocumentContent(resolvedLeftUri)
+				.then((leftContent) => {
+					fireOpenDiff(left, right, title, leftContent);
+					return undefined;
+				})
+				.catch((error) => {
+					shimWarn(
+						"[vscode-shim] Failed to resolve diff baseline content:",
+						error,
+					);
+					fireOpenDiff(left, right, title);
+					return undefined;
+				});
 		}
 
 		// Open file

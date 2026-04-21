@@ -57,6 +57,7 @@ const _textDocuments: TextDocument[] = [];
 
 const fileSystemProviders = new Map<string, unknown>();
 const textDocumentContentProviders = new Map<string, unknown>();
+const DEFAULT_FIND_EXCLUDE_GLOBS = ["**/.git", "**/node_modules"];
 
 function normalizeGlobPath(value: string): string {
 	return value.split(path.sep).join("/");
@@ -212,7 +213,7 @@ function expandBracePatterns(pattern: string): string[] {
 	);
 }
 
-function compileGlobMatchers(pattern: string | null | undefined): RegExp[] {
+function compileGlobPatterns(pattern: string | null | undefined): string[] {
 	if (!pattern) {
 		return [];
 	}
@@ -222,9 +223,15 @@ function compileGlobMatchers(pattern: string | null | undefined): RegExp[] {
 		return [];
 	}
 
-	const patterns = expandBracePatterns(normalized).filter(Boolean);
+	return expandBracePatterns(normalized)
+		.map((entry) => normalizeGlobPath(entry.trim()))
+		.filter(Boolean);
+}
 
-	return patterns.map((entry) => globToRegExp(normalizeGlobPath(entry)));
+function compileGlobMatchers(pattern: string | null | undefined): RegExp[] {
+	const patterns = compileGlobPatterns(pattern);
+
+	return patterns.map((entry) => globToRegExp(entry));
 }
 
 function matchesAnyGlob(matchers: RegExp[], targetPath: string): boolean {
@@ -234,6 +241,73 @@ function matchesAnyGlob(matchers: RegExp[], targetPath: string): boolean {
 
 	const normalizedTarget = normalizeGlobPath(targetPath);
 	return matchers.some((matcher) => matcher.test(normalizedTarget));
+}
+
+function splitGlobSegments(pattern: string): string[] {
+	return normalizeGlobPath(pattern)
+		.split("/")
+		.map((segment) => segment.trim())
+		.filter(Boolean);
+}
+
+function hasGlobMeta(segment: string): boolean {
+	let escaped = false;
+
+	for (const char of segment) {
+		if (!escaped && char === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (!escaped && (char === "*" || char === "?" || char === "[")) {
+			return true;
+		}
+		escaped = false;
+	}
+
+	return false;
+}
+
+function getStaticGlobPrefixSegments(pattern: string): string[] {
+	const prefix: string[] = [];
+
+	for (const segment of splitGlobSegments(pattern)) {
+		if (segment === "**" || hasGlobMeta(segment)) {
+			break;
+		}
+		prefix.push(segment);
+	}
+
+	return prefix;
+}
+
+function directoryMayContainMatches(
+	relativeDirectory: string,
+	includePatterns: string[],
+): boolean {
+	if (includePatterns.length === 0) {
+		return true;
+	}
+
+	const directorySegments = splitGlobSegments(relativeDirectory);
+
+	return includePatterns.some((pattern) => {
+		const prefixSegments = getStaticGlobPrefixSegments(pattern);
+		if (prefixSegments.length === 0) {
+			return true;
+		}
+
+		const commonLength = Math.min(
+			directorySegments.length,
+			prefixSegments.length,
+		);
+		for (let index = 0; index < commonLength; index += 1) {
+			if (directorySegments[index] !== prefixSegments[index]) {
+				return false;
+			}
+		}
+
+		return true;
+	});
 }
 
 export async function resolveTextDocumentContent(
@@ -409,9 +483,14 @@ export const workspace = {
 		if (!workspaceFolderPath) return [];
 		try {
 			const results: string[] = [];
-			const includeMatchers = compileGlobMatchers(include);
+			const includePatterns = compileGlobPatterns(include);
+			const includeMatchers = includePatterns.map((pattern) =>
+				globToRegExp(pattern),
+			);
 			const excludeMatchers = compileGlobMatchers(
-				exclude === undefined ? "{**/.git,**/node_modules}" : exclude,
+				exclude === undefined
+					? `{${DEFAULT_FIND_EXCLUDE_GLOBS.join(",")}}`
+					: exclude,
 			);
 
 			function walkDir(dir: string, depth: number): void {
@@ -514,7 +593,13 @@ export const workspace = {
 		const _onChange = new EventEmitter<Uri>();
 		const _onDelete = new EventEmitter<Uri>();
 		const rootPath = workspaceFolderPath;
-		const includeMatchers = compileGlobMatchers(_globPattern);
+		const includePatterns = compileGlobPatterns(_globPattern);
+		const includeMatchers = includePatterns.map((pattern) =>
+			globToRegExp(pattern),
+		);
+		const excludeMatchers = compileGlobMatchers(
+			`{${DEFAULT_FIND_EXCLUDE_GLOBS.join(",")}}`,
+		);
 		const dirWatchers = new Map<string, fs.FSWatcher>();
 
 		const matchesWatcherPath = (fullPath: string): boolean => {
@@ -529,6 +614,23 @@ export const workspace = {
 				includeMatchers.length === 0 ||
 				matchesAnyGlob(includeMatchers, relativePath) ||
 				matchesAnyGlob(includeMatchers, `${relativePath}/`)
+			);
+		};
+
+		const shouldSkipDirectory = (directoryPath: string): boolean => {
+			if (!rootPath) {
+				return false;
+			}
+			const relativePath = normalizeGlobPath(
+				path.relative(rootPath, directoryPath),
+			);
+			if (!relativePath || relativePath.startsWith("..")) {
+				return false;
+			}
+			return (
+				matchesAnyGlob(excludeMatchers, relativePath) ||
+				matchesAnyGlob(excludeMatchers, `${relativePath}/`) ||
+				!directoryMayContainMatches(relativePath, includePatterns)
 			);
 		};
 
@@ -553,6 +655,9 @@ export const workspace = {
 			if (dirWatchers.has(directoryPath)) {
 				return;
 			}
+			if (shouldSkipDirectory(directoryPath)) {
+				return;
+			}
 
 			try {
 				const watcher = fs.watch(directoryPath, (eventType, filename) => {
@@ -565,7 +670,10 @@ export const workspace = {
 
 					if (exists) {
 						try {
-							if (fs.statSync(fullPath).isDirectory()) {
+							if (
+								fs.statSync(fullPath).isDirectory() &&
+								!shouldSkipDirectory(fullPath)
+							) {
 								addDirectoryWatcher(fullPath);
 							}
 						} catch {}
