@@ -167,6 +167,16 @@ export $(grep -v '^#' ../../.env | grep -E '^[A-Z_]+=' | tr '\n' ' ')
 bun run compile:app
 bun run copy:native-modules
 bun run validate:native-runtime
+# ⚠️ superset-browser-mcp の単一バイナリを必ず先に生成する。
+# Bun は npm/yarn と違って pre/post フックを自動実行しないため、
+# `bun run build` を直接叩くと package.json の `prebuild`
+# (= build:browser-mcp) がスキップされ、packages/superset-browser-mcp/dist/
+# が空のまま electron-builder が走り、extraResources の
+# `superset-browser-mcp` が黙って脱落する (= アプリ内に
+# Resources/resources/superset-browser-mcp/ が作られず、
+# Connect モーダルで "Browser MCP binary is not available in this build"
+# トーストが出る)。v1.5.5-fork.12 までこの漏れで出荷していた。
+bun run build:browser-mcp
 SUPERSET_WORKSPACE_NAME=superset bun run build
 # 成果物は apps/desktop/release/ に出力 (dmg, zip, blockmap, latest-mac.yml 等)
 # `bun run build` は CSC_IDENTITY_AUTO_DISCOVERY=false 付きで adhoc sign になる。
