@@ -318,15 +318,16 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 				);
 			}
 
-			// Route browser panes to BrowserPane component.
-			// Feature flag: SUPERSET_BROWSER_V3=1 uses the new
-			// WebContentsView-backed pane (v3). Default: legacy
-			// <webview>-based v1.
+			// Route browser panes to the WebContentsView-backed pane
+			// by default. Users can fall back to the legacy <webview>
+			// implementation by setting localStorage
+			// "superset.browserLegacy"="1" (debug escape hatch only;
+			// the legacy pane has known multi-tab instability).
 			if (paneInfo.type === "webview") {
-				const useV3 =
+				const useLegacy =
 					typeof localStorage !== "undefined" &&
-					localStorage.getItem("superset.browserV3") === "1";
-				if (useV3) {
+					localStorage.getItem("superset.browserLegacy") === "1";
+				if (!useLegacy) {
 					const initialUrl =
 						(paneInfo.data as { url?: string } | undefined)?.url ??
 						"about:blank";
