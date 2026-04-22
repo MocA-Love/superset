@@ -410,9 +410,6 @@ function routeEvent(
 	}
 
 	// Component unmounted — write data directly to xterm, queue the rest.
-	// ここは hidden terminal 継続処理の観測点で、主問題ではなく副次仮説。
-	// 「表示中なのに描画されない」問題とは別軸で、
-	// hidden 中も xterm.write が走り続けていないかを見る。
 	if (event.type === "data") {
 		debugRendererFlow(paneId, "route-event-hidden-data", {
 			data: summarizeAnsi(event.data),

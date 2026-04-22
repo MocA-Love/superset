@@ -134,8 +134,7 @@ export function useTerminalConnection({
 				callbacks?.onSettled?.();
 			});
 	});
-	// ResizeObserver 側（v1-terminal-cache.ts）で 250ms デバウンスされているので、
-	// ここに入ってきた時点で「確定したサイズ」。即座に PTY に通知する。
+	// ResizeObserver 側で確定したサイズを受けて、即座に PTY に通知する。
 	const resizeRef = useRef<TerminalResizeMutate>((input) => {
 		if (DEBUG_TERMINAL) {
 			console.log(`[resize:mutate] pane=${input.paneId} ${input.cols}x${input.rows}`);
