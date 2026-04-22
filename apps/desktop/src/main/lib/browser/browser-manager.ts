@@ -10,6 +10,7 @@ import {
 	shell,
 	webContents,
 } from "electron";
+import { safeOpenExternal } from "main/lib/safe-url";
 
 interface ConsoleEntry {
 	level: "log" | "warn" | "error" | "info" | "debug";
@@ -975,7 +976,9 @@ class BrowserManager extends EventEmitter {
 				menuItems.push(
 					{
 						label: "Open Link in Default Browser",
-						click: () => shell.openExternal(linkURL),
+						click: () => {
+							void safeOpenExternal(linkURL);
+						},
 					},
 					{
 						label: "Open Link as New Split",
@@ -1049,7 +1052,7 @@ class BrowserManager extends EventEmitter {
 						label: "Open Page in Default Browser",
 						click: () => {
 							if (pageURL && pageURL !== "about:blank") {
-								shell.openExternal(pageURL);
+								void safeOpenExternal(pageURL);
 							}
 						},
 						enabled: !!pageURL && pageURL !== "about:blank",
