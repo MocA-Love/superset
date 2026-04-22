@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { resolveActiveTabIdForWorkspace } from "renderer/stores/tabs/utils";
 import { EmptyTabView } from "./EmptyTabView";
-import { TabView } from "./TabView";
+import { PersistentTabRenderer } from "./PersistentTabRenderer";
 
 interface TabsContentProps {
 	workspaceId: string;
@@ -13,13 +13,13 @@ interface TabsContentProps {
 	onOpenQuickOpen: () => void;
 }
 
-export function TabsContent(props: TabsContentProps) {
-	const {
-		workspaceId: activeWorkspaceId,
-		defaultExternalApp,
-		onOpenInApp,
-		onOpenQuickOpen,
-	} = props;
+export function TabsContent({
+	workspaceId: activeWorkspaceId,
+	isActive = true,
+	defaultExternalApp,
+	onOpenInApp,
+	onOpenQuickOpen,
+}: TabsContentProps) {
 	const allTabs = useTabsStore((s) => s.tabs);
 	const activeTabIds = useTabsStore((s) => s.activeTabIds);
 	const tabHistoryStacks = useTabsStore((s) => s.tabHistoryStacks);
@@ -49,10 +49,13 @@ export function TabsContent(props: TabsContentProps) {
 		return resolvedActiveTabId;
 	}, [activeWorkspaceId, activeTabIds, allTabs, tabHistoryStacks]);
 
-	const tabToRender = useMemo(() => {
-		if (!activeTabId) return null;
-		return allTabs.find((tab) => tab.id === activeTabId) || null;
-	}, [activeTabId, allTabs]);
+	const workspaceTabs = useMemo(
+		() =>
+			activeWorkspaceId
+				? allTabs.filter((t) => t.workspaceId === activeWorkspaceId)
+				: [],
+		[activeWorkspaceId, allTabs],
+	);
 
 	useEffect(() => {
 		const nextWorkspaceId = activeWorkspaceId ?? null;
@@ -91,11 +94,11 @@ export function TabsContent(props: TabsContentProps) {
 
 	return (
 		<div ref={contentRef} className="flex-1 min-h-0 flex overflow-hidden">
-			{tabToRender ? (
-				<TabView
-					key={tabToRender.id}
-					tab={tabToRender}
-					isWorkspaceActive={props.isActive ?? true}
+			{workspaceTabs.length > 0 ? (
+				<PersistentTabRenderer
+					isWorkspaceActive={isActive}
+					tabs={workspaceTabs}
+					activeTabId={activeTabId}
 				/>
 			) : (
 				<EmptyTabView
