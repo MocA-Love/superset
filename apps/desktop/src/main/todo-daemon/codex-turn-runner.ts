@@ -1,11 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { getTodoSessionStore } from "main/todo-agent/session-store";
 import {
 	CODEX_EFFORT_OPTIONS,
 	CODEX_MODEL_OPTIONS,
 	type TodoStreamEventKind,
 } from "main/todo-agent/types";
-import { getTodoSessionStore } from "main/todo-agent/session-store";
 
 /**
  * Codex CLI (`codex exec`) turn runner.
@@ -253,10 +253,7 @@ function buildArgs(params: CodexTurnParams): string[] {
 		params.codexEffort &&
 		(CODEX_EFFORT_OPTIONS as readonly string[]).includes(params.codexEffort)
 	) {
-		args.push(
-			"--config",
-			`model_reasoning_effort=${params.codexEffort}`,
-		);
+		args.push("--config", `model_reasoning_effort=${params.codexEffort}`);
 	} else if (params.codexEffort) {
 		console.warn(
 			"[todo-daemon:codex] ignoring unknown codexEffort:",
@@ -299,9 +296,7 @@ function classifyCodexEvent(payload: unknown): ClassifiedCodexLine {
 
 	if (type === "thread.started") {
 		const threadId =
-			typeof rec.thread_id === "string"
-				? (rec.thread_id as string)
-				: null;
+			typeof rec.thread_id === "string" ? (rec.thread_id as string) : null;
 		return {
 			...empty,
 			threadId,
@@ -382,8 +377,7 @@ function classifyItem(
 		numTurns: null,
 		events: [],
 	};
-	const itemType =
-		typeof item.type === "string" ? (item.type as string) : "";
+	const itemType = typeof item.type === "string" ? (item.type as string) : "";
 
 	if (itemType === "agent_message") {
 		const text = typeof item.text === "string" ? (item.text as string) : null;
@@ -393,7 +387,10 @@ function classifyItem(
 			resultText: eventType === "item.completed" ? text : null,
 			events: [
 				{
-					kind: eventType === "item.completed" ? "assistant_text" : "assistant_text",
+					kind:
+						eventType === "item.completed"
+							? "assistant_text"
+							: "assistant_text",
 					label: "Codex",
 					text,
 				},
@@ -458,11 +455,10 @@ function classifyItem(
 function killProcessTree(pid: number, signal: NodeJS.Signals): void {
 	if (process.platform === "win32") {
 		try {
-			const killer = spawn(
-				"taskkill",
-				["/pid", String(pid), "/T", "/F"],
-				{ stdio: "ignore", detached: true },
-			);
+			const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+				stdio: "ignore",
+				detached: true,
+			});
 			killer.on("error", () => {
 				/* best-effort */
 			});

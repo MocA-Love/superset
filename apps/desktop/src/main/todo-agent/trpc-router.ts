@@ -164,10 +164,13 @@ export const createTodoAgentRouter = () => {
 						maxWallClockSec: input.maxWallClockSec,
 						customSystemPrompt: input.customSystemPrompt,
 						claudeModel: resolvedAgentKind === "claude" ? resolvedModel : null,
-						claudeEffort: resolvedAgentKind === "claude" ? resolvedEffort : null,
+						claudeEffort:
+							resolvedAgentKind === "claude" ? resolvedEffort : null,
 						agentKind: resolvedAgentKind,
-						codexModel: resolvedAgentKind === "codex" ? resolvedCodexModel : null,
-						codexEffort: resolvedAgentKind === "codex" ? resolvedCodexEffort : null,
+						codexModel:
+							resolvedAgentKind === "codex" ? resolvedCodexModel : null,
+						codexEffort:
+							resolvedAgentKind === "codex" ? resolvedCodexEffort : null,
 						remoteControlEnabled: input.remoteControlEnabled,
 						artifactPath,
 					});

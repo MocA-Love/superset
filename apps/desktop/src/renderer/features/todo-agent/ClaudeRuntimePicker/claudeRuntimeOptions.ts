@@ -216,50 +216,49 @@ export function getClaudeEffortLabel(
 export type CodexModelPick = typeof DEFAULT_SENTINEL | TodoCodexModel;
 export type CodexEffortPick = typeof DEFAULT_SENTINEL | TodoCodexEffort;
 
-export const CODEX_MODEL_SELECT_OPTIONS: ReadonlyArray<
-	Option<CodexModelPick>
-> = [
-	{
-		value: DEFAULT_SENTINEL,
-		label: "デフォルト",
-		description: "Codex CLI の設定をそのまま使う（--model を渡さない）",
-	},
-	{
-		value: "gpt-5.4",
-		label: "GPT-5.4",
-		description: "最新の GPT-5.4 モデル",
-	},
-	{
-		value: "gpt-5.4-codex",
-		label: "GPT-5.4 Codex",
-		description: "コーディング最適化版",
-	},
-	{
-		value: "gpt-5.3",
-		label: "GPT-5.3",
-		description: "GPT-5.3 モデル",
-	},
-	{
-		value: "gpt-5.2",
-		label: "GPT-5.2",
-		description: "GPT-5.2 モデル",
-	},
-	{
-		value: "gpt-5.2-codex",
-		label: "GPT-5.2 Codex",
-		description: "GPT-5.2 コーディング最適化版",
-	},
-	{
-		value: "o4-mini",
-		label: "o4-mini",
-		description: "軽量推論モデル",
-	},
-	{
-		value: "o3",
-		label: "o3",
-		description: "高度推論モデル",
-	},
-] as const;
+export const CODEX_MODEL_SELECT_OPTIONS: ReadonlyArray<Option<CodexModelPick>> =
+	[
+		{
+			value: DEFAULT_SENTINEL,
+			label: "デフォルト",
+			description: "Codex CLI の設定をそのまま使う（--model を渡さない）",
+		},
+		{
+			value: "gpt-5.4",
+			label: "GPT-5.4",
+			description: "最新の GPT-5.4 モデル",
+		},
+		{
+			value: "gpt-5.4-codex",
+			label: "GPT-5.4 Codex",
+			description: "コーディング最適化版",
+		},
+		{
+			value: "gpt-5.3",
+			label: "GPT-5.3",
+			description: "GPT-5.3 モデル",
+		},
+		{
+			value: "gpt-5.2",
+			label: "GPT-5.2",
+			description: "GPT-5.2 モデル",
+		},
+		{
+			value: "gpt-5.2-codex",
+			label: "GPT-5.2 Codex",
+			description: "GPT-5.2 コーディング最適化版",
+		},
+		{
+			value: "o4-mini",
+			label: "o4-mini",
+			description: "軽量推論モデル",
+		},
+		{
+			value: "o3",
+			label: "o3",
+			description: "高度推論モデル",
+		},
+	] as const;
 
 export const CODEX_EFFORT_SELECT_OPTIONS: ReadonlyArray<
 	Option<CodexEffortPick>

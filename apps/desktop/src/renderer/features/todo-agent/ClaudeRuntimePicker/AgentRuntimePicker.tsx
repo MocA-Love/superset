@@ -11,13 +11,12 @@ import type { AgentKind } from "main/todo-agent/types";
 import {
 	CLAUDE_EFFORT_SELECT_OPTIONS,
 	CLAUDE_MODEL_SELECT_OPTIONS,
-	CODEX_EFFORT_SELECT_OPTIONS,
-	CODEX_MODEL_SELECT_OPTIONS,
 	type ClaudeEffortPick,
 	type ClaudeModelPick,
+	CODEX_EFFORT_SELECT_OPTIONS,
+	CODEX_MODEL_SELECT_OPTIONS,
 	type CodexEffortPick,
 	type CodexModelPick,
-	DEFAULT_SENTINEL,
 } from "./claudeRuntimeOptions";
 
 interface AgentRuntimePickerProps {
@@ -115,9 +114,7 @@ export function AgentRuntimePicker({
 					<Select
 						value={currentModel}
 						onValueChange={(v) =>
-							onModelChange(
-								v as ClaudeModelPick & CodexModelPick,
-							)
+							onModelChange(v as ClaudeModelPick & CodexModelPick)
 						}
 						disabled={disabled}
 					>
@@ -138,9 +135,7 @@ export function AgentRuntimePicker({
 					<Select
 						value={currentEffort}
 						onValueChange={(v) =>
-							onEffortChange(
-								v as ClaudeEffortPick & CodexEffortPick,
-							)
+							onEffortChange(v as ClaudeEffortPick & CodexEffortPick)
 						}
 						disabled={disabled}
 					>

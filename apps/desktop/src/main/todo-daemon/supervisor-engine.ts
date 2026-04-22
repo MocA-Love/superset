@@ -13,8 +13,8 @@ import {
 	CLAUDE_MODEL_OPTIONS,
 	type TodoStreamEventKind,
 } from "main/todo-agent/types";
-import { runClaudeTurnPty } from "./pty-turn-runner";
 import { runCodexTurn } from "./codex-turn-runner";
+import { runClaudeTurnPty } from "./pty-turn-runner";
 
 /**
  * Feature flag for the interactive PTY engine. When the daemon process
@@ -271,16 +271,18 @@ export class TodoSupervisorEngine {
 			if (session0.codexModel || session0.codexEffort) {
 				const parts: string[] = [];
 				if (session0.codexModel) parts.push(`model: ${session0.codexModel}`);
-				if (session0.codexEffort)
-					parts.push(`effort: ${session0.codexEffort}`);
+				if (session0.codexEffort) parts.push(`effort: ${session0.codexEffort}`);
 				appendSetupEvent(sessionId, "Codex 設定", parts.join(" / "));
 			}
-			const agentKind = (session0.agentKind as "claude" | "codex" | null) ?? "claude";
+			const agentKind =
+				(session0.agentKind as "claude" | "codex" | null) ?? "claude";
 			const runtimeConfig = readTodoSessionRuntimeConfig({
 				artifactPath: session0.artifactPath,
 				fallbackRemoteControlEnabled: session0.remoteControlEnabled ?? false,
 			});
-			const willUsePty = agentKind === "claude" && (PTY_ENGINE_ENABLED || runtimeConfig.ptyEnabled);
+			const willUsePty =
+				agentKind === "claude" &&
+				(PTY_ENGINE_ENABLED || runtimeConfig.ptyEnabled);
 			const remoteControlEnabled =
 				willUsePty && runtimeConfig.remoteControlEnabled;
 			if (agentKind === "codex") {
@@ -443,7 +445,8 @@ export class TodoSupervisorEngine {
 					prompt,
 					resumeSessionId: claudeSessionId,
 					customSystemPrompt: currentSession.customSystemPrompt ?? null,
-					agentKind: (currentSession.agentKind as "claude" | "codex" | null) ?? "claude",
+					agentKind:
+						(currentSession.agentKind as "claude" | "codex" | null) ?? "claude",
 					claudeModel: currentSession.claudeModel ?? null,
 					claudeEffort: currentSession.claudeEffort ?? null,
 					codexModel: currentSession.codexModel ?? null,

@@ -20,13 +20,10 @@ import { Label } from "@superset/ui/label";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
+import { type AgentKind, DEFAULT_AGENT_KIND } from "main/todo-agent/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import {
-	type AgentKind,
-	DEFAULT_AGENT_KIND,
-} from "main/todo-agent/types";
 import {
 	AgentRuntimePicker,
 	type ClaudeEffortPick,
@@ -34,14 +31,14 @@ import {
 	type CodexEffortPick,
 	type CodexModelPick,
 	DEFAULT_SENTINEL,
-	fromPersistedEffort,
-	fromPersistedModel,
 	fromPersistedCodexEffort,
 	fromPersistedCodexModel,
-	toPersistedEffort,
-	toPersistedModel,
+	fromPersistedEffort,
+	fromPersistedModel,
 	toPersistedCodexEffort,
 	toPersistedCodexModel,
+	toPersistedEffort,
+	toPersistedModel,
 } from "../ClaudeRuntimePicker";
 import { todoAgentRendererDebug } from "../debug";
 import { EnhanceButton } from "./components/EnhanceButton";
@@ -121,7 +118,9 @@ export function TodoModal({
 			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
 		);
 		setAgentKind(todoSettings.defaultAgentKind ?? DEFAULT_AGENT_KIND);
-		setCodexModel(fromPersistedCodexModel(todoSettings.defaultCodexModel ?? null));
+		setCodexModel(
+			fromPersistedCodexModel(todoSettings.defaultCodexModel ?? null),
+		);
 		setCodexEffort(
 			fromPersistedCodexEffort(todoSettings.defaultCodexEffort ?? null),
 		);
@@ -335,6 +334,9 @@ export function TodoModal({
 		title,
 		verifyCommand,
 		workspaceId,
+		agentKind,
+		codexEffort,
+		codexModel,
 	]);
 
 	return (
