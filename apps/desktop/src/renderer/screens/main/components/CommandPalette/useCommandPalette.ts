@@ -15,8 +15,6 @@ import { parseQuickOpenQuery } from "./parseQuickOpenQuery";
 
 const SEARCH_LIMIT = 50;
 
-export { parseQuickOpenQuery } from "./parseQuickOpenQuery";
-
 interface UseCommandPaletteParams {
 	workspaceId: string;
 	navigate: UseNavigateResult<string>;

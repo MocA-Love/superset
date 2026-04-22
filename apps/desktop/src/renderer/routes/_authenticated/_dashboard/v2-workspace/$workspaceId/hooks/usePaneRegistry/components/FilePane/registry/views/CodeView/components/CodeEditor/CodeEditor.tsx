@@ -275,10 +275,7 @@ export function CodeEditor({
 			return;
 		}
 
-		const safeLine = Math.max(
-			1,
-			Math.min(initialLine, view.state.doc.lines),
-		);
+		const safeLine = Math.max(1, Math.min(initialLine, view.state.doc.lines));
 		const lineInfo = view.state.doc.line(safeLine);
 		const col = initialColumn ?? 1;
 		const offset = Math.min(col - 1, lineInfo.length);

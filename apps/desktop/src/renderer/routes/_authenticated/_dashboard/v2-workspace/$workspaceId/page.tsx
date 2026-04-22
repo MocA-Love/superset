@@ -239,9 +239,7 @@ function WorkspaceContent({
 			recordRecentlyViewed(filePath);
 			const state = store.getState();
 			const cursorRequestId =
-				location?.line !== undefined
-					? `${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
-					: undefined;
+				location?.line !== undefined ? crypto.randomUUID() : undefined;
 			const active = state.getActivePane();
 			if (
 				active?.pane.kind === "file" &&
@@ -257,7 +255,7 @@ function WorkspaceContent({
 						paneId: active.pane.id,
 						data: {
 							...activeData,
-							displayName,
+							displayName: displayName ?? activeData.displayName,
 							line: location?.line,
 							column: location?.column,
 							cursorRequestId,
