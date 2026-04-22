@@ -94,6 +94,9 @@ superset-dev-data/
 test-conflict-repo/
 .amp/*
 
+# Crush project context
+.crush/
+
 # Claude Code session lock (runtime artifact)
 .claude/scheduled_tasks.lock
 temp/
