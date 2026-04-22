@@ -284,6 +284,9 @@ class TodoSessionStore {
 		customSystemPrompt?: string | null;
 		claudeModel?: string | null;
 		claudeEffort?: string | null;
+		agentKind?: string | null;
+		codexModel?: string | null;
+		codexEffort?: string | null;
 		remoteControlEnabled?: boolean;
 		artifactPath: string;
 	}): SelectTodoSession {
@@ -311,6 +314,9 @@ class TodoSessionStore {
 			customSystemPrompt: template.customSystemPrompt ?? null,
 			claudeModel: template.claudeModel ?? null,
 			claudeEffort: template.claudeEffort ?? null,
+			agentKind: template.agentKind ?? "claude",
+			codexModel: template.codexModel ?? null,
+			codexEffort: template.codexEffort ?? null,
 			remoteControlEnabled: template.remoteControlEnabled ?? false,
 			verdictPassed: null,
 			verdictReason: null,

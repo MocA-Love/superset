@@ -17,6 +17,55 @@ export interface TodoSessionListEntry extends SelectTodoSession {
 	projectName: string | null;
 }
 
+// ---- Agent kind ----
+
+export const AGENT_KIND_OPTIONS = ["claude", "codex"] as const;
+export type AgentKind = (typeof AGENT_KIND_OPTIONS)[number];
+export const agentKindSchema = z.enum(AGENT_KIND_OPTIONS);
+export const DEFAULT_AGENT_KIND: AgentKind = "claude";
+
+/**
+ * Codex CLI `--model` values we allow the user to pick from the UI.
+ * Codex uses OpenAI model identifiers directly. Kept open-ended (plus a
+ * default `null` in the storage layer) so new models do not require a
+ * migration. `default` is the UI-side sentinel that maps to `null` (don't
+ * pass `--model` at all; let Codex use whatever the user's own config chose).
+ */
+export const CODEX_MODEL_OPTIONS = [
+	"gpt-5.4",
+	"gpt-5.2-codex",
+	"gpt-5.1-codex-max",
+	"gpt-5.4-mini",
+	"gpt-5.3-codex",
+	"gpt-5.3-codex-spark",
+	"gpt-5.2",
+	"gpt-5.1-codex-mini",
+] as const;
+
+export type TodoCodexModel = (typeof CODEX_MODEL_OPTIONS)[number];
+
+export const todoCodexModelSchema = z.enum(CODEX_MODEL_OPTIONS);
+
+/**
+ * Codex CLI `model_reasoning_effort` config values. Mirrors the Codex Rust
+ * source `ReasoningEffort` enum: none / minimal / low / medium / high / xhigh.
+ * UI-side sentinel `__default__` maps to `null` (don't override).
+ */
+export const CODEX_EFFORT_OPTIONS = [
+	"none",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+] as const;
+
+export type TodoCodexEffort = (typeof CODEX_EFFORT_OPTIONS)[number];
+
+export const todoCodexEffortSchema = z.enum(CODEX_EFFORT_OPTIONS);
+
+// ---- Claude Code model / effort options ----
+
 /**
  * Claude Code `--model` values we allow the user to pick from the UI.
  * Aliases cover "latest of this tier"; full model names pin a specific
@@ -91,27 +140,36 @@ export const todoCreateInputSchema = z.object({
 		.max(60 * 60 * 4)
 		.default(1800),
 	// Optional free-form text the user attached at creation time,
-	// usually pulled from a saved preset. Passed to claude via
-	// `--append-system-prompt` so the session steering stays
-	// consistent across iterations without having to repeat it in
-	// every turn's prompt.
+	// usually pulled from a saved preset. For Claude Code sessions,
+	// passed via `--append-system-prompt`. For Codex sessions, passed
+	// via `--developer-instructions`.
 	customSystemPrompt: z
 		.string()
 		.trim()
 		.max(20_000)
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
+	// Which agent CLI to use for this session. When omitted/undefined,
+	// the tRPC router resolves from the user's configured default.
+	agentKind: agentKindSchema.optional(),
 	// Optional per-session Claude Code CLI overrides. Null / undefined
 	// means "use the user's configured default" (see todoSettingsSchema).
 	claudeModel: todoClaudeModelSchema.nullish(),
 	claudeEffort: todoClaudeEffortSchema.nullish(),
+	// Optional per-session Codex CLI overrides. Null / undefined means
+	// "use the user's configured default". Only read when agentKind is
+	// "codex"; ignored for Claude sessions.
+	codexModel: todoCodexModelSchema.nullish(),
+	codexEffort: todoCodexEffortSchema.nullish(),
 	// Beta escape hatch: opt a single TODO into the interactive PTY
 	// engine without flipping the whole app over from headless `-p`.
 	// Persisted in the artifact runtime config, not the DB row.
+	// Claude Code only — Codex always uses headless exec mode.
 	ptyEnabled: z.boolean().optional().default(false),
 	// When true, the PTY runner sends `/remote-control` after spawn so
 	// the session becomes reachable from claude.ai/code / Claude mobile.
 	// Requires `ptyEnabled=true`; the UI prevents invalid combinations.
+	// Claude Code only.
 	remoteControlEnabled: z.boolean().optional().default(false),
 });
 
@@ -149,12 +207,17 @@ export const todoSettingsSchema = z.object({
 	// 0 = 無制限 (手動削除のみ). 1-365 = その日数より古い終了済み
 	// セッションを起動時に自動削除する (queued / running / paused は対象外)。
 	sessionRetentionDays: z.number().int().min(0).max(365).default(0),
+	// Default agent CLI for new TODO sessions.
+	defaultAgentKind: agentKindSchema.default(DEFAULT_AGENT_KIND),
 	// Global defaults used when the TODO composer / ScheduleEditor does
 	// not override them. Null = let Claude Code resolve its own default
 	// (user config cascade). Stored as nullable so the user can pick
 	// "default" in the settings UI.
 	defaultClaudeModel: todoClaudeModelSchema.nullish().default(null),
 	defaultClaudeEffort: todoClaudeEffortSchema.nullish().default(null),
+	// Global defaults for Codex sessions.
+	defaultCodexModel: todoCodexModelSchema.nullish().default(null),
+	defaultCodexEffort: todoCodexEffortSchema.nullish().default(null),
 });
 
 export type TodoSettings = z.infer<typeof todoSettingsSchema>;

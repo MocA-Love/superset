@@ -20,16 +20,23 @@ import { Label } from "@superset/ui/label";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
+import { type AgentKind, DEFAULT_AGENT_KIND } from "main/todo-agent/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
+	AgentRuntimePicker,
 	type ClaudeEffortPick,
 	type ClaudeModelPick,
-	ClaudeRuntimePicker,
+	type CodexEffortPick,
+	type CodexModelPick,
 	DEFAULT_SENTINEL,
+	fromPersistedCodexEffort,
+	fromPersistedCodexModel,
 	fromPersistedEffort,
 	fromPersistedModel,
+	toPersistedCodexEffort,
+	toPersistedCodexModel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../ClaudeRuntimePicker";
@@ -84,6 +91,11 @@ export function TodoModal({
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
 	const [claudeEffort, setClaudeEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
+	const [agentKind, setAgentKind] = useState<AgentKind>(DEFAULT_AGENT_KIND);
+	const [codexModel, setCodexModel] =
+		useState<CodexModelPick>(DEFAULT_SENTINEL);
+	const [codexEffort, setCodexEffort] =
+		useState<CodexEffortPick>(DEFAULT_SENTINEL);
 	// Seed the picker from the global defaults only once per modal
 	// opening. Without this guard, a React Query background refetch or
 	// a settings update fired while the user is picking would overwrite
@@ -104,6 +116,13 @@ export function TodoModal({
 		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
 		setClaudeEffort(
 			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		setAgentKind(todoSettings.defaultAgentKind ?? DEFAULT_AGENT_KIND);
+		setCodexModel(
+			fromPersistedCodexModel(todoSettings.defaultCodexModel ?? null),
+		);
+		setCodexEffort(
+			fromPersistedCodexEffort(todoSettings.defaultCodexEffort ?? null),
 		);
 		seededRef.current = true;
 	}, [open, todoSettings]);
@@ -168,10 +187,15 @@ export function TodoModal({
 	const hasGoal = goal.trim().length > 0;
 
 	useEffect(() => {
+		if (agentKind !== "claude") {
+			setPtyEnabled(false);
+			setRemoteControlEnabled(false);
+			return;
+		}
 		if (!ptyEnabled && remoteControlEnabled) {
 			setRemoteControlEnabled(false);
 		}
-	}, [ptyEnabled, remoteControlEnabled]);
+	}, [agentKind, ptyEnabled, remoteControlEnabled]);
 
 	const handleSubmit = useCallback(async () => {
 		if (!canSubmit) return;
@@ -233,8 +257,11 @@ export function TodoModal({
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
 				customSystemPrompt: selectedPreset?.content ?? undefined,
+				agentKind,
 				claudeModel: toPersistedModel(claudeModel),
 				claudeEffort: toPersistedEffort(claudeEffort),
+				codexModel: toPersistedCodexModel(codexModel),
+				codexEffort: toPersistedCodexEffort(codexEffort),
 				ptyEnabled,
 				remoteControlEnabled,
 			});
@@ -312,6 +339,9 @@ export function TodoModal({
 		title,
 		verifyCommand,
 		workspaceId,
+		agentKind,
+		codexEffort,
+		codexModel,
 	]);
 
 	return (
@@ -363,12 +393,18 @@ export function TodoModal({
 							ptyEnabled
 								? "border-emerald-400/50 bg-emerald-500/5"
 								: "border-border/40 hover:bg-muted/40",
+							agentKind !== "claude" && "opacity-60 cursor-not-allowed",
 						)}
-						title="beta 機能です。Claude を interactive PTY で起動し、headless より実環境に近い経路で実行します。"
+						title={
+							agentKind !== "claude"
+								? "PTY モードは Claude のみ利用可能です"
+								: "beta 機能です。Claude を interactive PTY で起動し、headless より実環境に近い経路で実行します。"
+						}
 					>
 						<Checkbox
 							id="todo-pty-mode"
-							checked={ptyEnabled}
+							checked={agentKind === "claude" && ptyEnabled}
+							disabled={agentKind !== "claude"}
 							onCheckedChange={(checked) => setPtyEnabled(checked === true)}
 						/>
 						<div className="flex-1 flex flex-col gap-0.5">
@@ -386,18 +422,21 @@ export function TodoModal({
 							remoteControlEnabled
 								? "border-indigo-400/50 bg-indigo-500/5"
 								: "border-border/40 hover:bg-muted/40",
-							!ptyEnabled && "opacity-60 cursor-not-allowed",
+							(agentKind !== "claude" || !ptyEnabled) &&
+								"opacity-60 cursor-not-allowed",
 						)}
 						title={
-							ptyEnabled
-								? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
-								: "Remote Control は PTY モード時のみ有効です。"
+							agentKind !== "claude"
+								? "Remote Control は Claude のみ利用可能です"
+								: ptyEnabled
+									? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+									: "Remote Control は PTY モード時のみ有効です。"
 						}
 					>
 						<Checkbox
 							id="todo-remote-control"
-							checked={remoteControlEnabled}
-							disabled={!ptyEnabled}
+							checked={agentKind === "claude" && remoteControlEnabled}
+							disabled={agentKind !== "claude" || !ptyEnabled}
 							onCheckedChange={(checked) =>
 								setRemoteControlEnabled(checked === true)
 							}
@@ -482,11 +521,17 @@ export function TodoModal({
 						/>
 					</div>
 
-					<ClaudeRuntimePicker
-						model={claudeModel}
-						effort={claudeEffort}
-						onModelChange={setClaudeModel}
-						onEffortChange={setClaudeEffort}
+					<AgentRuntimePicker
+						agentKind={agentKind}
+						onAgentKindChange={setAgentKind}
+						claudeModel={claudeModel}
+						claudeEffort={claudeEffort}
+						onClaudeModelChange={setClaudeModel}
+						onClaudeEffortChange={setClaudeEffort}
+						codexModel={codexModel}
+						codexEffort={codexEffort}
+						onCodexModelChange={setCodexModel}
+						onCodexEffortChange={setCodexEffort}
 						disabled={submitting}
 					/>
 

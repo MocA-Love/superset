@@ -142,6 +142,16 @@ export const createTodoAgentRouter = () => {
 						input.claudeEffort !== undefined
 							? input.claudeEffort
 							: (settings.defaultClaudeEffort ?? null);
+					const resolvedCodexModel =
+						input.codexModel !== undefined
+							? input.codexModel
+							: (settings.defaultCodexModel ?? null);
+					const resolvedCodexEffort =
+						input.codexEffort !== undefined
+							? input.codexEffort
+							: (settings.defaultCodexEffort ?? null);
+					const resolvedAgentKind =
+						input.agentKind ?? settings.defaultAgentKind ?? "claude";
 
 					const session = store.insertQueuedFromTemplate({
 						id: sessionId,
@@ -154,8 +164,14 @@ export const createTodoAgentRouter = () => {
 						maxIterations: input.maxIterations,
 						maxWallClockSec: input.maxWallClockSec,
 						customSystemPrompt: input.customSystemPrompt,
-						claudeModel: resolvedModel,
-						claudeEffort: resolvedEffort,
+						claudeModel: resolvedAgentKind === "claude" ? resolvedModel : null,
+						claudeEffort:
+							resolvedAgentKind === "claude" ? resolvedEffort : null,
+						agentKind: resolvedAgentKind,
+						codexModel:
+							resolvedAgentKind === "codex" ? resolvedCodexModel : null,
+						codexEffort:
+							resolvedAgentKind === "codex" ? resolvedCodexEffort : null,
 						remoteControlEnabled: input.remoteControlEnabled,
 						artifactPath,
 					});
@@ -523,6 +539,9 @@ export const createTodoAgentRouter = () => {
 					customSystemPrompt: source.customSystemPrompt,
 					claudeModel: source.claudeModel,
 					claudeEffort: source.claudeEffort,
+					agentKind: source.agentKind ?? "claude",
+					codexModel: source.codexModel,
+					codexEffort: source.codexEffort,
 					remoteControlEnabled: source.remoteControlEnabled ?? false,
 					verdictPassed: null,
 					verdictReason: null,
