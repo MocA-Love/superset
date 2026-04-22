@@ -231,23 +231,34 @@ function WorkspaceContent({
 	// sidebar open into a single `openFilePane(filePath, openInNewTab)`; the
 	// fork keeps two variants so memo tabs can forward the derived title.
 	const openFilePane = useCallback(
-		(filePath: string, displayName?: string) => {
+		(
+			filePath: string,
+			displayName?: string,
+			location?: { line?: number; column?: number },
+		) => {
 			recordRecentlyViewed(filePath);
 			const state = store.getState();
+			const cursorRequestId =
+				location?.line !== undefined ? crypto.randomUUID() : undefined;
 			const active = state.getActivePane();
 			if (
 				active?.pane.kind === "file" &&
 				(active.pane.data as FilePaneData).filePath === filePath
 			) {
-				if (
-					displayName &&
-					(active.pane.data as FilePaneData).displayName !== displayName
-				) {
+				const activeData = active.pane.data as FilePaneData;
+				const shouldUpdateData =
+					(displayName && activeData.displayName !== displayName) ||
+					location?.line !== undefined ||
+					location?.column !== undefined;
+				if (shouldUpdateData) {
 					state.setPaneData({
 						paneId: active.pane.id,
 						data: {
-							...(active.pane.data as FilePaneData),
-							displayName,
+							...activeData,
+							displayName: displayName ?? activeData.displayName,
+							line: location?.line,
+							column: location?.column,
+							cursorRequestId,
 						} as FilePaneData,
 					});
 				}
@@ -261,6 +272,9 @@ function WorkspaceContent({
 						filePath,
 						mode: "editor",
 						displayName,
+						line: location?.line,
+						column: location?.column,
+						cursorRequestId,
 					} as FilePaneData,
 				},
 			});
@@ -506,7 +520,7 @@ function WorkspaceContent({
 		navigate,
 		openFilePaths: openFilePathsList,
 		recentFilePaths: recentFilePathsList,
-		onSelectFile: ({ close, filePath, targetWorkspaceId }) => {
+		onSelectFile: ({ close, filePath, targetWorkspaceId, line, column }) => {
 			close();
 			if (targetWorkspaceId !== workspaceId) {
 				void navigate({
@@ -515,7 +529,7 @@ function WorkspaceContent({
 				});
 				return;
 			}
-			openFilePane(filePath);
+			openFilePane(filePath, undefined, { line, column });
 		},
 	});
 

@@ -11,6 +11,7 @@ import {
 	useSearchDialogStore,
 } from "renderer/stores/search-dialog-state";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import { parseQuickOpenQuery } from "./parseQuickOpenQuery";
 
 const SEARCH_LIMIT = 50;
 
@@ -21,6 +22,8 @@ interface UseCommandPaletteParams {
 	onSelectFile?: (input: {
 		filePath: string;
 		targetWorkspaceId: string;
+		line?: number;
+		column?: number;
 		close: () => void;
 		navigate: UseNavigateResult<string>;
 	}) => void;
@@ -160,11 +163,13 @@ export function useCommandPalette({
 	const toggleIncludeIgnored = useFileExplorerStore(
 		(s) => s.toggleIncludeIgnored,
 	);
+	const parsedQuery = useMemo(() => parseQuickOpenQuery(query), [query]);
+	const searchQuery = parsedQuery.searchQuery;
 
 	// Single-workspace search (existing behavior)
 	const singleSearch = useFileSearch({
 		workspaceId: open && scope === "workspace" ? workspaceId : undefined,
-		searchTerm: query,
+		searchTerm: searchQuery,
 		includePattern,
 		excludePattern,
 		limit: SEARCH_LIMIT,
@@ -177,7 +182,7 @@ export function useCommandPalette({
 	// Multi-workspace search. Note that MRU/open boosts aren't forwarded here
 	// because the recency lists are scoped to the current workspace; applying
 	// them across other workspaces would mis-rank unrelated paths.
-	const debouncedQuery = useDebouncedValue(query.trim(), 150);
+	const debouncedQuery = useDebouncedValue(searchQuery, 150);
 	const multiSearchQueries = electronTrpc.useQueries((t) =>
 		open && scope === "global" && roots.length > 0 && debouncedQuery.length > 0
 			? roots.map((root) =>
@@ -220,7 +225,7 @@ export function useCommandPalette({
 		scope === "workspace"
 			? singleSearch.isFetching
 			: multiSearchQueries.some((query) => query.isFetching) ||
-				(query.trim().length > 0 && query.trim() !== debouncedQuery);
+				(searchQuery.length > 0 && searchQuery !== debouncedQuery);
 
 	const handleOpenChange = useCallback((nextOpen: boolean) => {
 		setOpen(nextOpen);
@@ -252,6 +257,8 @@ export function useCommandPalette({
 				onSelectFile({
 					filePath,
 					targetWorkspaceId: targetWs,
+					line: parsedQuery.line,
+					column: parsedQuery.column,
 					close: () => handleOpenChange(false),
 					navigate,
 				});
@@ -259,6 +266,8 @@ export function useCommandPalette({
 			}
 			useTabsStore.getState().addFileViewerPane(targetWs, {
 				filePath,
+				line: parsedQuery.line,
+				column: parsedQuery.column,
 				useRightSidebarOpenViewWidth: true,
 			});
 			handleOpenChange(false);
@@ -266,7 +275,14 @@ export function useCommandPalette({
 				navigateToWorkspace(targetWs, navigate);
 			}
 		},
-		[workspaceId, onSelectFile, handleOpenChange, navigate],
+		[
+			workspaceId,
+			onSelectFile,
+			handleOpenChange,
+			navigate,
+			parsedQuery.line,
+			parsedQuery.column,
+		],
 	);
 
 	const setIncludePattern = useCallback(

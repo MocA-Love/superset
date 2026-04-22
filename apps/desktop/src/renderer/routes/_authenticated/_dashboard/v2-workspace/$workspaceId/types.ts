@@ -4,6 +4,9 @@ export interface FilePaneData {
 	/** FORK NOTE: carried for memo tabs so the tab title shows the
 	 * memo-derived displayName instead of the random filename. */
 	displayName?: string;
+	line?: number;
+	column?: number;
+	cursorRequestId?: string;
 	language?: string;
 	viewId?: string;
 	forceViewId?: string;

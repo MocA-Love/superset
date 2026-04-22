@@ -2,7 +2,13 @@ import { detectLanguage } from "shared/detect-language";
 import type { ViewProps } from "../../types";
 import { CodeEditor } from "./components/CodeEditor";
 
-export function CodeView({ document, filePath }: ViewProps) {
+export function CodeView({
+	document,
+	filePath,
+	initialLine,
+	initialColumn,
+	cursorRequestId,
+}: ViewProps) {
 	if (document.content.kind !== "text") {
 		return null;
 	}
@@ -12,6 +18,9 @@ export function CodeView({ document, filePath }: ViewProps) {
 			key={document.id}
 			value={document.content.value}
 			language={detectLanguage(filePath)}
+			initialLine={initialLine}
+			initialColumn={initialColumn}
+			cursorRequestId={cursorRequestId}
 			onChange={(next) => document.setContent(next)}
 			onSave={() => void document.save()}
 			fillHeight
