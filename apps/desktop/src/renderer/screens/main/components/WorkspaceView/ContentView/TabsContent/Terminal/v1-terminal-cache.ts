@@ -23,6 +23,7 @@ export interface CachedTerminal {
 	fitAddon: FitAddon;
 	searchAddon: SearchAddon;
 	wrapper: HTMLDivElement;
+	openOnce: () => void;
 	/** Disposes renderer RAF, query suppression, GPU renderer, etc. */
 	cleanupCreation: () => void;
 	/** Last known dimensions — used to skip no-op resize events. */
@@ -54,9 +55,8 @@ export interface CachedTerminal {
 	subscriptionErrorHandler: ((error: unknown) => void) | null;
 	/** ResizeObserver for the attached container. Managed by attach/detach. */
 	resizeObserver: ResizeObserver | null;
-	/** rAF-batched write buffer: data accumulates here until the next frame. */
-	rafWriteBuffer: string;
-	rafWriteId: ReturnType<typeof requestAnimationFrame> | null;
+	/** Debounce timer — fitAddon.fit() と onResize 通知を一括で発火させる */
+	resizeDebounceTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const cache = new Map<string, CachedTerminal>();
@@ -80,7 +80,7 @@ export function getOrCreate(
 		console.log(`[v1-terminal-cache] Creating new terminal: ${paneId}`);
 	}
 
-	const { xterm, fitAddon, searchAddon, wrapper, cleanup } =
+	const { xterm, fitAddon, searchAddon, wrapper, openOnce, cleanup } =
 		createTerminalInWrapper(options);
 
 	const entry: CachedTerminal = {
@@ -88,6 +88,7 @@ export function getOrCreate(
 		fitAddon,
 		searchAddon,
 		wrapper,
+		openOnce,
 		cleanupCreation: cleanup,
 		subscription: null,
 		streamReady: false,
@@ -96,10 +97,9 @@ export function getOrCreate(
 		eventHandler: null,
 		subscriptionErrorHandler: null,
 		resizeObserver: null,
+		resizeDebounceTimer: null,
 		lastCols: xterm.cols,
 		lastRows: xterm.rows,
-		rafWriteBuffer: "",
-		rafWriteId: null,
 	};
 
 	cache.set(paneId, entry);
@@ -117,6 +117,7 @@ export function attachToContainer(
 	if (!entry) return;
 
 	container.appendChild(entry.wrapper);
+	entry.openOnce();
 	terminalRendererDebug.info(
 		"cache-attach-to-container",
 		{
@@ -141,13 +142,19 @@ export function attachToContainer(
 
 	// Manage ResizeObserver lifecycle in the cache, not in React.
 	entry.resizeObserver?.disconnect();
+	if (entry.resizeDebounceTimer) {
+		clearTimeout(entry.resizeDebounceTimer);
+		entry.resizeDebounceTimer = null;
+	}
 	const observer = new ResizeObserver(() => {
 		if (container.clientWidth === 0 || container.clientHeight === 0) return;
+
 		const prevCols = entry.lastCols;
 		const prevRows = entry.lastRows;
 		entry.fitAddon.fit();
 		entry.lastCols = entry.xterm.cols;
 		entry.lastRows = entry.xterm.rows;
+
 		if (entry.lastCols !== prevCols || entry.lastRows !== prevRows) {
 			onResize?.();
 		}
@@ -220,55 +227,20 @@ export function updateAppearance(
 // --- rAF write buffer ---
 
 /**
- * Batch xterm.write calls into one per animation frame to reduce the number
- * of parser/render cycles. Callers accumulate data here; the actual write
- * fires in the next rAF, coalescing all chunks that arrived within ~16 ms.
+ * Thin wrapper around xterm.write so callers share cache lookup and logging.
+ * Keep the PTY -> xterm path as close to VS Code/xterm's recommended
+ * integration as possible.
  */
 export function scheduleWrite(paneId: string, data: string): void {
 	const entry = cache.get(paneId);
 	if (!entry) return;
-	entry.rafWriteBuffer += data;
-	// Flush immediately if buffer exceeds 1MB — guards against unbounded growth
-	// when Electron's backgroundThrottling stops rAF (minimized/backgrounded window).
-	if (entry.rafWriteBuffer.length > 1_048_576) {
-		if (entry.rafWriteId !== null) {
-			cancelAnimationFrame(entry.rafWriteId);
-			entry.rafWriteId = null;
-		}
-		entry.xterm.write(entry.rafWriteBuffer);
-		entry.rafWriteBuffer = "";
-		return;
-	}
-	if (entry.rafWriteId === null) {
-		entry.rafWriteId = requestAnimationFrame(() => {
-			const e = cache.get(paneId);
-			if (!e) return;
-			if (e.rafWriteBuffer) {
-				e.xterm.write(e.rafWriteBuffer);
-				e.rafWriteBuffer = "";
-			}
-			e.rafWriteId = null;
-		});
-	}
+	entry.xterm.write(data);
 }
 
 /**
- * Immediately flush any buffered data to xterm, cancelling the pending rAF.
- * Must be called before processing exit/error/disconnect events so that
- * trailing output is rendered before the exit banner or pane disposal.
+ * Backward-compatible no-op now that writes go directly to xterm.
  */
-export function flushWrite(paneId: string): void {
-	const entry = cache.get(paneId);
-	if (!entry) return;
-	if (entry.rafWriteId !== null) {
-		cancelAnimationFrame(entry.rafWriteId);
-		entry.rafWriteId = null;
-	}
-	if (entry.rafWriteBuffer) {
-		entry.xterm.write(entry.rafWriteBuffer);
-		entry.rafWriteBuffer = "";
-	}
-}
+export function flushWrite(_paneId: string): void {}
 
 // --- Stream subscription ---
 
@@ -290,9 +262,6 @@ function routeEvent(
 	}
 
 	// Component unmounted — write data directly to xterm, queue the rest.
-	// ここは hidden terminal 継続処理の観測点で、主問題ではなく副次仮説。
-	// 「表示中なのに描画されない」問題とは別軸で、
-	// hidden 中も xterm.write が走り続けていないかを見る。
 	if (event.type === "data") {
 		terminalRendererDebug.increment("hidden-data-events", 1, {
 			data: { paneId, bytes: event.data.length },
@@ -461,9 +430,6 @@ export function dispose(paneId: string): void {
 
 	entry.resizeObserver?.disconnect();
 	entry.subscription?.unsubscribe();
-	if (entry.rafWriteId !== null) {
-		cancelAnimationFrame(entry.rafWriteId);
-	}
 	entry.cleanupCreation();
 	entry.xterm.dispose();
 	cache.delete(paneId);
@@ -477,8 +443,6 @@ if (hot) {
 		| undefined;
 	if (existing) {
 		for (const [k, v] of existing) {
-			v.rafWriteBuffer ??= "";
-			v.rafWriteId ??= null;
 			cache.set(k, v);
 		}
 	}

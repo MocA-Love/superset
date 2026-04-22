@@ -6,7 +6,6 @@ import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { DEBUG_TERMINAL } from "../config";
 import { logTerminalWrite, terminalRendererDebug } from "../debug";
 import type { TerminalExitReason, TerminalStreamEvent } from "../types";
-import { flushWrite, scheduleWrite } from "../v1-terminal-cache";
 
 export interface UseTerminalStreamOptions {
 	paneId: string;
@@ -190,21 +189,17 @@ export function useTerminalStream({
 				terminalRendererDebug.observe("stream-data-bytes", event.data.length, {
 					data: { paneId },
 				});
-
 				updateModesRef.current(event.data);
 				logTerminalWrite("stream-data", event.data.length, { paneId });
-				scheduleWrite(paneId, event.data);
+				xterm.write(event.data);
 				updateCwdRef.current(event.data);
 			} else if (event.type === "exit") {
-				flushWrite(paneId);
 				handleTerminalExit(event.exitCode, xterm, event.reason);
 			} else if (event.type === "disconnect") {
-				flushWrite(paneId);
 				setConnectionError(
 					event.reason || "Connection to terminal daemon lost",
 				);
 			} else if (event.type === "error") {
-				flushWrite(paneId);
 				handleStreamError(event, xterm);
 			}
 		},

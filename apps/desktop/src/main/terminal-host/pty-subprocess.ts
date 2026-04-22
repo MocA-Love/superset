@@ -57,7 +57,7 @@ const INPUT_QUEUE_HARD_LIMIT_BYTES = 64 * 1024 * 1024; // 64MB
 let outputChunks: string[] = [];
 let outputBytesQueued = 0;
 let outputFlushScheduled = false;
-const OUTPUT_FLUSH_INTERVAL_MS = 16; // Match terminal-style frame batching (~60fps)
+const OUTPUT_FLUSH_INTERVAL_MS = 0;
 const MAX_OUTPUT_BATCH_SIZE_BYTES = 128 * 1024; // 128KB max per flush
 
 // Backpressure - track if stdout is draining

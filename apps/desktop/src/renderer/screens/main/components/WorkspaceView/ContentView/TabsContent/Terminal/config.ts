@@ -33,6 +33,7 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
 	allowTransparency: true,
 	allowProposedApi: true,
 	scrollback: DEFAULT_TERMINAL_SCROLLBACK,
+	scrollOnEraseInDisplay: true,
 	// Allow Option+key to type special characters on international keyboards (e.g., Option+2 = @)
 	macOptionIsMeta: false,
 	cursorStyle: "block",

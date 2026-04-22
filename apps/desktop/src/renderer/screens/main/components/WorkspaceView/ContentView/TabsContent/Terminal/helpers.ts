@@ -100,6 +100,7 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 	searchAddon: SearchAddon;
 	wrapper: HTMLDivElement;
 	linkManager: TerminalLinkManager;
+	openOnce: () => void;
 	cleanup: () => void;
 } {
 	const {
@@ -120,13 +121,18 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 	const imageAddon = new ImageAddon();
 
 	let disposed = false;
+	let opened = false;
 	let webglAddon: WebglAddon | null = null;
+	let webglRafId: number | null = null;
 
-	// Open into a detached wrapper div — not the live container.
+	// Create a detached wrapper div. xterm.open() is deferred until the wrapper
+	// is attached to a live DOM container.
 	const wrapper = document.createElement("div");
 	wrapper.style.width = "100%";
 	wrapper.style.height = "100%";
-	xterm.open(wrapper);
+	wrapper.style.minWidth = "0";
+	wrapper.style.minHeight = "0";
+	wrapper.style.overflow = "hidden";
 
 	xterm.loadAddon(fitAddon);
 	xterm.loadAddon(searchAddon);
@@ -140,39 +146,46 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		// Ligatures not supported by current font
 	}
 
-	// Defer WebGL to rAF — same pattern as v2 terminal-addons.ts.
-	const rafId = requestAnimationFrame(() => {
-		if (disposed || suggestedRendererType === "dom") return;
+	const openOnce = () => {
+		if (disposed || opened) return;
+		opened = true;
+		xterm.open(wrapper);
 
-		try {
-			webglAddon = new WebglAddon();
-			terminalRendererDebug.info(
-				"webgl-addon-loaded",
-				{ suggestedRendererType: suggestedRendererType ?? "auto" },
-				{
-					captureMessage: true,
-					fingerprint: ["terminal.renderer", "webgl-loaded"],
-				},
-			);
-			webglAddon.onContextLoss(() => {
-				webglAddon?.dispose();
-				webglAddon = null;
-				terminalRendererDebug.warn("webgl-context-lost", undefined, {
-					captureMessage: true,
-					fingerprint: ["terminal.renderer", "webgl-context-lost"],
+		// Defer WebGL until after open() so renderer initialization sees a live DOM node.
+		webglRafId = requestAnimationFrame(() => {
+			webglRafId = null;
+			if (disposed || suggestedRendererType === "dom") return;
+
+			try {
+				webglAddon = new WebglAddon();
+				terminalRendererDebug.info(
+					"webgl-addon-loaded",
+					{ suggestedRendererType: suggestedRendererType ?? "auto" },
+					{
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "webgl-loaded"],
+					},
+				);
+				webglAddon.onContextLoss(() => {
+					webglAddon?.dispose();
+					webglAddon = null;
+					terminalRendererDebug.warn("webgl-context-lost", undefined, {
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "webgl-context-lost"],
+					});
+					xterm.refresh(0, xterm.rows - 1);
 				});
-				xterm.refresh(0, xterm.rows - 1);
-			});
-			xterm.loadAddon(webglAddon);
-		} catch {
-			suggestedRendererType = "dom";
-			webglAddon = null;
-			terminalRendererDebug.warn("webgl-addon-fallback-dom", undefined, {
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "webgl-fallback-dom"],
-			});
-		}
-	});
+				xterm.loadAddon(webglAddon);
+			} catch {
+				suggestedRendererType = "dom";
+				webglAddon = null;
+				terminalRendererDebug.warn("webgl-addon-fallback-dom", undefined, {
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "webgl-fallback-dom"],
+				});
+			}
+		});
+	};
 
 	const cleanupQuerySuppression = suppressQueryResponses(xterm);
 
@@ -233,9 +246,12 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		searchAddon,
 		wrapper,
 		linkManager,
+		openOnce,
 		cleanup: () => {
 			disposed = true;
-			cancelAnimationFrame(rafId);
+			if (webglRafId !== null) {
+				cancelAnimationFrame(webglRafId);
+			}
 			cleanupQuerySuppression();
 			linkManager.dispose();
 			try {
