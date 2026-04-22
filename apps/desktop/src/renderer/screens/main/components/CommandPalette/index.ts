@@ -1,2 +1,2 @@
 export { CommandPalette } from "./CommandPalette";
-export { useCommandPalette } from "./useCommandPalette";
+export { parseQuickOpenQuery, useCommandPalette } from "./useCommandPalette";

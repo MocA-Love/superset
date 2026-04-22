@@ -26,7 +26,7 @@ import {
 import { colorPicker } from "@replit/codemirror-css-color-picker";
 import { cn } from "@superset/ui/utils";
 import { useQuery } from "@tanstack/react-query";
-import { type MutableRefObject, useEffect, useRef } from "react";
+import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useResolvedTheme } from "renderer/stores/theme";
 import {
@@ -44,6 +44,9 @@ import { getCodeSyntaxHighlighting } from "./syntax-highlighting";
 interface CodeEditorProps {
 	value: string;
 	language: string;
+	initialLine?: number;
+	initialColumn?: number;
+	cursorRequestId?: string;
 	readOnly?: boolean;
 	fillHeight?: boolean;
 	className?: string;
@@ -55,6 +58,9 @@ interface CodeEditorProps {
 export function CodeEditor({
 	value,
 	language,
+	initialLine,
+	initialColumn,
+	cursorRequestId,
 	readOnly = false,
 	fillHeight = true,
 	className,
@@ -64,6 +70,7 @@ export function CodeEditor({
 }: CodeEditorProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
+	const [viewReady, setViewReady] = useState(false);
 	const languageCompartment = useRef(new Compartment()).current;
 	const themeCompartment = useRef(new Compartment()).current;
 	const editableCompartment = useRef(new Compartment()).current;
@@ -160,6 +167,7 @@ export function CodeEditor({
 		if (editorRef) {
 			editorRef.current = adapter;
 		}
+		setViewReady(true);
 
 		return () => {
 			if (editorRef?.current === adapter) {
@@ -257,6 +265,22 @@ export function CodeEditor({
 			cancelled = true;
 		};
 	}, [language, languageCompartment]);
+
+	useEffect(() => {
+		if (initialLine === undefined) {
+			return;
+		}
+		if (cursorRequestId === undefined) {
+			return;
+		}
+		const view = viewRef.current;
+		if (!view || !viewReady) {
+			return;
+		}
+
+		const adapter = createCodeMirrorAdapter(view);
+		adapter.revealPosition(initialLine, initialColumn);
+	}, [cursorRequestId, viewReady, initialLine, initialColumn]);
 
 	return (
 		<div

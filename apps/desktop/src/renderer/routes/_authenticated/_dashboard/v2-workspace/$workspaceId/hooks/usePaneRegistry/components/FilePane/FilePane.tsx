@@ -186,6 +186,9 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 					document={document}
 					filePath={filePath}
 					workspaceId={workspaceId}
+					initialLine={data.line}
+					initialColumn={data.column}
+					cursorRequestId={data.cursorRequestId}
 					onChangeView={handleChangeView}
 					onForceView={handleForceView}
 				/>
