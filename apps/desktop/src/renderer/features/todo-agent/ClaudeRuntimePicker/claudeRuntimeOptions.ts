@@ -225,38 +225,43 @@ export const CODEX_MODEL_SELECT_OPTIONS: ReadonlyArray<Option<CodexModelPick>> =
 		},
 		{
 			value: "gpt-5.4",
-			label: "GPT-5.4",
-			description: "最新の GPT-5.4 モデル",
-		},
-		{
-			value: "gpt-5.4-codex",
-			label: "GPT-5.4 Codex",
-			description: "コーディング最適化版",
-		},
-		{
-			value: "gpt-5.3",
-			label: "GPT-5.3",
-			description: "GPT-5.3 モデル",
-		},
-		{
-			value: "gpt-5.2",
-			label: "GPT-5.2",
-			description: "GPT-5.2 モデル",
+			label: "GPT-5.4 (current)",
+			description: "Latest frontier agentic coding model",
 		},
 		{
 			value: "gpt-5.2-codex",
 			label: "GPT-5.2 Codex",
-			description: "GPT-5.2 コーディング最適化版",
+			description: "Frontier agentic coding model",
 		},
 		{
-			value: "o4-mini",
-			label: "o4-mini",
-			description: "軽量推論モデル",
+			value: "gpt-5.1-codex-max",
+			label: "GPT-5.1 Codex Max",
+			description: "Codex-optimized flagship for deep and fast reasoning",
 		},
 		{
-			value: "o3",
-			label: "o3",
-			description: "高度推論モデル",
+			value: "gpt-5.4-mini",
+			label: "GPT-5.4 Mini",
+			description: "Smaller frontier agentic coding model",
+		},
+		{
+			value: "gpt-5.3-codex",
+			label: "GPT-5.3 Codex",
+			description: "Frontier Codex-optimized agentic coding model",
+		},
+		{
+			value: "gpt-5.3-codex-spark",
+			label: "GPT-5.3 Codex Spark",
+			description: "Ultra-fast coding model",
+		},
+		{
+			value: "gpt-5.2",
+			label: "GPT-5.2",
+			description: "Optimized for professional work and long-running agents",
+		},
+		{
+			value: "gpt-5.1-codex-mini",
+			label: "GPT-5.1 Codex Mini",
+			description: "Optimized for codex. Cheaper, faster, but less capable",
 		},
 	] as const;
 

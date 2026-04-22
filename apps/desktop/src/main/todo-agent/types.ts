@@ -33,12 +33,13 @@ export const DEFAULT_AGENT_KIND: AgentKind = "claude";
  */
 export const CODEX_MODEL_OPTIONS = [
 	"gpt-5.4",
-	"gpt-5.4-codex",
-	"gpt-5.3",
-	"gpt-5.2",
 	"gpt-5.2-codex",
-	"o4-mini",
-	"o3",
+	"gpt-5.1-codex-max",
+	"gpt-5.4-mini",
+	"gpt-5.3-codex",
+	"gpt-5.3-codex-spark",
+	"gpt-5.2",
+	"gpt-5.1-codex-mini",
 ] as const;
 
 export type TodoCodexModel = (typeof CODEX_MODEL_OPTIONS)[number];
