@@ -93,6 +93,7 @@ export function TabsContent(props: TabsContentProps) {
 		<div ref={contentRef} className="flex-1 min-h-0 flex overflow-hidden">
 			{tabToRender ? (
 				<TabView
+					key={tabToRender.id}
 					tab={tabToRender}
 					isWorkspaceActive={props.isActive ?? true}
 				/>
