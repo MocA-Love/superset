@@ -110,7 +110,11 @@ export async function runCodexTurn(
 				"ユーザ介入を検知。現在のターンを中断して介入内容で再開します…",
 			);
 			try {
-				child.kill("SIGINT");
+				if (child.pid) {
+					killProcessTree(child.pid, "SIGINT");
+				} else {
+					child.kill("SIGINT");
+				}
 			} catch {
 				// ignore
 			}
@@ -173,6 +177,9 @@ export async function runCodexTurn(
 			}
 			if (parsed.numTurns != null) {
 				numTurns = parsed.numTurns;
+			}
+			if (parsed.errorText && !errorText) {
+				errorText = parsed.errorText;
 			}
 			for (const evt of parsed.events) {
 				getTodoSessionStore().appendStreamEvents(params.sessionId, [
@@ -278,6 +285,7 @@ interface ClassifiedCodexLine {
 	threadId: string | null;
 	resultText: string | null;
 	numTurns: number | null;
+	errorText: string | null;
 	events: ClassifiedEvent[];
 }
 
@@ -286,6 +294,7 @@ function classifyCodexEvent(payload: unknown): ClassifiedCodexLine {
 		threadId: null,
 		resultText: null,
 		numTurns: null,
+		errorText: null,
 		events: [],
 	};
 	if (typeof payload !== "object" || payload === null) return empty;
@@ -337,6 +346,7 @@ function classifyCodexEvent(payload: unknown): ClassifiedCodexLine {
 		const msg = error?.message ?? "不明なエラー";
 		return {
 			...empty,
+			errorText: msg,
 			events: [{ kind: "error", label: "error", text: msg }],
 		};
 	}
@@ -358,6 +368,7 @@ function classifyCodexEvent(payload: unknown): ClassifiedCodexLine {
 				: JSON.stringify(rec).slice(0, 400);
 		return {
 			...empty,
+			errorText: message,
 			events: [{ kind: "error", label: "error", text: message }],
 		};
 	}
@@ -373,6 +384,7 @@ function classifyItem(
 		threadId: null,
 		resultText: null,
 		numTurns: null,
+		errorText: null,
 		events: [],
 	};
 	const itemType = typeof item.type === "string" ? (item.type as string) : "";

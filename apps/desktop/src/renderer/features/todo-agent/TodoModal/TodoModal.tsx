@@ -187,10 +187,15 @@ export function TodoModal({
 	const hasGoal = goal.trim().length > 0;
 
 	useEffect(() => {
+		if (agentKind !== "claude") {
+			setPtyEnabled(false);
+			setRemoteControlEnabled(false);
+			return;
+		}
 		if (!ptyEnabled && remoteControlEnabled) {
 			setRemoteControlEnabled(false);
 		}
-	}, [ptyEnabled, remoteControlEnabled]);
+	}, [agentKind, ptyEnabled, remoteControlEnabled]);
 
 	const handleSubmit = useCallback(async () => {
 		if (!canSubmit) return;
@@ -388,12 +393,18 @@ export function TodoModal({
 							ptyEnabled
 								? "border-emerald-400/50 bg-emerald-500/5"
 								: "border-border/40 hover:bg-muted/40",
+							agentKind !== "claude" && "opacity-60 cursor-not-allowed",
 						)}
-						title="beta 機能です。Claude を interactive PTY で起動し、headless より実環境に近い経路で実行します。"
+						title={
+							agentKind !== "claude"
+								? "PTY モードは Claude のみ利用可能です"
+								: "beta 機能です。Claude を interactive PTY で起動し、headless より実環境に近い経路で実行します。"
+						}
 					>
 						<Checkbox
 							id="todo-pty-mode"
-							checked={ptyEnabled}
+							checked={agentKind === "claude" && ptyEnabled}
+							disabled={agentKind !== "claude"}
 							onCheckedChange={(checked) => setPtyEnabled(checked === true)}
 						/>
 						<div className="flex-1 flex flex-col gap-0.5">
@@ -411,18 +422,21 @@ export function TodoModal({
 							remoteControlEnabled
 								? "border-indigo-400/50 bg-indigo-500/5"
 								: "border-border/40 hover:bg-muted/40",
-							!ptyEnabled && "opacity-60 cursor-not-allowed",
+							(agentKind !== "claude" || !ptyEnabled) &&
+								"opacity-60 cursor-not-allowed",
 						)}
 						title={
-							ptyEnabled
-								? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
-								: "Remote Control は PTY モード時のみ有効です。"
+							agentKind !== "claude"
+								? "Remote Control は Claude のみ利用可能です"
+								: ptyEnabled
+									? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+									: "Remote Control は PTY モード時のみ有効です。"
 						}
 					>
 						<Checkbox
 							id="todo-remote-control"
-							checked={remoteControlEnabled}
-							disabled={!ptyEnabled}
+							checked={agentKind === "claude" && remoteControlEnabled}
+							disabled={agentKind !== "claude" || !ptyEnabled}
 							onCheckedChange={(checked) =>
 								setRemoteControlEnabled(checked === true)
 							}
