@@ -225,6 +225,9 @@ export default defineConfig({
 			"process.env.SUPERSET_WORKSPACE_NAME": defineEnv(
 				process.env.SUPERSET_WORKSPACE_NAME,
 			),
+			"process.env.SUPERSET_TERMINAL_DEBUG": defineEnv(
+				process.env.SUPERSET_TERMINAL_DEBUG,
+			),
 		},
 
 		server: {

@@ -8,7 +8,7 @@
  * to avoid JSON escaping overhead on escape-sequence-heavy PTY output.
  */
 
-import { write as fsWrite } from "node:fs";
+import { appendFileSync, write as fsWrite } from "node:fs";
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
 import treeKill from "tree-kill";
@@ -65,6 +65,15 @@ let stdoutDraining = true;
 let ptyPaused = false;
 
 const DEBUG_OUTPUT_BATCHING = process.env.SUPERSET_PTY_SUBPROCESS_DEBUG === "1";
+const DEBUG_FLOW = process.env.SUPERSET_TERMINAL_DEBUG_FLOW === "1";
+const DEBUG_RAW_PTY = process.env.SUPERSET_TERMINAL_DEBUG_RAW_PTY === "1";
+const DEBUG_RAW_PTY_PATH =
+	process.env.SUPERSET_TERMINAL_DEBUG_RAW_PTY_PATH ||
+	"/tmp/superset-pty-raw.log";
+const DEBUG_PANE_ID = process.env.SUPERSET_TERMINAL_DEBUG_PANE_ID || "unknown";
+const DEBUG_SESSION_ID =
+	process.env.SUPERSET_TERMINAL_DEBUG_SESSION_ID || "unknown";
+let debugPtyRecordSeq = 0;
 
 // =============================================================================
 // Helpers
@@ -90,6 +99,82 @@ process.stdout.on("drain", () => {
 
 function sendError(message: string): void {
 	send(PtySubprocessIpcType.Error, Buffer.from(message, "utf8"));
+}
+
+function utf8BytesToHex(data: string | Buffer): string {
+	const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, "utf8");
+	return Array.from(buf)
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join(" ");
+}
+
+function previewText(data: string | Buffer, max = 240): string {
+	const text = Buffer.isBuffer(data) ? data.toString("utf8") : data;
+	const normalized = JSON.stringify(text);
+	if (normalized.length <= max) return normalized;
+	return `${normalized.slice(0, max)}…`;
+}
+
+function summarizeAnsi(data: string): Record<string, boolean> {
+	return {
+		altEnter:
+			data.includes("\x1b[?1049h") ||
+			data.includes("\x1b[?1047h") ||
+			data.includes("\x1b[?47h"),
+		altLeave:
+			data.includes("\x1b[?1049l") ||
+			data.includes("\x1b[?1047l") ||
+			data.includes("\x1b[?47l"),
+		clearBelow: data.includes("\x1b[J"),
+		clearScreen: data.includes("\x1b[2J"),
+		clearScrollback: data.includes("\x1b[3J"),
+		scrollRegion: /\x1b\[[0-9;]*r/.test(data),
+		cursorMove: /\x1b\[[0-9;]*H/.test(data),
+		cursorHide: data.includes("\x1b[?25l"),
+		cursorShow: data.includes("\x1b[?25h"),
+		syncBegin: data.includes("\x1b[?2026h"),
+		syncEnd: data.includes("\x1b[?2026l"),
+		carriageReturn: data.includes("\r"),
+		lineFeed: data.includes("\n"),
+	};
+}
+
+function appendDebugRecord(
+	kind: string,
+	data?: string | Buffer,
+	meta?: Record<string, unknown>,
+): void {
+	if (!DEBUG_RAW_PTY) return;
+
+	const seq = ++debugPtyRecordSeq;
+	const timestamp = new Date().toISOString();
+	const lines = [
+		`# ${seq} ${timestamp} kind=${kind} paneId=${DEBUG_PANE_ID} sessionId=${DEBUG_SESSION_ID}`,
+	];
+
+	if (meta && Object.keys(meta).length > 0) {
+		lines.push(`meta=${JSON.stringify(meta)}`);
+	}
+
+	if (data != null) {
+		const text = Buffer.isBuffer(data) ? data.toString("utf8") : data;
+		const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, "utf8");
+		lines.push(`bytes=${buf.length}`);
+		lines.push(`flags=${JSON.stringify(summarizeAnsi(text))}`);
+		lines.push(`text=${previewText(data)}`);
+		lines.push(`hex=${utf8BytesToHex(data)}`);
+	}
+
+	lines.push("");
+	appendFileSync(DEBUG_RAW_PTY_PATH, `${lines.join("\n")}\n`, "utf8");
+}
+
+function debugFlowLog(message: string, details?: Record<string, unknown>): void {
+	if (!DEBUG_FLOW) return;
+	const suffix = details ? ` ${JSON.stringify(details)}` : "";
+	process.stderr.write(
+		`[pty-subprocess][pane=${DEBUG_PANE_ID}][session=${DEBUG_SESSION_ID}] ${message}${suffix}\n`,
+	);
 }
 
 function queueOutput(data: string): void {
@@ -126,6 +211,15 @@ function flushOutput(): void {
 			`[pty-subprocess] Flushing ${payload.length} bytes (${chunkCount} chunks batched)`,
 		);
 	}
+
+	appendDebugRecord("PTY_OUTPUT_FLUSH", payload, {
+		chunkCount,
+		outputBytesQueuedBeforeFlush: payload.length,
+	});
+	debugFlowLog("flush-output", {
+		payloadBytes: payload.length,
+		chunkCount,
+	});
 
 	send(PtySubprocessIpcType.Data, payload);
 }
@@ -288,7 +382,30 @@ function handleSpawn(payload: Buffer): void {
 			SUPERSET_ORIG_ZDOTDIR: msg.env.SUPERSET_ORIG_ZDOTDIR,
 			PATH_start: msg.env.PATH?.substring(0, 100),
 		});
+		// TUI が alt-screen を出すかの判断に使う環境変数群をダンプ
+		process.stderr.write(
+			`[pty:env] TERM=${msg.env.TERM} TERM_PROGRAM=${msg.env.TERM_PROGRAM} TERM_PROGRAM_VERSION=${msg.env.TERM_PROGRAM_VERSION} COLORTERM=${msg.env.COLORTERM} CI=${msg.env.CI} NO_COLOR=${msg.env.NO_COLOR} TERMINFO=${msg.env.TERMINFO}\n`,
+		);
 	}
+
+	appendDebugRecord("SPAWN_REQUEST", undefined, {
+		shell: msg.shell,
+		args: msg.args,
+		cwd: msg.cwd,
+		cols: msg.cols,
+		rows: msg.rows,
+		TERM: msg.env.TERM,
+		TERM_PROGRAM: msg.env.TERM_PROGRAM,
+		TERM_PROGRAM_VERSION: msg.env.TERM_PROGRAM_VERSION,
+		COLORTERM: msg.env.COLORTERM,
+	});
+	debugFlowLog("spawn-request", {
+		shell: msg.shell,
+		args: msg.args,
+		cwd: msg.cwd,
+		cols: msg.cols,
+		rows: msg.rows,
+	});
 
 	try {
 		ptyProcess = pty.spawn(msg.shell, msg.args, {
@@ -305,12 +422,38 @@ function handleSpawn(payload: Buffer): void {
 				`[pty-subprocess] PTY fd ${ptyFd ?? "unknown"} (${typeof ptyFd === "number" ? "async fs.write enabled" : "falling back to pty.write"})`,
 			);
 		}
+		debugFlowLog("spawned-pty", {
+			pid: ptyProcess.pid ?? null,
+			ptyFd,
+		});
 
 		ptyProcess.onData((data) => {
+			// Alternate-screen 出入りシーケンスを検出してログ
+			if (DEBUG_OUTPUT_BATCHING) {
+				if (data.includes("\x1b[?1049h") || data.includes("\x1b[?1047h") || data.includes("\x1b[?47h")) {
+					process.stderr.write(`[pty:alt-screen] ENTER detected\n`);
+				}
+				if (data.includes("\x1b[?1049l") || data.includes("\x1b[?1047l") || data.includes("\x1b[?47l")) {
+					process.stderr.write(`[pty:alt-screen] LEAVE detected\n`);
+				}
+			}
+			appendDebugRecord("PTY_OUTPUT_CHUNK", data);
+			debugFlowLog("pty-onData", {
+				bytes: Buffer.byteLength(data, "utf8"),
+				bufferedBytes: outputBytesQueued,
+			});
 			queueOutput(data);
 		});
 
 		ptyProcess.onExit(({ exitCode, signal }) => {
+			appendDebugRecord("PTY_EXIT", undefined, {
+				exitCode: exitCode ?? 0,
+				signal: signal ?? 0,
+			});
+			debugFlowLog("pty-onExit", {
+				exitCode: exitCode ?? 0,
+				signal: signal ?? 0,
+			});
 			flushOutput();
 
 			const exitPayload = Buffer.allocUnsafe(8);
@@ -343,6 +486,11 @@ function handleWrite(payload: Buffer): void {
 		return;
 	}
 
+	appendDebugRecord("PTY_INPUT_WRITE", payload);
+	debugFlowLog("handle-write", {
+		bytes: payload.length,
+		queuedBytes,
+	});
 	queueWriteBuffer(payload);
 }
 
@@ -352,6 +500,11 @@ function handleResize(payload: Buffer): void {
 	try {
 		const cols = payload.readUInt32LE(0);
 		const rows = payload.readUInt32LE(4);
+		if (DEBUG_OUTPUT_BATCHING) {
+			process.stderr.write(`[resize:pty] ${cols}x${rows}\n`);
+		}
+		appendDebugRecord("PTY_RESIZE", undefined, { cols, rows });
+		debugFlowLog("handle-resize", { cols, rows });
 		ptyProcess.resize(cols, rows);
 	} catch {
 		// Ignore resize errors

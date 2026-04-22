@@ -23,6 +23,7 @@ export interface CachedTerminal {
 	fitAddon: FitAddon;
 	searchAddon: SearchAddon;
 	wrapper: HTMLDivElement;
+	openOnce: () => void;
 	/** Disposes renderer RAF, query suppression, GPU renderer, etc. */
 	cleanupCreation: () => void;
 	/** Last known dimensions — used to skip no-op resize events. */
@@ -54,12 +55,113 @@ export interface CachedTerminal {
 	subscriptionErrorHandler: ((error: unknown) => void) | null;
 	/** ResizeObserver for the attached container. Managed by attach/detach. */
 	resizeObserver: ResizeObserver | null;
-	/** rAF-batched write buffer: data accumulates here until the next frame. */
-	rafWriteBuffer: string;
-	rafWriteId: ReturnType<typeof requestAnimationFrame> | null;
+	/** Debounce timer — fitAddon.fit() と onResize 通知を一括で発火させる */
+	resizeDebounceTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const cache = new Map<string, CachedTerminal>();
+
+const FLOW_DEBUG_PANE_ID_KEY = "SUPERSET_TERMINAL_DEBUG_PANE_ID";
+const HEX_DEBUG_PANE_ID_KEY = "SUPERSET_TERMINAL_DEBUG_HEX_PANE_ID";
+
+function ensureDebugLocalStorageDefaults(): void {
+	if (!DEBUG_TERMINAL) return;
+
+	try {
+		if (!window.localStorage.getItem(FLOW_DEBUG_PANE_ID_KEY)) {
+			window.localStorage.setItem(FLOW_DEBUG_PANE_ID_KEY, "*");
+		}
+		if (!window.localStorage.getItem(HEX_DEBUG_PANE_ID_KEY)) {
+			window.localStorage.setItem(HEX_DEBUG_PANE_ID_KEY, "*");
+		}
+	} catch {
+		// Ignore localStorage access failures in restricted contexts.
+	}
+}
+
+ensureDebugLocalStorageDefaults();
+
+function readDebugPaneId(key: string): string | null {
+	try {
+		return window.localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function shouldDebugPane(key: string, paneId: string): boolean {
+	const value = readDebugPaneId(key);
+	return value === "*" || value === paneId;
+}
+
+function utf8Hex(data: string): string {
+	return Array.from(new TextEncoder().encode(data))
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join(" ");
+}
+
+function summarizeAnsi(data: string): Record<string, unknown> {
+	return {
+		bytes: new TextEncoder().encode(data).length,
+		chars: data.length,
+		escapes: (data.match(/\x1b/g) || []).length,
+		altEnter:
+			data.includes("\x1b[?1049h") ||
+			data.includes("\x1b[?1047h") ||
+			data.includes("\x1b[?47h"),
+		altLeave:
+			data.includes("\x1b[?1049l") ||
+			data.includes("\x1b[?1047l") ||
+			data.includes("\x1b[?47l"),
+		clearBelow: data.includes("\x1b[J"),
+		clearScreen: data.includes("\x1b[2J"),
+		clearScrollback: data.includes("\x1b[3J"),
+		eraseLine: /\x1b\[[0-9;]*K/.test(data),
+		scrollRegion: /\x1b\[[0-9;]*r/.test(data),
+		cursorMove: /\x1b\[[0-9;]*H/.test(data),
+		cursorUp: /\x1b\[[0-9;]*A/.test(data),
+		cursorDown: /\x1b\[[0-9;]*B/.test(data),
+		cursorForward: /\x1b\[[0-9;]*C/.test(data),
+		cursorBackward: /\x1b\[[0-9;]*D/.test(data),
+		cursorHide: data.includes("\x1b[?25l"),
+		cursorShow: data.includes("\x1b[?25h"),
+		syncBegin: data.includes("\x1b[?2026h"),
+		syncEnd: data.includes("\x1b[?2026l"),
+		cprQuery: data.includes("\x1b[6n"),
+		cprResponse: /\x1b\[[0-9]+;[0-9]+R/.test(data),
+		kittyKeyboard: /\x1b\[[0-9;:]+u/.test(data),
+		carriageReturn: data.includes("\r"),
+		lineFeed: data.includes("\n"),
+		preview:
+			JSON.stringify(data).length > 220
+				? `${JSON.stringify(data).slice(0, 220)}…`
+				: JSON.stringify(data),
+	};
+}
+
+function debugRendererFlow(
+	paneId: string,
+	label: string,
+	details?: Record<string, unknown>,
+): void {
+	if (!shouldDebugPane(FLOW_DEBUG_PANE_ID_KEY, paneId)) return;
+	const suffix = details ? ` ${JSON.stringify(details)}` : "";
+	console.log(`[terminal-renderer][pane=${paneId}] ${label}${suffix}`);
+}
+
+function debugRendererHex(
+	paneId: string,
+	label: string,
+	data: string,
+	details?: Record<string, unknown>,
+): void {
+	if (!shouldDebugPane(HEX_DEBUG_PANE_ID_KEY, paneId)) return;
+	console.log(`[terminal-renderer-hex][pane=${paneId}] ${label}`, {
+		...details,
+		summary: summarizeAnsi(data),
+		hex: utf8Hex(data),
+	});
+}
 
 export function has(paneId: string): boolean {
 	return cache.has(paneId);
@@ -80,7 +182,7 @@ export function getOrCreate(
 		console.log(`[v1-terminal-cache] Creating new terminal: ${paneId}`);
 	}
 
-	const { xterm, fitAddon, searchAddon, wrapper, cleanup } =
+	const { xterm, fitAddon, searchAddon, wrapper, openOnce, cleanup } =
 		createTerminalInWrapper(options);
 
 	const entry: CachedTerminal = {
@@ -88,6 +190,7 @@ export function getOrCreate(
 		fitAddon,
 		searchAddon,
 		wrapper,
+		openOnce,
 		cleanupCreation: cleanup,
 		subscription: null,
 		streamReady: false,
@@ -96,10 +199,9 @@ export function getOrCreate(
 		eventHandler: null,
 		subscriptionErrorHandler: null,
 		resizeObserver: null,
+		resizeDebounceTimer: null,
 		lastCols: xterm.cols,
 		lastRows: xterm.rows,
-		rafWriteBuffer: "",
-		rafWriteId: null,
 	};
 
 	cache.set(paneId, entry);
@@ -117,6 +219,15 @@ export function attachToContainer(
 	if (!entry) return;
 
 	container.appendChild(entry.wrapper);
+	entry.openOnce();
+	debugRendererFlow(paneId, "attach-to-container", {
+		hasSubscription: entry.subscription !== null,
+		streamReady: entry.streamReady,
+		containerWidth: container.clientWidth,
+		containerHeight: container.clientHeight,
+		xtermCols: entry.xterm.cols,
+		xtermRows: entry.xterm.rows,
+	});
 	terminalRendererDebug.info(
 		"cache-attach-to-container",
 		{
@@ -141,13 +252,28 @@ export function attachToContainer(
 
 	// Manage ResizeObserver lifecycle in the cache, not in React.
 	entry.resizeObserver?.disconnect();
+	if (entry.resizeDebounceTimer) {
+		clearTimeout(entry.resizeDebounceTimer);
+		entry.resizeDebounceTimer = null;
+	}
 	const observer = new ResizeObserver(() => {
 		if (container.clientWidth === 0 || container.clientHeight === 0) return;
+
 		const prevCols = entry.lastCols;
 		const prevRows = entry.lastRows;
 		entry.fitAddon.fit();
 		entry.lastCols = entry.xterm.cols;
 		entry.lastRows = entry.xterm.rows;
+
+		debugRendererFlow(paneId, "resize-observer", {
+			containerWidth: container.clientWidth,
+			containerHeight: container.clientHeight,
+			prevCols,
+			prevRows,
+			nextCols: entry.lastCols,
+			nextRows: entry.lastRows,
+			activeBufferType: entry.xterm.buffer.active.type,
+		});
 		if (entry.lastCols !== prevCols || entry.lastRows !== prevRows) {
 			onResize?.();
 		}
@@ -163,6 +289,12 @@ export function detachFromContainer(paneId: string): void {
 	if (DEBUG_TERMINAL) {
 		console.log(`[v1-terminal-cache] detachFromContainer: ${paneId}`);
 	}
+	debugRendererFlow(paneId, "detach-from-container", {
+		hasSubscription: entry.subscription !== null,
+		streamReady: entry.streamReady,
+		xtermCols: entry.xterm.cols,
+		xtermRows: entry.xterm.rows,
+	});
 	terminalRendererDebug.info(
 		"cache-detach-from-container",
 		{
@@ -220,55 +352,36 @@ export function updateAppearance(
 // --- rAF write buffer ---
 
 /**
- * Batch xterm.write calls into one per animation frame to reduce the number
- * of parser/render cycles. Callers accumulate data here; the actual write
- * fires in the next rAF, coalescing all chunks that arrived within ~16 ms.
+ * Thin wrapper around xterm.write so callers share cache lookup and logging.
+ * Keep the PTY -> xterm path as close to VS Code/xterm's recommended
+ * integration as possible.
  */
 export function scheduleWrite(paneId: string, data: string): void {
 	const entry = cache.get(paneId);
 	if (!entry) return;
-	entry.rafWriteBuffer += data;
-	// Flush immediately if buffer exceeds 1MB — guards against unbounded growth
-	// when Electron's backgroundThrottling stops rAF (minimized/backgrounded window).
-	if (entry.rafWriteBuffer.length > 1_048_576) {
-		if (entry.rafWriteId !== null) {
-			cancelAnimationFrame(entry.rafWriteId);
-			entry.rafWriteId = null;
+	const incomingSummary = summarizeAnsi(data);
+	debugRendererFlow(paneId, "schedule-write", {
+		incoming: incomingSummary,
+		activeBufferType: entry.xterm.buffer.active.type,
+	});
+	debugRendererHex(paneId, "schedule-write-chunk", data, {
+		activeBufferType: entry.xterm.buffer.active.type,
+	});
+	if (DEBUG_TERMINAL) {
+		if (data.includes("\x1b[?1049h") || data.includes("\x1b[?1047h") || data.includes("\x1b[?47h")) {
+			console.log(`[xterm:alt-screen] ENTER detected pane=${paneId} currentType=${entry.xterm.buffer.active.type}`);
 		}
-		entry.xterm.write(entry.rafWriteBuffer);
-		entry.rafWriteBuffer = "";
-		return;
+		if (data.includes("\x1b[?1049l") || data.includes("\x1b[?1047l") || data.includes("\x1b[?47l")) {
+			console.log(`[xterm:alt-screen] LEAVE detected pane=${paneId} currentType=${entry.xterm.buffer.active.type}`);
+		}
 	}
-	if (entry.rafWriteId === null) {
-		entry.rafWriteId = requestAnimationFrame(() => {
-			const e = cache.get(paneId);
-			if (!e) return;
-			if (e.rafWriteBuffer) {
-				e.xterm.write(e.rafWriteBuffer);
-				e.rafWriteBuffer = "";
-			}
-			e.rafWriteId = null;
-		});
-	}
+	entry.xterm.write(data);
 }
 
 /**
- * Immediately flush any buffered data to xterm, cancelling the pending rAF.
- * Must be called before processing exit/error/disconnect events so that
- * trailing output is rendered before the exit banner or pane disposal.
+ * Backward-compatible no-op now that writes go directly to xterm.
  */
-export function flushWrite(paneId: string): void {
-	const entry = cache.get(paneId);
-	if (!entry) return;
-	if (entry.rafWriteId !== null) {
-		cancelAnimationFrame(entry.rafWriteId);
-		entry.rafWriteId = null;
-	}
-	if (entry.rafWriteBuffer) {
-		entry.xterm.write(entry.rafWriteBuffer);
-		entry.rafWriteBuffer = "";
-	}
-}
+export function flushWrite(_paneId: string): void {}
 
 // --- Stream subscription ---
 
@@ -279,12 +392,19 @@ function routeEvent(
 ): void {
 	// Before stream is ready: queue everything (first-mount gating).
 	if (!entry.streamReady) {
+		debugRendererFlow(paneId, "route-event-queued-before-stream-ready", {
+			eventType: event.type,
+		});
 		entry.pendingStreamEvents.push(event);
 		return;
 	}
 
 	// Component mounted — forward all events there.
 	if (entry.eventHandler) {
+		debugRendererFlow(paneId, "route-event-to-handler", {
+			eventType: event.type,
+			dataBytes: event.type === "data" ? summarizeAnsi(event.data).bytes : 0,
+		});
 		entry.eventHandler(event);
 		return;
 	}
@@ -294,6 +414,9 @@ function routeEvent(
 	// 「表示中なのに描画されない」問題とは別軸で、
 	// hidden 中も xterm.write が走り続けていないかを見る。
 	if (event.type === "data") {
+		debugRendererFlow(paneId, "route-event-hidden-data", {
+			data: summarizeAnsi(event.data),
+		});
 		terminalRendererDebug.increment("hidden-data-events", 1, {
 			data: { paneId, bytes: event.data.length },
 		});
@@ -303,6 +426,9 @@ function routeEvent(
 		logTerminalWrite("hidden-stream-data", event.data.length, { paneId });
 		scheduleWrite(paneId, event.data);
 	} else {
+		debugRendererFlow(paneId, "route-event-hidden-lifecycle", {
+			eventType: event.type,
+		});
 		flushWrite(paneId);
 		entry.pendingLifecycleEvents.push(event);
 	}
@@ -461,9 +587,6 @@ export function dispose(paneId: string): void {
 
 	entry.resizeObserver?.disconnect();
 	entry.subscription?.unsubscribe();
-	if (entry.rafWriteId !== null) {
-		cancelAnimationFrame(entry.rafWriteId);
-	}
 	entry.cleanupCreation();
 	entry.xterm.dispose();
 	cache.delete(paneId);
@@ -477,8 +600,6 @@ if (hot) {
 		| undefined;
 	if (existing) {
 		for (const [k, v] of existing) {
-			v.rafWriteBuffer ??= "";
-			v.rafWriteId ??= null;
 			cache.set(k, v);
 		}
 	}

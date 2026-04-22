@@ -13,6 +13,7 @@ import { SessionKilledOverlay } from "./components";
 import {
 	DEFAULT_TERMINAL_FONT_FAMILY,
 	DEFAULT_TERMINAL_FONT_SIZE,
+	TERMINAL_OPTIONS,
 } from "./config";
 import { getDefaultTerminalBg } from "./helpers";
 import {
@@ -521,8 +522,16 @@ export const Terminal = memo(function Terminal({
 
 	useEffect(() => {
 		const xterm = xtermRef.current;
-		if (!xterm || !terminalTheme) return;
-		xterm.options.theme = terminalTheme;
+		if (!xterm) return;
+		xterm.options.vtExtensions = { ...TERMINAL_OPTIONS.vtExtensions };
+		xterm.options.scrollOnEraseInDisplay =
+			TERMINAL_OPTIONS.scrollOnEraseInDisplay;
+		xterm.options.macOptionIsMeta = TERMINAL_OPTIONS.macOptionIsMeta;
+		xterm.options.cursorStyle = TERMINAL_OPTIONS.cursorStyle;
+		xterm.options.cursorInactiveStyle = TERMINAL_OPTIONS.cursorInactiveStyle;
+		if (terminalTheme) {
+			xterm.options.theme = terminalTheme;
+		}
 	}, [terminalTheme]);
 
 	const { data: fontSettings } = electronTrpc.settings.getFontSettings.useQuery(
@@ -581,7 +590,7 @@ export const Terminal = memo(function Terminal({
 	return (
 		<div
 			role="application"
-			className="relative h-full w-full overflow-hidden"
+			className="relative h-full w-full min-h-0 min-w-0 overflow-hidden"
 			style={{ backgroundColor: terminalBg }}
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}
@@ -598,8 +607,11 @@ export const Terminal = memo(function Terminal({
 				!isWorkspaceRunPane && (
 					<SessionKilledOverlay onRestart={restartTerminal} />
 				)}
-			<div className="h-full w-full p-2">
-				<div ref={terminalRef} className="h-full w-full" />
+			<div className="h-full w-full min-h-0 min-w-0 overflow-hidden p-2">
+				<div
+					ref={terminalRef}
+					className="h-full w-full min-h-0 min-w-0 overflow-hidden"
+				/>
 			</div>
 			{xtermInstance && typingPreviewText && (
 				<TerminalTypingPreview xterm={xtermInstance} text={typingPreviewText} />

@@ -271,6 +271,9 @@ export const createTerminalRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
+				if (DEBUG_TERMINAL) {
+					console.log(`[resize:trpc] pane=${input.paneId} ${input.cols}x${input.rows}`);
+				}
 				terminal.resize(input);
 			}),
 

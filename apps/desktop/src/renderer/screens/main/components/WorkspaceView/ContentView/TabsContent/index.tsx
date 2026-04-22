@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { resolveActiveTabIdForWorkspace } from "renderer/stores/tabs/utils";
 import { EmptyTabView } from "./EmptyTabView";
-import { PersistentTabRenderer } from "./PersistentTabRenderer";
+import { TabView } from "./TabView";
 
 interface TabsContentProps {
 	workspaceId: string;
@@ -13,13 +13,13 @@ interface TabsContentProps {
 	onOpenQuickOpen: () => void;
 }
 
-export function TabsContent({
-	workspaceId: activeWorkspaceId,
-	isActive = true,
-	defaultExternalApp,
-	onOpenInApp,
-	onOpenQuickOpen,
-}: TabsContentProps) {
+export function TabsContent(props: TabsContentProps) {
+	const {
+		workspaceId: activeWorkspaceId,
+		defaultExternalApp,
+		onOpenInApp,
+		onOpenQuickOpen,
+	} = props;
 	const allTabs = useTabsStore((s) => s.tabs);
 	const activeTabIds = useTabsStore((s) => s.activeTabIds);
 	const tabHistoryStacks = useTabsStore((s) => s.tabHistoryStacks);
@@ -49,13 +49,10 @@ export function TabsContent({
 		return resolvedActiveTabId;
 	}, [activeWorkspaceId, activeTabIds, allTabs, tabHistoryStacks]);
 
-	const workspaceTabs = useMemo(
-		() =>
-			activeWorkspaceId
-				? allTabs.filter((t) => t.workspaceId === activeWorkspaceId)
-				: [],
-		[activeWorkspaceId, allTabs],
-	);
+	const tabToRender = useMemo(() => {
+		if (!activeTabId) return null;
+		return allTabs.find((tab) => tab.id === activeTabId) || null;
+	}, [activeTabId, allTabs]);
 
 	useEffect(() => {
 		const nextWorkspaceId = activeWorkspaceId ?? null;
@@ -94,11 +91,10 @@ export function TabsContent({
 
 	return (
 		<div ref={contentRef} className="flex-1 min-h-0 flex overflow-hidden">
-			{workspaceTabs.length > 0 ? (
-				<PersistentTabRenderer
-					isWorkspaceActive={isActive}
-					tabs={workspaceTabs}
-					activeTabId={activeTabId}
+			{tabToRender ? (
+				<TabView
+					tab={tabToRender}
+					isWorkspaceActive={props.isActive ?? true}
 				/>
 			) : (
 				<EmptyTabView

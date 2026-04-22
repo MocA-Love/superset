@@ -310,6 +310,9 @@ export function useTerminalLifecycle({
 		const syncBackendDimensions = () => {
 			if (container.clientWidth === 0 || container.clientHeight === 0) return;
 			fitAddon.fit();
+			if (DEBUG_TERMINAL) {
+				console.log(`[resize:lifecycle:sync] pane=${paneId} ${xterm.cols}x${xterm.rows}`);
+			}
 			resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 		};
 
@@ -319,12 +322,18 @@ export function useTerminalLifecycle({
 		const prevCols = xterm.cols;
 		const prevRows = xterm.rows;
 		v1TerminalCache.attachToContainer(paneId, container, () => {
+			if (DEBUG_TERMINAL) {
+				console.log(`[resize:lifecycle:attach-callback] pane=${paneId} ${xterm.cols}x${xterm.rows}`);
+			}
 			resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 		});
 		// If dimensions changed during attach (container resized while hidden),
 		// notify the backend PTY immediately — the ResizeObserver only fires on
 		// subsequent changes, not the initial fit.
 		if (xterm.cols !== prevCols || xterm.rows !== prevRows) {
+			if (DEBUG_TERMINAL) {
+				console.log(`[resize:lifecycle:attach-dim-change] pane=${paneId} ${prevCols}x${prevRows} → ${xterm.cols}x${xterm.rows}`);
+			}
 			resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 		}
 

@@ -1,5 +1,6 @@
 import type { Socket } from "node:net";
 import { TerminalAttachCanceledError } from "../lib/terminal/errors";
+import { terminalHostDebug } from "./debug";
 import type {
 	CancelCreateOrAttachRequest,
 	ClearScrollbackRequest,
@@ -224,8 +225,10 @@ export class TerminalHost {
 	resize(request: ResizeRequest): EmptyResponse {
 		const session = this.sessions.get(request.sessionId);
 		if (!session || !session.isAttachable) {
+			terminalHostDebug.info(`[resize:host] SKIPPED pane=${request.sessionId} session=${!!session} isAttachable=${session?.isAttachable} ${request.cols}x${request.rows}`);
 			return { success: true };
 		}
+		terminalHostDebug.info(`[resize:host] pane=${request.sessionId} ${request.cols}x${request.rows}`);
 		session.resize(request.cols, request.rows);
 		return { success: true };
 	}

@@ -113,6 +113,13 @@ const BROADCAST_COALESCE_ENABLED =
 const EMULATOR_WRITE_COALESCE_ENABLED =
 	process.env.SUPERSET_TERMINAL_EMULATOR_COALESCE !== "0";
 
+const DEBUG_TERMINAL_FLOW = process.env.SUPERSET_TERMINAL_DEBUG_FLOW === "1";
+const DEBUG_TERMINAL_PANE_ID = process.env.SUPERSET_TERMINAL_DEBUG_PANE_ID;
+const DEBUG_TERMINAL_SESSION_ID = process.env.SUPERSET_TERMINAL_DEBUG_SESSION_ID;
+const DEBUG_RAW_PTY_PATH =
+	process.env.SUPERSET_TERMINAL_DEBUG_RAW_PTY_PATH ||
+	"/tmp/superset-pty-raw.log";
+
 /**
  * Shell readiness lifecycle:
  * - `pending`     — shell is initializing; user writes are buffered, escape sequences dropped
@@ -127,6 +134,37 @@ type SpawnProcess = (
 	args: readonly string[],
 	options: Parameters<typeof spawn>[2],
 ) => ChildProcess;
+
+function summarizeTerminalData(data: string): Record<string, unknown> {
+	return {
+		bytes: Buffer.byteLength(data, "utf8"),
+		chars: data.length,
+		escapes: (data.match(/\x1b/g) || []).length,
+		altEnter:
+			data.includes("\x1b[?1049h") ||
+			data.includes("\x1b[?1047h") ||
+			data.includes("\x1b[?47h"),
+		altLeave:
+			data.includes("\x1b[?1049l") ||
+			data.includes("\x1b[?1047l") ||
+			data.includes("\x1b[?47l"),
+		clearBelow: data.includes("\x1b[J"),
+		clearScreen: data.includes("\x1b[2J"),
+		clearScrollback: data.includes("\x1b[3J"),
+		scrollRegion: /\x1b\[[0-9;]*r/.test(data),
+		cursorMove: /\x1b\[[0-9;]*H/.test(data),
+		cursorHide: data.includes("\x1b[?25l"),
+		cursorShow: data.includes("\x1b[?25h"),
+		syncBegin: data.includes("\x1b[?2026h"),
+		syncEnd: data.includes("\x1b[?2026l"),
+		carriageReturn: data.includes("\r"),
+		lineFeed: data.includes("\n"),
+		preview:
+			JSON.stringify(data).length > 240
+				? `${JSON.stringify(data).slice(0, 240)}…`
+				: JSON.stringify(data),
+	};
+}
 
 // =============================================================================
 // Types
@@ -225,6 +263,24 @@ export class Session {
 		signal?: number,
 	) => void;
 
+	private shouldDebugFlow(): boolean {
+		if (!DEBUG_TERMINAL_FLOW) return false;
+		const paneMatches =
+			!DEBUG_TERMINAL_PANE_ID || DEBUG_TERMINAL_PANE_ID === this.paneId;
+		const sessionMatches =
+			!DEBUG_TERMINAL_SESSION_ID ||
+			DEBUG_TERMINAL_SESSION_ID === this.sessionId;
+		return paneMatches && sessionMatches;
+	}
+
+	private debugFlow(label: string, details?: Record<string, unknown>): void {
+		if (!this.shouldDebugFlow()) return;
+		const suffix = details ? ` ${JSON.stringify(details)}` : "";
+		console.error(
+			`[Session ${this.sessionId}][pane ${this.paneId}] ${label}${suffix}`,
+		);
+	}
+
 	constructor(options: SessionOptions) {
 		this.sessionId = options.sessionId;
 		this.workspaceId = options.workspaceId;
@@ -299,12 +355,43 @@ export class Session {
 			? getCommandShellArgs(this.shell, this.command)
 			: getShellArgs(this.shell);
 		const subprocessPath = path.join(__dirname, "pty-subprocess.js");
+		const debugPaneMatches =
+			!DEBUG_TERMINAL_PANE_ID || DEBUG_TERMINAL_PANE_ID === this.paneId;
+		const debugSessionMatches =
+			!DEBUG_TERMINAL_SESSION_ID ||
+			DEBUG_TERMINAL_SESSION_ID === this.sessionId;
+		const enableHelperDebug = debugPaneMatches && debugSessionMatches;
 
 		// Spawn subprocess with filtered env to prevent leaking NODE_ENV etc.
 		const electronPath = process.execPath;
 		this.subprocess = this.spawnProcess(electronPath, [subprocessPath], {
 			stdio: ["pipe", "pipe", "inherit"],
-			env: { ...processEnv, ELECTRON_RUN_AS_NODE: "1" },
+			env: {
+				...processEnv,
+				ELECTRON_RUN_AS_NODE: "1",
+				SUPERSET_PTY_SUBPROCESS_DEBUG:
+					process.env.SUPERSET_PTY_SUBPROCESS_DEBUG ?? "0",
+				SUPERSET_TERMINAL_DEBUG_FLOW:
+					enableHelperDebug && process.env.SUPERSET_TERMINAL_DEBUG_FLOW === "1"
+						? "1"
+						: "0",
+				SUPERSET_TERMINAL_DEBUG_RAW_PTY:
+					enableHelperDebug &&
+					process.env.SUPERSET_TERMINAL_DEBUG_RAW_PTY === "1"
+						? "1"
+						: "0",
+				SUPERSET_TERMINAL_DEBUG_RAW_PTY_PATH: DEBUG_RAW_PTY_PATH,
+				SUPERSET_TERMINAL_DEBUG_PANE_ID: this.paneId,
+				SUPERSET_TERMINAL_DEBUG_SESSION_ID: this.sessionId,
+			},
+		});
+		this.debugFlow("spawn-subprocess", {
+			cwd,
+			cols,
+			rows,
+			shell: this.shell,
+			command: this.command ?? null,
+			enableHelperDebug,
 		});
 
 		// Read framed messages from subprocess stdout
@@ -379,6 +466,7 @@ export class Session {
 		switch (type) {
 			case PtySubprocessIpcType.Ready:
 				this.subprocessReady = true;
+				this.debugFlow("subprocess-ready");
 				if (this.pendingSpawn) {
 					this.sendSpawnToSubprocess(this.pendingSpawn);
 					this.pendingSpawn = null;
@@ -387,6 +475,7 @@ export class Session {
 
 			case PtySubprocessIpcType.Spawned:
 				this.ptyPid = payload.length >= 4 ? payload.readUInt32LE(0) : null;
+				this.debugFlow("pty-spawned", { ptyPid: this.ptyPid });
 				// Resolve the ready promise so callers can await PTY readiness
 				if (this.ptyReadyResolve) {
 					this.ptyReadyResolve();
@@ -397,6 +486,7 @@ export class Session {
 			case PtySubprocessIpcType.Data: {
 				if (payload.length === 0) break;
 				let data = payload.toString("utf8");
+				const rawSummary = summarizeTerminalData(data);
 
 				// Scan for OSC 133;A (shell ready) and strip from output.
 				if (this.shellReadyState === "pending") {
@@ -411,6 +501,13 @@ export class Session {
 
 				this.enqueueEmulatorWrite(data);
 				this.queueBroadcastData(data);
+				this.debugFlow("subprocess-data", {
+					raw: rawSummary,
+					postStrip: summarizeTerminalData(data),
+					emulatorQueuedBytes: this.emulatorWriteQueuedBytes,
+					pendingBroadcastBytes: this.pendingBroadcastBytes,
+					clientCount: this.attachedClients.size,
+				});
 				break;
 			}
 
@@ -431,6 +528,10 @@ export class Session {
 					exitCode,
 					signal !== 0 ? signal : undefined,
 				);
+				this.debugFlow("subprocess-exit-frame", {
+					exitCode,
+					signal: signal !== 0 ? signal : undefined,
+				});
 				break;
 			}
 
@@ -444,6 +545,9 @@ export class Session {
 					`[Session ${this.sessionId}] Subprocess error:`,
 					errorMessage,
 				);
+				this.debugFlow("subprocess-error-frame", {
+					errorMessage,
+				});
 
 				this.flushPendingBroadcastData();
 				this.broadcastEvent("error", {
@@ -867,6 +971,11 @@ export class Session {
 		};
 		this.attachedClients.set(socket, attachedClient);
 		this.lastAttachedAt = new Date();
+		this.debugFlow("attach-begin", {
+			clientCount: this.attachedClients.size,
+			remoteAddress: socket.remoteAddress ?? null,
+			remotePort: socket.remotePort ?? null,
+		});
 
 		// Use snapshot boundary flush for consistent state with continuous output.
 		// This ensures we capture all data received BEFORE attach was called,
@@ -876,6 +985,11 @@ export class Session {
 				this.flushToSnapshotBoundary(ATTACH_FLUSH_TIMEOUT_MS),
 				signal,
 			);
+			this.debugFlow("attach-after-snapshot-boundary", {
+				reachedBoundary,
+				emulatorQueuedBytes: this.emulatorWriteQueuedBytes,
+				pendingBroadcastBytes: this.pendingBroadcastBytes,
+			});
 
 			if (!reachedBoundary) {
 				console.warn(
@@ -885,7 +999,14 @@ export class Session {
 
 			await raceWithAbort(this.emulator.flush(), signal);
 			throwIfAborted(signal);
-			return this.emulator.getSnapshot();
+			const snapshot = this.emulator.getSnapshot();
+			this.debugFlow("attach-complete", {
+				clientCount: this.attachedClients.size,
+				rows: snapshot.rows,
+				cols: snapshot.cols,
+				cursor: snapshot.cursor,
+			});
+			return snapshot;
 		} catch (error) {
 			if (isTerminalAttachCanceledError(error)) {
 				this.detachAttachedClient(socket, attachedClient);
@@ -913,6 +1034,11 @@ export class Session {
 		this.attachedClients.delete(socket);
 		this.clientSocketsWaitingForDrain.delete(socket);
 		this.updateSubprocessStdoutFlow();
+		this.debugFlow("detach", {
+			clientCount: this.attachedClients.size,
+			remoteAddress: socket.remoteAddress ?? null,
+			remotePort: socket.remotePort ?? null,
+		});
 	}
 
 	/**
@@ -950,10 +1076,22 @@ export class Session {
 	 * Resize PTY and emulator
 	 */
 	resize(cols: number, rows: number): void {
+		terminalHostDebug.info(`[resize:session] ${cols}x${rows} subprocessReady=${this.subprocessReady}`);
+		const before = this.emulator.getDimensions();
+		this.debugFlow("resize", {
+			cols,
+			rows,
+			before,
+			subprocessReady: this.subprocessReady,
+			clientCount: this.attachedClients.size,
+		});
 		if (this.subprocess && this.subprocessReady) {
 			this.sendResizeToSubprocess(cols, rows);
 		}
 		this.emulator.resize(cols, rows);
+		this.debugFlow("resize-applied", {
+			after: this.emulator.getDimensions(),
+		});
 	}
 
 	/**
@@ -1146,6 +1284,12 @@ export class Session {
 	 */
 	private queueBroadcastData(data: string): void {
 		if (data.length === 0) return;
+		this.debugFlow("queue-broadcast-data", {
+			data: summarizeTerminalData(data),
+			coalesceEnabled: BROADCAST_COALESCE_ENABLED,
+			pendingChunks: this.pendingBroadcastChunks.length,
+			pendingBytes: this.pendingBroadcastBytes,
+		});
 
 		if (!BROADCAST_COALESCE_ENABLED || this.disposed) {
 			this.broadcastEvent("data", {
@@ -1190,6 +1334,9 @@ export class Session {
 				: this.pendingBroadcastChunks.join("");
 		this.pendingBroadcastChunks = [];
 		this.pendingBroadcastBytes = 0;
+		this.debugFlow("flush-pending-broadcast-data", {
+			data: summarizeTerminalData(merged),
+		});
 
 		this.broadcastEvent("data", {
 			type: "data",
@@ -1212,6 +1359,16 @@ export class Session {
 		};
 
 		const message = `${JSON.stringify(event)}\n`;
+		this.debugFlow("broadcast-event", {
+			eventType,
+			clientCount: this.attachedClients.size,
+			messageBytes: Buffer.byteLength(message, "utf8"),
+			payloadType: payload.type,
+			payloadBytes:
+				payload.type === "data"
+					? Buffer.byteLength(payload.data, "utf8")
+					: undefined,
+		});
 
 		for (const { socket } of this.attachedClients.values()) {
 			try {
