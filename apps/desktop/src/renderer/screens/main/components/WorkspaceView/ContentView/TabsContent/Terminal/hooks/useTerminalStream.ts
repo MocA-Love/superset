@@ -196,12 +196,15 @@ export function useTerminalStream({
 			} else if (event.type === "exit") {
 				handleTerminalExit(event.exitCode, xterm, event.reason);
 			} else if (event.type === "disconnect") {
-				setConnectionError(event.reason || "Connection to terminal daemon lost");
+				setConnectionError(
+					event.reason || "Connection to terminal daemon lost",
+				);
 			} else if (event.type === "error") {
 				handleStreamError(event, xterm);
 			}
 		},
 		[
+			paneId,
 			xtermRef,
 			isStreamReadyRef,
 			pendingEventsRef,
