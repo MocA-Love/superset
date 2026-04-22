@@ -251,28 +251,18 @@ function routeEvent(
 ): void {
 	// Before stream is ready: queue everything (first-mount gating).
 	if (!entry.streamReady) {
-		debugRendererFlow(paneId, "route-event-queued-before-stream-ready", {
-			eventType: event.type,
-		});
 		entry.pendingStreamEvents.push(event);
 		return;
 	}
 
 	// Component mounted — forward all events there.
 	if (entry.eventHandler) {
-		debugRendererFlow(paneId, "route-event-to-handler", {
-			eventType: event.type,
-			dataBytes: event.type === "data" ? summarizeAnsi(event.data).bytes : 0,
-		});
 		entry.eventHandler(event);
 		return;
 	}
 
 	// Component unmounted — write data directly to xterm, queue the rest.
 	if (event.type === "data") {
-		debugRendererFlow(paneId, "route-event-hidden-data", {
-			data: summarizeAnsi(event.data),
-		});
 		terminalRendererDebug.increment("hidden-data-events", 1, {
 			data: { paneId, bytes: event.data.length },
 		});
@@ -282,9 +272,6 @@ function routeEvent(
 		logTerminalWrite("hidden-stream-data", event.data.length, { paneId });
 		scheduleWrite(paneId, event.data);
 	} else {
-		debugRendererFlow(paneId, "route-event-hidden-lifecycle", {
-			eventType: event.type,
-		});
 		flushWrite(paneId);
 		entry.pendingLifecycleEvents.push(event);
 	}
