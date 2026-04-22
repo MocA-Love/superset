@@ -150,7 +150,8 @@ export const createTodoAgentRouter = () => {
 						input.codexEffort !== undefined
 							? input.codexEffort
 							: (settings.defaultCodexEffort ?? null);
-					const resolvedAgentKind = input.agentKind;
+					const resolvedAgentKind =
+						input.agentKind ?? settings.defaultAgentKind ?? "claude";
 
 					const session = store.insertQueuedFromTemplate({
 						id: sessionId,

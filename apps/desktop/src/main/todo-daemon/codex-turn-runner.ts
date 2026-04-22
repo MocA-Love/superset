@@ -261,9 +261,7 @@ function buildArgs(params: CodexTurnParams): string[] {
 		);
 	}
 
-	if (!params.resumeThreadId) {
-		args.push(params.prompt);
-	}
+	args.push(params.prompt);
 
 	return args;
 }

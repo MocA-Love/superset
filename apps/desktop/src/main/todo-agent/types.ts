@@ -149,8 +149,9 @@ export const todoCreateInputSchema = z.object({
 		.max(20_000)
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
-	// Which agent CLI to use for this session. Defaults to "claude".
-	agentKind: agentKindSchema.default(DEFAULT_AGENT_KIND),
+	// Which agent CLI to use for this session. When omitted/undefined,
+	// the tRPC router resolves from the user's configured default.
+	agentKind: agentKindSchema.optional(),
 	// Optional per-session Claude Code CLI overrides. Null / undefined
 	// means "use the user's configured default" (see todoSettingsSchema).
 	claudeModel: todoClaudeModelSchema.nullish(),
