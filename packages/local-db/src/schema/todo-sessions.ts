@@ -97,6 +97,17 @@ export const todoSessions = sqliteTable(
 		claudeModel: text("claude_model"),
 		claudeEffort: text("claude_effort"),
 
+		// Which agent CLI to use: "claude" (Claude Code) or "codex" (Codex CLI).
+		// Defaults to "claude" for backward compatibility. Determines which
+		// turn runner the supervisor engine dispatches to.
+		agentKind: text("agent_kind").notNull().default("claude"),
+
+		// Optional per-session Codex CLI model + effort overrides. Only read
+		// when agentKind is "codex". When null, the supervisor omits the
+		// corresponding `--model` / `model_reasoning_effort` config override.
+		codexModel: text("codex_model"),
+		codexEffort: text("codex_effort"),
+
 		verdictPassed: integer("verdict_passed", { mode: "boolean" }),
 		verdictReason: text("verdict_reason"),
 		verdictFailingTest: text("verdict_failing_test"),

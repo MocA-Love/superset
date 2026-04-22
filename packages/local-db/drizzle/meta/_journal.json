@@ -477,6 +477,13 @@
       "when": 1776676242652,
       "tag": "0067_add_browser_automation_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1776884577928,
+      "tag": "0068_add_agent_kind_codex_fields",
+      "breakpoints": true
     }
   ]
 }

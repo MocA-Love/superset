@@ -66,8 +66,11 @@ const DEFAULT_SETTINGS: TodoSettings = {
 	defaultMaxWallClockMin: 30,
 	maxConcurrentTasks: 1,
 	sessionRetentionDays: 0,
+	defaultAgentKind: "claude",
 	defaultClaudeModel: null,
 	defaultClaudeEffort: null,
+	defaultCodexModel: null,
+	defaultCodexEffort: null,
 };
 
 let cached: TodoSettings | null = null;

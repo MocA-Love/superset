@@ -62,6 +62,14 @@ export const todoSchedules = sqliteTable(
 		claudeModel: text("claude_model"),
 		claudeEffort: text("claude_effort"),
 
+		// Which agent CLI to use: "claude" or "codex". Defaults to "claude".
+		agentKind: text("agent_kind").notNull().default("claude"),
+
+		// Optional Codex CLI model + effort overrides for sessions this
+		// schedule creates. Only read when agentKind is "codex".
+		codexModel: text("codex_model"),
+		codexEffort: text("codex_effort"),
+
 		// How to behave when the previous session from this schedule is
 		// still running at fire time.
 		overlapMode: text("overlap_mode", { enum: ["skip", "queue"] })

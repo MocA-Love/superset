@@ -24,14 +24,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
+	type AgentKind,
+	DEFAULT_AGENT_KIND,
+} from "main/todo-agent/types";
+import {
+	AgentRuntimePicker,
 	type ClaudeEffortPick,
 	type ClaudeModelPick,
-	ClaudeRuntimePicker,
+	type CodexEffortPick,
+	type CodexModelPick,
 	DEFAULT_SENTINEL,
 	fromPersistedEffort,
 	fromPersistedModel,
+	fromPersistedCodexEffort,
+	fromPersistedCodexModel,
 	toPersistedEffort,
 	toPersistedModel,
+	toPersistedCodexEffort,
+	toPersistedCodexModel,
 } from "../ClaudeRuntimePicker";
 import { todoAgentRendererDebug } from "../debug";
 import { EnhanceButton } from "./components/EnhanceButton";
@@ -84,6 +94,11 @@ export function TodoModal({
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
 	const [claudeEffort, setClaudeEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
+	const [agentKind, setAgentKind] = useState<AgentKind>(DEFAULT_AGENT_KIND);
+	const [codexModel, setCodexModel] =
+		useState<CodexModelPick>(DEFAULT_SENTINEL);
+	const [codexEffort, setCodexEffort] =
+		useState<CodexEffortPick>(DEFAULT_SENTINEL);
 	// Seed the picker from the global defaults only once per modal
 	// opening. Without this guard, a React Query background refetch or
 	// a settings update fired while the user is picking would overwrite
@@ -104,6 +119,11 @@ export function TodoModal({
 		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
 		setClaudeEffort(
 			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		setAgentKind(todoSettings.defaultAgentKind ?? DEFAULT_AGENT_KIND);
+		setCodexModel(fromPersistedCodexModel(todoSettings.defaultCodexModel ?? null));
+		setCodexEffort(
+			fromPersistedCodexEffort(todoSettings.defaultCodexEffort ?? null),
 		);
 		seededRef.current = true;
 	}, [open, todoSettings]);
@@ -233,8 +253,11 @@ export function TodoModal({
 				maxIterations,
 				maxWallClockSec: maxMinutes * 60,
 				customSystemPrompt: selectedPreset?.content ?? undefined,
+				agentKind,
 				claudeModel: toPersistedModel(claudeModel),
 				claudeEffort: toPersistedEffort(claudeEffort),
+				codexModel: toPersistedCodexModel(codexModel),
+				codexEffort: toPersistedCodexEffort(codexEffort),
 				ptyEnabled,
 				remoteControlEnabled,
 			});
@@ -482,11 +505,17 @@ export function TodoModal({
 						/>
 					</div>
 
-					<ClaudeRuntimePicker
-						model={claudeModel}
-						effort={claudeEffort}
-						onModelChange={setClaudeModel}
-						onEffortChange={setClaudeEffort}
+					<AgentRuntimePicker
+						agentKind={agentKind}
+						onAgentKindChange={setAgentKind}
+						claudeModel={claudeModel}
+						claudeEffort={claudeEffort}
+						onClaudeModelChange={setClaudeModel}
+						onClaudeEffortChange={setClaudeEffort}
+						codexModel={codexModel}
+						codexEffort={codexEffort}
+						onCodexModelChange={setCodexModel}
+						onCodexEffortChange={setCodexEffort}
 						disabled={submitting}
 					/>
 

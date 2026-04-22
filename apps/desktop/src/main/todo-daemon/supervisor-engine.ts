@@ -14,6 +14,7 @@ import {
 	type TodoStreamEventKind,
 } from "main/todo-agent/types";
 import { runClaudeTurnPty } from "./pty-turn-runner";
+import { runCodexTurn } from "./codex-turn-runner";
 
 /**
  * Feature flag for the interactive PTY engine. When the daemon process
@@ -267,20 +268,41 @@ export class TodoSupervisorEngine {
 					parts.push(`effort: ${session0.claudeEffort}`);
 				appendSetupEvent(sessionId, "Claude 設定", parts.join(" / "));
 			}
+			if (session0.codexModel || session0.codexEffort) {
+				const parts: string[] = [];
+				if (session0.codexModel) parts.push(`model: ${session0.codexModel}`);
+				if (session0.codexEffort)
+					parts.push(`effort: ${session0.codexEffort}`);
+				appendSetupEvent(sessionId, "Codex 設定", parts.join(" / "));
+			}
+			const agentKind = (session0.agentKind as "claude" | "codex" | null) ?? "claude";
 			const runtimeConfig = readTodoSessionRuntimeConfig({
 				artifactPath: session0.artifactPath,
 				fallbackRemoteControlEnabled: session0.remoteControlEnabled ?? false,
 			});
-			const willUsePty = PTY_ENGINE_ENABLED || runtimeConfig.ptyEnabled;
+			const willUsePty = agentKind === "claude" && (PTY_ENGINE_ENABLED || runtimeConfig.ptyEnabled);
 			const remoteControlEnabled =
 				willUsePty && runtimeConfig.remoteControlEnabled;
-			appendSetupEvent(
-				sessionId,
-				"Claude",
-				willUsePty
-					? "claude を PTY (interactive) モードで起動します"
-					: "claude -p --output-format stream-json を起動します",
-			);
+			if (agentKind === "codex") {
+				appendSetupEvent(
+					sessionId,
+					"Codex",
+					"codex exec --json --full-auto を起動します",
+				);
+				appendSetupEvent(
+					sessionId,
+					"計測",
+					"Codex モードではコスト (USD) の集計はトークン数ベースになります。",
+				);
+			} else {
+				appendSetupEvent(
+					sessionId,
+					"Claude",
+					willUsePty
+						? "claude を PTY (interactive) モードで起動します"
+						: "claude -p --output-format stream-json を起動します",
+				);
+			}
 			if (remoteControlEnabled) {
 				appendSetupEvent(
 					sessionId,
@@ -414,29 +436,23 @@ export class TodoSupervisorEngine {
 
 				appendUserEvent(sessionId, iteration, prompt);
 
-				const turnResult = await this.runClaudeTurn({
+				const turnResult = await this.runAgentTurn({
 					sessionId,
 					iteration,
 					cwd: worktreePath,
 					prompt,
 					resumeSessionId: claudeSessionId,
 					customSystemPrompt: currentSession.customSystemPrompt ?? null,
+					agentKind: (currentSession.agentKind as "claude" | "codex" | null) ?? "claude",
 					claudeModel: currentSession.claudeModel ?? null,
 					claudeEffort: currentSession.claudeEffort ?? null,
+					codexModel: currentSession.codexModel ?? null,
+					codexEffort: currentSession.codexEffort ?? null,
 					signal: ac.signal,
 					usePty: willUsePty,
 					remoteControlEnabled,
 					onChild: (child) => {
 						run.currentChild = child;
-						// NOTE: browser-mcp bridge PID-based mapping for
-						// TODO-Agent workers is not wired here — the daemon
-						// runs in a separate process from main, so
-						// pid-registry writes would not be visible to the
-						// bridge. TODO-Agent MCP resolution will be added in
-						// a follow-up that pipes the PID through the
-						// daemon-bridge IPC. Terminal-pane claude/codex
-						// sessions continue to resolve automatically via
-						// the PTY process tree.
 					},
 				});
 				run.currentChild = null;
@@ -624,15 +640,18 @@ export class TodoSupervisorEngine {
 		}
 	}
 
-	private async runClaudeTurn(params: {
+	private async runAgentTurn(params: {
 		sessionId: string;
 		iteration: number;
 		cwd: string;
 		prompt: string;
 		resumeSessionId: string | null;
 		customSystemPrompt: string | null;
+		agentKind: "claude" | "codex";
 		claudeModel: string | null;
 		claudeEffort: string | null;
+		codexModel: string | null;
+		codexEffort: string | null;
 		signal: AbortSignal;
 		usePty: boolean;
 		onChild: (child: ChildProcess) => void;
@@ -646,6 +665,31 @@ export class TodoSupervisorEngine {
 		interrupted: boolean;
 		scheduledWakeup: { delayMs: number; reason: string | null } | null;
 	}> {
+		if (params.agentKind === "codex") {
+			const codexResult = await runCodexTurn({
+				sessionId: params.sessionId,
+				iteration: params.iteration,
+				cwd: params.cwd,
+				prompt: params.prompt,
+				resumeThreadId: params.resumeSessionId,
+				customSystemPrompt: params.customSystemPrompt,
+				codexModel: params.codexModel,
+				codexEffort: params.codexEffort,
+				signal: params.signal,
+				onChild: params.onChild,
+			});
+			return {
+				result: codexResult.result,
+				sessionId: codexResult.threadId,
+				costUsd: codexResult.costUsd,
+				numTurns: codexResult.numTurns,
+				error: codexResult.error,
+				interrupted: codexResult.interrupted,
+				scheduledWakeup: null,
+			};
+		}
+
+		// Claude Code path
 		if (params.usePty) {
 			return runClaudeTurnPty({
 				sessionId: params.sessionId,
