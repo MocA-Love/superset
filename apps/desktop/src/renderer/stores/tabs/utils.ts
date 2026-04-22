@@ -9,19 +9,15 @@ import {
 	type FileStatus,
 	isNewFile,
 } from "shared/changes-types";
-import { hasRenderedPreview, isHtmlFile, isImageFile } from "shared/file-types";
+import { hasRenderedPreview, isImageFile } from "shared/file-types";
 import {
-	type ActionLogsJob,
-	type ActionLogsPaneState,
 	acknowledgedStatus,
 	type BrowserPaneState,
-	type DatabaseExplorerPaneState,
+	type CommentPaneState,
 	type DevToolsPaneState,
 	type DiffLayout,
 	type FileViewerMode,
 	type FileViewerState,
-	type GitGraphPaneState,
-	type ReferenceGraphPaneState,
 } from "shared/tabs-types";
 import type {
 	AddChatTabOptions,
@@ -47,10 +43,6 @@ export const resolveFileViewerMode = ({
 	if (viewMode) return viewMode;
 	// Images always default to rendered (no meaningful diff for binary files)
 	if (isImageFile(filePath)) return "rendered";
-	// Conflicted files show the inline conflict resolver
-	if (diffCategory === "conflicted") return "conflict";
-	// HTML files always default to raw (preview available via toggle)
-	if (isHtmlFile(filePath)) return "raw";
 	// New files have no previous version — show raw/rendered instead of an all-green diff
 	if (diffCategory && fileStatus && isNewFile(fileStatus)) {
 		if (hasRenderedPreview(filePath)) return "rendered";
@@ -349,118 +341,6 @@ export const createBrowserTabWithPane = (
 	return { tab, pane };
 };
 
-/**
- * Creates a new git graph pane
- */
-export const createGitGraphPane = (
-	tabId: string,
-	worktreePath: string,
-): Pane => {
-	const id = generateId("pane");
-	const gitGraph: GitGraphPaneState = { worktreePath };
-	return {
-		id,
-		tabId,
-		type: "git-graph",
-		name: "Git Graph",
-		gitGraph,
-	};
-};
-
-/**
- * Creates a new tab with a git graph pane atomically
- */
-export const createGitGraphTabWithPane = (
-	workspaceId: string,
-	worktreePath: string,
-): { tab: Tab; pane: Pane } => {
-	const tabId = generateId("tab");
-	const pane = createGitGraphPane(tabId, worktreePath);
-
-	const tab: Tab = {
-		id: tabId,
-		name: "Git Graph",
-		workspaceId,
-		layout: pane.id,
-		createdAt: Date.now(),
-	};
-
-	return { tab, pane };
-};
-
-export const createDatabaseExplorerPane = (
-	tabId: string,
-	connectionId?: string | null,
-): Pane => {
-	const id = generateId("pane");
-	const databaseExplorer: DatabaseExplorerPaneState = {
-		connectionId: connectionId ?? null,
-	};
-
-	return {
-		id,
-		tabId,
-		type: "database-explorer",
-		name: "Database Explorer",
-		databaseExplorer,
-	};
-};
-
-export const createDatabaseExplorerTabWithPane = (
-	workspaceId: string,
-	connectionId?: string | null,
-): { tab: Tab; pane: Pane } => {
-	const tabId = generateId("tab");
-	const pane = createDatabaseExplorerPane(tabId, connectionId);
-
-	const tab: Tab = {
-		id: tabId,
-		name: "Database Explorer",
-		workspaceId,
-		layout: pane.id,
-		createdAt: Date.now(),
-	};
-
-	return { tab, pane };
-};
-
-export const createActionLogsPane = (
-	tabId: string,
-	jobs: ActionLogsJob[],
-	initialJobIndex?: number,
-	runId?: number,
-): Pane => {
-	const id = generateId("pane");
-	const actionLogs: ActionLogsPaneState = { jobs, initialJobIndex, runId };
-	return {
-		id,
-		tabId,
-		type: "action-logs",
-		name: "Action Logs",
-		actionLogs,
-	};
-};
-
-export const createActionLogsTabWithPane = (
-	workspaceId: string,
-	jobs: ActionLogsJob[],
-	initialJobIndex?: number,
-	runId?: number,
-): { tab: Tab; pane: Pane } => {
-	const tabId = generateId("tab");
-	const pane = createActionLogsPane(tabId, jobs, initialJobIndex, runId);
-
-	const tab: Tab = {
-		id: tabId,
-		name: "Action Logs",
-		workspaceId,
-		layout: pane.id,
-		createdAt: Date.now(),
-	};
-
-	return { tab, pane };
-};
-
 export const createChatTabWithPane = (
 	workspaceId: string,
 	options?: AddChatTabOptions,
@@ -476,6 +356,42 @@ export const createChatTabWithPane = (
 		createdAt: Date.now(),
 	};
 
+	return { tab, pane };
+};
+
+/**
+ * Creates a new comment pane (PR review / conversation comment viewer)
+ */
+export const createCommentPane = (
+	tabId: string,
+	comment: CommentPaneState,
+): Pane => {
+	const id = generateId("pane");
+	return {
+		id,
+		tabId,
+		type: "comment",
+		name: `@${comment.authorLogin}`,
+		comment,
+	};
+};
+
+/**
+ * Creates a new tab with a comment pane atomically
+ */
+export const createCommentTabWithPane = (
+	workspaceId: string,
+	comment: CommentPaneState,
+): { tab: Tab; pane: Pane } => {
+	const tabId = generateId("tab");
+	const pane = createCommentPane(tabId, comment);
+	const tab: Tab = {
+		id: tabId,
+		name: `@${comment.authorLogin}`,
+		workspaceId,
+		layout: pane.id,
+		createdAt: Date.now(),
+	};
 	return { tab, pane };
 };
 
@@ -675,8 +591,6 @@ export const findPanePath = (
 
 	return null;
 };
-
-export const findPanePathInLayout = findPanePath;
 
 export type FocusDirection = "left" | "right" | "up" | "down";
 
@@ -982,17 +896,9 @@ export const applyFileViewerOpenOptionsToPane = (
 		return pane;
 	}
 
-	// Conflicted files must render in the conflict viewer. If the reused pane
-	// has a stale non-conflict viewMode (e.g. was opened as raw before the
-	// merge marked the file as conflicted), force it back to "conflict" when
-	// no explicit override is provided.
-	const fallbackViewMode =
-		options.diffCategory === "conflicted"
-			? "conflict"
-			: pane.fileViewer.viewMode;
 	const nextFileViewer: FileViewerState = {
 		...pane.fileViewer,
-		viewMode: options.viewMode ?? fallbackViewMode,
+		viewMode: options.viewMode ?? pane.fileViewer.viewMode,
 		isPinned: pane.fileViewer.isPinned || (options.isPinned ?? false),
 		oldPath: options.oldPath ?? pane.fileViewer.oldPath,
 		initialLine: options.line ?? pane.fileViewer.initialLine,
@@ -1087,103 +993,4 @@ export const activatePaneInWorkspace = ({
 			),
 		},
 	};
-};
-
-export const createVscodeExtensionPane = (
-	tabId: string,
-	extensionId: string,
-	viewType: string,
-	name: string,
-	source: "view" | "panel" = "view",
-	sessionId?: string,
-): Pane => {
-	const id = generateId("pane");
-	return {
-		id,
-		tabId,
-		type: "vscode-extension",
-		name,
-		vscodeExtension: { viewType, extensionId, source, sessionId },
-	};
-};
-
-export const createVscodeExtensionTabWithPane = (
-	workspaceId: string,
-	extensionId: string,
-	viewType: string,
-	name: string,
-	source: "view" | "panel" = "view",
-	sessionId?: string,
-): { tab: Tab; pane: Pane } => {
-	const tabId = generateId("tab");
-	const pane = createVscodeExtensionPane(
-		tabId,
-		extensionId,
-		viewType,
-		name,
-		source,
-		sessionId,
-	);
-
-	const tab: Tab = {
-		id: tabId,
-		name,
-		workspaceId,
-		layout: pane.id,
-		createdAt: Date.now(),
-	};
-
-	return { tab, pane };
-};
-
-export const createReferenceGraphPane = (
-	tabId: string,
-	absolutePath: string,
-	languageId: string,
-	line: number,
-	column: number,
-): Pane => {
-	const id = generateId("pane");
-	const fileName = getPathBaseName(absolutePath);
-	const referenceGraph: ReferenceGraphPaneState = {
-		absolutePath,
-		languageId,
-		line,
-		column,
-	};
-	return {
-		id,
-		tabId,
-		type: "reference-graph",
-		name: `References: ${fileName}:${line}`,
-		referenceGraph,
-	};
-};
-
-export const createReferenceGraphTabWithPane = (
-	workspaceId: string,
-	absolutePath: string,
-	languageId: string,
-	line: number,
-	column: number,
-): { tab: Tab; pane: Pane } => {
-	const tabId = generateId("tab");
-	const pane = createReferenceGraphPane(
-		tabId,
-		absolutePath,
-		languageId,
-		line,
-		column,
-	);
-	const fileName = getPathBaseName(absolutePath);
-
-	const tab: Tab = {
-		id: tabId,
-		name: `References: ${fileName}:${line}`,
-		workspaceId,
-		layout: pane.id,
-		createdAt: Date.now(),
-	};
-
-	return { tab, pane };
 };
