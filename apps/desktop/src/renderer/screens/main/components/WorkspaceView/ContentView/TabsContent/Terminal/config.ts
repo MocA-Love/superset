@@ -11,13 +11,11 @@ export const TERMINAL_THEME: ITerminalOptions["theme"] = undefined;
 // Fallback timeout for first render (in case xterm doesn't emit onRender)
 export const FIRST_RENDER_RESTORE_FALLBACK_MS = 250;
 
-// Debug logging for terminal lifecycle.
-// Enable via env var (SUPERSET_TERMINAL_DEBUG=1) or DevTools console:
-//   localStorage.setItem('SUPERSET_TERMINAL_DEBUG', '1')
+// Debug logging for terminal lifecycle (enable via localStorage)
+// Run in DevTools console: localStorage.setItem('SUPERSET_TERMINAL_DEBUG', '1')
 export const DEBUG_TERMINAL =
-	process.env.SUPERSET_TERMINAL_DEBUG === "1" ||
-	(typeof localStorage !== "undefined" &&
-		localStorage.getItem("SUPERSET_TERMINAL_DEBUG") === "1");
+	typeof localStorage !== "undefined" &&
+	localStorage.getItem("SUPERSET_TERMINAL_DEBUG") === "1";
 
 // Shared terminal font defaults are serialized as a valid CSS font-family value.
 export const DEFAULT_TERMINAL_FONT_FAMILY = SHARED_DEFAULT_TERMINAL_FONT_FAMILY;
