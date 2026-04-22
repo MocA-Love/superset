@@ -15,7 +15,7 @@ import { killTerminalForPane } from "renderer/stores/tabs/utils/terminal-cleanup
 import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { scheduleTerminalAttach } from "../attach-scheduler";
 import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
-import { FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
+import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
 import { logTerminalWrite, terminalRendererDebug } from "../debug";
 import {
 	type ActiveSuggestionHandle,
@@ -225,6 +225,10 @@ export function useTerminalLifecycle({
 	useEffect(() => {
 		const container = terminalRef.current;
 		if (!container) return;
+
+		if (DEBUG_TERMINAL) {
+			console.log(`[Terminal] Mount: ${paneId}`);
+		}
 		terminalRendererDebug.info(
 			"mount",
 			{ paneId, workspaceId },
@@ -285,6 +289,9 @@ export function useTerminalLifecycle({
 				fingerprint: ["terminal.renderer", "reattach-evaluated"],
 			},
 		);
+		if (DEBUG_TERMINAL) {
+			console.log(`[Terminal] isReattach=${isReattach} paneId=${paneId}`);
+		}
 		const cached = v1TerminalCache.getOrCreate(paneId, {
 			workspaceId,
 			initialTheme: initialThemeRef.current,
@@ -613,6 +620,10 @@ export function useTerminalLifecycle({
 							clearAttachInFlight(paneId, attachId);
 							done();
 						};
+
+						if (DEBUG_TERMINAL) {
+							console.log(`[Terminal] createOrAttach start: ${paneId}`);
+						}
 						terminalRendererDebug.info(
 							"create-or-attach-start",
 							{ paneId, workspaceId, requestId },
@@ -896,6 +907,11 @@ export function useTerminalLifecycle({
 
 		return () => {
 			const paneDestroyed = isPaneDestroyedInStore();
+			if (DEBUG_TERMINAL) {
+				console.log(
+					`[Terminal] Unmount: ${paneId}, paneDestroyed=${paneDestroyed}`,
+				);
+			}
 			terminalRendererDebug.info(
 				"unmount",
 				{ paneId, workspaceId, paneDestroyed },

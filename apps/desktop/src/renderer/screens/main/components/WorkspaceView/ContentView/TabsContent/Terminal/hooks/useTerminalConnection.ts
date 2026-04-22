@@ -3,7 +3,6 @@ import { useCreateOrAttachWithTheme } from "renderer/hooks/useCreateOrAttachWith
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { logTerminalInput, terminalRendererDebug } from "../debug";
-import { DEBUG_TERMINAL } from "../config";
 import type {
 	TerminalCancelCreateOrAttachMutate,
 	TerminalClearScrollbackMutate,
@@ -14,57 +13,6 @@ import type {
 
 export interface UseTerminalConnectionOptions {
 	workspaceId: string;
-}
-
-const FLOW_DEBUG_PANE_ID_KEY = "SUPERSET_TERMINAL_DEBUG_PANE_ID";
-
-function readDebugPaneId(): string | null {
-	try {
-		return window.localStorage.getItem(FLOW_DEBUG_PANE_ID_KEY);
-	} catch {
-		return null;
-	}
-}
-
-function shouldLogPaneDebug(paneId: string): boolean {
-	if (!DEBUG_TERMINAL) return false;
-	const value = readDebugPaneId();
-	return value === "*" || value === paneId;
-}
-
-function utf8Hex(data: string): string {
-	return Array.from(new TextEncoder().encode(data))
-		.map((byte) => byte.toString(16).padStart(2, "0"))
-		.join(" ");
-}
-
-function summarizeTerminalInput(data: string): Record<string, unknown> {
-	return {
-		bytes: new TextEncoder().encode(data).length,
-		chars: data.length,
-		escapes: (data.match(/\x1b/g) || []).length,
-		cprResponse: /\x1b\[[0-9]+;[0-9]+R/.test(data),
-		focusIn: data.includes("\x1b[I"),
-		focusOut: data.includes("\x1b[O"),
-		kittyKeyboard: /\x1b\[[0-9;:]+u/.test(data),
-		bracketedPasteStart: data.includes("\x1b[200~"),
-		bracketedPasteEnd: data.includes("\x1b[201~"),
-		preview:
-			JSON.stringify(data).length > 220
-				? `${JSON.stringify(data).slice(0, 220)}…`
-				: JSON.stringify(data),
-	};
-}
-
-function isInterestingTerminalInput(data: string): boolean {
-	return (
-		/\x1b\[[0-9]+;[0-9]+R/.test(data) ||
-		data.includes("\x1b[I") ||
-		data.includes("\x1b[O") ||
-		/\x1b\[[0-9;:]+u/.test(data) ||
-		data.includes("\x1b[200~") ||
-		data.includes("\x1b[201~")
-	);
 }
 
 /**
@@ -97,15 +45,6 @@ export function useTerminalConnection({
 	// Use imperative client calls for write/resize/detach/clear to avoid
 	// mutation-observer re-renders on every keystroke.
 	const writeRef = useRef<TerminalWriteMutate>((input, callbacks) => {
-		if (
-			shouldLogPaneDebug(input.paneId) &&
-			isInterestingTerminalInput(input.data)
-		) {
-			console.log(`[terminal-write][pane=${input.paneId}] renderer-to-pty`, {
-				summary: summarizeTerminalInput(input.data),
-				hex: utf8Hex(input.data),
-			});
-		}
 		logTerminalInput("trpc-write", input.data.length, { paneId: input.paneId });
 		electronTrpcClient.terminal.write
 			.mutate(input)
@@ -134,11 +73,7 @@ export function useTerminalConnection({
 				callbacks?.onSettled?.();
 			});
 	});
-	// ResizeObserver 側で確定したサイズを受けて、即座に PTY に通知する。
 	const resizeRef = useRef<TerminalResizeMutate>((input) => {
-		if (DEBUG_TERMINAL) {
-			console.log(`[resize:mutate] pane=${input.paneId} ${input.cols}x${input.rows}`);
-		}
 		electronTrpcClient.terminal.resize.mutate(input).catch((error) => {
 			console.warn("[Terminal] Failed to resize terminal:", error);
 		});

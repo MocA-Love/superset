@@ -61,108 +61,6 @@ export interface CachedTerminal {
 
 const cache = new Map<string, CachedTerminal>();
 
-const FLOW_DEBUG_PANE_ID_KEY = "SUPERSET_TERMINAL_DEBUG_PANE_ID";
-const HEX_DEBUG_PANE_ID_KEY = "SUPERSET_TERMINAL_DEBUG_HEX_PANE_ID";
-
-function ensureDebugLocalStorageDefaults(): void {
-	if (!DEBUG_TERMINAL) return;
-
-	try {
-		if (!window.localStorage.getItem(FLOW_DEBUG_PANE_ID_KEY)) {
-			window.localStorage.setItem(FLOW_DEBUG_PANE_ID_KEY, "*");
-		}
-		if (!window.localStorage.getItem(HEX_DEBUG_PANE_ID_KEY)) {
-			window.localStorage.setItem(HEX_DEBUG_PANE_ID_KEY, "*");
-		}
-	} catch {
-		// Ignore localStorage access failures in restricted contexts.
-	}
-}
-
-ensureDebugLocalStorageDefaults();
-
-function readDebugPaneId(key: string): string | null {
-	try {
-		return window.localStorage.getItem(key);
-	} catch {
-		return null;
-	}
-}
-
-function shouldDebugPane(key: string, paneId: string): boolean {
-	const value = readDebugPaneId(key);
-	return value === "*" || value === paneId;
-}
-
-function utf8Hex(data: string): string {
-	return Array.from(new TextEncoder().encode(data))
-		.map((byte) => byte.toString(16).padStart(2, "0"))
-		.join(" ");
-}
-
-function summarizeAnsi(data: string): Record<string, unknown> {
-	return {
-		bytes: new TextEncoder().encode(data).length,
-		chars: data.length,
-		escapes: (data.match(/\x1b/g) || []).length,
-		altEnter:
-			data.includes("\x1b[?1049h") ||
-			data.includes("\x1b[?1047h") ||
-			data.includes("\x1b[?47h"),
-		altLeave:
-			data.includes("\x1b[?1049l") ||
-			data.includes("\x1b[?1047l") ||
-			data.includes("\x1b[?47l"),
-		clearBelow: data.includes("\x1b[J"),
-		clearScreen: data.includes("\x1b[2J"),
-		clearScrollback: data.includes("\x1b[3J"),
-		eraseLine: /\x1b\[[0-9;]*K/.test(data),
-		scrollRegion: /\x1b\[[0-9;]*r/.test(data),
-		cursorMove: /\x1b\[[0-9;]*H/.test(data),
-		cursorUp: /\x1b\[[0-9;]*A/.test(data),
-		cursorDown: /\x1b\[[0-9;]*B/.test(data),
-		cursorForward: /\x1b\[[0-9;]*C/.test(data),
-		cursorBackward: /\x1b\[[0-9;]*D/.test(data),
-		cursorHide: data.includes("\x1b[?25l"),
-		cursorShow: data.includes("\x1b[?25h"),
-		syncBegin: data.includes("\x1b[?2026h"),
-		syncEnd: data.includes("\x1b[?2026l"),
-		cprQuery: data.includes("\x1b[6n"),
-		cprResponse: /\x1b\[[0-9]+;[0-9]+R/.test(data),
-		kittyKeyboard: /\x1b\[[0-9;:]+u/.test(data),
-		carriageReturn: data.includes("\r"),
-		lineFeed: data.includes("\n"),
-		preview:
-			JSON.stringify(data).length > 220
-				? `${JSON.stringify(data).slice(0, 220)}…`
-				: JSON.stringify(data),
-	};
-}
-
-function debugRendererFlow(
-	paneId: string,
-	label: string,
-	details?: Record<string, unknown>,
-): void {
-	if (!shouldDebugPane(FLOW_DEBUG_PANE_ID_KEY, paneId)) return;
-	const suffix = details ? ` ${JSON.stringify(details)}` : "";
-	console.log(`[terminal-renderer][pane=${paneId}] ${label}${suffix}`);
-}
-
-function debugRendererHex(
-	paneId: string,
-	label: string,
-	data: string,
-	details?: Record<string, unknown>,
-): void {
-	if (!shouldDebugPane(HEX_DEBUG_PANE_ID_KEY, paneId)) return;
-	console.log(`[terminal-renderer-hex][pane=${paneId}] ${label}`, {
-		...details,
-		summary: summarizeAnsi(data),
-		hex: utf8Hex(data),
-	});
-}
-
 export function has(paneId: string): boolean {
 	return cache.has(paneId);
 }
@@ -220,14 +118,6 @@ export function attachToContainer(
 
 	container.appendChild(entry.wrapper);
 	entry.openOnce();
-	debugRendererFlow(paneId, "attach-to-container", {
-		hasSubscription: entry.subscription !== null,
-		streamReady: entry.streamReady,
-		containerWidth: container.clientWidth,
-		containerHeight: container.clientHeight,
-		xtermCols: entry.xterm.cols,
-		xtermRows: entry.xterm.rows,
-	});
 	terminalRendererDebug.info(
 		"cache-attach-to-container",
 		{
@@ -265,15 +155,6 @@ export function attachToContainer(
 		entry.lastCols = entry.xterm.cols;
 		entry.lastRows = entry.xterm.rows;
 
-		debugRendererFlow(paneId, "resize-observer", {
-			containerWidth: container.clientWidth,
-			containerHeight: container.clientHeight,
-			prevCols,
-			prevRows,
-			nextCols: entry.lastCols,
-			nextRows: entry.lastRows,
-			activeBufferType: entry.xterm.buffer.active.type,
-		});
 		if (entry.lastCols !== prevCols || entry.lastRows !== prevRows) {
 			onResize?.();
 		}
@@ -289,12 +170,6 @@ export function detachFromContainer(paneId: string): void {
 	if (DEBUG_TERMINAL) {
 		console.log(`[v1-terminal-cache] detachFromContainer: ${paneId}`);
 	}
-	debugRendererFlow(paneId, "detach-from-container", {
-		hasSubscription: entry.subscription !== null,
-		streamReady: entry.streamReady,
-		xtermCols: entry.xterm.cols,
-		xtermRows: entry.xterm.rows,
-	});
 	terminalRendererDebug.info(
 		"cache-detach-from-container",
 		{
@@ -359,22 +234,6 @@ export function updateAppearance(
 export function scheduleWrite(paneId: string, data: string): void {
 	const entry = cache.get(paneId);
 	if (!entry) return;
-	const incomingSummary = summarizeAnsi(data);
-	debugRendererFlow(paneId, "schedule-write", {
-		incoming: incomingSummary,
-		activeBufferType: entry.xterm.buffer.active.type,
-	});
-	debugRendererHex(paneId, "schedule-write-chunk", data, {
-		activeBufferType: entry.xterm.buffer.active.type,
-	});
-	if (DEBUG_TERMINAL) {
-		if (data.includes("\x1b[?1049h") || data.includes("\x1b[?1047h") || data.includes("\x1b[?47h")) {
-			console.log(`[xterm:alt-screen] ENTER detected pane=${paneId} currentType=${entry.xterm.buffer.active.type}`);
-		}
-		if (data.includes("\x1b[?1049l") || data.includes("\x1b[?1047l") || data.includes("\x1b[?47l")) {
-			console.log(`[xterm:alt-screen] LEAVE detected pane=${paneId} currentType=${entry.xterm.buffer.active.type}`);
-		}
-	}
 	entry.xterm.write(data);
 }
 
