@@ -33,14 +33,11 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
 	allowTransparency: true,
 	allowProposedApi: true,
 	scrollback: DEFAULT_TERMINAL_SCROLLBACK,
-	// Codex/ratatui の inline viewport は resize 時に CSI J (カーソル以降消去) しか
-	// 出さない。viewport が縮小したとき新 viewport の上側に旧描画が残って ghost
-	// 化するため、erase-in-display 発生時にスクロールを同期させる。VSCode と同じ。
-	scrollOnEraseInDisplay: true,
 	// Allow Option+key to type special characters on international keyboards (e.g., Option+2 = @)
 	macOptionIsMeta: false,
 	cursorStyle: "block",
 	cursorInactiveStyle: "outline",
+	vtExtensions: { kittyKeyboard: true },
 	screenReaderMode: false,
 	// xterm's fit addon permanently reserves scrollbar width from usable columns.
 	// Hide the built-in scrollbar so terminal content can use the full pane width.
