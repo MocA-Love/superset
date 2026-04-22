@@ -12,7 +12,7 @@ import {
 	indentOnInput,
 } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import {
 	drawSelection,
 	dropCursor,
@@ -267,10 +267,7 @@ export function CodeEditor({
 	}, [language, languageCompartment]);
 
 	useEffect(() => {
-		if (initialLine === undefined) {
-			return;
-		}
-		if (cursorRequestId === undefined) {
+		if (initialLine === undefined || cursorRequestId === undefined) {
 			return;
 		}
 		const view = viewRef.current;
@@ -278,8 +275,20 @@ export function CodeEditor({
 			return;
 		}
 
-		const adapter = createCodeMirrorAdapter(view);
-		adapter.revealPosition(initialLine, initialColumn);
+		const safeLine = Math.max(
+			1,
+			Math.min(initialLine, view.state.doc.lines),
+		);
+		const lineInfo = view.state.doc.line(safeLine);
+		const col = initialColumn ?? 1;
+		const offset = Math.min(col - 1, lineInfo.length);
+		const anchor = lineInfo.from + Math.max(0, offset);
+
+		view.dispatch({
+			selection: EditorSelection.cursor(anchor),
+			scrollIntoView: true,
+		});
+		view.focus();
 	}, [cursorRequestId, viewReady, initialLine, initialColumn]);
 
 	return (
