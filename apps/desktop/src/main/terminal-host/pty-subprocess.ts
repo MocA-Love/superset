@@ -500,9 +500,6 @@ function handleResize(payload: Buffer): void {
 	try {
 		const cols = payload.readUInt32LE(0);
 		const rows = payload.readUInt32LE(4);
-		if (DEBUG_OUTPUT_BATCHING) {
-			process.stderr.write(`[resize:pty] ${cols}x${rows}\n`);
-		}
 		appendDebugRecord("PTY_RESIZE", undefined, { cols, rows });
 		debugFlowLog("handle-resize", { cols, rows });
 		ptyProcess.resize(cols, rows);

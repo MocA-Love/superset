@@ -1076,7 +1076,6 @@ export class Session {
 	 * Resize PTY and emulator
 	 */
 	resize(cols: number, rows: number): void {
-		terminalHostDebug.info(`[resize:session] ${cols}x${rows} subprocessReady=${this.subprocessReady}`);
 		const before = this.emulator.getDimensions();
 		this.debugFlow("resize", {
 			cols,

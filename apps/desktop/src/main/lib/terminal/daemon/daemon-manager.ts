@@ -18,7 +18,6 @@ import { portManager } from "../port-manager";
 import type { CreateSessionParams, SessionResult } from "../types";
 import {
 	CREATE_OR_ATTACH_CONCURRENCY,
-	DEBUG_TERMINAL,
 	MAX_KILLED_SESSION_TOMBSTONES,
 	MAX_SCROLLBACK_BYTES,
 	SESSION_CLEANUP_DELAY_MS,
@@ -182,12 +181,6 @@ export class DaemonTerminalManager extends EventEmitter {
 	private setupClientEventHandlers(): void {
 		this.client.on("data", (sessionId: string, data: string) => {
 			const paneId = sessionId;
-			if (DEBUG_TERMINAL) {
-				const listenerCount = this.listenerCount(`data:${paneId}`);
-				console.log(
-					`[DaemonTerminalManager] Received data from daemon: paneId=${paneId}, bytes=${data.length}, listeners=${listenerCount}`,
-				);
-			}
 
 			const session = this.sessions.get(paneId);
 			if (session) {
@@ -320,22 +313,6 @@ export class DaemonTerminalManager extends EventEmitter {
 				(!pendingHasExplicitSize || !pendingSizeMatchesRequest);
 
 			if (shouldSupersedePending) {
-				if (DEBUG_TERMINAL) {
-					console.log(
-						"[DaemonTerminalManager] Superseding pending createOrAttach with explicit size",
-						{
-							paneId,
-							requestId,
-							pendingRequestId: pending.requestId,
-							pendingCols: pending.cols ?? null,
-							pendingRows: pending.rows ?? null,
-							nextCols: params.cols ?? null,
-							nextRows: params.rows ?? null,
-							pendingJoinPending: pending.joinPending,
-							joinPending,
-						},
-					);
-				}
 				pending.abortController.abort();
 				this.pendingSessions.delete(paneId);
 			} else if (
@@ -479,16 +456,6 @@ export class DaemonTerminalManager extends EventEmitter {
 				rootPath,
 				themeType,
 			});
-
-			if (DEBUG_TERMINAL) {
-				console.log("[DaemonTerminalManager] Calling daemon createOrAttach:", {
-					paneId,
-					shell,
-					cwd,
-					cols,
-					rows,
-				});
-			}
 
 			const cancelDaemonRequest = () => {
 				if (!params.requestId) return;
@@ -1037,8 +1004,6 @@ export class DaemonTerminalManager extends EventEmitter {
 	}
 
 	reset(): void {
-		console.log("[DaemonTerminalManager] Resetting...");
-
 		this.abortPendingSessions();
 		for (const timeout of this.cleanupTimeouts.values()) {
 			clearTimeout(timeout);
@@ -1057,7 +1022,5 @@ export class DaemonTerminalManager extends EventEmitter {
 
 		disposeTerminalHostClient();
 		this.initializeClient();
-
-		console.log("[DaemonTerminalManager] Reset complete");
 	}
 }
