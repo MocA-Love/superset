@@ -242,6 +242,9 @@ export const v2UserPreferencesSchema = z.object({
 	id: z.literal("preferences"),
 	fileLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	urlLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
+	rightSidebarOpen: z.boolean().default(true),
+	rightSidebarTab: z.enum(["changes", "files"]).default("changes"),
+	deleteLocalBranch: z.boolean().default(false),
 });
 
 export type V2UserPreferencesRow = z.infer<typeof v2UserPreferencesSchema>;
@@ -252,4 +255,7 @@ export const DEFAULT_V2_USER_PREFERENCES: V2UserPreferencesRow = {
 	id: V2_USER_PREFERENCES_ID,
 	fileLinks: DEFAULT_LINK_TIER_MAP,
 	urlLinks: DEFAULT_LINK_TIER_MAP,
+	rightSidebarOpen: true,
+	rightSidebarTab: "changes",
+	deleteLocalBranch: false,
 };
