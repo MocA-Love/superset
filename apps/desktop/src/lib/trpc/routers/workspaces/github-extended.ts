@@ -21,7 +21,11 @@ import {
 	markWorkspaceAsDeleting,
 	updateActiveWorkspaceIfRemoved,
 } from "./utils/db-helpers";
-import { branchExistsOnRemote, getCurrentBranch, getDefaultBranch } from "./utils/git";
+import {
+	branchExistsOnRemote,
+	getCurrentBranch,
+	getDefaultBranch,
+} from "./utils/git";
 import {
 	addPullRequestConversationComment,
 	clearGitHubCachesForWorktree,
@@ -1731,4 +1735,6 @@ export const createGithubExtendedRouter = () =>
 			}),
 	});
 
-export type GithubExtendedRouter = ReturnType<typeof createGithubExtendedRouter>;
+export type GithubExtendedRouter = ReturnType<
+	typeof createGithubExtendedRouter
+>;

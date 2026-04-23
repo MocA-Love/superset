@@ -19,7 +19,7 @@ export function ProjectWorktreeAutoSync({ projectId }: { projectId: string }) {
 	// Only pay the cost of listing + existsSync-ing tracked worktrees when the
 	// project has opted in. Otherwise the query is skipped entirely.
 	const { data: missingWorktrees = [], isLoading } =
-		electronTrpc.workspaces.getMissingWorktrees.useQuery(
+		electronTrpc.workspaces.githubExtended.getMissingWorktrees.useQuery(
 			{ projectId },
 			{ enabled: autoRemoveEnabled },
 		);
