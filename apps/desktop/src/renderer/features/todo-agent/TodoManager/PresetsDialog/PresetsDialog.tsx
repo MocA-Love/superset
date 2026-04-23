@@ -185,6 +185,9 @@ function SettingsTab() {
 			);
 		}
 	}, [
+		defaultAgentKind,
+		defaultCodexEffort,
+		defaultCodexModel,
 		defaultEffort,
 		defaultModel,
 		maxIter,
