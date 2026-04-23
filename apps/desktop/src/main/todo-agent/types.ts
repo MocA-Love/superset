@@ -19,7 +19,7 @@ export interface TodoSessionListEntry extends SelectTodoSession {
 
 // ---- Agent kind ----
 
-export const AGENT_KIND_OPTIONS = ["claude", "codex", "crush"] as const;
+export const AGENT_KIND_OPTIONS = ["claude", "codex"] as const;
 export type AgentKind = (typeof AGENT_KIND_OPTIONS)[number];
 export const agentKindSchema = z.enum(AGENT_KIND_OPTIONS);
 export const DEFAULT_AGENT_KIND: AgentKind = "claude";
@@ -161,12 +161,6 @@ export const todoCreateInputSchema = z.object({
 	// "codex"; ignored for Claude sessions.
 	codexModel: todoCodexModelSchema.nullish(),
 	codexEffort: todoCodexEffortSchema.nullish(),
-	// Optional per-session Crush CLI model override. Null / undefined means
-	// "use the user's configured default". Only read when agentKind is
-	// "crush"; ignored for Claude / Codex sessions. The value is a free-form
-	// string in the form "provider/model" (e.g. "openai/gpt-5.4") resolved
-	// dynamically from `crush models`. No effort option — Crush CLI lacks one.
-	crushModel: z.string().trim().max(200).nullish(),
 	// Beta escape hatch: opt a single TODO into the interactive PTY
 	// engine without flipping the whole app over from headless `-p`.
 	// Persisted in the artifact runtime config, not the DB row.
@@ -224,8 +218,6 @@ export const todoSettingsSchema = z.object({
 	// Global defaults for Codex sessions.
 	defaultCodexModel: todoCodexModelSchema.nullish().default(null),
 	defaultCodexEffort: todoCodexEffortSchema.nullish().default(null),
-	// Global default for Crush sessions. Free-form string ("provider/model").
-	defaultCrushModel: z.string().trim().max(200).nullish().default(null),
 });
 
 export type TodoSettings = z.infer<typeof todoSettingsSchema>;

@@ -30,16 +30,13 @@ import {
 	type ClaudeModelPick,
 	type CodexEffortPick,
 	type CodexModelPick,
-	type CrushModelPick,
 	DEFAULT_SENTINEL,
 	fromPersistedCodexEffort,
 	fromPersistedCodexModel,
-	fromPersistedCrushModel,
 	fromPersistedEffort,
 	fromPersistedModel,
 	toPersistedCodexEffort,
 	toPersistedCodexModel,
-	toPersistedCrushModel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../ClaudeRuntimePicker";
@@ -99,8 +96,6 @@ export function TodoModal({
 		useState<CodexModelPick>(DEFAULT_SENTINEL);
 	const [codexEffort, setCodexEffort] =
 		useState<CodexEffortPick>(DEFAULT_SENTINEL);
-	const [crushModel, setCrushModel] =
-		useState<CrushModelPick>(DEFAULT_SENTINEL);
 	// Seed the picker from the global defaults only once per modal
 	// opening. Without this guard, a React Query background refetch or
 	// a settings update fired while the user is picking would overwrite
@@ -129,9 +124,6 @@ export function TodoModal({
 		setCodexEffort(
 			fromPersistedCodexEffort(todoSettings.defaultCodexEffort ?? null),
 		);
-		setCrushModel(
-			fromPersistedCrushModel(todoSettings.defaultCrushModel ?? null),
-		);
 		seededRef.current = true;
 	}, [open, todoSettings]);
 
@@ -143,12 +135,6 @@ export function TodoModal({
 	});
 	const createWorkspaceMut = electronTrpc.workspaces.create.useMutation();
 	const { data: presets } = electronTrpc.todoAgent.presets.list.useQuery(
-		undefined,
-		{
-			enabled: open,
-		},
-	);
-	const { data: crushModelsData } = electronTrpc.todoAgent.crushModels.useQuery(
 		undefined,
 		{
 			enabled: open,
@@ -177,9 +163,6 @@ export function TodoModal({
 		);
 		setClaudeEffort(
 			fromPersistedEffort(todoSettings?.defaultClaudeEffort ?? null),
-		);
-		setCrushModel(
-			fromPersistedCrushModel(todoSettings?.defaultCrushModel ?? null),
 		);
 		setSubmitting(false);
 	}, [todoSettings]);
@@ -279,7 +262,6 @@ export function TodoModal({
 				claudeEffort: toPersistedEffort(claudeEffort),
 				codexModel: toPersistedCodexModel(codexModel),
 				codexEffort: toPersistedCodexEffort(codexEffort),
-				crushModel: toPersistedCrushModel(crushModel),
 				ptyEnabled,
 				remoteControlEnabled,
 			});
@@ -360,7 +342,6 @@ export function TodoModal({
 		agentKind,
 		codexEffort,
 		codexModel,
-		crushModel,
 	]);
 
 	return (
@@ -551,9 +532,6 @@ export function TodoModal({
 						codexEffort={codexEffort}
 						onCodexModelChange={setCodexModel}
 						onCodexEffortChange={setCodexEffort}
-						crushModel={crushModel}
-						onCrushModelChange={setCrushModel}
-						crushModels={crushModelsData ?? []}
 						disabled={submitting}
 					/>
 

@@ -71,7 +71,6 @@ const DEFAULT_SETTINGS: TodoSettings = {
 	defaultClaudeEffort: null,
 	defaultCodexModel: null,
 	defaultCodexEffort: null,
-	defaultCrushModel: null,
 };
 
 let cached: TodoSettings | null = null;

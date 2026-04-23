@@ -82,18 +82,15 @@ import {
 	ClaudeRuntimePicker,
 	type CodexEffortPick,
 	type CodexModelPick,
-	type CrushModelPick,
 	DEFAULT_SENTINEL,
 	fromPersistedCodexEffort,
 	fromPersistedCodexModel,
-	fromPersistedCrushModel,
 	fromPersistedEffort,
 	fromPersistedModel,
 	getClaudeEffortLabel,
 	getClaudeModelLabel,
 	toPersistedCodexEffort,
 	toPersistedCodexModel,
-	toPersistedCrushModel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../ClaudeRuntimePicker";
@@ -2769,12 +2766,7 @@ function TodoComposer({
 		useState<CodexModelPick>(DEFAULT_SENTINEL);
 	const [codexEffort, setCodexEffort] =
 		useState<CodexEffortPick>(DEFAULT_SENTINEL);
-	const [crushModel, setCrushModel] =
-		useState<CrushModelPick>(DEFAULT_SENTINEL);
 	const [submitting, setSubmitting] = useState(false);
-
-	const { data: crushModelsData } =
-		electronTrpc.todoAgent.crushModels.useQuery(undefined);
 
 	useEffect(() => {
 		if (!projectId && defaultProjectId) setProjectId(defaultProjectId);
@@ -2797,9 +2789,6 @@ function TodoComposer({
 		);
 		setCodexEffort(
 			fromPersistedCodexEffort(todoSettings.defaultCodexEffort ?? null),
-		);
-		setCrushModel(
-			fromPersistedCrushModel(todoSettings.defaultCrushModel ?? null),
 		);
 		claudeSeededRef.current = true;
 	}, [todoSettings]);
@@ -2937,7 +2926,6 @@ function TodoComposer({
 				claudeEffort: toPersistedEffort(claudeEffort),
 				codexModel: toPersistedCodexModel(codexModel),
 				codexEffort: toPersistedCodexEffort(codexEffort),
-				crushModel: toPersistedCrushModel(crushModel),
 				ptyEnabled,
 				remoteControlEnabled,
 			});
@@ -3018,7 +3006,6 @@ function TodoComposer({
 		agentKind,
 		codexEffort,
 		codexModel,
-		crushModel,
 		remoteControlEnabled,
 		scopedPresets.system,
 		selectedPresetId,
@@ -3247,9 +3234,6 @@ function TodoComposer({
 							codexEffort={codexEffort}
 							onCodexModelChange={setCodexModel}
 							onCodexEffortChange={setCodexEffort}
-							crushModel={crushModel}
-							onCrushModelChange={setCrushModel}
-							crushModels={crushModelsData ?? []}
 							disabled={submitting}
 						/>
 
