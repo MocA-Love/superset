@@ -7,6 +7,7 @@ import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
+import { type AgentKind, DEFAULT_AGENT_KIND } from "main/todo-agent/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	HiMiniCog6Tooth,
@@ -16,12 +17,16 @@ import {
 } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
+	AgentRuntimePicker,
 	type ClaudeEffortPick,
 	type ClaudeModelPick,
-	ClaudeRuntimePicker,
+	type CodexEffortPick,
+	type CodexModelPick,
 	DEFAULT_SENTINEL,
 	fromPersistedEffort,
 	fromPersistedModel,
+	toPersistedCodexEffort,
+	toPersistedCodexModel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../../ClaudeRuntimePicker";
@@ -115,6 +120,12 @@ function SettingsTab() {
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
 	const [defaultEffort, setDefaultEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
+	const [defaultAgentKind, setDefaultAgentKind] =
+		useState<AgentKind>(DEFAULT_AGENT_KIND);
+	const [defaultCodexModel, setDefaultCodexModel] =
+		useState<CodexModelPick>(DEFAULT_SENTINEL);
+	const [defaultCodexEffort, setDefaultCodexEffort] =
+		useState<CodexEffortPick>(DEFAULT_SENTINEL);
 
 	// Hydrate form state the first time settings arrive from the main
 	// process. A React Query background refetch (window focus, etc.)
@@ -144,7 +155,12 @@ function SettingsTab() {
 			toPersistedModel(defaultModel) !==
 				(settings.defaultClaudeModel ?? null) ||
 			toPersistedEffort(defaultEffort) !==
-				(settings.defaultClaudeEffort ?? null));
+				(settings.defaultClaudeEffort ?? null) ||
+			defaultAgentKind !== (settings.defaultAgentKind ?? DEFAULT_AGENT_KIND) ||
+			toPersistedCodexModel(defaultCodexModel) !==
+				(settings.defaultCodexModel ?? null) ||
+			toPersistedCodexEffort(defaultCodexEffort) !==
+				(settings.defaultCodexEffort ?? null));
 
 	const handleSave = useCallback(async () => {
 		try {
@@ -155,6 +171,9 @@ function SettingsTab() {
 				sessionRetentionDays: retentionDays,
 				defaultClaudeModel: toPersistedModel(defaultModel),
 				defaultClaudeEffort: toPersistedEffort(defaultEffort),
+				defaultAgentKind,
+				defaultCodexModel: toPersistedCodexModel(defaultCodexModel),
+				defaultCodexEffort: toPersistedCodexEffort(defaultCodexEffort),
 			});
 			await utils.todoAgent.settings.get.invalidate();
 			toast.success("設定を保存しました");
@@ -164,6 +183,9 @@ function SettingsTab() {
 			);
 		}
 	}, [
+		defaultAgentKind,
+		defaultCodexEffort,
+		defaultCodexModel,
 		defaultEffort,
 		defaultModel,
 		maxIter,
@@ -242,12 +264,18 @@ function SettingsTab() {
 					</p>
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<Label>新規 TODO / スケジュールの Claude 既定値</Label>
-					<ClaudeRuntimePicker
-						model={defaultModel}
-						effort={defaultEffort}
-						onModelChange={setDefaultModel}
-						onEffortChange={setDefaultEffort}
+					<Label>新規 TODO / スケジュールの既定値</Label>
+					<AgentRuntimePicker
+						agentKind={defaultAgentKind}
+						onAgentKindChange={setDefaultAgentKind}
+						claudeModel={defaultModel}
+						claudeEffort={defaultEffort}
+						onClaudeModelChange={setDefaultModel}
+						onClaudeEffortChange={setDefaultEffort}
+						codexModel={defaultCodexModel}
+						codexEffort={defaultCodexEffort}
+						onCodexModelChange={setDefaultCodexModel}
+						onCodexEffortChange={setDefaultCodexEffort}
 						compact={false}
 					/>
 					<p className="text-[10px] text-muted-foreground">
