@@ -37,9 +37,11 @@ import {
 	SquareTerminal,
 	Wrench,
 } from "lucide-react";
-import type {
-	TodoSessionListEntry,
-	TodoStreamEvent,
+import {
+	type AgentKind,
+	DEFAULT_AGENT_KIND,
+	type TodoSessionListEntry,
+	type TodoStreamEvent,
 } from "main/todo-agent/types";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -74,14 +76,21 @@ import { MarkdownRenderer } from "renderer/components/MarkdownRenderer";
 import { todoAgentRendererDebug } from "renderer/features/todo-agent/debug";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
+	AgentRuntimePicker,
 	type ClaudeEffortPick,
 	type ClaudeModelPick,
 	ClaudeRuntimePicker,
+	type CodexEffortPick,
+	type CodexModelPick,
 	DEFAULT_SENTINEL,
+	fromPersistedCodexEffort,
+	fromPersistedCodexModel,
 	fromPersistedEffort,
 	fromPersistedModel,
 	getClaudeEffortLabel,
 	getClaudeModelLabel,
+	toPersistedCodexEffort,
+	toPersistedCodexModel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../ClaudeRuntimePicker";
@@ -2752,6 +2761,11 @@ function TodoComposer({
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
 	const [claudeEffort, setClaudeEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
+	const [agentKind, setAgentKind] = useState<AgentKind>(DEFAULT_AGENT_KIND);
+	const [codexModel, setCodexModel] =
+		useState<CodexModelPick>(DEFAULT_SENTINEL);
+	const [codexEffort, setCodexEffort] =
+		useState<CodexEffortPick>(DEFAULT_SENTINEL);
 	const [submitting, setSubmitting] = useState(false);
 
 	useEffect(() => {
@@ -2768,6 +2782,13 @@ function TodoComposer({
 		setClaudeModel(fromPersistedModel(todoSettings.defaultClaudeModel ?? null));
 		setClaudeEffort(
 			fromPersistedEffort(todoSettings.defaultClaudeEffort ?? null),
+		);
+		setAgentKind(todoSettings.defaultAgentKind ?? DEFAULT_AGENT_KIND);
+		setCodexModel(
+			fromPersistedCodexModel(todoSettings.defaultCodexModel ?? null),
+		);
+		setCodexEffort(
+			fromPersistedCodexEffort(todoSettings.defaultCodexEffort ?? null),
 		);
 		claudeSeededRef.current = true;
 	}, [todoSettings]);
@@ -2801,14 +2822,16 @@ function TodoComposer({
 		}
 	}, [createWorktree, workspaceId, projectWorkspaces, currentWorkspaceId]);
 
-	// Remote Control requires the PTY engine — clear the RC toggle
-	// whenever the user disables PTY so an invalid combination cannot
-	// slip through to the submit call.
 	useEffect(() => {
+		if (agentKind !== "claude") {
+			setPtyEnabled(false);
+			setRemoteControlEnabled(false);
+			return;
+		}
 		if (!ptyEnabled && remoteControlEnabled) {
 			setRemoteControlEnabled(false);
 		}
-	}, [ptyEnabled, remoteControlEnabled]);
+	}, [agentKind, ptyEnabled, remoteControlEnabled]);
 
 	const maxIterations = todoSettings?.defaultMaxIterations ?? 10;
 	const maxWallClockSec = (todoSettings?.defaultMaxWallClockMin ?? 30) * 60;
@@ -2898,8 +2921,11 @@ function TodoComposer({
 				maxIterations,
 				maxWallClockSec,
 				customSystemPrompt: selected?.content ?? undefined,
+				agentKind,
 				claudeModel: toPersistedModel(claudeModel),
 				claudeEffort: toPersistedEffort(claudeEffort),
+				codexModel: toPersistedCodexModel(codexModel),
+				codexEffort: toPersistedCodexEffort(codexEffort),
 				ptyEnabled,
 				remoteControlEnabled,
 			});
@@ -2977,6 +3003,9 @@ function TodoComposer({
 		onCreated,
 		projectId,
 		ptyEnabled,
+		agentKind,
+		codexEffort,
+		codexModel,
 		remoteControlEnabled,
 		scopedPresets.system,
 		selectedPresetId,
@@ -3054,12 +3083,18 @@ function TodoComposer({
 								ptyEnabled
 									? "border-emerald-400/50 bg-emerald-500/5"
 									: "border-border/40 hover:bg-muted/40",
+								agentKind !== "claude" && "opacity-60 cursor-not-allowed",
 							)}
-							title="beta: Claude を interactive PTY モードで起動します。従来の headless (`-p`) 経路よりも実環境に近く、Remote Control など TUI 専用機能が使えます。"
+							title={
+								agentKind !== "claude"
+									? "PTY モードは Claude のみ利用可能です"
+									: "beta: Claude を interactive PTY モードで起動します。従来の headless (`-p`) 経路よりも実環境に近く、Remote Control など TUI 専用機能が使えます。"
+							}
 						>
 							<Checkbox
 								id="composer-pty-mode"
-								checked={ptyEnabled}
+								checked={agentKind === "claude" && ptyEnabled}
+								disabled={agentKind !== "claude"}
 								onCheckedChange={(checked) => setPtyEnabled(checked === true)}
 							/>
 							<div className="flex-1 flex flex-col gap-0.5">
@@ -3077,18 +3112,21 @@ function TodoComposer({
 								remoteControlEnabled
 									? "border-indigo-400/50 bg-indigo-500/5"
 									: "border-border/40 hover:bg-muted/40",
-								!ptyEnabled && "opacity-60 cursor-not-allowed",
+								(agentKind !== "claude" || !ptyEnabled) &&
+									"opacity-60 cursor-not-allowed",
 							)}
 							title={
-								ptyEnabled
-									? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
-									: "Remote Control は PTY モード時のみ有効です。"
+								agentKind !== "claude"
+									? "Remote Control は Claude のみ利用可能です"
+									: ptyEnabled
+										? "claude.ai/code や Claude モバイルアプリからこのセッションを閲覧・操作できるようにします。Pro/Max プランと claude.ai ログイン済みの CLI が必要です。"
+										: "Remote Control は PTY モード時のみ有効です。"
 							}
 						>
 							<Checkbox
 								id="composer-remote-control"
-								checked={remoteControlEnabled}
-								disabled={!ptyEnabled}
+								checked={agentKind === "claude" && remoteControlEnabled}
+								disabled={agentKind !== "claude" || !ptyEnabled}
 								onCheckedChange={(checked) =>
 									setRemoteControlEnabled(checked === true)
 								}
@@ -3185,11 +3223,17 @@ function TodoComposer({
 							/>
 						</div>
 
-						<ClaudeRuntimePicker
-							model={claudeModel}
-							effort={claudeEffort}
-							onModelChange={setClaudeModel}
-							onEffortChange={setClaudeEffort}
+						<AgentRuntimePicker
+							agentKind={agentKind}
+							onAgentKindChange={setAgentKind}
+							claudeModel={claudeModel}
+							claudeEffort={claudeEffort}
+							onClaudeModelChange={setClaudeModel}
+							onClaudeEffortChange={setClaudeEffort}
+							codexModel={codexModel}
+							codexEffort={codexEffort}
+							onCodexModelChange={setCodexModel}
+							onCodexEffortChange={setCodexEffort}
 							disabled={submitting}
 						/>
 
