@@ -247,6 +247,7 @@ export const workspace = {
 		_token?: unknown,
 	): Promise<Uri[]> {
 		if (!workspaceFolderPath) return [];
+		const rootPath = workspaceFolderPath;
 		try {
 			const results: string[] = [];
 			const includePatterns = compileGlobPatterns(include);
@@ -270,7 +271,7 @@ export const workspace = {
 				for (const entry of entries) {
 					const fullPath = path.join(dir, entry.name);
 					const relativePath = normalizeGlobPath(
-						path.relative(workspaceFolderPath, fullPath),
+						path.relative(rootPath, fullPath),
 					);
 					if (
 						relativePath &&
