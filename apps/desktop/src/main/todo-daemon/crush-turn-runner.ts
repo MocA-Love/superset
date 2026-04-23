@@ -123,20 +123,32 @@ export async function runCrushTurn(
 		stdoutBuffer += chunk.toString("utf8");
 	});
 
+	// Signal that the child has exited so the DB poll loop can stop.
+	let childExited = false;
+
 	// Start DB polling in parallel with process execution
-	const pollPromise = pollDbForEvents(params, () => crushSessionId);
+	const pollPromise = pollDbForEvents(
+		params,
+		() => crushSessionId,
+		() => childExited,
+	);
 
 	// Wait for child to exit
 	const exitCode = await new Promise<number | null>((resolve) => {
-		child.on("close", resolve);
+		child.on("close", (code) => {
+			childExited = true;
+			resolve(code);
+		});
 		child.on("error", (err) => {
 			errorText = `crush プロセスエラー: ${err.message}`;
+			childExited = true;
 			resolve(null);
 		});
 
 		if (params.signal.aborted) {
 			killProcess(child);
 			interrupted = true;
+			childExited = true;
 			resolve(null);
 			return;
 		}
@@ -224,11 +236,12 @@ interface PollResult {
 async function pollDbForEvents(
 	params: CrushTurnParams,
 	getSessionId: () => string | null,
+	isChildExited: () => boolean,
 ): Promise<PollResult> {
 	let lastSeenCreatedAt = 0;
 	let lastAssistantText: string | null = null;
 	let numTurns = 0;
-	const settled = false;
+	let settled = false;
 
 	while (!settled && !params.signal.aborted) {
 		await sleep(POLL_INTERVAL_MS);
@@ -282,7 +295,7 @@ async function pollDbForEvents(
 							p.type === "finish" &&
 							(p.data?.reason === "end_turn" || p.data?.reason === "stop")
 						) {
-							// Session completed naturally
+							settled = true;
 						}
 					}
 				}
@@ -291,6 +304,13 @@ async function pollDbForEvents(
 			// DB may be locked or not yet created — retry
 		} finally {
 			db?.close();
+		}
+
+		// Also stop polling once the child process has exited.
+		// This handles cases where the DB never gets a finish event
+		// (e.g. error, signal, or DB race).
+		if (isChildExited()) {
+			settled = true;
 		}
 	}
 
