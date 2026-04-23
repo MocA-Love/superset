@@ -178,7 +178,9 @@ export async function runCrushTurn(
 				const row = db
 					.prepare("SELECT cost FROM sessions WHERE id = ?")
 					.get(crushSessionId) as { cost: number } | undefined;
-				if (row) costUsd = row.cost;
+				if (row && typeof row.cost === "number" && Number.isFinite(row.cost)) {
+					costUsd = row.cost;
+				}
 				db.close();
 			} catch {
 				// best-effort
@@ -423,10 +425,11 @@ function toolLabel(name: string): string {
 // ---- Helpers ----
 
 function killProcess(child: ChildProcess) {
+	if (!child.pid) return;
 	try {
 		if (process.platform === "win32") {
 			spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"]);
-		} else if (child.pid) {
+		} else {
 			process.kill(-child.pid, "SIGKILL");
 		}
 	} catch {
@@ -450,7 +453,8 @@ function sleep(ms: number): Promise<void> {
 
 function safeParseJson(text: string): PartData[] | null {
 	try {
-		return JSON.parse(text);
+		const parsed = JSON.parse(text);
+		return Array.isArray(parsed) ? (parsed as PartData[]) : null;
 	} catch {
 		return null;
 	}

@@ -48,6 +48,19 @@ import {
  *
  * Exposed as `todoAgent.*` on the app router.
  */
+interface CrushModelsCache {
+	values: string[];
+	expiresAt: number;
+	inflight: Promise<string[]> | null;
+}
+
+const CRUSH_MODELS_CACHE_TTL_MS = 5 * 60_000;
+const crushModelsCache: CrushModelsCache = {
+	values: [],
+	expiresAt: 0,
+	inflight: null,
+};
+
 export const createTodoAgentRouter = () => {
 	return router({
 		create: publicProcedure
@@ -548,7 +561,7 @@ export const createTodoAgentRouter = () => {
 					agentKind: source.agentKind ?? "claude",
 					codexModel: source.codexModel,
 					codexEffort: source.codexEffort,
-					crushModel: (source as any).crushModel ?? null,
+					crushModel: source.crushModel ?? null,
 					remoteControlEnabled: source.remoteControlEnabled ?? false,
 					verdictPassed: null,
 					verdictReason: null,
@@ -1037,23 +1050,41 @@ export const createTodoAgentRouter = () => {
 			),
 		}),
 		crushModels: publicProcedure.query(async () => {
-			const { execFile } = await import("node:child_process");
-			const { promisify } = await import("node:util");
-			const execFileAsync = promisify(execFile);
-			const bin =
-				process.env.TODO_CRUSH_BIN || process.env.CRUSH_BIN || "crush";
-			try {
-				const { stdout } = await execFileAsync(bin, ["models"], {
-					timeout: 10_000,
-				});
-				return stdout
-					.trim()
-					.split("\n")
-					.map((l) => l.trim())
-					.filter(Boolean);
-			} catch {
-				return [];
+			const now = Date.now();
+			if (crushModelsCache.expiresAt > now) {
+				return crushModelsCache.values;
 			}
+			if (crushModelsCache.inflight) {
+				return crushModelsCache.inflight;
+			}
+
+			crushModelsCache.inflight = (async () => {
+				const { execFile } = await import("node:child_process");
+				const { promisify } = await import("node:util");
+				const execFileAsync = promisify(execFile);
+				const bin =
+					process.env.TODO_CRUSH_BIN || process.env.CRUSH_BIN || "crush";
+				try {
+					const { stdout } = await execFileAsync(bin, ["models"], {
+						timeout: 10_000,
+					});
+					const values = stdout
+						.trim()
+						.split("\n")
+						.map((l) => l.trim())
+						.filter(Boolean);
+					crushModelsCache.values = values;
+					crushModelsCache.expiresAt = Date.now() + CRUSH_MODELS_CACHE_TTL_MS;
+					return values;
+				} catch {
+					return crushModelsCache.values.length > 0
+						? crushModelsCache.values
+						: [];
+				} finally {
+					crushModelsCache.inflight = null;
+				}
+			})();
+			return crushModelsCache.inflight;
 		}),
 	});
 };

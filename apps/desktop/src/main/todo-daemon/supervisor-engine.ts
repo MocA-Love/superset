@@ -453,7 +453,7 @@ export class TodoSupervisorEngine {
 					claudeEffort: currentSession.claudeEffort ?? null,
 					codexModel: currentSession.codexModel ?? null,
 					codexEffort: currentSession.codexEffort ?? null,
-					crushModel: (currentSession as any).crushModel ?? null,
+					crushModel: currentSession.crushModel ?? null,
 					signal: ac.signal,
 					usePty: willUsePty,
 					remoteControlEnabled,
