@@ -662,21 +662,9 @@ export function WorkspacePage({
 		return addBrowserShortcutListener(handleBrowserShortcut);
 	}, [handleBrowserShortcut]);
 
-	// Open diff viewer (⌘⇧L)
-	useHotkey(
-		"OPEN_DIFF_VIEWER",
-		() => {
-			if (!isSidebarOpen) {
-				setSidebarOpen(true);
-			}
-			setSidebarMode(SidebarMode.Tabs);
-			if (workspaceId) {
-				setRightSidebarTab(workspaceId, RightSidebarTab.Search);
-			}
-		},
-		{ enabled: isActive },
-	);
-	// FORK NOTE: SEARCH_IN_FILES opens search tab (fork-specific hotkey)
+	// FORK NOTE: V1 intentionally skips OPEN_DIFF_VIEWER registration — its
+	// ⌘⇧L binding collides with TOGGLE_EXPAND_SIDEBAR below, and V1 uses the
+	// expand-sidebar action. V2 workspace registers OPEN_DIFF_VIEWER itself.
 	useHotkey(
 		"SEARCH_IN_FILES",
 		() => {
