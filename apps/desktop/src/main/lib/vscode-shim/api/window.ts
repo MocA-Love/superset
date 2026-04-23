@@ -356,7 +356,9 @@ export const window = {
 		const resolved = await items;
 		if (!resolved || resolved.length === 0) return undefined;
 		const selectableItems = resolved.filter((item) => {
-			return typeof item === "string" || item.kind !== QUICK_PICK_ITEM_KIND_SEPARATOR;
+			return (
+				typeof item === "string" || item.kind !== QUICK_PICK_ITEM_KIND_SEPARATOR
+			);
 		});
 		if (selectableItems.length === 0) return undefined;
 		const labels = selectableItems.map((item) =>

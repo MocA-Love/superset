@@ -160,7 +160,9 @@ export function expandBracePatterns(pattern: string): string[] {
 	);
 }
 
-export function compileGlobPatterns(pattern: string | null | undefined): string[] {
+export function compileGlobPatterns(
+	pattern: string | null | undefined,
+): string[] {
 	if (!pattern) {
 		return [];
 	}
@@ -175,11 +177,16 @@ export function compileGlobPatterns(pattern: string | null | undefined): string[
 		.filter(Boolean);
 }
 
-export function compileGlobMatchers(pattern: string | null | undefined): RegExp[] {
+export function compileGlobMatchers(
+	pattern: string | null | undefined,
+): RegExp[] {
 	return compileGlobPatterns(pattern).map((entry) => globToRegExp(entry));
 }
 
-export function matchesAnyGlob(matchers: RegExp[], targetPath: string): boolean {
+export function matchesAnyGlob(
+	matchers: RegExp[],
+	targetPath: string,
+): boolean {
 	if (matchers.length === 0) {
 		return false;
 	}
