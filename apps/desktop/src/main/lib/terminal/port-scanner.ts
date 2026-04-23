@@ -274,6 +274,11 @@ async function getProcessNameWindows(
 }
 
 export async function getProcessName(pid: number): Promise<string> {
+	// FORK NOTE: Windows は `ps` が無いので ENOENT で常に fallback してしまう。
+	// プラットフォーム分岐で既存の Windows ヘルパーへ委譲する。
+	if (os.platform() === "win32") {
+		return getProcessNameWindows(pid);
+	}
 	try {
 		const { stdout: output } = await execFileAsync(
 			"ps",
@@ -288,7 +293,49 @@ export async function getProcessName(pid: number): Promise<string> {
 	}
 }
 
+/**
+ * Get the full command line for a PID on Windows.
+ * Mirrors getProcessNameWindows but returns the full command line
+ * (wmic `commandline` column, PowerShell `CommandLine` property) so
+ * pane-resolver / browser-automation can match terminal processes
+ * cross-platform.
+ */
+async function getProcessCommandWindows(
+	pid: number,
+	signal?: AbortSignal,
+): Promise<string> {
+	try {
+		const { stdout } = await execFileAsync(
+			"wmic",
+			["process", "where", `processid=${pid}`, "get", "commandline"],
+			{ timeout: EXEC_TIMEOUT_MS, signal },
+		);
+		const lines = stdout.trim().split("\n");
+		if (lines.length >= 2) {
+			return lines.slice(1).join("\n").trim();
+		}
+	} catch {
+		// wmic is deprecated, try PowerShell as fallback
+		try {
+			const { stdout } = await execFileAsync(
+				"powershell",
+				[
+					"-Command",
+					`(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+				],
+				{ timeout: EXEC_TIMEOUT_MS, signal },
+			);
+			return stdout.trim();
+		} catch {}
+	}
+	return "";
+}
+
 export async function getProcessCommand(pid: number): Promise<string> {
+	// FORK NOTE: Windows 分岐 — 上記 getProcessName と同じ理由。
+	if (os.platform() === "win32") {
+		return getProcessCommandWindows(pid);
+	}
 	try {
 		const { stdout } = await execFileAsync(
 			"ps",
