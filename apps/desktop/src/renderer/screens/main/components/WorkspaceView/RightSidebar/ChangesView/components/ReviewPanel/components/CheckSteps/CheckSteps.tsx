@@ -51,7 +51,7 @@ export function CheckSteps({ detailsUrl }: CheckStepsProps) {
 	const workspaceId = useWorkspaceId();
 
 	const { data: steps, isLoading } =
-		electronTrpc.workspaces.getCheckJobSteps.useQuery(
+		electronTrpc.workspaces.githubExtended.getCheckJobSteps.useQuery(
 			{ workspaceId: workspaceId ?? "", detailsUrl },
 			{
 				enabled: !!workspaceId && !!detailsUrl,

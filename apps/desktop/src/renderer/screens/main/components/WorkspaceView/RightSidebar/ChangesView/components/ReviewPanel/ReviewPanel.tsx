@@ -149,17 +149,17 @@ export function ReviewPanel({
 	> | null>(null);
 	const copyToClipboardMutation = electronTrpc.external.copyText.useMutation();
 	const setPullRequestDraftStateMutation =
-		electronTrpc.workspaces.setPullRequestDraftState.useMutation();
+		electronTrpc.workspaces.githubExtended.setPullRequestDraftState.useMutation();
 	const setPullRequestThreadResolutionMutation =
-		electronTrpc.workspaces.setPullRequestThreadResolution.useMutation();
+		electronTrpc.workspaces.githubExtended.setPullRequestThreadResolution.useMutation();
 	const replyToPullRequestCommentMutation =
-		electronTrpc.workspaces.replyToPullRequestComment.useMutation();
+		electronTrpc.workspaces.githubExtended.replyToPullRequestComment.useMutation();
 	const updatePullRequestReviewersMutation =
-		electronTrpc.workspaces.updatePullRequestReviewers.useMutation();
+		electronTrpc.workspaces.githubExtended.updatePullRequestReviewers.useMutation();
 	const updatePullRequestAssigneesMutation =
-		electronTrpc.workspaces.updatePullRequestAssignees.useMutation();
+		electronTrpc.workspaces.githubExtended.updatePullRequestAssignees.useMutation();
 	const rerunPullRequestChecksMutation =
-		electronTrpc.workspaces.rerunPullRequestChecks.useMutation();
+		electronTrpc.workspaces.githubExtended.rerunPullRequestChecks.useMutation();
 	const candidateKind =
 		identityPopoverOpen === "assignees" ? "assignee" : "reviewer";
 	const canEditPullRequest = pr?.state === "open" || pr?.state === "draft";
@@ -190,19 +190,22 @@ export function ReviewPanel({
 	const {
 		data: identityCandidates = [],
 		isLoading: isIdentityCandidatesLoading,
-	} = electronTrpc.workspaces.getPullRequestIdentityCandidates.useQuery(
-		{
-			workspaceId: resolvedWorkspaceId ?? "",
-			kind: candidateKind,
-			pullRequestUrl: pr?.url,
-		},
-		{
-			enabled:
-				!!resolvedWorkspaceId && !!identityPopoverOpen && !!canEditPullRequest,
-			staleTime: 60_000,
-			refetchOnWindowFocus: false,
-		},
-	);
+	} =
+		electronTrpc.workspaces.githubExtended.getPullRequestIdentityCandidates.useQuery(
+			{
+				workspaceId: resolvedWorkspaceId ?? "",
+				kind: candidateKind,
+				pullRequestUrl: pr?.url,
+			},
+			{
+				enabled:
+					!!resolvedWorkspaceId &&
+					!!identityPopoverOpen &&
+					!!canEditPullRequest,
+				staleTime: 60_000,
+				refetchOnWindowFocus: false,
+			},
+		);
 
 	useEffect(() => {
 		return () => {
@@ -610,7 +613,7 @@ export function ReviewPanel({
 					: `Re-ran ${result.rerunCount} workflow run${result.rerunCount === 1 ? "" : "s"}`,
 			);
 			await refreshReview("status");
-			void trpcUtils.workspaces.getJobLogs.invalidate();
+			void trpcUtils.workspaces.githubExtended.getJobLogs.invalidate();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to rerun jobs: ${message}`);

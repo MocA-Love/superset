@@ -349,7 +349,7 @@ export function readCachedGitHubCommitAuthor(
 }
 
 export function clearGitHubCachesForWorktree(worktreePath: string): void {
-	githubStatusResource.invalidate(worktreePath);
+	githubStatusResource.invalidatePrefix(worktreePath);
 	repoContextResource.invalidate(worktreePath);
 	recordGitHubCacheMetric({
 		kind: "status",
