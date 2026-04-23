@@ -254,14 +254,12 @@ export function FileViewerPane({
 		() => {
 			if (viewMode === "diff") {
 				diffViewerRef.current?.openFind();
-			} else if (viewMode === "raw" || viewMode === "conflict") {
+			} else if (viewMode === "raw") {
 				editorRef.current?.openFind();
 			}
 		},
 		{
-			enabled:
-				isFocused &&
-				(viewMode === "diff" || viewMode === "raw" || viewMode === "conflict"),
+			enabled: isFocused && (viewMode === "diff" || viewMode === "raw"),
 			preventDefault: true,
 		},
 	);
