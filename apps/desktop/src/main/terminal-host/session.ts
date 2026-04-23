@@ -115,9 +115,9 @@ const EMULATOR_WRITE_COALESCE_ENABLED =
 
 /**
  * Shell readiness lifecycle:
- * - `pending`     — shell is initializing; user writes are buffered, escape sequences dropped
- * - `ready`       — marker detected; buffered writes have been flushed
- * - `timed_out`   — marker never arrived within timeout; writes unblocked
+ * - `pending`     — shell is initializing; escape sequences dropped, other writes pass through
+ * - `ready`       — marker detected; writes pass through
+ * - `timed_out`   — marker never arrived within timeout; writes pass through
  * - `unsupported` — shell has no marker (sh, ksh); writes pass through from the start
  */
 type ShellReadyState = "pending" | "ready" | "timed_out" | "unsupported";
@@ -191,11 +191,12 @@ export class Session {
 	private ptyReadyPromise: Promise<void>;
 	private ptyReadyResolve: (() => void) | null = null;
 
-	// Shell readiness — gates write() until the shell's first prompt.
+	// Shell readiness — tracks the shell's init lifecycle. User input and
+	// preset commands pass through regardless; only stale xterm terminal-query
+	// responses (DA/DSR) are filtered while `pending`.
 	// See ShellReadyState for lifecycle docs.
 	private shellReadyState: ShellReadyState;
 	private shellReadyTimeoutId: ReturnType<typeof setTimeout> | null = null;
-	private preReadyStdinQueue: string[] = [];
 	// OSC 133;A scanner state — shared with v2 host-service via @superset/shared
 	private scanState: ShellReadyScanState = createScanState();
 
@@ -918,29 +919,23 @@ export class Session {
 	/**
 	 * Write data to the PTY's stdin.
 	 *
-	 * While the shell is initializing (`pending` state), writes are triaged:
-	 * - **Escape sequences** (`\x1b`-prefixed) are dropped. These are stale
-	 *   responses from the renderer's xterm to terminal queries the shell
-	 *   sent during startup (DA, DSR). If queued and flushed later they
-	 *   appear as typed text like `?62;4;9;22c`.
-	 * - **Interactive writes** (user keyboard input, `interactive: true`) are
-	 *   forwarded directly so prompts during initialization (e.g. oh-my-zsh
-	 *   update confirmation) can receive user input normally.
-	 * - **Everything else** (preset/programmatic commands) is buffered and
-	 *   flushed in FIFO order once readiness resolves, ensuring they run at
-	 *   the first shell prompt rather than mid-initialization.
+	 * Escape-sequence responses (`\x1b`-prefixed) are dropped while the shell
+	 * is still initializing — these are stale DA/DSR replies from the
+	 * renderer's xterm to terminal queries the shell sent during startup. If
+	 * forwarded, they appear as typed text like `?62;4;9;22c` at the shell
+	 * prompt. The headless emulator answers those queries directly (see
+	 * constructor), so dropping the renderer's duplicate is safe.
+	 *
+	 * All other data — user keystrokes and preset commands alike — passes
+	 * through immediately. Buffering here previously froze workspaces when
+	 * shell init commands (e.g. fnm's `use-on-cd` hook) opened an interactive
+	 * prompt before the OSC 133;A marker fired. See #3478.
 	 */
-	write(data: string, options?: { interactive?: boolean }): void {
+	write(data: string, _options?: { interactive?: boolean }): void {
 		if (!this.subprocess || !this.subprocessReady) {
 			throw new Error("PTY not spawned");
 		}
-		if (this.shellReadyState === "pending") {
-			if (data.startsWith("\x1b")) return;
-			if (options?.interactive) {
-				this.sendWriteToSubprocess(data);
-			} else {
-				this.preReadyStdinQueue.push(data);
-			}
+		if (this.shellReadyState === "pending" && data.startsWith("\x1b")) {
 			return;
 		}
 		this.sendWriteToSubprocess(data);
@@ -1074,7 +1069,6 @@ export class Session {
 			clearTimeout(this.shellReadyTimeoutId);
 			this.shellReadyTimeoutId = null;
 		}
-		this.preReadyStdinQueue = [];
 		this.scanState = createScanState();
 		this.subprocessStdinQueue = [];
 		this.subprocessStdinQueuedBytes = 0;
@@ -1114,8 +1108,7 @@ export class Session {
 
 	/**
 	 * Transition out of `pending`. Flushes any partially-matched marker
-	 * bytes as terminal output (they weren't a real marker), then sends
-	 * all buffered stdin writes to the PTY in order. Idempotent.
+	 * bytes as terminal output (they weren't a real marker). Idempotent.
 	 */
 	private resolveShellReady(state: "ready" | "timed_out"): void {
 		if (this.shellReadyState !== "pending") return;
@@ -1131,12 +1124,6 @@ export class Session {
 			this.scanState.heldBytes = "";
 		}
 		this.scanState.matchPos = 0;
-		// Flush queued writes in FIFO order
-		const queue = this.preReadyStdinQueue;
-		this.preReadyStdinQueue = [];
-		for (const data of queue) {
-			this.sendWriteToSubprocess(data);
-		}
 	}
 
 	/**

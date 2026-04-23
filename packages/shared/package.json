@@ -44,6 +44,10 @@
 			"types": "./src/agent-prompt-template.ts",
 			"default": "./src/agent-prompt-template.ts"
 		},
+		"./agent-permissions-migration": {
+			"types": "./src/agent-permissions-migration.ts",
+			"default": "./src/agent-permissions-migration.ts"
+		},
 		"./task-slug": {
 			"types": "./src/task-slug.ts",
 			"default": "./src/task-slug.ts"
@@ -64,13 +68,17 @@
 			"types": "./src/device-info.ts",
 			"default": "./src/device-info.ts"
 		},
-		"./shell-ready-scanner": {
-			"types": "./src/shell-ready-scanner.ts",
-			"default": "./src/shell-ready-scanner.ts"
+		"./github-remote": {
+			"types": "./src/github-remote.ts",
+			"default": "./src/github-remote.ts"
 		},
 		"./simple-git-unsafe": {
 			"types": "./src/simple-git-unsafe.ts",
 			"default": "./src/simple-git-unsafe.ts"
+		},
+		"./shell-ready-scanner": {
+			"types": "./src/shell-ready-scanner.ts",
+			"default": "./src/shell-ready-scanner.ts"
 		}
 	},
 	"scripts": {
@@ -79,10 +87,14 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@date-fns/tz": "^1.4.1",
+		"friendly-words": "^1.3.1",
+		"rrule": "^2.8.1",
 		"zod": "^4.3.5"
 	},
 	"devDependencies": {
 		"@superset/typescript": "workspace:*",
+		"@types/friendly-words": "^1.2.2",
 		"bun-types": "^1.3.1",
 		"typescript": "^5.9.3"
 	}

@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -11,10 +11,11 @@ import {
 	type ResolvedRef,
 	resolveDefaultBranchName,
 	resolveRef,
+	resolveUpstream,
 } from "../../../runtime/git/refs";
-import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { createTerminalSessionInternal } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
+import type { ProjectNotSetupCause } from "../../error-types";
 import { protectedProcedure, router } from "../../index";
 import { generateBranchNameFromPrompt } from "./utils/ai-branch-name";
 import { execGh } from "./utils/exec-gh";
@@ -70,6 +71,17 @@ function sweepStaleProgress(): void {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+function projectNotSetupError(projectId: string): TRPCError {
+	return new TRPCError({
+		code: "PRECONDITION_FAILED",
+		message: "Project is not set up on this host",
+		cause: {
+			kind: "PROJECT_NOT_SETUP",
+			projectId,
+		} satisfies ProjectNotSetupCause,
+	});
+}
 
 function safeResolveWorktreePath(repoPath: string, branchName: string): string {
 	const worktreesRoot = resolve(repoPath, ".worktrees");
@@ -709,40 +721,11 @@ export const workspaceCreationRouter = router({
 			const deviceName = getDeviceName();
 			setProgress(input.pendingId, "ensuring_repo");
 
-			// 1. Resolve / ensure project locally
-			let localProject = ctx.db.query.projects
+			const localProject = ctx.db.query.projects
 				.findFirst({ where: eq(projects.id, input.projectId) })
 				.sync();
-
 			if (!localProject) {
-				const cloudProject = await ctx.api.v2Project.get.query({
-					organizationId: ctx.organizationId,
-					id: input.projectId,
-				});
-
-				if (!cloudProject.repoCloneUrl) {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: "Project has no linked GitHub repository — cannot clone",
-					});
-				}
-
-				const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
-				const repoPath = join(homeDir, ".superset", "repos", input.projectId);
-
-				if (!existsSync(repoPath)) {
-					mkdirSync(dirname(repoPath), { recursive: true });
-					await createSimpleGitWithEnv().clone(
-						cloudProject.repoCloneUrl,
-						repoPath,
-					);
-				}
-
-				localProject = ctx.db
-					.insert(projects)
-					.values({ id: input.projectId, repoPath })
-					.returning()
-					.get();
+				throw projectNotSetupError(input.projectId);
 			}
 
 			setProgress(input.pendingId, "creating_worktree");
@@ -780,13 +763,48 @@ export const workspaceCreationRouter = router({
 			// races against stale cached refs (a workspace branch with an
 			// incidental `refs/remotes/origin/<name>` cache would silently win).
 			// Falls back to probing for callers that don't pass the hint.
-			const startPoint =
+			let startPoint: ResolvedRef =
 				input.composer.baseBranch && input.composer.baseBranchSource
 					? buildStartPointFromHint(
 							input.composer.baseBranch,
 							input.composer.baseBranchSource,
 						)
 					: await resolveStartPoint(git, input.composer.baseBranch);
+
+			// Local default branches are rarely fast-forwarded; swap to the
+			// branch's configured upstream so we fork from the real tip, not a
+			// stale local ref. Non-default branches stay local-first by design.
+			if (startPoint.kind === "local") {
+				const defaultBranchName = await resolveDefaultBranchName(git);
+				if (startPoint.shortName === defaultBranchName) {
+					const upstream = await resolveUpstream(git, defaultBranchName);
+					if (upstream) {
+						const remoteRef = asRemoteRef(
+							upstream.remote,
+							upstream.remoteBranch,
+						);
+						const remoteExists = await git
+							.raw([
+								"rev-parse",
+								"--verify",
+								"--quiet",
+								`${remoteRef}^{commit}`,
+							])
+							.then(() => true)
+							.catch(() => false);
+						if (remoteExists) {
+							startPoint = {
+								kind: "remote-tracking",
+								fullRef: remoteRef,
+								shortName: upstream.remoteBranch,
+								remote: upstream.remote,
+								remoteShortName: `${upstream.remote}/${upstream.remoteBranch}`,
+							};
+						}
+					}
+				}
+			}
+
 			console.log(
 				`[workspaceCreation.create] start point: ${startPoint.kind} (${
 					input.composer.baseBranchSource ? "from hint" : "resolved"
@@ -817,21 +835,8 @@ export const workspaceCreationRouter = router({
 			// --no-track keeps `git pull` / ahead-behind counts from treating
 			// the start point as the branch's home. Push targeting is handled
 			// separately by push.autoSetupRemote (set below).
-			//
-			// FORK NOTE: use fullRef for remote-tracking refs instead of
-			// shortName. The short form `origin/foo` is still ambiguous
-			// with a local branch literally named `origin/foo` — which is the
-			// exact edge case this refactor was supposed to address. Passing
-			// `refs/remotes/origin/foo` removes the ambiguity at the
-			// `git worktree add` boundary too.
-			let startPointArg: string;
-			if (startPoint.kind === "head") {
-				startPointArg = "HEAD";
-			} else if (startPoint.kind === "remote-tracking") {
-				startPointArg = startPoint.fullRef;
-			} else {
-				startPointArg = startPoint.fullRef;
-			}
+			const startPointArg =
+				startPoint.kind === "head" ? "HEAD" : startPoint.shortName;
 			await git.raw([
 				"worktree",
 				"add",
@@ -839,7 +844,9 @@ export const workspaceCreationRouter = router({
 				"-b",
 				branchName,
 				worktreePath,
-				startPointArg,
+				startPoint.kind === "remote-tracking"
+					? startPoint.remoteShortName
+					: startPointArg,
 			]);
 
 			// Enable autoSetupRemote so the first terminal `git push` creates
@@ -867,15 +874,15 @@ export const workspaceCreationRouter = router({
 				});
 
 			// Record the base branch in git config so the Changes tab knows what
-			// to compare against on first open.
-			//
+			// to compare against on first open. startPoint.shortName is the ref
+			// we actually forked from (user selection, resolved against local /
+			// remote). Skipped for "head" start point — no meaningful base.
 			// FORK NOTE: only write for remote-tracking start points. Downstream
-			// (git.getStatus / listCommits / getDiff) always rebuilds the compare
-			// ref as `origin/${baseBranch}`, so a local-only branch name would
-			// resolve to a non-existent `origin/<local-name>` and the Changes tab
-			// would silently break (upstream bug reported in PR #204 review).
-			// Skipping the write leaves baseBranch null for local-only bases —
-			// downstream falls back to the default branch behavior.
+			// (resolveBaseComparison) always rebuilds the compare ref as
+			// `origin/${baseBranch}`, so a local-only branch name would resolve
+			// to a non-existent `origin/<local-name>` and the Changes tab would
+			// silently break. Skipping the write leaves baseBranch null for
+			// local-only bases — downstream falls back to the default branch.
 			if (startPoint.kind === "remote-tracking") {
 				await git
 					.raw(["config", `branch.${branchName}.base`, startPoint.shortName])
@@ -1056,36 +1063,11 @@ export const workspaceCreationRouter = router({
 		.mutation(async ({ ctx, input }) => {
 			setProgress(input.pendingId, "ensuring_repo");
 
-			// Ensure project locally (clone if missing) — shared across both paths.
-			let localProject = ctx.db.query.projects
+			const localProject = ctx.db.query.projects
 				.findFirst({ where: eq(projects.id, input.projectId) })
 				.sync();
-
 			if (!localProject) {
-				const cloudProject = await ctx.api.v2Project.get.query({
-					organizationId: ctx.organizationId,
-					id: input.projectId,
-				});
-				if (!cloudProject.repoCloneUrl) {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: "Project has no linked GitHub repository — cannot clone",
-					});
-				}
-				const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
-				const repoPath = join(homeDir, ".superset", "repos", input.projectId);
-				if (!existsSync(repoPath)) {
-					mkdirSync(dirname(repoPath), { recursive: true });
-					await createSimpleGitWithEnv().clone(
-						cloudProject.repoCloneUrl,
-						repoPath,
-					);
-				}
-				localProject = ctx.db
-					.insert(projects)
-					.values({ id: input.projectId, repoPath })
-					.returning()
-					.get();
+				throw projectNotSetupError(input.projectId);
 			}
 
 			setProgress(input.pendingId, "creating_worktree");
@@ -1366,10 +1348,7 @@ export const workspaceCreationRouter = router({
 				.findFirst({ where: eq(projects.id, input.projectId) })
 				.sync();
 			if (!localProject) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "Project is not set up locally",
-				});
+				throw projectNotSetupError(input.projectId);
 			}
 
 			const branch = input.branch.trim();

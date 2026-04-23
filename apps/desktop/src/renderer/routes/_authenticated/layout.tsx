@@ -17,10 +17,8 @@ import { useUpdateListener } from "renderer/components/UpdateToast";
 import { env } from "renderer/env.renderer";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
-import { isTearoffWindow } from "renderer/hooks/useTearoffInit/useTearoffInit";
 import { migrateHotkeyOverrides } from "renderer/hotkeys/migrate";
 import { authClient, getAuthToken } from "renderer/lib/auth-client";
-import { dispatchBrowserShortcutEvent } from "renderer/lib/browser-shortcut-events";
 import { dragDropManager } from "renderer/lib/dnd";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showWorkspaceAutoNameWarningToast";
@@ -39,6 +37,7 @@ import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
 import { createPierreWorker } from "./lib/pierreWorker";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
+import { DeletingWorkspacesProvider } from "./providers/DeletingWorkspacesProvider";
 import { LocalHostServiceProvider } from "./providers/LocalHostServiceProvider";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -59,7 +58,6 @@ function AuthenticatedLayout() {
 	const setOriginRoute = useSettingsStore((s) => s.setOriginRoute);
 	const utils = electronTrpc.useUtils();
 	const shownWorkspaceInitWarningsRef = useRef(new Set<string>());
-	const redirectingToSignIn = useRef(false);
 	const { isV2CloudEnabled } = useIsV2CloudEnabled();
 
 	const isSignedIn = env.SKIP_ENV_VALIDATION || !!session?.user;
@@ -77,9 +75,7 @@ function AuthenticatedLayout() {
 		});
 	}, []);
 
-	// Update workspace-run pane state on terminal exit.
-	// Each window has its own useTabsStore, so the paneId lookup below naturally
-	// scopes the update to the window that actually owns the pane.
+	// Update workspace-run pane state on terminal exit
 	electronTrpc.notifications.subscribe.useSubscription(undefined, {
 		onData: (event) => {
 			if (
@@ -109,15 +105,6 @@ function AuthenticatedLayout() {
 	const updateInitProgress = useWorkspaceInitStore((s) => s.updateProgress);
 	electronTrpc.workspaces.onInitProgress.useSubscription(undefined, {
 		onData: (progress) => {
-			// React Query cache invalidation runs in every window (including
-			// tearoff) since each BrowserWindow has its own QueryClient and may
-			// be displaying the affected workspace.
-			if (progress.step === "ready" || progress.step === "failed") {
-				utils.workspaces.getAllGrouped.invalidate();
-				utils.workspaces.get.invalidate({ id: progress.workspaceId });
-			}
-			// The rest (progress store, toast, navigate) is main-window only.
-			if (isTearoffWindow()) return;
 			updateInitProgress(progress);
 			if (
 				progress.warning &&
@@ -131,6 +118,11 @@ function AuthenticatedLayout() {
 					},
 				});
 			}
+			if (progress.step === "ready" || progress.step === "failed") {
+				// Invalidate both the grouped list AND the specific workspace
+				utils.workspaces.getAllGrouped.invalidate();
+				utils.workspaces.get.invalidate({ id: progress.workspaceId });
+			}
 		},
 		onError: (error) => {
 			console.error("[workspace-init-subscription] Subscription error:", error);
@@ -140,39 +132,17 @@ function AuthenticatedLayout() {
 	// Menu navigation subscription
 	electronTrpc.menu.subscribe.useSubscription(undefined, {
 		onData: (event) => {
-			if (isTearoffWindow()) return;
 			if (event.type === "open-settings") {
 				const section = event.data.section || "account";
 				navigate({ to: `/settings/${section}` as "/settings/account" });
 			} else if (event.type === "open-workspace") {
 				navigate({ to: `/workspace/${event.data.workspaceId}` });
-			} else if (event.type === "browser-action") {
-				dispatchBrowserShortcutEvent(event.data.action);
 			}
 		},
 	});
 
-	// Redirect to sign-in via useEffect to avoid React infinite update loops.
-	// <Navigate> can re-trigger during concurrent renders when already at the
-	// target URL, causing router.load() → setState → re-render cycles.
-	const shouldRedirectToSignIn =
-		(!env.SKIP_ENV_VALIDATION && isPending && !hasLocalToken) ||
-		(!isSignedIn &&
-			!(hasLocalToken && !isOnline) &&
-			!(isPending || (isRefetching && !session?.user && hasLocalToken)));
-
-	useEffect(() => {
-		if (shouldRedirectToSignIn && !redirectingToSignIn.current) {
-			redirectingToSignIn.current = true;
-			void navigate({ to: "/sign-in", replace: true });
-		}
-		if (!shouldRedirectToSignIn) {
-			redirectingToSignIn.current = false;
-		}
-	}, [shouldRedirectToSignIn, navigate]);
-
 	if (isPending && !hasLocalToken && !env.SKIP_ENV_VALIDATION) {
-		return null;
+		return <Navigate to="/sign-in" replace />;
 	}
 	if (
 		(isPending || (isRefetching && !session?.user && hasLocalToken)) &&
@@ -203,7 +173,7 @@ function AuthenticatedLayout() {
 	}
 
 	if (!isSignedIn) {
-		return null;
+		return <Navigate to="/sign-in" replace />;
 	}
 
 	if (!activeOrganizationId) {
@@ -215,24 +185,26 @@ function AuthenticatedLayout() {
 			<CollectionsProvider>
 				<GlobalTerminalLifecycle />
 				<LocalHostServiceProvider>
-					<LanguageServicesProvider />
-					<WorkerPoolContextProvider
-						poolOptions={{ workerFactory: createPierreWorker, poolSize: 8 }}
-						highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
-					>
-						<MainWindowEffects />
-						<Outlet />
-						{isV2CloudEnabled ? (
-							<DashboardNewWorkspaceModal />
-						) : (
-							<NewWorkspaceModal />
-						)}
-						<InitGitDialog />
-						{/* FORK NOTE: GitOperationDialog kept for PR/Changes sidebar prompts */}
-						<GitOperationDialog />
-						<TeardownLogsDialog />
-						<Paywall />
-					</WorkerPoolContextProvider>
+					<DeletingWorkspacesProvider>
+						<WorkerPoolContextProvider
+							poolOptions={{ workerFactory: createPierreWorker, poolSize: 8 }}
+							highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
+						>
+							<LanguageServicesProvider />
+							<MainWindowEffects />
+							<Outlet />
+							{isV2CloudEnabled ? (
+								<DashboardNewWorkspaceModal />
+							) : (
+								<NewWorkspaceModal />
+							)}
+							<InitGitDialog />
+							{/* FORK NOTE: GitOperationDialog kept for PR/Changes sidebar prompts */}
+							<GitOperationDialog />
+							<TeardownLogsDialog />
+							<Paywall />
+						</WorkerPoolContextProvider>
+					</DeletingWorkspacesProvider>
 				</LocalHostServiceProvider>
 			</CollectionsProvider>
 		</DndProvider>

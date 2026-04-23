@@ -19,6 +19,10 @@ import {
 	AGENT_PRESET_DESCRIPTIONS,
 	DEFAULT_TERMINAL_PRESET_AGENT_TYPES,
 } from "@superset/shared/agent-command";
+import {
+	applyLegacyPermissionsOverrides,
+	terminalPresetsMatchPre3546Seed,
+} from "@superset/shared/agent-permissions-migration";
 import { TRPCError } from "@trpc/server";
 import { app } from "electron";
 import { env } from "main/env.main";
@@ -140,7 +144,42 @@ function saveTerminalPresets(
 		.run();
 }
 
+let agentPresetPermissionsMigrationChecked = false;
+
+function runAgentPresetPermissionsMigration() {
+	if (agentPresetPermissionsMigrationChecked) return;
+	const row = getSettings();
+	if (row.agentPresetPermissionsMigratedAt) {
+		agentPresetPermissionsMigrationChecked = true;
+		return;
+	}
+
+	const isExistingUser =
+		row.terminalPresetsInitialized === true &&
+		terminalPresetsMatchPre3546Seed(row.terminalPresets);
+
+	const nextOverrides = isExistingUser
+		? applyLegacyPermissionsOverrides(
+				readAgentPresetOverrides(row.agentPresetOverrides),
+			)
+		: undefined;
+
+	const now = Date.now();
+	const setFields = {
+		agentPresetPermissionsMigratedAt: now,
+		...(nextOverrides ? { agentPresetOverrides: nextOverrides } : {}),
+	};
+	localDb
+		.insert(settings)
+		.values({ id: 1, ...setFields })
+		.onConflictDoUpdate({ target: settings.id, set: setFields })
+		.run();
+
+	agentPresetPermissionsMigrationChecked = true;
+}
+
 function readRawAgentPresetOverrides(): AgentPresetOverrideEnvelope {
+	runAgentPresetPermissionsMigration();
 	const row = getSettings();
 	return readAgentPresetOverrides(row.agentPresetOverrides);
 }
