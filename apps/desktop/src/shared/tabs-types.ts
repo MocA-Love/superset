@@ -14,7 +14,12 @@ export type PaneType =
 	| "file-viewer"
 	| "chat"
 	| "devtools"
-	| "comment";
+	| "git-graph"
+	| "database-explorer"
+	| "action-logs"
+	| "comment"
+	| "vscode-extension"
+	| "reference-graph";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -91,7 +96,7 @@ export function acknowledgedStatus(status: PaneStatus | undefined): PaneStatus {
 /**
  * File viewer display modes
  */
-export type FileViewerMode = "rendered" | "raw" | "diff";
+export type FileViewerMode = "rendered" | "raw" | "diff" | "conflict";
 
 /**
  * Diff layout options for file viewer
@@ -147,7 +152,16 @@ export interface Pane {
 	chat?: ChatPaneState; // For chat panes
 	browser?: BrowserPaneState; // For browser (webview) panes
 	devtools?: DevToolsPaneState; // For devtools panes
-	comment?: CommentPaneState; // For comment panes
+	gitGraph?: GitGraphPaneState; // For git-graph panes
+	databaseExplorer?: DatabaseExplorerPaneState; // For database explorer panes
+	actionLogs?: ActionLogsPaneState; // For GitHub Actions log panes
+	vscodeExtension?: {
+		viewType: string;
+		extensionId: string;
+		source?: "view" | "panel";
+		sessionId?: string;
+	};
+	referenceGraph?: ReferenceGraphPaneState;
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";
@@ -227,16 +241,53 @@ export interface DevToolsPaneState {
 }
 
 /**
- * Comment pane-specific properties (PR review / conversation comment viewer)
+ * Git Graph pane-specific properties
  */
-export interface CommentPaneState {
-	commentId: string;
-	authorLogin: string;
-	avatarUrl?: string;
-	body: string;
-	url?: string;
-	path?: string;
-	line?: number;
+export interface GitGraphPaneState {
+	/** Worktree path for the git repository */
+	worktreePath: string;
+}
+
+/**
+ * Database Explorer pane-specific properties
+ */
+export interface DatabaseExplorerPaneState {
+	connectionId: string | null;
+}
+
+/**
+ * Action Logs pane-specific properties
+ */
+export interface ActionLogsJob {
+	/** The GitHub Actions job details URL */
+	detailsUrl: string;
+	/** Display name for the job */
+	name: string;
+	/** Check status */
+	status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+}
+
+export interface ActionLogsPaneState {
+	/** All action jobs to display */
+	jobs: ActionLogsJob[];
+	/** Initially selected job index */
+	initialJobIndex?: number;
+	/** Workflow run ID — when set, jobs are polled from the GitHub API */
+	runId?: number;
+}
+
+/**
+ * Reference graph pane-specific properties
+ */
+export interface ReferenceGraphPaneState {
+	/** Absolute path of the file containing the symbol */
+	absolutePath: string;
+	/** Language ID for the file */
+	languageId: string;
+	/** Line of the symbol */
+	line: number;
+	/** Column of the symbol */
+	column: number;
 }
 
 /**
@@ -248,6 +299,7 @@ export interface BaseTab {
 	userTitle?: string;
 	workspaceId: string;
 	createdAt: number;
+	color?: string | null;
 }
 
 /**

@@ -72,6 +72,10 @@
 			"types": "./src/github-remote.ts",
 			"default": "./src/github-remote.ts"
 		},
+		"./simple-git-unsafe": {
+			"types": "./src/simple-git-unsafe.ts",
+			"default": "./src/simple-git-unsafe.ts"
+		},
 		"./shell-ready-scanner": {
 			"types": "./src/shell-ready-scanner.ts",
 			"default": "./src/shell-ready-scanner.ts"

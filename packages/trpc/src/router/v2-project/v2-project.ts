@@ -120,7 +120,7 @@ export const v2ProjectRouter = {
 		)
 		.mutation(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(
-				ctx.session,
+				ctx,
 				"No active organization",
 			);
 

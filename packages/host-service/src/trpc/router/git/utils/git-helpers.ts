@@ -131,6 +131,7 @@ export async function buildBranch(
 	name: string,
 	isHead: boolean,
 	compareRef?: string,
+	isRemote = false,
 ): Promise<Branch> {
 	let upstream: string | null = null;
 	let aheadCount = 0;
@@ -177,6 +178,7 @@ export async function buildBranch(
 	return {
 		name,
 		isHead,
+		isRemote,
 		upstream,
 		aheadCount,
 		behindCount,
