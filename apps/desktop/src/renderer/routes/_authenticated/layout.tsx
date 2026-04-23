@@ -39,6 +39,7 @@ import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
 import { createPierreWorker } from "./lib/pierreWorker";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
+import { DeletingWorkspacesProvider } from "./providers/DeletingWorkspacesProvider";
 import { LocalHostServiceProvider } from "./providers/LocalHostServiceProvider";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -213,8 +214,9 @@ function AuthenticatedLayout() {
 	return (
 		<DndProvider manager={dragDropManager}>
 			<CollectionsProvider>
-				<GlobalTerminalLifecycle />
-				<LocalHostServiceProvider>
+				<DeletingWorkspacesProvider>
+					<GlobalTerminalLifecycle />
+					<LocalHostServiceProvider>
 					<LanguageServicesProvider />
 					<WorkerPoolContextProvider
 						poolOptions={{ workerFactory: createPierreWorker, poolSize: 8 }}
@@ -233,7 +235,8 @@ function AuthenticatedLayout() {
 						<TeardownLogsDialog />
 						<Paywall />
 					</WorkerPoolContextProvider>
-				</LocalHostServiceProvider>
+					</LocalHostServiceProvider>
+				</DeletingWorkspacesProvider>
 			</CollectionsProvider>
 		</DndProvider>
 	);
