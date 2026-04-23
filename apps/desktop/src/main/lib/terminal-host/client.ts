@@ -1189,7 +1189,9 @@ export class TerminalHostClient extends EventEmitter {
 			// Spawn daemon as detached process.
 			// On Linux, spawnPersistent wraps with `systemd-run --user --scope`
 			// so the daemon survives Electron's systemd-logind app scope
-			// terminating on quit.
+			// terminating on quit. We don't use the returned `scopeUnit` —
+			// terminal-host is stopped via IPC `shutdown`, not signals, so
+			// per-scope kill isn't needed.
 			let child: ChildProcess | null = null;
 			try {
 				child = spawnPersistent(
@@ -1205,7 +1207,7 @@ export class TerminalHostClient extends EventEmitter {
 						},
 					},
 					{ unitLabel: "superset-terminal-host" },
-				);
+				).child;
 			} finally {
 				if (logFd >= 0) {
 					try {

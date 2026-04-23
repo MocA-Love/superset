@@ -557,7 +557,8 @@ export class TodoDaemonClient extends EventEmitter {
 
 			// On Linux, spawnPersistent wraps with `systemd-run --user --scope`
 			// so the daemon survives Electron's systemd-logind app scope
-			// terminating on quit.
+			// terminating on quit. We don't use the returned `scopeUnit` —
+			// todo-daemon is stopped via IPC, not signals.
 			let child: ChildProcess | null = null;
 			try {
 				child = spawnPersistent(
@@ -573,7 +574,7 @@ export class TodoDaemonClient extends EventEmitter {
 						},
 					},
 					{ unitLabel: "superset-todo-daemon" },
-				);
+				).child;
 			} finally {
 				if (logFd >= 0) {
 					try {

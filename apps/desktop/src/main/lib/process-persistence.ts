@@ -22,6 +22,19 @@ export interface SpawnPersistentExtraOptions {
 	unitLabel: string;
 }
 
+export interface SpawnPersistentResult {
+	child: childProcess.ChildProcess;
+	/**
+	 * systemd unit name of the transient scope when the spawn was wrapped
+	 * with `systemd-run --user --scope`. `null` on non-Linux, when
+	 * `systemd-run` is unavailable, or when we fell back to plain spawn.
+	 * Callers that need a guaranteed hard kill (e.g. "stop service" on
+	 * Linux where the wrapper PID is useless) should feed this to
+	 * `systemctl --user kill <unit>` to terminate every PID in the scope.
+	 */
+	scopeUnit: string | null;
+}
+
 let systemdRunAvailable: boolean | null = null;
 
 function canUseSystemdRun(): boolean {
@@ -39,11 +52,18 @@ function canUseSystemdRun(): boolean {
 		return false;
 	}
 
+	// Probe by actually creating a throwaway transient scope. `--version`
+	// alone only tells us the binary exists — it does not prove we can
+	// reach the user bus or that scope creation is allowed. Doing a real
+	// `--user --scope -- /bin/true` catches every failure mode up front
+	// so we fall back to plain spawn instead of leaving the daemon to
+	// time out on health checks (see PR #403 review).
 	try {
-		childProcess.execFileSync("systemd-run", ["--version"], {
-			stdio: "ignore",
-			timeout: 2000,
-		});
+		childProcess.execFileSync(
+			"systemd-run",
+			["--user", "--scope", "--quiet", "--", "true"],
+			{ stdio: "ignore", timeout: 3000 },
+		);
 		systemdRunAvailable = true;
 	} catch {
 		systemdRunAvailable = false;
@@ -78,9 +98,12 @@ export function spawnPersistent(
 	args: ReadonlyArray<string>,
 	options: childProcess.SpawnOptions,
 	extra: SpawnPersistentExtraOptions,
-): childProcess.ChildProcess {
+): SpawnPersistentResult {
 	if (!canUseSystemdRun()) {
-		return childProcess.spawn(execPath, [...args], options);
+		return {
+			child: childProcess.spawn(execPath, [...args], options),
+			scopeUnit: null,
+		};
 	}
 
 	const unit = buildUnitName(extra.unitLabel);
@@ -100,11 +123,43 @@ export function spawnPersistent(
 	];
 
 	try {
-		return childProcess.spawn("systemd-run", systemdArgs, options);
+		return {
+			child: childProcess.spawn("systemd-run", systemdArgs, options),
+			scopeUnit: `${unit}.scope`,
+		};
 	} catch (error) {
 		console.warn(
 			`[spawnPersistent] systemd-run spawn failed, falling back to plain spawn: ${String(error)}`,
 		);
-		return childProcess.spawn(execPath, [...args], options);
+		return {
+			child: childProcess.spawn(execPath, [...args], options),
+			scopeUnit: null,
+		};
+	}
+}
+
+/**
+ * Send SIGTERM (or a custom signal) to every PID inside a transient scope
+ * created by `spawnPersistent`. Works even when the wrapper `systemd-run`
+ * process has already exited and when the daemon has not yet written its
+ * PID file / manifest.
+ *
+ * Returns `true` if `systemctl` was invoked successfully, `false`
+ * otherwise (caller should fall back to a plain `process.kill`).
+ */
+export function killPersistentScope(
+	scopeUnit: string,
+	signal: NodeJS.Signals = "SIGTERM",
+): boolean {
+	if (process.platform !== "linux") return false;
+	try {
+		childProcess.execFileSync(
+			"systemctl",
+			["--user", "kill", `--signal=${signal}`, scopeUnit],
+			{ stdio: "ignore", timeout: 2000 },
+		);
+		return true;
+	} catch {
+		return false;
 	}
 }

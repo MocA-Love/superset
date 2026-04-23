@@ -26,7 +26,7 @@ import {
 	pollHealthCheck,
 } from "./host-service-utils";
 import { localDb } from "./local-db";
-import { spawnPersistent } from "./process-persistence";
+import { killPersistentScope, spawnPersistent } from "./process-persistence";
 import { HOOK_PROTOCOL_VERSION } from "./terminal/env";
 
 /** Minimum host-service version this app can work with. */
@@ -56,6 +56,14 @@ interface HostServiceProcess {
 	port: number;
 	secret: string;
 	status: HostServiceStatus;
+	/**
+	 * Linux-only: the systemd transient scope name (`<unit>.scope`) that
+	 * contains this daemon, when the spawn was wrapped with `systemd-run`.
+	 * Used by `stop()` to kill every PID in the scope via `systemctl`,
+	 * which works even if the manifest has not been written yet (early
+	 * in startup) or the wrapper PID is useless. `null` otherwise.
+	 */
+	scopeUnit: string | null;
 }
 
 const ADOPTED_LIVENESS_INTERVAL = 5_000;
@@ -110,15 +118,24 @@ export class HostServiceCoordinator extends EventEmitter {
 		const previousStatus = instance.status;
 		instance.status = "stopped";
 
-		// On Linux, when we spawned via `systemd-run --user --scope`,
-		// `instance.pid` is the systemd-run wrapper PID, not the host-service
-		// daemon PID. The daemon writes its own `process.pid` into the manifest
-		// on start, so prefer that.
-		const manifest = readManifest(organizationId);
-		const killPid = manifest?.pid ?? instance.pid;
-		try {
-			process.kill(killPid, "SIGTERM");
-		} catch {}
+		// Linux + systemd-run: kill every PID in the transient scope. This
+		// is reliable even while the daemon is still starting (manifest not
+		// yet written) and when `instance.pid` is only the wrapper PID.
+		let killedViaScope = false;
+		if (instance.scopeUnit) {
+			killedViaScope = killPersistentScope(instance.scopeUnit, "SIGTERM");
+		}
+
+		if (!killedViaScope) {
+			// Fallback: kill by PID. Prefer the manifest PID (written by the
+			// daemon itself) over `instance.pid`, because on Linux the latter
+			// may be the `systemd-run` wrapper.
+			const manifest = readManifest(organizationId);
+			const killPid = manifest?.pid ?? instance.pid;
+			try {
+				process.kill(killPid, "SIGTERM");
+			} catch {}
+		}
 
 		this.instances.delete(organizationId);
 		removeManifest(organizationId);
@@ -310,6 +327,9 @@ export class HostServiceCoordinator extends EventEmitter {
 			port,
 			secret: manifest.authToken,
 			status: "running",
+			// Adopted instances: the scope name is not recoverable after an
+			// app restart, so fall back to PID-based kill on stop.
+			scopeUnit: null,
 		});
 		this.startAdoptedLivenessCheck(organizationId, manifest.pid);
 
@@ -368,6 +388,7 @@ export class HostServiceCoordinator extends EventEmitter {
 			port,
 			secret,
 			status: "starting",
+			scopeUnit: null,
 		};
 		this.instances.set(organizationId, instance);
 		this.emitStatus(organizationId, "starting", null);
@@ -399,13 +420,14 @@ export class HostServiceCoordinator extends EventEmitter {
 				: ["ignore", "ignore", "ignore"];
 
 		let child: childProcess.ChildProcess;
+		let scopeUnit: string | null = null;
 		try {
 			// On Linux, spawnPersistent wraps packaged-build spawns with
 			// `systemd-run --user --scope` so the host-service survives
 			// Electron's systemd-logind app scope terminating on quit.
 			// In dev builds (`!isPackaged`) we keep plain pipes for log flow
 			// and spawnPersistent falls back to regular spawn automatically.
-			child = spawnPersistent(
+			const spawned = spawnPersistent(
 				process.execPath,
 				[this.scriptPath],
 				{
@@ -417,6 +439,8 @@ export class HostServiceCoordinator extends EventEmitter {
 				},
 				{ unitLabel: `superset-host-service-${organizationId}` },
 			);
+			child = spawned.child;
+			scopeUnit = spawned.scopeUnit;
 		} finally {
 			if (logFd >= 0) {
 				try {
@@ -434,6 +458,7 @@ export class HostServiceCoordinator extends EventEmitter {
 		}
 
 		instance.pid = childPid;
+		instance.scopeUnit = scopeUnit;
 
 		if (!isPackaged) {
 			child.stdout?.on("data", (data: Buffer) => {
