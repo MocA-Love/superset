@@ -9,7 +9,7 @@
  * - Event streaming
  */
 
-import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
@@ -28,6 +28,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { app } from "electron";
 import { SUPERSET_DIR_NAME } from "shared/constants";
+import { spawnPersistent } from "../process-persistence";
 import { throwIfAborted } from "../terminal/abort";
 import { TerminalAttachCanceledError } from "../terminal/errors";
 import {
@@ -1185,18 +1186,26 @@ export class TerminalHostClient extends EventEmitter {
 				logFd = -1;
 			}
 
-			// Spawn daemon as detached process
-			let child: ReturnType<typeof spawn> | null = null;
+			// Spawn daemon as detached process.
+			// On Linux, spawnPersistent wraps with `systemd-run --user --scope`
+			// so the daemon survives Electron's systemd-logind app scope
+			// terminating on quit.
+			let child: ChildProcess | null = null;
 			try {
-				child = spawn(process.execPath, [daemonScript], {
-					detached: true,
-					stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
-					env: {
-						...process.env,
-						ELECTRON_RUN_AS_NODE: "1",
-						NODE_ENV: process.env.NODE_ENV,
+				child = spawnPersistent(
+					process.execPath,
+					[daemonScript],
+					{
+						detached: true,
+						stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
+						env: {
+							...process.env,
+							ELECTRON_RUN_AS_NODE: "1",
+							NODE_ENV: process.env.NODE_ENV,
+						},
 					},
-				});
+					{ unitLabel: "superset-terminal-host" },
+				);
 			} finally {
 				if (logFd >= 0) {
 					try {

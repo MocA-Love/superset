@@ -1,4 +1,4 @@
-import * as childProcess from "node:child_process";
+import type * as childProcess from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
@@ -26,6 +26,7 @@ import {
 	pollHealthCheck,
 } from "./host-service-utils";
 import { localDb } from "./local-db";
+import { spawnPersistent } from "./process-persistence";
 import { HOOK_PROTOCOL_VERSION } from "./terminal/env";
 
 /** Minimum host-service version this app can work with. */
@@ -109,8 +110,14 @@ export class HostServiceCoordinator extends EventEmitter {
 		const previousStatus = instance.status;
 		instance.status = "stopped";
 
+		// On Linux, when we spawned via `systemd-run --user --scope`,
+		// `instance.pid` is the systemd-run wrapper PID, not the host-service
+		// daemon PID. The daemon writes its own `process.pid` into the manifest
+		// on start, so prefer that.
+		const manifest = readManifest(organizationId);
+		const killPid = manifest?.pid ?? instance.pid;
 		try {
-			process.kill(instance.pid, "SIGTERM");
+			process.kill(killPid, "SIGTERM");
 		} catch {}
 
 		this.instances.delete(organizationId);
@@ -391,15 +398,25 @@ export class HostServiceCoordinator extends EventEmitter {
 				? ["ignore", logFd, logFd]
 				: ["ignore", "ignore", "ignore"];
 
-		let child: ReturnType<typeof childProcess.spawn>;
+		let child: childProcess.ChildProcess;
 		try {
-			child = childProcess.spawn(process.execPath, [this.scriptPath], {
-				detached: isPackaged,
-				stdio,
-				env: childEnv,
-				// Avoid a flashing CMD window on Windows for the detached child.
-				windowsHide: true,
-			});
+			// On Linux, spawnPersistent wraps packaged-build spawns with
+			// `systemd-run --user --scope` so the host-service survives
+			// Electron's systemd-logind app scope terminating on quit.
+			// In dev builds (`!isPackaged`) we keep plain pipes for log flow
+			// and spawnPersistent falls back to regular spawn automatically.
+			child = spawnPersistent(
+				process.execPath,
+				[this.scriptPath],
+				{
+					detached: isPackaged,
+					stdio,
+					env: childEnv,
+					// Avoid a flashing CMD window on Windows for the detached child.
+					windowsHide: true,
+				},
+				{ unitLabel: `superset-host-service-${organizationId}` },
+			);
 		} finally {
 			if (logFd >= 0) {
 				try {
