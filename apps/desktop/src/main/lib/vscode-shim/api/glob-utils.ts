@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /**
  * Minimal glob-to-regexp utilities for the VS Code workspace shim.
  * Handles the subset of glob syntax that VS Code extensions commonly use:
@@ -5,7 +7,7 @@
  */
 
 export function normalizeGlobPath(value: string): string {
-	return value.split("/").join("/");
+	return value.split(path.sep).join("/");
 }
 
 export function escapeRegexLiteral(value: string): string {

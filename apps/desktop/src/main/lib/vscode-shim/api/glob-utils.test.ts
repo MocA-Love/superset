@@ -6,7 +6,20 @@ import {
 	expandBracePatterns,
 	globToRegExp,
 	matchesAnyGlob,
+	normalizeGlobPath,
 } from "./glob-utils";
+
+describe("normalizeGlobPath", () => {
+	it("leaves forward slashes unchanged", () => {
+		expect(normalizeGlobPath("src/deep/file.ts")).toBe("src/deep/file.ts");
+	});
+
+	it("normalizes platform separator to forward slashes", () => {
+		const sep = process.platform === "win32" ? "\\" : "/";
+		const input = `src${sep}deep${sep}file.ts`;
+		expect(normalizeGlobPath(input)).toBe("src/deep/file.ts");
+	});
+});
 
 describe("globToRegExp", () => {
 	it("matches literal paths", () => {
