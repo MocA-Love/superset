@@ -287,6 +287,7 @@ class TodoSessionStore {
 		agentKind?: string | null;
 		codexModel?: string | null;
 		codexEffort?: string | null;
+		crushModel?: string | null;
 		remoteControlEnabled?: boolean;
 		artifactPath: string;
 	}): SelectTodoSession {
@@ -317,6 +318,7 @@ class TodoSessionStore {
 			agentKind: template.agentKind ?? "claude",
 			codexModel: template.codexModel ?? null,
 			codexEffort: template.codexEffort ?? null,
+			crushModel: template.crushModel ?? null,
 			remoteControlEnabled: template.remoteControlEnabled ?? false,
 			verdictPassed: null,
 			verdictReason: null,

@@ -366,3 +366,29 @@ export function getCodexEffortLabel(
 		persisted
 	);
 }
+
+// ---- Crush CLI options ----
+//
+// Crush has 200+ models and no effort concept. The model list is dynamic
+// (fetched from `crush models` via tRPC) so we use free-form strings
+// instead of a const array. Only the default sentinel is static.
+
+export type CrushModelPick = typeof DEFAULT_SENTINEL | string;
+
+export function toPersistedCrushModel(pick: CrushModelPick): string | null {
+	return pick === DEFAULT_SENTINEL ? null : pick;
+}
+
+export function fromPersistedCrushModel(
+	persisted: string | null | undefined,
+): CrushModelPick {
+	if (persisted == null) return DEFAULT_SENTINEL;
+	return persisted;
+}
+
+export function getCrushModelLabel(
+	persisted: string | null | undefined,
+): string {
+	if (persisted == null) return "デフォルト";
+	return persisted;
+}
