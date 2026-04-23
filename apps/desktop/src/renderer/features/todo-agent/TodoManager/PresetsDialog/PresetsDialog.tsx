@@ -1,4 +1,3 @@
-import { type AgentKind, DEFAULT_AGENT_KIND } from "main/todo-agent/types";
 import type { SelectTodoPromptPreset } from "@superset/local-db";
 import { Button } from "@superset/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@superset/ui/dialog";
@@ -8,6 +7,7 @@ import { ScrollArea } from "@superset/ui/scroll-area";
 import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { cn } from "@superset/ui/utils";
+import { type AgentKind, DEFAULT_AGENT_KIND } from "main/todo-agent/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	HiMiniCog6Tooth,
@@ -20,12 +20,9 @@ import {
 	AgentRuntimePicker,
 	type ClaudeEffortPick,
 	type ClaudeModelPick,
-	ClaudeRuntimePicker,
 	type CodexEffortPick,
 	type CodexModelPick,
 	DEFAULT_SENTINEL,
-	fromPersistedCodexEffort,
-	fromPersistedCodexModel,
 	fromPersistedEffort,
 	fromPersistedModel,
 	toPersistedCodexEffort,
@@ -123,7 +120,8 @@ function SettingsTab() {
 		useState<ClaudeModelPick>(DEFAULT_SENTINEL);
 	const [defaultEffort, setDefaultEffort] =
 		useState<ClaudeEffortPick>(DEFAULT_SENTINEL);
-	const [defaultAgentKind, setDefaultAgentKind] = useState<AgentKind>(DEFAULT_AGENT_KIND);
+	const [defaultAgentKind, setDefaultAgentKind] =
+		useState<AgentKind>(DEFAULT_AGENT_KIND);
 	const [defaultCodexModel, setDefaultCodexModel] =
 		useState<CodexModelPick>(DEFAULT_SENTINEL);
 	const [defaultCodexEffort, setDefaultCodexEffort] =
