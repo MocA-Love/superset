@@ -76,6 +76,13 @@ const EMULATOR_WRITE_QUEUE_HIGH_WATERMARK_BYTES = 1_000_000;
 const EMULATOR_WRITE_QUEUE_LOW_WATERMARK_BYTES = 250_000;
 
 /**
+ * When no renderer clients are attached, defer headless emulator catch-up into
+ * coarse idle batches instead of chasing every PTY chunk immediately. Attach,
+ * shell init and backpressure still force urgent drains.
+ */
+const EMULATOR_IDLE_DRAIN_INTERVAL_MS = 250;
+
+/**
  * How long to wait for the shell-ready marker before unblocking writes.
  * 15s covers heavy setups like Nix-based devenv via direnv. On timeout,
  * buffered writes flush immediately (same behavior as before this feature).
@@ -202,6 +209,7 @@ export class Session {
 	private emulatorWriteQueue: string[] = [];
 	private emulatorWriteQueuedBytes = 0;
 	private emulatorWriteScheduled = false;
+	private emulatorIdleDrainTimer: ReturnType<typeof setTimeout> | null = null;
 	private emulatorFlushWaiters: Array<() => void> = [];
 
 	// Broadcast data coalescing — see BROADCAST_COALESCE_* constants.
@@ -621,16 +629,50 @@ export class Session {
 		this.scheduleEmulatorWrite();
 	}
 
-	private scheduleEmulatorWrite(): void {
-		if (this.emulatorWriteScheduled || this.disposed) return;
-		this.emulatorWriteScheduled = true;
-		setImmediate(() => {
-			this.processEmulatorWriteQueue();
-		});
+	private shouldUseIdleEmulatorDrain(): boolean {
+		return (
+			this.attachedClients.size === 0 &&
+			this.shellReadyState !== "pending" &&
+			!this.emulatorWriteBackpressured &&
+			this.snapshotBoundaryWaiters.length === 0 &&
+			this.emulatorFlushWaiters.length === 0 &&
+			this.emulatorWriteQueuedBytes < EMULATOR_WRITE_QUEUE_HIGH_WATERMARK_BYTES
+		);
+	}
+
+	private clearIdleEmulatorDrainTimer(): void {
+		if (!this.emulatorIdleDrainTimer) return;
+		clearTimeout(this.emulatorIdleDrainTimer);
+		this.emulatorIdleDrainTimer = null;
+	}
+
+	private scheduleEmulatorWrite(options?: { urgent?: boolean }): void {
+		if (this.disposed || this.emulatorWriteScheduled) return;
+
+		const urgent = options?.urgent ?? false;
+		if (urgent || !this.shouldUseIdleEmulatorDrain()) {
+			this.clearIdleEmulatorDrainTimer();
+			this.emulatorWriteScheduled = true;
+			setImmediate(() => {
+				this.processEmulatorWriteQueue();
+			});
+			return;
+		}
+
+		if (this.emulatorIdleDrainTimer) return;
+		this.emulatorIdleDrainTimer = setTimeout(() => {
+			this.emulatorIdleDrainTimer = null;
+			if (this.disposed || this.emulatorWriteScheduled) return;
+			this.emulatorWriteScheduled = true;
+			setImmediate(() => {
+				this.processEmulatorWriteQueue();
+			});
+		}, EMULATOR_IDLE_DRAIN_INTERVAL_MS);
 	}
 
 	private processEmulatorWriteQueue(): void {
 		if (this.disposed) {
+			this.clearIdleEmulatorDrainTimer();
 			this.emulatorWriteQueue = [];
 			this.emulatorWriteQueuedBytes = 0;
 			this.emulatorWriteProcessedItems = 0;
@@ -715,9 +757,8 @@ export class Session {
 		this.maybeResumeSubprocessStdoutForEmulatorBackpressure();
 
 		if (this.emulatorWriteQueue.length > 0) {
-			setImmediate(() => {
-				this.processEmulatorWriteQueue();
-			});
+			this.emulatorWriteScheduled = false;
+			this.scheduleEmulatorWrite();
 			return;
 		}
 
@@ -775,7 +816,7 @@ export class Session {
 					resolve();
 				},
 			});
-			this.scheduleEmulatorWrite();
+			this.scheduleEmulatorWrite({ urgent: true });
 			this.resolveReachedSnapshotBoundaryWaiters();
 		});
 
@@ -1034,6 +1075,7 @@ export class Session {
 	dispose(): Promise<void> {
 		if (this.disposed) return Promise.resolve();
 		this.disposed = true;
+		this.clearIdleEmulatorDrainTimer();
 
 		const pidsToKill = this.collectProcessPids();
 

@@ -24,11 +24,16 @@ export interface CachedTerminal {
 	searchAddon: SearchAddon;
 	wrapper: HTMLDivElement;
 	openOnce: () => void;
+	setGpuAccelerationEnabled: (enabled: boolean) => void;
 	/** Disposes renderer RAF, query suppression, GPU renderer, etc. */
 	cleanupCreation: () => void;
 	/** Last known dimensions — used to skip no-op resize events. */
 	lastCols: number;
 	lastRows: number;
+	/** True while the wrapper is attached to a visible DOM container. */
+	isAttached: boolean;
+	/** True when this pane is the focused pane in the tab. */
+	isFocused: boolean;
 
 	// --- Stream management ---
 
@@ -38,14 +43,17 @@ export interface CachedTerminal {
 	streamReady: boolean;
 	/** Events queued before streamReady (first mount only). */
 	pendingStreamEvents: TerminalStreamEvent[];
-	/** Non-data events queued while no component is mounted. */
-	pendingLifecycleEvents: TerminalStreamEvent[];
+	/**
+	 * Events queued while no component is mounted. Adjacent data events are
+	 * coalesced so hidden terminals preserve ordering without paying xterm.write
+	 * cost for every chunk.
+	 */
+	pendingUnmountedEvents: TerminalStreamEvent[];
 	/**
 	 * Handler provided by the mounted Terminal component.
 	 * When set, ALL events are forwarded here so the component can
 	 * update React state (exit status, connection error, modes, cwd, etc.).
-	 * When null (component unmounted), data events write directly to xterm
-	 * and non-data events are queued.
+	 * When null (component unmounted), events are buffered for replay.
 	 */
 	eventHandler: ((event: TerminalStreamEvent) => void) | null;
 	/**
@@ -80,7 +88,15 @@ export function getOrCreate(
 		console.log(`[v1-terminal-cache] Creating new terminal: ${paneId}`);
 	}
 
-	const { xterm, fitAddon, searchAddon, wrapper, openOnce, cleanup } =
+	const {
+		xterm,
+		fitAddon,
+		searchAddon,
+		wrapper,
+		openOnce,
+		setGpuAccelerationEnabled,
+		cleanup,
+	} =
 		createTerminalInWrapper(options);
 
 	const entry: CachedTerminal = {
@@ -89,17 +105,20 @@ export function getOrCreate(
 		searchAddon,
 		wrapper,
 		openOnce,
+		setGpuAccelerationEnabled,
 		cleanupCreation: cleanup,
 		subscription: null,
 		streamReady: false,
 		pendingStreamEvents: [],
-		pendingLifecycleEvents: [],
+		pendingUnmountedEvents: [],
 		eventHandler: null,
 		subscriptionErrorHandler: null,
 		resizeObserver: null,
 		resizeDebounceTimer: null,
 		lastCols: xterm.cols,
 		lastRows: xterm.rows,
+		isAttached: false,
+		isFocused: false,
 	};
 
 	cache.set(paneId, entry);
@@ -116,8 +135,10 @@ export function attachToContainer(
 	const entry = cache.get(paneId);
 	if (!entry) return;
 
+	entry.isAttached = true;
 	container.appendChild(entry.wrapper);
 	entry.openOnce();
+	entry.setGpuAccelerationEnabled(entry.isFocused);
 	terminalRendererDebug.info(
 		"cache-attach-to-container",
 		{
@@ -182,9 +203,18 @@ export function detachFromContainer(paneId: string): void {
 			fingerprint: ["terminal.renderer", "cache-detach-from-container"],
 		},
 	);
+	entry.isAttached = false;
+	entry.setGpuAccelerationEnabled(false);
 	entry.resizeObserver?.disconnect();
 	entry.resizeObserver = null;
 	entry.wrapper.remove();
+}
+
+export function setFocused(paneId: string, isFocused: boolean): void {
+	const entry = cache.get(paneId);
+	if (!entry) return;
+	entry.isFocused = isFocused;
+	entry.setGpuAccelerationEnabled(entry.isAttached && isFocused);
 }
 
 // --- Appearance ---
@@ -224,24 +254,6 @@ export function updateAppearance(
 	};
 }
 
-// --- rAF write buffer ---
-
-/**
- * Thin wrapper around xterm.write so callers share cache lookup and logging.
- * Keep the PTY -> xterm path as close to VS Code/xterm's recommended
- * integration as possible.
- */
-export function scheduleWrite(paneId: string, data: string): void {
-	const entry = cache.get(paneId);
-	if (!entry) return;
-	entry.xterm.write(data);
-}
-
-/**
- * Backward-compatible no-op now that writes go directly to xterm.
- */
-export function flushWrite(_paneId: string): void {}
-
 // --- Stream subscription ---
 
 function routeEvent(
@@ -261,7 +273,8 @@ function routeEvent(
 		return;
 	}
 
-	// Component unmounted — write data directly to xterm, queue the rest.
+	// Component unmounted — buffer events for replay instead of burning CPU on
+	// hidden xterm.write calls.
 	if (event.type === "data") {
 		terminalRendererDebug.increment("hidden-data-events", 1, {
 			data: { paneId, bytes: event.data.length },
@@ -270,10 +283,15 @@ function routeEvent(
 			data: { paneId },
 		});
 		logTerminalWrite("hidden-stream-data", event.data.length, { paneId });
-		scheduleWrite(paneId, event.data);
+		const lastBufferedEvent =
+			entry.pendingUnmountedEvents[entry.pendingUnmountedEvents.length - 1];
+		if (lastBufferedEvent?.type === "data") {
+			lastBufferedEvent.data += event.data;
+			return;
+		}
+		entry.pendingUnmountedEvents.push(event);
 	} else {
-		flushWrite(paneId);
-		entry.pendingLifecycleEvents.push(event);
+		entry.pendingUnmountedEvents.push(event);
 	}
 }
 
@@ -378,8 +396,7 @@ export function markSessionReady(paneId: string): void {
 
 /**
  * Register event handlers from the mounted Terminal component.
- * Returns any lifecycle events (exit, error, disconnect) that were
- * queued while the component was unmounted.
+ * Returns any events that were buffered while the component was unmounted.
  */
 export function registerHandlers(
 	paneId: string,
@@ -394,13 +411,13 @@ export function registerHandlers(
 	entry.eventHandler = handlers.onEvent;
 	entry.subscriptionErrorHandler = handlers.onError;
 
-	// Drain and return queued lifecycle events
-	return entry.pendingLifecycleEvents.splice(0);
+	// Drain and return queued hidden events in original order.
+	return entry.pendingUnmountedEvents.splice(0);
 }
 
 /**
  * Unregister the component's event handlers (component unmounting).
- * The subscription stays alive; data events write directly to xterm.
+ * The subscription stays alive; events buffer until the component remounts.
  */
 export function unregisterHandlers(paneId: string): void {
 	const entry = cache.get(paneId);

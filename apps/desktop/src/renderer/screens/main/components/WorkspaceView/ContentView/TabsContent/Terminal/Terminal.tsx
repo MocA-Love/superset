@@ -481,8 +481,8 @@ export const Terminal = memo(function Terminal({
 	});
 
 	// Stream event handler registration — the subscription itself lives in
-	// v1TerminalCache and stays alive across mount/unmount cycles so data
-	// keeps flowing to xterm even while the tab is hidden.
+	// v1TerminalCache and stays alive across mount/unmount cycles. Hidden
+	// terminals buffer events for replay instead of burning CPU on xterm.write.
 	// Placed after useTerminalLifecycle so the cache entry exists on cold mount.
 	// Gated on xtermInstance so it re-runs once the lifecycle hook creates it.
 	useEffect(() => {
@@ -509,8 +509,8 @@ export const Terminal = memo(function Terminal({
 			},
 		});
 
-		// Process lifecycle events (exit, error, disconnect) that arrived
-		// while this component was unmounted.
+		// Process any buffered events that arrived while this component was
+		// unmounted. Data events are already coalesced by the cache.
 		for (const event of queuedEvents) {
 			handleStreamData(event);
 		}
@@ -519,6 +519,14 @@ export const Terminal = memo(function Terminal({
 			v1TerminalCache.unregisterHandlers(paneId);
 		};
 	}, [paneId, xtermInstance, handleStreamData, setConnectionError]);
+
+	useEffect(() => {
+		if (!xtermInstance) return;
+		v1TerminalCache.setFocused(paneId, isFocused);
+		if (isFocused) {
+			xtermRef.current?.focus();
+		}
+	}, [paneId, isFocused, xtermInstance]);
 
 	useEffect(() => {
 		const xterm = xtermRef.current;
