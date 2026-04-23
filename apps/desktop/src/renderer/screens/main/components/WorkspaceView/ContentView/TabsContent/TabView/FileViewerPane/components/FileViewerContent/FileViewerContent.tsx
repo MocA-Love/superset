@@ -42,7 +42,10 @@ import {
 import type { FileViewerMode } from "shared/tabs-types";
 import { useNextEditCompletion } from "../../hooks/useNextEditCompletion";
 import { useScrollToFirstDiffChange } from "../../hooks/useScrollToFirstDiffChange";
-import { CodeMirrorDiffViewer } from "../CodeMirrorDiffViewer";
+import {
+	CodeMirrorDiffViewer,
+	type CodeMirrorDiffViewerHandle,
+} from "../CodeMirrorDiffViewer";
 import { ConflictViewer } from "../ConflictViewer";
 import { DiffViewerContextMenu } from "../DiffViewerContextMenu";
 import { FileEditorContextMenu } from "../FileEditorContextMenu";
@@ -263,6 +266,7 @@ interface FileViewerContentProps {
 	onMoveToNewTab: () => void;
 	diffContainerRef: RefObject<HTMLDivElement | null>;
 	diffSearch: TextSearchState;
+	diffViewerRef?: MutableRefObject<CodeMirrorDiffViewerHandle | null>;
 	markdownContainerRef: RefObject<HTMLDivElement | null>;
 	markdownSearch: TextSearchState;
 	htmlZoomLevel?: number;
@@ -307,6 +311,7 @@ export function FileViewerContent({
 	diffContainerRef,
 	// biome-ignore lint/correctness/noUnusedFunctionParameters: reserved for future use
 	diffSearch,
+	diffViewerRef,
 	markdownContainerRef,
 	markdownSearch,
 	htmlZoomLevel = 0,
@@ -783,6 +788,7 @@ export function FileViewerContent({
 						}}
 					>
 						<CodeMirrorDiffViewer
+							ref={diffViewerRef}
 							original={diffData.original}
 							modified={diffData.modified}
 							language={diffData.language}
