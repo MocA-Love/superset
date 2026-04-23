@@ -1,1 +1,4 @@
-export { CodeEditorSearchOverlay } from "./CodeEditorSearchOverlay";
+export {
+	CodeEditorSearchOverlay,
+	type CodeEditorSearchOverlayHandle,
+} from "./CodeEditorSearchOverlay";
