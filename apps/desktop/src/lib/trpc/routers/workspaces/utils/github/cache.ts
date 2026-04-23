@@ -139,3 +139,36 @@ export function clearGitHubCachesForWorktree(worktreePath: string): void {
 		makePullRequestCommentsCachePrefix(worktreePath),
 	);
 }
+
+// GitHub commit author cache (for git-blame avatar resolution)
+export interface GitHubCommitAuthor {
+	login: string;
+	avatarUrl: string;
+}
+
+const commitAuthorResource = createCachedResource<GitHubCommitAuthor>({
+	name: "github-commit-author",
+	ttlMs: 24 * 60 * 60 * 1000, // 24 hours
+	maxKeys: 500,
+});
+
+export function makeGitHubCommitAuthorCacheKey({
+	repoNameWithOwner,
+	commitHash,
+}: {
+	repoNameWithOwner: string;
+	commitHash: string;
+}): string {
+	return `${repoNameWithOwner}:${commitHash}`;
+}
+
+export function readCachedGitHubCommitAuthor(
+	cacheKey: string,
+	load: () => Promise<GitHubCommitAuthor | null>,
+	options?: CachedResourceReadOptions<GitHubCommitAuthor | null>,
+): Promise<GitHubCommitAuthor | null> {
+	return commitAuthorResource.read(cacheKey, load, {
+		...options,
+		shouldCache: options?.shouldCache ?? ((value) => value !== null),
+	});
+}
