@@ -22,11 +22,14 @@ import {
 	type ClaudeModelPick,
 	type CodexEffortPick,
 	type CodexModelPick,
+	type CrushModelPick,
 	DEFAULT_SENTINEL,
+	fromPersistedCrushModel,
 	fromPersistedEffort,
 	fromPersistedModel,
 	toPersistedCodexEffort,
 	toPersistedCodexModel,
+	toPersistedCrushModel,
 	toPersistedEffort,
 	toPersistedModel,
 } from "../../ClaudeRuntimePicker";
@@ -111,6 +114,8 @@ function SettingsTab() {
 	const { data: settings } = electronTrpc.todoAgent.settings.get.useQuery();
 	const updateMut = electronTrpc.todoAgent.settings.update.useMutation();
 	const utils = electronTrpc.useUtils();
+	const { data: crushModelsData } =
+		electronTrpc.todoAgent.crushModels.useQuery(undefined);
 
 	const [maxIter, setMaxIter] = useState(10);
 	const [maxMin, setMaxMin] = useState(30);
@@ -126,6 +131,8 @@ function SettingsTab() {
 		useState<CodexModelPick>(DEFAULT_SENTINEL);
 	const [defaultCodexEffort, setDefaultCodexEffort] =
 		useState<CodexEffortPick>(DEFAULT_SENTINEL);
+	const [defaultCrushModel, setDefaultCrushModel] =
+		useState<CrushModelPick>(DEFAULT_SENTINEL);
 
 	// Hydrate form state the first time settings arrive from the main
 	// process. A React Query background refetch (window focus, etc.)
@@ -143,6 +150,9 @@ function SettingsTab() {
 		setRetentionDays(settings.sessionRetentionDays);
 		setDefaultModel(fromPersistedModel(settings.defaultClaudeModel ?? null));
 		setDefaultEffort(fromPersistedEffort(settings.defaultClaudeEffort ?? null));
+		setDefaultCrushModel(
+			fromPersistedCrushModel(settings.defaultCrushModel ?? null),
+		);
 		hydratedRef.current = true;
 	}, [settings]);
 
@@ -160,7 +170,9 @@ function SettingsTab() {
 			toPersistedCodexModel(defaultCodexModel) !==
 				(settings.defaultCodexModel ?? null) ||
 			toPersistedCodexEffort(defaultCodexEffort) !==
-				(settings.defaultCodexEffort ?? null));
+				(settings.defaultCodexEffort ?? null) ||
+			toPersistedCrushModel(defaultCrushModel) !==
+				(settings.defaultCrushModel ?? null));
 
 	const handleSave = useCallback(async () => {
 		try {
@@ -174,6 +186,7 @@ function SettingsTab() {
 				defaultAgentKind,
 				defaultCodexModel: toPersistedCodexModel(defaultCodexModel),
 				defaultCodexEffort: toPersistedCodexEffort(defaultCodexEffort),
+				defaultCrushModel: toPersistedCrushModel(defaultCrushModel),
 			});
 			await utils.todoAgent.settings.get.invalidate();
 			toast.success("設定を保存しました");
@@ -186,6 +199,7 @@ function SettingsTab() {
 		defaultAgentKind,
 		defaultCodexEffort,
 		defaultCodexModel,
+		defaultCrushModel,
 		defaultEffort,
 		defaultModel,
 		maxIter,
@@ -276,6 +290,9 @@ function SettingsTab() {
 						codexEffort={defaultCodexEffort}
 						onCodexModelChange={setDefaultCodexModel}
 						onCodexEffortChange={setDefaultCodexEffort}
+						crushModel={defaultCrushModel}
+						onCrushModelChange={setDefaultCrushModel}
+						crushModels={crushModelsData ?? []}
 						compact={false}
 					/>
 					<p className="text-[10px] text-muted-foreground">

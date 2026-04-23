@@ -14,6 +14,7 @@ import {
 	type TodoStreamEventKind,
 } from "main/todo-agent/types";
 import { runCodexTurn } from "./codex-turn-runner";
+import { runCrushTurn } from "./crush-turn-runner";
 import { runClaudeTurnPty } from "./pty-turn-runner";
 
 /**
@@ -446,11 +447,13 @@ export class TodoSupervisorEngine {
 					resumeSessionId: claudeSessionId,
 					customSystemPrompt: currentSession.customSystemPrompt ?? null,
 					agentKind:
-						(currentSession.agentKind as "claude" | "codex" | null) ?? "claude",
+						(currentSession.agentKind as "claude" | "codex" | "crush" | null) ??
+						"claude",
 					claudeModel: currentSession.claudeModel ?? null,
 					claudeEffort: currentSession.claudeEffort ?? null,
 					codexModel: currentSession.codexModel ?? null,
 					codexEffort: currentSession.codexEffort ?? null,
+					crushModel: currentSession.crushModel ?? null,
 					signal: ac.signal,
 					usePty: willUsePty,
 					remoteControlEnabled,
@@ -650,11 +653,12 @@ export class TodoSupervisorEngine {
 		prompt: string;
 		resumeSessionId: string | null;
 		customSystemPrompt: string | null;
-		agentKind: "claude" | "codex";
+		agentKind: "claude" | "codex" | "crush";
 		claudeModel: string | null;
 		claudeEffort: string | null;
 		codexModel: string | null;
 		codexEffort: string | null;
+		crushModel: string | null;
 		signal: AbortSignal;
 		usePty: boolean;
 		onChild: (child: ChildProcess) => void;
@@ -688,6 +692,42 @@ export class TodoSupervisorEngine {
 				numTurns: codexResult.numTurns,
 				error: codexResult.error,
 				interrupted: codexResult.interrupted,
+				scheduledWakeup: null,
+			};
+		}
+
+		if (params.agentKind === "crush") {
+			const crushResult = await runCrushTurn({
+				sessionId: params.sessionId,
+				iteration: params.iteration,
+				cwd: params.cwd,
+				prompt: params.prompt,
+				resumeSessionId: params.resumeSessionId,
+				customSystemPrompt: params.customSystemPrompt,
+				crushModel: params.crushModel,
+				signal: params.signal,
+				onChild: params.onChild,
+				emit: (evt) => {
+					getTodoSessionStore().appendStreamEvents(params.sessionId, [
+						{
+							id: evt.id,
+							ts: evt.ts,
+							iteration: evt.iteration,
+							kind: evt.kind,
+							label: evt.label,
+							text: evt.text,
+							...(evt.toolUseId ? { toolUseId: evt.toolUseId } : {}),
+						},
+					]);
+				},
+			});
+			return {
+				result: crushResult.result,
+				sessionId: crushResult.sessionId,
+				costUsd: crushResult.costUsd,
+				numTurns: crushResult.numTurns,
+				error: crushResult.error,
+				interrupted: crushResult.interrupted,
 				scheduledWakeup: null,
 			};
 		}
