@@ -15,6 +15,7 @@ export enum RightSidebarTab {
 	Databases = "databases",
 	ClaudeCode = "claude-code",
 	Codex = "codex",
+	Kimi = "kimi",
 }
 
 export const DEFAULT_RIGHT_SIDEBAR_TAB_ORDER = [
@@ -26,6 +27,7 @@ export const DEFAULT_RIGHT_SIDEBAR_TAB_ORDER = [
 	RightSidebarTab.Databases,
 	RightSidebarTab.ClaudeCode,
 	RightSidebarTab.Codex,
+	RightSidebarTab.Kimi,
 ] as const satisfies RightSidebarTab[];
 
 export const DEFAULT_SIDEBAR_WIDTH = 250;

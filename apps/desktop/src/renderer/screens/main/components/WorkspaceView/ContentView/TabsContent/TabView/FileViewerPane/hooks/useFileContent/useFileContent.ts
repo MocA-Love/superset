@@ -23,6 +23,7 @@ interface UseFileContentParams {
 	diffCategory?: ChangeCategory;
 	commitHash?: string;
 	oldPath?: string;
+	inlineOriginalContent?: string;
 }
 
 function isBinaryText(content: string): boolean {
@@ -43,6 +44,7 @@ export function useFileContent({
 	diffCategory,
 	commitHash,
 	oldPath,
+	inlineOriginalContent,
 }: UseFileContentParams) {
 	// For remote URLs (e.g. Vercel Blob), skip all IPC queries
 	const isRemote =
@@ -181,7 +183,12 @@ export function useFileContent({
 				oldAbsolutePath: oldPath,
 			},
 			{
-				enabled: !isRemote && isUnstagedDiff && !!filePath && !!worktreePath,
+				enabled:
+					!isRemote &&
+					isUnstagedDiff &&
+					inlineOriginalContent === undefined &&
+					!!filePath &&
+					!!worktreePath,
 			},
 		);
 
@@ -200,7 +207,10 @@ export function useFileContent({
 
 	const diffData = useMemo(() => {
 		if (isGitDiff) return gitDiffData;
-		if (isUnstagedDiff && gitOriginal) {
+		if (
+			isUnstagedDiff &&
+			(inlineOriginalContent !== undefined || gitOriginal)
+		) {
 			let modifiedContent = "";
 			if (workingCopy) {
 				if (workingCopy.exceededLimit) {
@@ -210,7 +220,7 @@ export function useFileContent({
 				}
 			}
 			return {
-				original: gitOriginal.content,
+				original: inlineOriginalContent ?? gitOriginal?.content ?? "",
 				modified: modifiedContent,
 				language: detectLanguage(filePath),
 			};
@@ -221,6 +231,7 @@ export function useFileContent({
 		isUnstagedDiff,
 		gitDiffData,
 		gitOriginal,
+		inlineOriginalContent,
 		workingCopy,
 		filePath,
 	]);
@@ -228,7 +239,8 @@ export function useFileContent({
 	const isLoadingDiff = isGitDiff
 		? isLoadingGitDiff
 		: isUnstagedDiff
-			? isLoadingGitOriginal || isLoadingWorkingCopy
+			? (inlineOriginalContent === undefined && isLoadingGitOriginal) ||
+				isLoadingWorkingCopy
 			: false;
 
 	return {

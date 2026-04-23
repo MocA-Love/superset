@@ -4,9 +4,41 @@
 
 import { shimLog, shimWarn } from "./debug-log";
 import { Disposable } from "./event-emitter";
-import { fireOpenDiff } from "./window";
+import { Uri } from "./uri";
+import { fireOpenDiff, fireOpenFile } from "./window";
+import { resolveTextDocumentContent } from "./workspace";
 
 const UNHANDLED = Symbol("unhandled");
+
+function toUri(
+	value:
+		| Uri
+		| {
+				scheme?: string;
+				authority?: string;
+				path?: string;
+				query?: string;
+				fragment?: string;
+		  }
+		| undefined,
+): Uri | undefined {
+	if (!value) {
+		return undefined;
+	}
+	if (value instanceof Uri) {
+		return value;
+	}
+	if (value.scheme) {
+		return Uri.from({
+			scheme: value.scheme,
+			authority: value.authority,
+			path: value.path,
+			query: value.query,
+			fragment: value.fragment,
+		});
+	}
+	return undefined;
+}
 
 /**
  * Handle VS Code built-in commands that extensions expect to work.
@@ -20,7 +52,15 @@ function handleBuiltinCommand(
 		// Diff view (Claude Code / Codex uses this for file diffs)
 		case "vscode.diff": {
 			const leftUri = args[0] as
-				| { fsPath?: string; toString?(): string }
+				| {
+						fsPath?: string;
+						toString?(): string;
+						scheme?: string;
+						authority?: string;
+						path?: string;
+						query?: string;
+						fragment?: string;
+				  }
 				| undefined;
 			const rightUri = args[1] as
 				| { fsPath?: string; toString?(): string }
@@ -29,17 +69,46 @@ function handleBuiltinCommand(
 			const left = leftUri?.fsPath ?? leftUri?.toString?.() ?? "";
 			const right = rightUri?.fsPath ?? rightUri?.toString?.() ?? "";
 			shimLog(`[vscode-shim] vscode.diff called: ${left} → ${right}`);
-			if (left && right) {
-				fireOpenDiff(left, right, title);
+			if (!left || !right) {
+				return undefined;
 			}
-			return undefined;
+
+			const resolvedLeftUri = toUri(leftUri);
+			if (!resolvedLeftUri || resolvedLeftUri.scheme === "file") {
+				fireOpenDiff(left, right, title);
+				return undefined;
+			}
+
+			return resolveTextDocumentContent(resolvedLeftUri)
+				.then((leftContent) => {
+					fireOpenDiff(left, right, title, leftContent);
+					return undefined;
+				})
+				.catch((error) => {
+					shimWarn(
+						"[vscode-shim] Failed to resolve diff baseline content:",
+						error,
+					);
+					fireOpenDiff(left, right, title);
+					return undefined;
+				});
 		}
 
 		// Open file
 		case "vscode.open": {
-			shimLog(`[vscode-shim] vscode.open called with`, args[0]);
+			const uri = args[0] as
+				| { fsPath?: string; scheme?: string; toString?(): string }
+				| undefined;
+			shimLog(`[vscode-shim] vscode.open called with`, uri);
+			if (uri?.scheme === "file" && uri.fsPath) {
+				fireOpenFile(uri.fsPath);
+			}
 			return undefined;
 		}
+
+		case "vscode.openFolder":
+		case "kimi.webview.focus":
+			return undefined;
 
 		// Reveal file in OS file manager
 		case "revealFileInOS":

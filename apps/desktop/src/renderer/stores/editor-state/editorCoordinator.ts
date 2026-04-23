@@ -93,6 +93,8 @@ function applyFileViewerReplacement(
 					diffCategory: options.diffCategory,
 					commitHash: options.commitHash,
 					oldPath: options.oldPath,
+					inlineOriginalContent: options.inlineOriginalContent,
+					inlineOriginalContentKey: options.inlineOriginalContentKey,
 					initialLine: options.line,
 					initialColumn: options.column,
 					displayName: options.displayName,
