@@ -7,7 +7,6 @@ import {
 	dialog,
 	Menu,
 	nativeTheme,
-	shell,
 	webContents,
 } from "electron";
 import { safeOpenExternal } from "main/lib/safe-url";

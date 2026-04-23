@@ -273,25 +273,32 @@ async function getProcessNameWindows(
 	return "unknown";
 }
 
-
 export async function getProcessName(pid: number): Promise<string> {
 	try {
-		const { stdout: output } = await execFileAsync('ps', ['-p', String(pid), '-o', 'comm='], {
-			timeout: EXEC_TIMEOUT_MS,
-		});
-		return output.trim() || 'unknown';
+		const { stdout: output } = await execFileAsync(
+			"ps",
+			["-p", String(pid), "-o", "comm="],
+			{
+				timeout: EXEC_TIMEOUT_MS,
+			},
+		);
+		return output.trim() || "unknown";
 	} catch {
-		return 'unknown';
+		return "unknown";
 	}
 }
 
 export async function getProcessCommand(pid: number): Promise<string> {
 	try {
-		const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'args='], {
-			timeout: EXEC_TIMEOUT_MS,
-		});
+		const { stdout } = await execFileAsync(
+			"ps",
+			["-p", String(pid), "-o", "args="],
+			{
+				timeout: EXEC_TIMEOUT_MS,
+			},
+		);
 		return stdout.trim();
 	} catch {
-		return '';
+		return "";
 	}
 }

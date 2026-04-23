@@ -1,1 +1,5 @@
-export { getSmallModel, isAnthropicApiKey, isOpenAIApiKey } from "./small-model";
+export {
+	getSmallModel,
+	isAnthropicApiKey,
+	isOpenAIApiKey,
+} from "./small-model";

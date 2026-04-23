@@ -19,6 +19,10 @@ import {
 	AGENT_PRESET_DESCRIPTIONS,
 	DEFAULT_TERMINAL_PRESET_AGENT_TYPES,
 } from "@superset/shared/agent-command";
+import {
+	applyLegacyPermissionsOverrides,
+	terminalPresetsMatchPre3546Seed,
+} from "@superset/shared/agent-permissions-migration";
 import { TRPCError } from "@trpc/server";
 import { app } from "electron";
 import { env } from "main/env.main";
@@ -48,10 +52,6 @@ import {
 	DEFAULT_RINGTONE_ID,
 	isBuiltInRingtoneId,
 } from "shared/ringtones";
-import {
-	applyLegacyPermissionsOverrides,
-	terminalPresetsMatchPre3546Seed,
-} from "@superset/shared/agent-permissions-migration";
 import {
 	type AgentDefinitionId,
 	applyCustomAgentDefinitionPatch,

@@ -11,11 +11,7 @@ import { useTerminalSuggestionsStore } from "renderer/stores/terminal-suggestion
 import { useEffectiveTerminalTheme } from "renderer/stores/vibrancy";
 import { sanitizeForTitle } from "./commandBuffer";
 import { SessionKilledOverlay } from "./components";
-import {
-	DEFAULT_TERMINAL_FONT_FAMILY,
-	DEFAULT_TERMINAL_FONT_SIZE,
-	TERMINAL_OPTIONS,
-} from "./config";
+import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_OPTIONS } from "./config";
 import { getDefaultTerminalBg } from "./helpers";
 import {
 	useFileLinkClick,

@@ -663,25 +663,33 @@ export function WorkspacePage({
 	}, [handleBrowserShortcut]);
 
 	// Open diff viewer (⌘⇧L)
-	useHotkey("OPEN_DIFF_VIEWER", () => {
-		if (!isSidebarOpen) {
-			setSidebarOpen(true);
-		}
-		setSidebarMode(SidebarMode.Tabs);
-		if (workspaceId) {
-			setRightSidebarTab(workspaceId, RightSidebarTab.Search);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"OPEN_DIFF_VIEWER",
+		() => {
+			if (!isSidebarOpen) {
+				setSidebarOpen(true);
+			}
+			setSidebarMode(SidebarMode.Tabs);
+			if (workspaceId) {
+				setRightSidebarTab(workspaceId, RightSidebarTab.Search);
+			}
+		},
+		{ enabled: isActive },
+	);
 	// FORK NOTE: SEARCH_IN_FILES opens search tab (fork-specific hotkey)
-	useHotkey("SEARCH_IN_FILES", () => {
-		if (!isSidebarOpen) {
-			setSidebarOpen(true);
-		}
-		setSidebarMode(SidebarMode.Tabs);
-		if (workspaceId) {
-			setRightSidebarTab(workspaceId, RightSidebarTab.Search);
-		}
-	}, { enabled: isActive });
+	useHotkey(
+		"SEARCH_IN_FILES",
+		() => {
+			if (!isSidebarOpen) {
+				setSidebarOpen(true);
+			}
+			setSidebarMode(SidebarMode.Tabs);
+			if (workspaceId) {
+				setRightSidebarTab(workspaceId, RightSidebarTab.Search);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Toggle changes sidebar (⌘L)
 	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), { enabled: isActive });

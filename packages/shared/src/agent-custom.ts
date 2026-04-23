@@ -58,7 +58,9 @@ export const agentCustomDefinitionSchema = z.object({
 	command: z.string(),
 	promptCommand: z.string().optional(),
 	promptCommandSuffix: z.string().optional(),
-	promptTransport: z.enum(["argv", "stdin"] as [PromptTransport, ...PromptTransport[]]).optional(),
+	promptTransport: z
+		.enum(["argv", "stdin"] as [PromptTransport, ...PromptTransport[]])
+		.optional(),
 	taskPromptTemplate: z.string(),
 	contextPromptTemplateSystem: z.string().optional(),
 	contextPromptTemplateUser: z.string().optional(),

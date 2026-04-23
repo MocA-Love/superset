@@ -931,7 +931,7 @@ export class Session {
 	 * shell init commands (e.g. fnm's `use-on-cd` hook) opened an interactive
 	 * prompt before the OSC 133;A marker fired. See #3478.
 	 */
-	write(data: string, options?: { interactive?: boolean }): void {
+	write(data: string, _options?: { interactive?: boolean }): void {
 		if (!this.subprocess || !this.subprocessReady) {
 			throw new Error("PTY not spawned");
 		}
