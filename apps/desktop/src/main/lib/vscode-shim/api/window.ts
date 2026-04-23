@@ -22,6 +22,8 @@ import {
 } from "./webview";
 import { setActiveWorkspaceTextDocument } from "./workspace";
 
+const QUICK_PICK_ITEM_KIND_SEPARATOR = -1;
+
 interface TextEditor {
 	readonly document: {
 		uri: Uri;
@@ -354,7 +356,7 @@ export const window = {
 		const resolved = await items;
 		if (!resolved || resolved.length === 0) return undefined;
 		const selectableItems = resolved.filter((item) => {
-			return typeof item === "string" || item.kind !== -1;
+			return typeof item === "string" || item.kind !== QUICK_PICK_ITEM_KIND_SEPARATOR;
 		});
 		if (selectableItems.length === 0) return undefined;
 		const labels = selectableItems.map((item) =>
