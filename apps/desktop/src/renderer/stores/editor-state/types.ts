@@ -61,6 +61,7 @@ export interface FileViewerDocumentIdentity {
 	diffCategory?: ChangeCategory;
 	commitHash?: string;
 	oldPath?: string;
+	inlineOriginalContentKey?: string;
 }
 
 export function resolveEditorDocumentScope(
@@ -102,6 +103,7 @@ export function buildEditorDocumentKey({
 	diffCategory,
 	commitHash,
 	oldPath,
+	inlineOriginalContentKey,
 }: FileViewerDocumentIdentity): string {
 	const scope = resolveEditorDocumentScope(diffCategory);
 
@@ -110,6 +112,7 @@ export function buildEditorDocumentKey({
 			encodeDocumentKeyPart(workspaceId),
 			encodeDocumentKeyPart(scope),
 			encodeDocumentKeyPart(filePath),
+			encodeDocumentKeyPart(inlineOriginalContentKey),
 		].join("::");
 	}
 

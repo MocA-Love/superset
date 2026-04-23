@@ -140,6 +140,10 @@ const CompletionItemKind = {
 	TypeParameter: 24,
 } as const;
 const TextDocumentChangeReason = { Undo: 1, Redo: 2 } as const;
+const QuickPickItemKind = {
+	Default: 0,
+	Separator: -1,
+} as const;
 
 // Stub classes
 class Position {
@@ -733,6 +737,7 @@ export function createVscodeApi(): Record<string, unknown> {
 		SymbolKind,
 		CompletionItemKind,
 		TextDocumentChangeReason,
+		QuickPickItemKind,
 	};
 
 	// Proxy logger: log access to unimplemented APIs

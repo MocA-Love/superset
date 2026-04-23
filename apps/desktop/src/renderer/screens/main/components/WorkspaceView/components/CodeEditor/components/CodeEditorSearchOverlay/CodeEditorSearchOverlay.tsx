@@ -1,8 +1,11 @@
 import {
+	type ForwardedRef,
+	forwardRef,
 	type KeyboardEvent as ReactKeyboardEvent,
 	type MouseEvent as ReactMouseEvent,
 	useCallback,
 	useEffect,
+	useImperativeHandle,
 	useRef,
 	useState,
 } from "react";
@@ -29,6 +32,10 @@ interface CodeEditorSearchOverlayProps {
 	onReplaceNext: () => void;
 	onReplaceAll: () => void;
 	onClose: () => void;
+}
+
+export interface CodeEditorSearchOverlayHandle {
+	focusInput: () => void;
 }
 
 function OptionToggle({
@@ -58,29 +65,49 @@ function OptionToggle({
 	);
 }
 
-export function CodeEditorSearchOverlay({
-	isOpen,
-	query,
-	replaceText,
-	caseSensitive,
-	regexp,
-	wholeWord,
-	matchCount,
-	activeMatchIndex,
-	readOnly,
-	onQueryChange,
-	onReplaceTextChange,
-	onCaseSensitiveChange,
-	onRegexpChange,
-	onWholeWordChange,
-	onFindNext,
-	onFindPrevious,
-	onSelectAllMatches,
-	onReplaceNext,
-	onReplaceAll,
-	onClose,
-}: CodeEditorSearchOverlayProps) {
+export const CodeEditorSearchOverlay = forwardRef<
+	CodeEditorSearchOverlayHandle,
+	CodeEditorSearchOverlayProps
+>(function CodeEditorSearchOverlay(
+	{
+		isOpen,
+		query,
+		replaceText,
+		caseSensitive,
+		regexp,
+		wholeWord,
+		matchCount,
+		activeMatchIndex,
+		readOnly,
+		onQueryChange,
+		onReplaceTextChange,
+		onCaseSensitiveChange,
+		onRegexpChange,
+		onWholeWordChange,
+		onFindNext,
+		onFindPrevious,
+		onSelectAllMatches,
+		onReplaceNext,
+		onReplaceAll,
+		onClose,
+	},
+	ref: ForwardedRef<CodeEditorSearchOverlayHandle>,
+) {
 	const searchInputRef = useRef<HTMLInputElement>(null);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			focusInput: () => {
+				if (searchInputRef.current) {
+					searchInputRef.current.focus();
+					searchInputRef.current.select();
+				}
+			},
+		}),
+		[],
+	);
+
 	const MIN_WIDTH = 400;
 	const [width, setWidth] = useState(416); // default ~26rem
 	const dragStartX = useRef<number | null>(null);
@@ -292,4 +319,4 @@ export function CodeEditorSearchOverlay({
 			</div>
 		</div>
 	);
-}
+});

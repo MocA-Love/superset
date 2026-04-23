@@ -13,6 +13,7 @@ import {
 	LuSparkles,
 	LuSquareArrowOutUpRight,
 } from "react-icons/lu";
+import { SiOpenai } from "react-icons/si";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import {
@@ -132,10 +133,19 @@ export function VscodeExtensionButtons() {
 			{installed.some((e) => e.id === "openai.chatgpt") && (
 				<ExtensionButton
 					tab={RightSidebarTab.Codex}
-					icon={LuSparkles}
+					icon={SiOpenai}
 					label="Codex"
 					viewType="chatgpt.sidebarView"
 					extensionId="openai.chatgpt"
+				/>
+			)}
+			{installed.some((e) => e.id === "moonshot-ai.kimi-code") && (
+				<ExtensionButton
+					tab={RightSidebarTab.Kimi}
+					icon={LuSparkles}
+					label="Kimi"
+					viewType="kimi.webview"
+					extensionId="moonshot-ai.kimi-code"
 				/>
 			)}
 		</div>

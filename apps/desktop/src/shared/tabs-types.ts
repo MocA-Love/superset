@@ -116,6 +116,10 @@ export interface FileViewerState {
 	commitHash?: string;
 	/** Canonical absolute original path for renamed files */
 	oldPath?: string;
+	/** Optional inline baseline/original content for extension-driven diffs */
+	inlineOriginalContent?: string;
+	/** Stable identity for inlineOriginalContent so pane reuse/document keys stay correct */
+	inlineOriginalContentKey?: string;
 	/** Initial line to scroll to (raw mode only, transient - applied once) */
 	initialLine?: number;
 	/** Initial column to scroll to (raw mode only, transient - applied once) */

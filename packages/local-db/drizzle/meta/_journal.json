@@ -486,10 +486,17 @@
       "breakpoints": true
     },
     {
-      "idx": 40,
+      "idx": 69,
       "version": "6",
       "when": 1776796221146,
       "tag": "0040_agent_preset_permissions_migrated_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "6",
+      "when": 1776912086245,
+      "tag": "0069_add_crush_model",
       "breakpoints": true
     }
   ]

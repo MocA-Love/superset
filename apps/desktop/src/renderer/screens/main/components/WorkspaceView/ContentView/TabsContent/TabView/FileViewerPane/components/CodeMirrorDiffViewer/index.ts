@@ -1,1 +1,4 @@
-export { CodeMirrorDiffViewer } from "./CodeMirrorDiffViewer";
+export {
+	CodeMirrorDiffViewer,
+	type CodeMirrorDiffViewerHandle,
+} from "./CodeMirrorDiffViewer";

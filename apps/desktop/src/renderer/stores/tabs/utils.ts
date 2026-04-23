@@ -196,6 +196,8 @@ export interface CreateFileViewerPaneOptions {
 	fileStatus?: FileStatus;
 	commitHash?: string;
 	oldPath?: string;
+	inlineOriginalContent?: string;
+	inlineOriginalContentKey?: string;
 	/** Line to scroll to (raw mode only) */
 	line?: number;
 	/** Column to scroll to (raw mode only) */
@@ -226,6 +228,8 @@ export const createFileViewerPane = (
 		diffCategory: options.diffCategory,
 		commitHash: options.commitHash,
 		oldPath: options.oldPath,
+		inlineOriginalContent: options.inlineOriginalContent,
+		inlineOriginalContentKey: options.inlineOriginalContentKey,
 		initialLine: options.line,
 		initialColumn: options.column,
 		displayName: options.displayName,
@@ -759,11 +763,14 @@ export const updateHistoryStack = (
 
 export const fileViewerTargetsMatch = (
 	fileViewer:
-		| Pick<FileViewerState, "filePath" | "diffCategory" | "commitHash">
+		| Pick<
+				FileViewerState,
+				"filePath" | "diffCategory" | "commitHash" | "inlineOriginalContentKey"
+		  >
 		| undefined,
 	options: Pick<
 		AddFileViewerPaneOptions,
-		"filePath" | "diffCategory" | "commitHash"
+		"filePath" | "diffCategory" | "commitHash" | "inlineOriginalContentKey"
 	>,
 ): boolean => {
 	if (!fileViewer) {
@@ -784,7 +791,8 @@ export const fileViewerTargetsMatch = (
 	return (
 		filePathsMatch &&
 		fileViewer.diffCategory === options.diffCategory &&
-		fileViewer.commitHash === options.commitHash
+		fileViewer.commitHash === options.commitHash &&
+		fileViewer.inlineOriginalContentKey === options.inlineOriginalContentKey
 	);
 };
 
@@ -901,6 +909,11 @@ export const applyFileViewerOpenOptionsToPane = (
 		viewMode: options.viewMode ?? pane.fileViewer.viewMode,
 		isPinned: pane.fileViewer.isPinned || (options.isPinned ?? false),
 		oldPath: options.oldPath ?? pane.fileViewer.oldPath,
+		inlineOriginalContent:
+			options.inlineOriginalContent ?? pane.fileViewer.inlineOriginalContent,
+		inlineOriginalContentKey:
+			options.inlineOriginalContentKey ??
+			pane.fileViewer.inlineOriginalContentKey,
 		initialLine: options.line ?? pane.fileViewer.initialLine,
 		initialColumn: options.column ?? pane.fileViewer.initialColumn,
 		displayName: options.displayName ?? pane.fileViewer.displayName,
@@ -915,6 +928,10 @@ export const applyFileViewerOpenOptionsToPane = (
 		nextFileViewer.viewMode === pane.fileViewer.viewMode &&
 		nextFileViewer.isPinned === pane.fileViewer.isPinned &&
 		nextFileViewer.oldPath === pane.fileViewer.oldPath &&
+		nextFileViewer.inlineOriginalContent ===
+			pane.fileViewer.inlineOriginalContent &&
+		nextFileViewer.inlineOriginalContentKey ===
+			pane.fileViewer.inlineOriginalContentKey &&
 		nextFileViewer.initialLine === pane.fileViewer.initialLine &&
 		nextFileViewer.initialColumn === pane.fileViewer.initialColumn &&
 		nextFileViewer.displayName === pane.fileViewer.displayName

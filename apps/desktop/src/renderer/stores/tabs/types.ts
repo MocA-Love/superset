@@ -88,6 +88,8 @@ export interface AddFileViewerPaneOptions {
 	commitHash?: string;
 	/** Canonical absolute original path for renamed files */
 	oldPath?: string;
+	inlineOriginalContent?: string;
+	inlineOriginalContentKey?: string;
 	/** Line to scroll to (raw mode only) */
 	line?: number;
 	/** Column to scroll to (raw mode only) */
