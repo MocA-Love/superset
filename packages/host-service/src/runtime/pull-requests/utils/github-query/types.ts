@@ -34,9 +34,9 @@ export interface GraphQLPullRequestNode {
 	isDraft: boolean;
 	headRefName: string;
 	headRefOid: string;
-	headRepositoryOwner: {
-		login: string | null;
-	} | null;
+	isCrossRepository: boolean;
+	headRepositoryOwner: { login: string } | null;
+	headRepository: { name: string } | null;
 	reviewDecision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
 	updatedAt: string;
 	statusCheckRollup: {

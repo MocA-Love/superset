@@ -1,11 +1,8 @@
 import type { MosaicNode } from "react-mosaic-component";
 import { updateTree } from "react-mosaic-component";
 import { getFileOpenMode } from "renderer/hooks/useFileOpenMode";
-import { getRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { posthog } from "renderer/lib/posthog";
 import { trpcTabsStorage } from "renderer/lib/trpc-storage";
-import { navigatePersistentWebview } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/TabView/BrowserPane/hooks/usePersistentWebview/runtime";
-import { tearoffPaneIds } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/pane-guards";
 import { deleteDocumentBuffer } from "renderer/stores/editor-state/editorBufferRegistry";
 import { useEditorDocumentsStore } from "renderer/stores/editor-state/useEditorDocumentsStore";
 import { useEditorSessionsStore } from "renderer/stores/editor-state/useEditorSessionsStore";
@@ -25,7 +22,7 @@ import {
 import type {
 	AddFileViewerPaneOptions,
 	AddTabWithMultiplePanesOptions,
-	ClosedTabEntry,
+	CommentPaneData,
 	TabsState,
 	TabsStore,
 } from "./types";
@@ -34,22 +31,17 @@ import {
 	applyFileViewerOpenOptionsToPane,
 	buildMultiPaneLayout,
 	type CreatePaneOptions,
-	createActionLogsTabWithPane,
 	createBrowserPane,
 	createBrowserTabWithPane,
 	createChatPane,
 	createChatTabWithPane,
-	createDatabaseExplorerTabWithPane,
+	createCommentTabWithPane,
 	createDevToolsPane,
 	createFileViewerPane,
-	createGitGraphTabWithPane,
 	createPane,
-	createReferenceGraphTabWithPane,
 	createTabWithPane,
-	createVscodeExtensionTabWithPane,
 	equalizeSplitPercentages,
 	extractPaneIdsFromLayout,
-	findPanePathInLayout,
 	findReusableFileViewerPane,
 	generateId,
 	generateTabName,
@@ -61,28 +53,7 @@ import {
 	resolveActiveTabIdForWorkspace,
 	resolveFileViewerMode,
 } from "./utils";
-import {
-	killTerminalForPane,
-	releaseTerminalCache,
-} from "./utils/terminal-cleanup";
-
-const DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE = 50;
-
-const getRelativeFileViewerSplitPercentage = (
-	position: "top" | "bottom" | "left" | "right",
-	useRightSidebarOpenViewWidth?: boolean,
-): number => {
-	if (
-		!useRightSidebarOpenViewWidth ||
-		position === "top" ||
-		position === "bottom"
-	) {
-		return DEFAULT_FILE_VIEWER_SPLIT_PERCENTAGE;
-	}
-
-	const sidebarWidth = getRightSidebarOpenViewWidth();
-	return position === "left" ? sidebarWidth : 100 - sidebarWidth;
-};
+import { killTerminalForPane } from "./utils/terminal-cleanup";
 
 /**
  * Finds the next best tab to activate when closing a tab.
@@ -157,62 +128,6 @@ const normalizePersistedChatPane = (pane: TabsState["panes"][string]): void => {
 	delete legacyPane.chatMastra;
 };
 
-const sanitizePersistedVscodeExtensionPane = (
-	pane: TabsState["panes"][string],
-): TabsState["panes"][string] => {
-	if (
-		pane.type !== "vscode-extension" ||
-		pane.vscodeExtension?.source !== "panel" ||
-		!pane.vscodeExtension.sessionId
-	) {
-		return pane;
-	}
-
-	return {
-		...pane,
-		vscodeExtension: {
-			...pane.vscodeExtension,
-			sessionId: undefined,
-		},
-	};
-};
-
-const sanitizePersistedPanes = (
-	panes: TabsState["panes"],
-): TabsState["panes"] => {
-	let hasChanges = false;
-	const sanitizedEntries = Object.entries(panes).map(([paneId, pane]) => {
-		const nextPane = sanitizePersistedVscodeExtensionPane(pane);
-		if (nextPane !== pane) {
-			hasChanges = true;
-		}
-		return [paneId, nextPane] as const;
-	});
-
-	return hasChanges ? Object.fromEntries(sanitizedEntries) : panes;
-};
-
-const sanitizeClosedTabsStack = (
-	closedTabsStack: ClosedTabEntry[],
-): ClosedTabEntry[] => {
-	let hasChanges = false;
-	const nextEntries = closedTabsStack.map((entry) => {
-		let entryChanged = false;
-		const nextPanes = entry.panes.map((pane) => {
-			const nextPane = sanitizePersistedVscodeExtensionPane(pane);
-			if (nextPane !== pane) {
-				hasChanges = true;
-				entryChanged = true;
-			}
-			return nextPane;
-		});
-
-		return entryChanged ? { ...entry, panes: nextPanes } : entry;
-	});
-
-	return hasChanges ? nextEntries : closedTabsStack;
-};
-
 const deriveTabName = (
 	panes: Record<string, { tabId: string; name: string }>,
 	tabId: string,
@@ -274,31 +189,16 @@ const cleanupEditorPaneState = (paneId: string): void => {
 	deleteDocumentBuffer(session.documentKey);
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: preload injects untyped data
-const _tearoffData: any =
-	typeof window !== "undefined" ? window.App?.tearoffData : null;
-
 export const useTabsStore = create<TabsStore>()(
 	devtools(
 		persist(
 			(set, get) => ({
-				tabs: _tearoffData ? [_tearoffData.tab] : [],
-				panes: _tearoffData?.panes ?? {},
-				activeTabIds: _tearoffData
-					? { [_tearoffData.tab.workspaceId]: _tearoffData.tab.id }
-					: {},
-				focusedPaneIds: _tearoffData
-					? {
-							[_tearoffData.tab.id]: getFirstPaneId(_tearoffData.tab.layout),
-						}
-					: {},
-				tabHistoryStacks: _tearoffData
-					? { [_tearoffData.tab.workspaceId]: [] }
-					: {},
+				tabs: [],
+				panes: {},
+				activeTabIds: {},
+				focusedPaneIds: {},
+				tabHistoryStacks: {},
 				closedTabsStack: [],
-				hasHydrated: Boolean(_tearoffData),
-
-				setHasHydrated: (hasHydrated) => set({ hasHydrated }),
 
 				// Tab operations
 				addTab: (workspaceId, options?: CreatePaneOptions) => {
@@ -467,14 +367,7 @@ export const useTabsStore = create<TabsStore>()(
 						.filter(Boolean);
 					const closedEntry = {
 						tab: tabToRemove,
-						panes:
-							sanitizeClosedTabsStack([
-								{
-									tab: tabToRemove,
-									panes: closedPanes,
-									closedAt: Date.now(),
-								},
-							])[0]?.panes ?? closedPanes,
+						panes: closedPanes,
 						closedAt: Date.now(),
 					};
 					const closedTabsStack = [closedEntry, ...state.closedTabsStack].slice(
@@ -495,7 +388,6 @@ export const useTabsStore = create<TabsStore>()(
 					const newPanes = { ...state.panes };
 					for (const paneId of paneIds) {
 						delete newPanes[paneId];
-						releaseTerminalCache(paneId);
 					}
 
 					const newTabs = state.tabs.filter((t) => t.id !== tabId);
@@ -531,12 +423,6 @@ export const useTabsStore = create<TabsStore>()(
 						tabs: state.tabs.map((t) =>
 							t.id === tabId ? { ...t, userTitle: newName } : t,
 						),
-					}));
-				},
-
-				setTabColor: (tabId, color) => {
-					set((state) => ({
-						tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, color } : t)),
 					}));
 				},
 
@@ -674,7 +560,6 @@ export const useTabsStore = create<TabsStore>()(
 								killTerminalForPane(paneId);
 							}
 							delete newPanes[paneId];
-							releaseTerminalCache(paneId);
 						}
 					}
 
@@ -988,13 +873,8 @@ export const useTabsStore = create<TabsStore>()(
 
 						// If clicking the same file that's already in preview, just focus it
 						if (isSameFile) {
-							// Conflicted files must default to the conflict viewer even
-							// when callers do not pass an explicit viewMode.
-							const conflictFallbackViewMode =
-								options.diffCategory === "conflicted"
-									? "conflict"
-									: existingFileViewer.viewMode;
-							const nextViewMode = options.viewMode ?? conflictFallbackViewMode;
+							const nextViewMode =
+								options.viewMode ?? existingFileViewer.viewMode;
 							const shouldUpdateViewerState =
 								nextViewMode !== existingFileViewer.viewMode ||
 								options.line !== undefined ||
@@ -1124,90 +1004,38 @@ export const useTabsStore = create<TabsStore>()(
 						return newPane.id;
 					}
 
-					const relativeSplitPosition =
-						options.relativeSplitPosition ?? "right";
-					const splitPercentage = getRelativeFileViewerSplitPercentage(
-						relativeSplitPosition,
-						options.useRightSidebarOpenViewWidth,
-					);
-					const splitTargetTab =
-						options.relativeToTabId && options.relativeToPaneId
-							? (state.tabs.find((tab) => tab.id === options.relativeToTabId) ??
-								null)
-							: null;
-					const splitTargetPane =
-						splitTargetTab && options.relativeToPaneId
-							? state.panes[options.relativeToPaneId]
-							: null;
-					const splitTargetPath =
-						splitTargetTab &&
-						splitTargetPane &&
-						splitTargetPane.tabId === splitTargetTab.id
-							? findPanePathInLayout(splitTargetTab.layout, splitTargetPane.id)
-							: null;
-					const resolvedRelativeTarget =
-						splitTargetTab && splitTargetPane && splitTargetPath !== null
-							? {
-									tab: splitTargetTab,
-									pane: splitTargetPane,
-									path: splitTargetPath,
-								}
-							: null;
+					const newPane = createFileViewerPane(activeTab.id, options);
 
-					const targetTab = resolvedRelativeTarget?.tab ?? activeTab;
-					const newPaneForTarget = createFileViewerPane(targetTab.id, options);
-					const targetLayoutNode =
-						resolvedRelativeTarget?.pane.id ?? targetTab.layout;
-					const splitDirection =
-						relativeSplitPosition === "top" ||
-						relativeSplitPosition === "bottom"
-							? "column"
-							: "row";
-					const insertBeforeTarget =
-						relativeSplitPosition === "left" || relativeSplitPosition === "top";
-					const splitNode: MosaicNode<string> = {
-						direction: splitDirection,
-						first: insertBeforeTarget ? newPaneForTarget.id : targetLayoutNode,
-						second: insertBeforeTarget ? targetLayoutNode : newPaneForTarget.id,
-						splitPercentage,
+					const newLayout: MosaicNode<string> = {
+						direction: "row",
+						first: activeTab.layout,
+						second: newPane.id,
+						splitPercentage: 50,
 					};
-					const newLayout: MosaicNode<string> = resolvedRelativeTarget
-						? resolvedRelativeTarget.path.length > 0
-							? updateTree(targetTab.layout, [
-									{
-										path: resolvedRelativeTarget.path,
-										spec: { $set: splitNode },
-									},
-								])
-							: splitNode
-						: splitNode;
 
-					const newPanes = {
-						...state.panes,
-						[newPaneForTarget.id]: newPaneForTarget,
-					};
-					const tabName = deriveTabName(newPanes, targetTab.id);
+					const newPanes = { ...state.panes, [newPane.id]: newPane };
+					const tabName = deriveTabName(newPanes, activeTab.id);
 
 					set({
 						tabs: state.tabs.map((t) =>
-							t.id === targetTab.id
+							t.id === activeTab.id
 								? { ...t, layout: newLayout, name: tabName }
 								: t,
 						),
 						panes: newPanes,
 						focusedPaneIds: {
 							...state.focusedPaneIds,
-							[targetTab.id]: newPaneForTarget.id,
+							[activeTab.id]: newPane.id,
 						},
 					});
 
 					posthog.capture("panel_opened", {
 						panel_type: "file_viewer",
-						workspace_id: targetTab.workspaceId,
-						pane_id: newPaneForTarget.id,
+						workspace_id: activeTab.workspaceId,
+						pane_id: newPane.id,
 					});
 
-					return newPaneForTarget.id;
+					return newPane.id;
 				},
 
 				removePane: (paneId) => {
@@ -1261,7 +1089,6 @@ export const useTabsStore = create<TabsStore>()(
 					const newPanes = { ...state.panes };
 					for (const id of paneIdsToRemove) {
 						delete newPanes[id];
-						releaseTerminalCache(id);
 					}
 
 					let newFocusedPaneIds = state.focusedPaneIds;
@@ -1349,40 +1176,6 @@ export const useTabsStore = create<TabsStore>()(
 						tabs: state.tabs.map((t) =>
 							t.id === pane.tabId ? { ...t, name: tabName } : t,
 						),
-					});
-				},
-				setFileViewerDisplayName: (paneId, displayName) => {
-					set((state) => {
-						const pane = state.panes[paneId];
-						if (
-							!pane?.fileViewer ||
-							pane.userTitle?.trim() ||
-							(pane.name === displayName &&
-								pane.fileViewer.displayName === displayName)
-						) {
-							return state;
-						}
-
-						const nextPanes = {
-							...state.panes,
-							[paneId]: {
-								...pane,
-								name: displayName,
-								fileViewer: {
-									...pane.fileViewer,
-									displayName,
-								},
-							},
-						};
-
-						return {
-							panes: nextPanes,
-							tabs: state.tabs.map((tab) =>
-								tab.id === pane.tabId
-									? { ...tab, name: deriveTabName(nextPanes, tab.id) }
-									: tab,
-							),
-						};
 					});
 				},
 				setPaneWorkspaceRun: (paneId, workspaceRun) => {
@@ -1626,10 +1419,7 @@ export const useTabsStore = create<TabsStore>()(
 						paneType === "chat"
 							? createChatPane(tabId)
 							: paneType === "webview"
-								? createBrowserPane(
-										tabId,
-										options?.url ? { url: options.url } : undefined,
-									)
+								? createBrowserPane(tabId)
 								: createPane(tabId, "terminal", options);
 					const panelType =
 						paneType === "chat"
@@ -1698,10 +1488,7 @@ export const useTabsStore = create<TabsStore>()(
 						paneType === "chat"
 							? createChatPane(tabId)
 							: paneType === "webview"
-								? createBrowserPane(
-										tabId,
-										options?.url ? { url: options.url } : undefined,
-									)
+								? createBrowserPane(tabId)
 								: createPane(tabId, "terminal", options);
 					const panelType =
 						paneType === "chat"
@@ -1816,6 +1603,89 @@ export const useTabsStore = create<TabsStore>()(
 					set(withDerivedTabNames(result, [targetTabId]));
 				},
 
+				// Comment operations
+				openCommentPane: (workspaceId: string, comment: CommentPaneData) => {
+					const state = get();
+
+					// Reuse an existing comment pane in this workspace if one exists
+					const workspaceTabIds = new Set(
+						state.tabs
+							.filter((t) => t.workspaceId === workspaceId)
+							.map((t) => t.id),
+					);
+					const existingPane = Object.values(state.panes).find(
+						(p) => p.type === "comment" && workspaceTabIds.has(p.tabId),
+					);
+
+					if (existingPane) {
+						const newPanes = {
+							...state.panes,
+							[existingPane.id]: {
+								...existingPane,
+								name: `@${comment.authorLogin}`,
+								comment,
+							},
+						};
+						const tabName = deriveTabName(newPanes, existingPane.tabId);
+						const nextTabs = state.tabs.map((t) =>
+							t.id === existingPane.tabId ? { ...t, name: tabName } : t,
+						);
+						const activationState = activatePaneInWorkspace({
+							workspaceId,
+							paneId: existingPane.id,
+							tabs: nextTabs,
+							panes: newPanes,
+							activeTabIds: state.activeTabIds,
+							focusedPaneIds: state.focusedPaneIds,
+							tabHistoryStacks: state.tabHistoryStacks,
+						});
+
+						if (!activationState) {
+							set({ panes: newPanes, tabs: nextTabs });
+							return { tabId: existingPane.tabId, paneId: existingPane.id };
+						}
+
+						set({ ...activationState, tabs: nextTabs });
+						return { tabId: existingPane.tabId, paneId: existingPane.id };
+					}
+
+					const { tab, pane } = createCommentTabWithPane(workspaceId, comment);
+
+					const currentActiveId = state.activeTabIds[workspaceId];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
+					const newHistoryStack = currentActiveId
+						? [
+								currentActiveId,
+								...historyStack.filter((id) => id !== currentActiveId),
+							]
+						: historyStack;
+
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, [pane.id]: pane },
+						activeTabIds: {
+							...state.activeTabIds,
+							[workspaceId]: tab.id,
+						},
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: pane.id,
+						},
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: newHistoryStack,
+						},
+					});
+
+					posthog.capture("panel_opened", {
+						panel_type: "comment",
+						workspace_id: workspaceId,
+						pane_id: pane.id,
+					});
+
+					return { tabId: tab.id, paneId: pane.id };
+				},
+
 				// Browser operations
 				addBrowserTab: (workspaceId: string, url?: string) => {
 					const state = get();
@@ -1854,243 +1724,6 @@ export const useTabsStore = create<TabsStore>()(
 
 					posthog.capture("panel_opened", {
 						panel_type: "browser",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
-
-					return { tabId: tab.id, paneId: pane.id };
-				},
-
-				addDatabaseExplorerTab: (
-					workspaceId: string,
-					connectionId?: string | null,
-				) => {
-					const state = get();
-
-					const { tab, pane } = createDatabaseExplorerTabWithPane(
-						workspaceId,
-						connectionId,
-					);
-
-					const currentActiveId = state.activeTabIds[workspaceId];
-					const historyStack = state.tabHistoryStacks[workspaceId] || [];
-					const newHistoryStack = currentActiveId
-						? [
-								currentActiveId,
-								...historyStack.filter((id) => id !== currentActiveId),
-							]
-						: historyStack;
-
-					set({
-						tabs: [...state.tabs, tab],
-						panes: { ...state.panes, [pane.id]: pane },
-						activeTabIds: {
-							...state.activeTabIds,
-							[workspaceId]: tab.id,
-						},
-						focusedPaneIds: {
-							...state.focusedPaneIds,
-							[tab.id]: pane.id,
-						},
-						tabHistoryStacks: {
-							...state.tabHistoryStacks,
-							[workspaceId]: newHistoryStack,
-						},
-					});
-
-					posthog.capture("panel_opened", {
-						panel_type: "database-explorer",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
-
-					return { tabId: tab.id, paneId: pane.id };
-				},
-
-				addVscodeExtensionTab: (
-					workspaceId: string,
-					extensionId: string,
-					viewType: string,
-					name: string,
-					source: "view" | "panel" = "view",
-					sessionId?: string,
-				) => {
-					const state = get();
-
-					const { tab, pane } = createVscodeExtensionTabWithPane(
-						workspaceId,
-						extensionId,
-						viewType,
-						name,
-						source,
-						sessionId,
-					);
-
-					const currentActiveId = state.activeTabIds[workspaceId];
-					const historyStack = state.tabHistoryStacks[workspaceId] || [];
-					const newHistoryStack = currentActiveId
-						? [
-								currentActiveId,
-								...historyStack.filter((id) => id !== currentActiveId),
-							]
-						: historyStack;
-
-					set({
-						tabs: [...state.tabs, tab],
-						panes: { ...state.panes, [pane.id]: pane },
-						activeTabIds: {
-							...state.activeTabIds,
-							[workspaceId]: tab.id,
-						},
-						focusedPaneIds: {
-							...state.focusedPaneIds,
-							[tab.id]: pane.id,
-						},
-						tabHistoryStacks: {
-							...state.tabHistoryStacks,
-							[workspaceId]: newHistoryStack,
-						},
-					});
-
-					posthog.capture("panel_opened", {
-						panel_type: "vscode-extension",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
-
-					return { tabId: tab.id, paneId: pane.id };
-				},
-
-				addGitGraphTab: (workspaceId: string, worktreePath: string) => {
-					const state = get();
-
-					const { tab, pane } = createGitGraphTabWithPane(
-						workspaceId,
-						worktreePath,
-					);
-
-					const currentActiveId = state.activeTabIds[workspaceId];
-					const historyStack = state.tabHistoryStacks[workspaceId] || [];
-					const newHistoryStack = currentActiveId
-						? [
-								currentActiveId,
-								...historyStack.filter((id) => id !== currentActiveId),
-							]
-						: historyStack;
-
-					set({
-						tabs: [...state.tabs, tab],
-						panes: { ...state.panes, [pane.id]: pane },
-						activeTabIds: {
-							...state.activeTabIds,
-							[workspaceId]: tab.id,
-						},
-						focusedPaneIds: {
-							...state.focusedPaneIds,
-							[tab.id]: pane.id,
-						},
-						tabHistoryStacks: {
-							...state.tabHistoryStacks,
-							[workspaceId]: newHistoryStack,
-						},
-					});
-
-					return { tabId: tab.id, paneId: pane.id };
-				},
-
-				addReferenceGraphTab: (
-					workspaceId: string,
-					absolutePath: string,
-					languageId: string,
-					line: number,
-					column: number,
-				) => {
-					const state = get();
-
-					const { tab, pane } = createReferenceGraphTabWithPane(
-						workspaceId,
-						absolutePath,
-						languageId,
-						line,
-						column,
-					);
-
-					const currentActiveId = state.activeTabIds[workspaceId];
-					const historyStack = state.tabHistoryStacks[workspaceId] || [];
-					const newHistoryStack = currentActiveId
-						? [
-								currentActiveId,
-								...historyStack.filter((id) => id !== currentActiveId),
-							]
-						: historyStack;
-
-					set({
-						tabs: [...state.tabs, tab],
-						panes: { ...state.panes, [pane.id]: pane },
-						activeTabIds: {
-							...state.activeTabIds,
-							[workspaceId]: tab.id,
-						},
-						focusedPaneIds: {
-							...state.focusedPaneIds,
-							[tab.id]: pane.id,
-						},
-						tabHistoryStacks: {
-							...state.tabHistoryStacks,
-							[workspaceId]: newHistoryStack,
-						},
-					});
-
-					return { tabId: tab.id, paneId: pane.id };
-				},
-
-				addActionLogsTab: (
-					workspaceId: string,
-					jobs: Array<{
-						detailsUrl: string;
-						name: string;
-						status: "success" | "failure" | "pending" | "skipped" | "cancelled";
-					}>,
-					initialJobIndex?: number,
-					runId?: number,
-				) => {
-					const state = get();
-
-					const { tab, pane } = createActionLogsTabWithPane(
-						workspaceId,
-						jobs,
-						initialJobIndex,
-						runId,
-					);
-
-					const currentActiveId = state.activeTabIds[workspaceId];
-					const historyStack = state.tabHistoryStacks[workspaceId] || [];
-					const newHistoryStack = currentActiveId
-						? [
-								currentActiveId,
-								...historyStack.filter((id) => id !== currentActiveId),
-							]
-						: historyStack;
-
-					set({
-						tabs: [...state.tabs, tab],
-						panes: { ...state.panes, [pane.id]: pane },
-						activeTabIds: {
-							...state.activeTabIds,
-							[workspaceId]: tab.id,
-						},
-						focusedPaneIds: {
-							...state.focusedPaneIds,
-							[tab.id]: pane.id,
-						},
-						tabHistoryStacks: {
-							...state.tabHistoryStacks,
-							[workspaceId]: newHistoryStack,
-						},
-					});
-
-					posthog.capture("panel_opened", {
-						panel_type: "action-logs",
 						workspace_id: workspaceId,
 						pane_id: pane.id,
 					});
@@ -2159,7 +1792,6 @@ export const useTabsStore = create<TabsStore>()(
 								t.id === existingPane.tabId ? { ...t, name: tabName } : t,
 							),
 						});
-						navigatePersistentWebview(existingPane.id, url);
 					} else {
 						// No existing browser pane — add one to the active tab
 						const resolvedActiveTabId = resolveActiveTabIdForWorkspace({
@@ -2217,37 +1849,11 @@ export const useTabsStore = create<TabsStore>()(
 					}
 				},
 
-				setDatabaseExplorerConnection: (paneId, connectionId) => {
-					set((state) => {
-						const pane = state.panes[paneId];
-						if (!pane || pane.type !== "database-explorer") {
-							return state;
-						}
-
-						if (pane.databaseExplorer?.connectionId === connectionId) {
-							return state;
-						}
-
-						return {
-							panes: {
-								...state.panes,
-								[paneId]: {
-									...pane,
-									databaseExplorer: {
-										connectionId,
-									},
-								},
-							},
-						};
-					});
-				},
-
 				updateBrowserUrl: (
 					paneId: string,
 					url: string,
 					title: string,
 					faviconUrl?: string,
-					historyNavDirection?: "back" | "forward",
 				) => {
 					const state = get();
 					const pane = state.panes[paneId];
@@ -2285,46 +1891,6 @@ export const useTabsStore = create<TabsStore>()(
 							),
 						});
 						return;
-					}
-
-					// Only reuse adjacent history entries when the caller explicitly
-					// signals that a native back/forward gesture triggered this update.
-					// URL-bar navigation or loadURL() calls must never match an adjacent
-					// entry — they should always truncate forward history and push a new
-					// entry, even if the URL happens to coincide with a neighbour.
-					if (historyNavDirection) {
-						const offset = historyNavDirection === "back" ? -1 : 1;
-						const adjacentIndex = historyIndex + offset;
-						const adjacentEntry = prevHistory[adjacentIndex];
-						if (adjacentEntry && adjacentEntry.url === url) {
-							const history = [...prevHistory];
-							history[adjacentIndex] = {
-								...adjacentEntry,
-								title,
-								...(faviconUrl !== undefined ? { faviconUrl } : {}),
-							};
-							const newPanes = {
-								...state.panes,
-								[paneId]: {
-									...pane,
-									name: title || "Browser",
-									browser: {
-										...pane.browser,
-										currentUrl: url,
-										history,
-										historyIndex: adjacentIndex,
-									},
-								},
-							};
-							const tabName = deriveTabName(newPanes, pane.tabId);
-							set({
-								panes: newPanes,
-								tabs: state.tabs.map((t) =>
-									t.id === pane.tabId ? { ...t, name: tabName } : t,
-								),
-							});
-							return;
-						}
 					}
 
 					// Truncate forward entries when navigating from a non-end position
@@ -2634,78 +2200,6 @@ export const useTabsStore = create<TabsStore>()(
 					});
 				},
 
-				// Tearoff operations
-				/** Remove a tab from the store WITHOUT killing terminal sessions. */
-				detachTabForTearoff: (tabId) => {
-					const state = get();
-					const tabToRemove = state.tabs.find((t) => t.id === tabId);
-					if (!tabToRemove) return;
-
-					const paneIds = getPaneIdsForTab(state.panes, tabId);
-
-					// Mark panes as "tearing off" so terminal cleanup skips killing them
-					for (const paneId of paneIds) {
-						tearoffPaneIds.add(paneId);
-					}
-					// Clean up flags after a delay (tearoff window should be ready by then)
-					setTimeout(() => {
-						for (const paneId of paneIds) {
-							tearoffPaneIds.delete(paneId);
-						}
-					}, 5000);
-
-					const newPanes = { ...state.panes };
-					for (const paneId of paneIds) {
-						delete newPanes[paneId];
-					}
-
-					const workspaceId = tabToRemove.workspaceId;
-					const newActiveTabIds = { ...state.activeTabIds };
-					if (state.activeTabIds[workspaceId] === tabId) {
-						newActiveTabIds[workspaceId] = findNextTab(state, tabId);
-					}
-
-					const newFocusedPaneIds = { ...state.focusedPaneIds };
-					delete newFocusedPaneIds[tabId];
-
-					set({
-						tabs: state.tabs.filter((t) => t.id !== tabId),
-						panes: newPanes,
-						activeTabIds: newActiveTabIds,
-						focusedPaneIds: newFocusedPaneIds,
-						tabHistoryStacks: {
-							...state.tabHistoryStacks,
-							[workspaceId]: (state.tabHistoryStacks[workspaceId] || []).filter(
-								(id) => id !== tabId,
-							),
-						},
-					});
-				},
-
-				hydrateFromTearoff: (tab, panes) => {
-					set({
-						tabs: [tab],
-						panes,
-						activeTabIds: { [tab.workspaceId]: tab.id },
-						focusedPaneIds: { [tab.id]: getFirstPaneId(tab.layout) },
-						tabHistoryStacks: { [tab.workspaceId]: [] },
-						closedTabsStack: [],
-					});
-				},
-
-				hydrateReturnedTab: (tab, panes) => {
-					const state = get();
-					set({
-						tabs: [...state.tabs, tab],
-						panes: { ...state.panes, ...panes },
-						activeTabIds: { ...state.activeTabIds, [tab.workspaceId]: tab.id },
-						focusedPaneIds: {
-							...state.focusedPaneIds,
-							[tab.id]: getFirstPaneId(tab.layout),
-						},
-					});
-				},
-
 				// Query helpers
 				getTabsByWorkspace: (workspaceId) => {
 					return get().tabs.filter((t) => t.workspaceId === workspaceId);
@@ -2739,20 +2233,6 @@ export const useTabsStore = create<TabsStore>()(
 				name: "tabs-storage",
 				version: 9,
 				storage: trpcTabsStorage,
-				partialize: (state) => {
-					const panes = sanitizePersistedPanes(state.panes);
-					const closedTabsStack = sanitizeClosedTabsStack(
-						state.closedTabsStack,
-					);
-					return {
-						tabs: state.tabs,
-						panes,
-						activeTabIds: state.activeTabIds,
-						focusedPaneIds: state.focusedPaneIds,
-						tabHistoryStacks: state.tabHistoryStacks,
-						closedTabsStack,
-					};
-				},
 				migrate: (persistedState, version) => {
 					const state = persistedState as TabsState;
 					if (version < 2 && state.panes) {
@@ -2804,7 +2284,6 @@ export const useTabsStore = create<TabsStore>()(
 					// - "permission": Permission dialog is gone after restart
 					// Note: "review" is intentionally preserved so users see missed completions
 					if (persisted.panes) {
-						persisted.panes = sanitizePersistedPanes(persisted.panes);
 						for (const pane of Object.values(persisted.panes)) {
 							if (pane.status === "working" || pane.status === "permission") {
 								pane.status = "idle";
@@ -2819,11 +2298,6 @@ export const useTabsStore = create<TabsStore>()(
 								};
 							}
 						}
-					}
-					if (persisted.closedTabsStack) {
-						persisted.closedTabsStack = sanitizeClosedTabsStack(
-							persisted.closedTabsStack,
-						);
 					}
 
 					const mergedState = { ...currentState, ...persisted };
@@ -2887,9 +2361,6 @@ export const useTabsStore = create<TabsStore>()(
 						tabHistoryStacks: nextHistoryStacks,
 						focusedPaneIds: nextFocusedPaneIds,
 					};
-				},
-				onRehydrateStorage: () => (state) => {
-					state?.setHasHydrated(true);
 				},
 			},
 		),
