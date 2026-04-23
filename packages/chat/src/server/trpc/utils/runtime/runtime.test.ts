@@ -14,7 +14,7 @@ const generateTitleFromMessageMock = mock(
 	) => Promise<string | null>,
 );
 
-const getSmallModelMock = mock(() => ({}) as unknown);
+const getSmallModelMock = mock(() => Promise.resolve({}) as unknown);
 
 mock.module("../../../desktop", () => ({
 	generateTitleFromMessage: generateTitleFromMessageMock,
