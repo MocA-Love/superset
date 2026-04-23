@@ -651,9 +651,7 @@ export function CodeEditor({
 			openSearchPanel(view);
 			setIsSearchOpen(true);
 			syncSearchOverlayState();
-			requestAnimationFrame(() => {
-				overlayRef.current?.focusInput();
-			});
+			overlayRef.current?.focusInput();
 			return;
 		}
 
