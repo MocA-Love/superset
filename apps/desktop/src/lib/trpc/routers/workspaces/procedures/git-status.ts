@@ -26,6 +26,7 @@ import {
 	type PullRequestCommentsTarget,
 } from "../utils/github";
 import { githubSyncService } from "../utils/github/github-sync-service";
+import { getWorkspacePath } from "../utils/worktree";
 
 const gitHubPRCommentsInputSchema = z.object({
 	workspaceId: z.string(),
@@ -112,12 +113,10 @@ export const createGitStatusProcedures = () => {
 					throw new Error(`Workspace ${input.workspaceId} not found`);
 				}
 
-				const worktree = workspace.worktreeId
-					? getWorktree(workspace.worktreeId)
-					: null;
-				if (!worktree) {
+				const repoPath = getWorkspacePath(workspace);
+				if (!repoPath) {
 					throw new Error(
-						`Worktree for workspace ${input.workspaceId} not found`,
+						`Could not resolve path for workspace ${input.workspaceId}`,
 					);
 				}
 
@@ -145,23 +144,25 @@ export const createGitStatusProcedures = () => {
 				await fetchDefaultBranch(project.mainRepoPath, defaultBranch);
 
 				const { ahead, behind } = await getAheadBehindCount({
-					repoPath: worktree.path,
+					repoPath,
 					defaultBranch,
 				});
 
 				const gitStatus = {
-					branch: worktree.branch,
+					branch: workspace.branch,
 					needsRebase: behind > 0,
 					ahead,
 					behind,
 					lastRefreshed: Date.now(),
 				};
 
-				localDb
-					.update(worktrees)
-					.set({ gitStatus })
-					.where(eq(worktrees.id, worktree.id))
-					.run();
+				if (workspace.worktreeId) {
+					localDb
+						.update(worktrees)
+						.set({ gitStatus })
+						.where(eq(worktrees.id, workspace.worktreeId))
+						.run();
+				}
 
 				return { gitStatus, defaultBranch };
 			}),
@@ -199,17 +200,7 @@ export const createGitStatusProcedures = () => {
 					return null;
 				}
 
-				const worktree = workspace.worktreeId
-					? getWorktree(workspace.worktreeId)
-					: null;
-
-				// For "branch" type workspaces without a worktree record,
-				// fall back to the project's mainRepoPath
-				let repoPath: string | null = worktree?.path ?? null;
-				if (!repoPath && workspace.type === "branch") {
-					const project = getProject(workspace.projectId);
-					repoPath = project?.mainRepoPath ?? null;
-				}
+				const repoPath = getWorkspacePath(workspace);
 				if (!repoPath) {
 					return null;
 				}
@@ -223,7 +214,14 @@ export const createGitStatusProcedures = () => {
 					githubSyncService.registerWorkspace(repoPath);
 				}
 
-				const freshStatus = await fetchGitHubPRStatus(repoPath);
+				const branchOverride =
+					workspace.type === "branch" ? workspace.branch : null;
+
+				const freshStatus = await fetchGitHubPRStatus(repoPath, branchOverride);
+
+				const worktree = workspace.worktreeId
+					? getWorktree(workspace.worktreeId)
+					: null;
 
 				if (
 					worktree &&
@@ -263,15 +261,7 @@ export const createGitStatusProcedures = () => {
 					return [];
 				}
 
-				const worktree = workspace.worktreeId
-					? getWorktree(workspace.worktreeId)
-					: null;
-
-				let repoPath: string | null = worktree?.path ?? null;
-				if (!repoPath && workspace.type === "branch") {
-					const project = getProject(workspace.projectId);
-					repoPath = project?.mainRepoPath ?? null;
-				}
+				const repoPath = getWorkspacePath(workspace);
 				if (!repoPath) {
 					return [];
 				}
@@ -280,6 +270,9 @@ export const createGitStatusProcedures = () => {
 					clearGitHubCachesForWorktree(repoPath);
 				}
 
+				const worktree = workspace.worktreeId
+					? getWorktree(workspace.worktreeId)
+					: null;
 				const cachedGitHubStatus = worktree?.githubStatus ?? null;
 
 				return fetchGitHubPRComments({
@@ -288,6 +281,7 @@ export const createGitStatusProcedures = () => {
 						input,
 						githubStatus: cachedGitHubStatus,
 					}),
+					branchName: workspace.type === "branch" ? workspace.branch : null,
 				});
 			}),
 
@@ -297,6 +291,16 @@ export const createGitStatusProcedures = () => {
 				const workspace = getWorkspace(input.workspaceId);
 				if (!workspace) {
 					return null;
+				}
+
+				if (workspace.type === "branch") {
+					return {
+						worktreeName: workspace.name,
+						branchName: workspace.branch,
+						createdAt: workspace.createdAt,
+						gitStatus: null,
+						githubStatus: null,
+					};
 				}
 
 				const worktree = workspace.worktreeId

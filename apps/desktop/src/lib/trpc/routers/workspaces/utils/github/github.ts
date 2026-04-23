@@ -125,8 +125,9 @@ async function resolveAttachedPullRequest({
 
 async function resolvePullRequestCommentsTarget(
 	worktreePath: string,
+	branchName?: string | null,
 ): Promise<PullRequestCommentsTarget | null> {
-	const githubStatus = await fetchGitHubPRStatus(worktreePath);
+	const githubStatus = await fetchGitHubPRStatus(worktreePath, branchName);
 	if (!githubStatus?.pr) {
 		return null;
 	}
@@ -265,26 +266,31 @@ async function refreshGitHubPRComments({
 }
 
 /**
- * Fetches GitHub PR status for a worktree using the `gh` CLI.
+ * Fetches GitHub PR status for a worktree or branch workspace using the `gh` CLI.
  * Returns null if `gh` is not installed, not authenticated, or on error.
+ *
+ * @param branchName - Optional branch name override. When provided (for branch
+ *   workspaces), resolves the SHA and upstream for that branch instead of using
+ *   HEAD / the checked-out branch. Also used to scope the cache key.
  */
 export async function fetchGitHubPRStatus(
 	worktreePath: string,
+	branchName?: string | null,
 ): Promise<GitHubStatus | null> {
+	const cacheKey = branchName ? `${worktreePath}::${branchName}` : worktreePath;
 	if (isRateLimited()) {
 		// When rate limited, return stale cache or null — never throw,
 		// and never overwrite stale cache with null
-		const cached = getCachedGitHubStatus(worktreePath);
+		const cached = getCachedGitHubStatus(cacheKey);
 		trackGitHubOperationEvent({
 			name: "status_refresh",
 			category: "sync",
 			worktreePath,
-			success:
-				cached !== null || getCachedGitHubStatusState(worktreePath) !== null,
+			success: cached !== null || getCachedGitHubStatusState(cacheKey) !== null,
 			durationMs: 0,
 			rateLimited: true,
 			error:
-				cached === null && getCachedGitHubStatusState(worktreePath) === null
+				cached === null && getCachedGitHubStatusState(cacheKey) === null
 					? "Rate limited without cached status"
 					: undefined,
 		});
@@ -295,7 +301,7 @@ export async function fetchGitHubPRStatus(
 		category: "sync",
 		worktreePath,
 		fn: () =>
-			readCachedGitHubStatus(worktreePath, () =>
+			readCachedGitHubStatus(cacheKey, () =>
 				rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
 			),
 	});
@@ -317,9 +323,11 @@ async function rateLimitedRefresh<T>(fn: () => Promise<T>): Promise<T> {
 export async function fetchGitHubPRComments({
 	worktreePath,
 	pullRequest,
+	branchName,
 }: {
 	worktreePath: string;
 	pullRequest?: PullRequestCommentsTarget | null;
+	branchName?: string | null;
 }): Promise<PullRequestComment[]> {
 	if (isRateLimited()) {
 		trackGitHubOperationEvent({
@@ -339,7 +347,8 @@ export async function fetchGitHubPRComments({
 			worktreePath,
 			fn: async () => {
 				const pullRequestTarget =
-					pullRequest ?? (await resolvePullRequestCommentsTarget(worktreePath));
+					pullRequest ??
+					(await resolvePullRequestCommentsTarget(worktreePath, branchName));
 				if (!pullRequestTarget) {
 					return [];
 				}
