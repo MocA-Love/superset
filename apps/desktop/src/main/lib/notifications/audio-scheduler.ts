@@ -102,6 +102,7 @@ export class AudioScheduler {
 	private paused = false;
 	private rateLimit?: AivisRateLimit;
 	private disposed = false;
+	private ringtoneIdleWaiters: Array<() => void> = [];
 
 	constructor(private readonly deps: AudioSchedulerDeps) {}
 
@@ -111,12 +112,26 @@ export class AudioScheduler {
 		this.ringtoneBusy = true;
 		try {
 			this.deps.playRingtone(() => {
-				this.ringtoneBusy = false;
+				this.onRingtoneComplete();
 			});
 		} catch (err) {
-			this.ringtoneBusy = false;
+			this.onRingtoneComplete();
 			console.warn("[audio-scheduler] ringtone failed", err);
 		}
+	}
+
+	private onRingtoneComplete(): void {
+		this.ringtoneBusy = false;
+		const waiters = this.ringtoneIdleWaiters;
+		this.ringtoneIdleWaiters = [];
+		for (const resolve of waiters) resolve();
+	}
+
+	private waitForRingtoneIdle(): Promise<void> {
+		if (!this.ringtoneBusy || this.disposed) return Promise.resolve();
+		return new Promise<void>((resolve) => {
+			this.ringtoneIdleWaiters.push(resolve);
+		});
 	}
 
 	enqueueAivis(
@@ -156,6 +171,11 @@ export class AudioScheduler {
 	dispose(): void {
 		this.disposed = true;
 		this.queue = [];
+		// Flush pending ringtone-idle waiters so any in-flight runOne() can
+		// unblock and finish instead of hanging forever.
+		const waiters = this.ringtoneIdleWaiters;
+		this.ringtoneIdleWaiters = [];
+		for (const resolve of waiters) resolve();
 	}
 
 	private async pump(): Promise<void> {
@@ -183,6 +203,11 @@ export class AudioScheduler {
 			try {
 				const { audio, rateLimit } = await runner.synthesize();
 				if (rateLimit) this.rateLimit = rateLimit;
+				// Synthesis can run in parallel with a ringtone (it's just a
+				// network call), but playback must wait so the two audio
+				// streams don't overlap.
+				await this.waitForRingtoneIdle();
+				if (this.disposed) return;
 				try {
 					await runner.play(audio);
 				} catch (playErr) {

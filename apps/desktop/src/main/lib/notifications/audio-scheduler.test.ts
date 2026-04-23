@@ -121,6 +121,56 @@ describe("AudioScheduler", () => {
 			await flush();
 			expect(scheduler.isAivisBusy).toBe(false);
 		});
+
+		it("defers aivis playback until ringtone finishes", async () => {
+			const deps = createDeps();
+			const scheduler = new AudioScheduler(deps);
+
+			scheduler.playRingtone();
+			expect(deps.ringtoneCalls).toHaveLength(1);
+
+			let synthesized = false;
+			const playSpy = mock(async () => {});
+			const runner = makeRunner({
+				synthesize: async () => {
+					synthesized = true;
+					return { audio: Buffer.alloc(0), rateLimit: undefined };
+				},
+				play: playSpy,
+			});
+			scheduler.enqueueAivis(runner);
+			await flush();
+			await flush();
+
+			// Synthesis happens in parallel with ringtone, but play must wait.
+			expect(synthesized).toBe(true);
+			expect(playSpy).not.toHaveBeenCalled();
+
+			// Ringtone finishes → aivis play proceeds.
+			deps.ringtoneCalls[0].onComplete();
+			await flush();
+			await flush();
+			expect(playSpy).toHaveBeenCalled();
+		});
+
+		it("unblocks pending aivis playback on dispose", async () => {
+			const deps = createDeps();
+			const scheduler = new AudioScheduler(deps);
+			scheduler.playRingtone();
+			const playSpy = mock(async () => {});
+			scheduler.enqueueAivis(makeRunner({ play: playSpy }));
+			await flush();
+			await flush();
+			expect(playSpy).not.toHaveBeenCalled();
+
+			// Dispose must not leave the scheduler hanging on
+			// waitForRingtoneIdle; the pending runOne should short-circuit.
+			scheduler.dispose();
+			await flush();
+			await flush();
+			expect(playSpy).not.toHaveBeenCalled();
+			expect(scheduler.isAivisBusy).toBe(false);
+		});
 	});
 
 	describe("aivis queue", () => {
