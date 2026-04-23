@@ -80,7 +80,7 @@ export function FileTreeItem({
 		absolutePath: entry.path,
 		relativePath: entry.relativePath,
 		branch,
-		cwd: worktreePath,
+		worktreePath,
 		projectId,
 		supersetLinkProject,
 	});
