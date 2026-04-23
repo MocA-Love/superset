@@ -19,7 +19,7 @@ import type { SidebarTabDefinition } from "./types";
 
 interface WorkspaceSidebarProps {
 	onSelectFile: (absolutePath: string, openInNewTab?: boolean) => void;
-	onSelectDiffFile?: (path: string) => void;
+	onSelectDiffFile?: (path: string, openInNewTab?: boolean) => void;
 	onOpenComment?: (comment: CommentPaneData) => void;
 	onSearch?: () => void;
 	selectedFilePath?: string;
