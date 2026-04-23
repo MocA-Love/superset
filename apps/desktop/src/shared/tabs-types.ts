@@ -17,7 +17,6 @@ export type PaneType =
 	| "git-graph"
 	| "database-explorer"
 	| "action-logs"
-	| "comment"
 	| "vscode-extension"
 	| "reference-graph";
 

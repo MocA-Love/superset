@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useDiffStats } from "renderer/hooks/host-service/useDiffStats";
-import { useDeletingWorkspaces } from "renderer/routes/_authenticated/providers/DeletingWorkspacesProvider";
 import type { DashboardSidebarWorkspace } from "../../types";
 import { DashboardSidebarDeleteDialog } from "../DashboardSidebarDeleteDialog";
 import { DashboardSidebarCollapsedWorkspaceButton } from "./components/DashboardSidebarCollapsedWorkspaceButton";
@@ -59,9 +58,6 @@ export function DashboardSidebarWorkspaceItem({
 
 	const navigate = useNavigate();
 	const isPending = !!creationStatus;
-	// Keep the delete dialog outside the hidden wrapper below — the destroy
-	// flow reopens it into an error pane on conflict/teardown-failed.
-	const isDeleting = useDeletingWorkspaces().isDeleting(id);
 	const handlePendingClick = isPending
 		? () => {
 				void navigate({
@@ -96,37 +92,35 @@ export function DashboardSidebarWorkspaceItem({
 
 		return (
 			<>
-				<div hidden={isDeleting}>
-					{isPending ? (
-						content
-					) : (
-						<DashboardSidebarWorkspaceContextMenu
-							projectId={projectId}
-							isInSection={isInSection}
-							onHoverCardOpen={
-								hostType === "local-device" ? onHoverCardOpen : undefined
-							}
-							hoverCardContent={
-								<DashboardSidebarWorkspaceHoverCardContent
-									workspace={workspace}
-									diffStats={diffStats}
-								/>
-							}
-							isLocalWorkspace={hostType === "local-device"}
-							onCreateSection={handleCreateSection}
-							onMoveToSection={(targetSectionId) =>
-								moveWorkspaceToSection(id, projectId, targetSectionId)
-							}
-							onOpenInFinder={handleOpenInFinder}
-							onCopyPath={handleCopyPath}
-							onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
-							onRename={startRename}
-							onDelete={() => setIsDeleteDialogOpen(true)}
-						>
-							{content}
-						</DashboardSidebarWorkspaceContextMenu>
-					)}
-				</div>
+				{isPending ? (
+					content
+				) : (
+					<DashboardSidebarWorkspaceContextMenu
+						projectId={projectId}
+						isInSection={isInSection}
+						onHoverCardOpen={
+							hostType === "local-device" ? onHoverCardOpen : undefined
+						}
+						hoverCardContent={
+							<DashboardSidebarWorkspaceHoverCardContent
+								workspace={workspace}
+								diffStats={diffStats}
+							/>
+						}
+						isLocalWorkspace={hostType === "local-device"}
+						onCreateSection={handleCreateSection}
+						onMoveToSection={(targetSectionId) =>
+							moveWorkspaceToSection(id, projectId, targetSectionId)
+						}
+						onOpenInFinder={handleOpenInFinder}
+						onCopyPath={handleCopyPath}
+						onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
+						onRename={startRename}
+						onDelete={() => setIsDeleteDialogOpen(true)}
+					>
+						{content}
+					</DashboardSidebarWorkspaceContextMenu>
+				)}
 
 				{!isPending && (
 					<DashboardSidebarDeleteDialog
@@ -160,37 +154,35 @@ export function DashboardSidebarWorkspaceItem({
 
 	return (
 		<>
-			<div hidden={isDeleting}>
-				{isPending ? (
-					expandedContent
-				) : (
-					<DashboardSidebarWorkspaceContextMenu
-						projectId={projectId}
-						isInSection={isInSection}
-						onHoverCardOpen={
-							hostType === "local-device" ? onHoverCardOpen : undefined
-						}
-						hoverCardContent={
-							<DashboardSidebarWorkspaceHoverCardContent
-								workspace={workspace}
-								diffStats={diffStats}
-							/>
-						}
-						onCreateSection={handleCreateSection}
-						onMoveToSection={(targetSectionId) =>
-							moveWorkspaceToSection(id, projectId, targetSectionId)
-						}
-						isLocalWorkspace={hostType === "local-device"}
-						onOpenInFinder={handleOpenInFinder}
-						onCopyPath={handleCopyPath}
-						onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
-						onRename={startRename}
-						onDelete={() => setIsDeleteDialogOpen(true)}
-					>
-						{expandedContent}
-					</DashboardSidebarWorkspaceContextMenu>
-				)}
-			</div>
+			{isPending ? (
+				expandedContent
+			) : (
+				<DashboardSidebarWorkspaceContextMenu
+					projectId={projectId}
+					isInSection={isInSection}
+					onHoverCardOpen={
+						hostType === "local-device" ? onHoverCardOpen : undefined
+					}
+					hoverCardContent={
+						<DashboardSidebarWorkspaceHoverCardContent
+							workspace={workspace}
+							diffStats={diffStats}
+						/>
+					}
+					onCreateSection={handleCreateSection}
+					onMoveToSection={(targetSectionId) =>
+						moveWorkspaceToSection(id, projectId, targetSectionId)
+					}
+					isLocalWorkspace={hostType === "local-device"}
+					onOpenInFinder={handleOpenInFinder}
+					onCopyPath={handleCopyPath}
+					onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
+					onRename={startRename}
+					onDelete={() => setIsDeleteDialogOpen(true)}
+				>
+					{expandedContent}
+				</DashboardSidebarWorkspaceContextMenu>
+			)}
 
 			{!isPending && (
 				<DashboardSidebarDeleteDialog

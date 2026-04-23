@@ -671,13 +671,7 @@ export function WorkspacePage({
 		if (workspaceId) {
 			setRightSidebarTab(workspaceId, RightSidebarTab.Search);
 		}
-	}, [
-		isSidebarOpen,
-		workspaceId,
-		setRightSidebarTab,
-		setSidebarMode,
-		setSidebarOpen,
-	]);
+	}, { enabled: isActive });
 	// FORK NOTE: SEARCH_IN_FILES opens search tab (fork-specific hotkey)
 	useHotkey("SEARCH_IN_FILES", () => {
 		if (!isSidebarOpen) {

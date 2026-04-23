@@ -15,16 +15,6 @@ import type {
 // Re-export shared types
 export type { Pane, PaneStatus, PaneType };
 
-export interface CommentPaneData {
-	commentId: string;
-	authorLogin: string;
-	avatarUrl?: string;
-	body: string;
-	url?: string;
-	path?: string;
-	line?: number;
-}
-
 /**
  * Snapshot of a closed tab + its panes, used for "reopen closed tab".
  */
@@ -222,12 +212,6 @@ export interface TabsStore extends TabsState {
 		destinationPath: MosaicBranch[],
 		position: MosaicDropPosition,
 	) => void;
-
-	// Comment operations
-	openCommentPane: (
-		workspaceId: string,
-		comment: CommentPaneData,
-	) => { tabId: string; paneId: string };
 
 	// Browser operations
 	addBrowserTab: (
