@@ -46,9 +46,18 @@ export function isAnthropicApiKey(key: string): boolean {
 /**
  * OpenAI keys all start with `sk-` (legacy `sk-…`, project `sk-proj-…`,
  * service-account `sk-svcacct-…`). The length floor catches placeholders.
+ *
+ * NOTE: Anthropic keys (`sk-ant-…`) also start with `sk-`, so we explicitly
+ * exclude that prefix — otherwise an Anthropic key saved for the Anthropic
+ * provider would be mistakenly picked up here when the OpenAI fallback is
+ * tried (e.g. same storage, wrong provider slot).
  */
 export function isOpenAIApiKey(key: string): boolean {
-	return key.startsWith("sk-") && key.length >= MIN_API_KEY_LENGTH;
+	return (
+		key.startsWith("sk-") &&
+		!key.startsWith("sk-ant-") &&
+		key.length >= MIN_API_KEY_LENGTH
+	);
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
