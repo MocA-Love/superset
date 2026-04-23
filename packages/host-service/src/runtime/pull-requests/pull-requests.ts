@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Octokit } from "@octokit/rest";
+import { parseGitHubRemote } from "@superset/shared/github-remote";
 import { and, eq, inArray } from "drizzle-orm";
 import type { HostDb } from "../../db";
 import { projects, pullRequests, workspaces } from "../../db/schema";
 import type { GitFactory } from "../git";
 import { fetchRepositoryPullRequests } from "./utils/github-query";
-import { parseGitHubRemote } from "./utils/parse-github-remote";
 import {
 	type ChecksStatus,
 	coerceChecksStatus,
@@ -67,6 +67,96 @@ async function getHeadSha(git: Awaited<ReturnType<GitFactory>>) {
 	}
 }
 
+// `pushRemote` / `branch.remote` accept a remote name or a URL.
+async function resolveRemoteValueToUrl(
+	git: Awaited<ReturnType<GitFactory>>,
+	value: string,
+): Promise<string | null> {
+	if (/^(https?:|git@|ssh:)/.test(value)) return value;
+	try {
+		const url = await git.remote(["get-url", value]);
+		return typeof url === "string" ? url.trim() || null : null;
+	} catch {
+		return null;
+	}
+}
+
+async function resolveWorkspaceUpstream(
+	git: Awaited<ReturnType<GitFactory>>,
+	localBranch: string,
+): Promise<{ owner: string; name: string; branch: string } | null> {
+	// `@{push}` resolves remote+branch respecting all config precedence in one call.
+	const pushRef = await tryRaw(git, [
+		"rev-parse",
+		"--abbrev-ref",
+		`${localBranch}@{push}`,
+	]);
+	if (pushRef) {
+		const slash = pushRef.indexOf("/");
+		if (slash > 0) {
+			const url = await resolveRemoteValueToUrl(git, pushRef.slice(0, slash));
+			const parsed = url ? parseGitHubRemote(url) : null;
+			if (parsed) {
+				return {
+					owner: parsed.owner,
+					name: parsed.name,
+					branch: pushRef.slice(slash + 1),
+				};
+			}
+		}
+	}
+
+	// Fallback when `@{push}` isn't configured — mirrors gh's config chain.
+	// Require `branch.<n>.merge`; without it, `remote.pushDefault` alone would
+	// re-open the same-name collision hole on untracked branches.
+	const mergeRef = await tryConfig(git, `branch.${localBranch}.merge`);
+	const trackedBranch = mergeRef?.replace(/^refs\/heads\//, "");
+	if (!trackedBranch) return null;
+
+	const remoteValue =
+		(await tryConfig(git, `branch.${localBranch}.pushRemote`)) ??
+		(await tryConfig(git, "remote.pushDefault")) ??
+		(await tryConfig(git, `branch.${localBranch}.remote`));
+	if (!remoteValue) return null;
+
+	const url = await resolveRemoteValueToUrl(git, remoteValue);
+	const parsed = url ? parseGitHubRemote(url) : null;
+	if (!parsed) return null;
+
+	// `gh pr checkout` renames the local branch on collision (`main` →
+	// `quueli-main`) but the PR's headRefName stays `main`, so we key on the
+	// tracked remote branch, not the local name.
+	return { owner: parsed.owner, name: parsed.name, branch: trackedBranch };
+}
+
+async function tryRaw(
+	git: Awaited<ReturnType<GitFactory>>,
+	args: string[],
+): Promise<string | null> {
+	try {
+		return (await git.raw(args)).trim() || null;
+	} catch {
+		return null;
+	}
+}
+
+async function tryConfig(
+	git: Awaited<ReturnType<GitFactory>>,
+	key: string,
+): Promise<string | null> {
+	return tryRaw(git, ["config", "--get", key]);
+}
+
+function upstreamKey(
+	owner: string | null,
+	repo: string | null,
+	branch: string,
+): string | null {
+	if (!owner || !repo) return null;
+	// GitHub owner/repo are case-insensitive; branch names are case-sensitive.
+	return `${owner.toLowerCase()}/${repo.toLowerCase()}#${branch}`;
+}
+
 type RepoProvider = "github";
 
 export interface PullRequestStateSnapshot {
@@ -98,77 +188,6 @@ interface NormalizedRepoIdentity {
 	name: string;
 	url: string;
 	remoteName: string;
-}
-
-interface PullRequestMatchCandidate {
-	id: string;
-	node: Awaited<ReturnType<typeof fetchRepositoryPullRequests>>[number];
-}
-
-function getRepoKey(
-	repo: Pick<NormalizedRepoIdentity, "provider" | "owner" | "name">,
-) {
-	return `${repo.provider}:${repo.owner}/${repo.name}`;
-}
-
-function getPullRequestStatePriority(state: "OPEN" | "CLOSED" | "MERGED") {
-	switch (state) {
-		case "OPEN":
-			return 3;
-		case "MERGED":
-			return 2;
-		default:
-			return 1;
-	}
-}
-
-function comparePullRequestCandidates(
-	a: PullRequestMatchCandidate,
-	b: PullRequestMatchCandidate,
-	headSha: string | null,
-) {
-	const aHeadShaMatches = Boolean(headSha && a.node.headRefOid === headSha);
-	const bHeadShaMatches = Boolean(headSha && b.node.headRefOid === headSha);
-	if (aHeadShaMatches !== bHeadShaMatches) {
-		return aHeadShaMatches ? -1 : 1;
-	}
-
-	const stateDelta =
-		getPullRequestStatePriority(b.node.state) -
-		getPullRequestStatePriority(a.node.state);
-	if (stateDelta !== 0) {
-		return stateDelta;
-	}
-
-	return (
-		new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime()
-	);
-}
-
-function getTrackingRemoteName(upstreamRef: string | null) {
-	if (!upstreamRef) return null;
-
-	const trimmed = upstreamRef.trim();
-	if (!trimmed) return null;
-
-	const slashIndex = trimmed.indexOf("/");
-	return slashIndex >= 0 ? trimmed.slice(0, slashIndex) : trimmed;
-}
-
-function branchMatchesPullRequestHead(
-	branch: string,
-	headRefName: string,
-	headRepositoryOwner: string | null,
-) {
-	if (branch === headRefName) {
-		return true;
-	}
-
-	if (!headRepositoryOwner) {
-		return false;
-	}
-
-	return branch === `${headRepositoryOwner}/${headRefName}`;
 }
 
 export class PullRequestRuntimeManager {
@@ -284,8 +303,18 @@ export class PullRequestRuntimeManager {
 					continue;
 				}
 				const headSha = await getHeadSha(git);
+				const upstream = await resolveWorkspaceUpstream(git, branch);
+				const upstreamOwner = upstream?.owner ?? null;
+				const upstreamRepo = upstream?.name ?? null;
+				const upstreamBranch = upstream?.branch ?? null;
 
-				if (branch === workspace.branch && headSha === workspace.headSha) {
+				if (
+					branch === workspace.branch &&
+					headSha === workspace.headSha &&
+					upstreamOwner === workspace.upstreamOwner &&
+					upstreamRepo === workspace.upstreamRepo &&
+					upstreamBranch === workspace.upstreamBranch
+				) {
 					continue;
 				}
 
@@ -294,6 +323,9 @@ export class PullRequestRuntimeManager {
 					.set({
 						branch,
 						headSha,
+						upstreamOwner,
+						upstreamRepo,
+						upstreamBranch,
 					})
 					.where(eq(workspaces.id, workspace.id))
 					.run();
@@ -370,6 +402,9 @@ export class PullRequestRuntimeManager {
 	}
 
 	private async performProjectRefresh(projectId: string): Promise<void> {
+		const repo = await this.getProjectRepository(projectId);
+		if (!repo) return;
+
 		const projectWorkspaces = this.db
 			.select()
 			.from(workspaces)
@@ -377,130 +412,34 @@ export class PullRequestRuntimeManager {
 			.all();
 		if (projectWorkspaces.length === 0) return;
 
-		const projectRepo = await this.getProjectRepository(projectId);
-		const branchNames = [
-			...new Set(projectWorkspaces.map((workspace) => workspace.branch)),
-		];
-
-		const workspaceRepos = await Promise.all(
-			projectWorkspaces.map(async (workspace) => {
-				try {
-					return {
-						workspace,
-						repos: await this.getWorkspaceRepositories(
-							workspace.worktreePath,
-							projectRepo,
-						),
-					};
-				} catch (error) {
-					console.warn(
-						"[host-service:pull-request-runtime] Failed to resolve workspace repositories",
-						{
-							workspaceId: workspace.id,
-							worktreePath: workspace.worktreePath,
-							error,
-						},
-					);
-
-					return {
-						workspace,
-						repos: projectRepo ? [projectRepo] : [],
-					};
-				}
-			}),
-		);
-
-		const repos = [
-			...new Map(
-				workspaceRepos
-					.flatMap(({ repos }) => repos)
-					.map((repo) => [getRepoKey(repo), repo]),
-			).values(),
-		];
-		if (repos.length === 0) return;
-
-		const repoToPullRequests = new Map<string, PullRequestMatchCandidate[]>();
-		for (const repo of repos) {
-			repoToPullRequests.set(
-				getRepoKey(repo),
-				await this.fetchRepoPullRequests(projectId, repo, branchNames),
+		const wantedKeys = new Set<string>();
+		for (const workspace of projectWorkspaces) {
+			const key = upstreamKey(
+				workspace.upstreamOwner,
+				workspace.upstreamRepo,
+				workspace.upstreamBranch ?? workspace.branch,
 			);
+			if (key) wantedKeys.add(key);
 		}
 
-		for (const { workspace, repos: candidateRepos } of workspaceRepos) {
-			const match = this.findBestPullRequestMatch(
-				workspace.branch,
-				workspace.headSha,
-				candidateRepos,
-				repoToPullRequests,
+		const keyToPullRequest = await this.fetchRepoPullRequests(
+			projectId,
+			repo,
+			wantedKeys,
+		);
+
+		for (const workspace of projectWorkspaces) {
+			const key = upstreamKey(
+				workspace.upstreamOwner,
+				workspace.upstreamRepo,
+				workspace.upstreamBranch ?? workspace.branch,
 			);
+			const match = key ? keyToPullRequest.get(key) : undefined;
 			this.db
 				.update(workspaces)
-				.set({
-					pullRequestId: match?.id ?? null,
-				})
+				.set({ pullRequestId: match?.id ?? null })
 				.where(eq(workspaces.id, workspace.id))
 				.run();
-		}
-	}
-
-	private async getWorkspaceRepositories(
-		worktreePath: string,
-		projectRepo: NormalizedRepoIdentity | null,
-	): Promise<NormalizedRepoIdentity[]> {
-		const git = await this.git(worktreePath);
-		const repos: NormalizedRepoIdentity[] = [];
-		const pushRepo = (repo: NormalizedRepoIdentity | null) => {
-			if (!repo) return;
-			if (repos.some((existing) => getRepoKey(existing) === getRepoKey(repo))) {
-				return;
-			}
-			repos.push(repo);
-		};
-
-		let trackingRemoteName: string | null = null;
-		try {
-			trackingRemoteName = getTrackingRemoteName(
-				await git.raw([
-					"rev-parse",
-					"--abbrev-ref",
-					"--symbolic-full-name",
-					"@{upstream}",
-				]),
-			);
-		} catch {}
-
-		pushRepo(
-			trackingRemoteName
-				? await this.getRemoteRepository(git, trackingRemoteName)
-				: null,
-		);
-		pushRepo(await this.getRemoteRepository(git, "origin"));
-		pushRepo(await this.getRemoteRepository(git, "upstream"));
-		pushRepo(projectRepo);
-
-		return repos;
-	}
-
-	private async getRemoteRepository(
-		git: Awaited<ReturnType<GitFactory>>,
-		remoteName: string,
-	): Promise<NormalizedRepoIdentity | null> {
-		try {
-			const remoteUrl = await git.remote(["get-url", remoteName]);
-			if (typeof remoteUrl !== "string") {
-				return null;
-			}
-
-			const parsedRemote = parseGitHubRemote(remoteUrl);
-			if (!parsedRemote) return null;
-
-			return {
-				...parsedRemote,
-				remoteName,
-			};
-		} catch {
-			return null;
 		}
 	}
 
@@ -565,20 +504,39 @@ export class PullRequestRuntimeManager {
 	private async fetchRepoPullRequests(
 		projectId: string,
 		repo: NormalizedRepoIdentity,
-		branches: string[],
-	): Promise<PullRequestMatchCandidate[]> {
+		wantedKeys: Set<string>,
+	): Promise<Map<string, { id: string }>> {
+		if (wantedKeys.size === 0) return new Map();
+
 		const octokit = await this.github();
 		const nodes = await fetchRepositoryPullRequests(octokit, {
 			owner: repo.owner,
 			name: repo.name,
 		});
 
-		const wantedBranches = new Set(branches);
-		const matches: PullRequestMatchCandidate[] = [];
-		const now = Date.now();
+		const latestByKey = new Map<string, (typeof nodes)[number]>();
 
 		for (const node of nodes) {
-			if (!wantedBranches.has(node.headRefName)) continue;
+			const key = upstreamKey(
+				node.headRepositoryOwner?.login ?? null,
+				node.headRepository?.name ?? null,
+				node.headRefName,
+			);
+			if (!key || !wantedKeys.has(key)) continue;
+			const existing = latestByKey.get(key);
+			if (
+				!existing ||
+				new Date(node.updatedAt).getTime() >
+					new Date(existing.updatedAt).getTime()
+			) {
+				latestByKey.set(key, node);
+			}
+		}
+
+		const keyToRow = new Map<string, { id: string }>();
+		const now = Date.now();
+
+		for (const [key, node] of latestByKey) {
 			const existing = this.db.query.pullRequests
 				.findFirst({
 					where: and(
@@ -631,37 +589,9 @@ export class PullRequestRuntimeManager {
 					.run();
 			}
 
-			matches.push({ id: rowId, node });
+			keyToRow.set(key, { id: rowId });
 		}
 
-		return matches;
-	}
-
-	private findBestPullRequestMatch(
-		branch: string,
-		headSha: string | null,
-		repos: NormalizedRepoIdentity[],
-		repoToPullRequests: Map<string, PullRequestMatchCandidate[]>,
-	): PullRequestMatchCandidate | null {
-		for (const repo of repos) {
-			const candidates =
-				repoToPullRequests
-					.get(getRepoKey(repo))
-					?.filter((candidate) =>
-						branchMatchesPullRequestHead(
-							branch,
-							candidate.node.headRefName,
-							candidate.node.headRepositoryOwner?.login ?? null,
-						),
-					) ?? [];
-			if (candidates.length === 0) {
-				continue;
-			}
-
-			candidates.sort((a, b) => comparePullRequestCandidates(a, b, headSha));
-			return candidates[0] ?? null;
-		}
-
-		return null;
+		return keyToRow;
 	}
 }
