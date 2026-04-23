@@ -178,25 +178,30 @@ export function SessionConnectModal({
 		: null;
 
 	useEffect(() => {
-		const shouldInitialize =
-			open &&
-			(!modalInitRef.current.open || modalInitRef.current.paneId !== paneId);
-		if (shouldInitialize) {
-			const selectedIsOtherWorkspace = Boolean(
-				selectedSessionId &&
-					otherWorkspaceRows.some(
-						(row) => row.session.id === selectedSessionId,
-					),
-			);
-			setShowOtherWorkspaces(
-				sameWorkspaceRows.length === 0 || selectedIsOtherWorkspace,
-			);
+		if (!open) {
+			modalInitRef.current = { open, paneId };
+			setShowOtherWorkspaces(false);
+			return;
 		}
+
+		const shouldInitialize =
+			!modalInitRef.current.open || modalInitRef.current.paneId !== paneId;
+		if (!shouldInitialize) return;
+		if (sessionRows.length === 0) return;
+
+		const selectedIsOtherWorkspace = Boolean(
+			selectedSessionId &&
+				otherWorkspaceRows.some((row) => row.session.id === selectedSessionId),
+		);
+		setShowOtherWorkspaces(
+			sameWorkspaceRows.length === 0 || selectedIsOtherWorkspace,
+		);
 		modalInitRef.current = { open, paneId };
 	}, [
 		open,
 		paneId,
 		selectedSessionId,
+		sessionRows.length,
 		sameWorkspaceRows.length,
 		otherWorkspaceRows,
 	]);
@@ -571,15 +576,17 @@ function TabButton({
 	);
 }
 
+interface SessionSectionProps {
+	title: string;
+	description?: string;
+	children: React.ReactNode;
+}
+
 function SessionSection({
 	title,
 	description,
 	children,
-}: {
-	title: string;
-	description?: string;
-	children: React.ReactNode;
-}) {
+}: SessionSectionProps) {
 	return (
 		<section className="space-y-2">
 			<div className="flex items-center justify-between gap-2 px-1">
