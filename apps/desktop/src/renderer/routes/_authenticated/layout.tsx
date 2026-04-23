@@ -26,6 +26,8 @@ import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
 import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
+import { ScheduleFireToasts } from "renderer/features/todo-agent/ScheduleFireToasts";
+import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { useSettingsStore } from "renderer/stores/settings-state";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useAgentHookListener } from "renderer/stores/tabs/useAgentHookListener";
@@ -190,7 +192,9 @@ function AuthenticatedLayout() {
 							poolOptions={{ workerFactory: createPierreWorker, poolSize: 8 }}
 							highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
 						>
+							<LanguageServicesProvider />
 							<AgentHooks />
+							<ScheduleFireToasts />
 							<Outlet />
 							<WorkspaceInitEffects />
 							{isV2CloudEnabled ? (

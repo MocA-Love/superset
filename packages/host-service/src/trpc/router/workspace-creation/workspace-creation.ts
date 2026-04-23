@@ -877,7 +877,13 @@ export const workspaceCreationRouter = router({
 			// to compare against on first open. startPoint.shortName is the ref
 			// we actually forked from (user selection, resolved against local /
 			// remote). Skipped for "head" start point — no meaningful base.
-			if (startPoint.kind !== "head") {
+			// FORK NOTE: only write for remote-tracking start points. Downstream
+			// (resolveBaseComparison) always rebuilds the compare ref as
+			// `origin/${baseBranch}`, so a local-only branch name would resolve
+			// to a non-existent `origin/<local-name>` and the Changes tab would
+			// silently break. Skipping the write leaves baseBranch null for
+			// local-only bases — downstream falls back to the default branch.
+			if (startPoint.kind === "remote-tracking") {
 				await git
 					.raw(["config", `branch.${branchName}.base`, startPoint.shortName])
 					.catch((err) => {
