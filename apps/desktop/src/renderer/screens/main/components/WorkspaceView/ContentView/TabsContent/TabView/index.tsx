@@ -38,9 +38,14 @@ export const MOSAIC_ID = "superset-mosaic";
 interface TabViewProps {
 	tab: Tab;
 	isWorkspaceActive: boolean;
+	isTabActive: boolean;
 }
 
-export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
+export function TabView({
+	tab,
+	isWorkspaceActive,
+	isTabActive,
+}: TabViewProps) {
 	const activeTheme = useTheme();
 	const updateTabLayout = useTabsStore((s) => s.updateTabLayout);
 	const removePane = useTabsStore((s) => s.removePane);
@@ -330,7 +335,19 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 					const initialUrl =
 						(paneInfo.data as { url?: string } | undefined)?.url ??
 						"about:blank";
-					return <BrowserPaneV3 paneId={paneId} initialUrl={initialUrl} />;
+					return (
+						<BrowserPaneV3
+							paneId={paneId}
+							path={path}
+							tabId={tab.id}
+							initialUrl={initialUrl}
+							isHostVisible={isWorkspaceActive && isTabActive}
+							splitPaneAuto={splitPaneAuto}
+							removePane={removePane}
+							setFocusedPane={setFocusedPane}
+							onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+						/>
+					);
 				}
 				return (
 					<BrowserPane

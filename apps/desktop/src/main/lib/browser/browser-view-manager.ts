@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import {
 	app,
 	type BrowserWindow,
+	clipboard,
 	nativeTheme,
 	session,
 	shell,
@@ -63,6 +64,10 @@ interface PaneEntry {
 	bounds: ViewBounds;
 	activeTabId: string;
 	tabs: ViewEntry[];
+	/** True when the pane's owning workspace tab is actually visible in the UI. */
+	hostVisible: boolean;
+	/** True while DOM chrome temporarily needs click priority over the native view. */
+	suspended: boolean;
 	/** True once attach() called and bounds applied at least once. */
 	attached: boolean;
 }
@@ -94,6 +99,8 @@ class BrowserViewManager extends EventEmitter {
 			bounds: { x: 0, y: 0, width: 0, height: 0 },
 			activeTabId: "primary",
 			tabs: [],
+			hostVisible: false,
+			suspended: false,
 			attached: false,
 		};
 		this.panes.set(paneId, pane);
@@ -113,12 +120,20 @@ class BrowserViewManager extends EventEmitter {
 		const pane = this.panes.get(paneId);
 		if (!pane) return;
 		pane.bounds = {
-			x: Math.max(0, Math.round(bounds.x)),
-			y: Math.max(0, Math.round(bounds.y)),
+			x: Math.round(bounds.x),
+			y: Math.round(bounds.y),
 			width: Math.max(0, Math.round(bounds.width)),
 			height: Math.max(0, Math.round(bounds.height)),
 		};
 		pane.attached = true;
+		this.applyLayout(pane);
+	}
+
+	setHostVisibility(paneId: string, visible: boolean): void {
+		const pane = this.panes.get(paneId);
+		if (!pane) return;
+		if (pane.hostVisible === visible) return;
+		pane.hostVisible = visible;
 		this.applyLayout(pane);
 	}
 
@@ -189,6 +204,18 @@ class BrowserViewManager extends EventEmitter {
 		else tab.view.webContents.reload();
 	}
 
+	async screenshot(paneId: string): Promise<string> {
+		const tab = this.getActiveTab(paneId);
+		if (!tab) throw new Error(`No active tab for pane ${paneId}`);
+		const image = await tab.view.webContents.capturePage();
+		try {
+			clipboard.writeImage(image);
+		} catch (error) {
+			console.error("[browser-view-manager] clipboard.writeImage failed:", error);
+		}
+		return image.toPNG().toString("base64");
+	}
+
 	listTabs(paneId: string): TabStateSnapshot[] {
 		const pane = this.panes.get(paneId);
 		if (!pane) return [];
@@ -199,6 +226,44 @@ class BrowserViewManager extends EventEmitter {
 		return this.panes.get(paneId)?.activeTabId ?? null;
 	}
 
+	openDevTools(paneId: string): void {
+		const tab = this.getActiveTab(paneId);
+		if (!tab) return;
+		tab.view.webContents.openDevTools({ mode: "detach" });
+	}
+
+	findInPage(
+		paneId: string,
+		text: string,
+		options?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
+	): number | null {
+		const tab = this.getActiveTab(paneId);
+		if (!tab || !text) return null;
+		return tab.view.webContents.findInPage(text, options);
+	}
+
+	stopFindInPage(
+		paneId: string,
+		action: "clearSelection" | "keepSelection" | "activateSelection",
+	): void {
+		const tab = this.getActiveTab(paneId);
+		if (!tab) return;
+		tab.view.webContents.stopFindInPage(action);
+	}
+
+	getZoomLevel(paneId: string): number | null {
+		const tab = this.getActiveTab(paneId);
+		if (!tab) return null;
+		return tab.view.webContents.getZoomLevel();
+	}
+
+	setZoomLevel(paneId: string, level: number): boolean {
+		const tab = this.getActiveTab(paneId);
+		if (!tab) return false;
+		tab.view.webContents.setZoomLevel(level);
+		return true;
+	}
+
 	/**
 	 * Force-hide (or reveal) the active view. Used while a DOM
 	 * overlay (URL suggestion popover, modal, split drag) needs to
@@ -207,10 +272,9 @@ class BrowserViewManager extends EventEmitter {
 	setSuspended(paneId: string, suspended: boolean): void {
 		const pane = this.panes.get(paneId);
 		if (!pane) return;
-		const active = pane.tabs.find((t) => t.tabId === pane.activeTabId);
-		if (!active) return;
-		if (suspended) active.view.setVisible(false);
-		else this.applyLayout(pane);
+		if (pane.suspended === suspended) return;
+		pane.suspended = suspended;
+		this.applyLayout(pane);
 	}
 
 	/* ------------------------------------------------------------ */
@@ -255,7 +319,7 @@ class BrowserViewManager extends EventEmitter {
 		this.wireEvents(pane, entry);
 		pane.tabs.push(entry);
 		pane.window.contentView.addChildView(view);
-		view.setVisible(pane.activeTabId === tabId);
+		view.setVisible(false);
 
 		void view.webContents.loadURL(sanitizeUrl(url || "about:blank"));
 	}
@@ -276,8 +340,10 @@ class BrowserViewManager extends EventEmitter {
 	private applyLayout(pane: PaneEntry): void {
 		if (!pane.attached) return;
 		const { x, y, width, height } = pane.bounds;
+		const shouldShowActiveView =
+			pane.hostVisible && !pane.suspended && width > 0 && height > 0;
 		for (const tab of pane.tabs) {
-			const isActive = tab.tabId === pane.activeTabId;
+			const isActive = shouldShowActiveView && tab.tabId === pane.activeTabId;
 			if (isActive) {
 				try {
 					tab.view.setBounds({ x, y, width, height });
@@ -333,6 +399,30 @@ class BrowserViewManager extends EventEmitter {
 		wc.on("page-favicon-updated", (_e, favicons) =>
 			patch({ faviconUrl: favicons[0] ?? null }),
 		);
+		wc.on("found-in-page", (_event, result) => {
+			this.emit(`found-in-page:${pane.paneId}`, {
+				requestId: result.requestId,
+				activeMatchOrdinal: result.activeMatchOrdinal,
+				matches: result.matches,
+				finalUpdate: result.finalUpdate,
+			});
+		});
+		wc.on("before-input-event", (event, input) => {
+			if (input.type !== "keyDown") return;
+			const isFindKey =
+				(input.meta || input.control) &&
+				input.key.toLowerCase() === "f" &&
+				!input.alt &&
+				!input.shift;
+			if (isFindKey) {
+				event.preventDefault();
+				this.emit(`find-requested:${pane.paneId}`);
+				return;
+			}
+			if (input.key === "Escape") {
+				this.emit(`find-escape:${pane.paneId}`);
+			}
+		});
 		wc.on("did-fail-load", (_e, errorCode, errorDescription, validatedURL) => {
 			if (errorCode === -3) return;
 			patch({

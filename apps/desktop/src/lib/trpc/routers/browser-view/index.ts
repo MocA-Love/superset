@@ -58,6 +58,13 @@ export const createBrowserViewRouter = () => {
 				return { success: true };
 			}),
 
+		setHostVisibility: publicProcedure
+			.input(z.object({ paneId: z.string(), visible: z.boolean() }))
+			.mutation(({ input }) => {
+				browserViewManager.setHostVisibility(input.paneId, input.visible);
+				return { success: true };
+			}),
+
 		createTab: publicProcedure
 			.input(
 				z.object({
@@ -73,6 +80,13 @@ export const createBrowserViewRouter = () => {
 					input.activate,
 				);
 				return { tabId };
+			}),
+
+		screenshot: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.mutation(async ({ input }) => {
+				const base64 = await browserViewManager.screenshot(input.paneId);
+				return { base64 };
 			}),
 
 		closeTab: publicProcedure
@@ -115,6 +129,57 @@ export const createBrowserViewRouter = () => {
 			.mutation(({ input }) => {
 				browserViewManager.reload(input.paneId, input.hard === true);
 				return { success: true };
+			}),
+
+		openDevTools: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.mutation(({ input }) => {
+				browserViewManager.openDevTools(input.paneId);
+				return { success: true };
+			}),
+
+		findInPage: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string(),
+					text: z.string(),
+					forward: z.boolean().optional(),
+					findNext: z.boolean().optional(),
+					matchCase: z.boolean().optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const requestId = browserViewManager.findInPage(input.paneId, input.text, {
+					forward: input.forward,
+					findNext: input.findNext,
+					matchCase: input.matchCase,
+				});
+				return { requestId };
+			}),
+
+		stopFindInPage: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string(),
+					action: z
+						.enum(["clearSelection", "keepSelection", "activateSelection"])
+						.optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				browserViewManager.stopFindInPage(
+					input.paneId,
+					input.action ?? "clearSelection",
+				);
+				return { success: true };
+			}),
+
+		setZoomLevel: publicProcedure
+			.input(z.object({ paneId: z.string(), level: z.number() }))
+			.mutation(({ input }) => {
+				return {
+					success: browserViewManager.setZoomLevel(input.paneId, input.level),
+				};
 			}),
 
 		setSuspended: publicProcedure
@@ -165,6 +230,58 @@ export const createBrowserViewRouter = () => {
 					return () => {
 						browserViewManager.off(`download-started:${input.paneId}`, handler);
 					};
+				});
+			}),
+
+		onFoundInPage: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{
+					requestId: number;
+					activeMatchOrdinal: number;
+					matches: number;
+					finalUpdate: boolean;
+				}>((emit) => {
+					const handler = (data: {
+						requestId: number;
+						activeMatchOrdinal: number;
+						matches: number;
+						finalUpdate: boolean;
+					}) => emit.next(data);
+					browserViewManager.on(`found-in-page:${input.paneId}`, handler);
+					return () => {
+						browserViewManager.off(`found-in-page:${input.paneId}`, handler);
+					};
+				});
+			}),
+
+		onFindRequested: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ type: "open" | "escape" }>((emit) => {
+					const openHandler = () => emit.next({ type: "open" });
+					const escapeHandler = () => emit.next({ type: "escape" });
+					browserViewManager.on(`find-requested:${input.paneId}`, openHandler);
+					browserViewManager.on(`find-escape:${input.paneId}`, escapeHandler);
+					return () => {
+						browserViewManager.off(`find-requested:${input.paneId}`, openHandler);
+						browserViewManager.off(`find-escape:${input.paneId}`, escapeHandler);
+					};
+				});
+			}),
+
+		onZoomChanged: publicProcedure
+			.input(z.object({ paneId: z.string() }))
+			.subscription(({ input }) => {
+				return observable<{ zoomLevel: number }>((emit) => {
+					let lastLevel: number | null = null;
+					const interval = setInterval(() => {
+						const level = browserViewManager.getZoomLevel(input.paneId);
+						if (level === null || level === lastLevel) return;
+						lastLevel = level;
+						emit.next({ zoomLevel: level });
+					}, 300);
+					return () => clearInterval(interval);
 				});
 			}),
 	});
