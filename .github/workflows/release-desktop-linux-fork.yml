@@ -106,7 +106,13 @@ jobs:
 
       - name: Build Linux packages (AppImage + deb + rpm)
         working-directory: apps/desktop
-        run: bun run build:linux
+        # electron-builder を直接呼ぶ理由: workflow_dispatch で過去タグを
+        # backfill するとき、そのタグの package.json に `build:linux`
+        # スクリプトが無いケースがある。CLI を直接叩けば scripts に依存せず
+        # 過去リリースにも Linux パッケージを後乗せできる。
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: bunx electron-builder --linux AppImage deb rpm --publish never
 
       - name: Verify Linux artifacts exist
         working-directory: apps/desktop
