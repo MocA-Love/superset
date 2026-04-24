@@ -27,6 +27,39 @@ on:
         required: false
         type: number
         default: 30
+  workflow_dispatch:
+    # Manual build trigger so the fork can produce installers without the
+    # upstream release tooling (the fork uses v*-fork.* tags that
+    # release-desktop.yml does not react to).
+    inputs:
+      channel:
+        description: "Release channel (stable or canary)"
+        required: true
+        type: choice
+        options:
+          - stable
+          - canary
+        default: stable
+      version_suffix:
+        description: "Version suffix to append (e.g., -canary). Empty for stable."
+        required: false
+        type: string
+        default: ""
+      electron_builder_config:
+        description: "Electron builder config file"
+        required: false
+        type: string
+        default: "electron-builder.ts"
+      artifact_prefix:
+        description: "Prefix for artifact names"
+        required: false
+        type: string
+        default: "desktop"
+      artifact_retention_days:
+        description: "Number of days to retain artifacts"
+        required: false
+        type: number
+        default: 14
 
 jobs:
   build-macos:
