@@ -87,15 +87,7 @@ function createStats(): VibrancyDebugStats {
 	};
 }
 
-let debugStats: VibrancyDebugStats | null = null;
-
-function debugEnabled(): boolean {
-	try {
-		return localStorage.getItem("debug.terminal-vibrancy") === "1";
-	} catch {
-		return false;
-	}
-}
+let debugStats: VibrancyDebugStats = createStats();
 
 function expandFloat32Array(
 	input: Float32Array,
@@ -216,16 +208,14 @@ function patchedUpdateRectangle(
 		}
 	}
 
-	if (debugStats) {
-		debugStats.rectsTotal += 1;
-		debugStats[bucket] += 1;
-		if (
-			bucket === "cmRgbOpaque" ||
-			bucket === "cmRgbTransparent" ||
-			bucket === "cmP16P256Opaque"
-		) {
-			bumpUniqueRgb(debugStats, rgba);
-		}
+	debugStats.rectsTotal += 1;
+	debugStats[bucket] += 1;
+	if (
+		bucket === "cmRgbOpaque" ||
+		bucket === "cmRgbTransparent" ||
+		bucket === "cmP16P256Opaque"
+	) {
+		bumpUniqueRgb(debugStats, rgba);
 	}
 
 	if (vertices.attributes.length < offset + 4) {
@@ -267,9 +257,10 @@ export function setRgbTransparencyForVibrancy(enabled: boolean): void {
 }
 
 interface VibrancyDebugApi {
-	stats: () => VibrancyDebugStats | null;
+	stats: () => VibrancyDebugStats;
 	reset: () => void;
 	dump: () => void;
+	patched: () => boolean;
 }
 
 declare global {
@@ -277,6 +268,8 @@ declare global {
 		__supersetTerminalVibrancy__?: VibrancyDebugApi;
 	}
 }
+
+let prototypePatched = false;
 
 function ensureDebugApi(): void {
 	if (typeof window === "undefined") return;
@@ -286,13 +279,8 @@ function ensureDebugApi(): void {
 		reset: () => {
 			debugStats = createStats();
 		},
+		patched: () => prototypePatched,
 		dump: () => {
-			if (!debugStats) {
-				console.log(
-					"[terminal-vibrancy] debug stats are off; localStorage.setItem('debug.terminal-vibrancy', '1') and reload",
-				);
-				return;
-			}
 			const top = [...debugStats.uniqueRgb.entries()]
 				.sort(([, a], [, b]) => b - a)
 				.slice(0, 16)
@@ -301,19 +289,27 @@ function ensureDebugApi(): void {
 					count,
 				}));
 			console.table({
+				prototypePatched,
+				rgbTransparencyEnabled,
+				NEAR_BLACK_THRESHOLD,
 				rectsTotal: debugStats.rectsTotal,
 				cmDefault: debugStats.cmDefault,
 				cmP16P256Opaque: debugStats.cmP16P256Opaque,
 				cmP16P256Transparent: debugStats.cmP16P256Transparent,
 				cmRgbOpaque: debugStats.cmRgbOpaque,
 				cmRgbTransparent: debugStats.cmRgbTransparent,
-				rgbTransparencyEnabled,
-				NEAR_BLACK_THRESHOLD,
 			});
 			console.table(top);
 		},
 	};
+	console.log(
+		"[terminal-vibrancy] debug API ready: window.__supersetTerminalVibrancy__.dump()",
+	);
 }
+
+// Install the debug API as soon as this module is imported, so DevTools can
+// inspect state even before any terminal pane has mounted.
+ensureDebugApi();
 
 /**
  * Patch the `RectangleRenderer.prototype._updateRectangle` shipped with the
@@ -322,6 +318,7 @@ function ensureDebugApi(): void {
  * across calls and across multiple addon instances.
  */
 export function installRectangleRendererAlphaPatch(addon: WebglAddon): void {
+	ensureDebugApi();
 	try {
 		const renderer = (addon as unknown as { _renderer?: unknown })._renderer as
 			| {
@@ -329,28 +326,38 @@ export function installRectangleRendererAlphaPatch(addon: WebglAddon): void {
 			  }
 			| undefined;
 		const instance = renderer?._rectangleRenderer?.value;
-		if (!instance) return;
+		if (!instance) {
+			console.warn(
+				"[terminal-vibrancy] addon._renderer._rectangleRenderer.value missing; patch skipped",
+			);
+			return;
+		}
 		const proto = Object.getPrototypeOf(instance) as Record<
 			PropertyKey,
 			unknown
 		> & { [PATCHED]?: true };
-		if (proto[PATCHED]) return;
+		if (proto[PATCHED]) {
+			prototypePatched = true;
+			return;
+		}
 		const original = proto._updateRectangle;
-		if (typeof original !== "function") return;
+		if (typeof original !== "function") {
+			console.warn(
+				"[terminal-vibrancy] _updateRectangle not found on prototype; patch skipped",
+			);
+			return;
+		}
 		proto._updateRectangle = patchedUpdateRectangle;
 		proto[PATCHED] = true;
-		ensureDebugApi();
-		if (debugEnabled() && !debugStats) {
-			debugStats = createStats();
-		}
+		prototypePatched = true;
 		console.log(
-			"[terminal-vibrancy] WebGL RectangleRenderer alpha patch installed (debug:",
-			debugEnabled() ? "on" : "off",
+			"[terminal-vibrancy] WebGL RectangleRenderer alpha patch installed (vibrancy RGB-transparency:",
+			rgbTransparencyEnabled ? "on" : "off",
 			")",
 		);
 	} catch (error) {
 		console.warn(
-			"[terminal] Failed to patch WebGL RectangleRenderer for vibrancy:",
+			"[terminal-vibrancy] Failed to patch WebGL RectangleRenderer:",
 			error,
 		);
 	}
