@@ -23,7 +23,6 @@ import {
 	setupCopyHandler,
 	setupFocusListener,
 	setupKeyboardHandler,
-	setupPasteHandler,
 } from "../helpers";
 import { isPaneDestroyed } from "../pane-guards";
 import { coldRestoreState, pendingDetaches } from "../state";
@@ -129,7 +128,6 @@ export interface UseTerminalLifecycleOptions {
 	flushPendingEvents: () => void;
 	resetModes: () => void;
 	isAlternateScreenRef: MutableRefObject<boolean>;
-	isBracketedPasteRef: MutableRefObject<boolean>;
 	setPaneNameRef: MutableRefObject<(paneId: string, name: string) => void>;
 	renameUnnamedWorkspaceRef: MutableRefObject<(title: string) => void>;
 	handleTerminalFocusRef: MutableRefObject<() => void>;
@@ -194,7 +192,6 @@ export function useTerminalLifecycle({
 	flushPendingEvents,
 	resetModes,
 	isAlternateScreenRef,
-	isBracketedPasteRef,
 	setPaneNameRef,
 	renameUnnamedWorkspaceRef,
 	handleTerminalFocusRef,
@@ -229,11 +226,7 @@ export function useTerminalLifecycle({
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] Mount: ${paneId}`);
 		}
-		terminalRendererDebug.info(
-			"mount",
-			{ paneId, workspaceId },
-			{ captureMessage: true, fingerprint: ["terminal.renderer", "mount"] },
-		);
+		terminalRendererDebug.info("mount", { paneId, workspaceId });
 
 		// Cancel pending detach from previous unmount
 		const pendingDetach = pendingDetaches.get(paneId);
@@ -891,15 +884,7 @@ export function useTerminalLifecycle({
 		const cleanupFocus = setupFocusListener(xterm, () =>
 			handleTerminalFocusRef.current(),
 		);
-		const cleanupPaste = setupPasteHandler(xterm, {
-			onPaste: (text) => {
-				if (!isAlternateScreenRef.current) {
-					commandBufferRef.current += text;
-				}
-			},
-			onWrite: handleWrite,
-			isBracketedPasteEnabled: () => isBracketedPasteRef.current,
-		});
+
 		const cleanupCopy = setupCopyHandler(xterm);
 
 		const isPaneDestroyedInStore = () =>
@@ -936,7 +921,6 @@ export function useTerminalLifecycle({
 			cleanupKeyboard();
 			cleanupClickToMove();
 			cleanupFocus?.();
-			cleanupPaste();
 			cleanupCopy();
 			unregisterClearCallbackRef.current(paneId);
 			unregisterScrollToBottomCallbackRef.current(paneId);

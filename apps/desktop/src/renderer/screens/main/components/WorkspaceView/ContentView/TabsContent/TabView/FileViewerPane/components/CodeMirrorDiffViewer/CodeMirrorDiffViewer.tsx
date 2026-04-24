@@ -28,9 +28,19 @@ import {
 	ViewPlugin,
 	type ViewUpdate,
 } from "@codemirror/view";
-import { useEffect, useRef, useState } from "react";
+import {
+	type ForwardedRef,
+	forwardRef,
+	useEffect,
+	useImperativeHandle,
+	useRef,
+	useState,
+} from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { CodeEditorSearchOverlay } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/components/CodeEditorSearchOverlay";
+import {
+	CodeEditorSearchOverlay,
+	type CodeEditorSearchOverlayHandle,
+} from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/components/CodeEditorSearchOverlay";
 import {
 	type BlameEntry,
 	createBlamePlugin,
@@ -206,6 +216,10 @@ const suppressDeletions = makeSuppressPlugin(
 	(chunk, change) => chunk.fromA + change.toA,
 );
 
+export interface CodeMirrorDiffViewerHandle {
+	openFind: () => void;
+}
+
 interface CodeMirrorDiffViewerProps {
 	original: string;
 	modified: string;
@@ -290,23 +304,30 @@ function buildDiagnosticDecorations(
 	return Decoration.set(decorations, true);
 }
 
-export function CodeMirrorDiffViewer({
-	original,
-	modified,
-	language,
-	worktreePath,
-	viewMode,
-	onChange,
-	onSave,
-	blameEntries,
-	diagnostics = [],
-	inlineCompletionRequest,
-	resolveSymbolHover,
-	onGoToDefinition,
-}: CodeMirrorDiffViewerProps) {
+export const CodeMirrorDiffViewer = forwardRef<
+	CodeMirrorDiffViewerHandle,
+	CodeMirrorDiffViewerProps
+>(function CodeMirrorDiffViewer(
+	{
+		original,
+		modified,
+		language,
+		worktreePath,
+		viewMode,
+		onChange,
+		onSave,
+		blameEntries,
+		diagnostics = [],
+		inlineCompletionRequest,
+		resolveSymbolHover,
+		onGoToDefinition,
+	},
+	ref: ForwardedRef<CodeMirrorDiffViewerHandle>,
+) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const mergeViewRef = useRef<MergeView | null>(null);
 	const activeEditorRef = useRef<EditorView | null>(null);
+	const overlayRef = useRef<CodeEditorSearchOverlayHandle>(null);
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchQueryText, setSearchQueryText] = useState("");
 	const [isCaseSensitive, setIsCaseSensitive] = useState(false);
@@ -387,15 +408,30 @@ export function CodeMirrorDiffViewer({
 	};
 	syncSearchOverlayStateRef.current = syncSearchOverlayState;
 
+	const ensureOverlaySearchOpenRef = useRef<(() => void) | null>(null);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			openFind: () => {
+				const mv = mergeViewRef.current;
+				if (!mv) return;
+				ensureOverlaySearchOpenRef.current?.();
+			},
+		}),
+		[],
+	);
+
 	const ensureOverlaySearchOpen = () => {
 		const mv = mergeViewRef.current;
 		if (!mv) return;
-		// Open hidden panel on both editors so setSearchQuery effects are accepted.
 		openSearchPanel(mv.a);
 		openSearchPanel(mv.b);
 		setIsSearchOpen(true);
 		syncSearchOverlayState();
+		overlayRef.current?.focusInput();
 	};
+	ensureOverlaySearchOpenRef.current = ensureOverlaySearchOpen;
 
 	const updateOverlaySearchQuery = (
 		overrides: Partial<{
@@ -740,6 +776,7 @@ export function CodeMirrorDiffViewer({
 		<div className="relative h-full w-full">
 			<div ref={containerRef} className="h-full w-full overflow-auto" />
 			<CodeEditorSearchOverlay
+				ref={overlayRef}
 				isOpen={isSearchOpen}
 				query={searchQueryText}
 				replaceText=""
@@ -771,4 +808,4 @@ export function CodeMirrorDiffViewer({
 			/>
 		</div>
 	);
-}
+});

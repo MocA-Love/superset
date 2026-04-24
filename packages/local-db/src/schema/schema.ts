@@ -1,6 +1,7 @@
 import {
 	index,
 	integer,
+	primaryKey,
 	real,
 	sqliteTable,
 	text,
@@ -210,6 +211,9 @@ export const settings = sqliteTable("settings", {
 	agentCustomDefinitions: text("agent_custom_definitions", {
 		mode: "json",
 	}).$type<AgentCustomDefinition[]>(),
+	agentPresetPermissionsMigratedAt: integer(
+		"agent_preset_permissions_migrated_at",
+	),
 	selectedRingtoneId: text("selected_ringtone_id"),
 	activeOrganizationId: text("active_organization_id"),
 	confirmOnQuit: integer("confirm_on_quit", { mode: "boolean" }),
@@ -278,10 +282,40 @@ export const settings = sqliteTable("settings", {
 	branchSortOrder: text("branch_sort_order").$type<BranchSortOrder>(),
 	pinDefaultBranch: integer("pin_default_branch", { mode: "boolean" }),
 	postCommitCommand: text("post_commit_command").$type<PostCommitCommand>(),
+	serviceStatusDefaultsSeeded: integer("service_status_defaults_seeded", {
+		mode: "boolean",
+	}),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;
 export type SelectSettings = typeof settings.$inferSelect;
+
+export type V1MigrationKind = "project" | "workspace";
+export type V1MigrationStatus = "success" | "linked" | "error" | "skipped";
+
+export const v1MigrationState = sqliteTable(
+	"v1_migration_state",
+	{
+		v1Id: text("v1_id").notNull(),
+		kind: text("kind").notNull().$type<V1MigrationKind>(),
+		v2Id: text("v2_id"),
+		organizationId: text("organization_id").notNull(),
+		status: text("status").notNull().$type<V1MigrationStatus>(),
+		reason: text("reason"),
+		migratedAt: integer("migrated_at")
+			.notNull()
+			.$defaultFn(() => Date.now()),
+	},
+	(table) => [
+		primaryKey({
+			columns: [table.organizationId, table.v1Id, table.kind],
+		}),
+		index("v1_migration_state_v2_id_idx").on(table.v2Id),
+	],
+);
+
+export type InsertV1MigrationState = typeof v1MigrationState.$inferInsert;
+export type SelectV1MigrationState = typeof v1MigrationState.$inferSelect;
 
 // =============================================================================
 // Synced tables - mirrored from cloud Postgres via Electric SQL
@@ -480,6 +514,7 @@ export type SelectBrowserSitePermission =
 // Fork-local: TODO autonomous agent sessions. Re-exported so drizzle-kit
 // (configured with schema="./src/schema/schema.ts") picks up the table.
 export * from "./browser-automation-bindings";
+export * from "./service-status-definitions";
 export * from "./todo-prompt-presets";
 export * from "./todo-schedules";
 export * from "./todo-sessions";

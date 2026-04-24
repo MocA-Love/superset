@@ -5,13 +5,17 @@ import { exposeElectronTRPC } from "trpc-electron/main";
 
 declare const __APP_VERSION__: string;
 
+// Expose via `typeof` so downstream interface augmentations in the renderer
+// and tests don't re-declare the shape with different modifiers (TS2687).
+const webUtilsAPI = {
+	getPathForFile: (file: File) => webUtils.getPathForFile(file),
+};
+
 declare global {
 	interface Window {
 		App: typeof API;
 		ipcRenderer: typeof ipcRendererAPI;
-		webUtils: {
-			getPathForFile: (file: File) => string;
-		};
+		webUtils: typeof webUtilsAPI;
 	}
 }
 
@@ -82,6 +86,4 @@ exposeElectronTRPC();
 
 contextBridge.exposeInMainWorld("App", API);
 contextBridge.exposeInMainWorld("ipcRenderer", ipcRendererAPI);
-contextBridge.exposeInMainWorld("webUtils", {
-	getPathForFile: (file: File) => webUtils.getPathForFile(file),
-});
+contextBridge.exposeInMainWorld("webUtils", webUtilsAPI);

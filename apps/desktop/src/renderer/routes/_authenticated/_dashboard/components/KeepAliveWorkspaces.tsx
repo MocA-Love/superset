@@ -30,7 +30,7 @@ export function KeepAliveWorkspaces() {
 	// Notify SyncService which workspace is active so only it gets polled.
 	// Passing workspaceId=null deactivates all polling (e.g., dashboard view).
 	const { mutate: setActiveSyncWorkspace } =
-		electronTrpc.workspaces.setActiveSyncWorkspace.useMutation();
+		electronTrpc.workspaces.githubExtended.setActiveSyncWorkspace.useMutation();
 	const prevActiveIdRef = useRef<string | null>(null);
 
 	useEffect(() => {

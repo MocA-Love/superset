@@ -18,7 +18,8 @@ export type PaneType =
 	| "database-explorer"
 	| "action-logs"
 	| "vscode-extension"
-	| "reference-graph";
+	| "reference-graph"
+	| "comment";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -120,6 +121,10 @@ export interface FileViewerState {
 	commitHash?: string;
 	/** Canonical absolute original path for renamed files */
 	oldPath?: string;
+	/** Optional inline baseline/original content for extension-driven diffs */
+	inlineOriginalContent?: string;
+	/** Stable identity for inlineOriginalContent so pane reuse/document keys stay correct */
+	inlineOriginalContentKey?: string;
 	/** Initial line to scroll to (raw mode only, transient - applied once) */
 	initialLine?: number;
 	/** Initial column to scroll to (raw mode only, transient - applied once) */
@@ -157,6 +162,7 @@ export interface Pane {
 		sessionId?: string;
 	};
 	referenceGraph?: ReferenceGraphPaneState;
+	comment?: CommentPaneState; // For comment panes
 	workspaceRun?: {
 		workspaceId: string;
 		state: "running" | "stopped-by-user" | "stopped-by-exit";
@@ -283,6 +289,19 @@ export interface ReferenceGraphPaneState {
 	line: number;
 	/** Column of the symbol */
 	column: number;
+}
+
+/**
+ * Comment pane-specific properties (PR review / conversation comment viewer)
+ */
+export interface CommentPaneState {
+	commentId: string;
+	authorLogin: string;
+	avatarUrl?: string;
+	body: string;
+	url?: string;
+	path?: string;
+	line?: number;
 }
 
 /**

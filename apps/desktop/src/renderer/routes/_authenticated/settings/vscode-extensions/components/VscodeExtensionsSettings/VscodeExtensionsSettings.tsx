@@ -13,6 +13,7 @@ import {
 	LuSparkles,
 	LuTrash2,
 } from "react-icons/lu";
+import { SiOpenai } from "react-icons/si";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { INDENT_RAINBOW_DEFAULT_COLORS } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createIndentRainbowPlugin";
 import { TRAILING_SPACES_DEFAULT_COLOR } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/createTrailingSpacesPlugin";
@@ -32,7 +33,8 @@ const EXTENSION_ICONS: Record<
 	React.ComponentType<{ className?: string }>
 > = {
 	"anthropic.claude-code": LuBot,
-	"openai.chatgpt": LuSparkles,
+	"openai.chatgpt": SiOpenai,
+	"moonshot-ai.kimi-code": LuSparkles,
 };
 
 const HEX6_COLOR_RE = /^#[0-9a-f]{6}$/i;

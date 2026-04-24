@@ -70,6 +70,10 @@ export const todoSchedules = sqliteTable(
 		codexModel: text("codex_model"),
 		codexEffort: text("codex_effort"),
 
+		// Optional Crush CLI model override for sessions this schedule
+		// creates. Only read when agentKind is "crush".
+		crushModel: text("crush_model"),
+
 		// How to behave when the previous session from this schedule is
 		// still running at fire time.
 		overlapMode: text("overlap_mode", { enum: ["skip", "queue"] })

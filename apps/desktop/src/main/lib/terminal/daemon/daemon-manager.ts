@@ -11,8 +11,7 @@ import {
 } from "../../terminal-host/client";
 import type { ListSessionsResponse } from "../../terminal-host/types";
 import { raceWithAbort, throwIfAborted } from "../abort";
-import { getDefaultShell } from "../env";
-import { buildTerminalEnv } from "../env-terminal";
+import { buildTerminalEnv, getDefaultShell } from "../env";
 import { TerminalKilledError } from "../errors";
 import { portManager } from "../port-manager";
 import type { CreateSessionParams, SessionResult } from "../types";
@@ -30,8 +29,6 @@ import type { ColdRestoreInfo, SessionInfo } from "./types";
 interface PendingCreateOrAttach {
 	requestId: string;
 	joinPending: boolean;
-	cols?: number;
-	rows?: number;
 	abortController: AbortController;
 	promise: Promise<SessionResult>;
 }
@@ -194,7 +191,7 @@ export class DaemonTerminalManager extends EventEmitter {
 				session.lastActive = Date.now();
 			}
 
-			portManager.checkOutputForHint(data, paneId);
+			portManager.checkOutputForHint(data);
 			this.historyManager.writeToHistory(paneId, data, () =>
 				this.sessions.get(paneId),
 			);
@@ -302,52 +299,16 @@ export class DaemonTerminalManager extends EventEmitter {
 		const requestId = params.requestId ?? `${paneId}:${Date.now()}`;
 		const joinPending = params.joinPending ?? false;
 		const pending = this.pendingSessions.get(paneId);
-		const requestHasExplicitSize =
-			Number.isInteger(params.cols) &&
-			Number.isInteger(params.rows) &&
-			(params.cols ?? 0) > 0 &&
-			(params.rows ?? 0) > 0;
 		if (pending) {
-			const pendingHasExplicitSize =
-				Number.isInteger(pending.cols) &&
-				Number.isInteger(pending.rows) &&
-				(pending.cols ?? 0) > 0 &&
-				(pending.rows ?? 0) > 0;
-			const pendingSizeMatchesRequest =
-				pending.cols === params.cols && pending.rows === params.rows;
-			const shouldSupersedePending =
-				requestHasExplicitSize &&
-				(!pendingHasExplicitSize || !pendingSizeMatchesRequest);
-
-			if (shouldSupersedePending) {
-				if (DEBUG_TERMINAL) {
-					console.log(
-						"[DaemonTerminalManager] Superseding pending createOrAttach with explicit size",
-						{
-							paneId,
-							requestId,
-							pendingRequestId: pending.requestId,
-							pendingCols: pending.cols ?? null,
-							pendingRows: pending.rows ?? null,
-							nextCols: params.cols ?? null,
-							nextRows: params.rows ?? null,
-							pendingJoinPending: pending.joinPending,
-							joinPending,
-						},
-					);
-				}
-				pending.abortController.abort();
-				this.pendingSessions.delete(paneId);
-			} else if (
+			if (
 				pending.requestId === requestId ||
 				joinPending ||
 				pending.joinPending
 			) {
 				return pending.promise;
-			} else {
-				pending.abortController.abort();
-				this.pendingSessions.delete(paneId);
 			}
+			pending.abortController.abort();
+			this.pendingSessions.delete(paneId);
 		}
 
 		const abortController = new AbortController();
@@ -358,8 +319,6 @@ export class DaemonTerminalManager extends EventEmitter {
 		const entry: PendingCreateOrAttach = {
 			requestId,
 			joinPending,
-			cols: params.cols,
-			rows: params.rows,
 			abortController,
 			promise,
 		};
@@ -682,28 +641,15 @@ export class DaemonTerminalManager extends EventEmitter {
 		}
 	}
 
-	write(params: {
-		paneId: string;
-		data: string;
-		requireAck?: boolean;
-		interactive?: boolean;
-	}): Promise<void> | void {
-		const { paneId, data, requireAck = false, interactive } = params;
+	write(params: { paneId: string; data: string }): void {
+		const { paneId, data } = params;
 
 		const session = this.sessions.get(paneId);
 		if (!session || !session.isAlive) {
 			throw new Error(`Terminal session ${paneId} not found or not alive`);
 		}
 
-		// Critical one-shot commands like workspace setup should fail loudly if
-		// the daemon didn't actually accept the write.
-		if (requireAck) {
-			return this.client
-				.write({ sessionId: paneId, data, interactive })
-				.then(() => {});
-		}
-
-		this.client.writeNoAck({ sessionId: paneId, data, interactive });
+		this.client.writeNoAck({ sessionId: paneId, data });
 	}
 
 	ackColdRestore(paneId: string): void {

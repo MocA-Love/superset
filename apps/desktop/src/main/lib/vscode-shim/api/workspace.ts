@@ -7,6 +7,14 @@ import path from "node:path";
 import { getConfiguration, onDidChangeConfiguration } from "./configuration";
 import { shimLog, shimWarn } from "./debug-log";
 import { Disposable, type Event, EventEmitter } from "./event-emitter";
+import {
+	compileGlobMatchers,
+	compileGlobPatterns,
+	directoryMayContainMatches,
+	globToRegExp,
+	matchesAnyGlob,
+	normalizeGlobPath,
+} from "./glob-utils";
 import { Uri } from "./uri";
 
 interface WorkspaceFolder {
@@ -21,6 +29,8 @@ interface TextDocument {
 	readonly languageId: string;
 	readonly version: number;
 	readonly lineCount: number;
+	readonly isDirty: boolean;
+	readonly isUntitled: boolean;
 	getText(range?: unknown): string;
 	save(): Promise<boolean>;
 }
@@ -51,9 +61,42 @@ const _onDidChangeTextDocument = new EventEmitter<unknown>();
 const _onDidOpenTextDocument = new EventEmitter<TextDocument>();
 const _onDidCloseTextDocument = new EventEmitter<TextDocument>();
 const _onWillSaveTextDocument = new EventEmitter<unknown>();
+const _textDocuments: TextDocument[] = [];
 
 const fileSystemProviders = new Map<string, unknown>();
 const textDocumentContentProviders = new Map<string, unknown>();
+const DEFAULT_FIND_EXCLUDE_GLOBS = ["**/.git", "**/node_modules"];
+const FILE_TYPE = {
+	File: 1,
+	Directory: 2,
+	SymbolicLink: 64,
+} as const;
+
+export async function resolveTextDocumentContent(
+	uri: Uri,
+): Promise<string | undefined> {
+	if (uri.scheme === "file") {
+		try {
+			return await fs.promises.readFile(uri.fsPath, "utf-8");
+		} catch {
+			return undefined;
+		}
+	}
+
+	const provider = textDocumentContentProviders.get(uri.scheme) as
+		| {
+				provideTextDocumentContent?(
+					uri: Uri,
+				): string | undefined | Promise<string | undefined>;
+		  }
+		| undefined;
+	if (!provider?.provideTextDocumentContent) {
+		return undefined;
+	}
+
+	const content = await provider.provideTextDocumentContent(uri);
+	return typeof content === "string" ? content : undefined;
+}
 
 export function setWorkspacePath(folderPath: string): void {
 	const oldPath = workspaceFolderPath;
@@ -77,6 +120,42 @@ export function setWorkspacePath(folderPath: string): void {
 	}
 }
 
+export function setActiveWorkspaceTextDocument(
+	filePath: string | null,
+	languageId?: string,
+): void {
+	_textDocuments.length = 0;
+	if (!filePath) {
+		return;
+	}
+
+	const readContent = () => {
+		try {
+			return fs.readFileSync(filePath, "utf-8");
+		} catch {
+			return "";
+		}
+	};
+
+	const content = readContent();
+	const doc: TextDocument = {
+		uri: Uri.file(filePath),
+		fileName: filePath,
+		languageId: languageId ?? (path.extname(filePath).slice(1) || "plaintext"),
+		version: 1,
+		lineCount: content.split("\n").length,
+		isDirty: false,
+		isUntitled: false,
+		getText() {
+			return readContent();
+		},
+		async save() {
+			return true;
+		},
+	};
+	_textDocuments.push(doc);
+}
+
 export const workspace = {
 	get workspaceFolders(): WorkspaceFolder[] | undefined {
 		if (!workspaceFolderPath) return undefined;
@@ -98,7 +177,7 @@ export const workspace = {
 	},
 
 	get textDocuments(): TextDocument[] {
-		return [];
+		return [..._textDocuments];
 	},
 
 	get name(): string | undefined {
@@ -138,20 +217,20 @@ export const workspace = {
 	},
 
 	async openTextDocument(uriOrPath: Uri | string): Promise<TextDocument> {
-		const filePath =
-			typeof uriOrPath === "string" ? uriOrPath : uriOrPath.fsPath;
-		const content = fs.existsSync(filePath)
-			? fs.readFileSync(filePath, "utf-8")
-			: "";
+		const uri = typeof uriOrPath === "string" ? Uri.file(uriOrPath) : uriOrPath;
+		const filePath = uri.scheme === "file" ? uri.fsPath : uri.path;
+		const content = (await resolveTextDocumentContent(uri)) ?? "";
 		const lines = content.split("\n");
 		const ext = path.extname(filePath).slice(1);
 
 		return {
-			uri: Uri.file(filePath),
+			uri,
 			fileName: filePath,
 			languageId: ext || "plaintext",
 			version: 1,
 			lineCount: lines.length,
+			isDirty: false,
+			isUntitled: false,
 			getText(_range?: unknown) {
 				return content;
 			},
@@ -168,9 +247,18 @@ export const workspace = {
 		_token?: unknown,
 	): Promise<Uri[]> {
 		if (!workspaceFolderPath) return [];
+		const rootPath = workspaceFolderPath;
 		try {
 			const results: string[] = [];
-			const ignorePatterns = exclude ? [exclude] : ["node_modules", ".git"];
+			const includePatterns = compileGlobPatterns(include);
+			const includeMatchers = includePatterns.map((pattern) =>
+				globToRegExp(pattern),
+			);
+			const excludeMatchers = compileGlobMatchers(
+				exclude === undefined
+					? `{${DEFAULT_FIND_EXCLUDE_GLOBS.join(",")}}`
+					: exclude,
+			);
 
 			function walkDir(dir: string, depth: number): void {
 				if (depth > 15 || (maxResults && results.length >= maxResults)) return;
@@ -181,14 +269,25 @@ export const workspace = {
 					return;
 				}
 				for (const entry of entries) {
-					if (ignorePatterns.some((p) => entry.name.includes(p))) continue;
 					const fullPath = path.join(dir, entry.name);
+					const relativePath = normalizeGlobPath(
+						path.relative(rootPath, fullPath),
+					);
+					if (
+						relativePath &&
+						(matchesAnyGlob(excludeMatchers, relativePath) ||
+							(entry.isDirectory() &&
+								matchesAnyGlob(excludeMatchers, `${relativePath}/`)))
+					) {
+						continue;
+					}
 					if (entry.isDirectory()) {
 						walkDir(fullPath, depth + 1);
 					} else if (entry.isFile()) {
-						// Simple extension matching from include pattern (e.g., "**/*.ts")
-						const ext = include.match(/\*(\.\w+)$/)?.[1];
-						if (!ext || entry.name.endsWith(ext)) {
+						if (
+							includeMatchers.length === 0 ||
+							matchesAnyGlob(includeMatchers, relativePath)
+						) {
 							results.push(fullPath);
 						}
 					}
@@ -260,11 +359,155 @@ export const workspace = {
 		const _onCreate = new EventEmitter<Uri>();
 		const _onChange = new EventEmitter<Uri>();
 		const _onDelete = new EventEmitter<Uri>();
+		const rootPath = workspaceFolderPath;
+		const includePatterns = compileGlobPatterns(_globPattern);
+		const includeMatchers = includePatterns.map((pattern) =>
+			globToRegExp(pattern),
+		);
+		const excludeMatchers = compileGlobMatchers(
+			`{${DEFAULT_FIND_EXCLUDE_GLOBS.join(",")}}`,
+		);
+		const dirWatchers = new Map<string, fs.FSWatcher>();
+
+		const matchesWatcherPath = (fullPath: string): boolean => {
+			if (!rootPath) {
+				return false;
+			}
+			const relativePath = normalizeGlobPath(path.relative(rootPath, fullPath));
+			if (!relativePath || relativePath.startsWith("..")) {
+				return false;
+			}
+			return (
+				includeMatchers.length === 0 ||
+				matchesAnyGlob(includeMatchers, relativePath) ||
+				matchesAnyGlob(includeMatchers, `${relativePath}/`)
+			);
+		};
+
+		const shouldSkipDirectory = (directoryPath: string): boolean => {
+			if (!rootPath) {
+				return false;
+			}
+			const relativePath = normalizeGlobPath(
+				path.relative(rootPath, directoryPath),
+			);
+			if (!relativePath || relativePath.startsWith("..")) {
+				return false;
+			}
+			return (
+				matchesAnyGlob(excludeMatchers, relativePath) ||
+				matchesAnyGlob(excludeMatchers, `${relativePath}/`) ||
+				!directoryMayContainMatches(relativePath, includePatterns)
+			);
+		};
+
+		const closeDescendantWatchers = (targetPath: string) => {
+			const watchedDirs = [...dirWatchers.keys()];
+			for (const watchedDir of watchedDirs) {
+				if (
+					watchedDir === targetPath ||
+					watchedDir.startsWith(`${targetPath}${path.sep}`)
+				) {
+					const watcher = dirWatchers.get(watchedDir);
+					if (!watcher) {
+						continue;
+					}
+					watcher.close();
+					dirWatchers.delete(watchedDir);
+				}
+			}
+		};
+
+		const addDirectoryWatcher = (directoryPath: string) => {
+			if (dirWatchers.has(directoryPath)) {
+				return;
+			}
+			if (shouldSkipDirectory(directoryPath)) {
+				return;
+			}
+
+			try {
+				const watcher = fs.watch(directoryPath, (eventType, filename) => {
+					if (!filename) {
+						return;
+					}
+
+					const fullPath = path.join(directoryPath, filename.toString());
+					const exists = fs.existsSync(fullPath);
+
+					if (exists) {
+						try {
+							if (
+								fs.statSync(fullPath).isDirectory() &&
+								!shouldSkipDirectory(fullPath)
+							) {
+								addDirectoryWatcher(fullPath);
+							}
+						} catch {}
+					} else {
+						closeDescendantWatchers(fullPath);
+					}
+
+					if (!matchesWatcherPath(fullPath)) {
+						return;
+					}
+
+					const uri = Uri.file(fullPath);
+					if (!exists) {
+						if (!_ignoreDeleteEvents) {
+							_onDelete.fire(uri);
+						}
+						return;
+					}
+
+					if (eventType === "change") {
+						if (!_ignoreChangeEvents) {
+							_onChange.fire(uri);
+						}
+						return;
+					}
+
+					if (!_ignoreCreateEvents) {
+						_onCreate.fire(uri);
+					}
+				});
+				dirWatchers.set(directoryPath, watcher);
+			} catch (error) {
+				shimWarn(
+					`[vscode-shim] createFileSystemWatcher failed for ${directoryPath}:`,
+					error,
+				);
+				return;
+			}
+
+			let entries: fs.Dirent[];
+			try {
+				entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+			} catch {
+				return;
+			}
+
+			for (const entry of entries) {
+				if (!entry.isDirectory()) {
+					continue;
+				}
+				addDirectoryWatcher(path.join(directoryPath, entry.name));
+			}
+		};
+
+		if (rootPath) {
+			addDirectoryWatcher(rootPath);
+		}
+
 		return {
 			onDidCreate: _onCreate.event,
 			onDidChange: _onChange.event,
 			onDidDelete: _onDelete.event,
 			dispose() {
+				for (const watcher of dirWatchers.values()) {
+					watcher.close();
+				}
+				dirWatchers.clear();
 				_onCreate.dispose();
 				_onChange.dispose();
 				_onDelete.dispose();
@@ -370,6 +613,44 @@ export const workspace = {
 			_options?: { overwrite?: boolean },
 		): Promise<void> {
 			await fs.promises.copyFile(source.fsPath, target.fsPath);
+		},
+		async readDirectory(uri: Uri): Promise<[string, number][]> {
+			if (uri.scheme !== "file") {
+				const provider = fileSystemProviders.get(uri.scheme) as
+					| { readDirectory?(uri: Uri): Promise<[string, number][]> }
+					| undefined;
+				if (provider?.readDirectory) {
+					return provider.readDirectory(uri);
+				}
+				throw new Error(`No file system provider for scheme: ${uri.scheme}`);
+			}
+			const entries = await fs.promises.readdir(uri.fsPath, {
+				withFileTypes: true,
+			});
+			return Promise.all(
+				entries.map(async (entry) => {
+					if (entry.isDirectory()) {
+						return [entry.name, FILE_TYPE.Directory] as [string, number];
+					}
+
+					if (!entry.isSymbolicLink()) {
+						return [entry.name, FILE_TYPE.File] as [string, number];
+					}
+
+					const entryPath = path.join(uri.fsPath, entry.name);
+
+					try {
+						const stats = await fs.promises.stat(entryPath);
+						return [
+							entry.name,
+							(stats.isDirectory() ? FILE_TYPE.Directory : FILE_TYPE.File) |
+								FILE_TYPE.SymbolicLink,
+						] as [string, number];
+					} catch {
+						return [entry.name, FILE_TYPE.SymbolicLink] as [string, number];
+					}
+				}),
+			);
 		},
 		isWritableFileSystem(scheme: string): boolean | undefined {
 			return scheme === "file" ? true : undefined;

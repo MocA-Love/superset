@@ -38,7 +38,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
-import { useTabsStore } from "renderer/stores/tabs";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import { CheckSteps } from "./components/CheckSteps";
 import { CommentBody } from "./components/CommentBody";
 import { ReplyDialog } from "./components/ReplyDialog";
@@ -149,17 +149,17 @@ export function ReviewPanel({
 	> | null>(null);
 	const copyToClipboardMutation = electronTrpc.external.copyText.useMutation();
 	const setPullRequestDraftStateMutation =
-		electronTrpc.workspaces.setPullRequestDraftState.useMutation();
+		electronTrpc.workspaces.githubExtended.setPullRequestDraftState.useMutation();
 	const setPullRequestThreadResolutionMutation =
-		electronTrpc.workspaces.setPullRequestThreadResolution.useMutation();
+		electronTrpc.workspaces.githubExtended.setPullRequestThreadResolution.useMutation();
 	const replyToPullRequestCommentMutation =
-		electronTrpc.workspaces.replyToPullRequestComment.useMutation();
+		electronTrpc.workspaces.githubExtended.replyToPullRequestComment.useMutation();
 	const updatePullRequestReviewersMutation =
-		electronTrpc.workspaces.updatePullRequestReviewers.useMutation();
+		electronTrpc.workspaces.githubExtended.updatePullRequestReviewers.useMutation();
 	const updatePullRequestAssigneesMutation =
-		electronTrpc.workspaces.updatePullRequestAssignees.useMutation();
+		electronTrpc.workspaces.githubExtended.updatePullRequestAssignees.useMutation();
 	const rerunPullRequestChecksMutation =
-		electronTrpc.workspaces.rerunPullRequestChecks.useMutation();
+		electronTrpc.workspaces.githubExtended.rerunPullRequestChecks.useMutation();
 	const candidateKind =
 		identityPopoverOpen === "assignees" ? "assignee" : "reviewer";
 	const canEditPullRequest = pr?.state === "open" || pr?.state === "draft";
@@ -190,19 +190,36 @@ export function ReviewPanel({
 	const {
 		data: identityCandidates = [],
 		isLoading: isIdentityCandidatesLoading,
-	} = electronTrpc.workspaces.getPullRequestIdentityCandidates.useQuery(
-		{
-			workspaceId: resolvedWorkspaceId ?? "",
-			kind: candidateKind,
-			pullRequestUrl: pr?.url,
-		},
-		{
-			enabled:
-				!!resolvedWorkspaceId && !!identityPopoverOpen && !!canEditPullRequest,
-			staleTime: 60_000,
-			refetchOnWindowFocus: false,
-		},
-	);
+	} =
+		electronTrpc.workspaces.githubExtended.getPullRequestIdentityCandidates.useQuery(
+			{
+				workspaceId: resolvedWorkspaceId ?? "",
+				kind: candidateKind,
+				pullRequestUrl: pr?.url,
+			},
+			{
+				enabled:
+					!!resolvedWorkspaceId &&
+					!!identityPopoverOpen &&
+					!!canEditPullRequest,
+				staleTime: 60_000,
+				refetchOnWindowFocus: false,
+			},
+		);
+	const openCommentPane = useTabsStore((s) => s.openCommentPane);
+
+	const handleOpenComment = (comment: PullRequestComment) => {
+		if (!resolvedWorkspaceId) return;
+		openCommentPane(resolvedWorkspaceId, {
+			commentId: comment.id,
+			authorLogin: comment.authorLogin,
+			avatarUrl: comment.avatarUrl,
+			body: comment.body,
+			url: comment.url,
+			path: comment.path,
+			line: comment.line,
+		});
+	};
 
 	useEffect(() => {
 		return () => {
@@ -452,7 +469,7 @@ export function ReviewPanel({
 		});
 	};
 
-	const toggleCommentExpansion = (commentId: string) => {
+	const _toggleCommentExpansion = (commentId: string) => {
 		setExpandedComments((prev) => {
 			const next = new Set(prev);
 			if (next.has(commentId)) {
@@ -610,7 +627,7 @@ export function ReviewPanel({
 					: `Re-ran ${result.rerunCount} workflow run${result.rerunCount === 1 ? "" : "s"}`,
 			);
 			await refreshReview("status");
-			void trpcUtils.workspaces.getJobLogs.invalidate();
+			void trpcUtils.workspaces.githubExtended.getJobLogs.invalidate();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error(`Failed to rerun jobs: ${message}`);
@@ -949,7 +966,8 @@ export function ReviewPanel({
 					<button
 						type="button"
 						className="flex w-full items-start gap-1 px-1.5 py-1 cursor-pointer text-left"
-						onClick={() => toggleCommentExpansion(comment.id)}
+						onClick={() => handleOpenComment(comment)}
+						aria-label={`View comment by ${comment.authorLogin}`}
 					>
 						<LuChevronDown
 							className={cn(

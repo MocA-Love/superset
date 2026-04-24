@@ -1,4 +1,5 @@
-import { mergeRouters } from "../..";
+import { mergeRouters, router } from "../..";
+import { createGithubExtendedRouter } from "./github-extended";
 import { createCreateProcedures } from "./procedures/create";
 import { createDeleteProcedures } from "./procedures/delete";
 import { createGenerateBranchNameProcedures } from "./procedures/generate-branch-name";
@@ -14,6 +15,7 @@ export const createWorkspacesRouter = () => {
 		createDeleteProcedures(),
 		createQueryProcedures(),
 		createGitStatusProcedures(),
+		router({ githubExtended: createGithubExtendedRouter() }),
 		createStatusProcedures(),
 		createInitProcedures(),
 		createSectionsProcedures(),

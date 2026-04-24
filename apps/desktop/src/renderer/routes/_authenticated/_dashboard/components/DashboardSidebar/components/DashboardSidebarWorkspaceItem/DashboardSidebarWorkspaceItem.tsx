@@ -28,6 +28,7 @@ export function DashboardSidebarWorkspaceItem({
 		projectId,
 		accentColor = null,
 		hostType,
+		hostIsOnline,
 		name,
 		branch,
 		creationStatus,
@@ -36,6 +37,7 @@ export function DashboardSidebarWorkspaceItem({
 	const {
 		cancelRename,
 		handleClick,
+		handleCopyBranchName,
 		handleCopyPath,
 		handleCreateSection,
 		handleDeleted,
@@ -54,6 +56,7 @@ export function DashboardSidebarWorkspaceItem({
 		workspaceId: id,
 		projectId,
 		workspaceName: name,
+		branch,
 	});
 
 	const navigate = useNavigate();
@@ -79,6 +82,7 @@ export function DashboardSidebarWorkspaceItem({
 				)}
 				<DashboardSidebarCollapsedWorkspaceButton
 					hostType={hostType}
+					hostIsOnline={hostIsOnline}
 					isActive={isActive}
 					onClick={isPending ? handlePendingClick : handleClick}
 					creationStatus={creationStatus}
@@ -114,6 +118,7 @@ export function DashboardSidebarWorkspaceItem({
 						}
 						onOpenInFinder={handleOpenInFinder}
 						onCopyPath={handleCopyPath}
+						onCopyBranchName={handleCopyBranchName}
 						onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
 						onRename={startRename}
 						onDelete={() => setIsDeleteDialogOpen(true)}
@@ -176,6 +181,7 @@ export function DashboardSidebarWorkspaceItem({
 					isLocalWorkspace={hostType === "local-device"}
 					onOpenInFinder={handleOpenInFinder}
 					onCopyPath={handleCopyPath}
+					onCopyBranchName={handleCopyBranchName}
 					onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
 					onRename={startRename}
 					onDelete={() => setIsDeleteDialogOpen(true)}

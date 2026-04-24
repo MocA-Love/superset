@@ -37,14 +37,23 @@ import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
 import { createExtensionIconProtocolHandler } from "./lib/extensions/extension-icon-protocol";
 import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
+import {
+	dispatchPaths as dispatchFileIntakePaths,
+	drainPendingPaths as drainFileIntakePending,
+	filterFilePathArgs as filterFileIntakeArgs,
+	markFileIntakeReady,
+	queuePath as queueFileIntakePath,
+} from "./lib/file-intake";
 // FORK NOTE: upstream renamed host-service-manager → host-service-coordinator (#3250 relay)
 // Aliased as getHostServiceManager to minimize diff with fork's quit lifecycle code
 import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-service-coordinator";
 import { closeLocalDb, localDb } from "./lib/local-db";
+import { requestLocalNetworkAccess } from "./lib/local-network-permission";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { reportError } from "./lib/report-error";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
+import { createServiceIconProtocolHandler } from "./lib/service-status/icon-storage";
 import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
 import {
 	prewarmTerminalRuntime,
@@ -348,6 +357,23 @@ app.on("open-url", async (event, url) => {
 	}
 });
 
+// macOS fires `open-file` when a file is double-clicked with this app as the
+// handler, dragged onto the dock icon, or passed via Finder "Open with". The
+// event can arrive *before* app.whenReady() resolves on cold start — Electron
+// recommends installing the listener inside `will-finish-launching` so we
+// catch those early events. Paths arriving before the renderer is ready are
+// queued in file-intake and drained later.
+app.on("will-finish-launching", () => {
+	app.on("open-file", (event, filePath) => {
+		event.preventDefault();
+		if (appReady) {
+			void dispatchFileIntakePaths([filePath]);
+		} else {
+			queueFileIntakePath(filePath);
+		}
+	});
+});
+
 export type QuitMode = "release" | "stop";
 let pendingQuitMode: QuitMode | null = null;
 let isQuitting = false;
@@ -385,7 +411,7 @@ app.on("before-quit", async (event) => {
 	if (isQuitting) return;
 
 	// Consume the quit mode so it doesn't persist across aborted quits
-	const quitMode = pendingQuitMode;
+	let quitMode = pendingQuitMode;
 	pendingQuitMode = null;
 
 	// FORK NOTE: macOS tray-stay-alive block removed to match upstream (#3205).
@@ -395,17 +421,41 @@ app.on("before-quit", async (event) => {
 		event.preventDefault();
 
 		try {
-			const { response } = await dialog.showMessageBox({
-				type: "question",
-				buttons: ["Quit", "Cancel"],
-				defaultId: 0,
-				cancelId: 1,
-				title: "Quit Superset",
-				message: "Are you sure you want to quit?",
-			});
+			// FORK NOTE: Linux has no tray UI to choose between "release"
+			// (keep host-services running for reattach) vs "stop" (tear them
+			// down). Surface the same choice as dialog buttons when services
+			// are active. macOS already exposes this via the tray menu.
+			const showServiceAwareDialog =
+				process.platform === "linux" &&
+				getHostServiceManager().hasActiveInstances();
 
-			if (response === 1) {
-				return;
+			if (showServiceAwareDialog) {
+				const { response } = await dialog.showMessageBox({
+					type: "question",
+					buttons: [
+						"Quit (Keep Services Running)",
+						"Quit & Stop Services",
+						"Cancel",
+					],
+					defaultId: 0,
+					cancelId: 2,
+					title: "Quit Superset",
+					message: "Services are running in the background.",
+					detail:
+						"Keep them running so you can reattach on next launch, or stop them entirely.",
+				});
+				if (response === 2) return;
+				quitMode = response === 1 ? "stop" : "release";
+			} else {
+				const { response } = await dialog.showMessageBox({
+					type: "question",
+					buttons: ["Quit", "Cancel"],
+					defaultId: 0,
+					cancelId: 1,
+					title: "Quit Superset",
+					message: "Are you sure you want to quit?",
+				});
+				if (response === 1) return;
 			}
 		} catch (error) {
 			console.error("[main] Quit confirmation dialog failed:", error);
@@ -579,6 +629,15 @@ protocol.registerSchemesAsPrivileged([
 		},
 	},
 	{
+		scheme: "superset-service-icon",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
 		scheme: "vscode-webview-resource",
 		privileges: {
 			standard: true,
@@ -604,12 +663,19 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
 	app.exit(0);
 } else {
-	// Windows/Linux: protocol URL arrives as argv on the second instance
+	// Windows/Linux: protocol URL arrives as argv on the second instance.
+	// File paths (from Explorer "Open with" / drag onto dock / CLI invocation)
+	// also land here — we hand those to the file-intake pipeline so the same
+	// classification logic runs regardless of platform.
 	app.on("second-instance", async (_event, argv) => {
 		focusMainWindow();
 		const url = findDeepLinkInArgv(argv);
 		if (url) {
 			await processDeepLink(url);
+		}
+		const paths = await filterFileIntakeArgs(argv);
+		if (paths.length > 0) {
+			await dispatchFileIntakePaths(paths);
 		}
 	});
 
@@ -617,6 +683,7 @@ if (!gotTheLock) {
 		await app.whenReady();
 		registerWithMacOSNotificationCenter();
 		requestAppleEventsAccess();
+		requestLocalNetworkAccess();
 		initializeBrowserIdentityManager();
 		initializeBrowserWebviewCompat();
 		browserSitePermissionManager.initialize();
@@ -764,6 +831,13 @@ if (!gotTheLock) {
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-workspace-media", workspaceMediaHandler);
 
+		// Serve user-uploaded icons for service-status definitions
+		const serviceIconHandler = createServiceIconProtocolHandler();
+		protocol.handle("superset-service-icon", serviceIconHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-service-icon", serviceIconHandler);
+
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();
 		initSentry();
@@ -821,5 +895,57 @@ if (!gotTheLock) {
 		}
 
 		appReady = true;
+
+		// File-intake waits for the renderer JS to actually load before
+		// declaring itself ready. Sending IPC to a freshly-created BrowserWindow
+		// whose renderer hasn't run yet would be silently dropped — the
+		// did-finish-load event is the first moment `ipcRenderer.on(...)` in
+		// the renderer has had a chance to register.
+		let coldStartDone = false;
+		const runColdStart = async () => {
+			if (coldStartDone) return;
+			coldStartDone = true;
+			markFileIntakeReady();
+			try {
+				const coldStartPaths = await filterFileIntakeArgs(process.argv);
+				if (coldStartPaths.length > 0) {
+					await dispatchFileIntakePaths(coldStartPaths);
+				}
+				await drainFileIntakePending();
+			} catch (err) {
+				console.error("[main] file-intake cold-start drain failed:", err);
+			}
+		};
+
+		const drainOnWindowReady = (win: BrowserWindow) => {
+			// macOS: closing all windows doesn't quit the app, and `open-file` /
+			// dock drops arriving during the no-windows interval are queued by
+			// dispatchPaths(). When the user re-activates (Dock click creates a
+			// fresh window), we drain here so those queued paths actually open
+			// instead of disappearing until next full restart.
+			const drain = () => {
+				if (!coldStartDone) {
+					void runColdStart();
+				} else {
+					void drainFileIntakePending().catch((err) => {
+						console.error("[main] file-intake re-drain failed:", err);
+					});
+				}
+			};
+			if (win.webContents.isLoading()) {
+				win.webContents.once("did-finish-load", drain);
+			} else {
+				drain();
+			}
+		};
+
+		const firstWindow = BrowserWindow.getAllWindows()[0];
+		if (firstWindow) drainOnWindowReady(firstWindow);
+		// Re-drain whenever a new BrowserWindow appears (reactivate after
+		// close-all, tearoffs, etc.). Cold-start guard above ensures the
+		// initial sequence runs exactly once.
+		app.on("browser-window-created", (_ev, win) => {
+			drainOnWindowReady(win);
+		});
 	})();
 }

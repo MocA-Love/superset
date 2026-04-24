@@ -108,6 +108,11 @@ export const todoSessions = sqliteTable(
 		codexModel: text("codex_model"),
 		codexEffort: text("codex_effort"),
 
+		// Optional per-session Crush CLI model override. Only read when
+		// agentKind is "crush". Free-form string in "provider/model" format
+		// (e.g. "openai/gpt-5.4"), resolved dynamically from `crush models`.
+		crushModel: text("crush_model"),
+
 		verdictPassed: integer("verdict_passed", { mode: "boolean" }),
 		verdictReason: text("verdict_reason"),
 		verdictFailingTest: text("verdict_failing_test"),
