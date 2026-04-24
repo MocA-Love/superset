@@ -255,9 +255,16 @@ export async function migrateV1DataToV2(args: Args): Promise<MigrationSummary> {
 			}
 		}
 
+		// For type="worktree" workspaces, use the associated worktree's path.
+		// For type="branch" workspaces (no worktreeId), fall back to the parent
+		// project's mainRepoPath so adopt() can resolve the branch inside the
+		// primary checkout (listWorktreeBranches excludes the primary working tree).
+		// Without this, branch-type workspaces skip with "worktree_not_registered".
 		const v1WorktreePath = workspace.worktreeId
 			? worktreesById.get(workspace.worktreeId)?.path
-			: undefined;
+			: workspace.type === "branch"
+				? v1Projects.find((p) => p.id === workspace.projectId)?.mainRepoPath
+				: undefined;
 
 		try {
 			const result = await hostService.workspaceCreation.adopt.mutate({
