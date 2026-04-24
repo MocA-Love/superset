@@ -29,6 +29,21 @@ export type ServiceStatusIconType =
 	| "custom-url"
 	| "custom-file";
 
+/**
+ * API response shape the poller should assume for a definition. The default
+ * `statuspage-v2` covers the most common case (Claude, GitHub, Stripe, …);
+ * the other three are dedicated adapters for the Big 3 cloud providers which
+ * publish incidents in incompatible formats.
+ *
+ * Mirrored from `@superset/local-db`; keep in sync manually (see note above
+ * for `ServiceStatusIconType`).
+ */
+export type ServiceStatusFormat =
+	| "statuspage-v2"
+	| "gcp-incidents"
+	| "aws-health"
+	| "azure-rss";
+
 export interface ServiceStatusDefinition {
 	id: ServiceStatusId;
 	label: string;
@@ -38,6 +53,7 @@ export interface ServiceStatusDefinition {
 	// simple-icon: slug (e.g. "claude"); custom-url: remote URL; custom-file:
 	// absolute path under userData; favicon: ignored (null).
 	iconValue: string | null;
+	format: ServiceStatusFormat;
 	sortOrder: number;
 }
 

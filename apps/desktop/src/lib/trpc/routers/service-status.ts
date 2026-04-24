@@ -19,6 +19,13 @@ const iconTypeSchema = z.enum([
 	"custom-file",
 ]);
 
+const formatSchema = z.enum([
+	"statuspage-v2",
+	"gcp-incidents",
+	"aws-health",
+	"azure-rss",
+]);
+
 // 2KB max iconValue — fits URLs, simple-icon slugs, and filesystem paths, and
 // prevents accidental base64 blobs from landing in the definition row itself.
 const iconValueSchema = z.string().max(2048).nullable();
@@ -125,6 +132,7 @@ const createInputSchema = z.object({
 	apiUrl: safeHttpUrlSchema,
 	iconType: iconTypeSchema,
 	iconValue: iconValueSchema,
+	format: formatSchema.optional(),
 });
 
 const updateInputSchema = z.object({
@@ -134,6 +142,7 @@ const updateInputSchema = z.object({
 	apiUrl: safeHttpUrlSchema.optional(),
 	iconType: iconTypeSchema.optional(),
 	iconValue: iconValueSchema.optional(),
+	format: formatSchema.optional(),
 	// When non-null, the previous `custom-file` path (captured by the caller
 	// before calling update) is removed from disk after the DB row switches
 	// to the new icon.

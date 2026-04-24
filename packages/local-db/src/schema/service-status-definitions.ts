@@ -19,6 +19,22 @@ export type ServiceStatusIconType =
 	| "custom-file";
 
 /**
+ * Upstream API shape the poller should assume for each definition. Defaults
+ * to `statuspage-v2` for backward compatibility with rows that predate the
+ * multi-format adapter.
+ *
+ *   - `statuspage-v2`  — Statuspage.io `/api/v2/status.json` (Claude, GitHub, Stripe, …)
+ *   - `gcp-incidents`  — `status.cloud.google.com/incidents.json`
+ *   - `aws-health`     — `status.aws.amazon.com/data.json`
+ *   - `azure-rss`      — Azure / Microsoft status RSS 2.0 feed
+ */
+export type ServiceStatusFormat =
+	| "statuspage-v2"
+	| "gcp-incidents"
+	| "aws-health"
+	| "azure-rss";
+
+/**
  * User-configurable list of external status pages to poll.
  *
  * Originally hardcoded for Claude + Codex; this table lets users add, remove,
@@ -39,6 +55,10 @@ export const serviceStatusDefinitions = sqliteTable(
 			.$type<ServiceStatusIconType>()
 			.default("favicon"),
 		iconValue: text("icon_value"),
+		format: text("format")
+			.notNull()
+			.$type<ServiceStatusFormat>()
+			.default("statuspage-v2"),
 		sortOrder: integer("sort_order").notNull().default(0),
 		createdAt: integer("created_at")
 			.notNull()

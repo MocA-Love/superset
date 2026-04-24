@@ -505,6 +505,13 @@
       "when": 1776993150080,
       "tag": "0071_service_status_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1777012605608,
+      "tag": "0072_add_service_status_format",
+      "breakpoints": true
     }
   ]
 }

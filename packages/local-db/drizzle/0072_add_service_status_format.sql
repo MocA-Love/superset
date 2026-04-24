@@ -1,0 +1,1 @@
+ALTER TABLE `service_status_definitions` ADD `format` text DEFAULT 'statuspage-v2' NOT NULL;

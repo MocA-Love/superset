@@ -17,6 +17,13 @@ import {
 } from "@superset/ui/form";
 import { Input } from "@superset/ui/input";
 import { RadioGroup, RadioGroupItem } from "@superset/ui/radio-group";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@superset/ui/select";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { useEffect, useRef, useState } from "react";
@@ -27,6 +34,7 @@ import { ServiceStatusIcon } from "renderer/lib/service-status/ServiceStatusIcon
 import { SIMPLE_ICON_OPTIONS } from "renderer/lib/service-status/simple-icons-map";
 import type {
 	ServiceStatusDefinition,
+	ServiceStatusFormat,
 	ServiceStatusIconType,
 } from "shared/service-status-types";
 import { z } from "zod";
@@ -36,6 +44,13 @@ const iconTypeSchema = z.enum([
 	"favicon",
 	"custom-url",
 	"custom-file",
+]);
+
+const formatSchema = z.enum([
+	"statuspage-v2",
+	"gcp-incidents",
+	"aws-health",
+	"azure-rss",
 ]);
 
 const formSchema = z
@@ -59,6 +74,7 @@ const formSchema = z
 			),
 		iconType: iconTypeSchema,
 		iconValue: z.string().nullable(),
+		format: formatSchema,
 	})
 	.refine((data) => data.iconType !== "simple-icon" || !!data.iconValue, {
 		message: "アイコンを選択してください",
@@ -99,6 +115,7 @@ export function ServiceDefinitionDialog({
 			apiUrl: "",
 			iconType: "favicon",
 			iconValue: null,
+			format: "statuspage-v2",
 		},
 	});
 
@@ -114,6 +131,7 @@ export function ServiceDefinitionDialog({
 						apiUrl: target.apiUrl,
 						iconType: target.iconType,
 						iconValue: target.iconValue,
+						format: target.format,
 					}
 				: {
 						label: "",
@@ -121,6 +139,7 @@ export function ServiceDefinitionDialog({
 						apiUrl: "",
 						iconType: "favicon",
 						iconValue: null,
+						format: "statuspage-v2",
 					},
 		);
 		setValidationState(null);
@@ -183,6 +202,7 @@ export function ServiceDefinitionDialog({
 					apiUrl: values.apiUrl,
 					iconType: values.iconType,
 					iconValue: values.iconValue,
+					format: values.format,
 					deleteReplacedIconPath: replacedPath,
 				});
 				toast.success(`${values.label} を更新しました`);
@@ -304,7 +324,7 @@ export function ServiceDefinitionDialog({
 							name="apiUrl"
 							render={({ field }) => (
 								<div className="space-y-1.5">
-									<FormLabel>API URL (Statuspage v2)</FormLabel>
+									<FormLabel>API URL</FormLabel>
 									<div className="flex items-center gap-2">
 										<FormControl>
 											<Input
@@ -336,6 +356,43 @@ export function ServiceDefinitionDialog({
 												: `NG: ${validationState.error}`}
 										</p>
 									)}
+									<FormMessage />
+								</div>
+							)}
+						/>
+
+						<FormField
+							control={form.control}
+							name="format"
+							render={({ field }) => (
+								<div className="space-y-1.5">
+									<FormLabel>API フォーマット</FormLabel>
+									<Select
+										value={field.value}
+										onValueChange={(value) =>
+											field.onChange(value as ServiceStatusFormat)
+										}
+									>
+										<FormControl>
+											<SelectTrigger>
+												<SelectValue />
+											</SelectTrigger>
+										</FormControl>
+										<SelectContent>
+											<SelectItem value="statuspage-v2">
+												Statuspage.io v2 (デフォルト)
+											</SelectItem>
+											<SelectItem value="gcp-incidents">
+												GCP incidents.json
+											</SelectItem>
+											<SelectItem value="aws-health">AWS data.json</SelectItem>
+											<SelectItem value="azure-rss">Azure RSS feed</SelectItem>
+										</SelectContent>
+									</Select>
+									<p className="text-xs text-muted-foreground">
+										接続確認は Statuspage.io v2 のみ対応。それ以外は保存後の
+										自動ポーリングで取得結果が反映されます。
+									</p>
 									<FormMessage />
 								</div>
 							)}

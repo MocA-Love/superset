@@ -23,6 +23,8 @@ import {
 	type SaveCustomIconFromDataUrlResult,
 	saveCustomIconFromDataUrl,
 } from "./icon-storage";
+import { fetchStatusPayload } from "./parsers";
+import { fetchStatuspageV2 } from "./parsers/statuspage-v2";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -30,10 +32,6 @@ const REQUEST_TIMEOUT_MS = 10_000;
 // was within this window we skip rather than hammering the API on every
 // window/tab switch.
 const FOCUS_REFRESH_MIN_INTERVAL_MS = 30_000;
-
-type StatuspageResponse = {
-	status?: { indicator?: StatuspageIndicator; description?: string };
-};
 
 export interface DefinitionsChangedEvent {
 	type: "definitions";
@@ -157,10 +155,12 @@ class ServiceStatusService extends EventEmitter {
 		// next poll.
 		const snap = this.snapshots.get(id);
 		if (snap) this.emit("change", snap);
-		// Re-fetch if either URL changed so the snapshot reflects the new
+		// Re-fetch when any of the fields that actually influence the poll
+		// result change (URL / URL / format) so the snapshot reflects the new
 		// target immediately instead of showing stale data until the next
-		// 5-minute poll.
-		if (patch.apiUrl || patch.statusUrl) {
+		// 5-minute poll. Label / icon edits don't need a refetch because
+		// they're picked up by `loadDefinitions()` above.
+		if (patch.apiUrl || patch.statusUrl || patch.format) {
 			void this.refreshOne(updated);
 		}
 		return updated;
@@ -244,11 +244,10 @@ class ServiceStatusService extends EventEmitter {
 
 	private async refreshOne(def: ServiceStatusDefinition): Promise<boolean> {
 		try {
-			const json = await this.fetchJson(def.apiUrl);
-			const indicator = json.status?.indicator ?? null;
-			const description =
-				json.status?.description ||
-				(indicator === "none" ? "全システム正常" : "ステータス不明");
+			const { indicator, description } = await fetchStatusPayload(
+				def.format,
+				def.apiUrl,
+			);
 			this.updateSnapshot({
 				id: def.id,
 				label: def.label,
@@ -318,7 +317,11 @@ class ServiceStatusService extends EventEmitter {
 	/**
 	 * Probe a candidate apiUrl and report whether it looks like a Statuspage.io
 	 * v2 `/api/v2/status.json` response. Used by the "Add service" dialog to
-	 * fail fast before persisting a bad row.
+	 * fail fast before persisting a bad row. Only Statuspage-v2 is validated
+	 * here because it's the only format that exposes a canonical health
+	 * summary at a single URL — the AWS/GCP/Azure adapters treat missing
+	 * incidents as operational regardless of response shape, so a dry-run
+	 * would be misleading.
 	 */
 	async validateApiUrl(
 		apiUrl: string,
@@ -327,8 +330,8 @@ class ServiceStatusService extends EventEmitter {
 		| { ok: false; error: string }
 	> {
 		try {
-			const json = await this.fetchJson(apiUrl);
-			if (!json.status) {
+			const result = await fetchStatuspageV2(apiUrl);
+			if (!result.indicator && !result.description) {
 				return {
 					ok: false,
 					error: "レスポンスに status フィールドがありません",
@@ -336,8 +339,8 @@ class ServiceStatusService extends EventEmitter {
 			}
 			return {
 				ok: true,
-				indicator: json.status.indicator ?? "none",
-				description: json.status.description ?? "",
+				indicator: result.indicator ?? "none",
+				description: result.description,
 			};
 		} catch (error) {
 			const message =
@@ -421,56 +424,6 @@ class ServiceStatusService extends EventEmitter {
 				clearTimeout(timeout);
 				if (timedOut) return;
 				resolve(null);
-			});
-			request.end();
-		});
-	}
-
-	// Use Electron's net module so fetch uses Chromium's network stack and
-	// bypasses renderer-side CORS / proxy quirks.
-	private fetchJson(url: string): Promise<StatuspageResponse> {
-		return new Promise((resolve, reject) => {
-			const request = net.request({
-				method: "GET",
-				url,
-				redirect: "follow",
-			});
-			let timedOut = false;
-			const timeout = setTimeout(() => {
-				timedOut = true;
-				request.abort();
-				reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`));
-			}, REQUEST_TIMEOUT_MS);
-
-			request.on("response", (response) => {
-				const chunks: Buffer[] = [];
-				response.on("data", (chunk: Buffer) => {
-					chunks.push(chunk);
-				});
-				response.on("end", () => {
-					clearTimeout(timeout);
-					if (timedOut) return;
-					if (response.statusCode < 200 || response.statusCode >= 300) {
-						reject(new Error(`HTTP ${response.statusCode}`));
-						return;
-					}
-					try {
-						const body = Buffer.concat(chunks).toString("utf-8");
-						resolve(JSON.parse(body) as StatuspageResponse);
-					} catch (parseError) {
-						reject(parseError);
-					}
-				});
-				response.on("error", (err: Error) => {
-					clearTimeout(timeout);
-					if (timedOut) return;
-					reject(err);
-				});
-			});
-			request.on("error", (err) => {
-				clearTimeout(timeout);
-				if (timedOut) return;
-				reject(err);
 			});
 			request.end();
 		});

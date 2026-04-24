@@ -23,6 +23,7 @@ import { useMemo, useState } from "react";
 import {
 	HiOutlinePencilSquare,
 	HiOutlinePlus,
+	HiOutlineSquares2X2,
 	HiOutlineTrash,
 } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -42,6 +43,7 @@ import {
 	type SettingItemId,
 } from "../../../utils/settings-search/settings-search";
 import { ServiceDefinitionDialog } from "./components/ServiceDefinitionDialog";
+import { ServicePresetDialog } from "./components/ServicePresetDialog";
 
 interface ServiceStatusSettingsProps {
 	visibleItems: SettingItemId[] | null;
@@ -96,6 +98,7 @@ export function ServiceStatusSettings({
 	const [dialogTarget, setDialogTarget] =
 		useState<ServiceStatusDefinition | null>(null);
 	const [dialogOpen, setDialogOpen] = useState(false);
+	const [presetDialogOpen, setPresetDialogOpen] = useState(false);
 	const [confirmTarget, setConfirmTarget] =
 		useState<ServiceStatusDefinition | null>(null);
 
@@ -104,6 +107,14 @@ export function ServiceStatusSettings({
 			[...definitions].sort(
 				(a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
 			),
+		[definitions],
+	);
+
+	// Preset dialog uses apiUrl as the identity key for "already added"
+	// detection — it's more stable than label and each Statuspage API URL
+	// maps to exactly one provider.
+	const existingApiUrls = useMemo(
+		() => new Set(definitions.map((d) => d.apiUrl)),
 		[definitions],
 	);
 
@@ -137,14 +148,25 @@ export function ServiceStatusSettings({
 					<h2 className="text-xl font-semibold">Service Status</h2>
 					<p className="text-sm text-muted-foreground mt-1">
 						ヘッダーに表示する外部サービスのステータスインジケーターを管理します。
-						Statuspage.io v2 互換の <code>/api/v2/status.json</code>{" "}
-						を返すプロバイダに対応。
+						主要プロバイダ (Claude / OpenAI / GitHub / Stripe / AWS / GCP /
+						Azure …) は<b>プリセットから追加</b>でワンクリック、それ以外は
+						<b>手動で追加</b>で任意の URL を登録できます。
 					</p>
 				</div>
-				<Button onClick={openCreate} size="sm">
-					<HiOutlinePlus className="mr-1.5 h-4 w-4" />
-					サービスを追加
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setPresetDialogOpen(true)}
+					>
+						<HiOutlineSquares2X2 className="mr-1.5 h-4 w-4" />
+						プリセットから追加
+					</Button>
+					<Button onClick={openCreate} size="sm">
+						<HiOutlinePlus className="mr-1.5 h-4 w-4" />
+						手動で追加
+					</Button>
+				</div>
 			</div>
 
 			{isItemVisible(
@@ -254,6 +276,12 @@ export function ServiceStatusSettings({
 					if (!next) setDialogTarget(null);
 				}}
 				target={dialogTarget}
+			/>
+
+			<ServicePresetDialog
+				open={presetDialogOpen}
+				onOpenChange={setPresetDialogOpen}
+				existingApiUrls={existingApiUrls}
 			/>
 
 			<AlertDialog

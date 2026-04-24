@@ -6,6 +6,7 @@ import {
 import { asc, eq } from "drizzle-orm";
 import type {
 	ServiceStatusDefinition,
+	ServiceStatusFormat,
 	ServiceStatusIconType,
 } from "shared/service-status-types";
 import { localDb } from "../local-db";
@@ -26,6 +27,7 @@ const DEFAULT_SERVICE_STATUS_DEFINITIONS: readonly ServiceStatusDefinition[] = [
 		apiUrl: "https://status.claude.com/api/v2/status.json",
 		iconType: "simple-icon",
 		iconValue: "claude",
+		format: "statuspage-v2",
 		sortOrder: 0,
 	},
 	{
@@ -35,6 +37,7 @@ const DEFAULT_SERVICE_STATUS_DEFINITIONS: readonly ServiceStatusDefinition[] = [
 		apiUrl: "https://status.openai.com/api/v2/status.json",
 		iconType: "simple-icon",
 		iconValue: "openai",
+		format: "statuspage-v2",
 		sortOrder: 1,
 	},
 ];
@@ -44,6 +47,13 @@ const KNOWN_ICON_TYPES = new Set<ServiceStatusIconType>([
 	"favicon",
 	"custom-url",
 	"custom-file",
+]);
+
+const KNOWN_FORMATS = new Set<ServiceStatusFormat>([
+	"statuspage-v2",
+	"gcp-incidents",
+	"aws-health",
+	"azure-rss",
 ]);
 
 /**
@@ -63,6 +73,22 @@ function narrowIconType(value: string): ServiceStatusIconType {
 }
 
 /**
+ * Same defensive narrowing pattern as iconType, for the `format` column. An
+ * unknown value is treated as `statuspage-v2` because that's the most likely
+ * intent for any pre-migration row and because the Statuspage.io parser is
+ * the most forgiving about unexpected JSON shapes.
+ */
+function narrowFormat(value: string): ServiceStatusFormat {
+	if ((KNOWN_FORMATS as Set<string>).has(value)) {
+		return value as ServiceStatusFormat;
+	}
+	console.warn(
+		`[service-status] Unknown format "${value}" — falling back to statuspage-v2`,
+	);
+	return "statuspage-v2";
+}
+
+/**
  * Maps a DB row to the shape consumed by the poller / renderer. Keeps the
  * `string`-typed DB column from leaking into downstream callers.
  */
@@ -73,6 +99,7 @@ function rowToDefinition(row: {
 	apiUrl: string;
 	iconType: string;
 	iconValue: string | null;
+	format: string;
 	sortOrder: number;
 }): ServiceStatusDefinition {
 	return {
@@ -82,6 +109,7 @@ function rowToDefinition(row: {
 		apiUrl: row.apiUrl,
 		iconType: narrowIconType(row.iconType),
 		iconValue: row.iconValue,
+		format: narrowFormat(row.format),
 		sortOrder: row.sortOrder,
 	};
 }
@@ -115,6 +143,7 @@ export interface CreateServiceStatusDefinitionInput {
 	apiUrl: string;
 	iconType: ServiceStatusIconType;
 	iconValue: string | null;
+	format?: ServiceStatusFormat;
 	// When omitted, the new row is appended (sortOrder = max + 1).
 	sortOrder?: number;
 	// Allows the seed path to insert with deterministic ids matching the
@@ -135,6 +164,7 @@ export function createServiceStatusDefinition(
 		apiUrl: input.apiUrl,
 		iconType: input.iconType,
 		iconValue: input.iconValue,
+		format: input.format ?? "statuspage-v2",
 		sortOrder: nextSortOrder,
 		createdAt: now,
 		updatedAt: now,
@@ -153,6 +183,7 @@ export interface UpdateServiceStatusDefinitionInput {
 	apiUrl?: string;
 	iconType?: ServiceStatusIconType;
 	iconValue?: string | null;
+	format?: ServiceStatusFormat;
 	sortOrder?: number;
 }
 
@@ -221,6 +252,7 @@ export function seedDefaultDefinitionsIfNeeded(): void {
 					apiUrl: def.apiUrl,
 					iconType: def.iconType,
 					iconValue: def.iconValue,
+					format: def.format,
 					sortOrder: def.sortOrder,
 					createdAt: now,
 					updatedAt: now,
