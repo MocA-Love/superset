@@ -155,20 +155,6 @@
 	background-color: var(--background-solid);
 }
 
-/*
- * xterm.js WebGL RectangleRenderer hardcodes alpha=1 for cells with explicit
- * palette/RGB backgrounds (_updateRectangle in @xterm/addon-webgl), so codex
- * and Claude Code TUI blocks render as opaque black rectangles even when the
- * terminal theme background is rgba(0,0,0,0). Mirror Warp's approach by
- * scaling the whole xterm canvas with the same alpha used for chrome surfaces
- * — blends every rendered pixel (default bg, explicit bg, glyphs) uniformly
- * with the vibrancy layer. Scoped to the dedicated attach div so the search
- * UI and scroll overlays in Terminal.tsx keep full opacity.
- */
-:root[data-vibrancy="on"] .xterm-vibrancy-layer {
-	opacity: var(--vibrancy-alpha);
-}
-
 :root[data-vibrancy="on"].light {
 	--background: rgb(255 255 255 / var(--vibrancy-alpha));
 	--card: rgb(255 255 255 / min(1, calc(var(--vibrancy-alpha) + 0.1)));

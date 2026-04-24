@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { installRectangleRendererAlphaPatch } from "./webgl-vibrancy-patch";
 
 export interface LoadAddonsResult {
 	searchAddon: SearchAddon;
@@ -54,6 +55,11 @@ export function loadAddons(terminal: XTerm): LoadAddonsResult {
 				terminal.refresh(0, terminal.rows - 1);
 			});
 			terminal.loadAddon(webglAddon);
+			// Make explicit-bg cells honor the alpha we put on `theme.ansi[]`
+			// when vibrancy is enabled — without this codex / Claude Code TUI
+			// blocks render as opaque black even though the rest of the terminal
+			// is transparent. See `webgl-vibrancy-patch.ts` for the details.
+			installRectangleRendererAlphaPatch(webglAddon);
 		} catch {
 			suggestedRendererType = "dom";
 			webglAddon = null;
