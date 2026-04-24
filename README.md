@@ -93,6 +93,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **TODO 詳細の添付画像 chip 化＋プレビュー** | TODO 作成時に「やってほしいこと」「ゴール」へ貼り付けた画像を、タスク詳細画面でクリップマーク + ファイル名の chip として表示。クリックでネスト Dialog の画像プレビューを開ける（AgentManager は閉じない）。`todo-agent/attachments/` 配下のみを許可するパス検証付き `readAttachment` tRPC を追加 | [#229](https://github.com/MocA-Love/superset/pull/229) | 2026-04-16 |
 | **AgentManager 見切れ救済** | AgentManager 左サイドバーのワークスペース見出し・セッションタイトル、右 ChangesSidebar のブランチ/ファイルパス/コミット subject/選択ヘッダーが狭幅で見切れていた問題を修正。`truncate` + ホバー時 `Tooltip` で全文表示 | [#254](https://github.com/MocA-Love/superset/pull/254) | 2026-04-17 |
 | **Excel diff / raw viewer の透過抑止** | Appearance の透過設定 (vibrancy) ON 時に Excel ビューア / Excel diff / 画像プレビュー / HTML プレビューの背景まで透けていた問題を修正。これらの読み取り専用サーフェスは `bg-background-solid` に差し替えてダイアログと同様に不透明で維持 | [#266](https://github.com/MocA-Love/superset/pull/266) | 2026-04-17 |
+| **Service Status 管理ダッシュボード** | ヘッダーの Claude / Codex ステータス表示をハードコードから DB 駆動に刷新。Settings → Service Status から任意の Statuspage.io v2 互換プロバイダ (GitHub / Stripe / Cloudflare 等) を追加・編集・削除可能。アイコンは Simple Icons / favicon 自動取得 / 画像 URL / ローカルアップロードから選択。private network / loopback を弾く URL 検証と、userData 配下に境界ガード付きで画像を保存する custom protocol を備える | [#407](https://github.com/MocA-Love/superset/pull/407) | 2026-04-24 |
 
 ## Fork のビルド方法 (macOS)
 
