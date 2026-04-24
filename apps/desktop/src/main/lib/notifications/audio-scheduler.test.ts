@@ -153,6 +153,28 @@ describe("AudioScheduler", () => {
 			expect(playSpy).toHaveBeenCalled();
 		});
 
+		it("force-releases busy flag if onComplete never fires (safety timer)", async () => {
+			const deps = createDeps({
+				ringtoneSafetyTimeoutMs: 20,
+				// deliberately discard onComplete to simulate contract violation
+				playRingtone: () => {},
+			});
+			const scheduler = new AudioScheduler(deps);
+			const playSpy = mock(async () => {});
+			scheduler.playRingtone();
+			scheduler.enqueueAivis(makeRunner({ play: playSpy }));
+			await flush();
+			await flush();
+			// Aivis synth ran but play is parked behind the (hung) ringtone.
+			expect(playSpy).not.toHaveBeenCalled();
+
+			// Wait for the real setTimeout to fire the safety net.
+			await new Promise((r) => setTimeout(r, 40));
+			await flush();
+			await flush();
+			expect(playSpy).toHaveBeenCalled();
+		});
+
 		it("unblocks pending aivis playback on dispose", async () => {
 			const deps = createDeps();
 			const scheduler = new AudioScheduler(deps);

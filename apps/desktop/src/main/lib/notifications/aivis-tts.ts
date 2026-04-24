@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { settings } from "@superset/local-db";
@@ -241,7 +240,10 @@ function uniqueTmpPath(): string {
 }
 
 function removeFile(path: string): void {
-	execFile("rm", ["-f", path], () => {
+	// Fire-and-forget. `rm` shelling-out would fail on Windows and leak
+	// temp files; unlink works cross-platform. ENOENT is fine — the file
+	// may already be gone if the player cleaned up early.
+	void unlink(path).catch(() => {
 		/* ignore */
 	});
 }

@@ -39,9 +39,8 @@ export class AivisError extends Error {
 		readonly rateLimitReset?: number,
 		cause?: unknown,
 	) {
-		super(reason);
+		super(reason, cause !== undefined ? { cause } : undefined);
 		this.name = "AivisError";
-		if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
 	}
 }
 
@@ -80,11 +79,22 @@ export interface AudioSchedulerDeps {
 	now?(): number;
 	/** Injected sleep for tests. Defaults to setTimeout. */
 	sleep?(ms: number): Promise<void>;
+	/**
+	 * Safety net against a misbehaving `playRingtone` that never calls
+	 * onComplete. If the callback hasn't fired by this deadline, the
+	 * scheduler force-releases its busy flag and wakes any pending Aivis
+	 * tasks. Defaults to 30s. Tests can shrink this.
+	 */
+	ringtoneSafetyTimeoutMs?: number;
 }
 
 const MAX_RETRY_ATTEMPTS = 3;
-const DEFAULT_BACKOFF_MS = [1000, 2000, 4000];
+// One entry per "sleep between attempt N and N+1". With MAX_RETRY_ATTEMPTS=3
+// we only sleep after attempts 1 and 2 (attempt 3 is the last, we break
+// before sleeping), so two entries is all we need.
+const DEFAULT_BACKOFF_MS = [1000, 2000];
 const RATE_LIMIT_MARGIN_MS = 500;
+const RINGTONE_SAFETY_TIMEOUT_MS = 30_000;
 
 function defaultSleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -103,6 +113,7 @@ export class AudioScheduler {
 	private rateLimit?: AivisRateLimit;
 	private disposed = false;
 	private ringtoneIdleWaiters: Array<() => void> = [];
+	private ringtoneSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(private readonly deps: AudioSchedulerDeps) {}
 
@@ -110,6 +121,18 @@ export class AudioScheduler {
 		if (this.disposed) return;
 		if (this.ringtoneBusy || this.aivisBusy) return;
 		this.ringtoneBusy = true;
+		// Defense in depth: if deps.playRingtone forgets to call onComplete
+		// (contract regression), waitForRingtoneIdle would hang forever and
+		// the whole Aivis queue would stall. A generous safety timer
+		// force-releases the busy flag instead.
+		this.ringtoneSafetyTimer = setTimeout(() => {
+			if (this.ringtoneBusy) {
+				console.warn(
+					"[audio-scheduler] ringtone onComplete did not fire within safety timeout; force-releasing",
+				);
+				this.onRingtoneComplete();
+			}
+		}, this.deps.ringtoneSafetyTimeoutMs ?? RINGTONE_SAFETY_TIMEOUT_MS);
 		try {
 			this.deps.playRingtone(() => {
 				this.onRingtoneComplete();
@@ -122,6 +145,10 @@ export class AudioScheduler {
 
 	private onRingtoneComplete(): void {
 		this.ringtoneBusy = false;
+		if (this.ringtoneSafetyTimer) {
+			clearTimeout(this.ringtoneSafetyTimer);
+			this.ringtoneSafetyTimer = null;
+		}
 		const waiters = this.ringtoneIdleWaiters;
 		this.ringtoneIdleWaiters = [];
 		for (const resolve of waiters) resolve();
@@ -171,6 +198,10 @@ export class AudioScheduler {
 	dispose(): void {
 		this.disposed = true;
 		this.queue = [];
+		if (this.ringtoneSafetyTimer) {
+			clearTimeout(this.ringtoneSafetyTimer);
+			this.ringtoneSafetyTimer = null;
+		}
 		// Flush pending ringtone-idle waiters so any in-flight runOne() can
 		// unblock and finish instead of hanging forever.
 		const waiters = this.ringtoneIdleWaiters;
