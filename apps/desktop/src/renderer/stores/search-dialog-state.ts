@@ -3,6 +3,7 @@ import { devtools, persist } from "zustand/middleware";
 
 export type SearchDialogMode = "quickOpen" | "keywordSearch";
 export type SearchScope = "workspace" | "global";
+export type SearchResultViewMode = "tree" | "list";
 
 interface SearchDialogModeState {
 	includePattern: string;
@@ -13,10 +14,12 @@ interface SearchDialogModeState {
 
 interface SearchDialogState {
 	byMode: Record<SearchDialogMode, SearchDialogModeState>;
+	resultViewMode: SearchResultViewMode;
 	setIncludePattern: (mode: SearchDialogMode, value: string) => void;
 	setExcludePattern: (mode: SearchDialogMode, value: string) => void;
 	setFiltersOpen: (mode: SearchDialogMode, open: boolean) => void;
 	setScope: (mode: SearchDialogMode, scope: SearchScope) => void;
+	setResultViewMode: (mode: SearchResultViewMode) => void;
 }
 
 const DEFAULT_MODE_STATE: SearchDialogModeState = {
@@ -33,6 +36,7 @@ export const useSearchDialogStore = create<SearchDialogState>()(
 					quickOpen: { ...DEFAULT_MODE_STATE },
 					keywordSearch: { ...DEFAULT_MODE_STATE },
 				},
+				resultViewMode: "tree",
 
 				setIncludePattern: (mode, value) => {
 					set((state) => ({
@@ -81,13 +85,17 @@ export const useSearchDialogStore = create<SearchDialogState>()(
 						},
 					}));
 				},
+
+				setResultViewMode: (mode) => {
+					set({ resultViewMode: mode });
+				},
 			}),
 			{
 				name: "search-dialog-store",
-				version: 1,
+				version: 2,
 				migrate: (persisted, version) => {
+					const state = persisted as Record<string, unknown>;
 					if (version === 0) {
-						const state = persisted as Record<string, unknown>;
 						const byMode = state.byMode as
 							| Record<string, Record<string, unknown>>
 							| undefined;
@@ -99,7 +107,10 @@ export const useSearchDialogStore = create<SearchDialogState>()(
 							}
 						}
 					}
-					return persisted as SearchDialogState;
+					if (version < 2 && state.resultViewMode === undefined) {
+						state.resultViewMode = "tree";
+					}
+					return state as unknown as SearchDialogState;
 				},
 			},
 		),

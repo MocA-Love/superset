@@ -1,7 +1,7 @@
-export const ANTHROPIC_AUTH_PROVIDER_ID = "anthropic";
-export const INCEPTION_AUTH_PROVIDER_ID = "inception";
-export const OPENAI_AUTH_PROVIDER_ID = "openai-codex";
-export const OPENAI_AUTH_PROVIDER_IDS = [
+export {
+	ANTHROPIC_AUTH_PROVIDER_ID,
 	OPENAI_AUTH_PROVIDER_ID,
-	"openai",
-] as const;
+	OPENAI_AUTH_PROVIDER_IDS,
+} from "../../shared/auth-provider-ids";
+
+export const INCEPTION_AUTH_PROVIDER_ID = "inception";

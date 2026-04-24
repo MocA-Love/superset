@@ -35,19 +35,13 @@ import {
 } from "../../state/fileDocumentStore";
 import type {
 	BrowserPaneData,
-	ChatPaneData,
 	CommentPaneData,
 	DevtoolsPaneData,
 	FilePaneData,
 	PaneViewerData,
 	TerminalPaneData,
 } from "../../types";
-import {
-	BrowserPane,
-	BrowserPaneToolbar,
-	browserRuntimeRegistry,
-} from "./components/BrowserPane";
-import { ChatPane } from "./components/ChatPane";
+import { BrowserPane, BrowserPaneToolbar } from "./components/BrowserPane";
 import { CommentPane } from "./components/CommentPane";
 import { DiffPane } from "./components/DiffPane";
 import { FilePane } from "./components/FilePane";
@@ -395,7 +389,11 @@ export function usePaneRegistry(
 				renderToolbar: (ctx: RendererContext<PaneViewerData>) => (
 					<BrowserPaneToolbar ctx={ctx} />
 				),
-				onRemoved: (pane) => browserRuntimeRegistry.destroy(pane.id),
+				// Destruction is handled by useGlobalBrowserLifecycle instead —
+				// the Panes library's onRemoved diff fires on transient workspace-
+				// switch churn (when the pane store replaceState's in place rather
+				// than remounting) and would prematurely destroy webviews whose
+				// owning workspace is still present.
 				contextMenuActions: (_ctx, defaults) =>
 					defaults.map((d) =>
 						d.key === "close-pane" ? { ...d, label: "Close Browser" } : d,
@@ -404,28 +402,13 @@ export function usePaneRegistry(
 			chat: {
 				getIcon: () => <MessageSquare className="size-4" />,
 				getTitle: () => "Chat",
-				renderPane: (ctx: RendererContext<PaneViewerData>) => {
-					const data = ctx.pane.data as ChatPaneData;
-					return (
-						<ChatPane
-							onSessionIdChange={(sessionId) =>
-								ctx.actions.updateData({
-									sessionId,
-									launchConfig: data.launchConfig ?? null,
-								} as PaneViewerData)
-							}
-							sessionId={data.sessionId}
-							workspaceId={workspaceId}
-							initialLaunchConfig={data.launchConfig ?? null}
-							onConsumeLaunchConfig={() =>
-								ctx.actions.updateData({
-									sessionId: data.sessionId,
-									launchConfig: null,
-								} as PaneViewerData)
-							}
-						/>
-					);
-				},
+				// Disabled until ChatServiceProvider is wired above v2 panes —
+				// TiptapPromptEditor needs its tRPC context.
+				renderPane: (_ctx: RendererContext<PaneViewerData>) => (
+					<div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">
+						Chat pane is temporarily disabled.
+					</div>
+				),
 				contextMenuActions: (_ctx, defaults) =>
 					defaults.map((d) =>
 						d.key === "close-pane" ? { ...d, label: "Close Chat" } : d,

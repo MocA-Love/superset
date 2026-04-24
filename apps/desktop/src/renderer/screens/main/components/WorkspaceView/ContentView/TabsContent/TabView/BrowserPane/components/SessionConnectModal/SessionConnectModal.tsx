@@ -453,9 +453,7 @@ export function SessionConnectModal({
 															row.assignedElsewherePaneName
 														}
 														isInCurrentWorkspace={row.isInCurrentWorkspace}
-														onSelect={() =>
-															setSelectedSession(row.session.id)
-														}
+														onSelect={() => setSelectedSession(row.session.id)}
 													/>
 												))}
 											</SessionSection>
@@ -582,11 +580,7 @@ interface SessionSectionProps {
 	children: React.ReactNode;
 }
 
-function SessionSection({
-	title,
-	description,
-	children,
-}: SessionSectionProps) {
+function SessionSection({ title, description, children }: SessionSectionProps) {
 	return (
 		<section className="space-y-2">
 			<div className="flex items-center justify-between gap-2 px-1">

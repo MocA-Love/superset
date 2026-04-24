@@ -252,9 +252,16 @@ export function FileViewerPane({
 	useHotkey(
 		"FIND_IN_FILE_VIEWER",
 		() => {
-			diffViewerRef.current?.openFind();
+			if (viewMode === "diff") {
+				diffViewerRef.current?.openFind();
+			} else if (viewMode === "raw") {
+				editorRef.current?.openFind();
+			}
 		},
-		{ enabled: isFocused && viewMode === "diff", preventDefault: true },
+		{
+			enabled: isFocused && (viewMode === "diff" || viewMode === "raw"),
+			preventDefault: true,
+		},
 	);
 
 	const getCurrentContent = useCallback(() => {

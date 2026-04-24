@@ -1,6 +1,5 @@
 export {
 	getSmallModel,
-	getSmallModelCandidates,
-	type SmallModelCandidate,
-	type SmallModelProviderId,
+	isAnthropicApiKey,
+	isOpenAIApiKey,
 } from "./small-model";

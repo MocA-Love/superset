@@ -12,6 +12,7 @@ export type SettingsSection =
 	| "git"
 	| "agents"
 	| "terminal"
+	| "links"
 	| "models"
 	| "integrations"
 	| "extensions"
@@ -21,6 +22,7 @@ export type SettingsSection =
 	| "permissions"
 	| "project"
 	| "security"
+	| "serviceStatus"
 	| "vscodeExtensions";
 
 interface SettingsState {

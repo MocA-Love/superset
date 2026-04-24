@@ -2,6 +2,7 @@ import type {
 	AgentLifecycleEvent,
 	NotificationIds,
 } from "shared/notification-types";
+import type { AivisPriority, AivisTaskRunner } from "./audio-scheduler";
 import { isPaneVisible } from "./utils";
 
 const NOTIFICATION_TTL_MS = 10 * 60 * 1000;
@@ -21,8 +22,20 @@ export interface NotificationManagerDeps {
 		body: string;
 		silent: boolean;
 	}) => NativeNotification;
-	playSound: (onComplete?: () => void) => void;
-	playAivis?: (event: AgentLifecycleEvent) => void;
+	/**
+	 * Ask the audio scheduler to play a ringtone. The scheduler decides
+	 * whether it actually plays (it drops the request while any audio is
+	 * already busy). No onComplete is exposed — aivis is scheduled
+	 * independently below.
+	 */
+	playRingtone: () => void;
+	/**
+	 * Build an AivisTaskRunner for the given event. Return null when
+	 * Aivis is disabled / not configured / yields empty text.
+	 */
+	buildAivisRunner?: (event: AgentLifecycleEvent) => AivisTaskRunner | null;
+	/** Enqueue an Aivis utterance at the given priority. */
+	enqueueAivis?: (runner: AivisTaskRunner, priority: AivisPriority) => void;
 	onNotificationClick: (ids: NotificationIds) => void;
 	getVisibilityContext: () => {
 		isFocused: boolean;
@@ -67,10 +80,10 @@ export class NotificationManager {
 		const isPermissionRequest = event.eventType === "PermissionRequest";
 		const notification = this.deps.createNotification({
 			title: isPermissionRequest
-				? `Input Needed — ${workspaceName}`
+				? `Awaiting Response — ${workspaceName}`
 				: `Agent Complete — ${workspaceName}`,
 			body: isPermissionRequest
-				? `"${title}" needs your attention`
+				? `"${title}" is waiting for your reply`
 				: `"${title}" has finished its task`,
 			silent: true,
 		});
@@ -78,9 +91,15 @@ export class NotificationManager {
 		const key = event.sessionId ?? event.paneId ?? `_anon_${this.counter++}`;
 		this.track(key, notification);
 
-		// Chain Aivis after the ringtone so the voice announcement plays
-		// once the notification sound finishes rather than in parallel.
-		this.deps.playSound(() => this.deps.playAivis?.(event));
+		// Ringtone and Aivis go through independent scheduler channels:
+		// the ringtone may be dropped if audio is already playing, while
+		// the Aivis runner is always enqueued so spoken context is never
+		// lost. PermissionRequest events cut in front of Stop events.
+		this.deps.playRingtone();
+		const runner = this.deps.buildAivisRunner?.(event);
+		if (runner) {
+			this.deps.enqueueAivis?.(runner, isPermissionRequest ? "high" : "normal");
+		}
 
 		notification.on("click", () => {
 			this.deps.onNotificationClick({

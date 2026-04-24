@@ -1,5 +1,8 @@
 import type { RendererContext } from "@superset/panes";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback } from "react";
+import { TbExternalLink } from "react-icons/tb";
+import { useOpenInExternalEditor } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useOpenInExternalEditor";
 import { isSpreadsheetFile } from "shared/file-types";
 import { useSharedFileDocument } from "../../../../../../state/fileDocumentStore";
 import type { FilePaneData, PaneViewerData } from "../../../../../../types";
@@ -44,6 +47,7 @@ function FilePaneHeaderExtrasInner({
 	filePath: string;
 	data: FilePaneData;
 }) {
+	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
 	const document = useSharedFileDocument({
 		workspaceId,
 		absolutePath: filePath,
@@ -60,16 +64,38 @@ function FilePaneHeaderExtrasInner({
 	);
 
 	const { views, activeView } = resolveActivePaneView(document, data);
+	const shouldShowToggle =
+		views.length > 1 && !data.forceViewId && activeView !== null;
 
-	if (views.length <= 1 || data.forceViewId) return null;
-	if (!activeView) return null;
+	const handleOpenExternal = useCallback(() => {
+		openInExternalEditor(filePath);
+	}, [filePath, openInExternalEditor]);
 
 	return (
-		<FileViewToggle
-			views={orderForToggle(views)}
-			activeViewId={activeView.id}
-			filePath={filePath}
-			onChange={handleChangeView}
-		/>
+		<div className="flex items-center gap-1">
+			{shouldShowToggle && activeView && (
+				<FileViewToggle
+					views={orderForToggle(views)}
+					activeViewId={activeView.id}
+					filePath={filePath}
+					onChange={handleChangeView}
+				/>
+			)}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="Open in editor"
+						onClick={handleOpenExternal}
+						className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+					>
+						<TbExternalLink className="size-3.5" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom" showArrow={false}>
+					Open in editor
+				</TooltipContent>
+			</Tooltip>
+		</div>
 	);
 }

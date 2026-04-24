@@ -186,6 +186,17 @@ export const HOTKEYS_REGISTRY = {
 		label: "Toggle Changes Tab",
 		category: "Layout",
 	},
+	OPEN_DIFF_VIEWER: {
+		key: {
+			mac: "meta+shift+l",
+			windows: "ctrl+shift+alt+l",
+			linux: "ctrl+shift+alt+l",
+		},
+		label: "Open Diff Viewer",
+		category: "Layout",
+		description:
+			"Open the diff viewer in a new tab, or focus the existing diff viewer",
+	},
 	TOGGLE_EXPAND_SIDEBAR: {
 		key: {
 			mac: "meta+shift+l",
@@ -194,6 +205,7 @@ export const HOTKEYS_REGISTRY = {
 		},
 		label: "Toggle Expand Sidebar",
 		category: "Layout",
+		description: "Toggle sidebar between tabs and changes view",
 	},
 	TOGGLE_WORKSPACE_SIDEBAR: {
 		key: { mac: "meta+b", windows: "ctrl+shift+b", linux: "ctrl+shift+b" },
@@ -530,11 +542,6 @@ export const HOTKEYS_REGISTRY = {
 	CHAT_ADD_ATTACHMENT: {
 		key: { mac: "meta+u", windows: "ctrl+shift+u", linux: "ctrl+shift+u" },
 		label: "Add Attachment",
-		category: "Terminal",
-	},
-	CHAT_LINK_ISSUE: {
-		key: { mac: "meta+i", windows: "ctrl+shift+i", linux: "ctrl+shift+i" },
-		label: "Link Issue",
 		category: "Terminal",
 	},
 

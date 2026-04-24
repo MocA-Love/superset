@@ -12,8 +12,8 @@ interface UsePathActionsProps {
 	absolutePath: string | null;
 	relativePath?: string;
 	branch?: string | null;
-	/** For files: pass cwd to use openFileInEditor. For folders: omit to use openInApp */
-	cwd?: string;
+	/** For files: pass worktreePath to use openFileInEditor. For folders: omit to use openInApp */
+	worktreePath?: string;
 	/** Pre-resolved app to avoid per-row default-app queries */
 	defaultApp?: ExternalApp | null;
 	/** Project identifier for project-scoped actions/metadata */
@@ -25,7 +25,7 @@ export function usePathActions({
 	absolutePath,
 	relativePath,
 	branch,
-	cwd,
+	worktreePath,
 	defaultApp,
 	projectId,
 	supersetLinkProject,
@@ -97,8 +97,12 @@ export function usePathActions({
 	const openInEditor = useCallback(() => {
 		if (!absolutePath) return;
 
-		if (cwd) {
-			openFileInEditorMutation.mutate({ path: absolutePath, cwd, projectId });
+		if (worktreePath) {
+			openFileInEditorMutation.mutate({
+				path: absolutePath,
+				worktreePath,
+				projectId,
+			});
 		} else {
 			// Avoid opening with an incorrect fallback before upstream default app query resolves.
 			if (defaultApp === undefined) {
@@ -124,7 +128,7 @@ export function usePathActions({
 		}
 	}, [
 		absolutePath,
-		cwd,
+		worktreePath,
 		projectId,
 		defaultApp,
 		openInAppMutation,

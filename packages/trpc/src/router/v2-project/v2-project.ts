@@ -1,8 +1,13 @@
 import { dbWs } from "@superset/db/client";
-import { githubRepositories, v2Projects } from "@superset/db/schema";
+import {
+	githubRepositories,
+	organizations,
+	v2Projects,
+} from "@superset/db/schema";
+import { parseGitHubRemote } from "@superset/shared/github-remote";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
 import {
@@ -104,38 +109,112 @@ export const v2ProjectRouter = {
 					organizationId: input.organizationId,
 				},
 			);
-			const repoCloneUrl = row.githubRepository
-				? `https://github.com/${row.githubRepository.fullName}.git`
-				: null;
-			return { ...row, repoCloneUrl };
+			// Fallback for pre-migration projects: 0034 migration added
+			// repoCloneUrl as nullable without backfilling. Downstream clone/setup
+			// paths require repoCloneUrl, so derive it from githubRepository.fullName
+			// when the DB column is null but a linked GitHub repository exists.
+			if (!row.repoCloneUrl && row.githubRepository) {
+				return {
+					...row,
+					repoCloneUrl: `https://github.com/${row.githubRepository.fullName}.git`,
+				};
+			}
+			return row;
 		}),
 
-	create: protectedProcedure
+	findByGitHubRemote: jwtProcedure
 		.input(
 			z.object({
+				organizationId: z.string().uuid(),
+				repoCloneUrl: z.string().min(1),
+			}),
+		)
+		.query(async ({ ctx, input }) => {
+			if (!ctx.organizationIds.includes(input.organizationId)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Not a member of this organization",
+				});
+			}
+			const parsed = parseGitHubRemote(input.repoCloneUrl);
+			if (!parsed) return { candidates: [] };
+			// GitHub slugs are case-insensitive; parseGitHubRemote returns a
+			// canonical https URL. Compare lower-cased on both sides.
+			const canonicalUrl = parsed.url.toLowerCase();
+
+			const rows = await dbWs
+				.select({
+					id: v2Projects.id,
+					name: v2Projects.name,
+					slug: v2Projects.slug,
+					organizationId: v2Projects.organizationId,
+					organizationName: organizations.name,
+				})
+				.from(v2Projects)
+				.innerJoin(
+					organizations,
+					eq(v2Projects.organizationId, organizations.id),
+				)
+				.where(
+					and(
+						eq(sql`lower(${v2Projects.repoCloneUrl})`, canonicalUrl),
+						eq(v2Projects.organizationId, input.organizationId),
+					),
+				);
+
+			return { candidates: rows };
+		}),
+
+	create: jwtProcedure
+		.input(
+			z.object({
+				organizationId: z.string().uuid(),
 				name: z.string().min(1),
 				slug: z.string().min(1),
-				githubRepositoryId: z.string().uuid(),
+				// Optional — empty-mode and local-only imports have no
+				// remote yet. When provided we store the canonical https
+				// URL and try to link a matching github_repositories row.
+				repoCloneUrl: z.string().min(1).optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const organizationId = await requireActiveOrgMembership(
-				ctx.session,
-				"No active organization",
-			);
+			if (!ctx.organizationIds.includes(input.organizationId)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Not a member of this organization",
+				});
+			}
 
-			const repo = await getScopedGithubRepository(
-				organizationId,
-				input.githubRepositoryId,
-			);
+			let canonicalUrl: string | null = null;
+			let linkedRepoId: string | null = null;
+			if (input.repoCloneUrl) {
+				const parsed = parseGitHubRemote(input.repoCloneUrl);
+				if (!parsed) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Could not parse GitHub remote URL",
+					});
+				}
+				canonicalUrl = parsed.url;
+				const fullNameLower = `${parsed.owner}/${parsed.name}`.toLowerCase();
+				const repo = await dbWs.query.githubRepositories.findFirst({
+					columns: { id: true },
+					where: and(
+						eq(sql`lower(${githubRepositories.fullName})`, fullNameLower),
+						eq(githubRepositories.organizationId, input.organizationId),
+					),
+				});
+				linkedRepoId = repo?.id ?? null;
+			}
 
 			const [project] = await dbWs
 				.insert(v2Projects)
 				.values({
-					organizationId,
+					organizationId: input.organizationId,
 					name: input.name,
 					slug: input.slug,
-					githubRepositoryId: repo.id,
+					repoCloneUrl: canonicalUrl,
+					githubRepositoryId: linkedRepoId,
 				})
 				.returning();
 			if (!project) {
@@ -147,6 +226,74 @@ export const v2ProjectRouter = {
 			return project;
 		}),
 
+	linkRepoCloneUrl: jwtProcedure
+		.input(
+			z.object({
+				organizationId: z.string().uuid(),
+				id: z.string().uuid(),
+				repoCloneUrl: z.string().min(1),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			if (!ctx.organizationIds.includes(input.organizationId)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Not a member of this organization",
+				});
+			}
+			const parsed = parseGitHubRemote(input.repoCloneUrl);
+			if (!parsed) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Could not parse GitHub remote URL",
+				});
+			}
+			const canonicalUrl = parsed.url;
+
+			await requireOrgScopedResource(
+				() =>
+					dbWs.query.v2Projects.findFirst({
+						columns: { id: true, organizationId: true },
+						where: eq(v2Projects.id, input.id),
+					}),
+				{
+					message: "Project not found",
+					organizationId: input.organizationId,
+				},
+			);
+
+			const fullNameLower = `${parsed.owner}/${parsed.name}`.toLowerCase();
+			const repo = await dbWs.query.githubRepositories.findFirst({
+				columns: { id: true },
+				where: and(
+					eq(sql`lower(${githubRepositories.fullName})`, fullNameLower),
+					eq(githubRepositories.organizationId, input.organizationId),
+				),
+			});
+
+			const [updated] = await dbWs
+				.update(v2Projects)
+				.set({
+					repoCloneUrl: canonicalUrl,
+					githubRepositoryId: repo?.id ?? null,
+				})
+				.where(
+					and(
+						eq(v2Projects.id, input.id),
+						eq(v2Projects.organizationId, input.organizationId),
+						isNull(v2Projects.repoCloneUrl),
+					),
+				)
+				.returning();
+			if (!updated) {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message: "Project already has a linked repository",
+				});
+			}
+			return updated;
+		}),
+
 	update: protectedProcedure
 		.input(
 			z.object({
@@ -154,13 +301,11 @@ export const v2ProjectRouter = {
 				name: z.string().min(1).optional(),
 				slug: z.string().min(1).optional(),
 				githubRepositoryId: z.string().uuid().optional(),
+				repoCloneUrl: z.string().min(1).nullable().optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const organizationId = requireActiveOrgId(
-				ctx.session,
-				"No active organization",
-			);
+			const organizationId = requireActiveOrgId(ctx, "No active organization");
 			const project = await getProjectAccess(ctx.session.user.id, input.id, {
 				organizationId,
 			});
@@ -172,10 +317,39 @@ export const v2ProjectRouter = {
 				);
 			}
 
+			let canonicalRepoCloneUrl: string | null | undefined;
+			let resolvedGithubRepositoryId: string | null | undefined =
+				input.githubRepositoryId;
+			if (input.repoCloneUrl === null) {
+				canonicalRepoCloneUrl = null;
+				resolvedGithubRepositoryId = null;
+			} else if (input.repoCloneUrl !== undefined) {
+				const parsed = parseGitHubRemote(input.repoCloneUrl);
+				if (!parsed) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Could not parse GitHub remote URL",
+					});
+				}
+				canonicalRepoCloneUrl = parsed.url;
+				if (input.githubRepositoryId === undefined) {
+					const fullNameLower = `${parsed.owner}/${parsed.name}`.toLowerCase();
+					const repo = await dbWs.query.githubRepositories.findFirst({
+						columns: { id: true },
+						where: and(
+							eq(sql`lower(${githubRepositories.fullName})`, fullNameLower),
+							eq(githubRepositories.organizationId, project.organizationId),
+						),
+					});
+					resolvedGithubRepositoryId = repo?.id ?? null;
+				}
+			}
+
 			const data = {
-				githubRepositoryId: input.githubRepositoryId,
+				githubRepositoryId: resolvedGithubRepositoryId,
 				name: input.name,
 				slug: input.slug,
+				repoCloneUrl: canonicalRepoCloneUrl,
 			};
 			if (
 				Object.keys(data).every(
@@ -205,7 +379,7 @@ export const v2ProjectRouter = {
 		.input(z.object({ id: z.string().uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(
-				ctx.session,
+				ctx,
 				"No active organization",
 			);
 			const project = await getScopedProject(organizationId, input.id);

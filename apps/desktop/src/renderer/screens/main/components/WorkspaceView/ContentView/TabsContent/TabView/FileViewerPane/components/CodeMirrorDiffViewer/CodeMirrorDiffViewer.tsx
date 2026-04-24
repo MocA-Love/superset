@@ -416,12 +416,7 @@ export const CodeMirrorDiffViewer = forwardRef<
 			openFind: () => {
 				const mv = mergeViewRef.current;
 				if (!mv) return;
-				const target = activeEditorRef.current ?? mv.b;
-				target.focus();
 				ensureOverlaySearchOpenRef.current?.();
-				requestAnimationFrame(() => {
-					overlayRef.current?.focusInput();
-				});
 			},
 		}),
 		[],
@@ -434,9 +429,7 @@ export const CodeMirrorDiffViewer = forwardRef<
 		openSearchPanel(mv.b);
 		setIsSearchOpen(true);
 		syncSearchOverlayState();
-		requestAnimationFrame(() => {
-			overlayRef.current?.focusInput();
-		});
+		overlayRef.current?.focusInput();
 	};
 	ensureOverlaySearchOpenRef.current = ensureOverlaySearchOpen;
 
