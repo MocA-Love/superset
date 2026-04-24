@@ -498,6 +498,13 @@
       "when": 1776992216374,
       "tag": "0071_v1_migration_state",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1777060160634,
+      "tag": "0072_service_status_definitions",
+      "breakpoints": true
     }
   ]
 }

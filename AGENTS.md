@@ -130,9 +130,15 @@ hdiutil detach "/Volumes/Superset 1.5.5-arm64"
 
 ### リリース (フォーク配布)
 
-このフォークには `release-desktop.yml` のような**自動リリースワークフローは無い**。タグ命名も upstream の `desktop-v*.*.*` ではなく **`v<package.json version>-fork.<N>`** (例: `v1.5.5-fork.9`) を使う。リリースはローカルでビルドし `gh release create` で GitHub Release を作る**手動運用**。
+タグ命名は upstream の `desktop-v*.*.*` ではなく **`v<package.json version>-fork.<N>`** (例: `v1.5.5-fork.9`) を使う。**macOS ビルドは手動**でローカルから `gh release create`、**Linux (AppImage / deb / rpm) ビルドはタグ push で自動**で走り同名 Release に添付されるハイブリッド運用。
+
+- macOS: ローカルで `bun run build` → `gh release create` で dmg / zip / latest-mac.yml をアップロード
+- Linux: `git push origin <tag>` の瞬間に [`.github/workflows/release-desktop-linux-fork.yml`](./.github/workflows/release-desktop-linux-fork.yml) が ubuntu-latest 上で発火し、AppImage + deb + rpm + latest-linux.yml を softprops/action-gh-release 経由で Release に添付する
+- 発火条件: `v*-fork.*` タグ push または workflow_dispatch (既存タグへ後乗せ用)
 
 `electron-builder.ts` の `publish` 設定は `superset-sh/superset` を向いたままなので、`bun run release` (electron-builder --publish always) は**使わない**。代わりに `bun run build` (`--publish never`) で成果物だけ作り、`gh` で MocA-Love/superset に上げる。
+
+upstream から取り込んだ `release-desktop.yml` は発火条件 (`desktop-v*.*.*`) がフォーク運用と合わないため、fork タグでは動かない (干渉しない)。
 
 #### 手順
 
@@ -185,12 +191,14 @@ SUPERSET_WORKSPACE_NAME=superset bun run build
 # 6. リリースノート作成 (後述フォーマット)
 # ファイルに保存しておくと gh release create の --notes-file で渡せる
 
-# 7. タグを切って push
+# 7. タグを切って push (← この瞬間 Linux CI が発火して並行ビルド開始)
 cd ../..
 git tag v1.5.5-fork.9
 git push origin v1.5.5-fork.9
 
-# 8. GitHub Release を作成し成果物をアップロード
+# 8. GitHub Release を作成し macOS 成果物をアップロード
+#    Linux 成果物 (AppImage / deb / rpm / latest-linux.yml) は CI が自動で
+#    追加するので、ここでは触らない。
 gh release create v1.5.5-fork.9 \
   --repo MocA-Love/superset \
   --title "v1.5.5-fork.9" \
@@ -199,9 +207,17 @@ gh release create v1.5.5-fork.9 \
   apps/desktop/release/Superset-*-mac.zip \
   apps/desktop/release/Superset-*-mac.zip.blockmap \
   apps/desktop/release/latest-mac.yml
+
+# 9. (任意) Linux CI の完了を確認。通常 5-10 分で完了する。
+gh run list --repo MocA-Love/superset --workflow="Release Desktop Linux (Fork)" --limit 3
 ```
 
-**注:** Windows / Linux ビルドは手元が macOS の場合は作成されない。必要なら各 OS で実行するか、GitHub Actions を別途仕立てる。upstream から取り込んだ `release-desktop.yml` は発火条件 (`desktop-v*.*.*`) がフォーク運用と合わないため、fork タグでは動かない。
+**注:**
+- **Linux 成果物は自動化**。`git push origin <tag>` 時点で `.github/workflows/release-desktop-linux-fork.yml` が ubuntu-latest 上で AppImage + deb + rpm + latest-linux.yml をビルドし、softprops/action-gh-release 経由で同名 Release に追加される。
+- **Windows ビルドは未対応**。必要なら Windows runner で別 workflow を立てる。
+- Linux CI が失敗した場合は `gh run rerun <run-id>` で再実行可能。タグ打ち直し (`git tag -d` → 再 push) でも再発火できる。
+- **既存の Release に後から Linux バイナリを追加**したい場合は `gh workflow run "Release Desktop Linux (Fork)" --ref main -f tag=v1.5.5-fork.9` のように workflow_dispatch で走らせる。
+- ローカル Linux/WSL で手動ビルドしたい場合は `apps/desktop` で `bun run build:linux` を叩く (AppImage + deb + rpm を一発生成)。
 
 #### リリースノート フォーマット
 

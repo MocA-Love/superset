@@ -226,11 +226,7 @@ export function useTerminalLifecycle({
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] Mount: ${paneId}`);
 		}
-		terminalRendererDebug.info(
-			"mount",
-			{ paneId, workspaceId },
-			{ captureMessage: true, fingerprint: ["terminal.renderer", "mount"] },
-		);
+		terminalRendererDebug.info("mount", { paneId, workspaceId });
 
 		// Cancel pending detach from previous unmount
 		const pendingDetach = pendingDetaches.get(paneId);

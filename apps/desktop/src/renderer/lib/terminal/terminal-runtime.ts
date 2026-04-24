@@ -318,18 +318,11 @@ export function attachToContainer(
 
 	runtime.container = container;
 	container.appendChild(runtime.wrapper);
-	terminalRendererDebug.info(
-		"runtime-attach-to-container",
-		{
-			terminalId: runtime.terminalId,
-			containerWidth: container.clientWidth,
-			containerHeight: container.clientHeight,
-		},
-		{
-			captureMessage: true,
-			fingerprint: ["terminal.renderer", "runtime-attach-to-container"],
-		},
-	);
+	terminalRendererDebug.info("runtime-attach-to-container", {
+		terminalId: runtime.terminalId,
+		containerWidth: container.clientWidth,
+		containerHeight: container.clientHeight,
+	});
 	measureAndResize(runtime);
 
 	// Renderer may have skipped frames while the wrapper was detached.

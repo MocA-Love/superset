@@ -195,9 +195,12 @@ export async function applyAiWorkspaceRename(
 		throw err;
 	}
 
-	// No-op detection: if the cloud row's name still equals oldWorkspaceName,
-	// the expected-name guard fired (user renamed in the meantime). Revert
-	// the git rename and skip local DB update so all three stay in lockstep.
+	// No-op detection: when the cloud's atomic WHERE guard fires (user raced
+	// a rename ahead of us), updateNameFromHost returns the pre-update row
+	// unchanged, so `cloudResult.branch` still equals the old branch and not
+	// the `deduped` value we asked for. That mismatch is the signal to roll
+	// back the git rename and skip the local DB update, keeping git, cloud,
+	// and host-local DB in lockstep.
 	if (gitRenamed && cloudResult.branch !== deduped) {
 		await ctx
 			.git(worktreePath)

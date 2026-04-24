@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCleanupMissingWorktrees } from "renderer/react-query/workspaces/useCleanupMissingWorktrees";
 
+const POLL_MS = 30_000;
+
 /**
  * Background sync for externally-deleted worktrees.
  *
@@ -21,7 +23,10 @@ export function ProjectWorktreeAutoSync({ projectId }: { projectId: string }) {
 	const { data: missingWorktrees = [], isLoading } =
 		electronTrpc.workspaces.githubExtended.getMissingWorktrees.useQuery(
 			{ projectId },
-			{ enabled: autoRemoveEnabled },
+			{
+				enabled: autoRemoveEnabled,
+				refetchInterval: autoRemoveEnabled ? POLL_MS : false,
+			},
 		);
 	const cleanupMutation = useCleanupMissingWorktrees();
 

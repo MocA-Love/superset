@@ -24,7 +24,8 @@ import { appState } from "../lib/app-state";
 import { browserManager } from "../lib/browser/browser-manager";
 import { createApplicationMenu } from "../lib/menu";
 import { playNotificationSound } from "../lib/notification-sound";
-import { playAivisNotification } from "../lib/notifications/aivis-tts";
+import { buildAivisTaskRunner } from "../lib/notifications/aivis-tts";
+import { AudioScheduler } from "../lib/notifications/audio-scheduler";
 import { NotificationManager } from "../lib/notifications/notification-manager";
 import {
 	notificationsApp,
@@ -113,6 +114,11 @@ let mainWindowCleanup: (() => void) | null = null;
 let notificationsInitialized = false;
 let notificationsServer: Server | null = null;
 let notificationManager: NotificationManager | null = null;
+let audioScheduler: AudioScheduler | null = null;
+// Rate-limit the "Aivis paused" OS notification so a storm of fatal errors
+// produces at most one banner per minute.
+let lastPausedNotificationAt = 0;
+const PAUSED_NOTIFICATION_COOLDOWN_MS = 60_000;
 let agentLifecycleListener: ((event: AgentLifecycleEvent) => void) | null =
 	null;
 let terminalExitListener:
@@ -194,17 +200,59 @@ nativeTheme.on("updated", () => {
 	}
 });
 
+function showAivisPausedNotification(reason: string): void {
+	if (!Notification.isSupported()) return;
+	const now = Date.now();
+	if (now - lastPausedNotificationAt < PAUSED_NOTIFICATION_COOLDOWN_MS) return;
+	lastPausedNotificationAt = now;
+	try {
+		const notification = new Notification({
+			title: "Aivis 音声通知を一時停止しました",
+			body: reason,
+			silent: true,
+		});
+		notification.show();
+	} catch (err) {
+		console.warn("[notifications] failed to show Aivis paused banner", err);
+	}
+}
+
 export function initNotifications(): void {
 	if (notificationsInitialized) return;
+
+	audioScheduler = new AudioScheduler({
+		playRingtone: (onComplete) => {
+			playNotificationSound(onComplete);
+		},
+		notifyAivisPaused: (reason) => {
+			showAivisPausedNotification(reason);
+		},
+		onError: (err) => {
+			if (err.kind === "retryable") {
+				console.info(
+					`[audio-scheduler] retryable Aivis error (status=${err.status}): ${err.reason}`,
+				);
+			} else {
+				console.warn(
+					`[audio-scheduler] Aivis error (kind=${err.kind}, status=${err.status}): ${err.reason}`,
+				);
+			}
+		},
+	});
 
 	notificationManager = new NotificationManager({
 		isSupported: () => Notification.isSupported(),
 		createNotification: (opts) => new Notification(opts),
-		playSound: playNotificationSound,
-		playAivis: (event) => {
+		playRingtone: () => {
+			audioScheduler?.playRingtone();
+		},
+		buildAivisRunner: (event) => {
 			const kind =
 				event.eventType === "PermissionRequest" ? "permission" : "complete";
-			void playAivisNotification(kind, buildAivisVars(event));
+			return buildAivisTaskRunner(kind, buildAivisVars(event));
+		},
+		enqueueAivis: (runner, priority) => {
+			audioScheduler?.enqueueAivis(runner, priority);
 		},
 		onNotificationClick: (ids) => {
 			const window = getWindow();
@@ -295,6 +343,9 @@ function cleanupNotifications(): void {
 
 	notificationManager?.dispose();
 	notificationManager = null;
+
+	audioScheduler?.dispose();
+	audioScheduler = null;
 
 	notificationsServer?.close();
 	notificationsServer = null;

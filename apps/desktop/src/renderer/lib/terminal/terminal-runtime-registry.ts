@@ -71,18 +71,11 @@ class TerminalRuntimeRegistryImpl {
 		appearance: TerminalAppearance,
 	) {
 		const entry = this.getOrCreateEntry(terminalId);
-		terminalRendererDebug.info(
-			"runtime-attach",
-			{
-				terminalId,
-				hasExistingRuntime: entry.runtime !== null,
-				connectionState: entry.transport.connectionState,
-			},
-			{
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "runtime-attach"],
-			},
-		);
+		terminalRendererDebug.info("runtime-attach", {
+			terminalId,
+			hasExistingRuntime: entry.runtime !== null,
+			connectionState: entry.transport.connectionState,
+		});
 
 		if (!entry.runtime) {
 			entry.runtime = createRuntime(terminalId, appearance);
