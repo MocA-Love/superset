@@ -2,7 +2,7 @@ import { dbWs } from "@superset/db/client";
 import { v2Hosts, v2Projects, v2Workspaces } from "@superset/db/schema";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
 import { requireActiveOrgId } from "../utils/active-org";
@@ -184,47 +184,30 @@ export const v2WorkspaceRouter = {
 			return updated;
 		}),
 
-	// JWT-authed so host-service can apply AI-generated workspace names
-	// after create without an end-user session. Optional `expectedCurrentName`
-	// is folded into the UPDATE's WHERE so a concurrent user edit can't be
-	// clobbered between check and write. `branch` is optional so the same
-	// entry point covers the AI rename (name + branch together) and any
-	// future name-only or branch-only updates.
+	// JWT-authed rename endpoint called from host-service's AI rename flow.
+	// `expectedCurrentName` is used as a WHERE guard — if the name has been
+	// changed by the user between workspace creation and the AI response
+	// landing, the UPDATE is a no-op (returns current row unchanged) so the
+	// user-typed title wins. `branch` is set only when git rename succeeded.
 	updateNameFromHost: jwtProcedure
 		.input(
-			z
-				.object({
-					id: z.string().uuid(),
-					name: z.string().min(1).optional(),
-					branch: z.string().min(1).optional(),
-					expectedCurrentName: z.string().optional(),
-				})
-				.refine((v) => v.name !== undefined || v.branch !== undefined, {
-					message: "At least one of name or branch must be provided",
-				}),
+			z.object({
+				id: z.string().uuid(),
+				name: z.string().min(1).optional(),
+				branch: z.string().min(1).optional(),
+				// When provided, the update only applies if the current cloud name
+				// matches this value. Mismatch = user already renamed → no-op.
+				expectedCurrentName: z.string().optional(),
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const conditions = [
-				eq(v2Workspaces.id, input.id),
-				inArray(v2Workspaces.organizationId, ctx.organizationIds),
-			];
-			if (input.expectedCurrentName !== undefined) {
-				conditions.push(eq(v2Workspaces.name, input.expectedCurrentName));
-			}
-			const patch: { name?: string; branch?: string } = {};
-			if (input.name !== undefined) patch.name = input.name;
-			if (input.branch !== undefined) patch.branch = input.branch;
-			const [updated] = await dbWs
-				.update(v2Workspaces)
-				.set(patch)
-				.where(and(...conditions))
-				.returning();
-			if (updated) return updated;
-
-			// Nothing updated — disambiguate for a useful error. Happy path
-			// already returned above, so this fetch only runs when id/org/name
-			// failed to match.
 			const workspace = await dbWs.query.v2Workspaces.findFirst({
+				columns: {
+					id: true,
+					organizationId: true,
+					name: true,
+					branch: true,
+				},
 				where: eq(v2Workspaces.id, input.id),
 			});
 			if (!workspace) {
@@ -239,9 +222,30 @@ export const v2WorkspaceRouter = {
 					message: "Not a member of this organization",
 				});
 			}
-			// Expected-name mismatch: a user edit landed first. Return the
-			// current row so host-service can observe the skip.
-			return workspace;
+			// Name guard: if the current name no longer matches the expected value,
+			// a user rename raced ahead — return the current row unchanged.
+			if (
+				input.expectedCurrentName !== undefined &&
+				workspace.name !== input.expectedCurrentName
+			) {
+				return workspace;
+			}
+			const data: { name?: string; branch?: string } = {};
+			if (input.name !== undefined) data.name = input.name;
+			if (input.branch !== undefined) data.branch = input.branch;
+			if (Object.keys(data).length === 0) return workspace;
+			const [updated] = await dbWs
+				.update(v2Workspaces)
+				.set(data)
+				.where(eq(v2Workspaces.id, workspace.id))
+				.returning();
+			if (!updated) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Workspace not found",
+				});
+			}
+			return updated;
 		}),
 
 	// JWT-authed so host-service can orchestrate the full delete saga

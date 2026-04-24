@@ -77,7 +77,11 @@ export async function generateWorkspaceNamesFromPrompt(
 		id: "workspace-namer",
 		name: "Workspace Namer",
 		instructions: INSTRUCTIONS,
-		model,
+		// getSmallModel returns `unknown` because fork wraps multiple provider
+		// types behind a runtime-resolved model. Cast to Mastra's loose
+		// DynamicArgument shape since we validate at runtime.
+		// biome-ignore lint/suspicious/noExplicitAny: see comment above
+		model: model as any,
 	});
 
 	try {
@@ -113,6 +117,10 @@ interface ApplyAiRenameArgs {
  * update is source of truth; host-local DB only writes after cloud
  * confirms. On cloud failure the git rename is reverted so git,
  * host-local DB, and cloud stay in lockstep.
+ *
+ * No-op rollback: if `updateNameFromHost` returns the current row
+ * unchanged (expected-name guard fired), the git rename is reverted
+ * and the local DB update is skipped — all three stay in sync.
  */
 export async function applyAiWorkspaceRename(
 	args: ApplyAiRenameArgs,
@@ -172,6 +180,7 @@ export async function applyAiWorkspaceRename(
 	try {
 		cloudResult = await ctx.api.v2Workspace.updateNameFromHost.mutate(patch);
 	} catch (err) {
+		// Cloud update failed — roll back git rename to keep git and cloud in sync.
 		if (gitRenamed) {
 			await ctx
 				.git(worktreePath)
@@ -186,21 +195,16 @@ export async function applyAiWorkspaceRename(
 		throw err;
 	}
 
-	// Detect no-op caused by expectedCurrentName mismatch (concurrent user
-	// rename). The mutation returns the current row verbatim in that case, so
-	// the branch in the returned row is the pre-rename branch rather than our
-	// new `deduped` name. When this happens we must roll back the local git
-	// branch rename and skip the host-sqlite update to avoid divergence with
-	// the cloud row.
-	const cloudAcceptedBranch =
-		patch.branch === undefined || cloudResult.branch === deduped;
-	if (!cloudAcceptedBranch && gitRenamed) {
+	// No-op detection: if the cloud row's name still equals oldWorkspaceName,
+	// the expected-name guard fired (user renamed in the meantime). Revert
+	// the git rename and skip local DB update so all three stay in lockstep.
+	if (gitRenamed && cloudResult.branch !== deduped) {
 		await ctx
 			.git(worktreePath)
 			.then((g) => g.raw(["branch", "-m", deduped, oldBranchName]))
 			.catch((rollbackErr) => {
 				console.warn(
-					`[applyAiWorkspaceRename] git branch rollback after cloud no-op failed (workspace ${workspaceId}, ${deduped} → ${oldBranchName})`,
+					`[applyAiWorkspaceRename] no-op rollback failed (workspace ${workspaceId}, ${deduped} → ${oldBranchName})`,
 					rollbackErr,
 				);
 			});
