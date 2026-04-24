@@ -51,6 +51,10 @@ function DashboardLayout() {
 	const currentWorkspaceId =
 		currentWorkspaceMatch !== false ? currentWorkspaceMatch.workspaceId : null;
 
+	// Q3:B — scratch route hides the workspace sidebar so a dropped file opens
+	// as a focused editor with no project chrome around it.
+	const isScratchRoute = matchRoute({ to: "/scratch", fuzzy: true }) !== false;
+
 	const { data: currentWorkspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: currentWorkspaceId ?? "" },
 		{ enabled: !!currentWorkspaceId },
@@ -114,7 +118,7 @@ function DashboardLayout() {
 		<div className="flex flex-col h-full w-full bg-tertiary">
 			{!isTearoff && <TopBar />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-				{!isTearoff && isWorkspaceSidebarOpen && (
+				{!isTearoff && !isScratchRoute && isWorkspaceSidebarOpen && (
 					<ResizablePanel
 						width={workspaceSidebarWidth}
 						onWidthChange={setWorkspaceSidebarWidth}

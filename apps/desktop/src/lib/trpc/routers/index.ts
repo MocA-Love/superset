@@ -35,6 +35,7 @@ import { createProjectsRouter } from "./projects";
 import { createReferenceGraphRouter } from "./reference-graph";
 import { createResourceMetricsRouter } from "./resource-metrics";
 import { createRingtoneRouter } from "./ringtone";
+import { createScratchRouter } from "./scratch";
 import { createServiceStatusRouter } from "./service-status";
 import { createSettingsRouter } from "./settings";
 import { createTabTearoffRouter } from "./tab-tearoff";
@@ -73,6 +74,7 @@ export const createAppRouter = (
 		permissions: createPermissionsRouter(),
 		ports: createPortsRouter(),
 		resourceMetrics: createResourceMetricsRouter(),
+		scratch: createScratchRouter(),
 		menu: createMenuRouter(),
 		languageServices: createLanguageServicesRouter(),
 		referenceGraph: createReferenceGraphRouter(),
