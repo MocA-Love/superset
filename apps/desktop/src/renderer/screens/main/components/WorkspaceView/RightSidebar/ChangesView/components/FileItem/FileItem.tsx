@@ -111,7 +111,7 @@ export function FileItem({
 		usePathActions({
 			absolutePath,
 			relativePath: file.path,
-			cwd: worktreePath,
+			worktreePath,
 			defaultApp,
 			projectId,
 		});

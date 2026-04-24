@@ -43,7 +43,10 @@ import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/Work
 import { useResolvedTheme } from "renderer/stores/theme";
 import { useVibrancyStore } from "renderer/stores/vibrancy";
 import { getEditorTheme } from "shared/themes";
-import { CodeEditorSearchOverlay } from "./components/CodeEditorSearchOverlay";
+import {
+	CodeEditorSearchOverlay,
+	type CodeEditorSearchOverlayHandle,
+} from "./components/CodeEditorSearchOverlay";
 import { type BlameEntry, createBlamePlugin } from "./createBlamePlugin";
 import { createCodeMirrorTheme } from "./createCodeMirrorTheme";
 import { createIndentRainbowPlugin } from "./createIndentRainbowPlugin";
@@ -561,6 +564,7 @@ export function CodeEditor({
 	const searchModeRef = useRef(searchMode);
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
+	const overlayRef = useRef<CodeEditorSearchOverlayHandle>(null);
 	const searchControlsRef = useRef<{
 		openFind: () => void;
 	} | null>(null);
@@ -647,6 +651,7 @@ export function CodeEditor({
 			openSearchPanel(view);
 			setIsSearchOpen(true);
 			syncSearchOverlayState();
+			overlayRef.current?.focusInput();
 			return;
 		}
 
@@ -1126,6 +1131,7 @@ export function CodeEditor({
 			/>
 			{searchMode === "overlay" ? (
 				<CodeEditorSearchOverlay
+					ref={overlayRef}
 					isOpen={isSearchOpen}
 					query={searchQuery}
 					replaceText={replaceQuery}

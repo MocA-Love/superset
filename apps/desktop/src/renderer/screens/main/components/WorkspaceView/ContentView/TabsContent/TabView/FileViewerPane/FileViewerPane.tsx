@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { createChatServiceIpcClient } from "renderer/components/Chat/utils/chat-service-client";
 import type { MarkdownEditorAdapter } from "renderer/components/MarkdownRenderer";
+import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { resolveLanguageServiceLanguageId } from "renderer/lib/language-services";
 import {
@@ -51,13 +52,13 @@ import { isHtmlFile, isImageFile, isMarkdownFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
 import type { CodeEditorAdapter } from "../../../components";
 import { BasePaneWindow } from "../components";
+import type { CodeMirrorDiffViewerHandle } from "./components/CodeMirrorDiffViewer";
 import {
 	FileViewerContent,
 	type HtmlPreviewHandle,
 } from "./components/FileViewerContent";
 import { FileViewerToolbar } from "./components/FileViewerToolbar";
 import { ExternalChangeDialog } from "./ExternalChangeDialog";
-import { useDiffSearch } from "./hooks/useDiffSearch";
 import { useFileContent } from "./hooks/useFileContent";
 import { useFileSave } from "./hooks/useFileSave";
 import { useMarkdownSearch } from "./hooks/useMarkdownSearch";
@@ -185,6 +186,8 @@ export function FileViewerPane({
 	const diffCategory = fileViewer?.diffCategory;
 	const commitHash = fileViewer?.commitHash;
 	const oldPath = fileViewer?.oldPath;
+	const inlineOriginalContent = fileViewer?.inlineOriginalContent;
+	const inlineOriginalContentKey = fileViewer?.inlineOriginalContentKey;
 	const initialLine = fileViewer?.initialLine;
 	const initialColumn = fileViewer?.initialColumn;
 
@@ -213,8 +216,16 @@ export function FileViewerPane({
 				diffCategory,
 				commitHash,
 				oldPath,
+				inlineOriginalContentKey,
 			}),
-		[normalizedWorkspaceId, filePath, diffCategory, commitHash, oldPath],
+		[
+			normalizedWorkspaceId,
+			filePath,
+			diffCategory,
+			commitHash,
+			oldPath,
+			inlineOriginalContentKey,
+		],
 	);
 	const documentState = useEditorDocumentsStore(
 		(state) => state.documents[documentKey],
@@ -236,12 +247,22 @@ export function FileViewerPane({
 		filePath,
 	});
 
-	const diffSearch = useDiffSearch({
-		containerRef: diffContainerRef,
-		isFocused,
-		isDiffMode: viewMode === "diff",
-		filePath,
-	});
+	const diffViewerRef = useRef<CodeMirrorDiffViewerHandle | null>(null);
+
+	useHotkey(
+		"FIND_IN_FILE_VIEWER",
+		() => {
+			if (viewMode === "diff") {
+				diffViewerRef.current?.openFind();
+			} else if (viewMode === "raw") {
+				editorRef.current?.openFind();
+			}
+		},
+		{
+			enabled: isFocused && (viewMode === "diff" || viewMode === "raw"),
+			preventDefault: true,
+		},
+	);
 
 	const getCurrentContent = useCallback(() => {
 		if (hasEditorDocumentInitialized(documentKey)) {
@@ -272,6 +293,7 @@ export function FileViewerPane({
 		diffCategory,
 		commitHash,
 		oldPath,
+		inlineOriginalContent,
 	});
 
 	useEffect(() => {
@@ -292,6 +314,7 @@ export function FileViewerPane({
 				diffCategory,
 				commitHash,
 				oldPath,
+				inlineOriginalContentKey,
 			},
 			{
 				preserveDocumentState,
@@ -310,6 +333,7 @@ export function FileViewerPane({
 		diffCategory,
 		commitHash,
 		oldPath,
+		inlineOriginalContentKey,
 	]);
 
 	const { handleSaveFile, isSaving } = useFileSave({
@@ -869,7 +893,19 @@ export function FileViewerPane({
 							onMoveToTab={onMoveToTab}
 							onMoveToNewTab={onMoveToNewTab}
 							diffContainerRef={diffContainerRef}
-							diffSearch={diffSearch}
+							diffSearch={{
+								isSearchOpen: false,
+								query: "",
+								caseSensitive: false,
+								matchCount: 0,
+								activeMatchIndex: -1,
+								setQuery: () => {},
+								setCaseSensitive: () => {},
+								findNext: () => {},
+								findPrevious: () => {},
+								closeSearch: () => {},
+							}}
+							diffViewerRef={diffViewerRef}
 							markdownContainerRef={markdownContainerRef}
 							markdownSearch={markdownSearch}
 							htmlZoomLevel={htmlZoomLevel}

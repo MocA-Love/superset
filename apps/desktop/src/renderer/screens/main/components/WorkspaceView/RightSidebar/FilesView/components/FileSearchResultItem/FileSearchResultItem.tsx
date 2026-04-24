@@ -90,7 +90,7 @@ export function FileSearchResultItem({
 		absolutePath: entry.path,
 		relativePath: entry.relativePath,
 		branch,
-		cwd: worktreePath,
+		worktreePath,
 		projectId,
 		supersetLinkProject,
 	});

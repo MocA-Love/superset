@@ -71,6 +71,7 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 
 	const data = snapshot.data;
 	const commits = data?.commits ?? [];
+	const commitsTruncated = data?.commitsTruncated ?? false;
 	const workingTree = data?.workingTree ?? [];
 	const sessionFiles = data?.sessionFiles ?? [];
 	const startHeadUnreachable = data?.startHeadUnreachable ?? false;
@@ -106,6 +107,10 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 								<span className="font-mono text-xs">{data.branch}</span>
 							</TooltipContent>
 						</Tooltip>
+					) : data?.detachedHead ? (
+						<div className="text-xs truncate">
+							<span className="text-muted-foreground">(detached HEAD)</span>
+						</div>
 					) : (
 						<div className="text-xs truncate">
 							<span className="text-muted-foreground">（ブランチ取得中…）</span>
@@ -143,9 +148,15 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 									</>
 								) : null}
 							</div>
-							{(data.ahead > 0 || data.behind > 0) && (
+							{data.hasUpstream ? (
+								data.ahead > 0 || data.behind > 0 ? (
+									<div className="text-[10px] text-muted-foreground mt-1">
+										↑ {data.ahead} · ↓ {data.behind}
+									</div>
+								) : null
+							) : (
 								<div className="text-[10px] text-muted-foreground mt-1">
-									↑ {data.ahead} · ↓ {data.behind}
+									upstream 未設定
 								</div>
 							)}
 						</div>
@@ -198,6 +209,9 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 								) : (
 									sessionFiles.map((file) => {
 										const key = `session:${file.path}`;
+										const displayPath = file.oldPath
+											? `${file.oldPath} → ${file.path}`
+											: file.path;
 										// Deletions ARE the diff at session scope —
 										// `git diff <start>..HEAD -- <path>` still emits
 										// a valid deletion patch, so keep every entry
@@ -214,7 +228,7 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 																key,
 																path: file.path,
 																scope: "session",
-																label: file.path,
+																label: displayPath,
 															})
 														}
 														className={cn(
@@ -225,13 +239,13 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 													>
 														<StatusBadge code={file.code} stage="session" />
 														<span className="text-[11px] font-mono truncate flex-1">
-															{file.path}
+															{displayPath}
 														</span>
 													</button>
 												</TooltipTrigger>
 												<TooltipContent side="left" align="start">
 													<span className="font-mono text-[11px] break-all">
-														{file.path}
+														{displayPath}
 													</span>
 												</TooltipContent>
 											</Tooltip>
@@ -256,11 +270,18 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 							)}
 							コミット
 							<span className="ml-1 text-muted-foreground/70">
-								({commits.length})
+								({commits.length}
+								{commitsTruncated ? "+" : ""})
 							</span>
 						</button>
 						{commitsOpen && (
 							<div className="flex flex-col gap-1">
+								{commitsTruncated && (
+									<p className="text-[10px] text-muted-foreground px-1 pb-1 border-b border-border/30">
+										表示は上限 {commits.length}{" "}
+										件まで。実際にはこれより多くのコミットがあります。
+									</p>
+								)}
 								{commits.length === 0 ? (
 									<p className="text-[11px] text-muted-foreground px-1 py-2">
 										このセッションでの新規コミットはありません。
@@ -362,6 +383,9 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 											file.stage === "staged" ? "staged" : "unstaged";
 										const canDiff =
 											file.stage !== "untracked" && file.code !== "D";
+										const displayPath = file.oldPath
+											? `${file.oldPath} → ${file.path}`
+											: file.path;
 										return (
 											<Tooltip key={key} delayDuration={300}>
 												<TooltipTrigger asChild>
@@ -374,7 +398,7 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 																key,
 																path: file.path,
 																scope,
-																label: file.path,
+																label: displayPath,
 															});
 														}}
 														className={cn(
@@ -386,13 +410,13 @@ export function ChangesSidebar({ sessionId, active }: ChangesSidebarProps) {
 													>
 														<StatusBadge code={file.code} stage={file.stage} />
 														<span className="text-[11px] font-mono truncate flex-1">
-															{file.path}
+															{displayPath}
 														</span>
 													</button>
 												</TooltipTrigger>
 												<TooltipContent side="left" align="start">
 													<span className="font-mono text-[11px] break-all">
-														{file.path}
+														{displayPath}
 													</span>
 												</TooltipContent>
 											</Tooltip>

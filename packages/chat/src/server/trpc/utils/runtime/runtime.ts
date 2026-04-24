@@ -510,7 +510,7 @@ export async function generateAndSetTitle(
 		// Use a small model for title generation instead of the chat model,
 		// because the chat model may use OAuth auth that isn't accessible via
 		// process.env API keys (e.g. OpenAI Codex OAuth).
-		const model = getSmallModel();
+		const model = await getSmallModel();
 		if (!model) return;
 		try {
 			const title = await generateTitleFromMessage({

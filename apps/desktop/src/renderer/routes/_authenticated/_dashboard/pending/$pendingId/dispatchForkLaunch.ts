@@ -1,3 +1,4 @@
+import type { ResolvedAgentConfig } from "@superset/shared/agent-settings";
 import { toast } from "@superset/ui/sonner";
 import { env } from "renderer/env.renderer";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
@@ -6,7 +7,6 @@ import type {
 	PendingTerminalLaunch,
 	PendingWorkspaceRow,
 } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
-import type { ResolvedAgentConfig } from "shared/utils/agent-settings";
 import {
 	buildForkAgentLaunch,
 	type LoadedAttachment,
@@ -17,7 +17,12 @@ export interface DispatchForkLaunchInputs {
 	workspaceId: string;
 	pending: Pick<
 		PendingWorkspaceRow,
-		"projectId" | "prompt" | "linkedIssues" | "linkedPR" | "hostTarget"
+		| "projectId"
+		| "prompt"
+		| "linkedIssues"
+		| "linkedPR"
+		| "hostTarget"
+		| "agentId"
 	>;
 	loadedAttachments: LoadedAttachment[] | undefined;
 	agentConfigs: ResolvedAgentConfig[];

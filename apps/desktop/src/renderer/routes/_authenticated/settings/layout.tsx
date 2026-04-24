@@ -34,11 +34,13 @@ const SECTION_ORDER: SettingsSection[] = [
 	"diagnostics",
 	"git",
 	"terminal",
+	"links",
 	"models",
 	"extensions",
 	"vscodeExtensions",
 	"organization",
 	"integrations",
+	"serviceStatus",
 	"billing",
 	"apikeys",
 	"metrics",
@@ -56,6 +58,7 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/diagnostics")) return "diagnostics";
 	if (pathname.includes("/settings/git")) return "git";
 	if (pathname.includes("/settings/terminal")) return "terminal";
+	if (pathname.includes("/settings/links")) return "links";
 	if (pathname.includes("/settings/models")) return "models";
 	if (pathname.includes("/settings/integrations")) return "integrations";
 	if (pathname.includes("/settings/vscode-extensions"))
@@ -64,6 +67,7 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/security")) return "security";
 	if (pathname.includes("/settings/permissions")) return "permissions";
 	if (pathname.includes("/settings/metrics")) return "metrics";
+	if (pathname.includes("/settings/service-status")) return "serviceStatus";
 	if (pathname.includes("/settings/project")) return "project";
 	return null;
 }
@@ -88,6 +92,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/git";
 		case "terminal":
 			return "/settings/terminal";
+		case "links":
+			return "/settings/links";
 		case "models":
 			return "/settings/models";
 		case "integrations":
@@ -102,6 +108,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/permissions";
 		case "metrics":
 			return "/settings/metrics";
+		case "serviceStatus":
+			return "/settings/service-status";
 		default:
 			return "/settings/account";
 	}

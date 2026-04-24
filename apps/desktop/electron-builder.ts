@@ -148,6 +148,45 @@ const config: Configuration = {
 		schemes: ["superset"],
 	},
 
+	// File associations so Finder / Explorer show Superset in "Open with" and
+	// OS drag-to-dock routes the path through app.on("open-file") / argv.
+	//
+	// v1 scope is intentionally narrow so we don't hijack system defaults for
+	// popular formats. Users can still drop any file via window DnD — this
+	// list only controls the "Open with" menu. `role: "Editor"` with
+	// `rank: "Alternate"` keeps us off the default-handler slot on macOS; the
+	// user has to pick Superset explicitly.
+	//
+	// IMPORTANT: The Linux AppImage FileAssociation parser only accepts a
+	// single-string `ext` (array fails with "expects \" or n, but found ["),
+	// so each extension gets its own entry. macOS / Windows tolerate the same
+	// shape, so we use one form everywhere for parity.
+	//
+	// Note on extensionless files (.env, .gitignore, Dockerfile): electron-
+	// builder's `ext` only maps real extensions, so those can't be registered
+	// here. Window DnD is the supported path for those.
+	fileAssociations: [
+		"md",
+		"markdown",
+		"txt",
+		"log",
+		"ts",
+		"tsx",
+		"js",
+		"jsx",
+		"mjs",
+		"cjs",
+		"py",
+		"sh",
+		"bash",
+		"zsh",
+	].map((ext) => ({
+		ext,
+		name: "Text File",
+		role: "Editor",
+		rank: "Alternate",
+	})),
+
 	// Linux
 	linux: {
 		...(existsSync(linuxIconPath) ? { icon: linuxIconPath } : {}),

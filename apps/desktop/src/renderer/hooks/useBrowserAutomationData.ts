@@ -79,6 +79,8 @@ export function useBrowserAutomationData({
 					: claudeReadyForWorkspace(t.workspaceId);
 			return {
 				id: `terminal:${t.paneId}`,
+				paneId: t.paneId,
+				workspaceId: t.workspaceId ?? null,
 				displayName: pane?.userTitle || pane?.name || `Terminal ${t.command}`,
 				provider: t.provider,
 				kind: "Terminal",

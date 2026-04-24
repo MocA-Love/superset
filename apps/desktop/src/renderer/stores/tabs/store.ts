@@ -26,6 +26,7 @@ import type {
 	AddFileViewerPaneOptions,
 	AddTabWithMultiplePanesOptions,
 	ClosedTabEntry,
+	CommentPaneData,
 	TabsState,
 	TabsStore,
 } from "./types";
@@ -39,6 +40,7 @@ import {
 	createBrowserTabWithPane,
 	createChatPane,
 	createChatTabWithPane,
+	createCommentTabWithPane,
 	createDatabaseExplorerTabWithPane,
 	createDevToolsPane,
 	createFileViewerPane,
@@ -965,7 +967,9 @@ export const useTabsStore = create<TabsStore>()(
 						const isSameFile =
 							pathsMatch(existingFileViewer.filePath, options.filePath) &&
 							existingFileViewer.diffCategory === options.diffCategory &&
-							existingFileViewer.commitHash === options.commitHash;
+							existingFileViewer.commitHash === options.commitHash &&
+							existingFileViewer.inlineOriginalContentKey ===
+								options.inlineOriginalContentKey;
 
 						if (paneDocument?.dirty && !isSameFile) {
 							set({
@@ -1057,6 +1061,8 @@ export const useTabsStore = create<TabsStore>()(
 										diffCategory: options.diffCategory,
 										commitHash: options.commitHash,
 										oldPath: options.oldPath,
+										inlineOriginalContent: options.inlineOriginalContent,
+										inlineOriginalContentKey: options.inlineOriginalContentKey,
 										initialLine: options.line,
 										initialColumn: options.column,
 										displayName: options.displayName,
@@ -1814,6 +1820,89 @@ export const useTabsStore = create<TabsStore>()(
 					if (!result) return;
 
 					set(withDerivedTabNames(result, [targetTabId]));
+				},
+
+				// Comment operations
+				openCommentPane: (workspaceId: string, comment: CommentPaneData) => {
+					const state = get();
+
+					// Reuse an existing comment pane in this workspace if one exists
+					const workspaceTabIds = new Set(
+						state.tabs
+							.filter((t) => t.workspaceId === workspaceId)
+							.map((t) => t.id),
+					);
+					const existingPane = Object.values(state.panes).find(
+						(p) => p.type === "comment" && workspaceTabIds.has(p.tabId),
+					);
+
+					if (existingPane) {
+						const newPanes = {
+							...state.panes,
+							[existingPane.id]: {
+								...existingPane,
+								name: `@${comment.authorLogin}`,
+								comment,
+							},
+						};
+						const tabName = deriveTabName(newPanes, existingPane.tabId);
+						const nextTabs = state.tabs.map((t) =>
+							t.id === existingPane.tabId ? { ...t, name: tabName } : t,
+						);
+						const activationState = activatePaneInWorkspace({
+							workspaceId,
+							paneId: existingPane.id,
+							tabs: nextTabs,
+							panes: newPanes,
+							activeTabIds: state.activeTabIds,
+							focusedPaneIds: state.focusedPaneIds,
+							tabHistoryStacks: state.tabHistoryStacks,
+						});
+
+						if (!activationState) {
+							set({ panes: newPanes, tabs: nextTabs });
+							return { tabId: existingPane.tabId, paneId: existingPane.id };
+						}
+
+						set({ ...activationState, tabs: nextTabs });
+						return { tabId: existingPane.tabId, paneId: existingPane.id };
+					}
+
+					const { tab, pane } = createCommentTabWithPane(workspaceId, comment);
+
+					const currentActiveId = state.activeTabIds[workspaceId];
+					const historyStack = state.tabHistoryStacks[workspaceId] || [];
+					const newHistoryStack = currentActiveId
+						? [
+								currentActiveId,
+								...historyStack.filter((id) => id !== currentActiveId),
+							]
+						: historyStack;
+
+					set({
+						tabs: [...state.tabs, tab],
+						panes: { ...state.panes, [pane.id]: pane },
+						activeTabIds: {
+							...state.activeTabIds,
+							[workspaceId]: tab.id,
+						},
+						focusedPaneIds: {
+							...state.focusedPaneIds,
+							[tab.id]: pane.id,
+						},
+						tabHistoryStacks: {
+							...state.tabHistoryStacks,
+							[workspaceId]: newHistoryStack,
+						},
+					});
+
+					posthog.capture("panel_opened", {
+						panel_type: "comment",
+						workspace_id: workspaceId,
+						pane_id: pane.id,
+					});
+
+					return { tabId: tab.id, paneId: pane.id };
 				},
 
 				// Browser operations

@@ -27,6 +27,7 @@ import { createGitHubMetricsRouter } from "./github-metrics";
 import { createHostServiceCoordinatorRouter } from "./host-service-coordinator";
 import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
+import { createMigrationRouter } from "./migration";
 import { createNotificationsRouter } from "./notifications";
 import { createPermissionsRouter } from "./permissions";
 import { createPortsRouter } from "./ports";
@@ -34,6 +35,7 @@ import { createProjectsRouter } from "./projects";
 import { createReferenceGraphRouter } from "./reference-graph";
 import { createResourceMetricsRouter } from "./resource-metrics";
 import { createRingtoneRouter } from "./ringtone";
+import { createScratchRouter } from "./scratch";
 import { createServiceStatusRouter } from "./service-status";
 import { createSettingsRouter } from "./settings";
 import { createTabTearoffRouter } from "./tab-tearoff";
@@ -72,6 +74,7 @@ export const createAppRouter = (
 		permissions: createPermissionsRouter(),
 		ports: createPortsRouter(),
 		resourceMetrics: createResourceMetricsRouter(),
+		scratch: createScratchRouter(),
 		menu: createMenuRouter(),
 		languageServices: createLanguageServicesRouter(),
 		referenceGraph: createReferenceGraphRouter(),
@@ -90,6 +93,7 @@ export const createAppRouter = (
 		vibrancy: createVibrancyRouter(wm),
 		vscodeExtensions: createVscodeExtensionsRouter(),
 		todoAgent: createTodoAgentRouter(),
+		migration: createMigrationRouter(),
 	});
 };
 

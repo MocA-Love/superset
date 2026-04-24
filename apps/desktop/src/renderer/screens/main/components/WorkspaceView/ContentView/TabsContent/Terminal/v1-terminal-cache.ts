@@ -15,8 +15,8 @@ import type { TerminalStreamEvent } from "./types";
  * xterm is opened into a persistent wrapper <div> that can be
  * moved between DOM containers without disposing the terminal.
  *
- * Also owns the tRPC stream subscription so data continues flowing
- * to xterm even while the React component is unmounted (tab hidden).
+ * Also owns the tRPC stream subscription so hidden terminals can buffer
+ * output without keeping xterm busy while the React component is unmounted.
  */
 export interface CachedTerminal {
 	xterm: XTerm;
@@ -139,18 +139,11 @@ export function attachToContainer(
 	container.appendChild(entry.wrapper);
 	entry.openOnce();
 	entry.setGpuAccelerationEnabled(entry.isFocused);
-	terminalRendererDebug.info(
-		"cache-attach-to-container",
-		{
-			paneId,
-			hasSubscription: entry.subscription !== null,
-			streamReady: entry.streamReady,
-		},
-		{
-			captureMessage: true,
-			fingerprint: ["terminal.renderer", "cache-attach-to-container"],
-		},
-	);
+	terminalRendererDebug.info("cache-attach-to-container", {
+		paneId,
+		hasSubscription: entry.subscription !== null,
+		streamReady: entry.streamReady,
+	});
 
 	if (container.clientWidth > 0 && container.clientHeight > 0) {
 		entry.fitAddon.fit();

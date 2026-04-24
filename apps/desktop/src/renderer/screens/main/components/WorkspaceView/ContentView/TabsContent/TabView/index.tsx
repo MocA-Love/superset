@@ -23,6 +23,7 @@ import { useTheme } from "renderer/stores/theme";
 import { ActionLogsPane } from "./ActionLogsPane";
 import { BrowserPane } from "./BrowserPane";
 import { ChatPane } from "./ChatPane";
+import { CommentPane } from "./CommentPane";
 import { MosaicSplitOverlay } from "./components";
 import { DatabaseExplorerPane } from "./DatabaseExplorerPane";
 import { DevToolsPane } from "./DevToolsPane";
@@ -431,6 +432,20 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 						removePane={removePane}
 						setFocusedPane={setFocusedPane}
 						onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+					/>
+				);
+			}
+
+			// Route comment panes
+			if (paneInfo.type === "comment") {
+				return (
+					<CommentPane
+						paneId={paneId}
+						path={path}
+						tabId={tab.id}
+						splitPaneAuto={splitPaneAuto}
+						removePane={removePane}
+						setFocusedPane={setFocusedPane}
 					/>
 				);
 			}

@@ -11,12 +11,35 @@ import { execGitWithShellPath } from "lib/trpc/routers/workspaces/utils/git-clie
  * made before the session are never attributed to it.
  */
 
+/**
+ * Swallow-errors variant that returns "" on failure. Use when a failure
+ * is semantically equivalent to "no data" (e.g. `git rev-parse HEAD` on
+ * a repo with zero commits yet).
+ */
 async function gitOut(args: string[], cwd: string): Promise<string> {
 	try {
 		const { stdout } = await execGitWithShellPath(args, { cwd });
 		return stdout;
 	} catch {
 		return "";
+	}
+}
+
+/**
+ * Distinguish "git ran and returned empty" from "git failed". Needed for
+ * ahead/behind: `rev-list HEAD...@{u}` throws when no upstream is
+ * configured, which must be surfaced as `hasUpstream: false` in the UI
+ * rather than silently reported as "synced" (ahead = 0, behind = 0).
+ */
+async function gitOutOrNull(
+	args: string[],
+	cwd: string,
+): Promise<string | null> {
+	try {
+		const { stdout } = await execGitWithShellPath(args, { cwd });
+		return stdout;
+	} catch {
+		return null;
 	}
 }
 
@@ -57,19 +80,44 @@ export interface SessionGitFile {
 	stage: SessionGitFileStage;
 	/** Raw git status letter — M / A / D / R / C / U / ? */
 	code: string;
+	/**
+	 * Original path before rename/copy. Populated only when `code` is
+	 * `R` or `C`, so the UI can render `oldPath → path` instead of the
+	 * broken `old.ts -> new.ts` single string the non-`-z` porcelain
+	 * output used to stuff into `path`.
+	 */
+	oldPath?: string | null;
 }
 
 export interface SessionGitChangedFile {
 	path: string;
 	/** First letter of git's name-status code: A / M / D / R / C / T */
 	code: string;
+	/**
+	 * Original path, populated only for rename/copy entries. Lets the UI
+	 * render `oldPath → path` instead of losing the rename information.
+	 */
+	oldPath?: string | null;
 }
 
 export interface SessionGitSnapshot {
 	branch: string | null;
+	/**
+	 * True when HEAD is detached (not on a branch). Distinguishes a
+	 * detached HEAD from "ブランチ取得中…" (git rev-parse failed) so the
+	 * sidebar can show `(detached HEAD)` instead of misleadingly
+	 * labelling the current state as branch "HEAD".
+	 */
+	detachedHead: boolean;
 	startHeadSha: string | null;
 	currentHeadSha: string | null;
 	commits: SessionGitCommit[];
+	/**
+	 * True when `git log <range>` was truncated by `--max-count`. The UI
+	 * surfaces this so users know additional commits exist without
+	 * overwhelming the sidebar for sessions that produce 1000+ commits.
+	 */
+	commitsTruncated: boolean;
 	workingTree: SessionGitFile[];
 	/**
 	 * Files whose contents differ between `startHeadSha` and HEAD
@@ -89,10 +137,29 @@ export interface SessionGitSnapshot {
 	startHeadUnreachable: boolean;
 	ahead: number;
 	behind: number;
+	/**
+	 * True when the current branch has an upstream configured.
+	 * `ahead`/`behind` are only meaningful when this is true — without
+	 * it, the two fields are always zero and must not be rendered as
+	 * "synced" because they are simply unmeasured.
+	 */
+	hasUpstream: boolean;
 }
 
-const COMMIT_DELIM = "\x00";
-const COMMIT_FORMAT = ["%H", "%h", "%s", "%an", "%aI"].join(COMMIT_DELIM);
+// Field separator inside the %s (subject) etc. line. Unit Separator (US,
+// 0x1F) is control-class so real commit text basically never contains it,
+// and it plays nicely with `-z`'s record terminator (NUL).
+const COMMIT_FIELD_DELIM = "\x1f";
+const COMMIT_RECORD_DELIM = "\x00";
+const COMMIT_FORMAT = ["%H", "%h", "%s", "%an", "%aI"].join(COMMIT_FIELD_DELIM);
+
+/**
+ * Upper bound on commits fetched per snapshot. Protects the 3-second
+ * refetch loop from choking on sessions that produce hundreds of commits
+ * (e.g. long-running refactors). The UI surfaces the truncation state so
+ * users know the list is capped.
+ */
+const SESSION_COMMITS_MAX = 500;
 
 export async function getSessionGitSnapshot(params: {
 	cwd: string;
@@ -104,7 +171,13 @@ export async function getSessionGitSnapshot(params: {
 		gitOut(["rev-parse", "--abbrev-ref", "HEAD"], cwd),
 		gitOut(["rev-parse", "HEAD"], cwd),
 	]);
-	const branch = branchOut.trim() || null;
+	const branchRaw = branchOut.trim();
+	// `git rev-parse --abbrev-ref HEAD` returns the literal string
+	// `"HEAD"` when HEAD is detached, which is useless as a branch label
+	// and actively misleading in the sidebar. Collapse it to null and
+	// surface the detached state via a dedicated flag.
+	const detachedHead = branchRaw === "HEAD";
+	const branch = !branchRaw || detachedHead ? null : branchRaw;
 	const currentHeadSha = currentOut.trim() || null;
 
 	// Commits produced since the session started. Scoped to the range
@@ -113,6 +186,7 @@ export async function getSessionGitSnapshot(params: {
 	// return an empty list, and we surface cumulative file-level
 	// changes via `sessionFiles` below so the sidebar isn't empty.
 	let commits: SessionGitCommit[] = [];
+	let commitsTruncated = false;
 	let sessionFiles: SessionGitChangedFile[] = [];
 	let startHeadUnreachable = false;
 	if (startHeadSha && currentHeadSha && startHeadSha !== currentHeadSha) {
@@ -120,28 +194,36 @@ export async function getSessionGitSnapshot(params: {
 		if (!reachable) {
 			startHeadUnreachable = true;
 		} else {
+			// `-z` terminates each commit record with NUL and keeps
+			// multi-line values intact, so we no longer depend on
+			// commit subjects being newline-free. The fixed number of
+			// fields is separated by `\x1f` inside a single record.
+			// `--max-count` caps the response for runaway sessions.
 			const logOut = await gitOut(
 				[
 					"log",
+					"-z",
+					`--max-count=${SESSION_COMMITS_MAX + 1}`,
 					`${startHeadSha}..${currentHeadSha}`,
 					`--format=${COMMIT_FORMAT}`,
 				],
 				cwd,
 			);
-			commits = logOut
-				.split("\n")
-				.filter((l) => l.length > 0)
-				.map((line) => {
-					const [sha, shortSha, subject, authorName, authorDate] =
-						line.split(COMMIT_DELIM);
-					return {
-						sha: sha ?? "",
-						shortSha: shortSha ?? "",
-						subject: subject ?? "",
-						authorName: authorName ?? "",
-						authorDate: authorDate ?? "",
-					};
-				});
+			const records = logOut
+				.split(COMMIT_RECORD_DELIM)
+				.filter((r) => r.length > 0);
+			commits = records.slice(0, SESSION_COMMITS_MAX).map((rec) => {
+				const [sha, shortSha, subject, authorName, authorDate] =
+					rec.split(COMMIT_FIELD_DELIM);
+				return {
+					sha: sha ?? "",
+					shortSha: shortSha ?? "",
+					subject: subject ?? "",
+					authorName: authorName ?? "",
+					authorDate: authorDate ?? "",
+				};
+			});
+			commitsTruncated = records.length > SESSION_COMMITS_MAX;
 
 			// `git diff --name-status -z A B` compares the two commits
 			// directly (two-dot in diff has no range semantics), so it
@@ -156,66 +238,57 @@ export async function getSessionGitSnapshot(params: {
 		}
 	}
 
-	// Working tree state via porcelain v1 for stable parsing.
+	// Working tree state via `--porcelain=v1 -z`. The `-z` flag is
+	// *required* here — without it, rename entries come out as
+	// `"old.ts -> new.ts"` stuffed into a single line, which then ends
+	// up as `file.path` and breaks the downstream `git diff --cached --
+	// <path>` call (there is no literal file named `"old.ts -> new.ts"`
+	// in git's index). Paths containing spaces or non-ASCII characters
+	// also get C-quoted without `-z`, which the split-by-newline parser
+	// can't undo. Using `-z` preserves both correctness and the ability
+	// to diff the file the user clicks on.
 	const statusOut = await gitOut(
-		["status", "--porcelain=v1", "--untracked-files=all"],
+		["status", "--porcelain=v1", "-z", "--untracked-files=all"],
 		cwd,
 	);
-	const workingTree: SessionGitFile[] = [];
-	const seen = new Set<string>();
-	for (const line of statusOut.split("\n")) {
-		if (line.length < 3) continue;
-		const indexStatus = line[0] ?? " ";
-		const wtStatus = line[1] ?? " ";
-		const filePath = line.slice(3);
-		const key = `${filePath}|${indexStatus}${wtStatus}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		if (indexStatus === "?" && wtStatus === "?") {
-			workingTree.push({ path: filePath, stage: "untracked", code: "?" });
-			continue;
-		}
-		if (indexStatus !== " " && indexStatus !== "?") {
-			workingTree.push({
-				path: filePath,
-				stage: "staged",
-				code: indexStatus,
-			});
-		}
-		if (wtStatus !== " " && wtStatus !== "?") {
-			workingTree.push({
-				path: filePath,
-				stage: "unstaged",
-				code: wtStatus,
-			});
-		}
-	}
+	const workingTree: SessionGitFile[] = parsePorcelainV1Nul(statusOut);
 
 	// Ahead/behind relative to upstream, if configured. Failure is
-	// expected when no upstream is set, so swallow silently.
+	// expected when no upstream is set, so we distinguish it from
+	// "synced" by returning null from `gitOutOrNull` and propagating
+	// that through `hasUpstream`.
 	let ahead = 0;
 	let behind = 0;
-	const rlOut = (
-		await gitOut(["rev-list", "--left-right", "--count", "HEAD...@{u}"], cwd)
-	).trim();
-	if (rlOut) {
-		const parts = rlOut.split(/\s+/);
-		if (parts.length === 2) {
-			ahead = Number(parts[0]) || 0;
-			behind = Number(parts[1]) || 0;
+	let hasUpstream = false;
+	const rlOut = await gitOutOrNull(
+		["rev-list", "--left-right", "--count", "HEAD...@{u}"],
+		cwd,
+	);
+	if (rlOut !== null) {
+		const trimmed = rlOut.trim();
+		if (trimmed) {
+			const parts = trimmed.split(/\s+/);
+			if (parts.length === 2) {
+				ahead = Number(parts[0]) || 0;
+				behind = Number(parts[1]) || 0;
+				hasUpstream = true;
+			}
 		}
 	}
 
 	return {
 		branch,
+		detachedHead,
 		startHeadSha,
 		currentHeadSha,
 		commits,
+		commitsTruncated,
 		workingTree,
 		sessionFiles,
 		startHeadUnreachable,
 		ahead,
 		behind,
+		hasUpstream,
 	};
 }
 
@@ -223,9 +296,9 @@ export async function getSessionGitSnapshot(params: {
  * Parse `git diff --name-status -z` output.
  *
  * Standard entries are `<CODE>\0<path>\0`; rename/copy entries are
- * `<CODE><score>\0<oldPath>\0<newPath>\0` — we keep only the new path
- * and collapse the code to its first letter so the UI can render a
- * single badge per file.
+ * `<CODE><score>\0<oldPath>\0<newPath>\0` — we keep the new path as
+ * `path` and retain the old path as `oldPath` so the UI can render
+ * `oldPath → path` instead of losing the rename information.
  */
 function parseNameStatusNul(raw: string): SessionGitChangedFile[] {
 	const files: SessionGitChangedFile[] = [];
@@ -239,8 +312,15 @@ function parseNameStatusNul(raw: string): SessionGitChangedFile[] {
 		}
 		const letter = token[0] ?? "";
 		if (letter === "R" || letter === "C") {
+			const oldPath = parts[i + 1] ?? null;
 			const newPath = parts[i + 2];
-			if (newPath) files.push({ path: newPath, code: letter });
+			if (newPath) {
+				files.push({
+					path: newPath,
+					code: letter,
+					oldPath: oldPath || null,
+				});
+			}
 			i += 3;
 			continue;
 		}
@@ -249,6 +329,76 @@ function parseNameStatusNul(raw: string): SessionGitChangedFile[] {
 		i += 2;
 	}
 	return files;
+}
+
+/**
+ * Parse `git status --porcelain=v1 -z --untracked-files=all` output.
+ *
+ * Each entry is `XY<space>path\0`. Rename/copy entries additionally
+ * carry the *old* path as the next NUL-terminated token (i.e.
+ * `R<space><space>newpath\0oldpath\0`). Collapsing that into a single
+ * `SessionGitFile` keeps the downstream `git diff --cached -- <path>`
+ * lookup working (it needs the *new* path, not `old -> new`).
+ */
+function parsePorcelainV1Nul(raw: string): SessionGitFile[] {
+	const out: SessionGitFile[] = [];
+	const seen = new Set<string>();
+	const entries = raw.split("\0");
+	let i = 0;
+	// Trailing NUL produces an empty final segment; the loop guards on
+	// `entry.length < 3` so no special-case is required.
+	while (i < entries.length) {
+		const entry = entries[i];
+		if (!entry || entry.length < 3) {
+			i += 1;
+			continue;
+		}
+		const indexStatus = entry[0] ?? " ";
+		const wtStatus = entry[1] ?? " ";
+		const filePath = entry.slice(3);
+		const isRenameOrCopy =
+			indexStatus === "R" ||
+			indexStatus === "C" ||
+			wtStatus === "R" ||
+			wtStatus === "C";
+		let oldPath: string | null = null;
+		if (isRenameOrCopy) {
+			const oldPathToken = entries[i + 1];
+			oldPath = oldPathToken && oldPathToken.length > 0 ? oldPathToken : null;
+			// Consume both the header entry and the trailing old-path token so
+			// the outer loop doesn't re-parse the old path as a standalone
+			// entry (which would emit a bogus duplicate file row).
+			i += 2;
+		} else {
+			i += 1;
+		}
+
+		const key = `${filePath}|${indexStatus}${wtStatus}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+
+		if (indexStatus === "?" && wtStatus === "?") {
+			out.push({ path: filePath, stage: "untracked", code: "?" });
+			continue;
+		}
+		if (indexStatus !== " " && indexStatus !== "?") {
+			out.push({
+				path: filePath,
+				stage: "staged",
+				code: indexStatus,
+				oldPath: indexStatus === "R" || indexStatus === "C" ? oldPath : null,
+			});
+		}
+		if (wtStatus !== " " && wtStatus !== "?") {
+			out.push({
+				path: filePath,
+				stage: "unstaged",
+				code: wtStatus,
+				oldPath: wtStatus === "R" || wtStatus === "C" ? oldPath : null,
+			});
+		}
+	}
+	return out;
 }
 
 export type SessionDiffScope = "session" | "staged" | "unstaged" | "commit";

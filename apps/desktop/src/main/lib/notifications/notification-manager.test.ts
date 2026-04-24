@@ -3,6 +3,7 @@ import type {
 	AgentLifecycleEvent,
 	NotificationIds,
 } from "shared/notification-types";
+import type { AivisPriority, AivisTaskRunner } from "./audio-scheduler";
 import {
 	type NativeNotification,
 	NotificationManager,
@@ -33,6 +34,7 @@ function createMockNotification(): MockNotification {
 interface TestDeps extends NotificationManagerDeps {
 	notifications: MockNotification[];
 	clickedIds: NotificationIds[];
+	enqueued: { runner: AivisTaskRunner; priority: AivisPriority }[];
 }
 
 function createDeps(
@@ -40,17 +42,28 @@ function createDeps(
 ): TestDeps {
 	const notifications: MockNotification[] = [];
 	const clickedIds: NotificationIds[] = [];
+	const enqueued: { runner: AivisTaskRunner; priority: AivisPriority }[] = [];
+	const stubRunner: AivisTaskRunner = {
+		synthesize: () =>
+			Promise.resolve({ audio: Buffer.alloc(0), rateLimit: undefined }),
+		play: () => Promise.resolve(),
+	};
 
 	return {
 		notifications,
 		clickedIds,
+		enqueued,
 		isSupported: () => true,
 		createNotification: () => {
 			const n = createMockNotification();
 			notifications.push(n);
 			return n;
 		},
-		playSound: mock(() => {}),
+		playRingtone: mock(() => {}),
+		buildAivisRunner: () => stubRunner,
+		enqueueAivis: (runner, priority) => {
+			enqueued.push({ runner, priority });
+		},
 		onNotificationClick: (ids) => clickedIds.push(ids),
 		getVisibilityContext: () => ({
 			isFocused: false,
@@ -114,9 +127,30 @@ describe("NotificationManager", () => {
 			expect(localManager.activeCount).toBe(0);
 		});
 
-		it("plays sound on notification", () => {
+		it("plays ringtone on notification", () => {
 			manager.handleAgentLifecycle(makeEvent());
-			expect(deps.playSound).toHaveBeenCalled();
+			expect(deps.playRingtone).toHaveBeenCalled();
+		});
+
+		it("enqueues aivis with normal priority for Stop events", () => {
+			manager.handleAgentLifecycle(makeEvent({ eventType: "Stop" }));
+			expect(deps.enqueued).toHaveLength(1);
+			expect(deps.enqueued[0].priority).toBe("normal");
+		});
+
+		it("enqueues aivis with high priority for PermissionRequest events", () => {
+			manager.handleAgentLifecycle(
+				makeEvent({ eventType: "PermissionRequest" }),
+			);
+			expect(deps.enqueued).toHaveLength(1);
+			expect(deps.enqueued[0].priority).toBe("high");
+		});
+
+		it("skips aivis enqueue when buildAivisRunner returns null", () => {
+			const localDeps = createDeps({ buildAivisRunner: () => null });
+			const localManager = new NotificationManager(localDeps);
+			localManager.handleAgentLifecycle(makeEvent());
+			expect(localDeps.enqueued).toHaveLength(0);
 		});
 	});
 
@@ -297,8 +331,8 @@ describe("NotificationManager", () => {
 
 			expect(createNotification).toHaveBeenCalledWith(
 				expect.objectContaining({
-					title: "Input Needed — Test Workspace",
-					body: '"Test Title" needs your attention',
+					title: "Awaiting Response — Test Workspace",
+					body: '"Test Title" is waiting for your reply',
 				}),
 			);
 		});

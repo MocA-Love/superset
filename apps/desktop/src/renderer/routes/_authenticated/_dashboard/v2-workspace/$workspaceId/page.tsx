@@ -41,6 +41,7 @@ import { AddTabMenu } from "./components/AddTabMenu";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
@@ -63,10 +64,20 @@ import type {
 	TerminalPaneData,
 } from "./types";
 
+interface WorkspaceSearch {
+	terminalId?: string;
+	chatSessionId?: string;
+}
+
 export const Route = createFileRoute(
 	"/_authenticated/_dashboard/v2-workspace/$workspaceId/",
 )({
 	component: V2WorkspacePage,
+	validateSearch: (raw: Record<string, unknown>): WorkspaceSearch => ({
+		terminalId: typeof raw.terminalId === "string" ? raw.terminalId : undefined,
+		chatSessionId:
+			typeof raw.chatSessionId === "string" ? raw.chatSessionId : undefined,
+	}),
 });
 
 function findPanePathInLayout(
@@ -106,6 +117,7 @@ function getNodeAtPathInLayout(
 
 function V2WorkspacePage() {
 	const { workspaceId } = Route.useParams();
+	const { terminalId, chatSessionId } = Route.useSearch();
 	const collections = useCollections();
 
 	const { data: workspaces } = useLiveQuery(
@@ -130,6 +142,8 @@ function V2WorkspacePage() {
 			projectId={workspace.projectId}
 			workspaceId={workspace.id}
 			workspaceName={workspace.name}
+			terminalId={terminalId}
+			chatSessionId={chatSessionId}
 		/>
 	);
 }
@@ -138,10 +152,14 @@ function WorkspaceContent({
 	projectId,
 	workspaceId,
 	workspaceName,
+	terminalId,
+	chatSessionId,
 }: {
 	projectId: string;
 	workspaceId: string;
 	workspaceName: string;
+	terminalId?: string;
+	chatSessionId?: string;
 }) {
 	const navigate = useNavigate();
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
@@ -154,6 +172,7 @@ function WorkspaceContent({
 		projectId,
 	});
 	useConsumePendingLaunch({ workspaceId, store });
+	useConsumeAutomationRunLink({ store, terminalId, chatSessionId });
 	const collections = useCollections();
 	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
 	const utils = electronTrpc.useUtils();
@@ -205,10 +224,18 @@ function WorkspaceContent({
 	const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(
 		activeFilePanePath,
 	);
+	// Every reveal request is a fresh object, so the FilesTab effect keyed on
+	// `pendingReveal` re-runs even when the path is the same (e.g. user
+	// collapsed a folder and re-⌘-clicked it in the terminal).
+	const [pendingReveal, setPendingReveal] = useState<{
+		path: string;
+		isDirectory: boolean;
+	} | null>(null);
 
 	useEffect(() => {
 		if (activeFilePanePath !== undefined) {
 			setSelectedFilePath(activeFilePanePath);
+			setPendingReveal({ path: activeFilePanePath, isDirectory: false });
 		}
 	}, [activeFilePanePath]);
 
@@ -359,12 +386,13 @@ function WorkspaceContent({
 	);
 
 	const revealPath = useCallback(
-		(path: string) => {
+		(path: string, options?: { isDirectory?: boolean }) => {
 			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
 				draft.rightSidebarOpen = true;
 				draft.sidebarState.activeTab = "files";
 			});
 			setSelectedFilePath(path);
+			setPendingReveal({ path, isDirectory: options?.isDirectory === true });
 		},
 		[collections, workspaceId],
 	);
@@ -393,8 +421,22 @@ function WorkspaceContent({
 	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
 
 	const openDiffPane = useCallback(
-		(filePath: string) => {
+		(filePath: string, openInNewTab?: boolean) => {
 			const state = store.getState();
+			if (openInNewTab) {
+				state.addTab({
+					panes: [
+						{
+							kind: "diff",
+							data: {
+								path: filePath,
+								collapsedFiles: [],
+							} as DiffPaneData,
+						},
+					],
+				});
+				return;
+			}
 			for (const tab of state.tabs) {
 				for (const pane of Object.values(tab.panes)) {
 					if (pane.kind !== "diff") continue;
@@ -411,16 +453,14 @@ function WorkspaceContent({
 					return;
 				}
 			}
-			state.addTab({
-				panes: [
-					{
-						kind: "diff",
-						data: {
-							path: filePath,
-							collapsedFiles: [],
-						} as DiffPaneData,
-					},
-				],
+			state.openPane({
+				pane: {
+					kind: "diff",
+					data: {
+						path: filePath,
+						collapsedFiles: [],
+					} as DiffPaneData,
+				},
 			});
 		},
 		[store],
@@ -724,6 +764,7 @@ function WorkspaceContent({
 								onOpenComment={openCommentPane}
 								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
+								pendingReveal={pendingReveal}
 							/>
 						</ResizablePanel>
 					</>

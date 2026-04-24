@@ -662,22 +662,22 @@ export function WorkspacePage({
 		return addBrowserShortcutListener(handleBrowserShortcut);
 	}, [handleBrowserShortcut]);
 
-	const handleSearchInFiles = useCallback(() => {
-		if (!isSidebarOpen) {
-			setSidebarOpen(true);
-		}
-		setSidebarMode(SidebarMode.Tabs);
-		if (workspaceId) {
-			setRightSidebarTab(workspaceId, RightSidebarTab.Search);
-		}
-	}, [
-		isSidebarOpen,
-		workspaceId,
-		setRightSidebarTab,
-		setSidebarMode,
-		setSidebarOpen,
-	]);
-	useHotkey("SEARCH_IN_FILES", handleSearchInFiles, { enabled: isActive });
+	// FORK NOTE: V1 intentionally skips OPEN_DIFF_VIEWER registration — its
+	// ⌘⇧L binding collides with TOGGLE_EXPAND_SIDEBAR below, and V1 uses the
+	// expand-sidebar action. V2 workspace registers OPEN_DIFF_VIEWER itself.
+	useHotkey(
+		"SEARCH_IN_FILES",
+		() => {
+			if (!isSidebarOpen) {
+				setSidebarOpen(true);
+			}
+			setSidebarMode(SidebarMode.Tabs);
+			if (workspaceId) {
+				setRightSidebarTab(workspaceId, RightSidebarTab.Search);
+			}
+		},
+		{ enabled: isActive },
+	);
 
 	// Toggle changes sidebar (⌘L)
 	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar(), { enabled: isActive });

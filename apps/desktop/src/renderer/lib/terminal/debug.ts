@@ -23,6 +23,7 @@ export const terminalRendererDebug = createRendererDebugChannel({
 	namespace: "terminal.renderer",
 	enabled: true,
 	mirrorToConsole: isTerminalDebugEnabled(),
+	captureMessageByDefault: false,
 });
 
 export function logTerminalWrite(

@@ -123,11 +123,11 @@ function JobSteps({
 }: JobStepsProps) {
 	const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
 	const rerunMutation =
-		electronTrpc.workspaces.rerunPullRequestChecks.useMutation();
+		electronTrpc.workspaces.githubExtended.rerunPullRequestChecks.useMutation();
 	const trpcUtils = electronTrpc.useUtils();
 
 	const { data: jobResult, isLoading } =
-		electronTrpc.workspaces.getJobLogs.useQuery(
+		electronTrpc.workspaces.githubExtended.getJobLogs.useQuery(
 			{ workspaceId, detailsUrl },
 			{
 				staleTime: 3_000,
@@ -160,7 +160,7 @@ function JobSteps({
 			toast.success(
 				`Re-running ${mode === "failed" ? "failed" : "all"} jobs (${result.rerunCount})`,
 			);
-			void trpcUtils.workspaces.getJobLogs.invalidate();
+			void trpcUtils.workspaces.githubExtended.getJobLogs.invalidate();
 			void trpcUtils.workspaces.getGitHubStatus.invalidate();
 		} catch {
 			toast.error("Failed to re-run jobs");
@@ -442,7 +442,7 @@ export function ActionLogsPane({
 
 	// Poll workflow run jobs when runId is present (workflow dispatch case)
 	const { data: polledJobs } =
-		electronTrpc.workspaces.getWorkflowRunJobs.useQuery(
+		electronTrpc.workspaces.githubExtended.getWorkflowRunJobs.useQuery(
 			{ workspaceId, runId: runId ?? 0 },
 			{
 				enabled: !!runId,

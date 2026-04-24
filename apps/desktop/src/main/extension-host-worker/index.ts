@@ -95,6 +95,7 @@ async function main() {
 			leftUri: data.leftUri,
 			rightUri: data.rightUri,
 			title: data.title,
+			leftContent: data.leftContent,
 		});
 	});
 
@@ -102,7 +103,7 @@ async function main() {
 	const SUPPORTED_EXTENSIONS = new Set(
 		(
 			process.env.EXTENSION_HOST_SUPPORTED_IDS ??
-			"anthropic.claude-code,openai.chatgpt"
+			"anthropic.claude-code,openai.chatgpt,moonshot-ai.kimi-code"
 		)
 			.split(",")
 			.map((s) => s.trim()),

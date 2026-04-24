@@ -1,0 +1,1 @@
+export { WorktreeAutoSyncManager } from "./WorktreeAutoSyncManager";

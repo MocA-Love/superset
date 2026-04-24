@@ -218,7 +218,7 @@ function WorkflowRunCard({
 	onViewLogs: (runId: number) => void;
 }) {
 	const { data: runs = [], isFetching } =
-		electronTrpc.workspaces.getGitHubWorkflowRuns.useQuery(
+		electronTrpc.workspaces.githubExtended.getGitHubWorkflowRuns.useQuery(
 			{
 				workspaceId,
 				workflowId: tracked.workflowId,
@@ -372,7 +372,7 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 		data: repositoryOverview,
 		isLoading,
 		error,
-	} = electronTrpc.workspaces.getGitHubRepositoryOverview.useQuery(
+	} = electronTrpc.workspaces.githubExtended.getGitHubRepositoryOverview.useQuery(
 		{ workspaceId: workspaceId ?? "" },
 		{
 			enabled: !!workspaceId && isActive,
@@ -381,11 +381,11 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 		},
 	);
 	const createIssueMutation =
-		electronTrpc.workspaces.createGitHubIssue.useMutation();
+		electronTrpc.workspaces.githubExtended.createGitHubIssue.useMutation();
 	const uploadIssueAssetMutation =
-		electronTrpc.workspaces.uploadGitHubIssueAsset.useMutation();
+		electronTrpc.workspaces.githubExtended.uploadGitHubIssueAsset.useMutation();
 	const dispatchWorkflowMutation =
-		electronTrpc.workspaces.dispatchGitHubWorkflow.useMutation();
+		electronTrpc.workspaces.githubExtended.dispatchGitHubWorkflow.useMutation();
 
 	const availableAssignees = repositoryOverview?.issueAssignees ?? [];
 	const availableAssigneesByLogin = useMemo(
@@ -471,9 +471,11 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 			return;
 		}
 
-		await trpcUtils.workspaces.getGitHubRepositoryOverview.invalidate({
-			workspaceId,
-		});
+		await trpcUtils.workspaces.githubExtended.getGitHubRepositoryOverview.invalidate(
+			{
+				workspaceId,
+			},
+		);
 	};
 
 	const handleCreateIssue = async () => {
@@ -664,10 +666,11 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 			return;
 		}
 		try {
-			const jobs = await trpcUtils.workspaces.getWorkflowRunJobs.fetch({
-				workspaceId,
-				runId,
-			});
+			const jobs =
+				await trpcUtils.workspaces.githubExtended.getWorkflowRunJobs.fetch({
+					workspaceId,
+					runId,
+				});
 			const failedIdx = jobs.findIndex((j) => j.status === "failure");
 			addActionLogsTab(
 				workspaceId,

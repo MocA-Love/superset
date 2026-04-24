@@ -10,10 +10,6 @@ export const env = createEnv({
 	server: {
 		DATABASE_URL: z.string(),
 		DATABASE_URL_UNPOOLED: z.string(),
-		ELECTRIC_URL: z.string().url(),
-		ELECTRIC_SECRET: z.string().min(16),
-		ELECTRIC_SOURCE_ID: z.string().optional(),
-		ELECTRIC_SOURCE_SECRET: z.string().optional(),
 		BLOB_READ_WRITE_TOKEN: z.string(),
 		GOOGLE_CLIENT_ID: z.string().min(1),
 		GOOGLE_CLIENT_SECRET: z.string().min(1),
@@ -47,6 +43,7 @@ export const env = createEnv({
 		DURABLE_STREAMS_URL: z.string().url(),
 		DURABLE_STREAMS_SECRET: z.string().min(1),
 		TAVILY_API_KEY: z.string().optional(),
+		RELAY_URL: z.string().url(),
 	},
 	client: {
 		NEXT_PUBLIC_API_URL: z.string().url(),
