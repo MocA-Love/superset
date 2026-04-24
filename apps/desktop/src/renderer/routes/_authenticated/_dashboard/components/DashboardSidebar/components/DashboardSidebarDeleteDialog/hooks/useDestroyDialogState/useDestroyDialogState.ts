@@ -5,7 +5,9 @@ import {
 	type DestroyWorkspaceError,
 	useDestroyWorkspace,
 } from "renderer/hooks/host-service/useDestroyWorkspace";
+import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences/useV2UserPreferences";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useNavigateAwayFromWorkspace } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/hooks/useNavigateAwayFromWorkspace";
 import { useDeletingWorkspaces } from "renderer/routes/_authenticated/providers/DeletingWorkspacesProvider";
 
 const STATUS_STALE_TIME_MS = 5_000;
@@ -31,7 +33,7 @@ interface UseDestroyDialogStateOptions {
  *   - On error, `clearDeleting` runs in the `finally` block so the row
  *     reappears. For decision-required errors (TEARDOWN_FAILED)
  *     we reopen the dialog in the matching error pane so the user can
- *     force-retry with full context. The branch opt-in is preserved.
+ *     force-retry with full context.
  *   - For unknown errors we just toast.error — no reopen.
  */
 export function useDestroyDialogState({
@@ -43,8 +45,10 @@ export function useDestroyDialogState({
 }: UseDestroyDialogStateOptions) {
 	const { destroy } = useDestroyWorkspace(workspaceId);
 	const { markDeleting, clearDeleting } = useDeletingWorkspaces();
-
-	const [deleteBranch, setDeleteBranch] = useState(false);
+	const navigateAway = useNavigateAwayFromWorkspace();
+	const { preferences, setDeleteLocalBranch: setDeleteBranch } =
+		useV2UserPreferences();
+	const deleteBranch = preferences.deleteLocalBranch;
 
 	const { data: canDeleteData, isPending: isCheckingStatus } =
 		electronTrpc.workspaces.canDelete.useQuery(
@@ -63,10 +67,7 @@ export function useDestroyDialogState({
 
 	const handleOpenChange = useCallback(
 		(next: boolean) => {
-			if (!next) {
-				setDeleteBranch(false);
-				setError(null);
-			}
+			if (!next) setError(null);
 			onOpenChange(next);
 		},
 		[onOpenChange],
@@ -77,8 +78,12 @@ export function useDestroyDialogState({
 			if (inFlight.current) return;
 			inFlight.current = true;
 
-			// Optimistic close. State (deleteBranch) preserved in case we re-open
-			// on a decision-required error.
+			// Navigate off the doomed workspace FIRST. Closing the dialog
+			// and hiding the row were swallowing the nav otherwise.
+			// State (deleteBranch) preserved in case we re-open on a
+			// decision-required error.
+			navigateAway(workspaceId);
+
 			setError(null);
 			onOpenChange(false);
 			markDeleting(workspaceId);
@@ -99,7 +104,6 @@ export function useDestroyDialogState({
 					}
 				}
 				for (const warning of result.warnings) toast.warning(warning);
-				setDeleteBranch(false);
 				onDeleted?.();
 			} catch (err) {
 				const e = err as DestroyWorkspaceError;
@@ -122,7 +126,11 @@ export function useDestroyDialogState({
 			onOpenChange,
 			onDeleted,
 			markDeleting,
-			clearDeleting,
+			clearDeleting, // Navigate off the doomed workspace FIRST. Closing the dialog
+			// and hiding the row were swallowing the nav otherwise.
+			// State (deleteBranch) preserved in case we re-open on a
+			// decision-required error.
+			navigateAway,
 		],
 	);
 
