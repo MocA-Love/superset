@@ -41,6 +41,7 @@ import { AddTabMenu } from "./components/AddTabMenu";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
@@ -63,10 +64,20 @@ import type {
 	TerminalPaneData,
 } from "./types";
 
+interface WorkspaceSearch {
+	terminalId?: string;
+	chatSessionId?: string;
+}
+
 export const Route = createFileRoute(
 	"/_authenticated/_dashboard/v2-workspace/$workspaceId/",
 )({
 	component: V2WorkspacePage,
+	validateSearch: (raw: Record<string, unknown>): WorkspaceSearch => ({
+		terminalId: typeof raw.terminalId === "string" ? raw.terminalId : undefined,
+		chatSessionId:
+			typeof raw.chatSessionId === "string" ? raw.chatSessionId : undefined,
+	}),
 });
 
 function findPanePathInLayout(
@@ -106,6 +117,7 @@ function getNodeAtPathInLayout(
 
 function V2WorkspacePage() {
 	const { workspaceId } = Route.useParams();
+	const { terminalId, chatSessionId } = Route.useSearch();
 	const collections = useCollections();
 
 	const { data: workspaces } = useLiveQuery(
@@ -130,6 +142,8 @@ function V2WorkspacePage() {
 			projectId={workspace.projectId}
 			workspaceId={workspace.id}
 			workspaceName={workspace.name}
+			terminalId={terminalId}
+			chatSessionId={chatSessionId}
 		/>
 	);
 }
@@ -138,10 +152,14 @@ function WorkspaceContent({
 	projectId,
 	workspaceId,
 	workspaceName,
+	terminalId,
+	chatSessionId,
 }: {
 	projectId: string;
 	workspaceId: string;
 	workspaceName: string;
+	terminalId?: string;
+	chatSessionId?: string;
 }) {
 	const navigate = useNavigate();
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
@@ -154,6 +172,7 @@ function WorkspaceContent({
 		projectId,
 	});
 	useConsumePendingLaunch({ workspaceId, store });
+	useConsumeAutomationRunLink({ store, terminalId, chatSessionId });
 	const collections = useCollections();
 	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
 	const utils = electronTrpc.useUtils();
