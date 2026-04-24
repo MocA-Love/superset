@@ -17,30 +17,28 @@ import {
 } from "./shell-wrappers";
 
 export function setupAgentHooks(): void {
-	// Windows: the current wrappers + notify / copilot / cursor / gemini /
-	// codex hooks are bash-only. Skipping setup keeps the app usable on
-	// Windows — agents run from the system PATH without Superset wrappers, so
-	// agent-side notifications and PATH injection are disabled until a native
-	// PowerShell implementation lands. Tracked in issue #273.
-	if (PLATFORM.IS_WINDOWS) {
-		console.log(
-			"[agent-setup] Skipping agent hook setup on Windows (not yet implemented)",
-		);
-		return;
-	}
-
 	console.log("[agent-setup] Initializing agent hooks...");
 
-	fs.mkdirSync(BIN_DIR, { recursive: true });
+	// Only the bash/zsh rc wrappers and the PATH-injection bin directory are
+	// strictly Unix-only; HOOKS_DIR and OPENCODE_PLUGIN_DIR are platform-neutral.
 	fs.mkdirSync(HOOKS_DIR, { recursive: true });
-	fs.mkdirSync(ZSH_DIR, { recursive: true });
-	fs.mkdirSync(BASH_DIR, { recursive: true });
 	fs.mkdirSync(OPENCODE_PLUGIN_DIR, { recursive: true });
+	if (!PLATFORM.IS_WINDOWS) {
+		fs.mkdirSync(BIN_DIR, { recursive: true });
+		fs.mkdirSync(ZSH_DIR, { recursive: true });
+		fs.mkdirSync(BASH_DIR, { recursive: true });
+	}
 
 	setupDesktopAgentCapabilities();
 
-	createZshWrapper();
-	createBashWrapper();
+	if (!PLATFORM.IS_WINDOWS) {
+		createZshWrapper();
+		createBashWrapper();
+	} else {
+		console.log(
+			"[agent-setup] Skipping bash/zsh rc wrappers on Windows — hooks.json / settings.json integration still active",
+		);
+	}
 
 	console.log("[agent-setup] Agent hooks initialized");
 }

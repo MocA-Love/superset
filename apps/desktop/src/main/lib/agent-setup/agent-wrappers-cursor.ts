@@ -3,16 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { env } from "shared/env.shared";
 import {
+	buildHookCommand,
 	buildWrapperScript,
 	createWrapper,
-	getSleepInhibitorShellSnippet,
+	getSleepInhibitorSnippet,
+	hookScriptExtension,
+	hookTemplateExtension,
 	isSupersetManagedHookCommand,
 	reconcileManagedEntries,
 	writeFileIfChanged,
 } from "./agent-wrappers-common";
 import { HOOKS_DIR } from "./paths";
 
-export const CURSOR_HOOK_SCRIPT_NAME = "cursor-hook.sh";
+export const CURSOR_HOOK_SCRIPT_NAME = `cursor-hook.${hookScriptExtension()}`;
 
 const CURSOR_HOOK_SIGNATURE = "# Superset cursor hook";
 const CURSOR_HOOK_VERSION = "v1";
@@ -21,7 +24,7 @@ export const CURSOR_HOOK_MARKER = `${CURSOR_HOOK_SIGNATURE} ${CURSOR_HOOK_VERSIO
 const CURSOR_HOOK_TEMPLATE_PATH = path.join(
 	__dirname,
 	"templates",
-	"cursor-hook.template.sh",
+	`cursor-hook.template.${hookTemplateExtension()}`,
 );
 
 interface CursorHookEntry {
@@ -47,7 +50,7 @@ export function getCursorHookScriptContent(): string {
 	const template = fs.readFileSync(CURSOR_HOOK_TEMPLATE_PATH, "utf-8");
 	return template
 		.replace("{{MARKER}}", CURSOR_HOOK_MARKER)
-		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorSnippet())
 		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 
@@ -77,13 +80,13 @@ export function getCursorHooksJsonContent(hookScriptPath: string): string {
 	}
 
 	const ourHooks: Record<string, CursorHookEntry> = {
-		beforeSubmitPrompt: { command: `${hookScriptPath} Start` },
-		stop: { command: `${hookScriptPath} Stop` },
+		beforeSubmitPrompt: { command: buildHookCommand(hookScriptPath, "Start") },
+		stop: { command: buildHookCommand(hookScriptPath, "Stop") },
 		beforeShellExecution: {
-			command: `${hookScriptPath} PermissionRequest`,
+			command: buildHookCommand(hookScriptPath, "PermissionRequest"),
 		},
 		beforeMCPExecution: {
-			command: `${hookScriptPath} PermissionRequest`,
+			command: buildHookCommand(hookScriptPath, "PermissionRequest"),
 		},
 	};
 

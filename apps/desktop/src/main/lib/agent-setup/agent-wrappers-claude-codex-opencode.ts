@@ -2,8 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	buildHookCommand,
 	buildWrapperScript,
 	createWrapper,
+	hookTemplateExtension,
+	IS_WIN_AGENT,
 	isSupersetManagedHookCommand,
 	writeFileIfChanged,
 } from "./agent-wrappers-common";
@@ -24,7 +27,7 @@ const OPENCODE_PLUGIN_TEMPLATE_PATH = path.join(
 const CODEX_WRAPPER_EXEC_TEMPLATE_PATH = path.join(
 	__dirname,
 	"templates",
-	"codex-wrapper-exec.template.sh",
+	`codex-wrapper-exec.template.${hookTemplateExtension()}`,
 );
 
 /**
@@ -78,6 +81,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * shared ~/.claude/settings.json works for both dev and prod installs.
  */
 export function getClaudeManagedHookCommand(): string {
+	if (IS_WIN_AGENT) {
+		// Claude Code on Windows invokes hook `command` strings via the user's
+		// default shell (PowerShell on modern installs). The wrapper resolves
+		// SUPERSET_HOME_DIR at runtime and dispatches notify.ps1 only when the
+		// file exists so the hook is a no-op outside Superset terminals.
+		return `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "if ($env:SUPERSET_HOME_DIR -and (Test-Path \\"$env:SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}\\")) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\"$env:SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}\\" }"`;
+	}
 	return `[ -n "$SUPERSET_HOME_DIR" ] && [ -x "$SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}" ] && "$SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}" || true`;
 }
 
@@ -279,6 +289,12 @@ export function createClaudeWrapper(): void {
  * session-log watcher for prompt/permission events inside Superset terminals.
  */
 export function createCodexWrapper(): void {
+	if (IS_WIN_AGENT) {
+		// The Codex wrapper is a bash agent-wrapper that injects the session-log
+		// watcher. Wrapper generation is still Unix-only (see agent-setup/index.ts);
+		// on Windows we rely solely on the hooks.json integration below.
+		return;
+	}
 	const notifyPath = getNotifyScriptPath();
 	const script = buildWrapperScript(
 		"codex",
@@ -392,19 +408,25 @@ export function getCodexGlobalHooksJsonContent(
 		{
 			eventName: "SessionStart",
 			definition: {
-				hooks: [{ type: "command", command: notifyScriptPath }],
+				hooks: [
+					{ type: "command", command: buildHookCommand(notifyScriptPath) },
+				],
 			},
 		},
 		{
 			eventName: "UserPromptSubmit",
 			definition: {
-				hooks: [{ type: "command", command: notifyScriptPath }],
+				hooks: [
+					{ type: "command", command: buildHookCommand(notifyScriptPath) },
+				],
 			},
 		},
 		{
 			eventName: "Stop",
 			definition: {
-				hooks: [{ type: "command", command: notifyScriptPath }],
+				hooks: [
+					{ type: "command", command: buildHookCommand(notifyScriptPath) },
+				],
 			},
 		},
 	];
