@@ -182,7 +182,7 @@ If it runs in a terminal, it runs on Superset
 
 | Requirement | Details |
 |:------------|:--------|
-| **OS** | macOS (Windows/Linux untested) |
+| **OS** | macOS / Windows x64 (preview, this fork) / Linux (untested) |
 | **Runtime** | [Bun](https://bun.sh/) v1.0+ |
 | **Version Control** | Git 2.20+ |
 | **GitHub CLI** | [gh](https://cli.github.com/) |
@@ -192,7 +192,41 @@ If it runs in a terminal, it runs on Superset
 
 ### Quick Start (Pre-built)
 
-**[Download Superset for macOS](https://github.com/superset-sh/superset/releases/latest)**
+- **macOS**: [Download Superset for macOS](https://github.com/superset-sh/superset/releases/latest) (upstream)
+- **Windows x64** *(preview, this fork)*: [Latest MocA-Love/superset release](https://github.com/MocA-Love/superset/releases/latest) — pick the `Superset-*-x64.exe` NSIS installer. Windows support is a rolling preview; see the [Windows known limitations](#windows-preview-known-limitations) below.
+
+### Windows preview: known limitations
+
+Windows builds are a rolling preview tracked in issue [#273](https://github.com/MocA-Love/superset/issues/273). The app launches and the core workspace / terminal / chat flow works, but the following fork features are not yet on par with macOS:
+
+- **Agent wrapper (`~/.superset/bin` PATH injection)** — not yet generated on Windows. Agents (Claude Code / Codex / Gemini / cursor-agent / Copilot) still work via their global hook configs (`~/.claude/settings.json`, `~/.codex/hooks.json`, `~/.gemini/settings.json`, `~/.cursor/hooks.json`) but Superset-side PATH overrides for managed binaries are skipped.
+- **GitHub Copilot CLI project hooks** — `.github/hooks/superset-notify.json` is auto-synced by the bash wrapper on Unix only. On Windows, place the hook file manually until the wrapper is ported to PowerShell.
+- **Mica / Acrylic** — applied via `BrowserWindow.setBackgroundMaterial('mica')`; Windows 10 and pre-22H2 Windows 11 show the opaque fallback.
+- **Auto-install on quit** — the fork checks GitHub API for updates on Windows like on macOS, but there's no NSIS auto-install-on-quit flow yet; clicking "Install" opens the release page for manual download.
+- **Dev-mode deep-link** — `superset://` protocol is registered at install time via NSIS + `app.setAsDefaultProtocolClient`. Dev-mode (running `bun run dev` from source) does not register the protocol on Windows.
+
+### Building Windows locally
+
+```powershell
+# Enable long paths (run once per machine; opens a UAC prompt).
+git config --global core.longpaths true
+
+git clone https://github.com/MocA-Love/superset.git
+cd superset
+
+# Skip lifecycle scripts; native modules are materialized by the postinstall .mjs.
+bun install --frozen --ignore-scripts
+
+cd apps/desktop
+$env:SUPERSET_WORKSPACE_NAME = 'superset'
+bun run install:deps
+bun run compile:app
+bun run build:browser-mcp
+bun run package -- --publish never --win
+# Output: apps/desktop/release/*.exe + *.exe.blockmap + latest.yml
+```
+
+The Windows NSIS build is also available via GitHub Actions → **Build Desktop App** → *Run workflow* on `MocA-Love/superset`, which produces the same artifacts without needing a Windows machine.
 
 ### Build from Source
 

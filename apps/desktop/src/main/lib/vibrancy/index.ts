@@ -38,7 +38,10 @@ const DARK_RGB = { r: 21, g: 17, b: 16 };
 const LIGHT_RGB = { r: 255, g: 255, b: 255 };
 
 export function isVibrancySupported(): boolean {
-	return PLATFORM.IS_MAC;
+	// macOS uses NSVisualEffectView. Windows 11 22H2+ uses Mica via
+	// BrowserWindow.setBackgroundMaterial; on older Windows versions the call
+	// is a no-op so gating on IS_WINDOWS is safe.
+	return PLATFORM.IS_MAC || PLATFORM.IS_WINDOWS;
 }
 
 /**
@@ -77,10 +80,11 @@ export function normalizeVibrancyState(
 /**
  * Whether the native CIGaussianBlur addon loaded successfully on this
  * machine. When false, the vibrancy slider UI should fall back to the
- * four-step blurLevel selection.
+ * four-step blurLevel selection. macOS only — Windows Mica is a binary
+ * on/off material, not a blur radius.
  */
 export function isNativeContinuousBlurSupported(): boolean {
-	return isVibrancySupported() && isNativeBlurAvailable();
+	return PLATFORM.IS_MAC && isNativeBlurAvailable();
 }
 
 function toHexAlpha(opacityPercent: number): string {
@@ -130,6 +134,11 @@ export function applyVibrancy(
 	if (window.isDestroyed()) return;
 	if (!isVibrancySupported()) return;
 
+	if (PLATFORM.IS_WINDOWS) {
+		applyWindowsBackgroundMaterial(window, state, isDark);
+		return;
+	}
+
 	const vibrancyType = resolveVibrancyType(state);
 	const backgroundColor = computeBackgroundColor(state, isDark);
 
@@ -140,6 +149,32 @@ export function applyVibrancy(
 	window.setVibrancy(vibrancyType);
 
 	scheduleNativeBlur(window, state);
+}
+
+/**
+ * Windows 11 22H2+ Mica fallback. Uses `setBackgroundMaterial('mica' | 'none')`.
+ * On older Windows versions the call silently no-ops; the opaque backgroundColor
+ * below keeps the chrome looking intentional even when Mica isn't available.
+ */
+function applyWindowsBackgroundMaterial(
+	window: BrowserWindow,
+	state: VibrancyState,
+	isDark: boolean,
+): void {
+	type WithSetBackgroundMaterial = BrowserWindow & {
+		setBackgroundMaterial?: (
+			material: "auto" | "none" | "mica" | "acrylic" | "tabbed",
+		) => void;
+	};
+	const withMaterial = window as WithSetBackgroundMaterial;
+	try {
+		withMaterial.setBackgroundMaterial?.(state.enabled ? "mica" : "none");
+	} catch (error) {
+		console.warn("[vibrancy] setBackgroundMaterial failed on Windows:", error);
+	}
+	// Even when Mica is active we keep backgroundColor at the brand opaque
+	// value — the renderer decides per-region whether to let Mica show through.
+	window.setBackgroundColor(isDark ? OPAQUE_DARK : OPAQUE_LIGHT);
 }
 
 // --- Native blur scheduling ----------------------------------------------
@@ -217,10 +252,18 @@ export function getInitialWindowOptions(
 	transparent?: boolean;
 	vibrancy?: "sidebar" | "header" | "content" | "fullscreen-ui";
 	visualEffectState?: "followWindow" | "active" | "inactive";
+	backgroundMaterial?: "auto" | "none" | "mica" | "acrylic" | "tabbed";
 	backgroundColor: string;
 } {
 	if (!isVibrancySupported()) {
 		return {
+			backgroundColor: isDark ? OPAQUE_DARK : OPAQUE_LIGHT,
+		};
+	}
+
+	if (PLATFORM.IS_WINDOWS) {
+		return {
+			backgroundMaterial: state.enabled ? "mica" : "none",
 			backgroundColor: isDark ? OPAQUE_DARK : OPAQUE_LIGHT,
 		};
 	}

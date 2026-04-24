@@ -16,6 +16,10 @@ import {
 import type { AgentLifecycleEvent } from "shared/notification-types";
 import { createIPCHandler } from "trpc-electron/main";
 import { productName } from "~/package.json";
+import {
+	handleAgentLifecycleForWindowsSleep,
+	handleTerminalExitForWindowsSleep,
+} from "../lib/agent-sleep/windows-sleep-blocker";
 import { appState } from "../lib/app-state";
 import { browserManager } from "../lib/browser/browser-manager";
 import { createApplicationMenu } from "../lib/menu";
@@ -235,6 +239,7 @@ export function initNotifications(): void {
 	notificationManager.start();
 
 	agentLifecycleListener = (event: AgentLifecycleEvent) => {
+		handleAgentLifecycleForWindowsSleep(event);
 		notificationManager?.handleAgentLifecycle(event);
 	};
 	notificationsEmitter.on(
@@ -249,6 +254,9 @@ export function initNotifications(): void {
 			signal: event.signal,
 			reason: event.reason,
 		});
+		// Release any Windows powerSaveBlocker that was held for agent activity
+		// in this pane — terminal exit means no more agent events will arrive.
+		handleTerminalExitForWindowsSleep(event.paneId);
 	};
 	getWorkspaceRuntimeRegistry()
 		.getDefault()
