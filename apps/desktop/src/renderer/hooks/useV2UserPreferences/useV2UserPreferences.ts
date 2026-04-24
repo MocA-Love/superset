@@ -9,6 +9,8 @@ import {
 	type V2UserPreferencesRow,
 } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 
+export type RightSidebarTab = V2UserPreferencesRow["rightSidebarTab"];
+
 export interface V2UserPreferencesApi {
 	preferences: V2UserPreferencesRow;
 	setFileLinks: (next: LinkTierMap) => void;
