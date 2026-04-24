@@ -1207,9 +1207,7 @@ describe("agent-wrappers codex hooks.json", () => {
 						UserPromptSubmit: [
 							{ hooks: [{ type: "command", command: staleHookPath }] },
 						],
-						Stop: [
-							{ hooks: [{ type: "command", command: staleHookPath }] },
-						],
+						Stop: [{ hooks: [{ type: "command", command: staleHookPath }] }],
 					},
 				},
 				null,
