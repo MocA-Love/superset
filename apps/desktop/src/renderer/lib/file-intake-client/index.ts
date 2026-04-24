@@ -2,20 +2,6 @@ import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useScratchTabsStore } from "renderer/screens/scratch/ScratchView";
 import { useTabsStore } from "renderer/stores/tabs";
 
-type WorkspaceBatchPayload = {
-	workspaceId: string;
-	absolutePaths: string[];
-};
-
-type ScratchBatchPayload = {
-	absolutePaths: string[];
-};
-
-interface IpcRendererAPI {
-	on?: (channel: string, listener: (...args: unknown[]) => void) => void;
-	off?: (channel: string, listener: (...args: unknown[]) => void) => void;
-}
-
 /** Minimal router surface we need here. Avoids a hard coupling to the full
  *  TanStack router generic, which is awkward to type in an app context. */
 interface NavRouter {
@@ -28,67 +14,66 @@ interface NavRouter {
 /**
  * Wire the renderer side of the file-intake pipeline:
  *
- * - Listen for main-process follow-up IPC events so a multi-file drop that
- *   navigates to a workspace can still open additional tabs afterwards.
+ * - Subscribe to two tRPC channels the main process emits from
+ *   `fileIntakeEmitter` (file-intake/index.ts) when an OS drop / argv /
+ *   open-file event resolves to either a registered workspace target or a
+ *   scratch target. AGENTS.md requires tRPC for IPC, so we route through the
+ *   trpc-electron subscription machinery rather than raw ipcRenderer.
  * - Intercept OS drag-and-drop onto the window so the user can drop files
  *   from Finder / Explorer directly into the app.
  *
- * Returns a cleanup function to tear down all listeners (used for HMR).
+ * Returns a cleanup function to tear down listeners / subscriptions (used
+ * for HMR).
  */
 export function installFileIntakeClient(router: NavRouter): () => void {
-	const ipcRenderer = (
-		window as unknown as {
-			ipcRenderer?: IpcRendererAPI;
-		}
-	).ipcRenderer;
+	const workspaceSub =
+		electronTrpcClient.scratch.onOpenWorkspaceBatch.subscribe(undefined, {
+			onData: (payload) => {
+				if (!payload.workspaceId) return;
+				const paths = payload.absolutePaths.filter(
+					(v): v is string => typeof v === "string" && v.length > 0,
+				);
 
-	const handleWorkspaceBatch = (payload: unknown) => {
-		const p = payload as WorkspaceBatchPayload | undefined;
-		if (!p || !p.workspaceId || !Array.isArray(p.absolutePaths)) return;
-		const paths = p.absolutePaths.filter(
-			(v): v is string => typeof v === "string" && v.length > 0,
-		);
+				// Always navigate — even for an empty paths batch, which is the
+				// "drag a folder that's a registered workspace" case (Q2:A with
+				// no specific file). Opening the workspace is the whole
+				// user-visible effect in that scenario.
+				void router.navigate({
+					to: "/workspace/$workspaceId",
+					params: { workspaceId: payload.workspaceId },
+				});
 
-		// Always navigate — even for an empty paths batch, which represents the
-		// "drag a folder that's a registered workspace" case (Q2:A with no
-		// specific file). Opening the workspace is the whole user-visible effect
-		// in that scenario; skipping navigate on empty would leave the user
-		// stranded on whatever route they were on.
-		void router.navigate({
-			to: "/workspace/$workspaceId",
-			params: { workspaceId: p.workspaceId },
+				if (paths.length === 0) return;
+
+				const addFileViewerPane = useTabsStore.getState().addFileViewerPane;
+				for (const absolutePath of paths) {
+					addFileViewerPane(payload.workspaceId, {
+						filePath: absolutePath,
+						openInNewTab: true,
+						reuseExisting: "workspace",
+					});
+				}
+			},
+			onError: (err) => {
+				console.error("[file-intake] workspace batch subscription error:", err);
+			},
 		});
 
-		if (paths.length === 0) return;
-
-		const addFileViewerPane = useTabsStore.getState().addFileViewerPane;
-		for (const absolutePath of paths) {
-			addFileViewerPane(p.workspaceId, {
-				filePath: absolutePath,
-				openInNewTab: true,
-				reuseExisting: "workspace",
-			});
-		}
-	};
-
-	const handleScratchBatch = (payload: unknown) => {
-		const p = payload as ScratchBatchPayload | undefined;
-		if (!p || !Array.isArray(p.absolutePaths)) return;
-		const paths = p.absolutePaths.filter(
-			(v): v is string => typeof v === "string" && v.length > 0,
-		);
-		if (paths.length === 0) return;
-		useScratchTabsStore.getState().openPaths(paths);
-		void router.navigate({ to: "/scratch" });
-	};
-
-	ipcRenderer?.on?.(
-		"file-intake:open-workspace-batch",
-		handleWorkspaceBatch as (...args: unknown[]) => void,
-	);
-	ipcRenderer?.on?.(
-		"file-intake:open-scratch-batch",
-		handleScratchBatch as (...args: unknown[]) => void,
+	const scratchSub = electronTrpcClient.scratch.onOpenScratchBatch.subscribe(
+		undefined,
+		{
+			onData: (payload) => {
+				const paths = payload.absolutePaths.filter(
+					(v): v is string => typeof v === "string" && v.length > 0,
+				);
+				if (paths.length === 0) return;
+				useScratchTabsStore.getState().openPaths(paths);
+				void router.navigate({ to: "/scratch" });
+			},
+			onError: (err) => {
+				console.error("[file-intake] scratch batch subscription error:", err);
+			},
+		},
 	);
 
 	const extractDroppedPaths = (event: DragEvent): string[] => {
@@ -147,14 +132,8 @@ export function installFileIntakeClient(router: NavRouter): () => void {
 	document.addEventListener("drop", onDrop, false);
 
 	return () => {
-		ipcRenderer?.off?.(
-			"file-intake:open-workspace-batch",
-			handleWorkspaceBatch as (...args: unknown[]) => void,
-		);
-		ipcRenderer?.off?.(
-			"file-intake:open-scratch-batch",
-			handleScratchBatch as (...args: unknown[]) => void,
-		);
+		workspaceSub.unsubscribe();
+		scratchSub.unsubscribe();
 		document.removeEventListener("dragover", onDragOver, false);
 		document.removeEventListener("drop", onDrop, false);
 	};

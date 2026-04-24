@@ -58,7 +58,6 @@ export function ScratchTabBar({
 						<button
 							type="button"
 							aria-label={`Close ${basename(tab.absolutePath)}`}
-							tabIndex={-1}
 							className="ml-1 flex size-4 items-center justify-center rounded opacity-60 hover:bg-muted hover:opacity-100"
 							onClick={(e) => {
 								e.stopPropagation();

@@ -12,6 +12,7 @@ export function ScratchEditor({ absolutePath }: ScratchEditorProps) {
 	const editorRef = useRef<CodeEditorAdapter | null>(null);
 	const [draft, setDraft] = useState<string | null>(null);
 	const [savedAt, setSavedAt] = useState<number | null>(null);
+	const utils = electronTrpc.useUtils();
 
 	const { data, error, isLoading, refetch } =
 		electronTrpc.scratch.readFile.useQuery(
@@ -22,6 +23,20 @@ export function ScratchEditor({ absolutePath }: ScratchEditorProps) {
 	const writeMut = electronTrpc.scratch.writeFile.useMutation({
 		onSuccess: (res) => {
 			setSavedAt(res.mtimeMs);
+			// Sync the readFile cache to what we just wrote so `hasChanges`
+			// (draft !== null && data.content !== draft) collapses to false and
+			// the status bar can advance from "unsaved" → "saved". Clearing the
+			// draft alone would re-fall-back to the stale cached content and
+			// make the editor flash back to the pre-save text.
+			utils.scratch.readFile.setData({ absolutePath }, (old) => {
+				if (!old || old.kind !== "text" || draft === null) return old;
+				return {
+					...old,
+					content: draft,
+					size: res.size,
+					mtimeMs: res.mtimeMs,
+				};
+			});
 		},
 	});
 

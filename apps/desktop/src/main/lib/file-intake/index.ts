@@ -1,9 +1,33 @@
+import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { projects, workspaces, worktrees } from "@superset/local-db";
 import { and, eq, isNull } from "drizzle-orm";
 import { BrowserWindow } from "electron";
 import { localDb } from "main/lib/local-db";
+
+export interface FileIntakeWorkspaceBatch {
+	workspaceId: string;
+	absolutePaths: string[];
+}
+
+export interface FileIntakeScratchBatch {
+	absolutePaths: string[];
+}
+
+interface FileIntakeEvents {
+	"open-workspace-batch": [FileIntakeWorkspaceBatch];
+	"open-scratch-batch": [FileIntakeScratchBatch];
+}
+
+/**
+ * Fan-out point for file-intake dispatch results. tRPC subscriptions in the
+ * scratch router feed off this emitter, turning each batch into an observable
+ * event the renderer can consume via `electronTrpc.scratch.*`. Using an
+ * emitter (instead of `webContents.send` directly) keeps IPC centralized in
+ * the tRPC layer per AGENTS.md's "always use tRPC for IPC" rule.
+ */
+export const fileIntakeEmitter = new EventEmitter<FileIntakeEvents>();
 
 export type FileIntakeTarget =
 	| {
@@ -229,8 +253,9 @@ export function takePendingPaths(): string[] {
  * We *never* encode file paths in the route URL. The renderer's persistent
  * hash history serializes routes to localStorage, which would silently
  * restore scratch / workspace file intents on the next launch (Q1:B violation)
- * and log absolute paths to disk. All payload data flows through IPC
- * channels that the renderer consumes into its zustand stores.
+ * and log absolute paths to disk. Payloads instead fan out via
+ * `fileIntakeEmitter`, which the scratch tRPC subscriptions surface to the
+ * renderer as observable events — keeping IPC inside the tRPC layer.
  */
 export async function dispatchPaths(absolutePaths: string[]): Promise<void> {
 	if (absolutePaths.length === 0) return;
@@ -251,17 +276,19 @@ export async function dispatchPaths(absolutePaths: string[]): Promise<void> {
 
 	const { byWorkspace, scratch } = splitTargets(targets);
 
-	// Q5:A — batch per workspace so the renderer can open all of them as tabs
-	// without each event overwriting the previous DeepLinkNavigation intent.
+	// Q5:A — emit per-workspace so the renderer can open all files as tabs
+	// without the DeepLinkNavigation intent being overwritten between events.
+	// Directory-only entries arrive as empty paths; the renderer still
+	// navigates so Q2:A (folder drop → switch to workspace) works.
 	for (const [workspaceId, paths] of byWorkspace) {
-		win.webContents.send("file-intake:open-workspace-batch", {
+		fileIntakeEmitter.emit("open-workspace-batch", {
 			workspaceId,
 			absolutePaths: paths,
 		});
 	}
 
 	if (scratch.length > 0) {
-		win.webContents.send("file-intake:open-scratch-batch", {
+		fileIntakeEmitter.emit("open-scratch-batch", {
 			absolutePaths: scratch,
 		});
 	}
@@ -280,9 +307,13 @@ export async function drainPendingPaths(): Promise<void> {
  * are treated as drops.
  */
 export async function filterFilePathArgs(argv: string[]): Promise<string[]> {
+	// In dev the Electron binary runs with the main script as argv[1]
+	// (`electron /path/to/main.js ...`); packaged builds jump straight to
+	// user args at argv[1]. Using `process.defaultApp` mirrors the same
+	// detection used in setAsDefaultProtocolClient at main/index.ts.
+	const userArgsStart = process.defaultApp ? 2 : 1;
 	const candidates = argv.filter((arg, idx) => {
-		// Skip the executable (argv[0]) and anything that looks like a flag/URL.
-		if (idx === 0) return false;
+		if (idx < userArgsStart) return false;
 		if (arg.startsWith("-")) return false;
 		if (/^[a-z][a-z0-9+.-]*:\/\//i.test(arg)) return false;
 		return true;

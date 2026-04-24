@@ -1,7 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
-import { dispatchPaths } from "main/lib/file-intake";
+import { observable } from "@trpc/server/observable";
+import {
+	dispatchPaths,
+	type FileIntakeScratchBatch,
+	type FileIntakeWorkspaceBatch,
+	fileIntakeEmitter,
+} from "main/lib/file-intake";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
@@ -12,16 +18,24 @@ import { publicProcedure, router } from "../..";
 // to /etc or similar via parent refs after resolution.
 const MAX_SCRATCH_READ_BYTES = 5 * 1024 * 1024; // 5 MB
 
-/** Paths that aren't strictly off-limits but where an accidental DnD edit
- * would be much worse than helpful. scratch mode is a text-file convenience
- * feature; it is not a general system editor. */
-const SCRATCH_WRITE_DENY_PATTERNS: RegExp[] = [
+/** Paths that aren't strictly off-limits but where an accidental DnD edit /
+ * viewing would be much worse than helpful. scratch mode is a text-file
+ * convenience feature; it is not a general system editor.
+ *
+ * Patterns are evaluated against the **forward-slash-normalized** path so
+ * the same regexes catch Windows paths (`C:/Users/x/.ssh/id_rsa`) without
+ * duplicating every rule for backslashes.
+ */
+const SCRATCH_DENY_PATTERNS: RegExp[] = [
 	// Unix system dirs.
 	/^\/etc\//,
 	/^\/System\//,
 	/^\/usr\//,
 	/^\/private\/etc\//,
-	// User secrets.
+	// Windows system dirs (path has been forward-slashed beforehand).
+	/^[A-Za-z]:\/Windows\//,
+	/^[A-Za-z]:\/Program(Data| Files)\//,
+	// User secrets — match the dotfolder segment on any platform.
 	/\/\.ssh\//,
 	/\/\.aws\//,
 	/\/\.gnupg\//,
@@ -39,15 +53,37 @@ function sanitizeAbsolutePath(input: string): string {
 	return path.resolve(input);
 }
 
-function assertScratchWriteAllowed(abs: string): void {
-	for (const pattern of SCRATCH_WRITE_DENY_PATTERNS) {
-		if (pattern.test(abs)) {
+function assertScratchAllowed(abs: string, action: "read" | "write"): void {
+	// Normalize separators so POSIX patterns also match Windows paths.
+	const probe = abs.replace(/\\/g, "/");
+	for (const pattern of SCRATCH_DENY_PATTERNS) {
+		if (pattern.test(probe)) {
 			throw new TRPCError({
 				code: "FORBIDDEN",
-				message: `Scratch write refused for system/secret path: ${abs}`,
+				message: `Scratch ${action} refused for system/secret path: ${abs}`,
 			});
 		}
 	}
+}
+
+/** Resolve the parent directory via realpath and rejoin basename. Catches
+ * symlink-parent escapes where the final path component looks fine but a
+ * parent segment redirects into a protected tree. */
+async function canonicalizeLeafPath(abs: string): Promise<string> {
+	const dir = path.dirname(abs);
+	let canonicalDir: string;
+	try {
+		canonicalDir = await fs.realpath(dir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+			throw new TRPCError({
+				code: "NOT_FOUND",
+				message: `Parent directory does not exist: ${dir}`,
+			});
+		}
+		throw err;
+	}
+	return path.join(canonicalDir, path.basename(abs));
 }
 
 export const createScratchRouter = () =>
@@ -61,34 +97,45 @@ export const createScratchRouter = () =>
 			)
 			.query(async ({ input }) => {
 				const abs = sanitizeAbsolutePath(input.absolutePath);
+				const canonical = await canonicalizeLeafPath(abs);
+				// Symmetric with writeFile: deny readable secrets too so the user
+				// doesn't get a surprise `FORBIDDEN` only at save time after
+				// editing `~/.ssh/config` in scratch.
+				assertScratchAllowed(canonical, "read");
 				const maxBytes = Math.min(
 					input.maxBytes ?? MAX_SCRATCH_READ_BYTES,
 					MAX_SCRATCH_READ_BYTES,
 				);
 
-				let stat: Awaited<ReturnType<typeof fs.stat>>;
+				let lstat: Awaited<ReturnType<typeof fs.lstat>>;
 				try {
-					stat = await fs.stat(abs);
+					lstat = await fs.lstat(canonical);
 				} catch (err) {
 					if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
 						throw new TRPCError({
 							code: "NOT_FOUND",
-							message: `File not found: ${abs}`,
+							message: `File not found: ${canonical}`,
 						});
 					}
 					throw err;
 				}
-				if (stat.isDirectory()) {
+				if (lstat.isDirectory()) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
-						message: `Path is a directory: ${abs}`,
+						message: `Path is a directory: ${canonical}`,
 					});
 				}
-				if (stat.size > maxBytes) {
+				if (lstat.isSymbolicLink()) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: `Refusing to read through symlink: ${canonical}`,
+					});
+				}
+				if (lstat.size > maxBytes) {
 					return {
 						kind: "too-large" as const,
-						absolutePath: abs,
-						size: stat.size,
+						absolutePath: canonical,
+						size: lstat.size,
 						maxBytes,
 					};
 				}
@@ -97,13 +144,13 @@ export const createScratchRouter = () =>
 				// characters but the CodeEditor in the renderer renders it as-is.
 				// Scratch mode is intended for text files; binary support is not a
 				// v1 goal.
-				const content = await fs.readFile(abs, { encoding: "utf8" });
+				const content = await fs.readFile(canonical, { encoding: "utf8" });
 				return {
 					kind: "text" as const,
-					absolutePath: abs,
+					absolutePath: canonical,
 					content,
-					size: stat.size,
-					mtimeMs: stat.mtimeMs,
+					size: lstat.size,
+					mtimeMs: lstat.mtimeMs,
 				};
 			}),
 
@@ -116,33 +163,15 @@ export const createScratchRouter = () =>
 			)
 			.mutation(async ({ input }) => {
 				const abs = sanitizeAbsolutePath(input.absolutePath);
-
-				// Resolve symlinks in every path segment before we enforce policy.
-				// Checking only the final basename with lstat(abs) misses the case
-				// where a *parent* directory is a symlink pointing into a protected
-				// tree (e.g. `/tmp/link/file` where `link` → `~/.ssh`): fs.lstat on
-				// the final path returns a regular file, the deny-list sees
-				// `/tmp/link/...`, and writeFile ends up touching the real target.
-				//
-				// Strategy: realpath the directory component (which *must* exist to
-				// write into it) and recompose with basename. For files that don't
-				// yet exist we still catch parent-dir symlink escapes. Then lstat
-				// the final path itself to refuse symlinked leaves.
-				const dir = path.dirname(abs);
-				let canonicalDir: string;
-				try {
-					canonicalDir = await fs.realpath(dir);
-				} catch (err) {
-					if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-						throw new TRPCError({
-							code: "NOT_FOUND",
-							message: `Parent directory does not exist: ${dir}`,
-						});
-					}
-					throw err;
-				}
-				const canonical = path.join(canonicalDir, path.basename(abs));
-				assertScratchWriteAllowed(canonical);
+				// Resolve symlinks in every parent segment before enforcing
+				// policy. Checking only the final basename with lstat(abs) misses
+				// the case where a *parent* directory is a symlink pointing into
+				// a protected tree — lstat sees a regular file and the deny-list
+				// sees `/tmp/link/...` but writeFile then touches the real
+				// target. canonicalizeLeafPath + assertScratchAllowed catch both
+				// parent-dir escapes and direct hits.
+				const canonical = await canonicalizeLeafPath(abs);
+				assertScratchAllowed(canonical, "write");
 
 				let lstat: Awaited<ReturnType<typeof fs.lstat>> | null = null;
 				try {
@@ -193,4 +222,30 @@ export const createScratchRouter = () =>
 				await dispatchPaths(sanitized);
 				return { accepted: sanitized.length };
 			}),
+
+		/**
+		 * Subscriptions the renderer uses to receive file-intake dispatches.
+		 * trpc-electron requires observables (not async generators) — we just
+		 * mirror events from `fileIntakeEmitter`. AGENTS.md mandates tRPC for
+		 * main↔renderer IPC; this replaces an earlier `webContents.send` path.
+		 */
+		onOpenWorkspaceBatch: publicProcedure.subscription(() =>
+			observable<FileIntakeWorkspaceBatch>((emit) => {
+				const handler = (batch: FileIntakeWorkspaceBatch) => emit.next(batch);
+				fileIntakeEmitter.on("open-workspace-batch", handler);
+				return () => {
+					fileIntakeEmitter.off("open-workspace-batch", handler);
+				};
+			}),
+		),
+
+		onOpenScratchBatch: publicProcedure.subscription(() =>
+			observable<FileIntakeScratchBatch>((emit) => {
+				const handler = (batch: FileIntakeScratchBatch) => emit.next(batch);
+				fileIntakeEmitter.on("open-scratch-batch", handler);
+				return () => {
+					fileIntakeEmitter.off("open-scratch-batch", handler);
+				};
+			}),
+		),
 	});
