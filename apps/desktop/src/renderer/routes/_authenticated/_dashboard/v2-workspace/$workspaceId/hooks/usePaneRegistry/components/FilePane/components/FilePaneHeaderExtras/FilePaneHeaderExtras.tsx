@@ -20,7 +20,6 @@ export function FilePaneHeaderExtras({
 }: FilePaneHeaderExtrasProps) {
 	const data = context.pane.data as FilePaneData;
 	const { filePath } = data;
-	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
 
 	// FORK NOTE: Spreadsheet files bypass the shared document store in
 	// FilePane, so the view-toggle has no views to switch between; skip it
@@ -48,6 +47,7 @@ function FilePaneHeaderExtrasInner({
 	filePath: string;
 	data: FilePaneData;
 }) {
+	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
 	const document = useSharedFileDocument({
 		workspaceId,
 		absolutePath: filePath,
