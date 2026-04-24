@@ -99,10 +99,22 @@ export const CodeEditorSearchOverlay = forwardRef<
 		ref,
 		() => ({
 			focusInput: () => {
-				if (searchInputRef.current) {
-					searchInputRef.current.focus();
-					searchInputRef.current.select();
-				}
+				const MAX_ATTEMPTS = 5;
+				const tryFocus = (attempt: number) => {
+					const input = searchInputRef.current;
+					if (input) {
+						input.focus();
+						input.select();
+						if (document.activeElement !== input && attempt < MAX_ATTEMPTS) {
+							requestAnimationFrame(() => tryFocus(attempt + 1));
+						}
+						return;
+					}
+					if (attempt < MAX_ATTEMPTS) {
+						requestAnimationFrame(() => tryFocus(attempt + 1));
+					}
+				};
+				tryFocus(0);
 			},
 		}),
 		[],
