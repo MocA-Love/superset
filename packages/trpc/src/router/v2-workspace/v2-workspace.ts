@@ -250,9 +250,12 @@ export const v2WorkspaceRouter = {
 				.where(and(...conditions))
 				.returning();
 			if (!updated) {
-				// Row still exists but name raced — return the current row so
-				// `applyAiWorkspaceRename` sees `branch !== deduped` and rolls
-				// back the git rename.
+				// WHERE guard matched zero rows: the row still exists (we just
+				// fetched it above) but the user's rename raced ahead of ours.
+				// Return the pre-update `workspace` row (NOT a fresh read) —
+				// the caller `applyAiWorkspaceRename` checks `cloudResult.branch
+				// !== deduped` and uses that mismatch as the signal to roll back
+				// the git rename.
 				return workspace;
 			}
 			return updated;

@@ -349,7 +349,10 @@ export function readCachedGitHubCommitAuthor(
 }
 
 export function clearGitHubCachesForWorktree(worktreePath: string): void {
-	githubStatusResource.invalidatePrefix(worktreePath);
+	// githubStatusResource is keyed by the exact worktreePath (no suffix), so
+	// invalidate() rather than invalidatePrefix() avoids matching sibling
+	// worktrees whose paths share this prefix (e.g. /foo/bar vs /foo/bar-2).
+	githubStatusResource.invalidate(worktreePath);
 	repoContextResource.invalidate(worktreePath);
 	recordGitHubCacheMetric({
 		kind: "status",
