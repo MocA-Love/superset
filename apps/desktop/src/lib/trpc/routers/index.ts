@@ -27,6 +27,7 @@ import { createGitHubMetricsRouter } from "./github-metrics";
 import { createHostServiceCoordinatorRouter } from "./host-service-coordinator";
 import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
+import { createMigrationRouter } from "./migration";
 import { createNotificationsRouter } from "./notifications";
 import { createPermissionsRouter } from "./permissions";
 import { createPortsRouter } from "./ports";
@@ -90,6 +91,7 @@ export const createAppRouter = (
 		vibrancy: createVibrancyRouter(wm),
 		vscodeExtensions: createVscodeExtensionsRouter(),
 		todoAgent: createTodoAgentRouter(),
+		migration: createMigrationRouter(),
 	});
 };
 

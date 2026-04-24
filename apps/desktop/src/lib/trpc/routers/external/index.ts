@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
+import nodePath from "node:path";
 import {
 	EXTERNAL_APPS,
 	NON_EDITOR_APPS,
@@ -24,9 +25,27 @@ import { getWorkspacePath } from "../workspaces/utils/worktree";
 import {
 	type ExternalApp,
 	getAppCommand,
+	RelativePathWithoutCwdError,
 	resolvePath,
 	spawnAsync,
 } from "./helpers";
+
+/**
+ * Wraps a tRPC handler so a `RelativePathWithoutCwdError` (thrown by
+ * `resolvePath` when a relative path arrives without a `worktreePath`)
+ * surfaces as a clear BAD_REQUEST with the root-cause message instead
+ * of a generic 500.
+ */
+async function withResolveGuard<T>(fn: () => Promise<T> | T): Promise<T> {
+	try {
+		return await fn();
+	} catch (err) {
+		if (err instanceof RelativePathWithoutCwdError) {
+			throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+		}
+		throw err;
+	}
+}
 
 const ExternalAppSchema = z.enum(EXTERNAL_APPS);
 const FileFilterSchema = z.object({
@@ -63,7 +82,7 @@ async function assertPathExists(filePath: string): Promise<void> {
 	}
 }
 
-function normalizeOpenInAppError(error: unknown): never {
+function _normalizeOpenInAppError(error: unknown): never {
 	if (error instanceof TRPCError) {
 		throw error;
 	}
@@ -210,13 +229,17 @@ export const createExternalRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				// Avoid turning deleted/moved files into INTERNAL_SERVER_ERROR during app launch.
-				await assertPathExists(input.path);
-				try {
-					await openPathInApp(input.path, input.app);
-				} catch (error) {
-					normalizeOpenInAppError(error);
+				// openInApp hands `path` directly to the editor CLI / shell; with no
+				// cwd input there's no safe way to interpret a relative path, so we
+				// reject them loudly instead of silently resolving against Electron's
+				// working directory.
+				if (!nodePath.isAbsolute(input.path)) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: `openInApp requires an absolute path (got ${JSON.stringify(input.path)}).`,
+					});
 				}
+				await openPathInApp(input.path, input.app);
 
 				// Persist defaults only after successful launch
 				if (input.projectId) {
@@ -335,10 +358,13 @@ export const createExternalRouter = () => {
 			.input(
 				z.object({
 					path: z.string(),
-					cwd: z.string().optional(),
+					/** Absolute workspace worktree path — relative `path`s are resolved against this. */
+					worktreePath: z.string().optional(),
 				}),
 			)
-			.query(({ input }) => resolvePath(input.path, input.cwd)),
+			.query(({ input }) =>
+				withResolveGuard(() => resolvePath(input.path, input.worktreePath)),
+			),
 
 		statPath: publicProcedure
 			.input(
@@ -347,27 +373,26 @@ export const createExternalRouter = () => {
 					workspaceId: z.string().optional(),
 				}),
 			)
-			.mutation(async ({ input }) => {
-				const workspace = input.workspaceId
-					? getWorkspace(input.workspaceId)
-					: null;
-				// If a workspaceId was provided but we couldn't find the workspace,
-				// return null rather than resolving relative to process.cwd().
-				if (input.workspaceId && !workspace) return null;
-				const cwd = workspace
-					? (getWorkspacePath(workspace) ?? undefined)
-					: undefined;
-				const resolved = resolvePath(input.path, cwd);
-				try {
-					const stats = await fs.promises.stat(resolved);
-					return {
-						isDirectory: stats.isDirectory(),
-						resolvedPath: resolved,
-					};
-				} catch {
-					return null;
-				}
-			}),
+			.mutation(({ input }) =>
+				withResolveGuard(async () => {
+					const workspace = input.workspaceId
+						? getWorkspace(input.workspaceId)
+						: null;
+					const cwd = workspace
+						? (getWorkspacePath(workspace) ?? undefined)
+						: undefined;
+					const resolved = resolvePath(input.path, cwd);
+					try {
+						const stats = await fs.promises.stat(resolved);
+						return {
+							isDirectory: stats.isDirectory(),
+							resolvedPath: resolved,
+						};
+					} catch {
+						return null;
+					}
+				}),
+			),
 
 		openFileInEditor: publicProcedure
 			.input(
@@ -375,33 +400,49 @@ export const createExternalRouter = () => {
 					path: z.string(),
 					line: z.number().optional(),
 					column: z.number().optional(),
-					cwd: z.string().optional(),
+					/**
+					 * Absolute workspace worktree path. Required when `path` is
+					 * relative; ignored when `path` is already absolute. Using the
+					 * workspace's worktreePath (rather than an arbitrary cwd) means
+					 * relative diff/tree paths always resolve against the workspace
+					 * the user is in, never Electron's process cwd.
+					 */
+					worktreePath: z.string().optional(),
 					projectId: z.string().optional(),
+					/**
+					 * Explicit app override from the caller (e.g. the v2 CMD+O
+					 * choice stored client-side in tanstack-db). When provided,
+					 * bypasses the server-side `resolveDefaultEditor` lookup —
+					 * which only knows about v1 localDb tables and would
+					 * otherwise return a stale global default for v2 projects.
+					 */
+					app: ExternalAppSchema.optional(),
 				}),
 			)
-			.mutation(async ({ input }) => {
-				const filePath = resolvePath(input.path, input.cwd);
-				// Editor open is also triggered from stale paths in the UI, so normalize ENOENT here too.
-				await assertPathExists(filePath);
-				const app = resolveDefaultEditor(input.projectId);
+			.mutation(({ input }) =>
+				withResolveGuard(async () => {
+					const filePath = resolvePath(input.path, input.worktreePath);
+					const app = input.app ?? resolveDefaultEditor(input.projectId);
 
-				if (!app) {
-					// No preferred editor configured yet.
-					// Fall back to OS default file handler so Cmd/Ctrl+click still works
-					// even when Cursor (or any specific editor) isn't installed.
-					const openError = await shell.openPath(filePath);
-					if (openError) {
-						throw new Error(openError);
+					if (!app) {
+						// No preferred editor configured yet.
+						// Fall back to OS default file handler so Cmd/Ctrl+click still works
+						// even when Cursor (or any specific editor) isn't installed.
+						// `shell.openPath` returns a non-empty string on failure instead of
+						// throwing — surface that so callers see a meaningful error.
+						const openError = await shell.openPath(filePath);
+						if (openError) {
+							throw new TRPCError({
+								code: "INTERNAL_SERVER_ERROR",
+								message: `Failed to open file: ${openError}`,
+							});
+						}
+						return;
 					}
-					return;
-				}
 
-				try {
 					await openPathInApp(filePath, app);
-				} catch (error) {
-					normalizeOpenInAppError(error);
-				}
-			}),
+				}),
+			),
 	});
 };
 

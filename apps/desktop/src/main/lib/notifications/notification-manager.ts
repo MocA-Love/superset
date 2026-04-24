@@ -67,10 +67,10 @@ export class NotificationManager {
 		const isPermissionRequest = event.eventType === "PermissionRequest";
 		const notification = this.deps.createNotification({
 			title: isPermissionRequest
-				? `Input Needed — ${workspaceName}`
+				? `Awaiting Response — ${workspaceName}`
 				: `Agent Complete — ${workspaceName}`,
 			body: isPermissionRequest
-				? `"${title}" needs your attention`
+				? `"${title}" is waiting for your reply`
 				: `"${title}" has finished its task`,
 			silent: true,
 		});

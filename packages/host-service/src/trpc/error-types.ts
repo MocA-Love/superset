@@ -23,6 +23,10 @@ export function isTeardownFailureCause(
 	);
 }
 
+/**
+ * Thrown by host-service procedures that require the project to already
+ * be set up on this host.
+ */
 export interface ProjectNotSetupCause {
 	kind: "PROJECT_NOT_SETUP";
 	projectId: string;
