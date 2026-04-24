@@ -3,16 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { env } from "shared/env.shared";
 import {
+	buildHookCommand,
 	buildWrapperScript,
 	createWrapper,
-	getSleepInhibitorShellSnippet,
+	getSleepInhibitorSnippet,
+	hookScriptExtension,
+	hookTemplateExtension,
 	isSupersetManagedHookCommand,
 	reconcileManagedEntries,
 	writeFileIfChanged,
 } from "./agent-wrappers-common";
 import { HOOKS_DIR } from "./paths";
 
-export const GEMINI_HOOK_SCRIPT_NAME = "gemini-hook.sh";
+export const GEMINI_HOOK_SCRIPT_NAME = `gemini-hook.${hookScriptExtension()}`;
 
 const GEMINI_HOOK_SIGNATURE = "# Superset gemini hook";
 const GEMINI_HOOK_VERSION = "v1";
@@ -21,7 +24,7 @@ export const GEMINI_HOOK_MARKER = `${GEMINI_HOOK_SIGNATURE} ${GEMINI_HOOK_VERSIO
 const GEMINI_HOOK_TEMPLATE_PATH = path.join(
 	__dirname,
 	"templates",
-	"gemini-hook.template.sh",
+	`gemini-hook.template.${hookTemplateExtension()}`,
 );
 
 interface GeminiHookConfig {
@@ -53,7 +56,7 @@ export function getGeminiHookScriptContent(): string {
 	const template = fs.readFileSync(GEMINI_HOOK_TEMPLATE_PATH, "utf-8");
 	return template
 		.replace("{{MARKER}}", GEMINI_HOOK_MARKER)
-		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorSnippet())
 		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 
@@ -88,7 +91,7 @@ export function getGeminiSettingsJsonContent(hookScriptPath: string): string {
 		const current = existing.hooks[eventName];
 		const desiredEntries: GeminiHookDefinition[] = [
 			{
-				hooks: [{ type: "command", command: hookScriptPath }],
+				hooks: [{ type: "command", command: buildHookCommand(hookScriptPath) }],
 			},
 		];
 		const { entries } = reconcileManagedEntries({

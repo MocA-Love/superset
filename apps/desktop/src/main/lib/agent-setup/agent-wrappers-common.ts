@@ -6,6 +6,38 @@ import { BIN_DIR } from "./paths";
 export const WRAPPER_MARKER = "# Superset agent-wrapper v1";
 export { SUPERSET_MANAGED_BINARIES };
 
+export const IS_WIN_AGENT = process.platform === "win32";
+
+/** Extension used for the concrete hook script on the host platform. */
+export function hookScriptExtension(): "ps1" | "sh" {
+	return IS_WIN_AGENT ? "ps1" : "sh";
+}
+
+/** Extension used for the bundled template shipped alongside the app. */
+export function hookTemplateExtension(): "ps1" | "sh" {
+	return IS_WIN_AGENT ? "ps1" : "sh";
+}
+
+/**
+ * Build the shell invocation used inside agent hook configs (hooks.json,
+ * settings.json, project-level hook files, etc.). On Windows we must go
+ * through `powershell.exe -NoProfile -ExecutionPolicy Bypass -File` because
+ * .ps1 files are not directly executable from foreign runtimes and the
+ * per-user execution policy would otherwise block unsigned scripts.
+ */
+export function buildHookCommand(
+	hookScriptPath: string,
+	...args: string[]
+): string {
+	const quotedArgs = args.map((arg) => `"${arg}"`).join(" ");
+	if (IS_WIN_AGENT) {
+		return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${hookScriptPath}"${
+			quotedArgs ? ` ${quotedArgs}` : ""
+		}`;
+	}
+	return quotedArgs ? `${hookScriptPath} ${quotedArgs}` : hookScriptPath;
+}
+
 // Dev setup (.superset/lib/setup/steps.sh) points SUPERSET_HOME_DIR at
 // $PWD/superset-dev-data — without a leading dot — so we must recognize that
 // variant to reap stale notify.sh paths from deleted worktrees.
@@ -130,6 +162,14 @@ ${execLine}
 `;
 }
 
+/**
+ * Platform-aware snippet embedded into agent hook templates. Windows hooks
+ * rely on the main process's powerSaveBlocker instead (#273 follow-up).
+ */
+export function getSleepInhibitorSnippet(): string {
+	return IS_WIN_AGENT ? "" : getSleepInhibitorShellSnippet();
+}
+
 export function getSleepInhibitorShellSnippet(): string {
 	return `_superset_manage_sleep_inhibitor() {
   [ -n "$SUPERSET_WRAPPER_PID" ] || return 0
@@ -194,6 +234,13 @@ _superset_manage_sleep_inhibitor
 }
 
 export function createWrapper(binaryName: string, script: string): void {
+	if (IS_WIN_AGENT) {
+		// Agent wrappers are bash scripts (`#!/bin/bash` + find_real_binary).
+		// Skipping them on Windows keeps agent-setup bootable while relying on
+		// hooks.json / settings.json for lifecycle integration. Wrapper-driven
+		// PATH injection and sleep-inhibitor are tracked as follow-ups in #273.
+		return;
+	}
 	const changed = writeFileIfChanged(getWrapperPath(binaryName), script, 0o755);
 	console.log(
 		`[agent-setup] ${changed ? "Updated" : "Verified"} ${binaryName} wrapper`,

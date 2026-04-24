@@ -656,6 +656,17 @@ protocol.registerSchemesAsPrivileged([
 			supportFetchAPI: true,
 		},
 	},
+	{
+		// Windows production loader uses this scheme so ES module dynamic imports
+		// (code-split route chunks) work — file:// breaks them on Windows.
+		scheme: "superset-app",
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+			corsEnabled: true,
+		},
+	},
 ]);
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -830,6 +841,53 @@ if (!gotTheLock) {
 		session
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-workspace-media", workspaceMediaHandler);
+
+		// Windows production: serve renderer bundle through a custom protocol so
+		// ES module dynamic imports work (file:// breaks them on Windows).
+		if (PLATFORM.IS_WINDOWS && !IS_DEV) {
+			const rendererDir = path.join(__dirname, "../renderer");
+			const appProtocolHandler = (request: Request) => {
+				let urlPath = new URL(request.url).pathname;
+				if (urlPath.startsWith("/")) urlPath = urlPath.slice(1);
+				const filePath = path.join(rendererDir, urlPath);
+				return net.fetch(pathToFileURL(filePath).toString());
+			};
+			protocol.handle("superset-app", appProtocolHandler);
+			session
+				.fromPartition("persist:superset")
+				.protocol.handle("superset-app", appProtocolHandler);
+
+			// API server's CORS policy doesn't allow the custom scheme origin.
+			// Rewrite the outgoing Origin and echo back access-control-allow-origin
+			// so API / PostHog / Sentry calls succeed from superset-app://app.
+			const appSession = session.fromPartition("persist:superset");
+			const apiHost = new URL(
+				process.env.NEXT_PUBLIC_API_URL || "https://api.superset.sh",
+			).host;
+			const corsTargets = [
+				`https://${apiHost}/*`,
+				"https://*.posthog.com/*",
+				"https://*.sentry.io/*",
+			];
+			appSession.webRequest.onBeforeSendHeaders(
+				{ urls: corsTargets },
+				(details, callback) => {
+					if (details.requestHeaders.Origin === "superset-app://app") {
+						delete details.requestHeaders.Origin;
+					}
+					callback({ requestHeaders: details.requestHeaders });
+				},
+			);
+			appSession.webRequest.onHeadersReceived(
+				{ urls: [`https://${apiHost}/*`] },
+				(details, callback) => {
+					const headers = details.responseHeaders ?? {};
+					headers["access-control-allow-origin"] = ["superset-app://app"];
+					headers["access-control-allow-credentials"] = ["true"];
+					callback({ responseHeaders: headers });
+				},
+			);
+		}
 
 		// Serve user-uploaded icons for service-status definitions
 		const serviceIconHandler = createServiceIconProtocolHandler();

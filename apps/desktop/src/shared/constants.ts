@@ -55,8 +55,11 @@ export const DEFAULT_TELEMETRY_ENABLED = true;
 export const DEFAULT_SHOW_RESOURCE_MONITOR = true;
 export const DEFAULT_OPEN_LINKS_IN_APP = false;
 export const DEFAULT_PREVENT_AGENT_SLEEP = false;
+// Mac/Linux go through wrapper-embedded caffeinate / systemd-inhibit. Windows
+// uses Electron's powerSaveBlocker wired to the notification emitter in the
+// main process (lib/agent-sleep/windows-sleep-blocker.ts).
 export const SUPPORTS_AGENT_SLEEP_PREVENTION =
-	PLATFORM.IS_MAC || PLATFORM.IS_LINUX;
+	PLATFORM.IS_MAC || PLATFORM.IS_LINUX || PLATFORM.IS_WINDOWS;
 
 export function clampRightSidebarOpenViewWidth(width: number): number {
 	return Math.max(

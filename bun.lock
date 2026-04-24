@@ -1089,6 +1089,7 @@
   ],
   "patchedDependencies": {
     "fstream@1.0.12": "patches/fstream@1.0.12.patch",
+    "node-pty@1.1.0": "patches/node-pty@1.1.0.patch",
   },
   "overrides": {
     "axios": "1.14.0",

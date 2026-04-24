@@ -2,14 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "shared/env.shared";
 import {
+	buildHookCommand,
 	buildWrapperScript,
 	createWrapper,
-	getSleepInhibitorShellSnippet,
+	getSleepInhibitorSnippet,
+	hookScriptExtension,
+	hookTemplateExtension,
+	IS_WIN_AGENT,
 	writeFileIfChanged,
 } from "./agent-wrappers-common";
 import { HOOKS_DIR } from "./paths";
 
-export const COPILOT_HOOK_SCRIPT_NAME = "copilot-hook.sh";
+export const COPILOT_HOOK_SCRIPT_NAME = `copilot-hook.${hookScriptExtension()}`;
 
 const COPILOT_HOOK_SIGNATURE = "# Superset copilot hook";
 const COPILOT_HOOK_VERSION = "v1";
@@ -18,7 +22,7 @@ export const COPILOT_HOOK_MARKER = `${COPILOT_HOOK_SIGNATURE} ${COPILOT_HOOK_VER
 const COPILOT_HOOK_TEMPLATE_PATH = path.join(
 	__dirname,
 	"templates",
-	"copilot-hook.template.sh",
+	`copilot-hook.template.${hookTemplateExtension()}`,
 );
 
 export function getCopilotHookScriptPath(): string {
@@ -29,7 +33,7 @@ export function getCopilotHookScriptContent(): string {
 	const template = fs.readFileSync(COPILOT_HOOK_TEMPLATE_PATH, "utf-8");
 	return template
 		.replace("{{MARKER}}", COPILOT_HOOK_MARKER)
-		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorShellSnippet())
+		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorSnippet())
 		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 
@@ -43,36 +47,30 @@ export function createCopilotHookScript(): void {
 }
 
 export function getCopilotHooksJsonContent(hookScriptPath: string): string {
+	// Copilot CLI routes hook commands through its `bash` key on POSIX and
+	// through `powershell` on Windows. Always emit the correct one for the
+	// runtime so hook config is portable across dev machines.
+	const commandKey = IS_WIN_AGENT ? "powershell" : "bash";
+	const cmd = (event: string): string =>
+		buildHookCommand(hookScriptPath, event);
 	const hooks = {
 		version: 1,
 		hooks: {
 			sessionStart: [
-				{
-					type: "command",
-					bash: `${hookScriptPath} sessionStart`,
-					timeoutSec: 5,
-				},
+				{ type: "command", [commandKey]: cmd("sessionStart"), timeoutSec: 5 },
 			],
 			sessionEnd: [
-				{
-					type: "command",
-					bash: `${hookScriptPath} sessionEnd`,
-					timeoutSec: 5,
-				},
+				{ type: "command", [commandKey]: cmd("sessionEnd"), timeoutSec: 5 },
 			],
 			userPromptSubmitted: [
 				{
 					type: "command",
-					bash: `${hookScriptPath} userPromptSubmitted`,
+					[commandKey]: cmd("userPromptSubmitted"),
 					timeoutSec: 5,
 				},
 			],
 			postToolUse: [
-				{
-					type: "command",
-					bash: `${hookScriptPath} postToolUse`,
-					timeoutSec: 5,
-				},
+				{ type: "command", [commandKey]: cmd("postToolUse"), timeoutSec: 5 },
 			],
 		},
 	};

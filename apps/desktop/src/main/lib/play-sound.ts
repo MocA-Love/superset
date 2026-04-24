@@ -12,8 +12,11 @@ interface PlaySoundCallbacks {
  * Plays a sound file at the given volume using platform-specific commands.
  * Returns the primary ChildProcess, or null if playback was skipped.
  *
- * On macOS, volume is controlled via afplay -v (0.0-1.0).
- * On Linux, volume is controlled via paplay --volume (0-65536), with aplay fallback.
+ * - macOS: afplay -v (0.0-1.0)
+ * - Linux: paplay --volume (0-65536), with aplay fallback
+ * - Windows: PowerShell + System.Media.SoundPlayer (WAV) or MediaPlayer (other).
+ *   System.Media.SoundPlayer doesn't support volume control, so the requested
+ *   volume is honored only as a mute toggle (volume === 0 → skip playback).
  */
 export function playSoundFile(
 	soundPath: string,
@@ -30,6 +33,26 @@ export function playSoundFile(
 	if (process.platform === "darwin") {
 		return execFile("afplay", ["-v", volumeDecimal.toString(), soundPath], () =>
 			callbacks?.onComplete?.(),
+		);
+	}
+
+	if (process.platform === "win32") {
+		if (volume === 0) {
+			callbacks?.onComplete?.();
+			return null;
+		}
+		// PowerShell arguments are single-quoted to avoid shell injection; any
+		// single quote in the path is escaped per PowerShell conventions.
+		const escapedPath = soundPath.replace(/'/g, "''");
+		const isWav = /\.wav$/i.test(soundPath);
+		const script = isWav
+			? `$p = New-Object Media.SoundPlayer '${escapedPath}'; $p.PlaySync()`
+			: `Add-Type -AssemblyName presentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Open([System.Uri]::new('${escapedPath}')); $p.Volume = ${volumeDecimal}; $p.Play(); Start-Sleep -Milliseconds 500; while ($p.NaturalDuration.HasTimeSpan -and $p.Position -lt $p.NaturalDuration.TimeSpan) { Start-Sleep -Milliseconds 200 }`;
+		return execFile(
+			"powershell.exe",
+			["-NoProfile", "-NonInteractive", "-Command", script],
+			{ windowsHide: true },
+			() => callbacks?.onComplete?.(),
 		);
 	}
 

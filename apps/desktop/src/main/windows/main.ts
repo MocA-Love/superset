@@ -16,6 +16,10 @@ import {
 import type { AgentLifecycleEvent } from "shared/notification-types";
 import { createIPCHandler } from "trpc-electron/main";
 import { productName } from "~/package.json";
+import {
+	handleAgentLifecycleForWindowsSleep,
+	handleTerminalExitForWindowsSleep,
+} from "../lib/agent-sleep/windows-sleep-blocker";
 import { appState } from "../lib/app-state";
 import { browserManager } from "../lib/browser/browser-manager";
 import { createApplicationMenu } from "../lib/menu";
@@ -283,6 +287,7 @@ export function initNotifications(): void {
 	notificationManager.start();
 
 	agentLifecycleListener = (event: AgentLifecycleEvent) => {
+		handleAgentLifecycleForWindowsSleep(event);
 		notificationManager?.handleAgentLifecycle(event);
 	};
 	notificationsEmitter.on(
@@ -297,6 +302,9 @@ export function initNotifications(): void {
 			signal: event.signal,
 			reason: event.reason,
 		});
+		// Release any Windows powerSaveBlocker that was held for agent activity
+		// in this pane — terminal exit means no more agent events will arrive.
+		handleTerminalExitForWindowsSleep(event.paneId);
 	};
 	getWorkspaceRuntimeRegistry()
 		.getDefault()
@@ -384,7 +392,20 @@ export async function MainWindow() {
 		autoHideMenuBar: true,
 		frame: false,
 		titleBarStyle: "hidden",
-		trafficLightPosition: { x: 16, y: 16 },
+		// Windows has no traffic-light controls; use the Electron overlay so the
+		// built-in minimize/maximize/close buttons render on top of the custom
+		// title bar. macOS keeps the familiar red/yellow/green indent.
+		...(PLATFORM.IS_WINDOWS
+			? {
+					titleBarOverlay: {
+						color: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
+						symbolColor: nativeTheme.shouldUseDarkColors
+							? "#ffffff"
+							: "#000000",
+						height: 35,
+					},
+				}
+			: { trafficLightPosition: { x: 16, y: 16 } }),
 		webPreferences: {
 			preload: join(__dirname, "../preload/index.js"),
 			webviewTag: true,
@@ -402,6 +423,35 @@ export async function MainWindow() {
 	// macOS Sequoia+: background throttling can corrupt GPU compositor layers
 	if (PLATFORM.IS_MAC) {
 		window.webContents.setBackgroundThrottling(false);
+	}
+
+	// Windows: forward renderer warnings/errors to the main process stdout so
+	// black-screen-style startup failures show up in the Electron log rather
+	// than being trapped inside the DevTools that the user cannot open.
+	if (PLATFORM.IS_WINDOWS) {
+		window.webContents.on(
+			"console-message",
+			(_event, level, message, line, sourceId) => {
+				if (level < 2) return;
+				const levelStr =
+					["verbose", "info", "warning", "error"][level] ?? "unknown";
+				const source = sourceId ? ` (${sourceId}:${line})` : "";
+				const formatted = `[renderer:${levelStr}] ${message}${source}`;
+				if (level === 3) console.error(formatted);
+				else console.warn(formatted);
+			},
+		);
+
+		// Keep the title-bar overlay contrast aligned with the OS theme — it is
+		// a Windows-only API so the call is safely gated.
+		nativeTheme.on("updated", () => {
+			if (window.isDestroyed()) return;
+			window.setTitleBarOverlay?.({
+				color: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
+				symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000",
+				height: 35,
+			});
+		});
 	}
 
 	if (ipcHandler) {

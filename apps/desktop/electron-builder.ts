@@ -96,8 +96,10 @@ const config: Configuration = {
 		"!**/.DS_Store",
 	],
 
-	// Rebuild native modules for Electron's Node.js version
-	npmRebuild: true,
+	// Rebuild native modules for Electron's Node.js version.
+	// Disabled on Windows — native modules are materialized by install:deps +
+	// copy:native-modules, and node-gyp fails without Visual Studio Build Tools.
+	npmRebuild: process.platform !== "win32",
 
 	// macOS DMG
 	// NOTE: dmgbuild 1.2.0 は size = (sum(app files) + 128MB) を割り当てるが、
@@ -212,6 +214,9 @@ const config: Configuration = {
 	nsis: {
 		oneClick: false,
 		allowToChangeInstallationDirectory: true,
+		createDesktopShortcut: true,
+		createStartMenuShortcut: true,
+		shortcutName: productName,
 	},
 };
 
