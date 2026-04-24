@@ -386,7 +386,7 @@ app.on("before-quit", async (event) => {
 	if (isQuitting) return;
 
 	// Consume the quit mode so it doesn't persist across aborted quits
-	const quitMode = pendingQuitMode;
+	let quitMode = pendingQuitMode;
 	pendingQuitMode = null;
 
 	// FORK NOTE: macOS tray-stay-alive block removed to match upstream (#3205).
@@ -396,17 +396,41 @@ app.on("before-quit", async (event) => {
 		event.preventDefault();
 
 		try {
-			const { response } = await dialog.showMessageBox({
-				type: "question",
-				buttons: ["Quit", "Cancel"],
-				defaultId: 0,
-				cancelId: 1,
-				title: "Quit Superset",
-				message: "Are you sure you want to quit?",
-			});
+			// FORK NOTE: Linux has no tray UI to choose between "release"
+			// (keep host-services running for reattach) vs "stop" (tear them
+			// down). Surface the same choice as dialog buttons when services
+			// are active. macOS already exposes this via the tray menu.
+			const showServiceAwareDialog =
+				process.platform === "linux" &&
+				getHostServiceManager().hasActiveInstances();
 
-			if (response === 1) {
-				return;
+			if (showServiceAwareDialog) {
+				const { response } = await dialog.showMessageBox({
+					type: "question",
+					buttons: [
+						"Quit (Keep Services Running)",
+						"Quit & Stop Services",
+						"Cancel",
+					],
+					defaultId: 0,
+					cancelId: 2,
+					title: "Quit Superset",
+					message: "Services are running in the background.",
+					detail:
+						"Keep them running so you can reattach on next launch, or stop them entirely.",
+				});
+				if (response === 2) return;
+				quitMode = response === 1 ? "stop" : "release";
+			} else {
+				const { response } = await dialog.showMessageBox({
+					type: "question",
+					buttons: ["Quit", "Cancel"],
+					defaultId: 0,
+					cancelId: 1,
+					title: "Quit Superset",
+					message: "Are you sure you want to quit?",
+				});
+				if (response === 1) return;
 			}
 		} catch (error) {
 			console.error("[main] Quit confirmation dialog failed:", error);
