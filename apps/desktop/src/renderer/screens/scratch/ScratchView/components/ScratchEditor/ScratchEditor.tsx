@@ -21,18 +21,24 @@ export function ScratchEditor({ absolutePath }: ScratchEditorProps) {
 		);
 
 	const writeMut = electronTrpc.scratch.writeFile.useMutation({
-		onSuccess: (res) => {
+		onSuccess: (res, variables) => {
 			setSavedAt(res.mtimeMs);
 			// Sync the readFile cache to what we just wrote so `hasChanges`
 			// (draft !== null && data.content !== draft) collapses to false and
-			// the status bar can advance from "unsaved" → "saved". Clearing the
-			// draft alone would re-fall-back to the stale cached content and
-			// make the editor flash back to the pre-save text.
+			// the status bar can advance from "unsaved" → "saved".
+			//
+			// Pull the content from `variables` (the exact string that reached
+			// disk) rather than the live `draft` state: if the user keeps
+			// typing while save is in flight, `draft` has already advanced past
+			// what we sent to writeFile, and seeding the cache with that newer
+			// value would make hasChanges flip false while disk still holds
+			// the older content — effectively losing the in-flight keystrokes
+			// from the dirty-tracking model.
 			utils.scratch.readFile.setData({ absolutePath }, (old) => {
-				if (!old || old.kind !== "text" || draft === null) return old;
+				if (!old || old.kind !== "text") return old;
 				return {
 					...old,
-					content: draft,
+					content: variables.content,
 					size: res.size,
 					mtimeMs: res.mtimeMs,
 				};
