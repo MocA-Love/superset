@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import nodePath from "node:path";
 import { access, readFile, writeFile } from "node:fs/promises";
+import nodePath from "node:path";
 import {
 	EXTERNAL_APPS,
 	NON_EDITOR_APPS,
@@ -82,7 +82,7 @@ async function assertPathExists(filePath: string): Promise<void> {
 	}
 }
 
-function normalizeOpenInAppError(error: unknown): never {
+function _normalizeOpenInAppError(error: unknown): never {
 	if (error instanceof TRPCError) {
 		throw error;
 	}

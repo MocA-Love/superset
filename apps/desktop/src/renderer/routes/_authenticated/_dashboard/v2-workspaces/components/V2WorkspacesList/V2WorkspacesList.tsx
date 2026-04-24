@@ -162,7 +162,6 @@ export function V2WorkspacesList({ pinned, others }: V2WorkspacesListProps) {
 							<V2WorkspaceRow
 								key={workspace.id}
 								workspace={workspace}
-								showProjectName={false}
 								isCurrentRoute={workspace.id === currentWorkspaceId}
 							/>
 						))}

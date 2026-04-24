@@ -469,7 +469,7 @@ export function ReviewPanel({
 		});
 	};
 
-	const toggleCommentExpansion = (commentId: string) => {
+	const _toggleCommentExpansion = (commentId: string) => {
 		setExpandedComments((prev) => {
 			const next = new Set(prev);
 			if (next.has(commentId)) {
