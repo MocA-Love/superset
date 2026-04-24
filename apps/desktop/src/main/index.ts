@@ -860,8 +860,10 @@ if (!gotTheLock) {
 		// whose renderer hasn't run yet would be silently dropped — the
 		// did-finish-load event is the first moment `ipcRenderer.on(...)` in
 		// the renderer has had a chance to register.
-		const firstWindow = BrowserWindow.getAllWindows()[0];
-		const onRendererReady = async () => {
+		let coldStartDone = false;
+		const runColdStart = async () => {
+			if (coldStartDone) return;
+			coldStartDone = true;
 			markFileIntakeReady();
 			try {
 				const coldStartPaths = await filterFileIntakeArgs(process.argv);
@@ -873,22 +875,36 @@ if (!gotTheLock) {
 				console.error("[main] file-intake cold-start drain failed:", err);
 			}
 		};
-		if (firstWindow) {
-			if (firstWindow.webContents.isLoading()) {
-				firstWindow.webContents.once("did-finish-load", () => {
-					void onRendererReady();
-				});
+
+		const drainOnWindowReady = (win: BrowserWindow) => {
+			// macOS: closing all windows doesn't quit the app, and `open-file` /
+			// dock drops arriving during the no-windows interval are queued by
+			// dispatchPaths(). When the user re-activates (Dock click creates a
+			// fresh window), we drain here so those queued paths actually open
+			// instead of disappearing until next full restart.
+			const drain = () => {
+				if (!coldStartDone) {
+					void runColdStart();
+				} else {
+					void drainFileIntakePending().catch((err) => {
+						console.error("[main] file-intake re-drain failed:", err);
+					});
+				}
+			};
+			if (win.webContents.isLoading()) {
+				win.webContents.once("did-finish-load", drain);
 			} else {
-				void onRendererReady();
+				drain();
 			}
-		} else {
-			// No window at app-ready (e.g. macOS launched without a window).
-			// Defer until a window appears via the existing activate flow.
-			app.once("browser-window-created", (_ev, win) => {
-				win.webContents.once("did-finish-load", () => {
-					void onRendererReady();
-				});
-			});
-		}
+		};
+
+		const firstWindow = BrowserWindow.getAllWindows()[0];
+		if (firstWindow) drainOnWindowReady(firstWindow);
+		// Re-drain whenever a new BrowserWindow appears (reactivate after
+		// close-all, tearoffs, etc.). Cold-start guard above ensures the
+		// initial sequence runs exactly once.
+		app.on("browser-window-created", (_ev, win) => {
+			drainOnWindowReady(win);
+		});
 	})();
 }
