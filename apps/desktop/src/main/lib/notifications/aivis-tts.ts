@@ -156,22 +156,13 @@ export async function synthesizeAivisAudio(options: {
 		? anySignal([options.signal, timeoutController.signal])
 		: timeoutController.signal;
 
-	let res: Response;
-	try {
-		res = await fetch(AIVIS_ENDPOINT, {
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${options.apiKey}`,
-				"Content-Type": "application/json",
-				Accept: "audio/mpeg",
-			},
-			body: JSON.stringify(body),
-			signal,
-		});
-	} catch (err) {
-		clearTimeout(timeoutId);
+	// fetch() resolves once response headers arrive, so the body read below
+	// must stay under the same timeout. We keep the timer armed until the
+	// whole Response has been consumed (or an error is thrown) to guard
+	// against stalled / half-dead connections that keep trickling bytes.
+	const wrapFetchError = (err: unknown): AivisError => {
 		if (err instanceof Error && err.name === "AbortError") {
-			throw new AivisError(
+			return new AivisError(
 				"retryable",
 				"Aivis API のリクエストがタイムアウトしました",
 				undefined,
@@ -179,32 +170,67 @@ export async function synthesizeAivisAudio(options: {
 				err,
 			);
 		}
-		throw new AivisError(
+		return new AivisError(
 			"retryable",
 			err instanceof Error ? err.message : String(err),
 			undefined,
 			undefined,
 			err,
 		);
-	}
-	clearTimeout(timeoutId);
+	};
 
-	if (!res.ok) {
-		const bodyText = await res.text().catch(() => "");
-		const kind = classifyStatus(res.status);
-		const reason = reasonForStatus(res.status, bodyText);
-		let rateLimitReset: number | undefined;
-		if (res.status === 429) {
-			rateLimitReset = parseIntHeader(
-				res.headers.get("X-Aivis-RateLimit-Requests-Reset"),
-			);
+	try {
+		let res: Response;
+		try {
+			res = await fetch(AIVIS_ENDPOINT, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${options.apiKey}`,
+					"Content-Type": "application/json",
+					Accept: "audio/mpeg",
+				},
+				body: JSON.stringify(body),
+				signal,
+			});
+		} catch (err) {
+			throw wrapFetchError(err);
 		}
-		throw new AivisError(kind, reason, res.status, rateLimitReset);
-	}
 
-	const arrayBuffer = await res.arrayBuffer();
-	const audio = Buffer.from(arrayBuffer);
-	return { audio, rateLimit: extractRateLimit(res.headers) };
+		if (!res.ok) {
+			let bodyText = "";
+			try {
+				bodyText = await res.text();
+			} catch (err) {
+				// Even reading an error body can stall — surface as retryable
+				// so the scheduler can retry rather than hang on an
+				// unclassified HTTP error.
+				if (err instanceof Error && err.name === "AbortError") {
+					throw wrapFetchError(err);
+				}
+				// Fall through with empty bodyText.
+			}
+			const kind = classifyStatus(res.status);
+			const reason = reasonForStatus(res.status, bodyText);
+			let rateLimitReset: number | undefined;
+			if (res.status === 429) {
+				rateLimitReset = parseIntHeader(
+					res.headers.get("X-Aivis-RateLimit-Requests-Reset"),
+				);
+			}
+			throw new AivisError(kind, reason, res.status, rateLimitReset);
+		}
+
+		let arrayBuffer: ArrayBuffer;
+		try {
+			arrayBuffer = await res.arrayBuffer();
+		} catch (err) {
+			throw wrapFetchError(err);
+		}
+		const audio = Buffer.from(arrayBuffer);
+		return { audio, rateLimit: extractRateLimit(res.headers) };
+	} finally {
+		clearTimeout(timeoutId);
+	}
 }
 
 function uniqueTmpPath(): string {
