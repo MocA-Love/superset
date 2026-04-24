@@ -166,8 +166,11 @@ export async function applyAiWorkspaceRename(
 	if (gitRenamed) patch.branch = deduped;
 	if (patch.name === undefined && patch.branch === undefined) return;
 
+	let cloudResult: Awaited<
+		ReturnType<typeof ctx.api.v2Workspace.updateNameFromHost.mutate>
+	>;
 	try {
-		await ctx.api.v2Workspace.updateNameFromHost.mutate(patch);
+		cloudResult = await ctx.api.v2Workspace.updateNameFromHost.mutate(patch);
 	} catch (err) {
 		if (gitRenamed) {
 			await ctx
@@ -181,6 +184,27 @@ export async function applyAiWorkspaceRename(
 				});
 		}
 		throw err;
+	}
+
+	// Detect no-op caused by expectedCurrentName mismatch (concurrent user
+	// rename). The mutation returns the current row verbatim in that case, so
+	// the branch in the returned row is the pre-rename branch rather than our
+	// new `deduped` name. When this happens we must roll back the local git
+	// branch rename and skip the host-sqlite update to avoid divergence with
+	// the cloud row.
+	const cloudAcceptedBranch =
+		patch.branch === undefined || cloudResult.branch === deduped;
+	if (!cloudAcceptedBranch && gitRenamed) {
+		await ctx
+			.git(worktreePath)
+			.then((g) => g.raw(["branch", "-m", deduped, oldBranchName]))
+			.catch((rollbackErr) => {
+				console.warn(
+					`[applyAiWorkspaceRename] git branch rollback after cloud no-op failed (workspace ${workspaceId}, ${deduped} → ${oldBranchName})`,
+					rollbackErr,
+				);
+			});
+		return;
 	}
 
 	if (gitRenamed) {
