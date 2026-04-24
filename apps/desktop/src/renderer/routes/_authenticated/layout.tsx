@@ -36,6 +36,7 @@ import { GlobalBrowserLifecycle } from "./components/GlobalBrowserLifecycle";
 import { GlobalTerminalLifecycle } from "./components/GlobalTerminalLifecycle";
 import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
+import { WorktreeAutoSyncManager } from "./components/WorktreeAutoSyncManager";
 import { createPierreWorker } from "./lib/pierreWorker";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
 import { DeletingWorkspacesProvider } from "./providers/DeletingWorkspacesProvider";
@@ -194,6 +195,7 @@ function AuthenticatedLayout() {
 						>
 							<LanguageServicesProvider />
 							<MainWindowEffects />
+							<WorktreeAutoSyncManager />
 							<Outlet />
 							{isV2CloudEnabled ? (
 								<DashboardNewWorkspaceModal />

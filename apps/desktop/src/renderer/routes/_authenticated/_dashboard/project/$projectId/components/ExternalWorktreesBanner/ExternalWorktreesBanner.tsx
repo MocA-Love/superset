@@ -12,7 +12,6 @@ import {
 import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef } from "react";
 import { GoGitBranch } from "react-icons/go";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useImportAllWorktrees } from "renderer/react-query/workspaces/useImportAllWorktrees";
@@ -27,76 +26,30 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 	});
 
 	const importAllWorktrees = useImportAllWorktrees();
-
-	const handleImportAll = useCallback(
-		async (silent = false): Promise<boolean> => {
-			try {
-				const result = await importAllWorktrees.mutateAsync({ projectId });
-				if (!silent) {
-					toast.success(
-						`Imported ${result.imported} workspace${result.imported === 1 ? "" : "s"}`,
-					);
-				} else if (result.imported > 0) {
-					toast.success(
-						`Auto-imported ${result.imported} worktree${result.imported === 1 ? "" : "s"}`,
-					);
-				}
-				return true;
-			} catch (err) {
-				toast.error(
-					err instanceof Error ? err.message : "Failed to import worktrees",
-				);
-				return false;
-			}
-		},
-		[importAllWorktrees, projectId],
-	);
-
-	const autoImportInFlightRef = useRef(false);
-	const lastFailedSignatureRef = useRef<string | null>(null);
 	const autoImportEnabled = project?.autoImportExternalWorktrees === true;
 
-	// Stable signature of the current external-worktree set. We remember the
-	// signature of the last auto-import attempt that failed so we do not
-	// retry the same (broken) set on every render — that previously created a
-	// tight failure loop of mutations + error toasts with no user action.
-	const externalSignature = externalWorktrees
-		.map((wt) => wt.path)
-		.sort()
-		.join("\n");
-
-	useEffect(() => {
-		if (!autoImportEnabled) return;
-		if (isLoading) return;
-		if (externalWorktrees.length === 0) return;
-		if (autoImportInFlightRef.current) return;
-		if (importAllWorktrees.isPending) return;
-		if (lastFailedSignatureRef.current === externalSignature) return;
-
-		autoImportInFlightRef.current = true;
-		handleImportAll(true)
-			.then((ok) => {
-				lastFailedSignatureRef.current = ok ? null : externalSignature;
-			})
-			.finally(() => {
-				autoImportInFlightRef.current = false;
-			});
-	}, [
-		autoImportEnabled,
-		isLoading,
-		externalWorktrees.length,
-		externalSignature,
-		importAllWorktrees.isPending,
-		handleImportAll,
-	]);
+	// When auto-import is on, WorktreeAutoSyncManager handles the import in the
+	// background; hiding the banner avoids duplicate mutations.
+	if (autoImportEnabled) {
+		return null;
+	}
 
 	if (isLoading || externalWorktrees.length === 0) {
 		return null;
 	}
 
-	if (autoImportEnabled) {
-		return null;
-	}
+	const handleImportAll = async () => {
+		try {
+			const result = await importAllWorktrees.mutateAsync({ projectId });
+			toast.success(
+				`Imported ${result.imported} workspace${result.imported === 1 ? "" : "s"}`,
+			);
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to import worktrees",
+			);
+		}
+	};
 
 	const visibleBranches = externalWorktrees.slice(0, MAX_VISIBLE_BRANCHES);
 	const remainingCount = externalWorktrees.length - visibleBranches.length;
@@ -156,7 +109,7 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction onClick={() => handleImportAll(false)}>
+							<AlertDialogAction onClick={handleImportAll}>
 								Import all
 							</AlertDialogAction>
 						</AlertDialogFooter>
