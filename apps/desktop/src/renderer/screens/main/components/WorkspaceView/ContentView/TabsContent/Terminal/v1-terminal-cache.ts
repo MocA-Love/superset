@@ -96,8 +96,7 @@ export function getOrCreate(
 		openOnce,
 		setGpuAccelerationEnabled,
 		cleanup,
-	} =
-		createTerminalInWrapper(options);
+	} = createTerminalInWrapper(options);
 
 	const entry: CachedTerminal = {
 		xterm,
