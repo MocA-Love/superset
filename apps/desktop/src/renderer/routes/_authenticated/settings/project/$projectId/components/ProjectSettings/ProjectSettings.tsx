@@ -516,11 +516,20 @@ export function ProjectSettings({
 												<Button
 													size="sm"
 													className="w-22"
-													disabled={importAllWorktrees.isPending}
+													disabled={
+														autoImportEnabled || importAllWorktrees.isPending
+													}
+													title={
+														autoImportEnabled
+															? "Auto-import is handling this automatically"
+															: undefined
+													}
 												>
-													{importAllWorktrees.isPending
-														? "Importing..."
-														: "Import all"}
+													{autoImportEnabled
+														? "Auto-import on"
+														: importAllWorktrees.isPending
+															? "Importing..."
+															: "Import all"}
 												</Button>
 											</AlertDialogTrigger>
 											<AlertDialogContent>

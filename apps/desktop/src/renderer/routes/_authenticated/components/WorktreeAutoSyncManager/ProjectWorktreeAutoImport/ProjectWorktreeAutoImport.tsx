@@ -30,14 +30,17 @@ export function ProjectWorktreeAutoImport({
 	});
 	const autoImportEnabled = project?.autoImportExternalWorktrees === true;
 
-	const { data: externalWorktrees = [], isLoading } =
-		electronTrpc.workspaces.getExternalWorktrees.useQuery(
-			{ projectId },
-			{
-				enabled: autoImportEnabled,
-				refetchInterval: autoImportEnabled ? POLL_MS : false,
-			},
-		);
+	const {
+		data: externalWorktrees = [],
+		isLoading,
+		dataUpdatedAt,
+	} = electronTrpc.workspaces.getExternalWorktrees.useQuery(
+		{ projectId },
+		{
+			enabled: autoImportEnabled,
+			refetchInterval: autoImportEnabled ? POLL_MS : false,
+		},
+	);
 
 	const importAllWorktrees = useImportAllWorktrees();
 	const inFlightRef = useRef(false);
@@ -64,11 +67,14 @@ export function ProjectWorktreeAutoImport({
 		if (inFlightRef.current) return;
 		if (importAllWorktrees.isPending) return;
 
+		// Compare against dataUpdatedAt (not Date.now()) so the cooldown expiry
+		// is re-evaluated on every poll tick — the query refetch bumps this
+		// timestamp even when the external-worktree set is unchanged.
 		const lastFailure = lastFailureRef.current;
 		if (
 			lastFailure &&
 			lastFailure.signature === externalSignature &&
-			Date.now() - lastFailure.at < FAILURE_COOLDOWN_MS
+			dataUpdatedAt - lastFailure.at < FAILURE_COOLDOWN_MS
 		) {
 			return;
 		}
@@ -103,6 +109,7 @@ export function ProjectWorktreeAutoImport({
 		externalSignature,
 		importAllWorktrees,
 		projectId,
+		dataUpdatedAt,
 	]);
 
 	return null;
