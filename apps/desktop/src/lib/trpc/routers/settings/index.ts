@@ -23,6 +23,19 @@ import {
 	applyLegacyPermissionsOverrides,
 	terminalPresetsMatchPre3546Seed,
 } from "@superset/shared/agent-permissions-migration";
+import {
+	type AgentDefinitionId,
+	applyCustomAgentDefinitionPatch,
+	createOverrideEnvelopeWithPatch,
+	deleteCustomAgentDefinition,
+	getAgentDefinitionById,
+	getCustomAgentDefinitionById,
+	readAgentPresetOverrides,
+	resetAgentPresetOverride,
+	resetAllAgentPresetOverrides,
+	resolveAgentConfigs,
+	upsertCustomAgentDefinition,
+} from "@superset/shared/agent-settings";
 import { TRPCError } from "@trpc/server";
 import { app } from "electron";
 import { env } from "main/env.main";
@@ -52,19 +65,6 @@ import {
 	DEFAULT_RINGTONE_ID,
 	isBuiltInRingtoneId,
 } from "shared/ringtones";
-import {
-	type AgentDefinitionId,
-	applyCustomAgentDefinitionPatch,
-	createOverrideEnvelopeWithPatch,
-	deleteCustomAgentDefinition,
-	getAgentDefinitionById,
-	getCustomAgentDefinitionById,
-	readAgentPresetOverrides,
-	resetAgentPresetOverride,
-	resetAllAgentPresetOverrides,
-	resolveAgentConfigs,
-	upsertCustomAgentDefinition,
-} from "shared/utils/agent-settings";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { loadToken } from "../auth/utils/auth-functions";

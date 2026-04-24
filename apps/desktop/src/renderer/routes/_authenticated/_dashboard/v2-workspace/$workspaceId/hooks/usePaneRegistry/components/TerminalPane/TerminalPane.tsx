@@ -8,6 +8,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { useTerminalLinkActions } from "renderer/hooks/useV2UserPreferences";
 import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getInternalDraggedFilePath } from "renderer/lib/file-drag";
@@ -41,7 +42,7 @@ interface TerminalPaneProps {
 	ctx: RendererContext<PaneViewerData>;
 	workspaceId: string;
 	onOpenFile: (path: string, openInNewTab?: boolean) => void;
-	onRevealPath: (path: string) => void;
+	onRevealPath: (path: string, options?: { isDirectory?: boolean }) => void;
 }
 
 function subscribeToState(terminalId: string) {
@@ -64,6 +65,7 @@ export function TerminalPane({
 		electronTrpc.settings.getFileDragBehavior.useQuery();
 	const { data: fileOpenMode } =
 		electronTrpc.settings.getFileOpenMode.useQuery();
+	const { getFileAction, getUrlAction } = useTerminalLinkActions();
 	const {
 		hoveredLink,
 		onHover: onLinkHover,
@@ -177,39 +179,58 @@ export function TerminalPane({
 				}
 			},
 			onFileLinkClick: (event, link) => {
-				if (!event.metaKey && !event.ctrlKey) {
+				// Folders are not settings-controlled: ⌘ reveals in sidebar,
+				// ⌘⇧ falls through to the external editor path, plain = hint.
+				if (link.isDirectory) {
+					if (!event.metaKey && !event.ctrlKey) {
+						showHint(event.clientX, event.clientY);
+						return;
+					}
+					event.preventDefault();
+					if (event.shiftKey) {
+						openInExternalEditor(link.resolvedPath);
+					} else {
+						onRevealPath(link.resolvedPath, { isDirectory: true });
+					}
+					return;
+				}
+
+				const action = getFileAction(event);
+				if (action === null) {
 					showHint(event.clientX, event.clientY);
 					return;
 				}
 				event.preventDefault();
-				if (event.shiftKey) {
+				if (action === "external") {
 					openInExternalEditor(link.resolvedPath, {
 						line: link.row,
 						column: link.col,
 					});
-					return;
-				}
-				if (link.isDirectory) {
-					onRevealPath(link.resolvedPath);
 				} else {
 					onOpenFile(link.resolvedPath);
 				}
 			},
 			onUrlClick: (event, url) => {
-				if (event.shiftKey) {
+				const action = getUrlAction(event);
+				if (action === null) {
+					showHint(event.clientX, event.clientY);
+					return;
+				}
+				event.preventDefault();
+				if (action === "external") {
 					electronTrpcClient.external.openUrl.mutate(url).catch((error) => {
 						console.error("[v2 Terminal] Failed to open URL:", url, error);
 					});
-					return;
+				} else {
+					ctx.store.getState().openPane({
+						pane: {
+							kind: "browser",
+							// FORK NOTE: fork BrowserPaneData requires `mode`; default to
+							// "generic" for terminal-link-opened URLs.
+							data: { url, mode: "generic" } satisfies BrowserPaneData,
+						},
+					});
 				}
-				ctx.store.getState().openPane({
-					pane: {
-						kind: "browser",
-						// FORK NOTE: fork BrowserPaneData requires `mode`; default to
-						// "generic" for terminal-link-opened URLs.
-						data: { url, mode: "generic" } satisfies BrowserPaneData,
-					},
-				});
 			},
 			onLinkHover,
 			onLinkLeave,
@@ -224,6 +245,8 @@ export function TerminalPane({
 		onLinkHover,
 		onLinkLeave,
 		showHint,
+		getFileAction,
+		getUrlAction,
 	]);
 
 	useHotkey(
