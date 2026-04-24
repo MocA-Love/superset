@@ -37,6 +37,13 @@ import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
 import { createExtensionIconProtocolHandler } from "./lib/extensions/extension-icon-protocol";
 import { loadInstalledExtensions } from "./lib/extensions/extension-manager";
+import {
+	dispatchPaths as dispatchFileIntakePaths,
+	drainPendingPaths as drainFileIntakePending,
+	filterFilePathArgs as filterFileIntakeArgs,
+	markFileIntakeReady,
+	queuePath as queueFileIntakePath,
+} from "./lib/file-intake";
 // FORK NOTE: upstream renamed host-service-manager → host-service-coordinator (#3250 relay)
 // Aliased as getHostServiceManager to minimize diff with fork's quit lifecycle code
 import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-service-coordinator";
@@ -349,6 +356,23 @@ app.on("open-url", async (event, url) => {
 	}
 });
 
+// macOS fires `open-file` when a file is double-clicked with this app as the
+// handler, dragged onto the dock icon, or passed via Finder "Open with". The
+// event can arrive *before* app.whenReady() resolves on cold start — Electron
+// recommends installing the listener inside `will-finish-launching` so we
+// catch those early events. Paths arriving before the renderer is ready are
+// queued in file-intake and drained later.
+app.on("will-finish-launching", () => {
+	app.on("open-file", (event, filePath) => {
+		event.preventDefault();
+		if (appReady) {
+			void dispatchFileIntakePaths([filePath]);
+		} else {
+			queueFileIntakePath(filePath);
+		}
+	});
+});
+
 export type QuitMode = "release" | "stop";
 let pendingQuitMode: QuitMode | null = null;
 let isQuitting = false;
@@ -605,12 +629,19 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
 	app.exit(0);
 } else {
-	// Windows/Linux: protocol URL arrives as argv on the second instance
+	// Windows/Linux: protocol URL arrives as argv on the second instance.
+	// File paths (from Explorer "Open with" / drag onto dock / CLI invocation)
+	// also land here — we hand those to the file-intake pipeline so the same
+	// classification logic runs regardless of platform.
 	app.on("second-instance", async (_event, argv) => {
 		focusMainWindow();
 		const url = findDeepLinkInArgv(argv);
 		if (url) {
 			await processDeepLink(url);
+		}
+		const paths = await filterFileIntakeArgs(argv);
+		if (paths.length > 0) {
+			await dispatchFileIntakePaths(paths);
 		}
 	});
 
@@ -823,5 +854,41 @@ if (!gotTheLock) {
 		}
 
 		appReady = true;
+
+		// File-intake waits for the renderer JS to actually load before
+		// declaring itself ready. Sending IPC to a freshly-created BrowserWindow
+		// whose renderer hasn't run yet would be silently dropped — the
+		// did-finish-load event is the first moment `ipcRenderer.on(...)` in
+		// the renderer has had a chance to register.
+		const firstWindow = BrowserWindow.getAllWindows()[0];
+		const onRendererReady = async () => {
+			markFileIntakeReady();
+			try {
+				const coldStartPaths = await filterFileIntakeArgs(process.argv);
+				if (coldStartPaths.length > 0) {
+					await dispatchFileIntakePaths(coldStartPaths);
+				}
+				await drainFileIntakePending();
+			} catch (err) {
+				console.error("[main] file-intake cold-start drain failed:", err);
+			}
+		};
+		if (firstWindow) {
+			if (firstWindow.webContents.isLoading()) {
+				firstWindow.webContents.once("did-finish-load", () => {
+					void onRendererReady();
+				});
+			} else {
+				void onRendererReady();
+			}
+		} else {
+			// No window at app-ready (e.g. macOS launched without a window).
+			// Defer until a window appears via the existing activate flow.
+			app.once("browser-window-created", (_ev, win) => {
+				win.webContents.once("did-finish-load", () => {
+					void onRendererReady();
+				});
+			});
+		}
 	})();
 }

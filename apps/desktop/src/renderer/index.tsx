@@ -12,6 +12,7 @@ import {
 	markBootMounted,
 	reportBootError,
 } from "./lib/boot-errors";
+import { installFileIntakeClient } from "./lib/file-intake-client";
 import { persistentHistory } from "./lib/persistent-hash-history";
 import { posthog } from "./lib/posthog";
 import { electronQueryClient } from "./providers/ElectronTRPCProvider";
@@ -117,12 +118,21 @@ if (ipcRenderer) {
 	);
 }
 
+// File intake: OS-level DnD onto the window + IPC batches from main for
+// drops that span registered + unregistered paths.
+const teardownFileIntake = installFileIntakeClient({
+	navigate: (opts) => {
+		router.navigate(opts as Parameters<typeof router.navigate>[0]);
+	},
+});
+
 if (import.meta.hot) {
 	import.meta.hot.dispose(() => {
 		unsubscribe();
 		if (ipcRenderer) {
 			ipcRenderer.off("deep-link-navigate", handleDeepLink);
 		}
+		teardownFileIntake();
 		cleanupBootErrorHandling();
 	});
 }
