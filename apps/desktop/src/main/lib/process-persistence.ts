@@ -35,6 +35,12 @@ export interface SpawnPersistentResult {
 	scopeUnit: string | null;
 }
 
+// Cached for the lifetime of the process. A failure is sticky on purpose:
+// we don't want every daemon spawn to re-probe systemd-run (adds ~100ms
+// each time and can spam the journal). The trade-off is that a transient
+// D-Bus outage at startup disables systemd-run for the whole session —
+// daemons then land in Electron's cgroup and die on quit, which is the
+// pre-fix behaviour. Restarting Superset re-runs the probe.
 let systemdRunAvailable: boolean | null = null;
 
 function canUseSystemdRun(): boolean {
@@ -57,11 +63,14 @@ function canUseSystemdRun(): boolean {
 	// reach the user bus or that scope creation is allowed. Doing a real
 	// `--user --scope -- /bin/true` catches every failure mode up front
 	// so we fall back to plain spawn instead of leaving the daemon to
-	// time out on health checks (see PR #403 review).
+	// time out on health checks (see PR #403 review). `--collect` tells
+	// systemd to garbage-collect the dead unit immediately, matching
+	// `spawnPersistent` below — without it, `systemctl --user list-units`
+	// accumulates a `run-r<hex>.scope` inactive entry per app launch.
 	try {
 		childProcess.execFileSync(
 			"systemd-run",
-			["--user", "--scope", "--quiet", "--", "true"],
+			["--user", "--scope", "--collect", "--quiet", "--", "true"],
 			{ stdio: "ignore", timeout: 3000 },
 		);
 		systemdRunAvailable = true;
