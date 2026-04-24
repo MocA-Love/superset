@@ -34,8 +34,21 @@ interface AwsSnapshot {
 }
 
 export async function fetchAwsHealth(apiUrl: string): Promise<ParsedStatus> {
-	const json = await fetchJson<AwsSnapshot>(apiUrl);
-	const current = Array.isArray(json?.current) ? json.current : [];
+	const json = await fetchJson<unknown>(apiUrl);
+	// Strict shape check — AWS has reshaped this endpoint in the past, so we
+	// return `unknown` on anything we don't recognize rather than silently
+	// falling back to "operational" and hiding an outage from the user.
+	if (
+		!json ||
+		typeof json !== "object" ||
+		!Array.isArray((json as AwsSnapshot).current)
+	) {
+		return {
+			indicator: null,
+			description: "AWS data.json の形式が想定と違います",
+		};
+	}
+	const current = (json as AwsSnapshot).current ?? [];
 	if (current.length === 0) {
 		return { indicator: "none", description: "全システム正常" };
 	}

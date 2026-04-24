@@ -19,6 +19,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { ServiceStatusIcon } from "renderer/lib/service-status/ServiceStatusIcon";
 import {
 	groupPresetsByCategory,
+	normalizeApiUrl,
 	PRESET_CATEGORY_LABEL,
 	type ServicePreset,
 } from "renderer/lib/service-status/service-presets";
@@ -73,7 +74,7 @@ export function ServicePresetDialog({
 	}, [groups, query]);
 
 	const handleAdd = async (preset: ServicePreset): Promise<void> => {
-		if (existingApiUrls.has(preset.apiUrl)) return;
+		if (existingApiUrls.has(normalizeApiUrl(preset.apiUrl))) return;
 		setPendingSlug(preset.slug);
 		try {
 			await createMutation.mutateAsync({
@@ -134,7 +135,9 @@ export function ServicePresetDialog({
 							</h4>
 							<div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
 								{items.map((preset) => {
-									const alreadyAdded = existingApiUrls.has(preset.apiUrl);
+									const alreadyAdded = existingApiUrls.has(
+										normalizeApiUrl(preset.apiUrl),
+									);
 									const isPending = pendingSlug === preset.slug;
 									return (
 										<button

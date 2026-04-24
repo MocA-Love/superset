@@ -39,7 +39,11 @@ export async function fetchGcpIncidents(apiUrl: string): Promise<ParsedStatus> {
 		};
 	}
 	const incidents = json as GcpIncident[];
-	const active = incidents.filter((i) => !i.end);
+	// GCP explicitly sets `end: null` for ongoing incidents; resolved rows
+	// carry a timestamp. Historic rows scraped from a cache may have the
+	// field missing entirely, and treating those as "active" would pin the
+	// indicator red after every cache refresh — require an explicit null.
+	const active = incidents.filter((i) => i.end === null);
 	if (active.length === 0) {
 		return { indicator: "none", description: "全システム正常" };
 	}

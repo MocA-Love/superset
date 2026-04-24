@@ -15,13 +15,19 @@ import type { ParsedStatus } from "./types";
 
 const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-const ITEM_REGEX = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+// Accept namespace-prefixed element names (`<atom:item>`, `<rss:item>`) —
+// the Azure feed has emitted prefixed variants before.
+const ITEM_REGEX = /<(?:\w+:)?item\b[^>]*>([\s\S]*?)<\/(?:\w+:)?item>/gi;
 const TITLE_REGEX =
-	/<title[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/title>/i;
+	/<(?:\w+:)?title\b[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/(?:\w+:)?title>/i;
 const PUB_DATE_REGEX =
-	/<pubDate[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/pubDate>/i;
+	/<(?:\w+:)?pubDate\b[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/(?:\w+:)?pubDate>/i;
 const DESCRIPTION_REGEX =
-	/<description[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/description>/i;
+	/<(?:\w+:)?description\b[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/(?:\w+:)?description>/i;
+// DOCTYPE blocks can harbor external entity references; refuse any feed
+// that advertises one rather than risk tripping an XXE path in some future
+// parser swap.
+const DOCTYPE_REGEX = /<!DOCTYPE\b/i;
 
 interface RssItem {
 	title: string;
@@ -70,6 +76,12 @@ export async function fetchAzureRss(apiUrl: string): Promise<ParsedStatus> {
 	const xml = await fetchText(apiUrl, {
 		accept: "application/rss+xml, application/xml, text/xml;q=0.9",
 	});
+	if (DOCTYPE_REGEX.test(xml)) {
+		return {
+			indicator: null,
+			description: "DOCTYPE を含む RSS はサポートしていません",
+		};
+	}
 	const items = parseRssItems(xml);
 	const nowMs = Date.now();
 	const recent = items.filter((i) => isRecent(i.pubDate, nowMs));

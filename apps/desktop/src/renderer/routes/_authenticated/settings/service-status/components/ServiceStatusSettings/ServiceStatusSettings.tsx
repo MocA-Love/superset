@@ -33,6 +33,7 @@ import {
 	LEVEL_LABEL,
 } from "renderer/lib/service-status/level-display";
 import { ServiceStatusIcon } from "renderer/lib/service-status/ServiceStatusIcon";
+import { normalizeApiUrl } from "renderer/lib/service-status/service-presets";
 import type {
 	ServiceStatusDefinition,
 	ServiceStatusSnapshot,
@@ -112,9 +113,12 @@ export function ServiceStatusSettings({
 
 	// Preset dialog uses apiUrl as the identity key for "already added"
 	// detection — it's more stable than label and each Statuspage API URL
-	// maps to exactly one provider.
+	// maps to exactly one provider. URLs are normalized before comparison so
+	// trivial variants ("HTTPS://Example.com/" vs "https://example.com",
+	// trailing slash, explicit default port) don't let the same service be
+	// added twice.
 	const existingApiUrls = useMemo(
-		() => new Set(definitions.map((d) => d.apiUrl)),
+		() => new Set(definitions.map((d) => normalizeApiUrl(d.apiUrl))),
 		[definitions],
 	);
 

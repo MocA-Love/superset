@@ -25,6 +25,7 @@ import {
 } from "./icon-storage";
 import { fetchStatusPayload } from "./parsers";
 import { fetchStatuspageV2 } from "./parsers/statuspage-v2";
+import { parseSafeHttpUrl } from "./url-safety";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -376,56 +377,93 @@ class ServiceStatusService extends EventEmitter {
 		return null;
 	}
 
+	/**
+	 * Manual-redirect fetcher that re-validates every Location hop against
+	 * `parseSafeHttpUrl`. The previous `redirect: "follow"` form let a
+	 * trusted public favicon service 30x-redirect us to a private / loopback
+	 * endpoint after the outer URL had already passed input validation.
+	 */
 	private tryFetchAsDataUrl(url: string): Promise<string | null> {
 		return new Promise((resolve) => {
-			const request = net.request({ method: "GET", url, redirect: "follow" });
-			let timedOut = false;
-			const timeout = setTimeout(() => {
-				timedOut = true;
-				request.abort();
-				resolve(null);
-			}, REQUEST_TIMEOUT_MS);
-			request.on("response", (response) => {
-				if (response.statusCode < 200 || response.statusCode >= 300) {
-					clearTimeout(timeout);
-					resolve(null);
+			let resolvedOnce = false;
+			const finish = (value: string | null): void => {
+				if (resolvedOnce) return;
+				resolvedOnce = true;
+				resolve(value);
+			};
+			const doHop = (currentUrl: string, hopsLeft: number): void => {
+				if (!parseSafeHttpUrl(currentUrl)) {
+					finish(null);
 					return;
 				}
-				const mimeHeader = response.headers["content-type"];
-				const mime = Array.isArray(mimeHeader)
-					? mimeHeader[0]
-					: (mimeHeader ?? "");
-				if (!mime || !String(mime).startsWith("image/")) {
-					clearTimeout(timeout);
-					resolve(null);
-					return;
-				}
-				const chunks: Buffer[] = [];
-				response.on("data", (chunk: Buffer) => chunks.push(chunk));
-				response.on("end", () => {
-					clearTimeout(timeout);
-					if (timedOut) return;
-					const buf = Buffer.concat(chunks);
-					if (buf.byteLength === 0) {
-						resolve(null);
+				const request = net.request({
+					method: "GET",
+					url: currentUrl,
+					redirect: "manual",
+				});
+				const timer = setTimeout(() => {
+					request.abort();
+					finish(null);
+				}, REQUEST_TIMEOUT_MS);
+				request.on("response", (response) => {
+					const statusCode = response.statusCode;
+					if (statusCode >= 300 && statusCode < 400) {
+						const raw = response.headers.location ?? response.headers.Location;
+						const locationValue = Array.isArray(raw) ? raw[0] : raw;
+						clearTimeout(timer);
+						if (!locationValue || hopsLeft <= 0) {
+							finish(null);
+							return;
+						}
+						let nextUrl: string;
+						try {
+							nextUrl = new URL(locationValue, currentUrl).toString();
+						} catch {
+							finish(null);
+							return;
+						}
+						doHop(nextUrl, hopsLeft - 1);
 						return;
 					}
-					resolve(
-						`data:${String(mime).split(";")[0]};base64,${buf.toString("base64")}`,
-					);
+					if (statusCode < 200 || statusCode >= 300) {
+						clearTimeout(timer);
+						finish(null);
+						return;
+					}
+					const mimeHeader = response.headers["content-type"];
+					const mime = Array.isArray(mimeHeader)
+						? mimeHeader[0]
+						: (mimeHeader ?? "");
+					if (!mime || !String(mime).startsWith("image/")) {
+						clearTimeout(timer);
+						finish(null);
+						return;
+					}
+					const chunks: Buffer[] = [];
+					response.on("data", (chunk: Buffer) => chunks.push(chunk));
+					response.on("end", () => {
+						clearTimeout(timer);
+						const buf = Buffer.concat(chunks);
+						if (buf.byteLength === 0) {
+							finish(null);
+							return;
+						}
+						finish(
+							`data:${String(mime).split(";")[0]};base64,${buf.toString("base64")}`,
+						);
+					});
+					response.on("error", () => {
+						clearTimeout(timer);
+						finish(null);
+					});
 				});
-				response.on("error", () => {
-					clearTimeout(timeout);
-					if (timedOut) return;
-					resolve(null);
+				request.on("error", () => {
+					clearTimeout(timer);
+					finish(null);
 				});
-			});
-			request.on("error", () => {
-				clearTimeout(timeout);
-				if (timedOut) return;
-				resolve(null);
-			});
-			request.end();
+				request.end();
+			};
+			doHop(url, 5);
 		});
 	}
 }

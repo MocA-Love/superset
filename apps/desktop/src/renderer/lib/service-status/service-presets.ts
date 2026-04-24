@@ -131,16 +131,6 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		iconValue: "anthropic",
 	},
 	{
-		slug: "mistral",
-		label: "Mistral AI",
-		category: "ai",
-		statusUrl: "https://status.mistral.ai/",
-		apiUrl: "https://status.mistral.ai/api/v2/status.json",
-		format: "statuspage-v2",
-		iconType: "simple-icon",
-		iconValue: "mistral",
-	},
-	{
 		slug: "groq",
 		label: "Groq",
 		category: "ai",
@@ -164,8 +154,8 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "replicate",
 		label: "Replicate",
 		category: "ai",
-		statusUrl: "https://status.replicate.com/",
-		apiUrl: "https://status.replicate.com/api/v2/status.json",
+		statusUrl: "https://www.replicatestatus.com/",
+		apiUrl: "https://www.replicatestatus.com/api/v2/status.json",
 		format: "statuspage-v2",
 		iconType: "simple-icon",
 		iconValue: "replicate",
@@ -189,16 +179,6 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		format: "statuspage-v2",
 		iconType: "simple-icon",
 		iconValue: "huggingface",
-	},
-	{
-		slug: "elevenlabs",
-		label: "ElevenLabs",
-		category: "ai",
-		statusUrl: "https://status.elevenlabs.io/",
-		apiUrl: "https://status.elevenlabs.io/api/v2/status.json",
-		format: "statuspage-v2",
-		iconType: "simple-icon",
-		iconValue: "elevenlabs",
 	},
 
 	// --- Dev Infra --------------------------------------------------------
@@ -470,6 +450,31 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		iconValue: "shopify",
 	},
 ];
+
+/**
+ * Normalize an apiUrl for "already added" dedup across minor textual variants:
+ * case-insensitive host, trailing-slash, default-port elision. The resulting
+ * string is not meant to be sent anywhere — it's only a compare key.
+ *
+ * Lives here (not in url-safety.ts) because it's a renderer-only concern and
+ * url-safety is a main-process module.
+ */
+export function normalizeApiUrl(url: string): string {
+	try {
+		const parsed = new URL(url);
+		const host = parsed.hostname.toLowerCase();
+		const port =
+			(parsed.protocol === "http:" && parsed.port === "80") ||
+			(parsed.protocol === "https:" && parsed.port === "443")
+				? ""
+				: parsed.port;
+		const path = parsed.pathname.replace(/\/+$/, "") || "/";
+		const search = parsed.search;
+		return `${parsed.protocol}//${host}${port ? `:${port}` : ""}${path}${search}`;
+	} catch {
+		return url.toLowerCase();
+	}
+}
 
 /**
  * Group presets by category for the picker grid. Empty categories are omitted

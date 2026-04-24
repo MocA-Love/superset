@@ -5,6 +5,7 @@ import {
 	serviceStatusService,
 } from "main/lib/service-status";
 import { isCustomIconPath } from "main/lib/service-status/icon-storage";
+import { parseSafeHttpUrl } from "main/lib/service-status/url-safety";
 import type {
 	ServiceStatusDefinition,
 	ServiceStatusSnapshot,
@@ -30,101 +31,18 @@ const formatSchema = z.enum([
 // prevents accidental base64 blobs from landing in the definition row itself.
 const iconValueSchema = z.string().max(2048).nullable();
 
-/**
- * Reject private / loopback hosts so user-supplied URLs can't be abused to
- * reach cloud metadata endpoints (169.254.169.254), internal admin panels,
- * or other LAN services from the main process via `net.request`.
- *
- * `URL.hostname` needs normalization before matching:
- *   - IPv6 literals come back bracketed (`http://[::1]` → `[::1]`), so the
- *     `::1` / `fe80::` / `fc00::` patterns would silently miss them.
- *   - DNS allows a trailing dot (`localhost.` resolves to loopback on most
- *     resolvers) and it survives `URL` parsing.
- *   - The IPv4-mapped IPv6 form `::ffff:127.0.0.1` routes to loopback but
- *     wouldn't match the raw IPv4 regex.
- */
-function isPublicHttpsHost(hostname: string): boolean {
-	let host = hostname.toLowerCase();
-	if (host.endsWith(".")) host = host.slice(0, -1);
-	if (host.startsWith("[") && host.endsWith("]")) {
-		host = host.slice(1, -1);
-	}
-	if (!host) return false;
-	if (host === "localhost") return false;
-	if (host === "127.0.0.1" || host === "::1" || host === "0.0.0.0")
-		return false;
-	if (/^127\./.test(host)) return false;
-	if (/^10\./.test(host)) return false;
-	if (/^192\.168\./.test(host)) return false;
-	if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
-	if (/^169\.254\./.test(host)) return false;
-	// IPv4-mapped IPv6 addresses are a textbook SSRF-bypass surface: the
-	// WHATWG URL parser normalizes `http://[::ffff:127.0.0.1]/` to two
-	// different forms depending on the implementation —
-	//   1) dotted:       `::ffff:127.0.0.1`
-	//   2) hex-compressed: `::ffff:7f00:1`   (= 0x7f00.0x0001 = 127.0.0.1)
-	// — and the hex form slips past any regex that only looks for dotted
-	// quads. We extract the embedded IPv4 from both shapes so the private-
-	// range checks below can reuse a single code path.
-	const embeddedV4 = extractV4MappedToIPv6(host);
-	if (embeddedV4) {
-		if (embeddedV4 === "127.0.0.1" || embeddedV4 === "0.0.0.0") return false;
-		if (/^127\./.test(embeddedV4)) return false;
-		if (/^10\./.test(embeddedV4)) return false;
-		if (/^192\.168\./.test(embeddedV4)) return false;
-		if (/^172\.(1[6-9]|2\d|3[01])\./.test(embeddedV4)) return false;
-		if (/^169\.254\./.test(embeddedV4)) return false;
-	}
-	// Unique local addresses fc00::/7 (fc.. or fd..) and link-local fe80::/10.
-	if (/^f[cd][0-9a-f]{2}:/.test(host)) return false;
-	if (/^fe[89ab][0-9a-f]:/.test(host)) return false;
-	return true;
-}
-
-/**
- * Extract the embedded IPv4 address from a v4-mapped IPv6 literal, in either
- * of the two shapes WHATWG URL parsers emit. Returns `null` for anything
- * that isn't a v4-mapped v6 address (including pure v4 strings — callers
- * still run their own v4 regex set on the original host).
- */
-function extractV4MappedToIPv6(host: string): string | null {
-	const dotted = host.match(
-		/^(?:0{1,4}:){0,5}:?:?ffff:((?:\d{1,3}\.){3}\d{1,3})$/i,
-	);
-	if (dotted?.[1]) return dotted[1];
-	const hex = host.match(
-		/^(?:0{1,4}:){0,5}:?:?ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i,
-	);
-	if (hex?.[1] && hex[2]) {
-		const high = Number.parseInt(hex[1], 16);
-		const low = Number.parseInt(hex[2], 16);
-		if (high > 0xffff || low > 0xffff) return null;
-		return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
-	}
-	return null;
-}
+// Host safety lives in `main/lib/service-status/url-safety.ts` so both the
+// tRPC input validator and the `parsers/net-helpers` redirect follower share
+// the same private-network checks.
 
 const safeHttpUrlSchema = z
 	.string()
 	.trim()
 	.min(1, "URL is required")
-	.refine(
-		(value) => {
-			try {
-				const parsed = new URL(value);
-				if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-					return false;
-				}
-				return isPublicHttpsHost(parsed.hostname);
-			} catch {
-				return false;
-			}
-		},
-		{
-			message:
-				"Public http(s) URL required (private / loopback hosts are blocked)",
-		},
-	);
+	.refine((value) => parseSafeHttpUrl(value) !== null, {
+		message:
+			"Public http(s) URL required (private / loopback hosts are blocked)",
+	});
 
 const createInputSchema = z.object({
 	label: z.string().trim().min(1).max(80),
