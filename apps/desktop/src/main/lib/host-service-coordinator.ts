@@ -487,7 +487,23 @@ export class HostServiceCoordinator extends EventEmitter {
 		const endpoint = `http://127.0.0.1:${port}`;
 		const healthy = await pollHealthCheck(endpoint, secret);
 		if (!healthy) {
-			child.kill("SIGTERM");
+			// Linux + systemd-run: `child` is the wrapper PID, so `child.kill()`
+			// alone can leave the scoped daemon running. Kill every PID in the
+			// transient scope first, then fall back to the wrapper and any
+			// manifest PID the daemon may have written before timing out.
+			let killedViaScope = false;
+			if (scopeUnit) {
+				killedViaScope = killPersistentScope(scopeUnit, "SIGTERM");
+			}
+			if (!killedViaScope) {
+				child.kill("SIGTERM");
+				const manifest = readManifest(organizationId);
+				if (manifest && manifest.pid !== childPid) {
+					try {
+						process.kill(manifest.pid, "SIGTERM");
+					} catch {}
+				}
+			}
 			this.instances.delete(organizationId);
 			throw new Error(
 				`Host service failed to start within ${HEALTH_POLL_TIMEOUT_MS}ms`,
