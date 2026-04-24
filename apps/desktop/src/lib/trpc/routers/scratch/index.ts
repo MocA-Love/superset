@@ -116,16 +116,37 @@ export const createScratchRouter = () =>
 			)
 			.mutation(async ({ input }) => {
 				const abs = sanitizeAbsolutePath(input.absolutePath);
-				assertScratchWriteAllowed(abs);
 
-				// Use lstat to detect symlinks before we open for write: fs.writeFile
-				// would happily follow a symlink and overwrite whatever it points at,
-				// which is the classic "dropped-file authorized me to edit
-				// ~/.ssh/authorized_keys" footgun. Policy: refuse to write through
-				// symlinks in scratch mode.
+				// Resolve symlinks in every path segment before we enforce policy.
+				// Checking only the final basename with lstat(abs) misses the case
+				// where a *parent* directory is a symlink pointing into a protected
+				// tree (e.g. `/tmp/link/file` where `link` → `~/.ssh`): fs.lstat on
+				// the final path returns a regular file, the deny-list sees
+				// `/tmp/link/...`, and writeFile ends up touching the real target.
+				//
+				// Strategy: realpath the directory component (which *must* exist to
+				// write into it) and recompose with basename. For files that don't
+				// yet exist we still catch parent-dir symlink escapes. Then lstat
+				// the final path itself to refuse symlinked leaves.
+				const dir = path.dirname(abs);
+				let canonicalDir: string;
+				try {
+					canonicalDir = await fs.realpath(dir);
+				} catch (err) {
+					if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+						throw new TRPCError({
+							code: "NOT_FOUND",
+							message: `Parent directory does not exist: ${dir}`,
+						});
+					}
+					throw err;
+				}
+				const canonical = path.join(canonicalDir, path.basename(abs));
+				assertScratchWriteAllowed(canonical);
+
 				let lstat: Awaited<ReturnType<typeof fs.lstat>> | null = null;
 				try {
-					lstat = await fs.lstat(abs);
+					lstat = await fs.lstat(canonical);
 				} catch (err) {
 					if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
 						throw err;
@@ -134,20 +155,20 @@ export const createScratchRouter = () =>
 				if (lstat?.isDirectory()) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
-						message: `Path is a directory: ${abs}`,
+						message: `Path is a directory: ${canonical}`,
 					});
 				}
 				if (lstat?.isSymbolicLink()) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
-						message: `Refusing to write through symlink: ${abs}`,
+						message: `Refusing to write through symlink: ${canonical}`,
 					});
 				}
 
-				await fs.writeFile(abs, input.content, { encoding: "utf8" });
-				const newStat = await fs.stat(abs);
+				await fs.writeFile(canonical, input.content, { encoding: "utf8" });
+				const newStat = await fs.stat(canonical);
 				return {
-					absolutePath: abs,
+					absolutePath: canonical,
 					size: newStat.size,
 					mtimeMs: newStat.mtimeMs,
 				};

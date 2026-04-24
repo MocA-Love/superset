@@ -48,17 +48,18 @@ export function installFileIntakeClient(router: NavRouter): () => void {
 		const paths = p.absolutePaths.filter(
 			(v): v is string => typeof v === "string" && v.length > 0,
 		);
-		if (paths.length === 0) return;
 
-		// Navigate first so KeepAliveWorkspaces mounts the target workspace page.
-		// addFileViewerPane writes into the tabs store directly; the page picks
-		// the state up as soon as it renders, so we don't need the
-		// DeepLinkNavigation intent dance here (which only supports one file
-		// and overwrites on the second call — Q5:A would break).
+		// Always navigate — even for an empty paths batch, which represents the
+		// "drag a folder that's a registered workspace" case (Q2:A with no
+		// specific file). Opening the workspace is the whole user-visible effect
+		// in that scenario; skipping navigate on empty would leave the user
+		// stranded on whatever route they were on.
 		void router.navigate({
 			to: "/workspace/$workspaceId",
 			params: { workspaceId: p.workspaceId },
 		});
+
+		if (paths.length === 0) return;
 
 		const addFileViewerPane = useTabsStore.getState().addFileViewerPane;
 		for (const absolutePath of paths) {

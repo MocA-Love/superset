@@ -159,17 +159,28 @@ export async function classifyPaths(
 	return Promise.all(deduped.map((p) => classifyPath(p, roots)));
 }
 
-/** Split targets by kind so the renderer can be instructed how to open each. */
+/**
+ * Split targets by kind so the renderer can be instructed how to open each.
+ *
+ * Directories inside registered workspaces are kept in `byWorkspace` as an
+ * entry with an empty `absolutePaths` when they're the only drop for that
+ * workspace — that way the renderer still navigates to the workspace but
+ * doesn't try to open the folder as a file (which would produce a broken
+ * FileViewerPane).
+ */
 function splitTargets(targets: FileIntakeTarget[]) {
 	const byWorkspace = new Map<string, string[]>();
 	const scratch: string[] = [];
 	for (const t of targets) {
 		if (t.kind === "workspace-file") {
-			const key = t.workspaceId;
-			const arr = byWorkspace.get(key) ?? [];
-			arr.push(t.absolutePath);
-			byWorkspace.set(key, arr);
+			const existing = byWorkspace.get(t.workspaceId) ?? [];
+			// Directories: register the workspace as a nav target but never push
+			// the path as a file to open.
+			if (!t.isDirectory) existing.push(t.absolutePath);
+			byWorkspace.set(t.workspaceId, existing);
 		} else {
+			// scratch-file and scratch-directory both surface as scratch tabs;
+			// v1 scratch doesn't distinguish, it just opens the path.
 			scratch.push(t.absolutePath);
 		}
 	}
