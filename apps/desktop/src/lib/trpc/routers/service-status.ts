@@ -27,9 +27,21 @@ const iconValueSchema = z.string().max(2048).nullable();
  * Reject private / loopback hosts so user-supplied URLs can't be abused to
  * reach cloud metadata endpoints (169.254.169.254), internal admin panels,
  * or other LAN services from the main process via `net.request`.
+ *
+ * `URL.hostname` needs normalization before matching:
+ *   - IPv6 literals come back bracketed (`http://[::1]` → `[::1]`), so the
+ *     `::1` / `fe80::` / `fc00::` patterns would silently miss them.
+ *   - DNS allows a trailing dot (`localhost.` resolves to loopback on most
+ *     resolvers) and it survives `URL` parsing.
+ *   - The IPv4-mapped IPv6 form `::ffff:127.0.0.1` routes to loopback but
+ *     wouldn't match the raw IPv4 regex.
  */
 function isPublicHttpsHost(hostname: string): boolean {
-	const host = hostname.toLowerCase();
+	let host = hostname.toLowerCase();
+	if (host.endsWith(".")) host = host.slice(0, -1);
+	if (host.startsWith("[") && host.endsWith("]")) {
+		host = host.slice(1, -1);
+	}
 	if (!host) return false;
 	if (host === "localhost") return false;
 	if (host === "127.0.0.1" || host === "::1" || host === "0.0.0.0")
@@ -39,8 +51,22 @@ function isPublicHttpsHost(hostname: string): boolean {
 	if (/^192\.168\./.test(host)) return false;
 	if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
 	if (/^169\.254\./.test(host)) return false;
-	if (/^fc[0-9a-f]{2}:/.test(host)) return false;
-	if (/^fe80:/.test(host)) return false;
+	// IPv4-mapped IPv6 forms (::ffff:127.0.0.1, ::ffff:10.0.0.1, …). Fold
+	// the embedded IPv4 out before reapplying the private-range checks so
+	// that attackers can't smuggle private addresses through the v6 shell.
+	const mapped = host.match(/^(?:::ffff:)?(?:0*:)*((?:\d{1,3}\.){3}\d{1,3})$/);
+	if (mapped) {
+		const v4 = mapped[1];
+		if (v4 === "127.0.0.1" || v4 === "0.0.0.0") return false;
+		if (/^127\./.test(v4)) return false;
+		if (/^10\./.test(v4)) return false;
+		if (/^192\.168\./.test(v4)) return false;
+		if (/^172\.(1[6-9]|2\d|3[01])\./.test(v4)) return false;
+		if (/^169\.254\./.test(v4)) return false;
+	}
+	// Unique local addresses fc00::/7 (fc.. or fd..) and link-local fe80::/10.
+	if (/^f[cd][0-9a-f]{2}:/.test(host)) return false;
+	if (/^fe[89ab][0-9a-f]:/.test(host)) return false;
 	return true;
 }
 
