@@ -16,9 +16,18 @@ import type { WebglAddon } from "@xterm/addon-webgl";
  * `color.opaque` (`TextureAtlas.ts:357-359`), so palette-0 *text* keeps
  * rendering at full opacity even after we drop the bg alpha.
  *
- * `CM_RGB` cells stay opaque (no alpha bits in the SGR `48;2;r;g;b` packing),
- * matching the original behavior so TUIs that paint deliberate solid-color
- * highlights aren't accidentally erased.
+ * codex (and Claude Code) emit explicit truecolor backgrounds via
+ * `\x1b[48;2;R;G;B m` — see `codex-rs/tui/src/style.rs::user_message_bg`,
+ * which queries the terminal's bg via OSC 11 and blends 12% white onto it.
+ * When vibrancy reports an OSC 11 of `(0,0,0)` (because we set
+ * `theme.background = rgba(0,0,0,0)`), codex paints with `~(30,30,30)` —
+ * still very dark and clearly visible as black bars on top of the
+ * transparent terminal. CM_RGB cells carry no alpha bits in the SGR
+ * encoding, so we apply a brightness-threshold heuristic when vibrancy is
+ * active: any RGB cell whose darkest channel is below
+ * `NEAR_BLACK_THRESHOLD` is treated as transparent. Coloured highlights
+ * (red error rows, blue selections, etc.) all have at least one channel
+ * well above the threshold and stay opaque.
  *
  * This is `@xterm/addon-webgl@0.20.0-beta.196` private-API surgery; bumping
  * the addon (the workspace pins it via Bun overrides) requires re-checking
@@ -44,6 +53,49 @@ const FgFlags = {
 } as const;
 
 const INDICES_PER_RECTANGLE = 8;
+
+/**
+ * Catches codex's `(30,30,30)`-ish overlay block fills and similar dark-gray
+ * panel paints from other ratatui-based TUIs. Bright/colored cells (red
+ * errors, blue selections) keep at least one channel >= ~80, so 80 is a
+ * conservative cutoff. The renderer only consults this when vibrancy is on,
+ * via `setRgbTransparencyForVibrancy(true)`.
+ */
+const NEAR_BLACK_THRESHOLD = 80;
+
+let rgbTransparencyEnabled = false;
+
+interface VibrancyDebugStats {
+	rectsTotal: number;
+	cmDefault: number;
+	cmP16P256Opaque: number;
+	cmP16P256Transparent: number;
+	cmRgbOpaque: number;
+	cmRgbTransparent: number;
+	uniqueRgb: Map<number, number>;
+}
+
+function createStats(): VibrancyDebugStats {
+	return {
+		rectsTotal: 0,
+		cmDefault: 0,
+		cmP16P256Opaque: 0,
+		cmP16P256Transparent: 0,
+		cmRgbOpaque: 0,
+		cmRgbTransparent: 0,
+		uniqueRgb: new Map(),
+	};
+}
+
+let debugStats: VibrancyDebugStats | null = null;
+
+function debugEnabled(): boolean {
+	try {
+		return localStorage.getItem("debug.terminal-vibrancy") === "1";
+	} catch {
+		return false;
+	}
+}
 
 function expandFloat32Array(
 	input: Float32Array,
@@ -83,6 +135,12 @@ interface RectangleRendererInternals {
 	): void;
 }
 
+function bumpUniqueRgb(stats: VibrancyDebugStats, rgba: number): void {
+	if (stats.uniqueRgb.size > 64) return;
+	const key = (rgba >> 8) & 0xffffff;
+	stats.uniqueRgb.set(key, (stats.uniqueRgb.get(key) ?? 0) + 1);
+}
+
 function patchedUpdateRectangle(
 	this: RectangleRendererInternals,
 	vertices: RectVertices,
@@ -94,37 +152,79 @@ function patchedUpdateRectangle(
 	y: number,
 ): void {
 	let rgba: number;
-	let preserveAlpha: boolean;
+	let alpha: number;
+	let bucket: keyof Pick<
+		VibrancyDebugStats,
+		| "cmDefault"
+		| "cmP16P256Opaque"
+		| "cmP16P256Transparent"
+		| "cmRgbOpaque"
+		| "cmRgbTransparent"
+	>;
 
 	if (fg & FgFlags.INVERSE) {
 		switch (fg & Attributes.CM_MASK) {
 			case Attributes.CM_P16:
 			case Attributes.CM_P256:
 				rgba = this._themeService.colors.ansi[fg & Attributes.PCOLOR_MASK].rgba;
-				preserveAlpha = true;
+				alpha = (rgba & 0xff) / 255;
+				bucket = alpha < 1 ? "cmP16P256Transparent" : "cmP16P256Opaque";
 				break;
 			case Attributes.CM_RGB:
 				rgba = (fg & Attributes.RGB_MASK) << 8;
-				preserveAlpha = false;
+				// Inverse highlights (selection-like behavior) stay opaque so the
+				// inverted character remains legible.
+				alpha = 1;
+				bucket = "cmRgbOpaque";
 				break;
 			default:
 				rgba = this._themeService.colors.foreground.rgba;
-				preserveAlpha = true;
+				alpha = (rgba & 0xff) / 255;
+				bucket = "cmDefault";
 		}
 	} else {
 		switch (bg & Attributes.CM_MASK) {
 			case Attributes.CM_P16:
 			case Attributes.CM_P256:
 				rgba = this._themeService.colors.ansi[bg & Attributes.PCOLOR_MASK].rgba;
-				preserveAlpha = true;
+				alpha = (rgba & 0xff) / 255;
+				bucket = alpha < 1 ? "cmP16P256Transparent" : "cmP16P256Opaque";
 				break;
-			case Attributes.CM_RGB:
+			case Attributes.CM_RGB: {
 				rgba = (bg & Attributes.RGB_MASK) << 8;
-				preserveAlpha = false;
+				if (rgbTransparencyEnabled) {
+					const r = (rgba >> 24) & 0xff;
+					const g = (rgba >> 16) & 0xff;
+					const b = (rgba >> 8) & 0xff;
+					if (Math.max(r, g, b) < NEAR_BLACK_THRESHOLD) {
+						alpha = 0;
+						bucket = "cmRgbTransparent";
+					} else {
+						alpha = 1;
+						bucket = "cmRgbOpaque";
+					}
+				} else {
+					alpha = 1;
+					bucket = "cmRgbOpaque";
+				}
 				break;
+			}
 			default:
 				rgba = this._themeService.colors.background.rgba;
-				preserveAlpha = true;
+				alpha = (rgba & 0xff) / 255;
+				bucket = "cmDefault";
+		}
+	}
+
+	if (debugStats) {
+		debugStats.rectsTotal += 1;
+		debugStats[bucket] += 1;
+		if (
+			bucket === "cmRgbOpaque" ||
+			bucket === "cmRgbTransparent" ||
+			bucket === "cmP16P256Opaque"
+		) {
+			bumpUniqueRgb(debugStats, rgba);
 		}
 	}
 
@@ -142,7 +242,6 @@ function patchedUpdateRectangle(
 	const r = ((rgba >> 24) & 0xff) / 255;
 	const g = ((rgba >> 16) & 0xff) / 255;
 	const b = ((rgba >> 8) & 0xff) / 255;
-	const a = preserveAlpha ? (rgba & 0xff) / 255 : 1;
 
 	this._addRectangle(
 		vertices.attributes,
@@ -154,14 +253,73 @@ function patchedUpdateRectangle(
 		r,
 		g,
 		b,
-		a,
+		alpha,
 	);
 }
 
 /**
+ * Toggle the brightness-based transparency heuristic for `CM_RGB` cells.
+ * Wired from the vibrancy store: enabled when the user has window vibrancy
+ * on, disabled otherwise (so non-vibrancy themes render exactly as before).
+ */
+export function setRgbTransparencyForVibrancy(enabled: boolean): void {
+	rgbTransparencyEnabled = enabled;
+}
+
+interface VibrancyDebugApi {
+	stats: () => VibrancyDebugStats | null;
+	reset: () => void;
+	dump: () => void;
+}
+
+declare global {
+	interface Window {
+		__supersetTerminalVibrancy__?: VibrancyDebugApi;
+	}
+}
+
+function ensureDebugApi(): void {
+	if (typeof window === "undefined") return;
+	if (window.__supersetTerminalVibrancy__) return;
+	window.__supersetTerminalVibrancy__ = {
+		stats: () => debugStats,
+		reset: () => {
+			debugStats = createStats();
+		},
+		dump: () => {
+			if (!debugStats) {
+				console.log(
+					"[terminal-vibrancy] debug stats are off; localStorage.setItem('debug.terminal-vibrancy', '1') and reload",
+				);
+				return;
+			}
+			const top = [...debugStats.uniqueRgb.entries()]
+				.sort(([, a], [, b]) => b - a)
+				.slice(0, 16)
+				.map(([rgb, count]) => ({
+					rgb: `#${rgb.toString(16).padStart(6, "0")}`,
+					count,
+				}));
+			console.table({
+				rectsTotal: debugStats.rectsTotal,
+				cmDefault: debugStats.cmDefault,
+				cmP16P256Opaque: debugStats.cmP16P256Opaque,
+				cmP16P256Transparent: debugStats.cmP16P256Transparent,
+				cmRgbOpaque: debugStats.cmRgbOpaque,
+				cmRgbTransparent: debugStats.cmRgbTransparent,
+				rgbTransparencyEnabled,
+				NEAR_BLACK_THRESHOLD,
+			});
+			console.table(top);
+		},
+	};
+}
+
+/**
  * Patch the `RectangleRenderer.prototype._updateRectangle` shipped with the
- * given `WebglAddon` so that palette/default-bg rectangles honor their alpha.
- * Idempotent across calls and across multiple addon instances.
+ * given `WebglAddon` so that palette/default-bg rectangles honor their alpha
+ * and CM_RGB near-black cells become transparent under vibrancy. Idempotent
+ * across calls and across multiple addon instances.
  */
 export function installRectangleRendererAlphaPatch(addon: WebglAddon): void {
 	try {
@@ -181,6 +339,15 @@ export function installRectangleRendererAlphaPatch(addon: WebglAddon): void {
 		if (typeof original !== "function") return;
 		proto._updateRectangle = patchedUpdateRectangle;
 		proto[PATCHED] = true;
+		ensureDebugApi();
+		if (debugEnabled() && !debugStats) {
+			debugStats = createStats();
+		}
+		console.log(
+			"[terminal-vibrancy] WebGL RectangleRenderer alpha patch installed (debug:",
+			debugEnabled() ? "on" : "off",
+			")",
+		);
 	} catch (error) {
 		console.warn(
 			"[terminal] Failed to patch WebGL RectangleRenderer for vibrancy:",

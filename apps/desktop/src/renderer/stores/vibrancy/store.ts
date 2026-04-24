@@ -6,6 +6,7 @@ import {
 	type VibrancyState,
 } from "shared/vibrancy-types";
 import { create } from "zustand";
+import { setRgbTransparencyForVibrancy } from "../../lib/terminal/webgl-vibrancy-patch";
 import { electronTrpcClient } from "../../lib/trpc-client";
 import { useThemeStore } from "../theme";
 import { applyUIColors } from "../theme/utils";
@@ -105,6 +106,12 @@ function applyToDom(state: VibrancyState): void {
 	const root = document.documentElement;
 	root.dataset.vibrancy = state.enabled ? "on" : "off";
 	root.style.setProperty("--vibrancy-alpha", (state.opacity / 100).toFixed(3));
+
+	// Toggle the brightness-threshold heuristic for explicit-RGB cells in the
+	// xterm WebGL renderer (see `webgl-vibrancy-patch.ts`). codex / Claude Code
+	// emit `\x1b[48;2;r;g;b m` for their overlay blocks, and those bypass the
+	// theme.ansi[] alpha trick used for palette colors.
+	setRgbTransparencyForVibrancy(state.enabled);
 
 	const activeTheme = useThemeStore.getState().activeTheme;
 	if (!activeTheme) return;
