@@ -281,6 +281,9 @@ export const settings = sqliteTable("settings", {
 	branchSortOrder: text("branch_sort_order").$type<BranchSortOrder>(),
 	pinDefaultBranch: integer("pin_default_branch", { mode: "boolean" }),
 	postCommitCommand: text("post_commit_command").$type<PostCommitCommand>(),
+	serviceStatusDefaultsSeeded: integer("service_status_defaults_seeded", {
+		mode: "boolean",
+	}),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;
@@ -483,6 +486,7 @@ export type SelectBrowserSitePermission =
 // Fork-local: TODO autonomous agent sessions. Re-exported so drizzle-kit
 // (configured with schema="./src/schema/schema.ts") picks up the table.
 export * from "./browser-automation-bindings";
+export * from "./service-status-definitions";
 export * from "./todo-prompt-presets";
 export * from "./todo-schedules";
 export * from "./todo-sessions";
