@@ -25,6 +25,7 @@
 		"build:browser-mcp": "bun --cwd ../../packages/superset-browser-mcp run build:bin",
 		"prebuild": "bun run clean:dev && bun run generate:icons && bun run compile:app && bun run copy:native-modules && bun run validate:native-runtime && bun run build:browser-mcp",
 		"build": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --publish never",
+		"build:linux": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --linux AppImage deb rpm --publish never",
 		"prepackage": "bun run copy:native-modules && bun run validate:native-runtime && bun run build:browser-mcp",
 		"package": "electron-builder --config electron-builder.ts",
 		"install:deps": "electron-builder install-app-deps",
