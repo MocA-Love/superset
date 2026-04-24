@@ -109,6 +109,16 @@ export const v2ProjectRouter = {
 					organizationId: input.organizationId,
 				},
 			);
+			// Fallback for pre-migration projects: 0034 migration added
+			// repoCloneUrl as nullable without backfilling. Downstream clone/setup
+			// paths require repoCloneUrl, so derive it from githubRepository.fullName
+			// when the DB column is null but a linked GitHub repository exists.
+			if (!row.repoCloneUrl && row.githubRepository) {
+				return {
+					...row,
+					repoCloneUrl: `https://github.com/${row.githubRepository.fullName}.git`,
+				};
+			}
 			return row;
 		}),
 

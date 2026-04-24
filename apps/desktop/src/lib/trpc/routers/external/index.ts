@@ -428,7 +428,15 @@ export const createExternalRouter = () => {
 						// No preferred editor configured yet.
 						// Fall back to OS default file handler so Cmd/Ctrl+click still works
 						// even when Cursor (or any specific editor) isn't installed.
-						await shell.openPath(filePath);
+						// `shell.openPath` returns a non-empty string on failure instead of
+						// throwing — surface that so callers see a meaningful error.
+						const openError = await shell.openPath(filePath);
+						if (openError) {
+							throw new TRPCError({
+								code: "INTERNAL_SERVER_ERROR",
+								message: `Failed to open file: ${openError}`,
+							});
+						}
 						return;
 					}
 
