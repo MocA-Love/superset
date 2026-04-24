@@ -93,6 +93,7 @@ Works with any CLI agent. Built for local worktree-based development.
 | **TODO 詳細の添付画像 chip 化＋プレビュー** | TODO 作成時に「やってほしいこと」「ゴール」へ貼り付けた画像を、タスク詳細画面でクリップマーク + ファイル名の chip として表示。クリックでネスト Dialog の画像プレビューを開ける（AgentManager は閉じない）。`todo-agent/attachments/` 配下のみを許可するパス検証付き `readAttachment` tRPC を追加 | [#229](https://github.com/MocA-Love/superset/pull/229) | 2026-04-16 |
 | **AgentManager 見切れ救済** | AgentManager 左サイドバーのワークスペース見出し・セッションタイトル、右 ChangesSidebar のブランチ/ファイルパス/コミット subject/選択ヘッダーが狭幅で見切れていた問題を修正。`truncate` + ホバー時 `Tooltip` で全文表示 | [#254](https://github.com/MocA-Love/superset/pull/254) | 2026-04-17 |
 | **Excel diff / raw viewer の透過抑止** | Appearance の透過設定 (vibrancy) ON 時に Excel ビューア / Excel diff / 画像プレビュー / HTML プレビューの背景まで透けていた問題を修正。これらの読み取り専用サーフェスは `bg-background-solid` に差し替えてダイアログと同様に不透明で維持 | [#266](https://github.com/MocA-Love/superset/pull/266) | 2026-04-17 |
+| **通知音・Aivis 音声の重なり防止** | 通知音と Aivis TTS を AudioScheduler で直列化。通知音は他の音が鳴っていれば破棄、Aivis は FIFO キューで直列再生し、PermissionRequest は優先キューで前に割り込む。Aivis API の 429 は `X-Aivis-RateLimit-Requests-Reset` を尊重、401/402/404 はキューを破棄して OS 通知で一時停止を知らせる | [#405](https://github.com/MocA-Love/superset/pull/405) | 2026-04-24 |
 
 ## Fork のビルド方法 (macOS)
 
