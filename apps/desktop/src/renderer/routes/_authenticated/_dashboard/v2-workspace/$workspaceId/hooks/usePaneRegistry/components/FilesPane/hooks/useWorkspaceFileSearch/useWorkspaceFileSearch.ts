@@ -8,8 +8,6 @@ interface UseWorkspaceFileSearchParams {
 	limit?: number;
 	includePattern?: string;
 	excludePattern?: string;
-	openFilePaths?: string[];
-	recentFilePaths?: string[];
 }
 
 export function useWorkspaceFileSearch({
@@ -18,8 +16,6 @@ export function useWorkspaceFileSearch({
 	limit = SEARCH_RESULT_LIMIT,
 	includePattern = "",
 	excludePattern = "",
-	openFilePaths,
-	recentFilePaths,
 }: UseWorkspaceFileSearchParams) {
 	const trimmedQuery = searchTerm.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
@@ -34,8 +30,6 @@ export function useWorkspaceFileSearch({
 				limit,
 				includePattern,
 				excludePattern,
-				openFilePaths,
-				recentFilePaths,
 			},
 			{
 				enabled: debouncedQuery.length > 0,

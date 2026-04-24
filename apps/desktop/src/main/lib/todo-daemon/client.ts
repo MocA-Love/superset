@@ -9,7 +9,7 @@
  * app restarts — see issue #237.
  */
 
-import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
@@ -29,6 +29,7 @@ import { join } from "node:path";
 import { app } from "electron";
 import { todoAgentMainDebug } from "main/todo-agent/debug";
 import { SUPERSET_DIR_NAME } from "shared/constants";
+import { spawnPersistent } from "../process-persistence";
 import {
 	type AbortRequest,
 	type EmptyResponse,
@@ -554,17 +555,26 @@ export class TodoDaemonClient extends EventEmitter {
 				logFd = -1;
 			}
 
-			let child: ReturnType<typeof spawn> | null = null;
+			// On Linux, spawnPersistent wraps with `systemd-run --user --scope`
+			// so the daemon survives Electron's systemd-logind app scope
+			// terminating on quit. We don't use the returned `scopeUnit` —
+			// todo-daemon is stopped via IPC, not signals.
+			let child: ChildProcess | null = null;
 			try {
-				child = spawn(process.execPath, [daemonScript], {
-					detached: true,
-					stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
-					env: {
-						...process.env,
-						ELECTRON_RUN_AS_NODE: "1",
-						NODE_ENV: process.env.NODE_ENV,
+				child = spawnPersistent(
+					process.execPath,
+					[daemonScript],
+					{
+						detached: true,
+						stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
+						env: {
+							...process.env,
+							ELECTRON_RUN_AS_NODE: "1",
+							NODE_ENV: process.env.NODE_ENV,
+						},
 					},
-				});
+					{ unitLabel: "superset-todo-daemon" },
+				).child;
 			} finally {
 				if (logFd >= 0) {
 					try {

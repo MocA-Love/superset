@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { pullRequests, workspaces } from "../../../db/schema";
+import { projects, pullRequests, workspaces } from "../../../db/schema";
 import { protectedProcedure, router } from "../../index";
 import type {
 	ChangedFile,
@@ -18,10 +18,12 @@ import type {
 } from "./types";
 import {
 	buildBranch,
+	countUntrackedFileLines,
+	detectUnstagedRenames,
 	getChangedFilesForDiff,
-	getDefaultBranchName,
 	mapGitStatus,
 	parseNumstat,
+	resolveBaseComparison,
 } from "./utils/git-helpers";
 import {
 	type GraphQLThreadsResult,
@@ -46,7 +48,8 @@ export const gitRouter = router({
 			const currentBranchName = (
 				await git.revparse(["--abbrev-ref", "HEAD"]).catch(() => "")
 			).trim();
-			const defaultBranchName = await getDefaultBranchName(git);
+			const base = await resolveBaseComparison(git);
+			const defaultBranchName = base?.branchName ?? null;
 
 			const sortOrder = input.sortOrder ?? "committerdate";
 			const pinDefault = input.pinDefault ?? true;
@@ -70,25 +73,17 @@ export const gitRouter = router({
 						"--format=%(refname:short)",
 						...extraArgs,
 					]);
-					return (
-						raw
-							.trim()
-							.split("\n")
-							.map((line) => line.trim())
-							.filter(Boolean)
-							.filter((line) => !line.includes("->"))
-							// When a prefix filter is given (e.g. "origin/") only keep
-							// entries that start with that prefix. Lines from non-origin
-							// remotes (e.g. "upstream/main") would survive the map step
-							// unchanged and then cause buildBranch to construct invalid
-							// refs like "origin/upstream/main".
-							.filter((line) => !stripPrefix || line.startsWith(stripPrefix))
-							.map((line) =>
-								stripPrefix && line.startsWith(stripPrefix)
-									? line.slice(stripPrefix.length)
-									: line,
-							)
-					);
+					return raw
+						.trim()
+						.split("\n")
+						.map((line) => line.trim())
+						.filter(Boolean)
+						.filter((line) => !line.includes("->"))
+						.map((line) =>
+							stripPrefix && line.startsWith(stripPrefix)
+								? line.slice(stripPrefix.length)
+								: line,
+						);
 				} catch {
 					return [];
 				}
@@ -117,9 +112,7 @@ export const gitRouter = router({
 			const sortedLocal = sortAlphabetical(localNames);
 			const sortedRemoteOnly = sortAlphabetical(remoteOnlyNames);
 
-			const compareRef = defaultBranchName
-				? `origin/${defaultBranchName}`
-				: undefined;
+			const compareRef = base?.baseRef;
 
 			const localBranches = await Promise.all(
 				sortedLocal.map((name) =>
@@ -128,7 +121,7 @@ export const gitRouter = router({
 			);
 			const remoteBranches = await Promise.all(
 				sortedRemoteOnly.map((name) =>
-					buildBranch(git, name, false, compareRef, { isRemote: true }),
+					buildBranch(git, name, false, compareRef, true),
 				),
 			);
 
@@ -167,11 +160,9 @@ export const gitRouter = router({
 			const currentBranchName = (
 				await git.revparse(["--abbrev-ref", "HEAD"]).catch(() => "")
 			).trim();
-			const defaultBranchName =
-				input.baseBranch ?? (await getDefaultBranchName(git));
-			const baseRef = defaultBranchName
-				? `origin/${defaultBranchName}`
-				: "HEAD";
+			const base = await resolveBaseComparison(git, input.baseBranch);
+			const defaultBranchName = base?.branchName ?? null;
+			const baseRef = base?.baseRef ?? "HEAD";
 
 			const [currentBranch, defaultBranch, status, ignoredRaw] =
 				await Promise.all([
@@ -199,11 +190,18 @@ export const gitRouter = router({
 				.map((line) => line.trim().replace(/\/$/, ""))
 				.filter(Boolean);
 
-			const againstBase = await getChangedFilesForDiff(git, [baseRef, "HEAD"]);
+			const againstBase = await getChangedFilesForDiff(git, [
+				`${baseRef}...HEAD`,
+			]);
 
-			// Staged — use status.files index character for correct status
+			// Staged — use status.files index character for correct status.
+			// `-M -C` lets the numstat collapse renamed/copied entries so a
+			// `git add` of `mv old new` yields a single 0/0 rename row
+			// instead of an A + D pair.
 			const stagedNumstat = parseNumstat(
-				await git.raw(["diff", "--numstat", "--cached"]).catch(() => ""),
+				await git
+					.raw(["diff", "--numstat", "-z", "-M", "-C", "--cached"])
+					.catch(() => ""),
 			);
 			const staged: ChangedFile[] = [];
 			for (const file of status.files) {
@@ -215,6 +213,8 @@ export const gitRouter = router({
 					};
 					staged.push({
 						path: file.path,
+						oldPath:
+							file.from && file.from !== file.path ? file.from : undefined,
 						status: mapGitStatus(idx),
 						additions: stats.additions,
 						deletions: stats.deletions,
@@ -224,18 +224,21 @@ export const gitRouter = router({
 
 			// Unstaged — use status.files working_dir character
 			const unstagedNumstat = parseNumstat(
-				await git.raw(["diff", "--numstat"]).catch(() => ""),
+				await git.raw(["diff", "--numstat", "-z"]).catch(() => ""),
 			);
 			const unstaged: ChangedFile[] = [];
+			const untrackedFiles: ChangedFile[] = [];
 			for (const file of status.files) {
 				const wd = file.working_dir;
 				if (file.index === "?" && wd === "?") {
-					unstaged.push({
+					const entry: ChangedFile = {
 						path: file.path,
 						status: "untracked",
 						additions: 0,
 						deletions: 0,
-					});
+					};
+					untrackedFiles.push(entry);
+					unstaged.push(entry);
 				} else if (wd && wd !== " ") {
 					const stats = unstagedNumstat.get(file.path) ?? {
 						additions: 0,
@@ -249,13 +252,48 @@ export const gitRouter = router({
 					});
 				}
 			}
+			await countUntrackedFileLines(worktreePath, untrackedFiles);
+
+			const hasDeletions = unstaged.some((f) => f.status === "deleted");
+			const renames = await detectUnstagedRenames(
+				git,
+				worktreePath,
+				untrackedFiles.map((f) => f.path),
+				hasDeletions,
+			);
+
+			let mergedUnstaged = unstaged;
+			if (renames.length > 0) {
+				const consumedDeleted = new Set<string>();
+				const consumedUntracked = new Set<string>();
+				for (const r of renames) {
+					if (r.status === "renamed") consumedDeleted.add(r.oldPath);
+					consumedUntracked.add(r.newPath);
+				}
+				mergedUnstaged = unstaged.filter((f) => {
+					if (f.status === "deleted" && consumedDeleted.has(f.path))
+						return false;
+					if (f.status === "untracked" && consumedUntracked.has(f.path))
+						return false;
+					return true;
+				});
+				for (const r of renames) {
+					mergedUnstaged.push({
+						path: r.newPath,
+						oldPath: r.oldPath,
+						status: r.status,
+						additions: r.additions,
+						deletions: r.deletions,
+					});
+				}
+			}
 
 			return {
 				currentBranch,
 				defaultBranch,
 				againstBase,
 				staged,
-				unstaged,
+				unstaged: mergedUnstaged,
 				ignoredPaths,
 			};
 		}),
@@ -271,11 +309,8 @@ export const gitRouter = router({
 			const worktreePath = resolveWorktreePath(ctx, input.workspaceId);
 			const git = await ctx.git(worktreePath);
 
-			const defaultBranchName =
-				input.baseBranch ?? (await getDefaultBranchName(git));
-			const baseRef = defaultBranchName
-				? `origin/${defaultBranchName}`
-				: "HEAD";
+			const base = await resolveBaseComparison(git, input.baseBranch);
+			const baseRef = base?.baseRef ?? "HEAD";
 
 			const commits: Commit[] = [];
 			try {
@@ -424,11 +459,17 @@ export const gitRouter = router({
 			let modifiedContent = "";
 
 			if (input.category === "against-base") {
-				const baseBranch =
-					input.baseBranch ?? (await getDefaultBranchName(git));
-				const baseRef = baseBranch ? `origin/${baseBranch}` : "HEAD";
+				const base = await resolveBaseComparison(git, input.baseBranch);
+				const baseRef = base?.baseRef ?? "HEAD";
+				// Use the merge base so the diff excludes unrelated changes
+				// landed on the base branch after we forked — matches what the
+				// file list (3-dot diff) is already filtered by.
+				const originRef = await git
+					.raw(["merge-base", baseRef, "HEAD"])
+					.then((s) => s.trim())
+					.catch(() => baseRef);
 				try {
-					originalContent = await git.show([`${baseRef}:${input.path}`]);
+					originalContent = await git.show([`${originRef}:${input.path}`]);
 				} catch {}
 				try {
 					modifiedContent = await git.show([`HEAD:${input.path}`]);
@@ -560,7 +601,16 @@ export const gitRouter = router({
 				});
 			}
 
-			if (!pr.repoOwner || !pr.repoName) {
+			const project = ctx.db.query.projects
+				.findFirst({ where: eq(projects.id, workspace.projectId) })
+				.sync();
+			if (!project) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: `Project ${workspace.projectId} not found in database`,
+				});
+			}
+			if (!project.repoOwner || !project.repoName) {
 				return { reviewThreads: [], conversationComments: [] };
 			}
 
@@ -571,8 +621,8 @@ export const gitRouter = router({
 				const result: GraphQLThreadsResult = await octokit.graphql(
 					REVIEW_THREADS_QUERY,
 					{
-						owner: pr.repoOwner,
-						name: pr.repoName,
+						owner: project.repoOwner,
+						name: project.repoName,
 						prNumber: pr.prNumber,
 					},
 				);
@@ -590,8 +640,8 @@ export const gitRouter = router({
 				let hasMore = true;
 				while (hasMore) {
 					const { data: comments } = await octokit.issues.listComments({
-						owner: pr.repoOwner,
-						repo: pr.repoName,
+						owner: project.repoOwner,
+						repo: project.repoName,
 						issue_number: pr.prNumber,
 						per_page: 100,
 						page,
