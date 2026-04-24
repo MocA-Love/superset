@@ -20,7 +20,6 @@ import type {
 	SearchContentResult,
 	SearchLineResult,
 	SearchResultGroup,
-	SearchResultViewMode,
 	SearchTreeFolderNode,
 	SearchTreeNode as SearchTreeNodeType,
 } from "./types";
@@ -220,8 +219,10 @@ export function SearchView({
 	const [ignoredMatchIds, setIgnoredMatchIds] = useState<Record<string, true>>(
 		{},
 	);
-	const [resultViewMode, setResultViewMode] =
-		useState<SearchResultViewMode>("tree");
+	const resultViewMode = useSearchDialogStore((state) => state.resultViewMode);
+	const setResultViewMode = useSearchDialogStore(
+		(state) => state.setResultViewMode,
+	);
 	const includePattern = useSearchDialogStore(
 		(state) => state.byMode.keywordSearch.includePattern,
 	);

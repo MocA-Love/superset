@@ -42,5 +42,3 @@ export interface SearchTreeFolderNode {
 }
 
 export type SearchTreeNode = SearchTreeFileNode | SearchTreeFolderNode;
-
-export type SearchResultViewMode = "tree" | "list";
