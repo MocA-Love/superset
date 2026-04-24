@@ -9,6 +9,7 @@ import {
 	HiOutlineCreditCard,
 	HiOutlineExclamationCircle,
 	HiOutlineKey,
+	HiOutlineLink,
 	HiOutlineLockClosed,
 	HiOutlinePaintBrush,
 	HiOutlinePuzzlePiece,
@@ -37,6 +38,7 @@ type SettingsRoute =
 	| "/settings/git"
 	| "/settings/agents"
 	| "/settings/terminal"
+	| "/settings/links"
 	| "/settings/models"
 	| "/settings/integrations"
 	| "/settings/service-status"
@@ -83,12 +85,6 @@ const SECTION_GROUPS: SectionGroup[] = [
 				label: "Notifications",
 				icon: <HiOutlineBell className="h-4 w-4" />,
 			},
-			{
-				id: "/settings/keyboard",
-				section: "keyboard",
-				label: "Keyboard",
-				icon: <LuKeyboard className="h-4 w-4" />,
-			},
 		],
 	},
 	{
@@ -99,6 +95,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "behavior",
 				label: "General",
 				icon: <HiOutlineSparkles className="h-4 w-4" />,
+			},
+			{
+				id: "/settings/keyboard",
+				section: "keyboard",
+				label: "Keyboard",
+				icon: <LuKeyboard className="h-4 w-4" />,
 			},
 			{
 				id: "/settings/diagnostics",
@@ -123,6 +125,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "terminal",
 				label: "Terminal",
 				icon: <HiOutlineCommandLine className="h-4 w-4" />,
+			},
+			{
+				id: "/settings/links",
+				section: "links",
+				label: "Links",
+				icon: <HiOutlineLink className="h-4 w-4" />,
 			},
 			{
 				id: "/settings/models",

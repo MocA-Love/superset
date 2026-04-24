@@ -1,7 +1,12 @@
 import {
+	sanitizeUserBranchName,
+	slugifyForBranch,
+} from "@superset/shared/workspace-launch";
+import {
 	PromptInput,
 	PromptInputAttachment,
 	PromptInputAttachments,
+	PromptInputButton,
 	PromptInputFooter,
 	PromptInputSubmit,
 	PromptInputTextarea,
@@ -14,17 +19,17 @@ import { cn } from "@superset/ui/utils";
 import type { FileUIPart } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { GoIssueOpened } from "react-icons/go";
 import { LuGitPullRequest } from "react-icons/lu";
+import { SiLinear } from "react-icons/si";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { LinkedIssuePill } from "renderer/components/Chat/ChatInterface/components/ChatInputFooter/components/LinkedIssuePill";
 import { IssueLinkCommand } from "renderer/components/Chat/ChatInterface/components/IssueLinkCommand";
 import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferences";
+import { useEnabledAgents } from "renderer/hooks/useEnabledAgents";
 import { PLATFORM } from "renderer/hotkeys";
-import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useNewWorkspaceModalOpen } from "renderer/stores/new-workspace-modal";
-import { getEnabledAgentConfigs } from "shared/utils/agent-settings";
-import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
 import { DevicePicker } from "../components/DevicePicker";
 import { AttachmentButtons } from "./components/AttachmentButtons";
@@ -73,11 +78,8 @@ export function PromptGroup({
 	} = draft;
 
 	// ── Agent presets ────────────────────────────────────────────────
-	const agentPresetsQuery = electronTrpc.settings.getAgentPresets.useQuery();
-	const enabledAgentPresets = useMemo(
-		() => getEnabledAgentConfigs(agentPresetsQuery.data ?? []),
-		[agentPresetsQuery.data],
-	);
+	const { agents: enabledAgentPresets, isFetched: agentsFetched } =
+		useEnabledAgents();
 	const selectableAgentIds = useMemo(
 		() => enabledAgentPresets.map((preset) => preset.id),
 		[enabledAgentPresets],
@@ -88,14 +90,9 @@ export function PromptGroup({
 			defaultAgent: "claude",
 			fallbackAgent: "none",
 			validAgents: ["none", ...selectableAgentIds],
-			agentsReady: agentPresetsQuery.isFetched,
+			agentsReady: agentsFetched,
 		});
 
-	// ── Link commands ────────────────────────────────────────────────
-	const [issueLinkOpen, setIssueLinkOpen] = useState(false);
-	const [gitHubIssueLinkOpen, setGitHubIssueLinkOpen] = useState(false);
-	const [prLinkOpen, setPRLinkOpen] = useState(false);
-	const plusMenuRef = useRef<HTMLDivElement>(null);
 	const trimmedPrompt = prompt.trim();
 	const branchPreview = branchNameEdited
 		? sanitizeUserBranchName(branchName)
@@ -129,7 +126,7 @@ export function PromptGroup({
 	});
 
 	// ── Submit (fork) ────────────────────────────────────────────────
-	const handleCreate = useSubmitWorkspace(projectId);
+	const handleCreate = useSubmitWorkspace(projectId, selectedAgent);
 	const handlePromptSubmit = useCallback(
 		(message: { text?: string; files?: FileUIPart[] }) => {
 			// Library converts blob: → data: URLs before calling us; pass them
@@ -299,46 +296,56 @@ export function PromptGroup({
 					</PromptInputTools>
 					<div className="flex items-center gap-2">
 						<AttachmentButtons
-							anchorRef={plusMenuRef}
-							onOpenIssueLink={() =>
-								requestAnimationFrame(() => setIssueLinkOpen(true))
+							linearIssueTrigger={
+								<IssueLinkCommand
+									onSelect={addLinkedIssue}
+									tooltipLabel="Link issue"
+								>
+									<PromptInputButton
+										aria-label="Link issue"
+										className={`${PILL_BUTTON_CLASS} w-[22px]`}
+									>
+										<SiLinear className="size-3.5" />
+									</PromptInputButton>
+								</IssueLinkCommand>
 							}
-							onOpenGitHubIssue={() =>
-								requestAnimationFrame(() => setGitHubIssueLinkOpen(true))
+							githubIssueTrigger={
+								<GitHubIssueLinkCommand
+									onSelect={(issue) =>
+										addLinkedGitHubIssue(
+											issue.issueNumber,
+											issue.title,
+											issue.url,
+											issue.state,
+										)
+									}
+									projectId={projectId}
+									hostTarget={hostTarget}
+									tooltipLabel="Link GitHub issue"
+								>
+									<PromptInputButton
+										aria-label="Link GitHub issue"
+										className={`${PILL_BUTTON_CLASS} w-[22px]`}
+									>
+										<GoIssueOpened className="size-3.5" />
+									</PromptInputButton>
+								</GitHubIssueLinkCommand>
 							}
-							onOpenPRLink={() =>
-								requestAnimationFrame(() => setPRLinkOpen(true))
+							prTrigger={
+								<PRLinkCommand
+									onSelect={setLinkedPR}
+									projectId={projectId}
+									hostTarget={hostTarget}
+									tooltipLabel="Link pull request"
+								>
+									<PromptInputButton
+										aria-label="Link pull request"
+										className={`${PILL_BUTTON_CLASS} w-[22px]`}
+									>
+										<LuGitPullRequest className="size-3.5" />
+									</PromptInputButton>
+								</PRLinkCommand>
 							}
-						/>
-						<IssueLinkCommand
-							variant="popover"
-							anchorRef={plusMenuRef}
-							open={issueLinkOpen}
-							onOpenChange={setIssueLinkOpen}
-							onSelect={addLinkedIssue}
-						/>
-						<GitHubIssueLinkCommand
-							open={gitHubIssueLinkOpen}
-							onOpenChange={setGitHubIssueLinkOpen}
-							onSelect={(issue) =>
-								addLinkedGitHubIssue(
-									issue.issueNumber,
-									issue.title,
-									issue.url,
-									issue.state,
-								)
-							}
-							projectId={projectId}
-							hostTarget={hostTarget}
-							anchorRef={plusMenuRef}
-						/>
-						<PRLinkCommand
-							open={prLinkOpen}
-							onOpenChange={setPRLinkOpen}
-							onSelect={setLinkedPR}
-							projectId={projectId}
-							hostTarget={hostTarget}
-							anchorRef={plusMenuRef}
 						/>
 						<PromptInputSubmit
 							className="size-[22px] rounded-full border border-transparent bg-foreground/10 shadow-none p-[5px] hover:bg-foreground/20"
@@ -356,9 +363,13 @@ export function PromptGroup({
 			{/* Bottom bar */}
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2 min-w-0 flex-1">
+					<DevicePicker
+						hostTarget={hostTarget}
+						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
+					/>
 					<ProjectPickerPill
 						selectedProject={selectedProject}
-						recentProjects={recentProjects}
+						projects={recentProjects}
 						onSelectProject={onSelectProject}
 					/>
 					<AnimatePresence mode="wait" initial={false}>
@@ -390,9 +401,15 @@ export function PromptGroup({
 				</div>
 				<div className="flex items-center gap-1.5">
 					<DevicePicker
+						className="w-[160px]"
 						hostTarget={hostTarget}
 						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
 					/>
+					{selectedProject?.needsSetup === true && (
+						<span className="text-[11px] text-amber-500">
+							Project needs to be set up
+						</span>
+					)}
 					<span className="text-[11px] text-muted-foreground/50">
 						{modKey}↵
 					</span>

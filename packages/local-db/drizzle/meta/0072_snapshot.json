@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "dd0a1a43-935e-41bc-95b0-b8e18a755b37",
-  "prevId": "6370d89f-6faf-42a6-914b-0c3498decd97",
+  "id": "0297e111-1b4d-4066-995d-55438119c926",
+  "prevId": "17698d4c-87f3-4e5e-8071-10d8680ccef2",
   "tables": {
     "browser_history": {
       "name": "browser_history",
@@ -1274,6 +1274,82 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "v1_migration_state": {
+      "name": "v1_migration_state",
+      "columns": {
+        "v1_id": {
+          "name": "v1_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "v2_id": {
+          "name": "v2_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "migrated_at": {
+          "name": "migrated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "v1_migration_state_v2_id_idx": {
+          "name": "v1_migration_state_v2_id_idx",
+          "columns": [
+            "v2_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "v1_migration_state_organization_id_v1_id_kind_pk": {
+          "columns": [
+            "organization_id",
+            "v1_id",
+            "kind"
+          ],
+          "name": "v1_migration_state_organization_id_v1_id_kind_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

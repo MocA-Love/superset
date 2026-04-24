@@ -1,13 +1,32 @@
+import { isPaidPlan } from "@superset/shared/billing";
+import { FEATURE_FLAGS } from "@superset/shared/constants";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@superset/ui/dropdown-menu";
+import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { HiOutlineClipboardDocumentList } from "react-icons/hi2";
-import { LuFolderPlus, LuLayers, LuPlus } from "react-icons/lu";
+import { useFeatureFlagEnabled } from "posthog-js/react";
+import { HiMiniPlus, HiOutlineClipboardDocumentList } from "react-icons/hi2";
+import {
+	LuClock,
+	LuFolderInput,
+	LuFolderPlus,
+	LuLayers,
+	LuPlus,
+} from "react-icons/lu";
 import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
+import { useCurrentPlan } from "renderer/hooks/useCurrentPlan";
 import { useHotkeyDisplay } from "renderer/hotkeys";
+import { useFolderFirstImport } from "renderer/routes/_authenticated/_dashboard/components/AddRepositoryModals/hooks/useFolderFirstImport";
 import { OrganizationDropdown } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/OrganizationDropdown";
 import { useTasksFilterStore } from "renderer/routes/_authenticated/_dashboard/tasks/stores/tasks-filter-state";
 import { STROKE_WIDTH_THICK } from "renderer/screens/main/components/WorkspaceSidebar/constants";
+import { useOpenNewProjectModal } from "renderer/stores/add-repository-modal";
 import { useOpenNewWorkspaceModal } from "renderer/stores/new-workspace-modal";
 
 interface DashboardSidebarHeaderProps {
@@ -18,12 +37,28 @@ export function DashboardSidebarHeader({
 	isCollapsed = false,
 }: DashboardSidebarHeaderProps) {
 	const openModal = useOpenNewWorkspaceModal();
+	const openNewProject = useOpenNewProjectModal();
+	const folderImport = useFolderFirstImport({
+		onSuccess: () => {
+			toast.success("Project ready — open it from the sidebar.");
+		},
+		onError: (message) => {
+			toast.error(`Import failed: ${message}`);
+		},
+	});
 	const shortcutText = useHotkeyDisplay("NEW_WORKSPACE").text;
 	const navigate = useNavigate();
 	const matchRoute = useMatchRoute();
 	const { gateFeature } = usePaywall();
 	const isWorkspacesListOpen = !!matchRoute({ to: "/v2-workspaces" });
 	const isTasksOpen = !!matchRoute({ to: "/tasks", fuzzy: true });
+	const isAutomationsOpen = !!matchRoute({ to: "/automations", fuzzy: true });
+
+	const automationsFlagEnabled = useFeatureFlagEnabled(
+		FEATURE_FLAGS.AUTOMATIONS_ACCESS,
+	);
+	const plan = useCurrentPlan();
+	const showAutomations = automationsFlagEnabled && isPaidPlan(plan);
 
 	const {
 		tab: lastTab,
@@ -33,6 +68,10 @@ export function DashboardSidebarHeader({
 
 	const handleWorkspacesClick = () => {
 		navigate({ to: "/v2-workspaces" });
+	};
+
+	const handleAutomationsClick = () => {
+		navigate({ to: "/automations" });
 	};
 
 	const handleTasksClick = () => {
@@ -86,17 +125,52 @@ export function DashboardSidebarHeader({
 					<TooltipContent side="right">Tasks</TooltipContent>
 				</Tooltip>
 
-				<Tooltip delayDuration={300}>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-						>
-							<LuFolderPlus className="size-4" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="right">Add Repository</TooltipContent>
-				</Tooltip>
+				<DropdownMenu>
+					<Tooltip delayDuration={300}>
+						<TooltipTrigger asChild>
+							<DropdownMenuTrigger asChild>
+								<button
+									type="button"
+									aria-label="Add repository"
+									className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+								>
+									<LuFolderPlus className="size-4" />
+								</button>
+							</DropdownMenuTrigger>
+						</TooltipTrigger>
+						<TooltipContent side="right">Add repository</TooltipContent>
+					</Tooltip>
+					<DropdownMenuContent align="start">
+						<DropdownMenuItem onSelect={openNewProject}>
+							<HiMiniPlus className="size-4" />
+							New project
+						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={() => folderImport.start()}>
+							<LuFolderInput className="size-4" />
+							Import existing folder
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+
+				{showAutomations && (
+					<Tooltip delayDuration={300}>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								onClick={handleAutomationsClick}
+								className={cn(
+									"flex size-8 items-center justify-center rounded-md transition-colors",
+									isAutomationsOpen
+										? "bg-accent text-foreground"
+										: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+								)}
+							>
+								<LuClock className="size-4" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="right">Automations</TooltipContent>
+					</Tooltip>
+				)}
 
 				<Tooltip delayDuration={300}>
 					<TooltipTrigger asChild>
@@ -122,17 +196,32 @@ export function DashboardSidebarHeader({
 				<div className="flex-1 min-w-0">
 					<OrganizationDropdown variant="expanded" />
 				</div>
-				<Tooltip delayDuration={300}>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-						>
-							<LuFolderPlus className="size-4" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="right">Add Repository</TooltipContent>
-				</Tooltip>
+				<DropdownMenu>
+					<Tooltip delayDuration={300}>
+						<TooltipTrigger asChild>
+							<DropdownMenuTrigger asChild>
+								<button
+									type="button"
+									aria-label="Add repository"
+									className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+								>
+									<LuFolderPlus className="size-4" />
+								</button>
+							</DropdownMenuTrigger>
+						</TooltipTrigger>
+						<TooltipContent side="right">Add repository</TooltipContent>
+					</Tooltip>
+					<DropdownMenuContent align="end">
+						<DropdownMenuItem onSelect={openNewProject}>
+							<HiMiniPlus className="size-4" />
+							New project
+						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={() => folderImport.start()}>
+							<LuFolderInput className="size-4" />
+							Import existing folder
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</div>
 
 			<button
@@ -148,6 +237,22 @@ export function DashboardSidebarHeader({
 				<LuLayers className="size-4 shrink-0" />
 				<span className="flex-1 text-left">Workspaces</span>
 			</button>
+
+			{showAutomations && (
+				<button
+					type="button"
+					onClick={handleAutomationsClick}
+					className={cn(
+						"flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+						isAutomationsOpen
+							? "bg-accent text-foreground"
+							: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+					)}
+				>
+					<LuClock className="size-4 shrink-0" />
+					<span className="flex-1 text-left">Automations</span>
+				</button>
+			)}
 
 			<button
 				type="button"

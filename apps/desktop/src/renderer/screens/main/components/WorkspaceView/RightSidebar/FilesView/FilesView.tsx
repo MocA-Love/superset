@@ -446,7 +446,7 @@ export function FilesView() {
 			if (!worktreePath) return;
 			openFileInEditorMutation.mutate({
 				path: entry.path,
-				cwd: worktreePath,
+				worktreePath,
 				projectId,
 			});
 		},

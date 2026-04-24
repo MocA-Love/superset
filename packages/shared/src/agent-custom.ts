@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PromptTransport } from "./agent-prompt-launch";
+import { PROMPT_TRANSPORTS } from "./agent-prompt-launch";
 
 /**
  * Fields on a builtin agent preset that the user can override.
@@ -58,9 +58,7 @@ export const agentCustomDefinitionSchema = z.object({
 	command: z.string(),
 	promptCommand: z.string().optional(),
 	promptCommandSuffix: z.string().optional(),
-	promptTransport: z
-		.enum(["argv", "stdin"] as [PromptTransport, ...PromptTransport[]])
-		.optional(),
+	promptTransport: z.enum(PROMPT_TRANSPORTS).optional(),
 	taskPromptTemplate: z.string(),
 	contextPromptTemplateSystem: z.string().optional(),
 	contextPromptTemplateUser: z.string().optional(),

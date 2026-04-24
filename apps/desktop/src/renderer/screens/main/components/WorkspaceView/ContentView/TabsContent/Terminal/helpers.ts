@@ -158,14 +158,9 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 
 			try {
 				webglAddon = new WebglAddon();
-				terminalRendererDebug.info(
-					"webgl-addon-loaded",
-					{ suggestedRendererType: suggestedRendererType ?? "auto" },
-					{
-						captureMessage: true,
-						fingerprint: ["terminal.renderer", "webgl-loaded"],
-					},
-				);
+				terminalRendererDebug.info("webgl-addon-loaded", {
+					suggestedRendererType: suggestedRendererType ?? "auto",
+				});
 				webglAddon.onContextLoss(() => {
 					webglAddon?.dispose();
 					webglAddon = null;
@@ -220,7 +215,9 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 					);
 				});
 		},
-		onUrlClick: (_event, uri) => {
+		onUrlClick: (event, uri) => {
+			if (!event.metaKey && !event.ctrlKey) return;
+			event.preventDefault();
 			const handler = urlClickRef?.current;
 			if (handler) {
 				handler(uri);

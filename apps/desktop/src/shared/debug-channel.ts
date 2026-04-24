@@ -31,6 +31,9 @@ export interface DebugChannelOptions {
 	transport?: DebugChannelTransport;
 	mirrorToConsole?: boolean;
 	maxStringLength?: number;
+	// true (default) の場合、aggregate flush が captureMessage を送る。
+	// false にすると aggregate は Breadcrumb だけを残す。
+	captureMessageByDefault?: boolean;
 }
 
 export interface DebugLogOptions {
@@ -123,6 +126,7 @@ export class DebugChannel {
 	private readonly transport?: DebugChannelTransport;
 	private readonly mirrorToConsole: boolean;
 	private readonly maxStringLength: number;
+	private readonly captureMessageByDefault: boolean;
 	private readonly aggregates = new Map<string, AggregateState>();
 
 	constructor(options: DebugChannelOptions) {
@@ -131,6 +135,7 @@ export class DebugChannel {
 		this.transport = options.transport;
 		this.mirrorToConsole = options.mirrorToConsole ?? true;
 		this.maxStringLength = options.maxStringLength ?? DEFAULT_MAX_STRING_LENGTH;
+		this.captureMessageByDefault = options.captureMessageByDefault ?? true;
 	}
 
 	log(
@@ -250,7 +255,7 @@ export class DebugChannel {
 					key,
 					metric,
 					options?.level ?? "info",
-					options?.captureMessage ?? true,
+					options?.captureMessage ?? this.captureMessageByDefault,
 				);
 			}, intervalMs);
 		}
@@ -259,7 +264,7 @@ export class DebugChannel {
 	flushAll(): void {
 		for (const key of this.aggregates.keys()) {
 			const [metric] = key.split(":");
-			this.flushAggregate(key, metric, "info", true);
+			this.flushAggregate(key, metric, "info", this.captureMessageByDefault);
 		}
 	}
 

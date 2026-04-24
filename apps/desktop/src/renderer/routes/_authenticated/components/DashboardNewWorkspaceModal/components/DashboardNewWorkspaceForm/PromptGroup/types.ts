@@ -1,4 +1,4 @@
-import type { AgentDefinitionId } from "shared/utils/agent-settings";
+import type { AgentDefinitionId } from "@superset/shared/agent-settings";
 
 export type WorkspaceCreateAgent = AgentDefinitionId | "none";
 
@@ -12,4 +12,7 @@ export interface ProjectOption {
 	name: string;
 	githubOwner: string | null;
 	githubRepoName: string | null;
+	// True when the currently-selected host doesn't yet have this project
+	// set up. null when we couldn't check (offline / unreachable host).
+	needsSetup: boolean | null;
 }

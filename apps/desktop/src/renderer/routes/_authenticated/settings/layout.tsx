@@ -34,6 +34,7 @@ const SECTION_ORDER: SettingsSection[] = [
 	"diagnostics",
 	"git",
 	"terminal",
+	"links",
 	"models",
 	"extensions",
 	"vscodeExtensions",
@@ -57,6 +58,7 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/diagnostics")) return "diagnostics";
 	if (pathname.includes("/settings/git")) return "git";
 	if (pathname.includes("/settings/terminal")) return "terminal";
+	if (pathname.includes("/settings/links")) return "links";
 	if (pathname.includes("/settings/models")) return "models";
 	if (pathname.includes("/settings/integrations")) return "integrations";
 	if (pathname.includes("/settings/vscode-extensions"))
@@ -90,6 +92,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/git";
 		case "terminal":
 			return "/settings/terminal";
+		case "links":
+			return "/settings/links";
 		case "models":
 			return "/settings/models";
 		case "integrations":

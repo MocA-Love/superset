@@ -290,13 +290,6 @@
       "breakpoints": true
     },
     {
-      "idx": 41,
-      "version": "6",
-      "when": 1775489797005,
-      "tag": "0041_add_editor_features_and_site_permissions",
-      "breakpoints": true
-    },
-    {
       "idx": 42,
       "version": "6",
       "when": 1775708839194,
@@ -502,15 +495,15 @@
     {
       "idx": 71,
       "version": "6",
-      "when": 1776993150080,
-      "tag": "0071_service_status_definitions",
+      "when": 1776992216374,
+      "tag": "0071_v1_migration_state",
       "breakpoints": true
     },
     {
       "idx": 72,
       "version": "6",
-      "when": 1777012605608,
-      "tag": "0072_add_service_status_format",
+      "when": 1777060160634,
+      "tag": "0072_service_status_definitions",
       "breakpoints": true
     }
   ]

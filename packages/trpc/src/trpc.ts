@@ -1,6 +1,11 @@
 import type { auth, Session } from "@superset/auth/server";
 import { db } from "@superset/db/client";
-import { members } from "@superset/db/schema";
+import { members, subscriptions } from "@superset/db/schema";
+import {
+	isActiveSubscriptionStatus,
+	isPaidPlan,
+	type PlanTier,
+} from "@superset/shared/billing";
 import { COMPANY, ORGANIZATION_HEADER } from "@superset/shared/constants";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -114,3 +119,43 @@ export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 
 	return next({ ctx });
 });
+
+/**
+ * Resolves the plan tier for the session's active organization.
+ * Returns "free" when no active/trialing subscription exists.
+ */
+export async function getCurrentPlan(
+	activeOrganizationId: string | null | undefined,
+): Promise<PlanTier> {
+	if (!activeOrganizationId) return "free";
+
+	const subscription = await db.query.subscriptions.findFirst({
+		where: eq(subscriptions.referenceId, activeOrganizationId),
+	});
+
+	if (!subscription) return "free";
+	if (!isActiveSubscriptionStatus(subscription.status)) return "free";
+
+	const plan = subscription.plan;
+	if (plan === "pro" || plan === "enterprise") return plan;
+	return "free";
+}
+
+/**
+ * Gates features to orgs on a paid tier. Requires an active/trialing
+ * subscription with plan != "free".
+ */
+export const paidPlanProcedure = protectedProcedure.use(
+	async ({ ctx, next }) => {
+		const plan = await getCurrentPlan(ctx.activeOrganizationId);
+
+		if (!isPaidPlan(plan)) {
+			throw new TRPCError({
+				code: "FORBIDDEN",
+				message: "This feature requires a paid plan.",
+			});
+		}
+
+		return next({ ctx: { ...ctx, plan } });
+	},
+);

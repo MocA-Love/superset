@@ -38,7 +38,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
-import { useTabsStore } from "renderer/stores/tabs";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import { CheckSteps } from "./components/CheckSteps";
 import { CommentBody } from "./components/CommentBody";
 import { ReplyDialog } from "./components/ReplyDialog";
@@ -206,6 +206,20 @@ export function ReviewPanel({
 				refetchOnWindowFocus: false,
 			},
 		);
+	const openCommentPane = useTabsStore((s) => s.openCommentPane);
+
+	const handleOpenComment = (comment: PullRequestComment) => {
+		if (!resolvedWorkspaceId) return;
+		openCommentPane(resolvedWorkspaceId, {
+			commentId: comment.id,
+			authorLogin: comment.authorLogin,
+			avatarUrl: comment.avatarUrl,
+			body: comment.body,
+			url: comment.url,
+			path: comment.path,
+			line: comment.line,
+		});
+	};
 
 	useEffect(() => {
 		return () => {
@@ -455,7 +469,7 @@ export function ReviewPanel({
 		});
 	};
 
-	const toggleCommentExpansion = (commentId: string) => {
+	const _toggleCommentExpansion = (commentId: string) => {
 		setExpandedComments((prev) => {
 			const next = new Set(prev);
 			if (next.has(commentId)) {
@@ -952,7 +966,8 @@ export function ReviewPanel({
 					<button
 						type="button"
 						className="flex w-full items-start gap-1 px-1.5 py-1 cursor-pointer text-left"
-						onClick={() => toggleCommentExpansion(comment.id)}
+						onClick={() => handleOpenComment(comment)}
+						aria-label={`View comment by ${comment.authorLogin}`}
 					>
 						<LuChevronDown
 							className={cn(
