@@ -19,7 +19,7 @@ import { Input } from "@superset/ui/input";
 import { RadioGroup, RadioGroupItem } from "@superset/ui/radio-group";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { HiOutlineArrowUpTray, HiOutlineCheckCircle } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -142,8 +142,27 @@ export function ServiceDefinitionDialog({
 		electronTrpc.serviceStatus.createDefinition.useMutation();
 	const updateMutation =
 		electronTrpc.serviceStatus.updateDefinition.useMutation();
+	const deleteUncommittedIconMutation =
+		electronTrpc.serviceStatus.deleteUncommittedIcon.useMutation();
 	const selectImageFileMutation =
 		electronTrpc.window.selectImageFile.useMutation();
+
+	// Every `uploadCustomIcon` call writes a file to userData immediately. If
+	// the user cancels the dialog, replaces the file before saving, or picks
+	// multiple files in quick succession, only the final choice gets attached
+	// to a definition — the rest leak into `assets/service-status-icons`.
+	// Track the paths written during this dialog session so we can delete
+	// the ones that don't end up persisted.
+	const uncommittedIconPaths = useRef<Set<string>>(new Set());
+
+	const cleanupUncommittedIcons = (keepPath: string | null): void => {
+		for (const path of uncommittedIconPaths.current) {
+			if (path === keepPath) continue;
+			deleteUncommittedIconMutation.mutate({ absolutePath: path });
+		}
+		uncommittedIconPaths.current.clear();
+		if (keepPath) uncommittedIconPaths.current.add(keepPath);
+	};
 
 	const iconType = form.watch("iconType");
 	const iconValue = form.watch("iconValue");
@@ -171,6 +190,10 @@ export function ServiceDefinitionDialog({
 				await createMutation.mutateAsync(values);
 				toast.success(`${values.label} を追加しました`);
 			}
+			// The file attached to `values.iconValue` is now owned by the DB row;
+			// anything else the user tentatively uploaded during this session is
+			// an orphan and should go.
+			cleanupUncommittedIcons(null);
 			onOpenChange(false);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -208,6 +231,10 @@ export function ServiceDefinitionDialog({
 			const saved = await uploadIconMutation.mutateAsync({
 				dataUrl: selected.dataUrl,
 			});
+			// Discard any previous tentative upload from this dialog session —
+			// only the most recent choice is still referenced by the form, so
+			// the older files would otherwise leak on save.
+			cleanupUncommittedIcons(saved.absolutePath);
 			form.setValue("iconValue", saved.absolutePath, { shouldDirty: true });
 		} catch (error) {
 			toast.error(
@@ -218,8 +245,17 @@ export function ServiceDefinitionDialog({
 		}
 	};
 
+	// Intercept close events so cancelling (clicking outside, pressing Escape,
+	// or hitting the Cancel button) drops any uncommitted uploads.
+	const handleOpenChange = (next: boolean): void => {
+		if (!next) {
+			cleanupUncommittedIcons(null);
+		}
+		onOpenChange(next);
+	};
+
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle>
@@ -419,7 +455,7 @@ export function ServiceDefinitionDialog({
 							<Button
 								type="button"
 								variant="ghost"
-								onClick={() => onOpenChange(false)}
+								onClick={() => handleOpenChange(false)}
 							>
 								キャンセル
 							</Button>

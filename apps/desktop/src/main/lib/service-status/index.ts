@@ -187,6 +187,17 @@ class ServiceStatusService extends EventEmitter {
 		return saveCustomIconFromDataUrl(dataUrl);
 	}
 
+	/**
+	 * Delete an uncommitted custom-file icon that was uploaded by the Add /
+	 * Edit dialog but never attached to a definition (user cancelled, or
+	 * replaced the file before saving). `deleteCustomIconFile` already
+	 * enforces the managed-directory boundary so a stray path from the
+	 * renderer can't remove arbitrary files.
+	 */
+	deleteUncommittedIcon(absolutePath: string): void {
+		deleteCustomIconFile(absolutePath);
+	}
+
 	// --- Polling ----------------------------------------------------------
 
 	/**

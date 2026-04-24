@@ -51,23 +51,50 @@ function isPublicHttpsHost(hostname: string): boolean {
 	if (/^192\.168\./.test(host)) return false;
 	if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
 	if (/^169\.254\./.test(host)) return false;
-	// IPv4-mapped IPv6 forms (::ffff:127.0.0.1, ::ffff:10.0.0.1, …). Fold
-	// the embedded IPv4 out before reapplying the private-range checks so
-	// that attackers can't smuggle private addresses through the v6 shell.
-	const mapped = host.match(/^(?:::ffff:)?(?:0*:)*((?:\d{1,3}\.){3}\d{1,3})$/);
-	if (mapped) {
-		const v4 = mapped[1];
-		if (v4 === "127.0.0.1" || v4 === "0.0.0.0") return false;
-		if (/^127\./.test(v4)) return false;
-		if (/^10\./.test(v4)) return false;
-		if (/^192\.168\./.test(v4)) return false;
-		if (/^172\.(1[6-9]|2\d|3[01])\./.test(v4)) return false;
-		if (/^169\.254\./.test(v4)) return false;
+	// IPv4-mapped IPv6 addresses are a textbook SSRF-bypass surface: the
+	// WHATWG URL parser normalizes `http://[::ffff:127.0.0.1]/` to two
+	// different forms depending on the implementation —
+	//   1) dotted:       `::ffff:127.0.0.1`
+	//   2) hex-compressed: `::ffff:7f00:1`   (= 0x7f00.0x0001 = 127.0.0.1)
+	// — and the hex form slips past any regex that only looks for dotted
+	// quads. We extract the embedded IPv4 from both shapes so the private-
+	// range checks below can reuse a single code path.
+	const embeddedV4 = extractV4MappedToIPv6(host);
+	if (embeddedV4) {
+		if (embeddedV4 === "127.0.0.1" || embeddedV4 === "0.0.0.0") return false;
+		if (/^127\./.test(embeddedV4)) return false;
+		if (/^10\./.test(embeddedV4)) return false;
+		if (/^192\.168\./.test(embeddedV4)) return false;
+		if (/^172\.(1[6-9]|2\d|3[01])\./.test(embeddedV4)) return false;
+		if (/^169\.254\./.test(embeddedV4)) return false;
 	}
 	// Unique local addresses fc00::/7 (fc.. or fd..) and link-local fe80::/10.
 	if (/^f[cd][0-9a-f]{2}:/.test(host)) return false;
 	if (/^fe[89ab][0-9a-f]:/.test(host)) return false;
 	return true;
+}
+
+/**
+ * Extract the embedded IPv4 address from a v4-mapped IPv6 literal, in either
+ * of the two shapes WHATWG URL parsers emit. Returns `null` for anything
+ * that isn't a v4-mapped v6 address (including pure v4 strings — callers
+ * still run their own v4 regex set on the original host).
+ */
+function extractV4MappedToIPv6(host: string): string | null {
+	const dotted = host.match(
+		/^(?:0{1,4}:){0,5}:?:?ffff:((?:\d{1,3}\.){3}\d{1,3})$/i,
+	);
+	if (dotted?.[1]) return dotted[1];
+	const hex = host.match(
+		/^(?:0{1,4}:){0,5}:?:?ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i,
+	);
+	if (hex?.[1] && hex[2]) {
+		const high = Number.parseInt(hex[1], 16);
+		const low = Number.parseInt(hex[2], 16);
+		if (high > 0xffff || low > 0xffff) return null;
+		return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+	}
+	return null;
 }
 
 const safeHttpUrlSchema = z
@@ -183,6 +210,18 @@ export const createServiceStatusRouter = () => {
 			.mutation(async ({ input }) => {
 				const saved = await serviceStatusService.saveCustomIcon(input.dataUrl);
 				return { absolutePath: saved.absolutePath };
+			}),
+
+		// Cleanup of "orphan" uploads that the Add / Edit dialog wrote to disk
+		// but never attached to a definition (user cancelled or replaced the
+		// file before saving). The backend helper rejects any path outside the
+		// managed icons directory, so a compromised renderer can't use this to
+		// delete arbitrary files.
+		deleteUncommittedIcon: publicProcedure
+			.input(z.object({ absolutePath: z.string().min(1).max(4096) }))
+			.mutation(async ({ input }) => {
+				serviceStatusService.deleteUncommittedIcon(input.absolutePath);
+				return { ok: true };
 			}),
 
 		validateApiUrl: publicProcedure
