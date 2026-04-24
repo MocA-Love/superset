@@ -92,18 +92,11 @@ export function useTerminalRestore({
 			0,
 			pendingEventsRef.current.length,
 		);
-		terminalRendererDebug.info(
-			"flush-pending-events",
-			{
-				paneId,
-				eventCount: events.length,
-				dataEvents: events.filter((event) => event.type === "data").length,
-			},
-			{
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "flush-pending-events"],
-			},
-		);
+		terminalRendererDebug.info("flush-pending-events", {
+			paneId,
+			eventCount: events.length,
+			dataEvents: events.filter((event) => event.type === "data").length,
+		});
 		for (const event of events) {
 			if (event.type === "data") {
 				terminalRendererDebug.observe(

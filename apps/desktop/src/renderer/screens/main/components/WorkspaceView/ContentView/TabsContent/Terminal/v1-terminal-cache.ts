@@ -118,18 +118,11 @@ export function attachToContainer(
 
 	container.appendChild(entry.wrapper);
 	entry.openOnce();
-	terminalRendererDebug.info(
-		"cache-attach-to-container",
-		{
-			paneId,
-			hasSubscription: entry.subscription !== null,
-			streamReady: entry.streamReady,
-		},
-		{
-			captureMessage: true,
-			fingerprint: ["terminal.renderer", "cache-attach-to-container"],
-		},
-	);
+	terminalRendererDebug.info("cache-attach-to-container", {
+		paneId,
+		hasSubscription: entry.subscription !== null,
+		streamReady: entry.streamReady,
+	});
 
 	if (container.clientWidth > 0 && container.clientHeight > 0) {
 		entry.fitAddon.fit();
