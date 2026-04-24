@@ -15,6 +15,7 @@ import {
 	defineEnv,
 	devPath,
 	htmlEnvTransformPlugin,
+	stripCrossOriginPlugin,
 } from "./vite/helpers";
 
 // override: true ensures .env values take precedence over inherited env vars
@@ -124,6 +125,11 @@ export default defineConfig({
 				},
 				output: {
 					dir: resolve(devPath, "main"),
+					// VS Code and other Electron hosts set ELECTRON_RUN_AS_NODE=1 on
+					// their child process env; leaving it set puts Electron into plain
+					// Node mode and the app never opens a window. Clear it before any
+					// require("electron") call — must be the very first statement.
+					banner: "delete process.env.ELECTRON_RUN_AS_NODE;",
 				},
 				external: ["electron", ...mainExternalizedDependencies],
 				plugins: [sentryPlugin].filter(Boolean),
@@ -253,6 +259,7 @@ export default defineConfig({
 			}),
 			reactPlugin(),
 			htmlEnvTransformPlugin(),
+			stripCrossOriginPlugin(),
 		],
 
 		worker: {

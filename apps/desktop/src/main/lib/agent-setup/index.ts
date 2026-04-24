@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { PLATFORM } from "shared/constants";
 import { setupDesktopAgentCapabilities } from "./desktop-agent-setup";
 import {
 	BASH_DIR,
@@ -16,6 +17,18 @@ import {
 } from "./shell-wrappers";
 
 export function setupAgentHooks(): void {
+	// Windows: the current wrappers + notify / copilot / cursor / gemini /
+	// codex hooks are bash-only. Skipping setup keeps the app usable on
+	// Windows — agents run from the system PATH without Superset wrappers, so
+	// agent-side notifications and PATH injection are disabled until a native
+	// PowerShell implementation lands. Tracked in issue #273.
+	if (PLATFORM.IS_WINDOWS) {
+		console.log(
+			"[agent-setup] Skipping agent hook setup on Windows (not yet implemented)",
+		);
+		return;
+	}
+
 	console.log("[agent-setup] Initializing agent hooks...");
 
 	fs.mkdirSync(BIN_DIR, { recursive: true });

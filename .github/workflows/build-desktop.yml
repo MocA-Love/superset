@@ -263,3 +263,129 @@ jobs:
           path: apps/desktop/release/*-linux.yml
           retention-days: ${{ inputs.artifact_retention_days }}
           if-no-files-found: error
+
+  build-windows:
+    name: Build - Windows (x64)
+    runs-on: windows-latest
+    environment: production
+
+    defaults:
+      run:
+        # bash (Git Bash) is bundled on windows-latest runners and is used so
+        # the cross-platform scripts behave like they do on macOS/Linux.
+        shell: bash
+
+    steps:
+      - name: Enable git long paths
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Bun
+        id: setup-bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Cache dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ steps.setup-bun.outputs.bun-revision }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-bun-${{ steps.setup-bun.outputs.bun-revision }}-
+
+      - name: Install dependencies
+        run: bun install --frozen --ignore-scripts
+
+      - name: Install desktop native dependencies
+        working-directory: apps/desktop
+        run: bun run install:deps
+
+      - name: Set version suffix
+        if: inputs.version_suffix != ''
+        working-directory: apps/desktop
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          NEW_VERSION="${CURRENT_VERSION}${{ inputs.version_suffix }}"
+          echo "Setting version to: $NEW_VERSION"
+          node -e "
+            const fs = require('fs');
+            const pkg = require('./package.json');
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, '\t') + '\n');
+          "
+          echo "Updated package.json version to $NEW_VERSION"
+
+      - name: Clean dev folder
+        working-directory: apps/desktop
+        run: bun run clean:dev
+
+      - name: Generate file icons
+        working-directory: apps/desktop
+        run: bun run generate:icons
+
+      - name: Compile app with electron-vite
+        working-directory: apps/desktop
+        env:
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GH_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
+          NEXT_PUBLIC_WEB_URL: ${{ secrets.NEXT_PUBLIC_WEB_URL }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_DOCS_URL: ${{ secrets.NEXT_PUBLIC_DOCS_URL }}
+          NEXT_PUBLIC_STREAMS_URL: ${{ secrets.NEXT_PUBLIC_STREAMS_URL }}
+          NEXT_PUBLIC_ELECTRIC_URL: ${{ secrets.NEXT_PUBLIC_ELECTRIC_URL }}
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          RELAY_URL: ${{ secrets.RELAY_URL }}
+          SUPERSET_WORKSPACE_NAME: superset
+        run: bun run compile:app
+
+      - name: Build superset-browser-mcp binary
+        # Bun doesn't auto-run lifecycle hooks, so the prebuild step that emits
+        # Resources/resources/superset-browser-mcp/superset-browser-mcp.exe
+        # has to be invoked explicitly.
+        working-directory: apps/desktop
+        run: bun run build:browser-mcp
+
+      - name: Build Electron app (NSIS)
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: bun run package -- --publish never --config ${{ inputs.electron_builder_config }} --win
+
+      - name: Verify Windows installer + update manifest exist
+        working-directory: apps/desktop
+        run: |
+          ls -la release
+          test -n "$(ls -1 release/*.exe 2>/dev/null)" || {
+            echo "::error::No NSIS .exe generated in apps/desktop/release"
+            exit 1
+          }
+          test -f release/latest.yml || {
+            echo "::error::latest.yml (auto-update manifest) missing"
+            exit 1
+          }
+
+      - name: Upload NSIS installer artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.artifact_prefix }}-win-x64-nsis
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: error
+
+      - name: Upload Windows auto-update manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.artifact_prefix }}-win-x64-update-manifest
+          path: apps/desktop/release/latest.yml
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: error

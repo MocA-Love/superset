@@ -122,8 +122,13 @@ function copyModuleIfSymlink(
 		console.log(`  ${moduleName}: symlink -> replacing with real files`);
 		console.log(`    Real path: ${realPath}`);
 
-		// Remove the symlink
-		rmSync(modulePath);
+		// Windows: Bun materializes direct deps as directory junctions instead of
+		// file symlinks; rmSync needs { recursive: true } to remove them.
+		if (process.platform === "win32") {
+			rmSync(modulePath, { recursive: true, force: true });
+		} else {
+			rmSync(modulePath);
+		}
 
 		// Copy the actual files
 		cpSync(realPath, modulePath, { recursive: true });
@@ -275,7 +280,13 @@ function copyDependencyForPackage(
 			const nestedStats = lstatSync(nestedDependencyPath);
 			if (nestedStats.isSymbolicLink()) {
 				const realPath = realpathSync(nestedDependencyPath);
-				rmSync(nestedDependencyPath);
+				// Windows: bun materializes these as directory junctions, not
+				// file symlinks; rmSync needs { recursive: true } to remove them.
+				if (process.platform === "win32") {
+					rmSync(nestedDependencyPath, { recursive: true, force: true });
+				} else {
+					rmSync(nestedDependencyPath);
+				}
 				cpSync(realPath, nestedDependencyPath, {
 					recursive: true,
 				});

@@ -11,6 +11,35 @@ import {
 export { TEARDOWN_TIMEOUT_MS };
 
 export const TEARDOWN_SCRIPT_REL_PATH = ".superset/teardown.sh";
+
+interface TeardownScriptCandidate {
+	relativePath: string;
+	buildCommand: (path: string) => string;
+}
+
+const POSIX_TEARDOWN_CANDIDATES: TeardownScriptCandidate[] = [
+	{
+		relativePath: TEARDOWN_SCRIPT_REL_PATH,
+		buildCommand: (p) => `bash ${singleQuote(p)} ; exit $?`,
+	},
+];
+
+const WINDOWS_TEARDOWN_CANDIDATES: TeardownScriptCandidate[] = [
+	{
+		relativePath: ".superset/teardown.ps1",
+		buildCommand: (p) =>
+			`powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${doubleQuote(p)}`,
+	},
+	{
+		relativePath: ".superset/teardown.cmd",
+		buildCommand: (p) => `cmd.exe /c ${doubleQuote(p)}`,
+	},
+	{
+		relativePath: ".superset/teardown.bat",
+		buildCommand: (p) => `cmd.exe /c ${doubleQuote(p)}`,
+	},
+];
+
 const OUTPUT_TAIL_BYTES = 4096;
 const KILL_GRACE_MS = 2_000;
 
@@ -49,12 +78,28 @@ export async function runTeardown({
 	worktreePath,
 	timeoutMs = TEARDOWN_TIMEOUT_MS,
 }: RunTeardownOptions): Promise<TeardownResult> {
-	const scriptPath = join(worktreePath, TEARDOWN_SCRIPT_REL_PATH);
-	if (!existsSync(scriptPath)) return { status: "skipped" };
+	const candidates =
+		process.platform === "win32"
+			? WINDOWS_TEARDOWN_CANDIDATES
+			: POSIX_TEARDOWN_CANDIDATES;
+
+	let match: { path: string; buildCommand: (p: string) => string } | null =
+		null;
+	for (const candidate of candidates) {
+		const candidatePath = join(worktreePath, candidate.relativePath);
+		if (existsSync(candidatePath)) {
+			match = { path: candidatePath, buildCommand: candidate.buildCommand };
+			break;
+		}
+	}
+	if (!match) return { status: "skipped" };
+
+	const scriptPath = match.path;
 
 	const terminalId = randomUUID();
-	// Single-quoted so no shell interpolation is possible on the path.
-	const initialCommand = `bash ${singleQuote(scriptPath)} ; exit $?`;
+	// Shell-specific invocation. Paths are quoted so interpolation is
+	// impossible on both POSIX and Windows shells.
+	const initialCommand = match.buildCommand(scriptPath);
 
 	const session = createTerminalSessionInternal({
 		terminalId,
@@ -140,4 +185,9 @@ export async function runTeardown({
 /** POSIX single-quote escape: safe for any byte sequence in a path. */
 function singleQuote(s: string): string {
 	return `'${s.replaceAll("'", "'\\''")}'`;
+}
+
+/** Windows double-quote escape: safe for cmd.exe and PowerShell -File args. */
+function doubleQuote(s: string): string {
+	return `"${s.replaceAll('"', '""')}"`;
 }

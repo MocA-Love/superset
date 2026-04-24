@@ -155,7 +155,7 @@ function ScriptTextarea({
 			<input
 				ref={fileInputRef}
 				type="file"
-				accept=".sh,.bash,.zsh,.command"
+				accept=".sh,.bash,.zsh,.command,.ps1,.cmd,.bat"
 				onChange={handleFileInputChange}
 				className="hidden"
 			/>
