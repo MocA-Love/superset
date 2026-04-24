@@ -290,13 +290,6 @@
       "breakpoints": true
     },
     {
-      "idx": 41,
-      "version": "6",
-      "when": 1775489797005,
-      "tag": "0041_add_editor_features_and_site_permissions",
-      "breakpoints": true
-    },
-    {
       "idx": 42,
       "version": "6",
       "when": 1775708839194,
@@ -497,13 +490,6 @@
       "version": "6",
       "when": 1776971561202,
       "tag": "0070_agent_preset_permissions_migrated_at",
-      "breakpoints": true
-    },
-    {
-      "idx": 41,
-      "version": "6",
-      "when": 1776928440569,
-      "tag": "0041_v1_migration_state",
       "breakpoints": true
     }
   ]
