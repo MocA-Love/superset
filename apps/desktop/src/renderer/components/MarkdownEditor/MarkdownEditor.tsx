@@ -37,6 +37,8 @@ import { common, createLowlight } from "lowlight";
 import { useEffect, useRef } from "react";
 import { BubbleMenuToolbar } from "renderer/components/MarkdownRenderer/components/TipTapMarkdownRenderer/components/BubbleMenuToolbar";
 import { env } from "renderer/env.renderer";
+import { useInlineLinkActions } from "renderer/hooks/useV2UserPreferences";
+import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { Markdown } from "tiptap-markdown";
 import { CodeBlockView } from "./components/CodeBlockView";
 import { EmojiSuggestion } from "./components/EmojiSuggestion";
@@ -166,6 +168,8 @@ export function MarkdownEditor({
 	const searchFilesRef = useRef(searchFiles);
 	searchFilesRef.current = searchFiles;
 
+	const { getUrlAction } = useInlineLinkActions();
+
 	const editor = useEditor({
 		autofocus: autoFocus ? "end" : false,
 		extensions: [
@@ -271,6 +275,22 @@ export function MarkdownEditor({
 			handleKeyDown: (_, event) => {
 				if (!isEnterSubmit(event, { requireMod: true })) return false;
 				onModEnter?.();
+				return true;
+			},
+			handleClickOn: (_view, _pos, _node, _nodePos, event) => {
+				const target = event.target as HTMLElement | null;
+				const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
+				if (!anchor) return false;
+				const href = anchor.getAttribute("href");
+				if (!href) return false;
+				// No pane context here, so "pane" and "external" both route to the
+				// system browser. Null means do nothing — fall through to ProseMirror
+				// so the user can still click into the link to place a cursor.
+				if (getUrlAction(event) === null) return false;
+				event.preventDefault();
+				electronTrpcClient.external.openUrl.mutate(href).catch((error) => {
+					console.error("[MarkdownEditor] Failed to open URL:", href, error);
+				});
 				return true;
 			},
 		},
