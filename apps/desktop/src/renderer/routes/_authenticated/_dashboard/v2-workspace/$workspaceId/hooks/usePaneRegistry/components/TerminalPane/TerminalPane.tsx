@@ -1,6 +1,7 @@
 import type { RendererContext } from "@superset/panes";
 import { workspaceTrpc } from "@superset/workspace-client";
 import "@xterm/xterm/css/xterm.css";
+import { cn } from "@superset/ui/utils";
 import {
 	useCallback,
 	useEffect,
@@ -27,6 +28,7 @@ import type {
 import { useWorkspaceWsUrl } from "renderer/routes/_authenticated/_dashboard/v2-workspace/providers/WorkspaceTrpcProvider/WorkspaceTrpcProvider";
 import { ScrollToBottomButton } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/ScrollToBottomButton";
 import { TerminalSearch } from "renderer/screens/main/components/WorkspaceView/ContentView/TabsContent/Terminal/TerminalSearch";
+import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
 import { useTheme } from "renderer/stores/theme";
 import { resolveTerminalThemeType } from "renderer/stores/theme/utils";
 import {
@@ -108,6 +110,11 @@ export function TerminalPane({
 			terminalRuntimeRegistry.onStateChange(terminalId, callback),
 		[terminalId],
 	);
+	const highlightedSessionId = useBrowserAutomationStore((state) =>
+		state.connectModal.isOpen ? state.connectModal.selectedSessionId : null,
+	);
+	const isHighlightedForBrowserAutomation =
+		highlightedSessionId === `terminal:${ctx.pane.id}`;
 	const getSnapshot = useCallback(
 		(): ConnectionState =>
 			terminalRuntimeRegistry.getConnectionState(terminalId),
@@ -363,12 +370,20 @@ export function TerminalPane({
 	return (
 		<div
 			role="application"
-			className="flex h-full w-full flex-col p-2"
+			className={cn("relative flex h-full w-full flex-col p-2")}
 			onDragEnter={handleDragEnter}
 			onDragOver={handleDragOver}
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
 		>
+			{isHighlightedForBrowserAutomation && (
+				<>
+					<div className="pointer-events-none absolute inset-2 z-10 rounded-md border-2 border-sky-400/80 bg-sky-500/10 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.35)]" />
+					<div className="pointer-events-none absolute right-4 top-4 z-20 rounded-full border border-sky-400/40 bg-sky-500/15 px-2.5 py-1 text-[11px] font-medium text-sky-100 backdrop-blur-sm">
+						Selected for browser automation
+					</div>
+				</>
+			)}
 			<div className="relative min-h-0 flex-1 overflow-hidden">
 				<TerminalSearch
 					searchAddon={searchAddon}

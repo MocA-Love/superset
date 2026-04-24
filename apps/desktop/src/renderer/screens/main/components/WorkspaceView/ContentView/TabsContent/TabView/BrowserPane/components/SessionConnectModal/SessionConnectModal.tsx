@@ -9,7 +9,7 @@ import {
 } from "@superset/ui/dialog";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	LuArrowLeft,
 	LuLayoutGrid,
@@ -55,6 +55,42 @@ function shortenPaneLabel(raw: string, max = 40): string {
 	return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
 }
 
+interface SessionRow {
+	session: AutomationSession;
+	attachedToThisPane: boolean;
+	assignedElsewherePaneName: string | null;
+	isInCurrentWorkspace: boolean;
+}
+
+function getSessionRowPriority(row: SessionRow): number {
+	if (row.attachedToThisPane) return 0;
+	if (row.assignedElsewherePaneName) return 2;
+	return 1;
+}
+
+function getMcpStatusPriority(status: AutomationSession["mcpStatus"]): number {
+	if (status === "ready") return 0;
+	if (status === "missing") return 1;
+	return 2;
+}
+
+function compareSessionRows(left: SessionRow, right: SessionRow): number {
+	const priorityDiff =
+		getSessionRowPriority(left) - getSessionRowPriority(right);
+	if (priorityDiff !== 0) return priorityDiff;
+
+	const mcpDiff =
+		getMcpStatusPriority(left.session.mcpStatus) -
+		getMcpStatusPriority(right.session.mcpStatus);
+	if (mcpDiff !== 0) return mcpDiff;
+
+	return (
+		left.session.displayName.localeCompare(right.session.displayName) ||
+		left.session.provider.localeCompare(right.session.provider) ||
+		left.session.paneId.localeCompare(right.session.paneId)
+	);
+}
+
 interface SessionConnectModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -67,9 +103,14 @@ export function SessionConnectModal({
 	const [activeTab, setActiveTab] = useState<
 		"sessions" | "workspace" | "permissions"
 	>("sessions");
+	const [showOtherWorkspaces, setShowOtherWorkspaces] = useState(false);
 	// Incremented each time the user asks for setup commands from the
 	// summary bar; CdpEndpointCard listens and expands its section.
 	const [setupRevealToken, setSetupRevealToken] = useState(0);
+	const modalInitRef = useRef<{ open: boolean; paneId: string | null }>({
+		open: false,
+		paneId: null,
+	});
 	const paneId = useBrowserAutomationStore((s) => s.connectModal.paneId);
 	const selectedSessionId = useBrowserAutomationStore(
 		(s) => s.connectModal.selectedSessionId,
@@ -95,13 +136,75 @@ export function SessionConnectModal({
 		return tabs.find((t) => t.id === pane.tabId)?.workspaceId ?? null;
 	}, [pane, tabs]);
 
-	const session = selectedSessionId
-		? (sessions.find((s) => s.id === selectedSessionId) ?? null)
-		: null;
 	const currentBinding = paneId ? bindingsByPane[paneId] : null;
-	const currentSession = currentBinding
-		? (sessions.find((s) => s.id === currentBinding) ?? null)
+	const sessionRows = useMemo(() => {
+		const bindingEntries = Object.entries(bindingsByPane);
+		return sessions
+			.map((session): SessionRow => {
+				const assignedElsewherePaneId =
+					bindingEntries.find(
+						([candidatePaneId, sessionId]) =>
+							sessionId === session.id && candidatePaneId !== paneId,
+					)?.[0] ?? null;
+				return {
+					session,
+					attachedToThisPane: session.id === currentBinding,
+					assignedElsewherePaneName: assignedElsewherePaneId
+						? (panes[assignedElsewherePaneId]?.name ?? null)
+						: null,
+					isInCurrentWorkspace:
+						workspaceId !== null && session.workspaceId === workspaceId,
+				};
+			})
+			.sort(compareSessionRows);
+	}, [bindingsByPane, currentBinding, paneId, panes, sessions, workspaceId]);
+	const sessionRowsById = useMemo(
+		() => new Map(sessionRows.map((row) => [row.session.id, row])),
+		[sessionRows],
+	);
+	const sameWorkspaceRows = useMemo(
+		() => sessionRows.filter((row) => row.isInCurrentWorkspace),
+		[sessionRows],
+	);
+	const otherWorkspaceRows = useMemo(
+		() => sessionRows.filter((row) => !row.isInCurrentWorkspace),
+		[sessionRows],
+	);
+	const session = selectedSessionId
+		? (sessionRowsById.get(selectedSessionId)?.session ?? null)
 		: null;
+	const currentSession = currentBinding
+		? (sessionRowsById.get(currentBinding)?.session ?? null)
+		: null;
+
+	useEffect(() => {
+		if (!open) {
+			modalInitRef.current = { open, paneId };
+			setShowOtherWorkspaces(false);
+			return;
+		}
+
+		const shouldInitialize =
+			!modalInitRef.current.open || modalInitRef.current.paneId !== paneId;
+		if (!shouldInitialize) return;
+		if (sessionRows.length === 0) return;
+
+		const selectedIsOtherWorkspace = Boolean(
+			selectedSessionId &&
+				otherWorkspaceRows.some((row) => row.session.id === selectedSessionId),
+		);
+		setShowOtherWorkspaces(
+			sameWorkspaceRows.length === 0 || selectedIsOtherWorkspace,
+		);
+		modalInitRef.current = { open, paneId };
+	}, [
+		open,
+		paneId,
+		selectedSessionId,
+		sessionRows.length,
+		sameWorkspaceRows.length,
+		otherWorkspaceRows,
+	]);
 
 	// Auto-select a sensible default when the modal opens with nothing picked,
 	// and reset the selection when the chosen session drops out of the live
@@ -117,8 +220,12 @@ export function SessionConnectModal({
 		// blocked.
 		const bindingIsLive =
 			currentBinding && sessions.some((s) => s.id === currentBinding);
+		const preferredRows =
+			sameWorkspaceRows.length > 0 ? sameWorkspaceRows : otherWorkspaceRows;
 		const fallback =
-			(bindingIsLive ? currentBinding : null) ?? sessions[0]?.id ?? null;
+			(bindingIsLive ? currentBinding : null) ??
+			preferredRows[0]?.session.id ??
+			null;
 		// Avoid a re-render loop while queries are still resolving: if the
 		// computed fallback is already what we have selected, don't touch
 		// the store. Otherwise a changing `sessions` identity on each load
@@ -131,6 +238,8 @@ export function SessionConnectModal({
 		selectedSessionId,
 		currentBinding,
 		sessions,
+		sameWorkspaceRows,
+		otherWorkspaceRows,
 		setSelectedSession,
 	]);
 
@@ -283,25 +392,72 @@ export function SessionConnectModal({
 									run `claude` / `codex` in any terminal pane, then return here.
 								</div>
 							) : (
-								<div className="flex flex-col gap-2">
-									{sessions.map((s) => {
-										const otherPaneId = Object.entries(bindingsByPane).find(
-											([pid, sid]) => sid === s.id && pid !== paneId,
-										)?.[0];
-										const otherPaneName = otherPaneId
-											? (panes[otherPaneId]?.name ?? null)
-											: null;
-										return (
-											<SessionCard
-												key={s.id}
-												session={s}
-												isSelected={s.id === selectedSessionId}
-												attachedToThisPane={s.id === currentBinding}
-												assignedElsewherePaneName={otherPaneName}
-												onSelect={() => setSelectedSession(s.id)}
-											/>
-										);
-									})}
+								<div className="flex flex-col gap-3">
+									<div className="flex items-center justify-between gap-2 px-1">
+										<div className="text-[11px] text-muted-foreground">
+											Prioritizing sessions from the current workspace.
+										</div>
+										{otherWorkspaceRows.length > 0 && (
+											<button
+												type="button"
+												onClick={() =>
+													setShowOtherWorkspaces((value) => !value)
+												}
+												className="text-[11px] font-medium text-brand hover:underline"
+											>
+												{showOtherWorkspaces
+													? `Hide ${otherWorkspaceRows.length} other-workspace sessions`
+													: `Show ${otherWorkspaceRows.length} other-workspace sessions`}
+											</button>
+										)}
+									</div>
+
+									{sameWorkspaceRows.length > 0 ? (
+										<SessionSection
+											title="Current workspace"
+											description={`${sameWorkspaceRows.length} session${sameWorkspaceRows.length === 1 ? "" : "s"}`}
+										>
+											{sameWorkspaceRows.map((row) => (
+												<SessionCard
+													key={row.session.id}
+													session={row.session}
+													isSelected={row.session.id === selectedSessionId}
+													attachedToThisPane={row.attachedToThisPane}
+													assignedElsewherePaneName={
+														row.assignedElsewherePaneName
+													}
+													isInCurrentWorkspace={row.isInCurrentWorkspace}
+													onSelect={() => setSelectedSession(row.session.id)}
+												/>
+											))}
+										</SessionSection>
+									) : (
+										<div className="rounded-xl border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
+											No running LLM sessions were found in this workspace.
+										</div>
+									)}
+
+									{otherWorkspaceRows.length > 0 &&
+										(showOtherWorkspaces || sameWorkspaceRows.length === 0) && (
+											<SessionSection
+												title="Other workspaces"
+												description={`${otherWorkspaceRows.length} session${otherWorkspaceRows.length === 1 ? "" : "s"}`}
+											>
+												{otherWorkspaceRows.map((row) => (
+													<SessionCard
+														key={row.session.id}
+														session={row.session}
+														isSelected={row.session.id === selectedSessionId}
+														attachedToThisPane={row.attachedToThisPane}
+														assignedElsewherePaneName={
+															row.assignedElsewherePaneName
+														}
+														isInCurrentWorkspace={row.isInCurrentWorkspace}
+														onSelect={() => setSelectedSession(row.session.id)}
+													/>
+												))}
+											</SessionSection>
+										)}
 								</div>
 							)}
 						</div>
@@ -415,6 +571,28 @@ function TabButton({
 		>
 			{children}
 		</button>
+	);
+}
+
+interface SessionSectionProps {
+	title: string;
+	description?: string;
+	children: React.ReactNode;
+}
+
+function SessionSection({ title, description, children }: SessionSectionProps) {
+	return (
+		<section className="space-y-2">
+			<div className="flex items-center justify-between gap-2 px-1">
+				<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+					{title}
+				</div>
+				{description && (
+					<div className="text-[10px] text-muted-foreground">{description}</div>
+				)}
+			</div>
+			<div className="flex flex-col gap-2">{children}</div>
+		</section>
 	);
 }
 
@@ -750,12 +928,14 @@ function SessionCard({
 	isSelected,
 	attachedToThisPane,
 	assignedElsewherePaneName,
+	isInCurrentWorkspace,
 	onSelect,
 }: {
 	session: AutomationSession;
 	isSelected: boolean;
 	attachedToThisPane: boolean;
 	assignedElsewherePaneName: string | null;
+	isInCurrentWorkspace: boolean;
 	onSelect: () => void;
 }) {
 	// Pill precedence: "Attached" (bound to THIS pane already) >
@@ -814,6 +994,23 @@ function SessionCard({
 					<div className="text-[11px] text-muted-foreground truncate">
 						{session.provider} · {session.kind} · {session.branchOrContextLabel}{" "}
 						· Last active {session.lastActiveAt}
+					</div>
+					<div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+						<span
+							className={cn(
+								"rounded-full border px-2 py-0.5",
+								isInCurrentWorkspace
+									? "border-brand/30 bg-brand/10 text-brand"
+									: "border-border bg-muted/40 text-muted-foreground",
+							)}
+						>
+							{isInCurrentWorkspace ? "Current workspace" : "Other workspace"}
+						</span>
+						{isSelected && isInCurrentWorkspace && (
+							<span className="text-brand/80">
+								Matching terminal pane is highlighted behind the modal.
+							</span>
+						)}
 					</div>
 				</div>
 				<span

@@ -4,6 +4,8 @@ export type McpStatus = "ready" | "missing" | "unknown";
 
 export interface AutomationSession {
 	id: string;
+	paneId: string;
+	workspaceId: string | null;
 	displayName: string;
 	provider: "Claude" | "Codex" | string;
 	kind: "Terminal" | "Chat" | string;
