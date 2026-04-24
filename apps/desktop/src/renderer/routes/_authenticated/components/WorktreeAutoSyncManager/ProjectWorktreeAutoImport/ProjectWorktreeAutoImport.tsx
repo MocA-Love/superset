@@ -4,6 +4,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useImportAllWorktrees } from "renderer/react-query/workspaces/useImportAllWorktrees";
 
 const POLL_MS = 30_000;
+const FAILURE_COOLDOWN_MS = 5 * 60_000;
 
 /**
  * Background auto-import for externally-created worktrees.
@@ -15,7 +16,9 @@ const POLL_MS = 30_000;
  *
  * The scanner query runs on an interval so new worktrees created after mount
  * (e.g. by an external LLM agent) get picked up without requiring a window
- * refocus or route change.
+ * refocus or route change. Failures suppress retries for the same external
+ * set for FAILURE_COOLDOWN_MS so transient errors recover on their own, and
+ * the suppression drops as soon as the user turns the toggle off.
  */
 export function ProjectWorktreeAutoImport({
 	projectId,
@@ -38,7 +41,16 @@ export function ProjectWorktreeAutoImport({
 
 	const importAllWorktrees = useImportAllWorktrees();
 	const inFlightRef = useRef(false);
-	const lastFailedSignatureRef = useRef<string | null>(null);
+	const lastFailureRef = useRef<{ signature: string; at: number } | null>(null);
+
+	// When the user turns the toggle off, drop any suppression so the next
+	// ON attempt starts clean — matches what a user naturally expects after
+	// toggling OFF/ON to "try again".
+	useEffect(() => {
+		if (!autoImportEnabled) {
+			lastFailureRef.current = null;
+		}
+	}, [autoImportEnabled]);
 
 	const externalSignature = externalWorktrees
 		.map((wt) => wt.path)
@@ -51,13 +63,21 @@ export function ProjectWorktreeAutoImport({
 		if (externalWorktrees.length === 0) return;
 		if (inFlightRef.current) return;
 		if (importAllWorktrees.isPending) return;
-		if (lastFailedSignatureRef.current === externalSignature) return;
+
+		const lastFailure = lastFailureRef.current;
+		if (
+			lastFailure &&
+			lastFailure.signature === externalSignature &&
+			Date.now() - lastFailure.at < FAILURE_COOLDOWN_MS
+		) {
+			return;
+		}
 
 		inFlightRef.current = true;
 		importAllWorktrees
 			.mutateAsync({ projectId })
 			.then((result) => {
-				lastFailedSignatureRef.current = null;
+				lastFailureRef.current = null;
 				if (result.imported > 0) {
 					toast.success(
 						`Auto-imported ${result.imported} worktree${result.imported === 1 ? "" : "s"}`,
@@ -65,7 +85,10 @@ export function ProjectWorktreeAutoImport({
 				}
 			})
 			.catch((err) => {
-				lastFailedSignatureRef.current = externalSignature;
+				lastFailureRef.current = {
+					signature: externalSignature,
+					at: Date.now(),
+				};
 				toast.error(
 					err instanceof Error ? err.message : "Failed to import worktrees",
 				);
