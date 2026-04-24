@@ -125,11 +125,16 @@ export default defineConfig({
 				},
 				output: {
 					dir: resolve(devPath, "main"),
-					// VS Code and other Electron hosts set ELECTRON_RUN_AS_NODE=1 on
-					// their child process env; leaving it set puts Electron into plain
-					// Node mode and the app never opens a window. Clear it before any
-					// require("electron") call — must be the very first statement.
-					banner: "delete process.env.ELECTRON_RUN_AS_NODE;",
+					// Note: the previous `banner: "delete process.env.ELECTRON_RUN_AS_NODE;"`
+					// was removed. rollup's `output.banner` is prepended at column 1:1 to
+					// *every* emitted chunk, and shared chunks (`dist/main/chunks/*.js`)
+					// locally rebind `process` — so the banner hit a TDZ
+					// "Cannot access 'process' before initialization" before the binding
+					// initialized and the app failed to load on macOS. The statement
+					// wouldn't have worked for its stated goal anyway: `require("electron")`
+					// lands near the top of the entry (line ~37) while the banner only
+					// reached line ~144, and Electron's run-mode is decided by env at
+					// binary start, not by a mid-module delete.
 				},
 				external: ["electron", ...mainExternalizedDependencies],
 				plugins: [sentryPlugin].filter(Boolean),
