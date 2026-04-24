@@ -2,7 +2,7 @@ import { dbWs } from "@superset/db/client";
 import { v2Hosts, v2Projects, v2Workspaces } from "@superset/db/schema";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
 import { requireActiveOrgId } from "../utils/active-org";
@@ -234,16 +234,26 @@ export const v2WorkspaceRouter = {
 			if (input.name !== undefined) data.name = input.name;
 			if (input.branch !== undefined) data.branch = input.branch;
 			if (Object.keys(data).length === 0) return workspace;
+			// Atomic WHERE guard: the find-then-update window above lets another
+			// transaction (e.g. the user typing a new title) slip a rename in
+			// before this UPDATE lands. Pushing `expectedCurrentName` into the
+			// WHERE makes the update conditional at SQL level — if the name
+			// changed, the UPDATE matches zero rows and we return the current
+			// state so git/cloud/local stay in lockstep.
+			const conditions = [eq(v2Workspaces.id, workspace.id)];
+			if (input.expectedCurrentName !== undefined) {
+				conditions.push(eq(v2Workspaces.name, input.expectedCurrentName));
+			}
 			const [updated] = await dbWs
 				.update(v2Workspaces)
 				.set(data)
-				.where(eq(v2Workspaces.id, workspace.id))
+				.where(and(...conditions))
 				.returning();
 			if (!updated) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "Workspace not found",
-				});
+				// Row still exists but name raced — return the current row so
+				// `applyAiWorkspaceRename` sees `branch !== deduped` and rolls
+				// back the git rename.
+				return workspace;
 			}
 			return updated;
 		}),
