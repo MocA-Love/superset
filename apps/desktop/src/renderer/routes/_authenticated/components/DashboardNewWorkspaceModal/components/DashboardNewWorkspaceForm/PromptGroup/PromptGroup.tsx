@@ -126,7 +126,7 @@ export function PromptGroup({
 	});
 
 	// ── Submit (fork) ────────────────────────────────────────────────
-	const handleCreate = useSubmitWorkspace(projectId);
+	const handleCreate = useSubmitWorkspace(projectId, selectedAgent);
 	const handlePromptSubmit = useCallback(
 		(message: { text?: string; files?: FileUIPart[] }) => {
 			// Library converts blob: → data: URLs before calling us; pass them

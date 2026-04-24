@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -18,7 +19,9 @@ import type { HostServiceContext } from "../../../types";
 import type { ProjectNotSetupCause } from "../../error-types";
 import { protectedProcedure, router } from "../../index";
 import { generateBranchNameFromPrompt } from "./utils/ai-branch-name";
+import { applyAiWorkspaceRename } from "./utils/ai-workspace-names";
 import { execGh } from "./utils/exec-gh";
+import { listBranchNames } from "./utils/list-branch-names";
 import { derivePrLocalBranchName } from "./utils/pr-branch-name";
 import { resolveStartPoint } from "./utils/resolve-start-point";
 import { deduplicateBranchName } from "./utils/sanitize-branch";
@@ -83,12 +86,25 @@ function projectNotSetupError(projectId: string): TRPCError {
 	});
 }
 
-function safeResolveWorktreePath(repoPath: string, branchName: string): string {
-	const worktreesRoot = resolve(repoPath, ".worktrees");
-	const worktreePath = resolve(worktreesRoot, branchName);
+// Kept outside the primary checkout so editors, file watchers, and
+// ignore rules treat worktrees as separate trees, not nested ones.
+function supersetWorktreesRoot(): string {
+	return join(homedir(), ".superset", "worktrees");
+}
+
+function projectWorktreesRoot(projectId: string): string {
+	return resolve(supersetWorktreesRoot(), projectId);
+}
+
+function safeResolveWorktreePath(
+	projectId: string,
+	branchName: string,
+): string {
+	const projectRoot = projectWorktreesRoot(projectId);
+	const worktreePath = resolve(projectRoot, branchName);
 	if (
-		worktreePath !== worktreesRoot &&
-		!worktreePath.startsWith(worktreesRoot + sep)
+		worktreePath !== projectRoot &&
+		!worktreePath.startsWith(projectRoot + sep)
 	) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
@@ -167,18 +183,29 @@ function markRefetchRemote(projectId: string): void {
 type GitClient = Awaited<ReturnType<HostServiceContext["git"]>>;
 
 async function listWorktreeBranches(
+	ctx: HostServiceContext,
 	git: GitClient,
-	repoPath: string,
+	projectId: string,
 ): Promise<{
-	// Superset-managed worktrees only (under <repoPath>/.worktrees/).
-	// These count as "has a workspace" for the picker.
+	// A worktree counts as "ours" if its path either matches a row in
+	// the local `workspaces` table or lives under our managed root. The
+	// second case catches orphans (worktree on disk, no workspaces row,
+	// e.g. partial create rollback) so they surface for adoption.
 	worktreeMap: Map<string, string>;
 	// Every branch checked out in any git worktree, including the primary
 	// working tree. Used to disable the Checkout action when a branch is
 	// already in use elsewhere — `git worktree add <path> <branch>` would fail.
 	checkedOutBranches: Set<string>;
 }> {
-	const worktreesRoot = resolve(repoPath, ".worktrees");
+	const managedRoot = projectWorktreesRoot(projectId);
+	const knownPaths = new Set<string>(
+		ctx.db
+			.select({ path: workspaces.worktreePath })
+			.from(workspaces)
+			.where(eq(workspaces.projectId, projectId))
+			.all()
+			.map((w) => w.path),
+	);
 	const worktreeMap = new Map<string, string>();
 	const checkedOutBranches = new Set<string>();
 	try {
@@ -191,9 +218,10 @@ async function listWorktreeBranches(
 				const branch = line.slice("branch refs/heads/".length).trim();
 				if (!branch) continue;
 				checkedOutBranches.add(branch);
-				// Superset-managed worktrees live under <repoPath>/.worktrees/<name>;
-				// the primary working tree is at repoPath itself and skipped here.
-				if (currentPath.startsWith(worktreesRoot + sep)) {
+				if (
+					knownPaths.has(currentPath) ||
+					currentPath.startsWith(managedRoot + sep)
+				) {
 					worktreeMap.set(branch, currentPath);
 				}
 			} else if (line === "") {
@@ -276,41 +304,6 @@ async function getRecentBranchOrder(
 		// ignore (e.g. unborn branch)
 	}
 	return order;
-}
-
-async function listBranchNames(
-	ctx: HostServiceContext,
-	repoPath: string,
-): Promise<string[]> {
-	const git = await ctx.git(repoPath);
-	try {
-		const raw = await git.raw([
-			"for-each-ref",
-			"--sort=-committerdate",
-			"--format=%(refname)",
-			"refs/heads/",
-			"refs/remotes/origin/",
-		]);
-		const names = new Set<string>();
-		for (const refname of raw.trim().split("\n").filter(Boolean)) {
-			// Use the full refname's structural prefix to classify (safe — a
-			// branch name can't contain `refs/heads/`). Stripping `origin/`
-			// from the SHORT name would misclassify a local branch named
-			// `origin/foo`. See GIT_REFS.md.
-			let name: string;
-			if (refname.startsWith("refs/heads/")) {
-				name = refname.slice("refs/heads/".length);
-			} else if (refname.startsWith("refs/remotes/origin/")) {
-				name = refname.slice("refs/remotes/origin/".length);
-			} else {
-				continue;
-			}
-			if (name && name !== "HEAD") names.add(name);
-		}
-		return Array.from(names);
-	} catch {
-		return [];
-	}
 }
 
 /**
@@ -557,8 +550,9 @@ export const workspaceCreationRouter = router({
 			const defaultBranch: string | null = await resolveDefaultBranchName(git);
 
 			const { worktreeMap, checkedOutBranches } = await listWorktreeBranches(
+				ctx,
 				git,
-				localProject.repoPath,
+				input.projectId,
 			);
 			const recencyMap = await getRecentBranchOrder(git, 30);
 
@@ -721,6 +715,7 @@ export const workspaceCreationRouter = router({
 				names: z.object({
 					workspaceName: z.string(),
 					branchName: z.string(),
+					workspaceNameWasAutoGenerated: z.boolean().optional(),
 				}),
 				composer: z.object({
 					prompt: z.string().optional(),
@@ -786,10 +781,8 @@ export const workspaceCreationRouter = router({
 			);
 
 			// 3. Create worktree
-			const worktreePath = safeResolveWorktreePath(
-				localProject.repoPath,
-				branchName,
-			);
+			const worktreePath = safeResolveWorktreePath(localProject.id, branchName);
+			mkdirSync(dirname(worktreePath), { recursive: true });
 
 			const git = await ctx.git(localProject.repoPath);
 
@@ -997,6 +990,39 @@ export const workspaceCreationRouter = router({
 				})
 				.run();
 
+			// Fire-and-forget AI rename from the composer prompt. A single
+			// structured-output call generates both a display title and a
+			// kebab-case branch name, and we apply each independently.
+			// Electric syncs updates to the renderer via v2_workspaces, so
+			// the pending/workspace page updates in place once the model
+			// responds.
+			//
+			// Name precedence (matches renderer `resolveNames`):
+			//   1. user-typed title → skip AI rename (flag = false)
+			//   2. friendly fallback + prompt → AI rename (this branch)
+			//   3. friendly fallback, no prompt → keep fallback
+			//
+			// `expectedCurrentName` covers the race where a user edits the
+			// title after create but before the AI response lands.
+			const composerPrompt = input.composer.prompt?.trim();
+			const allowAiRename = input.names.workspaceNameWasAutoGenerated !== false;
+			if (composerPrompt && allowAiRename) {
+				void applyAiWorkspaceRename({
+					ctx,
+					workspaceId: cloudRow.id,
+					repoPath: localProject.repoPath,
+					worktreePath,
+					oldBranchName: branchName,
+					oldWorkspaceName: input.names.workspaceName,
+					prompt: composerPrompt,
+				}).catch((err) => {
+					console.warn(
+						"[workspaceCreation.create] AI workspace rename failed",
+						err,
+					);
+				});
+			}
+
 			// 5. Create setup terminal if setup script exists
 			const terminals: Array<{
 				id: string;
@@ -1134,11 +1160,12 @@ export const workspaceCreationRouter = router({
 
 				let worktreePath: string;
 				try {
-					worktreePath = safeResolveWorktreePath(localProject.repoPath, branch);
+					worktreePath = safeResolveWorktreePath(localProject.id, branch);
 				} catch (err) {
 					clearProgress(input.pendingId);
 					throw err;
 				}
+				mkdirSync(dirname(worktreePath), { recursive: true });
 				const git = await ctx.git(localProject.repoPath);
 
 				// Detect a pre-existing local branch with the same derived name
@@ -1259,11 +1286,12 @@ export const workspaceCreationRouter = router({
 
 			let worktreePath: string;
 			try {
-				worktreePath = safeResolveWorktreePath(localProject.repoPath, branch);
+				worktreePath = safeResolveWorktreePath(localProject.id, branch);
 			} catch (err) {
 				clearProgress(input.pendingId);
 				throw err;
 			}
+			mkdirSync(dirname(worktreePath), { recursive: true });
 			const git = await ctx.git(localProject.repoPath);
 
 			// Resolve via the discriminated-ref helper so we don't infer kind
@@ -1362,10 +1390,10 @@ export const workspaceCreationRouter = router({
 
 	/**
 	 * Adopt an existing git worktree as a workspace. Used when the Worktree
-	 * tab surfaces a branch whose `.worktrees/<branch>` directory exists on
-	 * disk but has no corresponding workspaces row (e.g. created by an older
-	 * flow, or partial create rollback). No git ops — just registers the
-	 * cloud + local workspace row over the existing worktree path.
+	 * tab surfaces a branch whose worktree directory exists on disk but has
+	 * no corresponding workspaces row (e.g. partial create rollback). No git
+	 * ops — just registers the cloud + local workspace row over the
+	 * existing worktree path.
 	 */
 	adopt: protectedProcedure
 		.input(
@@ -1414,8 +1442,9 @@ export const workspaceCreationRouter = router({
 				worktreePath = input.worktreePath;
 			} else {
 				const { worktreeMap } = await listWorktreeBranches(
+					ctx,
 					git,
-					localProject.repoPath,
+					input.projectId,
 				);
 				const found = worktreeMap.get(branch);
 				if (!found) {

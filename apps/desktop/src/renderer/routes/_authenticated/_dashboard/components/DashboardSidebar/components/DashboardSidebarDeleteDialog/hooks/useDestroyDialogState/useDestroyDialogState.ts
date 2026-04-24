@@ -1,14 +1,19 @@
 import { toast } from "@superset/ui/sonner";
 import { useCallback, useRef, useState } from "react";
+import type { DestroyWorkspaceSuccess } from "renderer/hooks/host-service/useDestroyWorkspace";
 import {
 	type DestroyWorkspaceError,
 	useDestroyWorkspace,
 } from "renderer/hooks/host-service/useDestroyWorkspace";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useDeletingWorkspaces } from "renderer/routes/_authenticated/providers/DeletingWorkspacesProvider";
+
+const STATUS_STALE_TIME_MS = 5_000;
 
 interface UseDestroyDialogStateOptions {
 	workspaceId: string;
 	workspaceName: string;
+	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onDeleted?: () => void;
 }
@@ -24,7 +29,7 @@ interface UseDestroyDialogStateOptions {
  *     hidden row is the feedback.
  *   - On success, `onDeleted` removes the row from sidebar state.
  *   - On error, `clearDeleting` runs in the `finally` block so the row
- *     reappears. For decision-required errors (CONFLICT, TEARDOWN_FAILED)
+ *     reappears. For decision-required errors (TEARDOWN_FAILED)
  *     we reopen the dialog in the matching error pane so the user can
  *     force-retry with full context. The branch opt-in is preserved.
  *   - For unknown errors we just toast.error — no reopen.
@@ -32,6 +37,7 @@ interface UseDestroyDialogStateOptions {
 export function useDestroyDialogState({
 	workspaceId,
 	workspaceName,
+	open,
 	onOpenChange,
 	onDeleted,
 }: UseDestroyDialogStateOptions) {
@@ -39,6 +45,19 @@ export function useDestroyDialogState({
 	const { markDeleting, clearDeleting } = useDeletingWorkspaces();
 
 	const [deleteBranch, setDeleteBranch] = useState(false);
+
+	const { data: canDeleteData, isPending: isCheckingStatus } =
+		electronTrpc.workspaces.canDelete.useQuery(
+			{ id: workspaceId },
+			{
+				enabled: open,
+				staleTime: STATUS_STALE_TIME_MS,
+				refetchOnWindowFocus: false,
+			},
+		);
+	const hasChanges = canDeleteData?.hasChanges ?? false;
+	const hasUnpushedCommits = canDeleteData?.hasUnpushedCommits ?? false;
+
 	const [error, setError] = useState<DestroyWorkspaceError | null>(null);
 	const inFlight = useRef(false);
 
@@ -53,13 +72,8 @@ export function useDestroyDialogState({
 		[onOpenChange],
 	);
 
-	const clearError = useCallback(() => setError(null), []);
-
 	const run = useCallback(
 		async (force: boolean) => {
-			// Guard against double-submit: optimistic close + async mutate means
-			// a rapid second click (from the same pane or a re-opened error pane)
-			// could fire destroy twice before the first resolves.
 			if (inFlight.current) return;
 			inFlight.current = true;
 
@@ -70,13 +84,26 @@ export function useDestroyDialogState({
 			markDeleting(workspaceId);
 
 			try {
-				const result = await destroy({ deleteBranch, force });
+				let result: DestroyWorkspaceSuccess;
+				try {
+					result = await destroy({ deleteBranch, force });
+				} catch (firstErr) {
+					const e = firstErr as DestroyWorkspaceError;
+					// Race: preflight said clean but worktree was dirty by the time
+					// destroy ran. The user already confirmed once — don't make them
+					// confirm a second "uncommitted changes" warning, just force.
+					if (e.kind === "conflict" && !force) {
+						result = await destroy({ deleteBranch, force: true });
+					} else {
+						throw firstErr;
+					}
+				}
 				for (const warning of result.warnings) toast.warning(warning);
 				setDeleteBranch(false);
 				onDeleted?.();
 			} catch (err) {
 				const e = err as DestroyWorkspaceError;
-				if (e.kind === "conflict" || e.kind === "teardown-failed") {
+				if (e.kind === "teardown-failed") {
 					setError(e);
 					onOpenChange(true);
 				} else {
@@ -102,8 +129,10 @@ export function useDestroyDialogState({
 	return {
 		deleteBranch,
 		setDeleteBranch,
+		hasChanges,
+		hasUnpushedCommits,
+		isCheckingStatus,
 		error,
-		clearError,
 		handleOpenChange,
 		run,
 	};
