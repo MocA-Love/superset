@@ -46,6 +46,7 @@ import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { reportError } from "./lib/report-error";
 import { initSentry } from "./lib/sentry";
 import { setupServiceStatusPolling } from "./lib/service-status";
+import { createServiceIconProtocolHandler } from "./lib/service-status/icon-storage";
 import { createTempAudioProtocolHandler } from "./lib/temp-audio-protocol";
 import {
 	prewarmTerminalRuntime,
@@ -604,6 +605,15 @@ protocol.registerSchemesAsPrivileged([
 		},
 	},
 	{
+		scheme: "superset-service-icon",
+		privileges: {
+			standard: true,
+			secure: true,
+			bypassCSP: true,
+			supportFetchAPI: true,
+		},
+	},
+	{
 		scheme: "vscode-webview-resource",
 		privileges: {
 			standard: true,
@@ -789,6 +799,13 @@ if (!gotTheLock) {
 		session
 			.fromPartition("persist:superset")
 			.protocol.handle("superset-workspace-media", workspaceMediaHandler);
+
+		// Serve user-uploaded icons for service-status definitions
+		const serviceIconHandler = createServiceIconProtocolHandler();
+		protocol.handle("superset-service-icon", serviceIconHandler);
+		session
+			.fromPartition("persist:superset")
+			.protocol.handle("superset-service-icon", serviceIconHandler);
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();

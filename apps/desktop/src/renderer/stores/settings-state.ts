@@ -22,6 +22,7 @@ export type SettingsSection =
 	| "permissions"
 	| "project"
 	| "security"
+	| "serviceStatus"
 	| "vscodeExtensions";
 
 interface SettingsState {

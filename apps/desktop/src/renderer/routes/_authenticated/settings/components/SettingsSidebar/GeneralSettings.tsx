@@ -14,6 +14,7 @@ import {
 	HiOutlinePaintBrush,
 	HiOutlinePuzzlePiece,
 	HiOutlineShieldCheck,
+	HiOutlineSignal,
 	HiOutlineSparkles,
 	HiOutlineSquare3Stack3D,
 	HiOutlineUser,
@@ -40,6 +41,7 @@ type SettingsRoute =
 	| "/settings/links"
 	| "/settings/models"
 	| "/settings/integrations"
+	| "/settings/service-status"
 	| "/settings/extensions"
 	| "/settings/vscode-extensions"
 	| "/settings/billing"
@@ -187,6 +189,12 @@ const SECTION_GROUPS: SectionGroup[] = [
 				section: "metrics",
 				label: "Metrics",
 				icon: <HiOutlineChartBar className="h-4 w-4" />,
+			},
+			{
+				id: "/settings/service-status",
+				section: "serviceStatus",
+				label: "Service Status",
+				icon: <HiOutlineSignal className="h-4 w-4" />,
 			},
 			{
 				id: "/settings/security",

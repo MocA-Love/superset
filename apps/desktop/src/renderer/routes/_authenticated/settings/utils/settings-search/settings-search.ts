@@ -94,6 +94,9 @@ export const SETTING_ITEM_ID = {
 	METRICS_GITHUB_TRAFFIC: "metrics-github-traffic",
 	METRICS_GITHUB_COPY: "metrics-github-copy",
 
+	SERVICE_STATUS_PROVIDERS: "service-status-providers",
+	SERVICE_STATUS_ADD: "service-status-add",
+
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
@@ -1394,6 +1397,44 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"json",
 			"support",
 			"diagnostics",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS,
+		section: "serviceStatus",
+		title: "Service Status Providers",
+		description:
+			"Manage which external status pages appear in the header (Claude, Codex, GitHub, …)",
+		keywords: [
+			"service status",
+			"status",
+			"providers",
+			"statuspage",
+			"external",
+			"header",
+			"indicator",
+			"health",
+			"uptime",
+			"incident",
+			"dashboard",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.SERVICE_STATUS_ADD,
+		section: "serviceStatus",
+		title: "Add Custom Status Provider",
+		description:
+			"Add a Statuspage.io-compatible provider with a custom label and icon",
+		keywords: [
+			"add service status",
+			"new provider",
+			"custom",
+			"statuspage",
+			"api",
+			"favicon",
+			"icon",
+			"upload",
+			"url",
 		],
 	},
 	{

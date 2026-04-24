@@ -14,34 +14,56 @@ export type ServiceStatusLevel =
 	| "critical"
 	| "unknown";
 
-export type ServiceStatusId = "claude" | "codex";
+// Previously a closed union of "claude" | "codex". Definitions are now
+// user-configurable and stored in local-db, so ids are arbitrary strings
+// (UUIDs for user-added rows; stable slugs for the default Claude/Codex
+// entries that get seeded on first launch).
+export type ServiceStatusId = string;
+
+// Mirrors `ServiceStatusIconType` from `@superset/local-db` without importing
+// it into shared/ (which main, renderer, and preload all consume). Keep both
+// in sync manually.
+export type ServiceStatusIconType =
+	| "simple-icon"
+	| "favicon"
+	| "custom-url"
+	| "custom-file";
+
+/**
+ * API response shape the poller should assume for a definition. The default
+ * `statuspage-v2` covers the most common case (Claude, GitHub, Stripe, …);
+ * the other three are dedicated adapters for the Big 3 cloud providers which
+ * publish incidents in incompatible formats.
+ *
+ * Mirrored from `@superset/local-db`; keep in sync manually (see note above
+ * for `ServiceStatusIconType`).
+ */
+export type ServiceStatusFormat =
+	| "statuspage-v2"
+	| "gcp-incidents"
+	| "aws-health"
+	| "azure-rss";
 
 export interface ServiceStatusDefinition {
 	id: ServiceStatusId;
 	label: string;
 	statusUrl: string;
 	apiUrl: string;
+	iconType: ServiceStatusIconType;
+	// simple-icon: slug (e.g. "claude"); custom-url: remote URL; custom-file:
+	// absolute path under userData; favicon: ignored (null).
+	iconValue: string | null;
+	format: ServiceStatusFormat;
+	sortOrder: number;
 }
-
-export const SERVICE_STATUS_DEFINITIONS = [
-	{
-		id: "claude",
-		label: "Claude",
-		statusUrl: "https://status.claude.com/",
-		apiUrl: "https://status.claude.com/api/v2/status.json",
-	},
-	{
-		id: "codex",
-		label: "Codex",
-		statusUrl: "https://status.openai.com/",
-		apiUrl: "https://status.openai.com/api/v2/status.json",
-	},
-] as const satisfies readonly ServiceStatusDefinition[];
 
 export interface ServiceStatusSnapshot {
 	id: ServiceStatusId;
 	label: string;
 	statusUrl: string;
+	iconType: ServiceStatusIconType;
+	iconValue: string | null;
+	sortOrder: number;
 	level: ServiceStatusLevel;
 	indicator: StatuspageIndicator | null;
 	description: string;
@@ -74,6 +96,9 @@ export function createUnknownSnapshot(
 		id: def.id,
 		label: def.label,
 		statusUrl: def.statusUrl,
+		iconType: def.iconType,
+		iconValue: def.iconValue,
+		sortOrder: def.sortOrder,
 		level: "unknown",
 		indicator: null,
 		description: "確認中…",
