@@ -310,7 +310,7 @@ exit 0
 
 		expect(
 			beforeSubmitPrompt.some(
-				(entry) => entry.command === `${currentHookPath} Start`,
+				(entry) => entry.command === `${currentHookPath} "Start"`,
 			),
 		).toBe(true);
 		expect(
