@@ -38,9 +38,22 @@ const DARK_RGB = { r: 21, g: 17, b: 16 };
 const LIGHT_RGB = { r: 255, g: 255, b: 255 };
 
 export function isVibrancySupported(): boolean {
-	// macOS uses NSVisualEffectView. Windows 11 22H2+ uses Mica via
-	// BrowserWindow.setBackgroundMaterial; on older Windows versions the call
-	// is a no-op so gating on IS_WINDOWS is safe.
+	// macOS uses NSVisualEffectView. Windows 11 22H2+ uses Acrylic via
+	// BrowserWindow.setBackgroundMaterial (gives a real see-through blurred
+	// translucency, unlike Mica which is more of a desktop-color tint).
+	// Linux uses pure transparency — actual background blur depends on the
+	// active compositor (KDE KWin: yes, GNOME Shell: no, Wayland varies).
+	return PLATFORM.IS_MAC || PLATFORM.IS_WINDOWS || PLATFORM.IS_LINUX;
+}
+
+/**
+ * Whether the platform supports a system-level blur material behind the
+ * window. macOS always does (NSVisualEffectView). Windows 11 22H2+ does via
+ * acrylic. Linux varies per compositor and we don't gate the feature on it,
+ * so callers that care should treat Linux as "no system blur, transparent
+ * pixels only".
+ */
+export function hasSystemBlurMaterial(): boolean {
 	return PLATFORM.IS_MAC || PLATFORM.IS_WINDOWS;
 }
 
@@ -122,9 +135,8 @@ export function resolveVibrancyType(
 }
 
 /**
- * Apply the current vibrancy state to a BrowserWindow. Only has effect on
- * macOS — on other platforms this is a no-op so callers can invoke it
- * unconditionally.
+ * Apply the current vibrancy state to a BrowserWindow. Routes to the right
+ * platform-specific path; safe to call on unsupported platforms (no-op).
  */
 export function applyVibrancy(
 	window: BrowserWindow,
@@ -136,6 +148,11 @@ export function applyVibrancy(
 
 	if (PLATFORM.IS_WINDOWS) {
 		applyWindowsBackgroundMaterial(window, state, isDark);
+		return;
+	}
+
+	if (PLATFORM.IS_LINUX) {
+		applyLinuxTransparency(window, state, isDark);
 		return;
 	}
 
@@ -152,9 +169,11 @@ export function applyVibrancy(
 }
 
 /**
- * Windows 11 22H2+ Mica fallback. Uses `setBackgroundMaterial('mica' | 'none')`.
- * On older Windows versions the call silently no-ops; the opaque backgroundColor
- * below keeps the chrome looking intentional even when Mica isn't available.
+ * Windows 11 22H2+ uses Acrylic for actual see-through translucency
+ * (Mica is more of a binary "desktop color tint" effect). On older Windows
+ * versions setBackgroundMaterial silently no-ops and the rgba backgroundColor
+ * still makes the window translucent because we created it with
+ * `transparent: true`.
  */
 function applyWindowsBackgroundMaterial(
 	window: BrowserWindow,
@@ -168,13 +187,33 @@ function applyWindowsBackgroundMaterial(
 	};
 	const withMaterial = window as WithSetBackgroundMaterial;
 	try {
-		withMaterial.setBackgroundMaterial?.(state.enabled ? "mica" : "none");
+		withMaterial.setBackgroundMaterial?.(state.enabled ? "acrylic" : "none");
 	} catch (error) {
 		console.warn("[vibrancy] setBackgroundMaterial failed on Windows:", error);
 	}
-	// Even when Mica is active we keep backgroundColor at the brand opaque
-	// value — the renderer decides per-region whether to let Mica show through.
-	window.setBackgroundColor(isDark ? OPAQUE_DARK : OPAQUE_LIGHT);
+	// Pass the rgba value through so the slider's opacity reaches the
+	// composited window. With `transparent: true` set at construction, this
+	// produces a real translucent surface even when acrylic is unavailable
+	// (older Win10 / Win11 pre-22H2).
+	window.setBackgroundColor(computeBackgroundColor(state, isDark));
+}
+
+/**
+ * Linux has no equivalent of NSVisualEffectView/Acrylic in Electron — there's
+ * no setVibrancy or setBackgroundMaterial path. We rely entirely on
+ * `transparent: true` at window creation plus an rgba backgroundColor here.
+ * Whether the user sees a blur behind the window depends on their compositor:
+ *   - KDE Plasma (KWin): blur via the Blur effect, can read window hints.
+ *   - GNOME Shell: no app-controllable blur — the window will look like a
+ *     simple translucent overlay.
+ *   - Wayland: per-compositor, generally same as above.
+ */
+function applyLinuxTransparency(
+	window: BrowserWindow,
+	state: VibrancyState,
+	isDark: boolean,
+): void {
+	window.setBackgroundColor(computeBackgroundColor(state, isDark));
 }
 
 // --- Native blur scheduling ----------------------------------------------
@@ -236,14 +275,14 @@ function scheduleNativeBlur(window: BrowserWindow, state: VibrancyState): void {
 }
 
 /**
- * Options that callers should spread into the BrowserWindow constructor on
- * macOS so that vibrancy can later be toggled dynamically via
- * `setVibrancy` / `setBackgroundColor` without recreating the window.
+ * Options that callers spread into the BrowserWindow constructor.
  *
  * `transparent: true` is required at construction time — it cannot be
- * toggled later — so we always opt in on macOS even when the user has
- * vibrancy disabled. The opaque background color we set keeps the window
- * visually identical to the pre-vibrancy build until the user enables it.
+ * toggled later — so we always opt in on every supported platform, even
+ * when the user has vibrancy disabled. While disabled we paint an opaque
+ * background color so the window looks identical to the pre-vibrancy build,
+ * and toggling ON only needs to swap `setBackgroundColor` to an rgba value
+ * (no window recreation, no restart).
  */
 export function getInitialWindowOptions(
 	state: VibrancyState,
@@ -263,8 +302,24 @@ export function getInitialWindowOptions(
 
 	if (PLATFORM.IS_WINDOWS) {
 		return {
-			backgroundMaterial: state.enabled ? "mica" : "none",
-			backgroundColor: isDark ? OPAQUE_DARK : OPAQUE_LIGHT,
+			transparent: true,
+			backgroundMaterial: state.enabled ? "acrylic" : "none",
+			backgroundColor: state.enabled
+				? computeBackgroundColor(state, isDark)
+				: isDark
+					? OPAQUE_DARK
+					: OPAQUE_LIGHT,
+		};
+	}
+
+	if (PLATFORM.IS_LINUX) {
+		return {
+			transparent: true,
+			backgroundColor: state.enabled
+				? computeBackgroundColor(state, isDark)
+				: isDark
+					? OPAQUE_DARK
+					: OPAQUE_LIGHT,
 		};
 	}
 

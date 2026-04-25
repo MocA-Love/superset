@@ -12,8 +12,18 @@ import {
 } from "main/lib/vibrancy";
 import { VIBRANCY_EVENTS, vibrancyEmitter } from "main/lib/vibrancy/emitter";
 import type { WindowManager } from "main/lib/window-manager";
+import { PLATFORM } from "shared/constants";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
+
+type VibrancyPlatform = "mac" | "windows" | "linux" | "unsupported";
+
+function getVibrancyPlatform(): VibrancyPlatform {
+	if (PLATFORM.IS_MAC) return "mac";
+	if (PLATFORM.IS_WINDOWS) return "windows";
+	if (PLATFORM.IS_LINUX) return "linux";
+	return "unsupported";
+}
 
 const blurLevelSchema: z.ZodType<VibrancyBlurLevel> = z.enum([
 	"subtle",
@@ -57,6 +67,7 @@ export const createVibrancyRouter = (wm: WindowManager) => {
 			return {
 				supported: isVibrancySupported(),
 				nativeBlurSupported: isNativeContinuousBlurSupported(),
+				platform: getVibrancyPlatform(),
 			};
 		}),
 
