@@ -1137,7 +1137,7 @@ function killProcessTree(pid: number, signal: NodeJS.Signals): void {
  * bundle and we don't want a cross-bundle import here in the daemon.
  */
 const ATTACHMENT_PATH_RE =
-	/!\[[^\]]*\]\(([^()\s]*[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
+	/!\[[^\]]*\]\(((?:\/[^()\s]*|[A-Za-z]:[\\/][^()\s]*|\\\\[^()\s]+[\\/][^()\s]*)[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
 
 function extractAttachmentPaths(
 	texts: (string | null | undefined)[],

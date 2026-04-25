@@ -4,13 +4,16 @@ import { extractAttachmentRefs, stripAttachmentRefs } from "./attachmentRefs";
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 
 describe("attachmentRefs", () => {
-	it("extracts POSIX and Windows TODO Agent attachment references in order", () => {
+	it("extracts POSIX, Windows drive, and Windows UNC attachment references in order", () => {
 		const posixPath = `/Users/me/.superset/todo-agent/attachments/${UUID}-report.png`;
 		const windowsPath =
 			"C:\\Users\\me\\.superset\\todo-agent\\attachments\\plain.txt";
+		const uncPath =
+			"\\\\server\\profiles\\me\\.superset\\todo-agent\\attachments\\unc.png";
 		const text = [
 			`Please inspect ![report](${posixPath}) first.`,
 			`Then compare ![raw](${windowsPath}).`,
+			`Then check redirected profile ![unc](${uncPath}).`,
 			`Duplicate should be collapsed ![again](${posixPath}).`,
 		].join("\n");
 
@@ -26,6 +29,12 @@ describe("attachmentRefs", () => {
 				alt: "raw",
 				path: windowsPath,
 				name: "plain.txt",
+			},
+			{
+				fullMatch: `![unc](${uncPath})`,
+				alt: "unc",
+				path: uncPath,
+				name: "unc.png",
 			},
 		]);
 	});
