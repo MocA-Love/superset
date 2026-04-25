@@ -61,6 +61,7 @@ import type {
 	SymbolHoverResult,
 	SymbolPosition,
 } from "./symbolInteractions.types";
+import { type CenterHandle, centerPosition } from "./utils/centerPosition";
 
 interface CodeEditorProps {
 	value: string;
@@ -91,7 +92,6 @@ interface CodeEditorProps {
 const HIGHLIGHT_CLEAR_DELAY_MS = 1800;
 const HIGHLIGHT_RETRY_DELAY_MS = 80;
 const HIGHLIGHT_MAX_RETRIES = 8;
-const SCROLL_STABILIZE_DELAY_MS = 120;
 const SEARCH_MATCH_LIMIT = 10_000;
 
 /**
@@ -236,7 +236,7 @@ function createCodeMirrorAdapter(
 ): CodeEditorAdapter {
 	let disposed = false;
 	let highlightResetTimeout: ReturnType<typeof setTimeout> | null = null;
-	let scrollStabilizeTimeout: ReturnType<typeof setTimeout> | null = null;
+	let revealCenterHandle: CenterHandle | null = null;
 	let highlightRequestId = 0;
 	let highlightedLine: HTMLElement | null = null;
 	let highlightAnimation: Animation | null = null;
@@ -385,33 +385,16 @@ function createCodeMirrorAdapter(
 				highlightResetTimeout = null;
 			}
 
-			view.dispatch({
-				selection: EditorSelection.cursor(anchor),
-				effects: EditorView.scrollIntoView(anchor, {
-					y: "center",
-					yMargin: 48,
-				}),
-			});
+			revealCenterHandle?.cancel();
+			revealCenterHandle = centerPosition(
+				{ view, scrollContainer: view.scrollDOM },
+				anchor,
+				{ moveCursor: true },
+			);
 			highlightRequestId += 1;
 			const currentHighlightRequestId = highlightRequestId;
 			clearPendingHighlightTimeouts();
 			highlightLineAt(anchor, currentHighlightRequestId);
-			if (scrollStabilizeTimeout) {
-				clearTimeout(scrollStabilizeTimeout);
-			}
-			scrollStabilizeTimeout = setTimeout(() => {
-				if (disposed) {
-					return;
-				}
-
-				view.dispatch({
-					effects: EditorView.scrollIntoView(anchor, {
-						y: "center",
-						yMargin: 48,
-					}),
-				});
-				scrollStabilizeTimeout = null;
-			}, SCROLL_STABILIZE_DELAY_MS);
 
 			highlightResetTimeout = setTimeout(() => {
 				if (disposed || currentHighlightRequestId !== highlightRequestId) {
@@ -515,10 +498,8 @@ function createCodeMirrorAdapter(
 				clearTimeout(highlightResetTimeout);
 				highlightResetTimeout = null;
 			}
-			if (scrollStabilizeTimeout) {
-				clearTimeout(scrollStabilizeTimeout);
-				scrollStabilizeTimeout = null;
-			}
+			revealCenterHandle?.cancel();
+			revealCenterHandle = null;
 			clearPendingHighlightTimeouts();
 			clearLineHighlight();
 			view.destroy();
@@ -696,25 +677,20 @@ export function CodeEditor({
 		setIsSearchOpen(false);
 	};
 
-	// CM's find commands dispatch `scrollIntoView: true` (→ y: "nearest")
-	// synchronously. Following that up with a `y: "center"` effect is
-	// unreliable on huge virtualized files because `coordsAtPos` for an
-	// un-rendered line returns estimated coords and CM's internal scroll
-	// math ends up a near-noop. Instead, wait one frame for CM to apply
-	// its nearest scroll, then read the line block (which uses CM's own
-	// doc-relative line-height cache kept accurate by the measure cycle)
-	// and set `scrollTop` directly.
+	const searchCenterHandleRef = useRef<CenterHandle | null>(null);
+	useEffect(() => {
+		return () => {
+			searchCenterHandleRef.current?.cancel();
+			searchCenterHandleRef.current = null;
+		};
+	}, []);
 	const scrollSearchMatchToCenter = (view: EditorView) => {
-		requestAnimationFrame(() => {
-			const scroller = view.scrollDOM;
-			const head = view.state.selection.main.head;
-			const block = view.lineBlockAt(head);
-			const targetScrollTop = Math.max(
-				0,
-				Math.round(block.top + block.height / 2 - scroller.clientHeight / 2),
-			);
-			scroller.scrollTop = targetScrollTop;
-		});
+		searchCenterHandleRef.current?.cancel();
+		const head = view.state.selection.main.head;
+		searchCenterHandleRef.current = centerPosition(
+			{ view, scrollContainer: view.scrollDOM },
+			head,
+		);
 	};
 
 	const handleOverlayFindNext = () => {
