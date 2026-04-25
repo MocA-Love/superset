@@ -35,6 +35,7 @@ import { ListProjectsToolCall } from "./components/ListProjectsToolCall";
 import { ListTaskStatusesToolCall } from "./components/ListTaskStatusesToolCall";
 import { ListTasksToolCall } from "./components/ListTasksToolCall";
 import { ListWorkspacesToolCall } from "./components/ListWorkspacesToolCall";
+import { RequestSandboxAccessToolCall } from "./components/RequestSandboxAccessToolCall";
 import { StartAgentSessionToolCall } from "./components/StartAgentSessionToolCall";
 import { SubagentToolCall } from "./components/SubagentToolCall";
 import { SupersetToolCall } from "./components/SupersetToolCall";
@@ -50,6 +51,8 @@ interface ToolCallBlockProps {
 	workspaceCwd?: string;
 	sessionId?: string | null;
 	organizationId?: string | null;
+	isStreaming?: boolean;
+	isInterrupted?: boolean;
 	onAnswer?: (
 		toolCallId: string,
 		answers: Record<string, string>,
@@ -68,6 +71,8 @@ export function ToolCallBlock({
 	workspaceCwd,
 	sessionId,
 	organizationId,
+	isStreaming,
+	isInterrupted,
 	onAnswer,
 }: ToolCallBlockProps) {
 	const args = getArgs(part);
@@ -592,8 +597,15 @@ export function ToolCallBlock({
 		);
 	}
 
-	if (toolName === "request_sandbox_access") {
-		return <SupersetToolCall part={part} toolName="Request sandbox access" />;
+	if (toolName === "request_access") {
+		return (
+			<RequestSandboxAccessToolCall
+				part={part}
+				args={args}
+				result={result}
+				isInterrupted={isInterrupted ?? false}
+			/>
+		);
 	}
 
 	if (toolName === "task_write") {

@@ -119,6 +119,8 @@ function findAnswerForQuestion({
 	return undefined;
 }
 
+// FORK NOTE: fork uses buildQuestionMarkdown + UserQuestionTool instead of the
+// upstream ToolCallRow/ToolStatusBadge pattern; fork implementation maintained here.
 function buildQuestionMarkdown({
 	questions,
 	answers,
