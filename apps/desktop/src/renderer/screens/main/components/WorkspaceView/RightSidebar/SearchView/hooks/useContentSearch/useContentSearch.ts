@@ -63,6 +63,14 @@ export function useContentSearch({
 	// hits as ripgrep finds them (VSCode-style streaming).
 	const [searchResults, setSearchResults] = useState<SearchContentResult[]>([]);
 	const [isStreaming, setIsStreaming] = useState(false);
+	// Bumped by `refresh()` to force a resubscribe after external mutations
+	// (e.g. replace-in-file). Mixing it into `subscriptionKey` resets local
+	// state, and into `scopeId` changes the subscription input identity so
+	// trpc tears down the old stream and starts a fresh ripgrep run.
+	const [refreshEpoch, setRefreshEpoch] = useState(0);
+	const refresh = useCallback(() => {
+		setRefreshEpoch((current) => current + 1);
+	}, []);
 
 	// We keep the "idle timeout after last event" and "reset-on-query-change"
 	// bookkeeping in refs so biome's exhaustive-deps autofix can't strip them
@@ -92,6 +100,7 @@ export function useContentSearch({
 		String(caseSensitive),
 		String(wholeWord),
 		String(multiline),
+		String(refreshEpoch),
 	].join("\u0000");
 
 	const subscriptionInput = useMemo(
@@ -106,7 +115,7 @@ export function useContentSearch({
 			caseSensitive,
 			wholeWord,
 			multiline,
-			scopeId: "search-tab",
+			scopeId: `search-tab:${refreshEpoch}`,
 		}),
 		[
 			workspaceId,
@@ -118,6 +127,7 @@ export function useContentSearch({
 			caseSensitive,
 			wholeWord,
 			multiline,
+			refreshEpoch,
 		],
 	);
 
@@ -194,5 +204,6 @@ export function useContentSearch({
 		isFetching: validationError === null && (isStreaming || isDebouncing),
 		hasQuery: trimmedQuery.length > 0,
 		validationError,
+		refresh,
 	};
 }
