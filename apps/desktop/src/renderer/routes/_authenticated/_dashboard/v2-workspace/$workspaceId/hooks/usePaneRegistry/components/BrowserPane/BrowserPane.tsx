@@ -164,7 +164,7 @@ export function BrowserPaneToolbar({ ctx }: BrowserPaneToolbarProps) {
 	const PaneHeaderActions = ctx.components.PaneHeaderActions;
 
 	return (
-		<div className="flex h-full w-full items-center justify-between min-w-0">
+		<div className="flex h-full w-full min-w-0 items-center justify-between">
 			<BrowserToolbar
 				currentUrl={state.currentUrl}
 				pageTitle={state.pageTitle}
@@ -176,7 +176,7 @@ export function BrowserPaneToolbar({ ctx }: BrowserPaneToolbarProps) {
 				onReload={handleReload}
 				onNavigate={handleNavigate}
 			/>
-			<div className="flex items-center shrink-0 pr-1">
+			<div className="flex shrink-0 items-center pr-1">
 				<div className="mx-1.5 h-3.5 w-px bg-muted-foreground/60" />
 				<Tooltip>
 					<TooltipTrigger asChild>
