@@ -56,6 +56,7 @@ import type {
 	SymbolHoverResult,
 	SymbolPosition,
 } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/symbolInteractions.types";
+import { centerPosition } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor/utils/centerPosition";
 import { getCodeSyntaxHighlighting } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme } from "renderer/stores/theme";
 import { useVibrancyStore } from "renderer/stores/vibrancy";
@@ -460,20 +461,21 @@ export const CodeMirrorDiffViewer = forwardRef<
 		syncSearchOverlayState();
 	};
 
-	// Manual center scroll using CM's line-block cache — see CodeEditor.tsx
-	// comment for the rationale (CM's y: "center" effect is unreliable on
-	// virtualized content after a find dispatch).
+	// Center the active match in the OUTER `.cm-mergeView` (which is the
+	// real scroll container — the inner `.cm-scroller`s have
+	// `overflow-y: visible !important` per the merge package's baseTheme,
+	// so writing to view.scrollDOM.scrollTop is a no-op and reading
+	// view.scrollDOM.clientHeight returns the full content height).
+	const centerHandleRef = useRef<{ cancel: () => void } | null>(null);
 	const scrollActiveSelectionToCenter = (view: EditorView) => {
-		requestAnimationFrame(() => {
-			const scroller = view.scrollDOM;
-			const head = view.state.selection.main.head;
-			const block = view.lineBlockAt(head);
-			const targetScrollTop = Math.max(
-				0,
-				Math.round(block.top + block.height / 2 - scroller.clientHeight / 2),
-			);
-			scroller.scrollTop = targetScrollTop;
-		});
+		const mv = mergeViewRef.current;
+		if (!mv) return;
+		centerHandleRef.current?.cancel();
+		const head = view.state.selection.main.head;
+		centerHandleRef.current = centerPosition(
+			{ view, scrollContainer: mv.dom, mergeView: mv },
+			head,
+		);
 	};
 
 	const handleOverlayFindNext = () => {
@@ -691,6 +693,8 @@ export const CodeMirrorDiffViewer = forwardRef<
 		});
 
 		return () => {
+			centerHandleRef.current?.cancel();
+			centerHandleRef.current = null;
 			mergeView.destroy();
 			mergeViewRef.current = null;
 			// Reset search state so the overlay does not keep pointing at the
