@@ -2,13 +2,13 @@ import { toast } from "@superset/ui/sonner";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
-import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { getDeleteFocusTargetWorkspaceId } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/utils/getDeleteFocusTargetWorkspaceId";
 import { getFlattenedV2WorkspaceIds } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/utils/getFlattenedV2WorkspaceIds";
 import { navigateToV2Workspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
+import { useOptimisticCollectionActions } from "renderer/routes/_authenticated/hooks/useOptimisticCollectionActions";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 
@@ -30,6 +30,7 @@ export function useDashboardSidebarWorkspaceItemActions({
 	const collections = useCollections();
 	const { activeHostUrl } = useLocalHostService();
 	const { copyToClipboard } = useCopyToClipboard();
+	const { v2Workspaces: workspaceActions } = useOptimisticCollectionActions();
 	const { createSection, moveWorkspaceToSection, removeWorkspaceFromSidebar } =
 		useDashboardSidebarState();
 
@@ -61,20 +62,11 @@ export function useDashboardSidebarWorkspaceItemActions({
 		setRenameValue(workspaceName);
 	};
 
-	const submitRename = async () => {
+	const submitRename = () => {
 		setIsRenaming(false);
 		const trimmed = renameValue.trim();
 		if (!trimmed || trimmed === workspaceName) return;
-		try {
-			await apiTrpcClient.v2Workspace.update.mutate({
-				id: workspaceId,
-				name: trimmed,
-			});
-		} catch (error) {
-			toast.error(
-				`Failed to rename: ${error instanceof Error ? error.message : "Unknown error"}`,
-			);
-		}
+		workspaceActions.renameWorkspace(workspaceId, trimmed);
 	};
 
 	/**
