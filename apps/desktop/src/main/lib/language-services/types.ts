@@ -124,6 +124,120 @@ export interface LanguageServiceIncomingCall {
 	}>;
 }
 
+export interface LanguageServiceTextEdit {
+	range: LanguageServiceRange;
+	newText: string;
+}
+
+export interface LanguageServiceWorkspaceEdit {
+	changes: Array<{
+		absolutePath: string;
+		edits: LanguageServiceTextEdit[];
+	}>;
+}
+
+export interface LanguageServiceCompletionItem {
+	label: string;
+	kind: number | null;
+	detail: string | null;
+	documentation: LanguageServiceMarkupContent | null;
+	sortText: string | null;
+	filterText: string | null;
+	insertText: string;
+	insertTextFormat: "plaintext" | "snippet";
+	textEditRange: LanguageServiceRange | null;
+	additionalTextEdits: LanguageServiceTextEdit[];
+	commitCharacters: string[] | null;
+	preselect: boolean;
+	deprecated: boolean;
+	tags: number[];
+	command: {
+		title: string;
+		command: string;
+		arguments?: unknown[];
+	} | null;
+	data: unknown;
+}
+
+export interface LanguageServiceCompletionList {
+	isIncomplete: boolean;
+	items: LanguageServiceCompletionItem[];
+}
+
+export interface LanguageServiceParameterInformation {
+	label: string;
+	documentation: LanguageServiceMarkupContent | null;
+}
+
+export interface LanguageServiceSignatureInformation {
+	label: string;
+	documentation: LanguageServiceMarkupContent | null;
+	parameters: LanguageServiceParameterInformation[];
+	activeParameter: number | null;
+}
+
+export interface LanguageServiceSignatureHelp {
+	signatures: LanguageServiceSignatureInformation[];
+	activeSignature: number;
+	activeParameter: number;
+}
+
+export type LanguageServiceDocumentHighlightKind = "text" | "read" | "write";
+
+export interface LanguageServiceDocumentHighlight {
+	range: LanguageServiceRange;
+	kind: LanguageServiceDocumentHighlightKind;
+}
+
+export interface LanguageServiceCodeAction {
+	title: string;
+	kind: string | null;
+	isPreferred: boolean;
+	disabledReason: string | null;
+	edit: LanguageServiceWorkspaceEdit | null;
+	command: {
+		title: string;
+		command: string;
+		arguments?: unknown[];
+	} | null;
+	data: unknown;
+}
+
+export interface LanguageServicePrepareRenameResult {
+	range: LanguageServiceRange;
+	placeholder: string | null;
+}
+
+export interface LanguageServiceInlayHint {
+	line: number;
+	column: number;
+	label: string;
+	kind: "type" | "parameter" | null;
+	paddingLeft: boolean;
+	paddingRight: boolean;
+	tooltip: LanguageServiceMarkupContent | null;
+}
+
+export interface LanguageServiceSemanticTokens {
+	resultId: string | null;
+	data: number[];
+}
+
+export interface LanguageServiceSemanticTokensLegend {
+	tokenTypes: string[];
+	tokenModifiers: string[];
+}
+
+export interface LanguageServiceDocumentSymbol {
+	name: string;
+	detail: string | null;
+	kind: number;
+	tags: number[];
+	range: LanguageServiceRange;
+	selectionRange: LanguageServiceRange;
+	children: LanguageServiceDocumentSymbol[];
+}
+
 export interface LanguageServiceProvider {
 	readonly id: string;
 	readonly label: string;
@@ -207,4 +321,113 @@ export interface LanguageServiceProvider {
 		workspaceId: string;
 		item: LanguageServiceCallHierarchyItem;
 	}): Promise<LanguageServiceIncomingCall[] | null>;
+
+	getTypeDefinition?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null>;
+
+	getImplementation?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null>;
+
+	getDocumentHighlights?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceDocumentHighlight[] | null>;
+
+	getCompletion?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+	}): Promise<LanguageServiceCompletionList | null>;
+
+	resolveCompletionItem?(args: {
+		workspaceId: string;
+		item: LanguageServiceCompletionItem;
+	}): Promise<LanguageServiceCompletionItem | null>;
+
+	getSignatureHelp?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+		isRetrigger?: boolean;
+	}): Promise<LanguageServiceSignatureHelp | null>;
+
+	getCodeActions?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+		only?: string[];
+	}): Promise<LanguageServiceCodeAction[] | null>;
+
+	resolveCodeAction?(args: {
+		workspaceId: string;
+		action: LanguageServiceCodeAction;
+	}): Promise<LanguageServiceCodeAction | null>;
+
+	prepareRename?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServicePrepareRenameResult | null>;
+
+	rename?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+		newName: string;
+	}): Promise<LanguageServiceWorkspaceEdit | null>;
+
+	getInlayHints?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+	}): Promise<LanguageServiceInlayHint[] | null>;
+
+	getSemanticTokens?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+	}): Promise<LanguageServiceSemanticTokens | null>;
+
+	getSemanticTokensLegend?(args: {
+		workspaceId: string;
+	}): LanguageServiceSemanticTokensLegend | null;
+
+	getDocumentSymbols?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+	}): Promise<LanguageServiceDocumentSymbol[] | null>;
 }

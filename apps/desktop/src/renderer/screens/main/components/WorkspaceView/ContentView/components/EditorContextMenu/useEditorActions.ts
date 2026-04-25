@@ -17,6 +17,11 @@ interface UseEditorActionsProps {
 	/** If true, includes cut/paste actions (for editable editors) */
 	editable?: boolean;
 	onGoToDefinition?: () => void;
+	onGoToTypeDefinition?: () => void;
+	onGoToImplementation?: () => void;
+	onFindAllReferences?: () => void;
+	onRenameSymbol?: () => void;
+	onShowCodeActions?: () => void;
 	/** Optional handler for "Show Reference Graph" context menu action */
 	onShowReferenceGraph?: () => void;
 }
@@ -33,6 +38,11 @@ export function useEditorActions({
 	supersetLinkProject,
 	editable = true,
 	onGoToDefinition,
+	onGoToTypeDefinition,
+	onGoToImplementation,
+	onFindAllReferences,
+	onRenameSymbol,
+	onShowCodeActions,
 	onShowReferenceGraph,
 }: UseEditorActionsProps): EditorActions {
 	const { copyToClipboard } = useCopyToClipboard();
@@ -191,6 +201,11 @@ export function useEditorActions({
 				: undefined,
 		onFind: handleFind,
 		onGoToDefinition,
+		onGoToTypeDefinition,
+		onGoToImplementation,
+		onFindAllReferences,
+		onRenameSymbol,
+		onShowCodeActions,
 		onShowReferenceGraph,
 	};
 }

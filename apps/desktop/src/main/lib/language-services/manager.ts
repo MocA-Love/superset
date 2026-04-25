@@ -1,4 +1,56 @@
+import * as fs from "node:fs/promises";
 import { languageDiagnosticsStore } from "./diagnostics-store";
+import type { LanguageServiceTextEdit } from "./types";
+
+function lineColumnToOffset(
+	content: string,
+	line: number,
+	column: number,
+): number {
+	let currentLine = 1;
+	let lineStartOffset = 0;
+	for (let i = 0; i < content.length && currentLine < line; i += 1) {
+		const ch = content[i];
+		if (ch === "\n") {
+			currentLine += 1;
+			lineStartOffset = i + 1;
+		} else if (ch === "\r") {
+			currentLine += 1;
+			if (content[i + 1] === "\n") i += 1;
+			lineStartOffset = i + 1;
+		}
+	}
+	if (currentLine !== line) {
+		return content.length;
+	}
+	return Math.min(content.length, lineStartOffset + Math.max(0, column - 1));
+}
+
+function applyTextEditsToContent(
+	content: string,
+	edits: LanguageServiceTextEdit[],
+): string {
+	const sorted = [...edits].sort((a, b) => {
+		if (a.range.line !== b.range.line) return b.range.line - a.range.line;
+		return b.range.column - a.range.column;
+	});
+	let result = content;
+	for (const edit of sorted) {
+		const start = lineColumnToOffset(
+			result,
+			edit.range.line,
+			edit.range.column,
+		);
+		const end = lineColumnToOffset(
+			result,
+			edit.range.endLine,
+			edit.range.endColumn,
+		);
+		result = result.slice(0, start) + edit.newText + result.slice(end);
+	}
+	return result;
+}
+
 import { CssLanguageProvider } from "./providers/css/CssLanguageProvider";
 import { DartLanguageProvider } from "./providers/dart/DartLanguageProvider";
 import { DockerfileLanguageProvider } from "./providers/dockerfile/DockerfileLanguageProvider";
@@ -13,12 +65,23 @@ import { TypeScriptLanguageProvider } from "./providers/typescript/TypeScriptLan
 import { YamlLanguageProvider } from "./providers/yaml/YamlLanguageProvider";
 import type {
 	LanguageServiceCallHierarchyItem,
+	LanguageServiceCodeAction,
+	LanguageServiceCompletionItem,
+	LanguageServiceCompletionList,
 	LanguageServiceDocument,
+	LanguageServiceDocumentHighlight,
+	LanguageServiceDocumentSymbol,
 	LanguageServiceHover,
 	LanguageServiceIncomingCall,
+	LanguageServiceInlayHint,
 	LanguageServiceLocation,
+	LanguageServicePrepareRenameResult,
 	LanguageServiceProvider,
 	LanguageServiceProviderDescriptor,
+	LanguageServiceSemanticTokens,
+	LanguageServiceSemanticTokensLegend,
+	LanguageServiceSignatureHelp,
+	LanguageServiceWorkspaceEdit,
 	LanguageServiceWorkspaceSnapshot,
 } from "./types";
 
@@ -248,6 +311,224 @@ export class LanguageServiceManager {
 				item: args.item,
 			})) ?? null
 		);
+	}
+
+	async getTypeDefinition(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getTypeDefinition?.(args)) ?? null;
+	}
+
+	async getImplementation(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getImplementation?.(args)) ?? null;
+	}
+
+	async getDocumentHighlights(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceDocumentHighlight[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getDocumentHighlights?.(args)) ?? null;
+	}
+
+	async getCompletion(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+	}): Promise<LanguageServiceCompletionList | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getCompletion?.(args)) ?? null;
+	}
+
+	async resolveCompletionItem(args: {
+		workspaceId: string;
+		languageId: string;
+		item: LanguageServiceCompletionItem;
+	}): Promise<LanguageServiceCompletionItem | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (
+			(await provider.resolveCompletionItem?.({
+				workspaceId: args.workspaceId,
+				item: args.item,
+			})) ?? null
+		);
+	}
+
+	async getSignatureHelp(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+		isRetrigger?: boolean;
+	}): Promise<LanguageServiceSignatureHelp | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getSignatureHelp?.(args)) ?? null;
+	}
+
+	async getCodeActions(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+		only?: string[];
+	}): Promise<LanguageServiceCodeAction[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getCodeActions?.(args)) ?? null;
+	}
+
+	async resolveCodeAction(args: {
+		workspaceId: string;
+		languageId: string;
+		action: LanguageServiceCodeAction;
+	}): Promise<LanguageServiceCodeAction | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (
+			(await provider.resolveCodeAction?.({
+				workspaceId: args.workspaceId,
+				action: args.action,
+			})) ?? null
+		);
+	}
+
+	async prepareRename(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServicePrepareRenameResult | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.prepareRename?.(args)) ?? null;
+	}
+
+	async rename(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+		newName: string;
+	}): Promise<LanguageServiceWorkspaceEdit | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.rename?.(args)) ?? null;
+	}
+
+	async getInlayHints(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+	}): Promise<LanguageServiceInlayHint[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getInlayHints?.(args)) ?? null;
+	}
+
+	async getSemanticTokens(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+	}): Promise<LanguageServiceSemanticTokens | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getSemanticTokens?.(args)) ?? null;
+	}
+
+	getSemanticTokensLegend(args: {
+		workspaceId: string;
+		languageId: string;
+	}): LanguageServiceSemanticTokensLegend | null {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (
+			provider.getSemanticTokensLegend?.({
+				workspaceId: args.workspaceId,
+			}) ?? null
+		);
+	}
+
+	async getDocumentSymbols(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+	}): Promise<LanguageServiceDocumentSymbol[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getDocumentSymbols?.(args)) ?? null;
+	}
+
+	async applyWorkspaceEdit(edit: LanguageServiceWorkspaceEdit): Promise<{
+		applied: boolean;
+		failures: Array<{ absolutePath: string; reason: string }>;
+	}> {
+		const failures: Array<{ absolutePath: string; reason: string }> = [];
+		for (const change of edit.changes) {
+			try {
+				const original = await fs.readFile(change.absolutePath, "utf8");
+				const updated = applyTextEditsToContent(original, change.edits);
+				if (updated !== original) {
+					await fs.writeFile(change.absolutePath, updated, "utf8");
+				}
+			} catch (error) {
+				failures.push({
+					absolutePath: change.absolutePath,
+					reason: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+		return {
+			applied: failures.length === 0,
+			failures,
+		};
 	}
 
 	private isProviderEnabled(providerId: string): boolean {
