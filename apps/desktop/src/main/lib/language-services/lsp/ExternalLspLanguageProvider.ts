@@ -9,6 +9,7 @@ import type {
 	LanguageServiceDocumentHighlight,
 	LanguageServiceDocumentHighlightKind,
 	LanguageServiceDocumentSymbol,
+	LanguageServiceFileOperation,
 	LanguageServiceHover,
 	LanguageServiceIncomingCall,
 	LanguageServiceInlayHint,
@@ -115,7 +116,28 @@ type ExternalLspProviderOptions = {
 	refreshRequest?: RefreshRequest | null;
 	clientCapabilities?: unknown;
 	defaultSource?: string;
+	/**
+	 * Tap into custom server-sent notifications (publishClosingLabels,
+	 * publishOutline, etc.). Called for every notification except those
+	 * the base implementation already handles (publishDiagnostics).
+	 */
+	onCustomNotification?: (
+		args: ProviderArgs,
+		message: { method: string; params?: unknown },
+	) => void;
 };
+
+let workspaceEditApplier:
+	| ((edit: LanguageServiceWorkspaceEdit) => Promise<{ applied: boolean }>)
+	| null = null;
+
+export function setExternalLspWorkspaceEditApplier(
+	applier: (
+		edit: LanguageServiceWorkspaceEdit,
+	) => Promise<{ applied: boolean }>,
+): void {
+	workspaceEditApplier = applier;
+}
 
 function resolveSemanticTokensLegend(
 	result: unknown,
@@ -240,11 +262,27 @@ function normalizeWorkspaceEdit(
 					textDocument?: { uri: string; version?: number };
 					edits?: Array<{ range: LspRange; newText: string }>;
 			  }
-			| { kind?: string }
+			| {
+					kind: "create";
+					uri: string;
+					options?: { overwrite?: boolean; ignoreIfExists?: boolean };
+			  }
+			| {
+					kind: "rename";
+					oldUri: string;
+					newUri: string;
+					options?: { overwrite?: boolean; ignoreIfExists?: boolean };
+			  }
+			| {
+					kind: "delete";
+					uri: string;
+					options?: { recursive?: boolean; ignoreIfNotExists?: boolean };
+			  }
 		>;
 	};
 
 	const fileChanges = new Map<string, LanguageServiceTextEdit[]>();
+	const fileOperations: LanguageServiceFileOperation[] = [];
 
 	if (edit.changes) {
 		for (const [uri, edits] of Object.entries(edit.changes)) {
@@ -264,9 +302,52 @@ function normalizeWorkspaceEdit(
 
 	if (edit.documentChanges) {
 		for (const change of edit.documentChanges) {
-			if (!change || typeof change !== "object" || "kind" in change) {
+			if (!change || typeof change !== "object") {
 				continue;
 			}
+
+			if ("kind" in change) {
+				if (change.kind === "create") {
+					const absolutePath = fileUriToAbsolutePath(change.uri);
+					if (absolutePath) {
+						fileOperations.push({
+							kind: "create",
+							absolutePath,
+							overwrite: change.options?.overwrite,
+							ignoreIfExists: change.options?.ignoreIfExists,
+						});
+					}
+					continue;
+				}
+				if (change.kind === "rename") {
+					const oldAbsolutePath = fileUriToAbsolutePath(change.oldUri);
+					const newAbsolutePath = fileUriToAbsolutePath(change.newUri);
+					if (oldAbsolutePath && newAbsolutePath) {
+						fileOperations.push({
+							kind: "rename",
+							oldAbsolutePath,
+							newAbsolutePath,
+							overwrite: change.options?.overwrite,
+							ignoreIfExists: change.options?.ignoreIfExists,
+						});
+					}
+					continue;
+				}
+				if (change.kind === "delete") {
+					const absolutePath = fileUriToAbsolutePath(change.uri);
+					if (absolutePath) {
+						fileOperations.push({
+							kind: "delete",
+							absolutePath,
+							recursive: change.options?.recursive,
+							ignoreIfNotExists: change.options?.ignoreIfNotExists,
+						});
+					}
+					continue;
+				}
+				continue;
+			}
+
 			const textChange = change as {
 				textDocument?: { uri: string };
 				edits?: Array<{ range: LspRange; newText: string }>;
@@ -287,16 +368,88 @@ function normalizeWorkspaceEdit(
 		}
 	}
 
-	if (fileChanges.size === 0) {
+	if (fileChanges.size === 0 && fileOperations.length === 0) {
 		return null;
 	}
 
-	return {
+	const result: LanguageServiceWorkspaceEdit = {
 		changes: Array.from(fileChanges.entries()).map(([absolutePath, edits]) => ({
 			absolutePath,
 			edits,
 		})),
 	};
+	if (fileOperations.length > 0) {
+		result.fileOperations = fileOperations;
+	}
+	return result;
+}
+
+function denormalizeWorkspaceEdit(edit: LanguageServiceWorkspaceEdit): unknown {
+	const documentChanges: unknown[] = edit.changes.map((change) => ({
+		textDocument: {
+			uri: absolutePathToFileUri(change.absolutePath),
+			version: null,
+		},
+		edits: change.edits.map((textEdit) => ({
+			range: {
+				start: {
+					line: textEdit.range.line - 1,
+					character: textEdit.range.column - 1,
+				},
+				end: {
+					line: textEdit.range.endLine - 1,
+					character: textEdit.range.endColumn - 1,
+				},
+			},
+			newText: textEdit.newText,
+		})),
+	}));
+
+	for (const operation of edit.fileOperations ?? []) {
+		if (operation.kind === "create") {
+			documentChanges.push({
+				kind: "create",
+				uri: absolutePathToFileUri(operation.absolutePath),
+				options:
+					operation.overwrite !== undefined ||
+					operation.ignoreIfExists !== undefined
+						? {
+								overwrite: operation.overwrite,
+								ignoreIfExists: operation.ignoreIfExists,
+							}
+						: undefined,
+			});
+		} else if (operation.kind === "rename") {
+			documentChanges.push({
+				kind: "rename",
+				oldUri: absolutePathToFileUri(operation.oldAbsolutePath),
+				newUri: absolutePathToFileUri(operation.newAbsolutePath),
+				options:
+					operation.overwrite !== undefined ||
+					operation.ignoreIfExists !== undefined
+						? {
+								overwrite: operation.overwrite,
+								ignoreIfExists: operation.ignoreIfExists,
+							}
+						: undefined,
+			});
+		} else if (operation.kind === "delete") {
+			documentChanges.push({
+				kind: "delete",
+				uri: absolutePathToFileUri(operation.absolutePath),
+				options:
+					operation.recursive !== undefined ||
+					operation.ignoreIfNotExists !== undefined
+						? {
+								recursive: operation.recursive,
+								ignoreIfNotExists: operation.ignoreIfNotExists,
+							}
+						: undefined,
+			});
+		}
+	}
+
+	return { documentChanges };
 }
 
 type RawCompletionItem = {
@@ -473,6 +626,7 @@ function denormalizeCodeAction(action: LanguageServiceCodeAction): unknown {
 		disabled: action.disabledReason
 			? { reason: action.disabledReason }
 			: undefined,
+		edit: action.edit ? denormalizeWorkspaceEdit(action.edit) : undefined,
 		command: action.command ?? undefined,
 		data: action.data ?? undefined,
 	};
@@ -498,6 +652,25 @@ function normalizeDocumentSymbol(
 			.map((child) => normalizeDocumentSymbol(child))
 			.filter((c): c is LanguageServiceDocumentSymbol => c !== null),
 	};
+}
+
+function diagnosticOverlapsRange(
+	diagnostic: LanguageServiceDiagnostic,
+	startLine: number,
+	startColumn: number,
+	endLine: number,
+	endColumn: number,
+): boolean {
+	const dStartLine = diagnostic.line ?? 1;
+	const dStartColumn = diagnostic.column ?? 1;
+	const dEndLine = diagnostic.endLine ?? dStartLine;
+	const dEndColumn = diagnostic.endColumn ?? dStartColumn;
+
+	if (dEndLine < startLine) return false;
+	if (dStartLine > endLine) return false;
+	if (dEndLine === startLine && dEndColumn < startColumn) return false;
+	if (dStartLine === endLine && dStartColumn > endColumn) return false;
+	return true;
 }
 
 function lspDocumentHighlightKind(
@@ -1315,11 +1488,52 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 		endLine: number;
 		endColumn: number;
 		only?: string[];
+		diagnostics?: LanguageServiceDiagnostic[];
 	}): Promise<LanguageServiceCodeAction[] | null> {
 		const session = this.sessions.get(args.workspaceId);
 		if (!session) return null;
 
 		try {
+			const lspDiagnostics = (args.diagnostics ?? [])
+				.filter((diagnostic) =>
+					diagnosticOverlapsRange(
+						diagnostic,
+						args.startLine,
+						args.startColumn,
+						args.endLine,
+						args.endColumn,
+					),
+				)
+				.map((diagnostic) => ({
+					range: {
+						start: {
+							line: Math.max((diagnostic.line ?? 1) - 1, 0),
+							character: Math.max((diagnostic.column ?? 1) - 1, 0),
+						},
+						end: {
+							line: Math.max(
+								(diagnostic.endLine ?? diagnostic.line ?? 1) - 1,
+								0,
+							),
+							character: Math.max(
+								(diagnostic.endColumn ?? diagnostic.column ?? 1) - 1,
+								0,
+							),
+						},
+					},
+					severity:
+						diagnostic.severity === "error"
+							? 1
+							: diagnostic.severity === "warning"
+								? 2
+								: diagnostic.severity === "info"
+									? 3
+									: 4,
+					code: diagnostic.code ?? undefined,
+					source: diagnostic.source,
+					message: diagnostic.message,
+				}));
+
 			const result = (await session.client.request("textDocument/codeAction", {
 				textDocument: { uri: absolutePathToFileUri(args.absolutePath) },
 				range: {
@@ -1330,7 +1544,7 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 					end: { line: args.endLine - 1, character: args.endColumn - 1 },
 				},
 				context: {
-					diagnostics: [],
+					diagnostics: lspDiagnostics,
 					...(args.only ? { only: args.only } : {}),
 				},
 			})) as Array<RawCodeAction> | null;
@@ -1394,7 +1608,9 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 
 			if (!result) return null;
 			if ("defaultBehavior" in result) {
-				return null;
+				return result.defaultBehavior
+					? { range: null, placeholder: null, defaultBehavior: true }
+					: null;
 			}
 
 			if ("range" in result) {
@@ -1403,12 +1619,13 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 				return {
 					range,
 					placeholder: result.placeholder ?? null,
+					defaultBehavior: false,
 				};
 			}
 
 			const range = lspRangeToLanguageServiceRange(result);
 			if (!range) return null;
-			return { range, placeholder: null };
+			return { range, placeholder: null, defaultBehavior: false };
 		} catch (error) {
 			this.recordError(session, args.workspaceId, error);
 			return null;
@@ -1542,6 +1759,67 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 		} catch (error) {
 			this.recordError(session, args.workspaceId, error);
 			return null;
+		}
+	}
+
+	async notifyDocumentChangedOnDisk(args: {
+		absolutePath: string;
+		content: string;
+	}): Promise<void> {
+		for (const session of this.sessions.values()) {
+			const previous = session.openDocuments.get(args.absolutePath);
+			if (!previous) {
+				continue;
+			}
+			const nextVersion = previous.version + 1;
+			session.openDocuments.set(args.absolutePath, {
+				...previous,
+				version: nextVersion,
+				content: args.content,
+			});
+			try {
+				await this.sendDidChange(session, previous, nextVersion, args.content);
+			} catch (error) {
+				this.recordError(session, session.workspaceId, error);
+			}
+		}
+	}
+
+	async notifyFileResourceChange(
+		operation:
+			| { kind: "rename"; oldAbsolutePath: string; newAbsolutePath: string }
+			| { kind: "delete"; absolutePath: string }
+			| { kind: "create"; absolutePath: string },
+	): Promise<void> {
+		if (operation.kind === "rename") {
+			for (const session of this.sessions.values()) {
+				const entry = session.openDocuments.get(operation.oldAbsolutePath);
+				if (!entry) continue;
+				try {
+					await session.client.notify("textDocument/didClose", {
+						textDocument: { uri: entry.uri },
+					});
+				} catch (error) {
+					this.recordError(session, session.workspaceId, error);
+				}
+				session.openDocuments.delete(operation.oldAbsolutePath);
+			}
+			return;
+		}
+
+		if (operation.kind === "delete") {
+			for (const session of this.sessions.values()) {
+				const entry = session.openDocuments.get(operation.absolutePath);
+				if (!entry) continue;
+				try {
+					await session.client.notify("textDocument/didClose", {
+						textDocument: { uri: entry.uri },
+					});
+				} catch (error) {
+					this.recordError(session, session.workspaceId, error);
+				}
+				session.openDocuments.delete(operation.absolutePath);
+			}
 		}
 	}
 
@@ -1699,6 +1977,8 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 						applyEdit: true,
 						workspaceEdit: {
 							documentChanges: true,
+							resourceOperations: ["create", "rename", "delete"],
+							failureHandling: "abort",
 						},
 					},
 					textDocument: {
@@ -1904,6 +2184,13 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 		},
 	): void {
 		if (message.method !== "textDocument/publishDiagnostics") {
+			this.options.onCustomNotification?.(
+				{
+					workspaceId: session.workspaceId,
+					workspacePath: session.workspacePath,
+				},
+				message,
+			);
 			return;
 		}
 
@@ -1964,8 +2251,31 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 			case "client/unregisterCapability":
 			case "window/workDoneProgress/create":
 				return null;
-			case "workspace/applyEdit":
-				return { applied: false };
+			case "workspace/applyEdit": {
+				const params = message.params as
+					| { label?: string; edit?: unknown }
+					| undefined;
+				const normalized = normalizeWorkspaceEdit(params?.edit);
+				if (!normalized) {
+					return { applied: false, failureReason: "no edit content" };
+				}
+				if (!workspaceEditApplier) {
+					return {
+						applied: false,
+						failureReason: "no workspace edit applier registered",
+					};
+				}
+				try {
+					const result = await workspaceEditApplier(normalized);
+					return { applied: result.applied };
+				} catch (error) {
+					return {
+						applied: false,
+						failureReason:
+							error instanceof Error ? error.message : String(error),
+					};
+				}
+			}
 			default:
 				return undefined;
 		}

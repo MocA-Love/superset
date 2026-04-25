@@ -1,6 +1,10 @@
 import * as fs from "node:fs/promises";
 import { languageDiagnosticsStore } from "./diagnostics-store";
-import type { LanguageServiceTextEdit } from "./types";
+import { setExternalLspWorkspaceEditApplier } from "./lsp/ExternalLspLanguageProvider";
+import type {
+	LanguageServiceFileOperation,
+	LanguageServiceTextEdit,
+} from "./types";
 
 function lineColumnToOffset(
 	content: string,
@@ -26,14 +30,43 @@ function lineColumnToOffset(
 	return Math.min(content.length, lineStartOffset + Math.max(0, column - 1));
 }
 
+function detectOverlap(
+	sortedEdits: LanguageServiceTextEdit[],
+	content: string,
+): { aIndex: number; bIndex: number } | null {
+	const offsets = sortedEdits.map((edit) => ({
+		start: lineColumnToOffset(content, edit.range.line, edit.range.column),
+		end: lineColumnToOffset(content, edit.range.endLine, edit.range.endColumn),
+	}));
+	for (let i = 0; i < offsets.length - 1; i += 1) {
+		const current = offsets[i];
+		const next = offsets[i + 1];
+		if (next === undefined || current === undefined) continue;
+		// sorted descending: next.end should be <= current.start
+		if (next.end > current.start) {
+			return { aIndex: i, bIndex: i + 1 };
+		}
+	}
+	return null;
+}
+
 function applyTextEditsToContent(
 	content: string,
 	edits: LanguageServiceTextEdit[],
-): string {
+): { result: string; overlap: boolean } {
 	const sorted = [...edits].sort((a, b) => {
 		if (a.range.line !== b.range.line) return b.range.line - a.range.line;
-		return b.range.column - a.range.column;
+		if (a.range.column !== b.range.column) {
+			return b.range.column - a.range.column;
+		}
+		if (a.range.endLine !== b.range.endLine) {
+			return b.range.endLine - a.range.endLine;
+		}
+		return b.range.endColumn - a.range.endColumn;
 	});
+	if (detectOverlap(sorted, content)) {
+		return { result: content, overlap: true };
+	}
 	let result = content;
 	for (const edit of sorted) {
 		const start = lineColumnToOffset(
@@ -48,7 +81,7 @@ function applyTextEditsToContent(
 		);
 		result = result.slice(0, start) + edit.newText + result.slice(end);
 	}
-	return result;
+	return { result, overlap: false };
 }
 
 import { CssLanguageProvider } from "./providers/css/CssLanguageProvider";
@@ -411,7 +444,16 @@ export class LanguageServiceManager {
 	}): Promise<LanguageServiceCodeAction[] | null> {
 		const provider = this.resolveProvider(args.languageId);
 		if (!provider || !this.isProviderEnabled(provider.id)) return null;
-		return (await provider.getCodeActions?.(args)) ?? null;
+		const diagnostics = languageDiagnosticsStore.getFileDiagnostics(
+			args.workspaceId,
+			args.absolutePath,
+		);
+		return (
+			(await provider.getCodeActions?.({
+				...args,
+				diagnostics,
+			})) ?? null
+		);
 	}
 
 	async resolveCodeAction(args: {
@@ -511,13 +553,26 @@ export class LanguageServiceManager {
 		failures: Array<{ absolutePath: string; reason: string }>;
 	}> {
 		const failures: Array<{ absolutePath: string; reason: string }> = [];
+		const updatedContents = new Map<string, string>();
+
 		for (const change of edit.changes) {
 			try {
 				const original = await fs.readFile(change.absolutePath, "utf8");
-				const updated = applyTextEditsToContent(original, change.edits);
-				if (updated !== original) {
-					await fs.writeFile(change.absolutePath, updated, "utf8");
+				const { result, overlap } = applyTextEditsToContent(
+					original,
+					change.edits,
+				);
+				if (overlap) {
+					failures.push({
+						absolutePath: change.absolutePath,
+						reason: "overlapping text edit ranges",
+					});
+					continue;
 				}
+				if (result !== original) {
+					await fs.writeFile(change.absolutePath, result, "utf8");
+				}
+				updatedContents.set(change.absolutePath, result);
 			} catch (error) {
 				failures.push({
 					absolutePath: change.absolutePath,
@@ -525,10 +580,130 @@ export class LanguageServiceManager {
 				});
 			}
 		}
+
+		for (const operation of edit.fileOperations ?? []) {
+			try {
+				await this.executeFileOperation(operation);
+			} catch (error) {
+				failures.push({
+					absolutePath:
+						operation.kind === "rename"
+							? operation.newAbsolutePath
+							: operation.absolutePath,
+					reason: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+
+		// Re-sync any provider that has these files open so subsequent LSP
+		// requests see the new content rather than the stale buffer they
+		// last saw via didOpen / didChange.
+		await Promise.all(
+			Array.from(updatedContents.entries()).map(([absolutePath, content]) =>
+				Promise.all(
+					this.providers.map((provider) =>
+						provider
+							.notifyDocumentChangedOnDisk?.({ absolutePath, content })
+							.catch(() => {
+								/* best-effort */
+							}),
+					),
+				),
+			),
+		);
+
 		return {
 			applied: failures.length === 0,
 			failures,
 		};
+	}
+
+	private async executeFileOperation(
+		operation: LanguageServiceFileOperation,
+	): Promise<void> {
+		if (operation.kind === "create") {
+			try {
+				await fs.access(operation.absolutePath);
+				if (operation.ignoreIfExists && !operation.overwrite) {
+					return;
+				}
+				if (!operation.overwrite) {
+					throw new Error(`file already exists: ${operation.absolutePath}`);
+				}
+			} catch {
+				// file does not exist — proceed
+			}
+			await fs.writeFile(operation.absolutePath, "", "utf8");
+			await Promise.all(
+				this.providers.map((provider) =>
+					provider
+						.notifyFileResourceChange?.({
+							kind: "create",
+							absolutePath: operation.absolutePath,
+						})
+						.catch(() => {
+							/* best-effort */
+						}),
+				),
+			);
+			return;
+		}
+
+		if (operation.kind === "rename") {
+			try {
+				await fs.access(operation.newAbsolutePath);
+				if (operation.ignoreIfExists && !operation.overwrite) {
+					return;
+				}
+				if (!operation.overwrite) {
+					throw new Error(
+						`destination already exists: ${operation.newAbsolutePath}`,
+					);
+				}
+			} catch {
+				// destination does not exist — proceed
+			}
+			await fs.rename(operation.oldAbsolutePath, operation.newAbsolutePath);
+			await Promise.all(
+				this.providers.map((provider) =>
+					provider
+						.notifyFileResourceChange?.({
+							kind: "rename",
+							oldAbsolutePath: operation.oldAbsolutePath,
+							newAbsolutePath: operation.newAbsolutePath,
+						})
+						.catch(() => {
+							/* best-effort */
+						}),
+				),
+			);
+			return;
+		}
+
+		// delete
+		try {
+			await fs.rm(operation.absolutePath, {
+				recursive: operation.recursive ?? false,
+				force: operation.ignoreIfNotExists ?? false,
+			});
+		} catch (error) {
+			if (operation.ignoreIfNotExists) {
+				return;
+			}
+			throw error;
+		}
+		await Promise.all(
+			this.providers.map((provider) =>
+				provider
+					.notifyFileResourceChange?.({
+						kind: "delete",
+						absolutePath: operation.absolutePath,
+					})
+					.catch(() => {
+						/* best-effort */
+					}),
+			),
+		);
 	}
 
 	private isProviderEnabled(providerId: string): boolean {
@@ -549,3 +724,8 @@ export class LanguageServiceManager {
 }
 
 export const languageServiceManager = new LanguageServiceManager();
+
+setExternalLspWorkspaceEditApplier(async (edit) => {
+	const result = await languageServiceManager.applyWorkspaceEdit(edit);
+	return { applied: result.applied };
+});

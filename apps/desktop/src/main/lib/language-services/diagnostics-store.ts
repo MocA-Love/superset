@@ -104,6 +104,24 @@ export class LanguageDiagnosticsStore {
 		return this.versions.get(workspaceId) ?? 0;
 	}
 
+	getFileDiagnostics(
+		workspaceId: string,
+		absolutePath: string,
+	): LanguageServiceDiagnostic[] {
+		const workspaceDiagnostics = this.workspaces.get(workspaceId);
+		if (!workspaceDiagnostics) {
+			return [];
+		}
+		const collected: LanguageServiceDiagnostic[] = [];
+		for (const [fileKey, diagnostics] of workspaceDiagnostics) {
+			if (!fileKey.endsWith(`::${absolutePath}`)) {
+				continue;
+			}
+			collected.push(...diagnostics);
+		}
+		return collected;
+	}
+
 	subscribe(
 		workspaceId: string,
 		listener: (payload: { version: number }) => void,

@@ -20,6 +20,11 @@ interface CreateSymbolInteractionsOptions {
 		position: SymbolPosition,
 	) => Promise<SymbolHoverResult | null> | SymbolHoverResult | null;
 	onGoToDefinition?: (position: SymbolPosition) => Promise<void> | void;
+	onGoToTypeDefinition?: (position: SymbolPosition) => Promise<void> | void;
+	onGoToImplementation?: (position: SymbolPosition) => Promise<void> | void;
+	onFindAllReferences?: (position: SymbolPosition) => Promise<void> | void;
+	onRenameSymbol?: (position: SymbolPosition) => Promise<void> | void;
+	onShowCodeActions?: (position: SymbolPosition) => Promise<void> | void;
 	onCursorChange?: (position: SymbolPosition | null) => void;
 }
 
@@ -271,17 +276,40 @@ function logSymbolInteractionError(action: string, error: unknown) {
 export function createSymbolInteractions({
 	resolveHover,
 	onGoToDefinition,
+	onGoToTypeDefinition,
+	onGoToImplementation,
+	onFindAllReferences,
+	onRenameSymbol,
+	onShowCodeActions,
 	onCursorChange,
 }: CreateSymbolInteractionsOptions): Extension[] {
 	const extensions: Extension[] = [];
-	const runGoToDefinition =
-		onGoToDefinition === undefined
+	const wrapAction = (
+		label: string,
+		action?: (position: SymbolPosition) => Promise<void> | void,
+	) =>
+		action === undefined
 			? undefined
 			: (position: SymbolPosition) => {
-					void Promise.resolve(onGoToDefinition(position)).catch((error) => {
-						logSymbolInteractionError("go to definition", error);
+					void Promise.resolve(action(position)).catch((error) => {
+						logSymbolInteractionError(label, error);
 					});
 				};
+	const runGoToDefinition = wrapAction("go to definition", onGoToDefinition);
+	const runGoToTypeDefinition = wrapAction(
+		"go to type definition",
+		onGoToTypeDefinition,
+	);
+	const runGoToImplementation = wrapAction(
+		"go to implementation",
+		onGoToImplementation,
+	);
+	const runFindAllReferences = wrapAction(
+		"find all references",
+		onFindAllReferences,
+	);
+	const runRenameSymbol = wrapAction("rename symbol", onRenameSymbol);
+	const runShowCodeActions = wrapAction("show code actions", onShowCodeActions);
 
 	if (resolveHover) {
 		extensions.push(
@@ -361,6 +389,57 @@ export function createSymbolInteractions({
 			}),
 		);
 	}
+
+	const additionalKeyBindings: Array<{
+		key: string;
+		run: (view: EditorView) => boolean;
+	}> = [];
+
+	if (runFindAllReferences) {
+		additionalKeyBindings.push({
+			key: "Shift-F12",
+			run(view) {
+				runFindAllReferences(
+					docOffsetToPosition(view.state.doc, view.state.selection.main.head),
+				);
+				return true;
+			},
+		});
+	}
+
+	if (runRenameSymbol) {
+		additionalKeyBindings.push({
+			key: "F2",
+			run(view) {
+				runRenameSymbol(
+					docOffsetToPosition(view.state.doc, view.state.selection.main.head),
+				);
+				return true;
+			},
+		});
+	}
+
+	if (runShowCodeActions) {
+		additionalKeyBindings.push({
+			key: "Mod-.",
+			run(view) {
+				runShowCodeActions(
+					docOffsetToPosition(view.state.doc, view.state.selection.main.head),
+				);
+				return true;
+			},
+		});
+	}
+
+	if (additionalKeyBindings.length > 0) {
+		extensions.push(keymap.of(additionalKeyBindings));
+	}
+
+	// Type def / implementation are surfaced via the context menu only for
+	// now (no dedicated keymap). Keep the wrapped runners alive so callers
+	// can still pass these handlers.
+	void runGoToTypeDefinition;
+	void runGoToImplementation;
 
 	if (onCursorChange) {
 		const notifyCursor = (view: EditorView) => {

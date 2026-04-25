@@ -129,11 +129,33 @@ export interface LanguageServiceTextEdit {
 	newText: string;
 }
 
+export type LanguageServiceFileOperation =
+	| {
+			kind: "create";
+			absolutePath: string;
+			overwrite?: boolean;
+			ignoreIfExists?: boolean;
+	  }
+	| {
+			kind: "rename";
+			oldAbsolutePath: string;
+			newAbsolutePath: string;
+			overwrite?: boolean;
+			ignoreIfExists?: boolean;
+	  }
+	| {
+			kind: "delete";
+			absolutePath: string;
+			recursive?: boolean;
+			ignoreIfNotExists?: boolean;
+	  };
+
 export interface LanguageServiceWorkspaceEdit {
 	changes: Array<{
 		absolutePath: string;
 		edits: LanguageServiceTextEdit[];
 	}>;
+	fileOperations?: LanguageServiceFileOperation[];
 }
 
 export interface LanguageServiceCompletionItem {
@@ -204,8 +226,14 @@ export interface LanguageServiceCodeAction {
 }
 
 export interface LanguageServicePrepareRenameResult {
-	range: LanguageServiceRange;
+	range: LanguageServiceRange | null;
 	placeholder: string | null;
+	/**
+	 * True when the server returned `{ defaultBehavior: true }`, meaning
+	 * rename is allowed at this position but the client should compute the
+	 * range itself (typically using the word under the cursor).
+	 */
+	defaultBehavior: boolean;
 }
 
 export interface LanguageServiceInlayHint {
@@ -381,6 +409,7 @@ export interface LanguageServiceProvider {
 		endLine: number;
 		endColumn: number;
 		only?: string[];
+		diagnostics?: LanguageServiceDiagnostic[];
 	}): Promise<LanguageServiceCodeAction[] | null>;
 
 	resolveCodeAction?(args: {
@@ -430,4 +459,26 @@ export interface LanguageServiceProvider {
 		workspacePath: string;
 		absolutePath: string;
 	}): Promise<LanguageServiceDocumentSymbol[] | null>;
+
+	/**
+	 * Called by the manager after `applyWorkspaceEdit` writes a file to disk
+	 * so the provider can re-sync any sessions that had the file open. The
+	 * provider must NOT throw; it should resolve once all best-effort
+	 * resyncs are dispatched.
+	 */
+	notifyDocumentChangedOnDisk?(args: {
+		absolutePath: string;
+		content: string;
+	}): Promise<void>;
+
+	/**
+	 * Called by the manager after a file is renamed or deleted on disk so
+	 * the provider can release any tracked state and notify the server.
+	 */
+	notifyFileResourceChange?(
+		operation:
+			| { kind: "rename"; oldAbsolutePath: string; newAbsolutePath: string }
+			| { kind: "delete"; absolutePath: string }
+			| { kind: "create"; absolutePath: string },
+	): Promise<void>;
 }
