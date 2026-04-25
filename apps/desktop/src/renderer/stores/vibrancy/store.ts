@@ -38,26 +38,26 @@ function toAlphaColor(base: string, alpha: number): string {
  * of the app. Any non-zero alpha here would stack on top of the window
  * tint and make the terminal pane visibly darker than surrounding UI.
  *
- * `black` and `brightBlack` are also dropped to fully transparent so
- * that codex / Claude Code style TUI blocks (which paint cells with
- * `\x1b[40m` / `\x1b[100m` / `\x1b[48;5;0m`) don't render as opaque
- * black bars on top of the otherwise-transparent terminal. This only
- * affects the *background* of those cells: WebGL's TextureAtlas forces
- * foreground glyphs through `color.opaque`, so palette-0 *text* still
- * renders fully opaque. The actual alpha bypass for explicit-bg
- * rectangles lives in `lib/terminal/webgl-vibrancy-patch.ts`.
+ * Earlier iterations also overrode `theme.black` / `theme.brightBlack`
+ * to transparent so palette-bg cells (codex's `\x1b[40m` etc.) would
+ * also drop out. Two reasons we don't anymore:
+ *   1. codex / Claude Code paint with truecolor `\x1b[48;2;…m`, not
+ *      palette indices, so the override produced zero benefit (debug
+ *      stats showed `cmP16P256Transparent: 0`). The CM_RGB brightness
+ *      heuristic in `lib/terminal/webgl-vibrancy-patch.ts` is what
+ *      actually catches their overlay blocks.
+ *   2. The TextureAtlas forces foreground glyphs through `color.opaque`
+ *      (`TextureAtlas.ts:357-359`), which turns a transparent
+ *      `theme.brightBlack` into a *solid black* foreground. That broke
+ *      shell autosuggestions and other dim-grey UI text that uses
+ *      palette index 8 for its color.
  */
 export function useEffectiveTerminalTheme(): ITheme | null {
 	const base = useThemeStore((s) => s.terminalTheme);
 	const enabled = useVibrancyStore((s) => s.enabled);
 	return useMemo(() => {
 		if (!base || !enabled) return base;
-		return {
-			...base,
-			background: "rgba(0, 0, 0, 0)",
-			black: "rgba(0, 0, 0, 0)",
-			brightBlack: "rgba(0, 0, 0, 0)",
-		};
+		return { ...base, background: "rgba(0, 0, 0, 0)" };
 	}, [base, enabled]);
 }
 
