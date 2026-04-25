@@ -275,14 +275,33 @@ function scheduleNativeBlur(window: BrowserWindow, state: VibrancyState): void {
 }
 
 /**
+ * Tracks whether the *first* window built in this app launch was constructed
+ * with `transparent: true`. macOS always is (NSVisualEffectView is well-tested
+ * and we want runtime toggles to "just work"); Windows/Linux are gated to the
+ * vibrancy-enabled path because Electron's transparent windows on those
+ * platforms have known interaction quirks (resize/maximize, GPU compositing)
+ * that we don't want to inflict on users who never opted into vibrancy.
+ *
+ * Renderer reads this via the tRPC support query and, on Win/Linux, compares
+ * against the live `state.enabled` to decide whether to surface a "restart
+ * required" hint when the user toggles vibrancy after launch.
+ */
+let bootTransparent: boolean | null = null;
+
+export function getBootTransparent(): boolean | null {
+	return bootTransparent;
+}
+
+/**
  * Options that callers spread into the BrowserWindow constructor.
  *
- * `transparent: true` is required at construction time — it cannot be
- * toggled later — so we always opt in on every supported platform, even
- * when the user has vibrancy disabled. While disabled we paint an opaque
- * background color so the window looks identical to the pre-vibrancy build,
- * and toggling ON only needs to swap `setBackgroundColor` to an rgba value
- * (no window recreation, no restart).
+ * `transparent: true` cannot be toggled at runtime — it has to be decided at
+ * construction. macOS always opts in so that turning vibrancy on/off after
+ * launch is a no-restart operation; on Windows/Linux we only opt in when
+ * vibrancy is already enabled at startup so unrelated users don't pay the
+ * transparent-window cost (Electron docs note reduced resize/maximize support
+ * for transparent windows on these platforms). Toggling vibrancy after launch
+ * therefore requires an app restart on Win/Linux to actually let pixels through.
  */
 export function getInitialWindowOptions(
 	state: VibrancyState,
@@ -295,14 +314,17 @@ export function getInitialWindowOptions(
 	backgroundColor: string;
 } {
 	if (!isVibrancySupported()) {
+		bootTransparent ??= false;
 		return {
 			backgroundColor: isDark ? OPAQUE_DARK : OPAQUE_LIGHT,
 		};
 	}
 
 	if (PLATFORM.IS_WINDOWS) {
+		const transparent = state.enabled;
+		bootTransparent ??= transparent;
 		return {
-			transparent: true,
+			...(transparent ? { transparent: true } : {}),
 			backgroundMaterial: state.enabled ? "acrylic" : "none",
 			backgroundColor: state.enabled
 				? computeBackgroundColor(state, isDark)
@@ -313,8 +335,10 @@ export function getInitialWindowOptions(
 	}
 
 	if (PLATFORM.IS_LINUX) {
+		const transparent = state.enabled;
+		bootTransparent ??= transparent;
 		return {
-			transparent: true,
+			...(transparent ? { transparent: true } : {}),
 			backgroundColor: state.enabled
 				? computeBackgroundColor(state, isDark)
 				: isDark
@@ -322,6 +346,8 @@ export function getInitialWindowOptions(
 					: OPAQUE_LIGHT,
 		};
 	}
+
+	bootTransparent ??= true;
 
 	const backgroundColor = computeBackgroundColor(state, isDark);
 	// Always attach NSVisualEffectView at construction time, even when the

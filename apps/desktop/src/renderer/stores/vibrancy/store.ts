@@ -17,6 +17,14 @@ interface VibrancyStore extends VibrancyState {
 	supported: boolean;
 	nativeBlurSupported: boolean;
 	platform: VibrancyPlatform;
+	/**
+	 * Whether the current app instance launched with a transparent window.
+	 * macOS is always true; on Win/Linux this only matches `enabled` if the
+	 * user hasn't toggled vibrancy since startup. When it diverges, switching
+	 * the rgba background at runtime won't actually let pixels through and
+	 * the user needs to restart for the change to fully take effect.
+	 */
+	bootTransparent: boolean | null;
 	hydrated: boolean;
 	setState: (partial: Partial<VibrancyState>) => Promise<void>;
 	previewOpacity: (opacity: number) => void;
@@ -154,6 +162,7 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 	supported: false,
 	nativeBlurSupported: false,
 	platform: "unsupported",
+	bootTransparent: null,
 	hydrated: false,
 
 	hydrate: async () => {
@@ -179,6 +188,7 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 					supported: supportInfo.supported,
 					nativeBlurSupported: supportInfo.nativeBlurSupported,
 					platform: supportInfo.platform,
+					bootTransparent: supportInfo.bootTransparent,
 					hydrated: true,
 				});
 				ensureThemeSubscription();

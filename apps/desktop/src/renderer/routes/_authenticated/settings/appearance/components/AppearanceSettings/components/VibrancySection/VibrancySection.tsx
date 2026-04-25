@@ -45,6 +45,7 @@ export function VibrancySection() {
 	const supported = useVibrancyStore((s) => s.supported);
 	const nativeBlurSupported = useVibrancyStore((s) => s.nativeBlurSupported);
 	const platform = useVibrancyStore((s) => s.platform);
+	const bootTransparent = useVibrancyStore((s) => s.bootTransparent);
 	const enabled = useVibrancyStore((s) => s.enabled);
 	const opacity = useVibrancyStore((s) => s.opacity);
 	const blurLevel = useVibrancyStore((s) => s.blurLevel);
@@ -57,6 +58,17 @@ export function VibrancySection() {
 	// Windows uses Acrylic, which has no app-controllable blur strength.
 	// Linux relies on the user's compositor — there's nothing to slide.
 	const showBlurControl = platform === "mac";
+
+	// On Win/Linux, `transparent: true` is decided at window construction and
+	// can't be toggled at runtime. If the user flips vibrancy on/off after
+	// launch, the rgba background change won't actually let pixels through
+	// until the app restarts and the window is built with the matching
+	// transparent flag. macOS always opts into transparent so this never
+	// applies there.
+	const restartRequired =
+		platform !== "mac" &&
+		bootTransparent !== null &&
+		bootTransparent !== enabled;
 
 	// Drag-local opacity: drives the slider thumb and a CSS preview via the
 	// `--vibrancy-alpha` variable, so the window updates in real time without
@@ -143,6 +155,14 @@ export function VibrancySection() {
 				</p>
 				<p className="mt-1 text-xs text-muted-foreground">{platformNote}</p>
 			</div>
+
+			{restartRequired ? (
+				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+					{platform === "windows"
+						? "Windows ではウィンドウの透過を切り替えるにはアプリの再起動が必要です。"
+						: "Linux ではウィンドウの透過を切り替えるにはアプリの再起動が必要です。"}
+				</div>
+			) : null}
 
 			<div className="flex items-center justify-between gap-4">
 				<div className="space-y-0.5">
