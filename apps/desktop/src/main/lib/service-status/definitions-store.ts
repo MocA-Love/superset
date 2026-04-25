@@ -54,6 +54,9 @@ const KNOWN_FORMATS = new Set<ServiceStatusFormat>([
 	"gcp-incidents",
 	"aws-health",
 	"azure-rss",
+	"status-io",
+	"slack-v2",
+	"instatus-summary",
 ]);
 
 /**

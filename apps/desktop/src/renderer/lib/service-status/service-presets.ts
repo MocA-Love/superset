@@ -164,23 +164,14 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "perplexity",
 		label: "Perplexity",
 		category: "ai",
+		// Perplexity migrated to Instatus; the legacy /api/v2/status.json path
+		// 404s but summary.json gives us the page-level status.
 		statusUrl: "https://status.perplexity.com/",
-		apiUrl: "https://status.perplexity.com/api/v2/status.json",
-		format: "statuspage-v2",
+		apiUrl: "https://status.perplexity.com/summary.json",
+		format: "instatus-summary",
 		iconType: "simple-icon",
 		iconValue: "perplexity",
 	},
-	{
-		slug: "huggingface",
-		label: "Hugging Face",
-		category: "ai",
-		statusUrl: "https://status.huggingface.co/",
-		apiUrl: "https://status.huggingface.co/api/v2/status.json",
-		format: "statuspage-v2",
-		iconType: "simple-icon",
-		iconValue: "huggingface",
-	},
-
 	// --- Dev Infra --------------------------------------------------------
 	{
 		slug: "github",
@@ -196,9 +187,11 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "gitlab",
 		label: "GitLab",
 		category: "dev-infra",
+		// GitLab status page is hosted on status.io, not Atlassian Statuspage.
+		// API responds at api.status.io/1.0/status/<page_id>.
 		statusUrl: "https://status.gitlab.com/",
-		apiUrl: "https://status.gitlab.com/api/v2/status.json",
-		format: "statuspage-v2",
+		apiUrl: "https://api.status.io/1.0/status/5b36dc6502d06804c08349f7",
+		format: "status-io",
 		iconType: "simple-icon",
 		iconValue: "gitlab",
 	},
@@ -226,9 +219,10 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "docker-hub",
 		label: "Docker Hub",
 		category: "dev-infra",
-		statusUrl: "https://status.docker.com/",
-		apiUrl: "https://status.docker.com/api/v2/status.json",
-		format: "statuspage-v2",
+		// Docker Hub uses status.io (same backend as GitLab).
+		statusUrl: "https://www.dockerstatus.com/",
+		apiUrl: "https://api.status.io/1.0/status/533c6539221ae15e3f000031",
+		format: "status-io",
 		iconType: "simple-icon",
 		iconValue: "docker",
 	},
@@ -295,16 +289,6 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		iconValue: "netlify",
 	},
 	{
-		slug: "fastly",
-		label: "Fastly",
-		category: "hosting",
-		statusUrl: "https://status.fastly.com/",
-		apiUrl: "https://status.fastly.com/api/v2/status.json",
-		format: "statuspage-v2",
-		iconType: "simple-icon",
-		iconValue: "fastly",
-	},
-	{
 		slug: "digitalocean",
 		label: "DigitalOcean",
 		category: "hosting",
@@ -319,9 +303,10 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "slack",
 		label: "Slack",
 		category: "communication",
-		statusUrl: "https://status.slack.com/",
-		apiUrl: "https://status.slack.com/api/v2/status.json",
-		format: "statuspage-v2",
+		// Slack moved off Atlassian Statuspage to a custom feed at slack-status.com.
+		statusUrl: "https://slack-status.com/",
+		apiUrl: "https://slack-status.com/api/v2.0.0/current",
+		format: "slack-v2",
 		iconType: "simple-icon",
 		iconValue: "slack",
 	},
@@ -361,8 +346,10 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "linear",
 		label: "Linear",
 		category: "productivity",
-		statusUrl: "https://status.linear.app/",
-		apiUrl: "https://status.linear.app/api/v2/status.json",
+		// Linear moved its statuspage off status.linear.app (now a custom HTML
+		// page) onto linearstatus.com which keeps the statuspage v2 schema.
+		statusUrl: "https://linearstatus.com/",
+		apiUrl: "https://linearstatus.com/api/v2/status.json",
 		format: "statuspage-v2",
 		iconType: "simple-icon",
 		iconValue: "linear",
@@ -381,8 +368,10 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "notion",
 		label: "Notion",
 		category: "productivity",
-		statusUrl: "https://status.notion.so/",
-		apiUrl: "https://status.notion.so/api/v2/status.json",
+		// Notion's status.notion.so now serves a custom HTML page; the actual
+		// statuspage v2 feed lives on www.notion-status.com.
+		statusUrl: "https://www.notion-status.com/",
+		apiUrl: "https://www.notion-status.com/api/v2/status.json",
 		format: "statuspage-v2",
 		iconType: "simple-icon",
 		iconValue: "notion",
@@ -403,8 +392,10 @@ export const SERVICE_PRESETS: readonly ServicePreset[] = [
 		slug: "stripe",
 		label: "Stripe",
 		category: "payment",
-		statusUrl: "https://status.stripe.com/",
-		apiUrl: "https://status.stripe.com/api/v2/status.json",
+		// Stripe migrated from status.stripe.com to www.stripestatus.com (2024).
+		// Old host returns 404 for /api/v2/*.
+		statusUrl: "https://www.stripestatus.com/",
+		apiUrl: "https://www.stripestatus.com/api/v2/status.json",
 		format: "statuspage-v2",
 		iconType: "simple-icon",
 		iconValue: "stripe",
