@@ -44,6 +44,7 @@ export function startSetupTerminalIfPresent(args: {
 			terminalId,
 			workspaceId: args.workspaceId,
 			db: args.ctx.db,
+			eventBus: args.ctx.eventBus,
 			initialCommand: candidate.buildCommand(setupScriptPath),
 		});
 		if ("error" in result) {

@@ -32,10 +32,12 @@ import { useAgentHookListener } from "renderer/stores/tabs/useAgentHookListener"
 import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { useWorkspaceInitStore } from "renderer/stores/workspace-init";
 import { MOCK_ORG_ID, NOTIFICATION_EVENTS } from "shared/constants";
+import { AgentHooks } from "./components/AgentHooks";
 import { GlobalBrowserLifecycle } from "./components/GlobalBrowserLifecycle";
 import { GlobalTerminalLifecycle } from "./components/GlobalTerminalLifecycle";
 import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
+import { V2NotificationController } from "./components/V2NotificationController";
 import { WorktreeAutoSyncManager } from "./components/WorktreeAutoSyncManager";
 import { createPierreWorker } from "./lib/pierreWorker";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
@@ -80,6 +82,29 @@ function AuthenticatedLayout() {
 	// Update workspace-run pane state on terminal exit
 	electronTrpc.notifications.subscribe.useSubscription(undefined, {
 		onData: (event) => {
+			if (
+				event.type === NOTIFICATION_EVENTS.FOCUS_V2_NOTIFICATION_SOURCE &&
+				event.data
+			) {
+				localStorage.setItem("lastViewedWorkspaceId", event.data.workspaceId);
+				const source = event.data.source;
+				void navigate({
+					to: "/v2-workspace/$workspaceId",
+					params: { workspaceId: event.data.workspaceId },
+					search:
+						source.type === "terminal"
+							? {
+									terminalId: source.id,
+									focusRequestId: crypto.randomUUID(),
+								}
+							: {
+									chatSessionId: source.id,
+									focusRequestId: crypto.randomUUID(),
+								},
+				});
+				return;
+			}
+
 			if (
 				event.type !== NOTIFICATION_EVENTS.TERMINAL_EXIT ||
 				!event.data?.paneId
@@ -193,9 +218,11 @@ function AuthenticatedLayout() {
 							poolOptions={{ workerFactory: createPierreWorker, poolSize: 8 }}
 							highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
 						>
+							<AgentHooks />
 							<LanguageServicesProvider />
 							<MainWindowEffects />
 							<WorktreeAutoSyncManager />
+							<V2NotificationController />
 							<Outlet />
 							{isV2CloudEnabled ? (
 								<DashboardNewWorkspaceModal />
