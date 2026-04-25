@@ -117,6 +117,21 @@
 	--background-solid: oklch(1 0 0);
 }
 
+/*
+ * Drop the body's own bg-background layer under vibrancy. Without this every
+ * nested chrome surface (sidebar > tabs > pane > …) stacks an additional 11%
+ * dark overlay on top of body's 11%, and the cumulative `1 - (1-α)^N` makes
+ * the window feel ~40% opaque even at slider 10%. The body layer is the
+ * single biggest contributor because *everything* is its descendant; killing
+ * just that one layer removes one factor from the stacking product without
+ * touching any other surface (dialogs / popovers / webview keep their
+ * `--background-solid` overrides, xterm keeps its dedicated transparency
+ * rule). Vibrancy OFF keeps the original solid bg via the layered base rule.
+ */
+:root[data-vibrancy="on"] body {
+	background-color: transparent;
+}
+
 :root[data-vibrancy="on"] {
 	--background: rgba(21, 17, 16, var(--vibrancy-alpha));
 	--card: rgba(32, 30, 28, min(1, calc(var(--vibrancy-alpha) + 0.1)));
