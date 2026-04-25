@@ -10,10 +10,10 @@ export interface AttachmentRef {
 }
 
 /**
- * Match `![alt](path)` markdown image references whose path lives under
- * the desktop app's `todo-agent/attachments/` directory. Both POSIX and
- * Windows path separators are accepted so the same regex works for
- * existing sessions saved on either platform.
+ * Match `![alt](path)` markdown image references whose local absolute path
+ * lives under the desktop app's `todo-agent/attachments/` directory. Both
+ * POSIX and Windows path separators are accepted so the same regex works
+ * for existing sessions saved on either platform.
  *
  * The path inside the parens is captured up to the next `)` so URL-style
  * encoded characters survive. Spaces are intentionally rejected — the
@@ -22,7 +22,7 @@ export interface AttachmentRef {
  * attachment store and we should leave it alone.
  */
 const ATTACHMENT_REF_RE =
-	/!\[([^\]]*)\]\(([^()\s]*[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
+	/!\[([^\]]*)\]\(((?:\/[^()\s]*|[A-Za-z]:[\\/][^()\s]*)[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
 
 /** Strip the `<uuid>-` prefix that `saveAttachment` adds. */
 function prettyAttachmentName(filename: string): string {

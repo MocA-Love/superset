@@ -71,3 +71,38 @@ describe("settings search - font settings", () => {
 		expect(terminalFont?.section).toBe("appearance");
 	});
 });
+
+describe("settings search - fork features", () => {
+	it("finds Aivis and notification sound settings", () => {
+		expect(getIds(searchSettings("aivis voice"))).toContain(
+			SETTING_ITEM_ID.RINGTONES_AIVIS,
+		);
+		expect(getIds(searchSettings("aivis dictionary"))).toContain(
+			SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY,
+		);
+		expect(getIds(searchSettings("aivis usage"))).toContain(
+			SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE,
+		);
+		expect(getIds(searchSettings("notification sound"))).toContain(
+			SETTING_ITEM_ID.RINGTONES_NOTIFICATION,
+		);
+	});
+
+	it("finds Service Status settings", () => {
+		const ids = getIds(searchSettings("service status provider"));
+
+		expect(ids).toContain(SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS);
+		expect(getIds(searchSettings("custom status icon"))).toContain(
+			SETTING_ITEM_ID.SERVICE_STATUS_ADD,
+		);
+	});
+
+	it("finds built-in browser related settings", () => {
+		expect(getIds(searchSettings("open links in app browser"))).toContain(
+			SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP,
+		);
+		expect(getIds(searchSettings("chrome web store extension"))).toContain(
+			SETTING_ITEM_ID.EXTENSIONS_BROWSER,
+		);
+	});
+});
