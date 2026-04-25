@@ -28,13 +28,49 @@ import { Markdown } from "tiptap-markdown";
 import { EditableCodeBlockView } from "./components/EditableCodeBlockView";
 import { ReadOnlyCodeBlockView } from "./components/ReadOnlyCodeBlockView";
 import { ReadOnlySafeImageView } from "./components/ReadOnlySafeImageView";
+import { Details, Div, Span, Summary } from "./extensions/htmlBlockNodes";
+import { sanitizeUrl } from "./extensions/safeUrl";
 
 const lowlight = createLowlight(common);
-const ENABLE_RAW_MARKDOWN_HTML = false;
+// Raw HTML in markdown is rendered through ProseMirror. XSS is mitigated by
+// schema-level safety: tags without an Extension (script/iframe/style/...) and
+// attributes without addAttributes (on*, srcset, ...) are dropped during parse.
+// SafeImage and SafeLink below additionally strip javascript:, vbscript:, and
+// data:text/html schemes from src/href.
+const ENABLE_RAW_MARKDOWN_HTML = true;
 
 const SafeImage = Image.extend({
 	addNodeView() {
 		return ReactNodeViewRenderer(ReadOnlySafeImageView);
+	},
+	addAttributes() {
+		return {
+			...this.parent?.(),
+			src: {
+				default: null,
+				parseHTML: (element) => sanitizeUrl(element.getAttribute("src")),
+				renderHTML: (attributes) => {
+					const src = attributes.src as string | null | undefined;
+					return src ? { src } : {};
+				},
+			},
+		};
+	},
+});
+
+const SafeLink = Link.extend({
+	addAttributes() {
+		return {
+			...this.parent?.(),
+			href: {
+				default: null,
+				parseHTML: (element) => sanitizeUrl(element.getAttribute("href")),
+				renderHTML: (attributes) => {
+					const href = attributes.href as string | null | undefined;
+					return href ? { href } : {};
+				},
+			},
+		};
 	},
 });
 
@@ -145,7 +181,7 @@ export function createMarkdownExtensions({
 		HorizontalRule,
 		HardBreak,
 		History,
-		Link.configure({
+		SafeLink.configure({
 			openOnClick: !editable,
 			HTMLAttributes: {
 				class:
@@ -155,6 +191,10 @@ export function createMarkdownExtensions({
 			},
 		}),
 		SafeImage,
+		Details,
+		Summary,
+		Div,
+		Span,
 		TableKit.configure({
 			table: {
 				resizable: false,
@@ -175,7 +215,6 @@ export function createMarkdownExtensions({
 			},
 		}),
 		Markdown.configure({
-			// Keep raw HTML disabled until the TipTap path has an explicit sanitizer.
 			html: ENABLE_RAW_MARKDOWN_HTML,
 			transformPastedText: true,
 			transformCopiedText: true,
