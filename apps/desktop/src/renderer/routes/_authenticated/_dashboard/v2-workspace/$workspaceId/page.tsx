@@ -324,7 +324,7 @@ function WorkspaceContent({
 						{
 							kind: "file",
 							data: {
-								filePath,
+								filePath: absoluteFilePath,
 								mode: "editor",
 							} as FilePaneData,
 						},
@@ -338,7 +338,7 @@ function WorkspaceContent({
 				: null;
 			if (
 				active?.pane.kind === "file" &&
-				(active.pane.data as FilePaneData).filePath === filePath
+				(active.pane.data as FilePaneData).filePath === absoluteFilePath
 			) {
 				state.setPanePinned({ paneId: active.pane.id, pinned: true });
 				return;
@@ -355,7 +355,7 @@ function WorkspaceContent({
 				pane: {
 					kind: "file",
 					data: {
-						filePath,
+						filePath: absoluteFilePath,
 						mode: "editor",
 					} as FilePaneData,
 				},
