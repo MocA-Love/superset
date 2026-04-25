@@ -16,6 +16,7 @@ import {
 } from "renderer/hotkeys";
 import type { DetectedLink } from "renderer/lib/terminal/links";
 import { TerminalLinkManager } from "renderer/lib/terminal/terminal-link-manager";
+import { installRectangleRendererAlphaPatch } from "renderer/lib/terminal/webgl-vibrancy-patch";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { toXtermTheme } from "renderer/stores/theme/utils";
 import {
@@ -171,6 +172,10 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 					xterm.refresh(0, xterm.rows - 1);
 				});
 				xterm.loadAddon(webglAddon);
+				// v1 terminal path: same vibrancy fix as v2 in `terminal-addons.ts`.
+				// Without this, codex / Claude Code TUI blocks render as opaque
+				// black on top of the otherwise-transparent terminal.
+				installRectangleRendererAlphaPatch(webglAddon);
 			} catch {
 				suggestedRendererType = "dom";
 				webglAddon = null;
