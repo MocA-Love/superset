@@ -37,7 +37,18 @@ function lineColumnToOffset(
 	if (currentLine !== line) {
 		return content.length;
 	}
-	return Math.min(content.length, lineStartOffset + Math.max(0, column - 1));
+	// Find the end of the requested line so an oversized column clamps to
+	// the line's end-of-line boundary instead of spilling forward into the
+	// next line and rewriting unrelated text.
+	let lineEndOffset = lineStartOffset;
+	while (lineEndOffset < content.length) {
+		const ch = content[lineEndOffset];
+		if (ch === "\n" || ch === "\r") {
+			break;
+		}
+		lineEndOffset += 1;
+	}
+	return Math.min(lineEndOffset, lineStartOffset + Math.max(0, column - 1));
 }
 
 function detectOverlap(
@@ -742,5 +753,5 @@ export const languageServiceManager = new LanguageServiceManager();
 
 setExternalLspWorkspaceEditApplier(async (edit) => {
 	const result = await languageServiceManager.applyWorkspaceEdit(edit);
-	return { applied: result.applied };
+	return { applied: result.applied, failures: result.failures };
 });

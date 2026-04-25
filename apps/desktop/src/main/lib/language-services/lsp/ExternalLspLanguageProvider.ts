@@ -127,14 +127,19 @@ type ExternalLspProviderOptions = {
 	) => void;
 };
 
+type WorkspaceEditApplyOutcome = {
+	applied: boolean;
+	failures?: Array<{ absolutePath: string; reason: string }>;
+};
+
 let workspaceEditApplier:
-	| ((edit: LanguageServiceWorkspaceEdit) => Promise<{ applied: boolean }>)
+	| ((edit: LanguageServiceWorkspaceEdit) => Promise<WorkspaceEditApplyOutcome>)
 	| null = null;
 
 export function setExternalLspWorkspaceEditApplier(
 	applier: (
 		edit: LanguageServiceWorkspaceEdit,
-	) => Promise<{ applied: boolean }>,
+	) => Promise<WorkspaceEditApplyOutcome>,
 ): void {
 	workspaceEditApplier = applier;
 }
@@ -498,11 +503,19 @@ type RawCodeAction = {
 	isPreferred?: boolean;
 	disabled?: { reason: string };
 	edit?: unknown;
-	command?: {
-		title: string;
-		command: string;
-		arguments?: unknown[];
-	};
+	/**
+	 * `command` may be either a nested LSP `Command` literal (when this
+	 * entry is a `CodeAction`) or a string identifier (when the server
+	 * returned a top-level `Command` literal in the codeAction array).
+	 */
+	command?:
+		| string
+		| {
+				title: string;
+				command: string;
+				arguments?: unknown[];
+		  };
+	arguments?: unknown[];
 	data?: unknown;
 };
 
@@ -597,6 +610,26 @@ function normalizeCodeAction(
 ): LanguageServiceCodeAction | null {
 	if (!action || typeof action !== "object") {
 		return null;
+	}
+
+	// LSP allows `textDocument/codeAction` results to include bare `Command`
+	// literals (where `command` is a string id and any `arguments` live at
+	// the top level) alongside `CodeAction` objects. Treat the bare-command
+	// form as a command-only action so the server's command id is preserved.
+	if (typeof action.command === "string") {
+		return {
+			title: action.title,
+			kind: null,
+			isPreferred: false,
+			disabledReason: null,
+			edit: null,
+			command: {
+				title: action.title,
+				command: action.command,
+				arguments: action.arguments,
+			},
+			data: action.data ?? null,
+		};
 	}
 
 	return {
@@ -1789,34 +1822,39 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 			| { kind: "delete"; absolutePath: string }
 			| { kind: "create"; absolutePath: string },
 	): Promise<void> {
+		const releaseDocument = async (
+			session: WorkspaceSession,
+			absolutePath: string,
+		) => {
+			const entry = session.openDocuments.get(absolutePath);
+			if (!entry) return;
+			try {
+				await session.client.notify("textDocument/didClose", {
+					textDocument: { uri: entry.uri },
+				});
+			} catch (error) {
+				this.recordError(session, session.workspaceId, error);
+			}
+			session.openDocuments.delete(absolutePath);
+			// Mirror closeDocument: also drop the cached diagnostics for the
+			// stale path so renamed / deleted files do not linger in the
+			// problems snapshot.
+			languageDiagnosticsStore.clearFileDiagnostics(
+				session.workspaceId,
+				this.fileKey(absolutePath),
+			);
+		};
+
 		if (operation.kind === "rename") {
 			for (const session of this.sessions.values()) {
-				const entry = session.openDocuments.get(operation.oldAbsolutePath);
-				if (!entry) continue;
-				try {
-					await session.client.notify("textDocument/didClose", {
-						textDocument: { uri: entry.uri },
-					});
-				} catch (error) {
-					this.recordError(session, session.workspaceId, error);
-				}
-				session.openDocuments.delete(operation.oldAbsolutePath);
+				await releaseDocument(session, operation.oldAbsolutePath);
 			}
 			return;
 		}
 
 		if (operation.kind === "delete") {
 			for (const session of this.sessions.values()) {
-				const entry = session.openDocuments.get(operation.absolutePath);
-				if (!entry) continue;
-				try {
-					await session.client.notify("textDocument/didClose", {
-						textDocument: { uri: entry.uri },
-					});
-				} catch (error) {
-					this.recordError(session, session.workspaceId, error);
-				}
-				session.openDocuments.delete(operation.absolutePath);
+				await releaseDocument(session, operation.absolutePath);
 			}
 		}
 	}
@@ -2265,6 +2303,19 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 				}
 				try {
 					const result = await workspaceEditApplier(normalized);
+					const firstFailure = result.failures?.[0];
+					if (!result.applied && firstFailure) {
+						const failedChange = normalized.operations.findIndex((op) => {
+							const path =
+								op.kind === "rename" ? op.newAbsolutePath : op.absolutePath;
+							return path === firstFailure.absolutePath;
+						});
+						return {
+							applied: result.applied,
+							failureReason: `${firstFailure.absolutePath}: ${firstFailure.reason}`,
+							...(failedChange >= 0 ? { failedChange } : {}),
+						};
+					}
 					return { applied: result.applied };
 				} catch (error) {
 					return {
