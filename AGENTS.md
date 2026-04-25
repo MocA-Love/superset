@@ -130,11 +130,13 @@ hdiutil detach "/Volumes/Superset 1.5.5-arm64"
 
 ### リリース (フォーク配布)
 
-タグ命名は upstream の `desktop-v*.*.*` ではなく **`v<package.json version>-fork.<N>`** (例: `v1.5.5-fork.9`) を使う。**macOS ビルドは手動**でローカルから `gh release create`、**Linux (AppImage / deb / rpm) ビルドはタグ push で自動**で走り同名 Release に添付されるハイブリッド運用。
+タグ命名は upstream の `desktop-v*.*.*` ではなく **`v<package.json version>-fork.<N>`** (例: `v1.5.10-fork.1`) を使う。配布物は **3 プラットフォームのハイブリッド運用** で、タグを切るだけで mac/linux/win 全部が揃うようになっている:
 
-- macOS: ローカルで `bun run build` → `gh release create` で dmg / zip / latest-mac.yml をアップロード
-- Linux: `git push origin <tag>` の瞬間に [`.github/workflows/release-desktop-linux-fork.yml`](./.github/workflows/release-desktop-linux-fork.yml) が ubuntu-latest 上で発火し、AppImage + deb + rpm + latest-linux.yml を softprops/action-gh-release 経由で Release に添付する
-- 発火条件: `v*-fork.*` タグ push または workflow_dispatch (既存タグへ後乗せ用)
+- **macOS**: ローカル手動。`bun run build` → `gh release create` で dmg / zip / blockmap / latest-mac.yml をアップロード (現状 arm64 のみ。x64 が必要なら `--x64` で別途ビルドして同 Release に追加)
+- **Linux**: タグ push で自動。[`.github/workflows/release-desktop-linux-fork.yml`](./.github/workflows/release-desktop-linux-fork.yml) が ubuntu-latest 上で発火し、AppImage + deb + rpm + latest-linux.yml を softprops/action-gh-release 経由で Release に添付
+- **Windows**: タグ push で自動。[`.github/workflows/release-desktop-windows-fork.yml`](./.github/workflows/release-desktop-windows-fork.yml) が windows-latest 上で発火し、NSIS インストーラ (`.exe`) + blockmap + latest.yml を同様に Release に添付
+- 発火条件 (Linux / Windows 共通): `v*-fork.*` タグ push または `workflow_dispatch` (既存タグへ後乗せ用)
+- フォーク外での誤発火防止のため両 workflow とも `if: github.repository == 'MocA-Love/superset'` を入れてあるので、別リポジトリに workflow が漏れても no-op になる
 
 `electron-builder.ts` の `publish` 設定は `superset-sh/superset` を向いたままなので、`bun run release` (electron-builder --publish always) は**使わない**。代わりに `bun run build` (`--publish never`) で成果物だけ作り、`gh` で MocA-Love/superset に上げる。
 
@@ -154,7 +156,8 @@ git tag -l 'v*-fork.*' | sort -V | tail -5
 #    package.json version は upstream トラッキング、fork 番号は別管理。
 #    upstream の major/minor が上がった時だけ package.json version を更新し、
 #    fork.N はその version の中でインクリメント。
-#    例: package.json 1.5.5 のまま → タグは v1.5.5-fork.8, v1.5.5-fork.9 ... と進む
+#    例: package.json 1.5.10 のまま → タグは v1.5.10-fork.1, v1.5.10-fork.2 ... と進む
+#    upstream が 1.5.10 → 1.6.0 に上がったら → タグは v1.6.0-fork.1 から開始
 
 # 4. node_modules を完全クリーン (後述のチェックリスト必須)
 rm -rf node_modules apps/*/node_modules packages/*/node_modules
@@ -191,33 +194,40 @@ SUPERSET_WORKSPACE_NAME=superset bun run build
 # 6. リリースノート作成 (後述フォーマット)
 # ファイルに保存しておくと gh release create の --notes-file で渡せる
 
-# 7. タグを切って push (← この瞬間 Linux CI が発火して並行ビルド開始)
+# 7. タグを切って push (← この瞬間 Linux CI と Windows CI が並行発火)
 cd ../..
-git tag v1.5.5-fork.9
-git push origin v1.5.5-fork.9
+git tag v1.5.10-fork.1
+git push origin v1.5.10-fork.1
 
 # 8. GitHub Release を作成し macOS 成果物をアップロード
-#    Linux 成果物 (AppImage / deb / rpm / latest-linux.yml) は CI が自動で
-#    追加するので、ここでは触らない。
-gh release create v1.5.5-fork.9 \
+#    Linux 成果物 (AppImage / deb / rpm / latest-linux.yml) と
+#    Windows 成果物 (NSIS .exe / blockmap / latest.yml) は CI が
+#    自動で追加するので、ここでは触らない。
+gh release create v1.5.10-fork.1 \
   --repo MocA-Love/superset \
-  --title "v1.5.5-fork.9" \
-  --notes-file /tmp/release-notes-fork9.md \
+  --title "v1.5.10-fork.1" \
+  --notes-file /tmp/release-notes-fork1.md \
   apps/desktop/release/Superset-*.dmg \
+  apps/desktop/release/Superset-*.dmg.blockmap \
   apps/desktop/release/Superset-*-mac.zip \
   apps/desktop/release/Superset-*-mac.zip.blockmap \
   apps/desktop/release/latest-mac.yml
 
-# 9. (任意) Linux CI の完了を確認。通常 5-10 分で完了する。
+# 9. (任意) Linux / Windows CI の完了を確認。通常 5-15 分で完了する。
 gh run list --repo MocA-Love/superset --workflow="Release Desktop Linux (Fork)" --limit 3
+gh run list --repo MocA-Love/superset --workflow="Release Desktop Windows (Fork)" --limit 3
 ```
 
 **注:**
-- **Linux 成果物は自動化**。`git push origin <tag>` 時点で `.github/workflows/release-desktop-linux-fork.yml` が ubuntu-latest 上で AppImage + deb + rpm + latest-linux.yml をビルドし、softprops/action-gh-release 経由で同名 Release に追加される。
-- **Windows ビルドは未対応**。必要なら Windows runner で別 workflow を立てる。
-- Linux CI が失敗した場合は `gh run rerun <run-id>` で再実行可能。タグ打ち直し (`git tag -d` → 再 push) でも再発火できる。
-- **既存の Release に後から Linux バイナリを追加**したい場合は `gh workflow run "Release Desktop Linux (Fork)" --ref main -f tag=v1.5.5-fork.9` のように workflow_dispatch で走らせる。
-- ローカル Linux/WSL で手動ビルドしたい場合は `apps/desktop` で `bun run build:linux` を叩く (AppImage + deb + rpm を一発生成)。
+- **Linux / Windows 成果物は完全自動化**。`git push origin <tag>` の瞬間に [`release-desktop-linux-fork.yml`](./.github/workflows/release-desktop-linux-fork.yml) (ubuntu-latest, AppImage + deb + rpm + latest-linux.yml) と [`release-desktop-windows-fork.yml`](./.github/workflows/release-desktop-windows-fork.yml) (windows-latest, NSIS `.exe` + blockmap + latest.yml) が並行発火し、softprops/action-gh-release 経由で同名 Release に追加される。
+- どちらの CI が失敗した場合も `gh run rerun <run-id>` で再実行可能。タグ打ち直し (`git tag -d` → 再 push) でも再発火できる。
+- **既存の Release に後から Linux / Windows バイナリを追加**したい場合は workflow_dispatch で走らせる。例:
+  ```bash
+  gh workflow run "Release Desktop Linux (Fork)"   --ref main -f tag=v1.5.10-fork.1
+  gh workflow run "Release Desktop Windows (Fork)" --ref main -f tag=v1.5.10-fork.1
+  ```
+- ローカルで Linux を手動ビルドしたい場合は `apps/desktop` で `bun run build:linux` を叩く (AppImage + deb + rpm を一発生成)。Windows をクロスビルドしたい場合は `apps/desktop` で `bunx electron-builder --win --x64 --publish never` (Wine が必要)。
+- **macOS x64 が必要になったら**: 現在の手動フローは host arch (Apple Silicon なら arm64) のみを生成する。x64 を出したい時は `--x64` 付きでもう一度 `bun run package -- --publish never --config electron-builder.ts --x64` を叩いて成果物を Release に追加する。
 
 #### リリースノート フォーマット
 
@@ -268,8 +278,8 @@ bun install
 以下のタイミングでは毎回上記のフルクリーンを挟むこと:
 - dependency bump を含む PR を main にマージした直後
 - `overrides` や `patchedDependencies` を変更した後
-- `desktop-v*` タグを切る直前
-- `release-desktop.yml` を手動トリガーする前
+- `v*-fork.*` タグを切る直前 (Linux / Windows CI 側はワークフロー実行ごとにゼロからインストールするので問題ないが、ローカル macOS ビルドはここで重複が混入しがち)
+- `release-desktop-*-fork.yml` を `workflow_dispatch` で手動トリガーする前
 
 CI 側でもワークフロー実行前に `node_modules` を毎回ゼロから作っていれば問題ないが、ローカル確認時は特に注意。
 
