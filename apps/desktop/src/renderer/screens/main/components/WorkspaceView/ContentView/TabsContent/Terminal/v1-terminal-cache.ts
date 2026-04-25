@@ -49,6 +49,7 @@ export interface CachedTerminal {
 	 * cost for every chunk.
 	 */
 	pendingUnmountedEvents: TerminalStreamEvent[];
+	pendingUnmountedBytes: number;
 	/**
 	 * Handler provided by the mounted Terminal component.
 	 * When set, ALL events are forwarded here so the component can
@@ -68,6 +69,8 @@ export interface CachedTerminal {
 }
 
 const cache = new Map<string, CachedTerminal>();
+
+const MAX_PENDING_UNMOUNTED_BYTES = 10 * 1024 * 1024; // 10MB
 
 export function has(paneId: string): boolean {
 	return cache.has(paneId);
@@ -110,6 +113,7 @@ export function getOrCreate(
 		streamReady: false,
 		pendingStreamEvents: [],
 		pendingUnmountedEvents: [],
+		pendingUnmountedBytes: 0,
 		eventHandler: null,
 		subscriptionErrorHandler: null,
 		resizeObserver: null,
@@ -279,12 +283,32 @@ function routeEvent(
 			entry.pendingUnmountedEvents[entry.pendingUnmountedEvents.length - 1];
 		if (lastBufferedEvent?.type === "data") {
 			lastBufferedEvent.data += event.data;
-			return;
+		} else {
+			entry.pendingUnmountedEvents.push(event);
 		}
-		entry.pendingUnmountedEvents.push(event);
-	} else {
-		entry.pendingUnmountedEvents.push(event);
+		entry.pendingUnmountedBytes += event.data.length;
+
+		// Trim oldest data when the cap is exceeded, preserving the tail.
+		while (entry.pendingUnmountedBytes > MAX_PENDING_UNMOUNTED_BYTES) {
+			const first = entry.pendingUnmountedEvents[0];
+			if (!first) break;
+			if (first.type !== "data") {
+				entry.pendingUnmountedEvents.shift();
+				break;
+			}
+			const excess = entry.pendingUnmountedBytes - MAX_PENDING_UNMOUNTED_BYTES;
+			if (first.data.length <= excess) {
+				entry.pendingUnmountedBytes -= first.data.length;
+				entry.pendingUnmountedEvents.shift();
+			} else {
+				first.data = first.data.slice(excess);
+				entry.pendingUnmountedBytes -= excess;
+				break;
+			}
+		}
+		return;
 	}
+	entry.pendingUnmountedEvents.push(event);
 }
 
 /**
@@ -404,7 +428,9 @@ export function registerHandlers(
 	entry.subscriptionErrorHandler = handlers.onError;
 
 	// Drain and return queued hidden events in original order.
-	return entry.pendingUnmountedEvents.splice(0);
+	const events = entry.pendingUnmountedEvents.splice(0);
+	entry.pendingUnmountedBytes = 0;
+	return events;
 }
 
 /**

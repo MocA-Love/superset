@@ -156,9 +156,14 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		if (!webglAddon) return;
 		try {
 			webglAddon.dispose();
-		} catch {}
+		} catch (error) {
+			terminalRendererDebug.warn("webgl-addon-dispose-failed", undefined, {
+				captureMessage: true,
+				fingerprint: ["terminal.renderer", "webgl-dispose-failed"],
+			});
+		}
 		webglAddon = null;
-		if (opened) {
+		if (opened && !disposed) {
 			xterm.refresh(0, Math.max(0, xterm.rows - 1));
 		}
 	};

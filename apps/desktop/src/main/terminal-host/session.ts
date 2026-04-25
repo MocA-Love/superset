@@ -1123,6 +1123,7 @@ export class Session {
 		this.emulatorWriteProcessedItems = 0;
 		this.nextSnapshotBoundaryWaiterId = 1;
 		this.emulatorWriteScheduled = false;
+		this.clearIdleEmulatorDrainTimer();
 		this.resolveAllSnapshotBoundaryWaiters();
 		const waiters = this.emulatorFlushWaiters;
 		this.emulatorFlushWaiters = [];
