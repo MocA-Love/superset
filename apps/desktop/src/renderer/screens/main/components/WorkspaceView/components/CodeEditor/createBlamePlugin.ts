@@ -390,8 +390,13 @@ const blameTheme = EditorView.baseTheme({
 		fontStyle: "italic",
 		userSelect: "none",
 		color: "inherit",
-		whiteSpace: "pre",
+		whiteSpace: "nowrap",
 		cursor: "default",
+		display: "inline-block",
+		overflow: "hidden",
+		textOverflow: "ellipsis",
+		verticalAlign: "bottom",
+		maxWidth: "0px",
 		"&:hover": {
 			opacity: "0.7",
 		},
@@ -562,6 +567,26 @@ export function createBlamePlugin(
 
 	const blameMap = new Map<number, BlameEntry>(entries.map((e) => [e.line, e]));
 
+	const measureBlameWidth = (view: EditorView) => {
+		view.requestMeasure({
+			read: (v) => {
+				const span = v.dom.querySelector(
+					".cm-blame-inline",
+				) as HTMLElement | null;
+				if (!span) return null;
+				const editorRect = v.scrollDOM.getBoundingClientRect();
+				const spanRect = span.getBoundingClientRect();
+				// 右端まで残っている水平スペースから少し余白を引く
+				const available = editorRect.right - spanRect.left - 16;
+				return { span, available: Math.max(0, available) };
+			},
+			write: (result) => {
+				if (!result) return;
+				result.span.style.maxWidth = `${result.available}px`;
+			},
+		});
+	};
+
 	const plugin = ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
@@ -572,13 +597,15 @@ export function createBlamePlugin(
 				this.lastCursorLine = view.state.doc.lineAt(
 					view.state.selection.main.head,
 				).number;
+				measureBlameWidth(view);
 			}
 
 			update(update: ViewUpdate) {
 				if (
 					update.docChanged ||
 					update.viewportChanged ||
-					update.selectionSet
+					update.selectionSet ||
+					update.geometryChanged
 				) {
 					if (update.selectionSet) {
 						const newLine = update.view.state.doc.lineAt(
@@ -597,6 +624,7 @@ export function createBlamePlugin(
 						blameMap,
 						options,
 					);
+					measureBlameWidth(update.view);
 				}
 			}
 		},
