@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
-import type { ActiveSuggestionHandle } from "../helpers";
+import type { ActiveSuggestionHandle } from "../terminalKeyboardHandler";
 
 export interface TerminalHistorySuggestion {
 	command: string;

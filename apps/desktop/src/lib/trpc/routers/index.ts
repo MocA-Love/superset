@@ -70,7 +70,7 @@ export const createAppRouter = (
 		changes: createChangesRouter(),
 		filesystem: createFilesystemRouter(),
 		githubMetrics: createGitHubMetricsRouter(),
-		notifications: createNotificationsRouter(),
+		notifications: createNotificationsRouter(getWindow),
 		permissions: createPermissionsRouter(),
 		ports: createPortsRouter(),
 		resourceMetrics: createResourceMetricsRouter(),

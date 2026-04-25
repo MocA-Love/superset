@@ -12,6 +12,7 @@ import type { Hono } from "hono";
 import { type IPty, spawn } from "node-pty";
 import type { HostDb } from "../db";
 import { projects, terminalSessions, workspaces } from "../db/schema";
+import type { EventBus } from "../events";
 import {
 	buildV2TerminalEnv,
 	getShellLaunchArgs,
@@ -22,6 +23,7 @@ import {
 interface RegisterWorkspaceTerminalRouteOptions {
 	app: Hono;
 	db: HostDb;
+	eventBus: EventBus;
 	upgradeWebSocket: NodeWebSocket["upgradeWebSocket"];
 }
 
@@ -29,6 +31,17 @@ export function parseThemeType(
 	value: string | null | undefined,
 ): "dark" | "light" | undefined {
 	return value === "dark" || value === "light" ? value : undefined;
+}
+
+/**
+ * Build the host-service tRPC URL for the v2 agent hook. The agent shell
+ * script POSTs to this; host-service fans out on the event bus so the
+ * renderer (web or electron) can play the finish sound.
+ */
+function getHostAgentHookUrl(): string {
+	const port = process.env.HOST_SERVICE_PORT || process.env.PORT;
+	if (!port) return "";
+	return `http://127.0.0.1:${port}/trpc/notifications.hook`;
 }
 
 type TerminalClientMessage =
@@ -298,6 +311,7 @@ interface CreateTerminalSessionOptions {
 	workspaceId: string;
 	themeType?: "dark" | "light";
 	db: HostDb;
+	eventBus?: EventBus;
 	/** Command to run after the shell is ready. Queued behind shellReadyPromise. */
 	initialCommand?: string;
 	/** Hidden sessions are process-internal and should not appear in user pickers. */
@@ -309,6 +323,7 @@ export function createTerminalSessionInternal({
 	workspaceId,
 	themeType,
 	db,
+	eventBus,
 	initialCommand,
 	listed = true,
 }: CreateTerminalSessionOptions): TerminalSession | { error: string } {
@@ -357,6 +372,7 @@ export function createTerminalSessionInternal({
 			process.env.NODE_ENV === "development" ? "development" : "production",
 		agentHookPort: process.env.SUPERSET_AGENT_HOOK_PORT || "",
 		agentHookVersion: process.env.SUPERSET_AGENT_HOOK_VERSION || "",
+		hostAgentHookUrl: getHostAgentHookUrl(),
 	});
 
 	let pty: IPty;
@@ -462,6 +478,15 @@ export function createTerminalSessionInternal({
 			exitCode: session.exitCode,
 			signal: session.exitSignal,
 		});
+
+		eventBus?.broadcastTerminalLifecycle({
+			workspaceId,
+			terminalId,
+			eventType: "exit",
+			exitCode: session.exitCode,
+			signal: session.exitSignal,
+			occurredAt: Date.now(),
+		});
 	});
 
 	if (initialCommand) {
@@ -481,6 +506,7 @@ export function createTerminalSessionInternal({
 export function registerWorkspaceTerminalRoute({
 	app,
 	db,
+	eventBus,
 	upgradeWebSocket,
 }: RegisterWorkspaceTerminalRouteOptions) {
 	app.post("/terminal/sessions", async (c) => {
@@ -499,6 +525,7 @@ export function registerWorkspaceTerminalRoute({
 			workspaceId: body.workspaceId,
 			themeType: parseThemeType(body.themeType),
 			db,
+			eventBus,
 		});
 
 		if ("error" in result) {
@@ -565,6 +592,7 @@ export function registerWorkspaceTerminalRoute({
 							workspaceId,
 							themeType,
 							db,
+							eventBus,
 						});
 
 						if ("error" in result) {

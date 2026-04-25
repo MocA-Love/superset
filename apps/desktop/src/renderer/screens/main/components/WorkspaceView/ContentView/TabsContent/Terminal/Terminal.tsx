@@ -305,8 +305,16 @@ export const Terminal = memo(function Terminal({
 		return () => clearTimeout(timeout);
 	}, [connectionError, handleRetryConnection]);
 
+	const handleClearHotkey = useCallback(() => {
+		const xterm = xtermRef.current;
+		if (!xterm) return;
+		xterm.clear();
+		clearScrollbackRef.current({ paneId });
+	}, [paneId, clearScrollbackRef]);
+
 	const { isSearchOpen, setIsSearchOpen } = useTerminalHotkeys({
 		isFocused,
+		onClear: handleClearHotkey,
 		xtermRef,
 	});
 

@@ -22,7 +22,13 @@ $ResourceId = Get-JsonStringValue $Json 'resourceId'
 if (-not $ResourceId) { $ResourceId = Get-JsonStringValue $Json 'resource_id' }
 $SessionId = if ($ResourceId) { $ResourceId } else { $HookSessionId }
 
-if (-not $env:SUPERSET_TAB_ID -and -not $SessionId) { exit 0 }
+# v2 terminal hooks identify the runtime by SUPERSET_TERMINAL_ID.
+# v1 fallback still uses tab/session fields, so guard accordingly.
+if ($env:SUPERSET_HOST_AGENT_HOOK_URL) {
+	if (-not $env:SUPERSET_TERMINAL_ID) { exit 0 }
+} else {
+	if (-not $env:SUPERSET_TAB_ID -and -not $SessionId) { exit 0 }
+}
 
 $EventType = Get-JsonStringValue $Json 'hook_event_name'
 if (-not $EventType) {
@@ -52,7 +58,27 @@ if ($env:SUPERSET_DEBUG_HOOKS) {
 }
 
 if ($DebugEnabled) {
-	[Console]::Error.WriteLine("[notify-hook] event=$EventType sessionId=$SessionId hookSessionId=$HookSessionId resourceId=$ResourceId paneId=$env:SUPERSET_PANE_ID tabId=$env:SUPERSET_TAB_ID workspaceId=$env:SUPERSET_WORKSPACE_ID wrapperPid=$env:SUPERSET_WRAPPER_PID")
+	[Console]::Error.WriteLine("[notify-hook] event=$EventType terminalId=$env:SUPERSET_TERMINAL_ID sessionId=$SessionId hookSessionId=$HookSessionId resourceId=$ResourceId paneId=$env:SUPERSET_PANE_ID tabId=$env:SUPERSET_TAB_ID workspaceId=$env:SUPERSET_WORKSPACE_ID wrapperPid=$env:SUPERSET_WRAPPER_PID")
+}
+
+# v2: host-service tRPC endpoint. The renderer subscribes over the event bus
+# and plays the ringtone. Preferred when the URL is provided by host-service's
+# terminal env. Falls through to v1 on non-2xx or network error.
+if ($env:SUPERSET_HOST_AGENT_HOOK_URL) {
+	$V2Payload = "{`"json`":{`"terminalId`":`"$($env:SUPERSET_TERMINAL_ID)`",`"eventType`":`"$EventType`"}}"
+	try {
+		$V2Response = Invoke-WebRequest -Uri $env:SUPERSET_HOST_AGENT_HOOK_URL `
+			-Method Post -UseBasicParsing -TimeoutSec 5 `
+			-ContentType 'application/json' -Body $V2Payload -ErrorAction Stop
+		if ($DebugEnabled) {
+			[Console]::Error.WriteLine("[notify-hook] host-service dispatched status=$($V2Response.StatusCode)")
+		}
+		if ($V2Response.StatusCode -ge 200 -and $V2Response.StatusCode -lt 300) { exit 0 }
+	} catch {
+		if ($DebugEnabled) {
+			[Console]::Error.WriteLine("[notify-hook] host-service dispatch failed, falling back to v1: $_")
+		}
+	}
 }
 
 $Port = if ($env:SUPERSET_PORT) { $env:SUPERSET_PORT } else { '{{DEFAULT_PORT}}' }

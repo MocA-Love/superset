@@ -33,6 +33,7 @@ import {
 } from "main/lib/youtube-ringtone";
 import {
 	CUSTOM_RINGTONE_ID,
+	DEFAULT_RINGTONE_ID,
 	getRingtoneFilename,
 	isBuiltInRingtoneId,
 } from "shared/ringtones";
@@ -114,6 +115,15 @@ function getRingtoneSoundPath(ringtoneId: string): string | null {
 	return getSoundPath(filename);
 }
 
+function getNotificationRingtoneSoundPath(ringtoneId: string): string | null {
+	const soundPath = getRingtoneSoundPath(ringtoneId);
+	if (soundPath) return soundPath;
+
+	if (ringtoneId !== CUSTOM_RINGTONE_ID) return null;
+	const fallbackFilename = getRingtoneFilename(DEFAULT_RINGTONE_ID);
+	return fallbackFilename ? getSoundPath(fallbackFilename) : null;
+}
+
 /**
  * Ringtone router for audio preview and playback operations
  */
@@ -136,6 +146,27 @@ export const createRingtoneRouter = (getWindow: () => BrowserWindow | null) => {
 				}
 
 				playWithTracking(soundPath, input.volume ?? 100);
+				return { success: true as const };
+			}),
+
+		/**
+		 * Play the selected notification ringtone from main when the renderer cannot
+		 * access the backing asset directly, namely imported custom audio files.
+		 */
+		playNotification: publicProcedure
+			.input(
+				z.object({
+					ringtoneId: z.string(),
+					volume: z.number().min(0).max(100).optional(),
+				}),
+			)
+			.mutation(({ input }) => {
+				const soundPath = getNotificationRingtoneSoundPath(input.ringtoneId);
+				if (!soundPath) {
+					return { success: true as const };
+				}
+
+				playSoundFile(soundPath, input.volume ?? 100);
 				return { success: true as const };
 			}),
 
