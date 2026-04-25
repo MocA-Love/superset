@@ -292,6 +292,7 @@ function DiffTable({
 						"'Calibri', 'MS PGothic', 'Meiryo', 'Segoe UI', sans-serif",
 					fontSize: "10pt",
 					color: "#000",
+					backgroundColor: "#fff",
 					width: containerWidth ? `${containerWidth}px` : "100%",
 				}}
 			>

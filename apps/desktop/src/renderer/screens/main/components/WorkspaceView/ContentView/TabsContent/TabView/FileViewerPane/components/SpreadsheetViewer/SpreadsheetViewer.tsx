@@ -373,6 +373,7 @@ export function SpreadsheetViewer({
 									"'Calibri', 'MS PGothic', 'Meiryo', 'Segoe UI', sans-serif",
 								fontSize: "11pt",
 								color: "#000",
+								backgroundColor: "#fff",
 								width: `${naturalTableWidth}px`,
 							}}
 						>
