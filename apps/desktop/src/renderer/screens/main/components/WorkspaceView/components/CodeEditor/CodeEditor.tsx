@@ -927,24 +927,22 @@ export function CodeEditor({
 				...createSymbolInteractions({
 					resolveHover: (position) =>
 						resolveSymbolHoverRef.current?.(position) ?? null,
-					onGoToDefinition: onGoToDefinition
-						? (position) => onGoToDefinitionRef.current?.(position)
-						: undefined,
-					onGoToTypeDefinition: onGoToTypeDefinition
-						? (position) => onGoToTypeDefinitionRef.current?.(position)
-						: undefined,
-					onGoToImplementation: onGoToImplementation
-						? (position) => onGoToImplementationRef.current?.(position)
-						: undefined,
-					onFindAllReferences: onFindAllReferences
-						? (position) => onFindAllReferencesRef.current?.(position)
-						: undefined,
-					onRenameSymbol: onRenameSymbol
-						? (position) => onRenameSymbolRef.current?.(position)
-						: undefined,
-					onShowCodeActions: onShowCodeActions
-						? (position) => onShowCodeActionsRef.current?.(position)
-						: undefined,
+					// Always pass ref-based wrappers — the editor is mounted with
+					// a `[]` dep effect, so gating on the prop value at mount time
+					// would never re-bind keymap entries when handlers become
+					// available later. Wrappers no-op silently when the ref is
+					// unset.
+					onGoToDefinition: (position) =>
+						onGoToDefinitionRef.current?.(position),
+					onGoToTypeDefinition: (position) =>
+						onGoToTypeDefinitionRef.current?.(position),
+					onGoToImplementation: (position) =>
+						onGoToImplementationRef.current?.(position),
+					onFindAllReferences: (position) =>
+						onFindAllReferencesRef.current?.(position),
+					onRenameSymbol: (position) => onRenameSymbolRef.current?.(position),
+					onShowCodeActions: (position) =>
+						onShowCodeActionsRef.current?.(position),
 				}),
 				updateListener,
 				overlaySearchUpdateListener,

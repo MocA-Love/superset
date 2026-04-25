@@ -326,21 +326,43 @@ export const createLanguageServicesRouter = () => {
 			.input(
 				z.object({
 					edit: z.object({
-						changes: z.array(
-							z.object({
-								absolutePath: z.string(),
-								edits: z.array(
-									z.object({
-										range: z.object({
-											line: z.number().int().positive(),
-											column: z.number().int().positive(),
-											endLine: z.number().int().positive(),
-											endColumn: z.number().int().positive(),
+						operations: z.array(
+							z.discriminatedUnion("kind", [
+								z.object({
+									kind: z.literal("edits"),
+									absolutePath: z.string(),
+									edits: z.array(
+										z.object({
+											range: z.object({
+												line: z.number().int().positive(),
+												column: z.number().int().positive(),
+												endLine: z.number().int().positive(),
+												endColumn: z.number().int().positive(),
+											}),
+											newText: z.string(),
 										}),
-										newText: z.string(),
-									}),
-								),
-							}),
+									),
+								}),
+								z.object({
+									kind: z.literal("create"),
+									absolutePath: z.string(),
+									overwrite: z.boolean().optional(),
+									ignoreIfExists: z.boolean().optional(),
+								}),
+								z.object({
+									kind: z.literal("rename"),
+									oldAbsolutePath: z.string(),
+									newAbsolutePath: z.string(),
+									overwrite: z.boolean().optional(),
+									ignoreIfExists: z.boolean().optional(),
+								}),
+								z.object({
+									kind: z.literal("delete"),
+									absolutePath: z.string(),
+									recursive: z.boolean().optional(),
+									ignoreIfNotExists: z.boolean().optional(),
+								}),
+							]),
 						),
 					}),
 				}),

@@ -9,7 +9,6 @@ import type {
 	LanguageServiceDocumentHighlight,
 	LanguageServiceDocumentHighlightKind,
 	LanguageServiceDocumentSymbol,
-	LanguageServiceFileOperation,
 	LanguageServiceHover,
 	LanguageServiceIncomingCall,
 	LanguageServiceInlayHint,
@@ -25,6 +24,7 @@ import type {
 	LanguageServiceSignatureHelp,
 	LanguageServiceTextEdit,
 	LanguageServiceWorkspaceEdit,
+	LanguageServiceWorkspaceEditOperation,
 } from "../types";
 import {
 	absolutePathToFileUri,
@@ -281,25 +281,11 @@ function normalizeWorkspaceEdit(
 		>;
 	};
 
-	const fileChanges = new Map<string, LanguageServiceTextEdit[]>();
-	const fileOperations: LanguageServiceFileOperation[] = [];
+	const operations: LanguageServiceWorkspaceEditOperation[] = [];
 
-	if (edit.changes) {
-		for (const [uri, edits] of Object.entries(edit.changes)) {
-			const absolutePath = fileUriToAbsolutePath(uri);
-			if (!absolutePath) continue;
-			const target = fileChanges.get(absolutePath) ?? [];
-			for (const e of edits) {
-				const range = lspRangeToLanguageServiceRange(e.range);
-				if (!range) continue;
-				target.push({ range, newText: e.newText });
-			}
-			if (target.length > 0) {
-				fileChanges.set(absolutePath, target);
-			}
-		}
-	}
-
+	// LSP allows either `documentChanges` (ordered, preferred) or the legacy
+	// unordered `changes` map. When both are present, the spec says the
+	// client SHOULD prefer `documentChanges`.
 	if (edit.documentChanges) {
 		for (const change of edit.documentChanges) {
 			if (!change || typeof change !== "object") {
@@ -310,7 +296,7 @@ function normalizeWorkspaceEdit(
 				if (change.kind === "create") {
 					const absolutePath = fileUriToAbsolutePath(change.uri);
 					if (absolutePath) {
-						fileOperations.push({
+						operations.push({
 							kind: "create",
 							absolutePath,
 							overwrite: change.options?.overwrite,
@@ -323,7 +309,7 @@ function normalizeWorkspaceEdit(
 					const oldAbsolutePath = fileUriToAbsolutePath(change.oldUri);
 					const newAbsolutePath = fileUriToAbsolutePath(change.newUri);
 					if (oldAbsolutePath && newAbsolutePath) {
-						fileOperations.push({
+						operations.push({
 							kind: "rename",
 							oldAbsolutePath,
 							newAbsolutePath,
@@ -336,7 +322,7 @@ function normalizeWorkspaceEdit(
 				if (change.kind === "delete") {
 					const absolutePath = fileUriToAbsolutePath(change.uri);
 					if (absolutePath) {
-						fileOperations.push({
+						operations.push({
 							kind: "delete",
 							absolutePath,
 							recursive: change.options?.recursive,
@@ -356,96 +342,108 @@ function normalizeWorkspaceEdit(
 			if (!uri) continue;
 			const absolutePath = fileUriToAbsolutePath(uri);
 			if (!absolutePath) continue;
-			const target = fileChanges.get(absolutePath) ?? [];
+			const edits: LanguageServiceTextEdit[] = [];
 			for (const e of textChange.edits ?? []) {
 				const range = lspRangeToLanguageServiceRange(e.range);
 				if (!range) continue;
-				target.push({ range, newText: e.newText });
+				edits.push({ range, newText: e.newText });
 			}
-			if (target.length > 0) {
-				fileChanges.set(absolutePath, target);
+			if (edits.length > 0) {
+				operations.push({ kind: "edits", absolutePath, edits });
+			}
+		}
+	} else if (edit.changes) {
+		for (const [uri, edits] of Object.entries(edit.changes)) {
+			const absolutePath = fileUriToAbsolutePath(uri);
+			if (!absolutePath) continue;
+			const collected: LanguageServiceTextEdit[] = [];
+			for (const e of edits) {
+				const range = lspRangeToLanguageServiceRange(e.range);
+				if (!range) continue;
+				collected.push({ range, newText: e.newText });
+			}
+			if (collected.length > 0) {
+				operations.push({ kind: "edits", absolutePath, edits: collected });
 			}
 		}
 	}
 
-	if (fileChanges.size === 0 && fileOperations.length === 0) {
+	if (operations.length === 0) {
 		return null;
 	}
 
-	const result: LanguageServiceWorkspaceEdit = {
-		changes: Array.from(fileChanges.entries()).map(([absolutePath, edits]) => ({
-			absolutePath,
-			edits,
-		})),
-	};
-	if (fileOperations.length > 0) {
-		result.fileOperations = fileOperations;
-	}
-	return result;
+	return { operations };
 }
 
 function denormalizeWorkspaceEdit(edit: LanguageServiceWorkspaceEdit): unknown {
-	const documentChanges: unknown[] = edit.changes.map((change) => ({
-		textDocument: {
-			uri: absolutePathToFileUri(change.absolutePath),
-			version: null,
-		},
-		edits: change.edits.map((textEdit) => ({
-			range: {
-				start: {
-					line: textEdit.range.line - 1,
-					character: textEdit.range.column - 1,
-				},
-				end: {
-					line: textEdit.range.endLine - 1,
-					character: textEdit.range.endColumn - 1,
-				},
-			},
-			newText: textEdit.newText,
-		})),
-	}));
+	const documentChanges: unknown[] = [];
 
-	for (const operation of edit.fileOperations ?? []) {
-		if (operation.kind === "create") {
-			documentChanges.push({
-				kind: "create",
-				uri: absolutePathToFileUri(operation.absolutePath),
-				options:
-					operation.overwrite !== undefined ||
-					operation.ignoreIfExists !== undefined
-						? {
-								overwrite: operation.overwrite,
-								ignoreIfExists: operation.ignoreIfExists,
-							}
-						: undefined,
-			});
-		} else if (operation.kind === "rename") {
-			documentChanges.push({
-				kind: "rename",
-				oldUri: absolutePathToFileUri(operation.oldAbsolutePath),
-				newUri: absolutePathToFileUri(operation.newAbsolutePath),
-				options:
-					operation.overwrite !== undefined ||
-					operation.ignoreIfExists !== undefined
-						? {
-								overwrite: operation.overwrite,
-								ignoreIfExists: operation.ignoreIfExists,
-							}
-						: undefined,
-			});
-		} else if (operation.kind === "delete") {
-			documentChanges.push({
-				kind: "delete",
-				uri: absolutePathToFileUri(operation.absolutePath),
-				options:
-					operation.recursive !== undefined ||
-					operation.ignoreIfNotExists !== undefined
-						? {
-								recursive: operation.recursive,
-								ignoreIfNotExists: operation.ignoreIfNotExists,
-							}
-						: undefined,
-			});
+	for (const operation of edit.operations) {
+		switch (operation.kind) {
+			case "edits":
+				documentChanges.push({
+					textDocument: {
+						uri: absolutePathToFileUri(operation.absolutePath),
+						version: null,
+					},
+					edits: operation.edits.map((textEdit) => ({
+						range: {
+							start: {
+								line: textEdit.range.line - 1,
+								character: textEdit.range.column - 1,
+							},
+							end: {
+								line: textEdit.range.endLine - 1,
+								character: textEdit.range.endColumn - 1,
+							},
+						},
+						newText: textEdit.newText,
+					})),
+				});
+				break;
+			case "create":
+				documentChanges.push({
+					kind: "create",
+					uri: absolutePathToFileUri(operation.absolutePath),
+					options:
+						operation.overwrite !== undefined ||
+						operation.ignoreIfExists !== undefined
+							? {
+									overwrite: operation.overwrite,
+									ignoreIfExists: operation.ignoreIfExists,
+								}
+							: undefined,
+				});
+				break;
+			case "rename":
+				documentChanges.push({
+					kind: "rename",
+					oldUri: absolutePathToFileUri(operation.oldAbsolutePath),
+					newUri: absolutePathToFileUri(operation.newAbsolutePath),
+					options:
+						operation.overwrite !== undefined ||
+						operation.ignoreIfExists !== undefined
+							? {
+									overwrite: operation.overwrite,
+									ignoreIfExists: operation.ignoreIfExists,
+								}
+							: undefined,
+				});
+				break;
+			case "delete":
+				documentChanges.push({
+					kind: "delete",
+					uri: absolutePathToFileUri(operation.absolutePath),
+					options:
+						operation.recursive !== undefined ||
+						operation.ignoreIfNotExists !== undefined
+							? {
+									recursive: operation.recursive,
+									ignoreIfNotExists: operation.ignoreIfNotExists,
+								}
+							: undefined,
+				});
+				break;
 		}
 	}
 

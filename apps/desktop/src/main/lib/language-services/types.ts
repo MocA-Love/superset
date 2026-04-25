@@ -129,7 +129,12 @@ export interface LanguageServiceTextEdit {
 	newText: string;
 }
 
-export type LanguageServiceFileOperation =
+export type LanguageServiceWorkspaceEditOperation =
+	| {
+			kind: "edits";
+			absolutePath: string;
+			edits: LanguageServiceTextEdit[];
+	  }
 	| {
 			kind: "create";
 			absolutePath: string;
@@ -150,12 +155,19 @@ export type LanguageServiceFileOperation =
 			ignoreIfNotExists?: boolean;
 	  };
 
+/** Subset of {@link LanguageServiceWorkspaceEditOperation} excluding text edits. */
+export type LanguageServiceFileOperation = Exclude<
+	LanguageServiceWorkspaceEditOperation,
+	{ kind: "edits" }
+>;
+
 export interface LanguageServiceWorkspaceEdit {
-	changes: Array<{
-		absolutePath: string;
-		edits: LanguageServiceTextEdit[];
-	}>;
-	fileOperations?: LanguageServiceFileOperation[];
+	/**
+	 * Operations to apply in order. Mirrors LSP `documentChanges` semantics:
+	 * sequence matters because a `create` or `rename` may precede `edits`
+	 * targeting the same path.
+	 */
+	operations: LanguageServiceWorkspaceEditOperation[];
 }
 
 export interface LanguageServiceCompletionItem {
