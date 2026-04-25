@@ -32,11 +32,19 @@ import { Details, Div, Span, Summary } from "./extensions/htmlBlockNodes";
 import { sanitizeUrl } from "./extensions/safeUrl";
 
 const lowlight = createLowlight(common);
-// Raw HTML in markdown is rendered through ProseMirror. XSS is mitigated by
-// schema-level safety: tags without an Extension (script/iframe/style/...) and
-// attributes without addAttributes (on*, srcset, ...) are dropped during parse.
-// SafeImage and SafeLink below additionally strip javascript:, vbscript:, and
-// data:text/html schemes from src/href.
+// Raw HTML in markdown is rendered through ProseMirror **only in read-only
+// mode** (file preview, comment rendering, etc.). Editable mode keeps html:false
+// to avoid silently dropping unknown tags (e.g. <iframe>, <video>) on save:
+// in editable mode the editor parses → user edits → serializer writes back, so
+// any tag the schema doesn't know would be permanently stripped from the
+// underlying markdown file. With html:false, tiptap-markdown's parser leaves
+// such tags as literal text and the serializer round-trips them unchanged.
+//
+// XSS in read-only mode is mitigated by:
+//  1) ProseMirror schema — tags without an Extension (script/iframe/style/...)
+//     and attributes without addAttributes (on*, srcset, ...) are dropped on parse.
+//  2) SafeImage / SafeLink strip javascript:, vbscript:, and data:text/html
+//     schemes from src/href.
 const ENABLE_RAW_MARKDOWN_HTML = true;
 
 const SafeImage = Image.extend({
@@ -215,7 +223,7 @@ export function createMarkdownExtensions({
 			},
 		}),
 		Markdown.configure({
-			html: ENABLE_RAW_MARKDOWN_HTML,
+			html: !editable && ENABLE_RAW_MARKDOWN_HTML,
 			transformPastedText: true,
 			transformCopiedText: true,
 		}),
