@@ -119,8 +119,13 @@ function FilePaneTabTitleStatic({
 			)}
 			title={filePath}
 		>
-			<FileIcon fileName={getFileName(filePath)} className="size-3.5 shrink-0" />
-			<span className={cn("min-w-0 truncate", !pinned && "italic")}>{name}</span>
+			<FileIcon
+				fileName={getFileName(filePath)}
+				className="size-3.5 shrink-0"
+			/>
+			<span className={cn("min-w-0 truncate", !pinned && "italic")}>
+				{name}
+			</span>
 		</div>
 	);
 }
@@ -154,7 +159,10 @@ function FilePaneTabTitleWithDocument({
 			)}
 			title={filePath}
 		>
-			<FileIcon fileName={getFileName(filePath)} className="size-3.5 shrink-0" />
+			<FileIcon
+				fileName={getFileName(filePath)}
+				className="size-3.5 shrink-0"
+			/>
 			<span className={cn("min-w-0 truncate", !pinned && "italic")}>
 				{name}
 			</span>
