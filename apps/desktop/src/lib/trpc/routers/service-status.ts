@@ -25,6 +25,9 @@ const formatSchema = z.enum([
 	"gcp-incidents",
 	"aws-health",
 	"azure-rss",
+	"status-io",
+	"slack-v2",
+	"instatus-summary",
 ]);
 
 // 2KB max iconValue — fits URLs, simple-icon slugs, and filesystem paths, and

@@ -40,14 +40,14 @@ function ServiceStatusIndicator({
 				<button
 					type="button"
 					aria-label={`${snapshot.label} status: ${levelLabel}`}
-					className="no-drag relative flex items-center justify-center size-7 rounded-md text-foreground/80 hover:text-foreground hover:bg-accent/60 transition-colors"
+					className="no-drag relative flex items-center justify-center size-[25px] rounded-md text-foreground/80 hover:text-foreground hover:bg-accent/60 transition-colors"
 				>
 					<ServiceStatusIcon
 						source={snapshot}
-						className="size-[15px] shrink-0"
+						className="size-[13px] shrink-0"
 					/>
 					<span
-						className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background ${dotClass}`}
+						className={`absolute -bottom-px -right-px size-1.5 rounded-full ring-[1.5px] ring-background ${dotClass}`}
 					/>
 				</button>
 			</PopoverTrigger>

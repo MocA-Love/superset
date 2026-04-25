@@ -23,16 +23,22 @@ export type ServiceStatusIconType =
  * to `statuspage-v2` for backward compatibility with rows that predate the
  * multi-format adapter.
  *
- *   - `statuspage-v2`  — Statuspage.io `/api/v2/status.json` (Claude, GitHub, Stripe, …)
- *   - `gcp-incidents`  — `status.cloud.google.com/incidents.json`
- *   - `aws-health`     — `status.aws.amazon.com/data.json`
- *   - `azure-rss`      — Azure / Microsoft status RSS 2.0 feed
+ *   - `statuspage-v2`     — Atlassian Statuspage `/api/v2/status.json`
+ *   - `gcp-incidents`     — `status.cloud.google.com/incidents.json`
+ *   - `aws-health`        — `status.aws.amazon.com/data.json`
+ *   - `azure-rss`         — Azure / Microsoft status RSS 2.0 feed
+ *   - `status-io`         — `api.status.io/1.0/status/<page_id>` (GitLab, Docker Hub)
+ *   - `slack-v2`          — `slack-status.com/api/v2.0.0/current`
+ *   - `instatus-summary`  — Instatus `<page>/summary.json` (Perplexity et al.)
  */
 export type ServiceStatusFormat =
 	| "statuspage-v2"
 	| "gcp-incidents"
 	| "aws-health"
-	| "azure-rss";
+	| "azure-rss"
+	| "status-io"
+	| "slack-v2"
+	| "instatus-summary";
 
 /**
  * User-configurable list of external status pages to poll.

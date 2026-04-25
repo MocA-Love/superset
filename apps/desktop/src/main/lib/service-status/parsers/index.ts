@@ -2,6 +2,9 @@ import type { ServiceStatusFormat } from "shared/service-status-types";
 import { fetchAwsHealth } from "./aws-health";
 import { fetchAzureRss } from "./azure-rss";
 import { fetchGcpIncidents } from "./gcp-incidents";
+import { fetchInstatusSummary } from "./instatus-summary";
+import { fetchSlackV2 } from "./slack-v2";
+import { fetchStatusIo } from "./status-io";
 import { fetchStatuspageV2 } from "./statuspage-v2";
 import type { ParsedStatus } from "./types";
 
@@ -29,6 +32,12 @@ export function fetchStatusPayload(
 			return fetchAwsHealth(apiUrl);
 		case "azure-rss":
 			return fetchAzureRss(apiUrl);
+		case "status-io":
+			return fetchStatusIo(apiUrl);
+		case "slack-v2":
+			return fetchSlackV2(apiUrl);
+		case "instatus-summary":
+			return fetchInstatusSummary(apiUrl);
 		default: {
 			// TypeScript exhaustiveness check; a runtime hit here means someone
 			// added a new ServiceStatusFormat without wiring in an adapter.

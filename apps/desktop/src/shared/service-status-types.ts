@@ -32,8 +32,16 @@ export type ServiceStatusIconType =
 /**
  * API response shape the poller should assume for a definition. The default
  * `statuspage-v2` covers the most common case (Claude, GitHub, Stripe, …);
- * the other three are dedicated adapters for the Big 3 cloud providers which
- * publish incidents in incompatible formats.
+ * the other adapters cover providers that have moved off Atlassian Statuspage
+ * onto custom or third-party status backends.
+ *
+ *   - `statuspage-v2`     — Atlassian Statuspage `/api/v2/status.json`
+ *   - `gcp-incidents`     — `status.cloud.google.com/incidents.json`
+ *   - `aws-health`        — `status.aws.amazon.com/data.json`
+ *   - `azure-rss`         — Azure / Microsoft status RSS 2.0 feed
+ *   - `status-io`         — `api.status.io/1.0/status/<page_id>` (GitLab, Docker Hub)
+ *   - `slack-v2`          — `slack-status.com/api/v2.0.0/current`
+ *   - `instatus-summary`  — Instatus `<page>/summary.json` (Perplexity et al.)
  *
  * Mirrored from `@superset/local-db`; keep in sync manually (see note above
  * for `ServiceStatusIconType`).
@@ -42,7 +50,10 @@ export type ServiceStatusFormat =
 	| "statuspage-v2"
 	| "gcp-incidents"
 	| "aws-health"
-	| "azure-rss";
+	| "azure-rss"
+	| "status-io"
+	| "slack-v2"
+	| "instatus-summary";
 
 export interface ServiceStatusDefinition {
 	id: ServiceStatusId;

@@ -51,6 +51,9 @@ const formatSchema = z.enum([
 	"gcp-incidents",
 	"aws-health",
 	"azure-rss",
+	"status-io",
+	"slack-v2",
+	"instatus-summary",
 ]);
 
 const formSchema = z
@@ -387,6 +390,15 @@ export function ServiceDefinitionDialog({
 											</SelectItem>
 											<SelectItem value="aws-health">AWS data.json</SelectItem>
 											<SelectItem value="azure-rss">Azure RSS feed</SelectItem>
+											<SelectItem value="status-io">
+												status.io (GitLab / Docker Hub)
+											</SelectItem>
+											<SelectItem value="slack-v2">
+												Slack v2.0.0 (slack-status.com)
+											</SelectItem>
+											<SelectItem value="instatus-summary">
+												Instatus summary.json
+											</SelectItem>
 										</SelectContent>
 									</Select>
 									<p className="text-xs text-muted-foreground">
