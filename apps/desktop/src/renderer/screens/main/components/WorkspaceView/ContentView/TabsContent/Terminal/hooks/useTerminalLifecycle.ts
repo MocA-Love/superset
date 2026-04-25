@@ -18,14 +18,16 @@ import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
 import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
 import { logTerminalWrite, terminalRendererDebug } from "../debug";
 import {
-	type ActiveSuggestionHandle,
 	setupClickToMoveCursor,
 	setupCopyHandler,
 	setupFocusListener,
-	setupKeyboardHandler,
 } from "../helpers";
 import { isPaneDestroyed } from "../pane-guards";
 import { coldRestoreState, pendingDetaches } from "../state";
+import {
+	type ActiveSuggestionHandle,
+	setupKeyboardHandler,
+} from "../terminalKeyboardHandler";
 import type {
 	CreateOrAttachMutate,
 	CreateOrAttachResult,
@@ -852,7 +854,6 @@ export function useTerminalLifecycle({
 
 		const cleanupKeyboard = setupKeyboardHandler(xterm, {
 			onShiftEnter: () => handleWrite("\x1b\r"),
-			onClear: handleClear,
 			onWrite: handleWrite,
 			activeSuggestionRef,
 			canOpenSuggestions: () => canOpenHistorySuggestionsRef.current(),
