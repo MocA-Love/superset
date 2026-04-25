@@ -11,9 +11,20 @@ import { electronTrpcClient } from "../../lib/trpc-client";
 import { useThemeStore } from "../theme";
 import { applyUIColors } from "../theme/utils";
 
+export type VibrancyPlatform = "mac" | "windows" | "linux" | "unsupported";
+
 interface VibrancyStore extends VibrancyState {
 	supported: boolean;
 	nativeBlurSupported: boolean;
+	platform: VibrancyPlatform;
+	/**
+	 * Whether the current app instance launched with a transparent window.
+	 * macOS is always true; on Win/Linux this only matches `enabled` if the
+	 * user hasn't toggled vibrancy since startup. When it diverges, switching
+	 * the rgba background at runtime won't actually let pixels through and
+	 * the user needs to restart for the change to fully take effect.
+	 */
+	bootTransparent: boolean | null;
 	hydrated: boolean;
 	setState: (partial: Partial<VibrancyState>) => Promise<void>;
 	previewOpacity: (opacity: number) => void;
@@ -84,10 +95,14 @@ function applyVibrancyOverlay(theme: Theme, alpha: number): void {
 	// chrome is the single source of truth for the base color.
 	root.style.setProperty("--background", "transparent");
 
-	// Chrome surfaces keep a tint so they stand out from the transparent
-	// body. We bias them slightly more opaque than the raw alpha so
-	// sidebars/cards are still legible at low opacity settings.
-	const chromeAlpha = clampAlpha(alpha + 0.15);
+	// Chrome surfaces get a small bias on top of the raw slider so they
+	// remain distinguishable from the fully-transparent body even at very
+	// low slider values. Bias was previously 0.15 which made sidebars look
+	// ~25% opaque even when the slider asked for 10%; combined with 3-4
+	// nesting levels this produced a `1-(1-0.25)^N ≈ 60%` effective coverage
+	// and the window felt opaque. 0.05 keeps a hairline tint so the chrome
+	// is still visible against transparent body without dominating it.
+	const chromeAlpha = clampAlpha(alpha + 0.05);
 	set("--card", theme.ui.card, chromeAlpha);
 	set("--muted", theme.ui.muted, chromeAlpha);
 	set("--accent", theme.ui.accent, chromeAlpha);
@@ -146,6 +161,8 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 	...DEFAULT_VIBRANCY_STATE,
 	supported: false,
 	nativeBlurSupported: false,
+	platform: "unsupported",
+	bootTransparent: null,
 	hydrated: false,
 
 	hydrate: async () => {
@@ -170,6 +187,8 @@ export const useVibrancyStore = create<VibrancyStore>()((set, get) => ({
 					...effective,
 					supported: supportInfo.supported,
 					nativeBlurSupported: supportInfo.nativeBlurSupported,
+					platform: supportInfo.platform,
+					bootTransparent: supportInfo.bootTransparent,
 					hydrated: true,
 				});
 				ensureThemeSubscription();
