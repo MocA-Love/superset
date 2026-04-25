@@ -1,12 +1,6 @@
-export interface DetectedPort {
-	port: number;
-	pid: number;
-	processName: string;
-	paneId: string;
-	workspaceId: string;
-	detectedAt: number;
-	address: string;
-}
+export type { DetectedPort } from "@superset/port-scanner";
+
+import type { DetectedPort } from "@superset/port-scanner";
 
 export interface StaticPort {
 	port: number;
@@ -29,7 +23,12 @@ export interface EnrichedPort {
 	/** Detection info — only present when `detected` is true. */
 	pid: number | null;
 	processName: string | null;
-	paneId: string | null;
+	terminalId: string | null;
 	detectedAt: number | null;
 	address: string | null;
+	/**
+	 * null → port belongs to the local Electron port manager.
+	 * string → URL of the remote host-service that owns this port; kill routes there.
+	 */
+	hostUrl: string | null;
 }

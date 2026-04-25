@@ -13,6 +13,7 @@ import { type IPty, spawn } from "node-pty";
 import type { HostDb } from "../db";
 import { projects, terminalSessions, workspaces } from "../db/schema";
 import type { EventBus } from "../events";
+import { portManager } from "../ports/port-manager";
 import {
 	buildV2TerminalEnv,
 	getShellLaunchArgs,
@@ -268,6 +269,8 @@ export function disposeSession(terminalId: string, db: HostDb) {
 		sessions.delete(terminalId);
 	}
 
+	portManager.unregisterSession(terminalId);
+
 	db.update(terminalSessions)
 		.set({ status: "disposed", endedAt: Date.now() })
 		.where(eq(terminalSessions.id, terminalId))
@@ -437,6 +440,7 @@ export function createTerminalSessionInternal({
 		scanState: createScanState(),
 	};
 	sessions.set(terminalId, session);
+	portManager.upsertSession(terminalId, workspaceId, pty.pid);
 
 	// If the marker never arrives (broken wrapper, unsupported config),
 	// the timeout unblocks so the session degrades gracefully.
@@ -458,6 +462,8 @@ export function createTerminalSessionInternal({
 		}
 		if (data.length === 0) return;
 
+		portManager.checkOutputForHint(data);
+
 		if (broadcastMessage(session, { type: "data", data }) === 0) {
 			bufferOutput(session, data);
 		}
@@ -467,6 +473,8 @@ export function createTerminalSessionInternal({
 		session.exited = true;
 		session.exitCode = exitCode ?? 0;
 		session.exitSignal = signal ?? 0;
+
+		portManager.unregisterSession(terminalId);
 
 		db.update(terminalSessions)
 			.set({ status: "exited", endedAt: Date.now() })

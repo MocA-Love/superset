@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
+import { invalidateLabelCache } from "../../../ports/static-ports";
 import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { protectedProcedure, router } from "../../index";
 
@@ -200,6 +201,7 @@ export const workspaceRouter = router({
 			}
 
 			ctx.db.delete(workspaces).where(eq(workspaces.id, input.id)).run();
+			invalidateLabelCache(input.id);
 
 			return { success: true };
 		}),

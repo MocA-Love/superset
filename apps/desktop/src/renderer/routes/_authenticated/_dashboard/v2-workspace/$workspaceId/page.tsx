@@ -52,6 +52,7 @@ import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
+import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
 import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
@@ -73,11 +74,26 @@ import type {
 	PaneViewerData,
 	TerminalPaneData,
 } from "./types";
+import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
 interface WorkspaceSearch {
 	terminalId?: string;
 	chatSessionId?: string;
 	focusRequestId?: string;
+	openUrl?: string;
+	openUrlTarget?: V2WorkspaceUrlOpenTarget;
+	openUrlRequestId?: string;
+}
+
+function parseOpenUrlTarget(
+	value: unknown,
+): V2WorkspaceUrlOpenTarget | undefined {
+	if (value === "current-tab" || value === "new-tab") return value;
+	return undefined;
+}
+
+function parseNonEmptyString(value: unknown): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 export const Route = createFileRoute(
@@ -85,11 +101,12 @@ export const Route = createFileRoute(
 )({
 	component: V2WorkspacePage,
 	validateSearch: (raw: Record<string, unknown>): WorkspaceSearch => ({
-		terminalId: typeof raw.terminalId === "string" ? raw.terminalId : undefined,
-		chatSessionId:
-			typeof raw.chatSessionId === "string" ? raw.chatSessionId : undefined,
-		focusRequestId:
-			typeof raw.focusRequestId === "string" ? raw.focusRequestId : undefined,
+		terminalId: parseNonEmptyString(raw.terminalId),
+		chatSessionId: parseNonEmptyString(raw.chatSessionId),
+		focusRequestId: parseNonEmptyString(raw.focusRequestId),
+		openUrl: parseNonEmptyString(raw.openUrl),
+		openUrlTarget: parseOpenUrlTarget(raw.openUrlTarget),
+		openUrlRequestId: parseNonEmptyString(raw.openUrlRequestId),
 	}),
 });
 
@@ -130,7 +147,14 @@ function getNodeAtPathInLayout(
 
 function V2WorkspacePage() {
 	const { workspaceId } = Route.useParams();
-	const { terminalId, chatSessionId, focusRequestId } = Route.useSearch();
+	const {
+		terminalId,
+		chatSessionId,
+		focusRequestId,
+		openUrl,
+		openUrlTarget,
+		openUrlRequestId,
+	} = Route.useSearch();
 	const collections = useCollections();
 
 	const { data: workspaces } = useLiveQuery(
@@ -158,6 +182,9 @@ function V2WorkspacePage() {
 			terminalId={terminalId}
 			chatSessionId={chatSessionId}
 			focusRequestId={focusRequestId}
+			openUrl={openUrl}
+			openUrlTarget={openUrlTarget}
+			openUrlRequestId={openUrlRequestId}
 		/>
 	);
 }
@@ -200,6 +227,9 @@ function WorkspaceContent({
 	terminalId,
 	chatSessionId,
 	focusRequestId,
+	openUrl,
+	openUrlTarget,
+	openUrlRequestId,
 }: {
 	projectId: string;
 	workspaceId: string;
@@ -207,6 +237,9 @@ function WorkspaceContent({
 	terminalId?: string;
 	chatSessionId?: string;
 	focusRequestId?: string;
+	openUrl?: string;
+	openUrlTarget?: V2WorkspaceUrlOpenTarget;
+	openUrlRequestId?: string;
 }) {
 	const navigate = useNavigate();
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
@@ -247,6 +280,12 @@ function WorkspaceContent({
 			},
 		},
 	);
+	useConsumeOpenUrlRequest({
+		store,
+		url: openUrl,
+		target: openUrlTarget,
+		requestId: openUrlRequestId,
+	});
 
 	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
 		id: workspaceId,
