@@ -51,7 +51,6 @@ interface ToolCallBlockProps {
 	workspaceCwd?: string;
 	sessionId?: string | null;
 	organizationId?: string | null;
-	isStreaming?: boolean;
 	isInterrupted?: boolean;
 	onAnswer?: (
 		toolCallId: string,
@@ -71,7 +70,6 @@ export function ToolCallBlock({
 	workspaceCwd,
 	sessionId,
 	organizationId,
-	isStreaming,
 	isInterrupted,
 	onAnswer,
 }: ToolCallBlockProps) {

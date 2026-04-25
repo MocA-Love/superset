@@ -316,7 +316,13 @@ function WorkspaceContent({
 	// right-sidebar-open width.
 	const openSidebarFilePane = useCallback(
 		(filePath: string, openInNewTab?: boolean) => {
-			recordRecentlyViewed(filePath);
+			// Defensively resolve to absolute path: git diff yields relative paths,
+			// but FilePane requires an absolute path for ensureWithinRoot checks.
+			const absoluteFilePath =
+				worktreePath && !filePath.startsWith("/")
+					? toAbsoluteWorkspacePath(worktreePath, filePath)
+					: filePath;
+			recordRecentlyViewed(absoluteFilePath);
 			const state = store.getState();
 			if (openInNewTab) {
 				state.addTab({
@@ -382,7 +388,7 @@ function WorkspaceContent({
 				splitPercentage: 100 - rightSidebarOpenViewWidth,
 			});
 		},
-		[rightSidebarOpenViewWidth, store, recordRecentlyViewed],
+		[rightSidebarOpenViewWidth, store, recordRecentlyViewed, worktreePath],
 	);
 
 	const revealPath = useCallback(
