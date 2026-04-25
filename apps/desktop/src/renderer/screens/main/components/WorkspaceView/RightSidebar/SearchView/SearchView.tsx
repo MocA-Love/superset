@@ -258,7 +258,7 @@ export function SearchView({
 		[project],
 	);
 
-	const { searchResults, isFetching, hasQuery, validationError } =
+	const { searchResults, isFetching, hasQuery, validationError, refresh } =
 		useContentSearch({
 			workspaceId,
 			query,
@@ -471,6 +471,7 @@ export function SearchView({
 				}
 
 				void utils.filesystem.searchContent.invalidate();
+				refresh();
 			} catch (error) {
 				toast.error(
 					error instanceof Error ? error.message : "Failed to replace matches.",
@@ -484,6 +485,7 @@ export function SearchView({
 			isRegex,
 			multiline,
 			query,
+			refresh,
 			replacement,
 			replaceMutation,
 			utils.filesystem.searchContent,
@@ -560,6 +562,7 @@ export function SearchView({
 					absolutePath: lineMatch.absolutePath,
 				});
 				void utils.filesystem.searchContent.invalidate();
+				refresh();
 				toast.success(
 					`Replaced ${lineMatch.matches.length} match${lineMatch.matches.length === 1 ? "" : "es"} on line ${lineMatch.line}.`,
 				);
@@ -576,6 +579,7 @@ export function SearchView({
 			isRegex,
 			multiline,
 			query,
+			refresh,
 			replacement,
 			utils,
 			validationError,
