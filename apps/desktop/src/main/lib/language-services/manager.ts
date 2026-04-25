@@ -567,6 +567,9 @@ export class LanguageServiceManager {
 		// Walk operations IN ORDER. LSP `documentChanges` semantics require
 		// that a `create` or `rename` ahead of an `edits` op resolves before
 		// the edit is applied — otherwise the edit may target the wrong file.
+		// We advertise `failureHandling: "abort"` in client capabilities, so
+		// stop at the first failure rather than partially mutating the
+		// workspace.
 		for (const operation of edit.operations) {
 			try {
 				if (operation.kind === "edits") {
@@ -579,6 +582,7 @@ export class LanguageServiceManager {
 					absolutePath: this.operationAbsolutePath(operation),
 					reason: error instanceof Error ? error.message : String(error),
 				});
+				break;
 			}
 		}
 
@@ -687,14 +691,18 @@ export class LanguageServiceManager {
 			return;
 		}
 
-		// delete
+		// delete. `force: true` would mask all errors including permission
+		// denials and non-empty-dir failures, so we keep `force: false` and
+		// only swallow ENOENT (and only when ignoreIfNotExists is set).
 		try {
 			await fs.rm(operation.absolutePath, {
 				recursive: operation.recursive ?? false,
-				force: operation.ignoreIfNotExists ?? false,
 			});
 		} catch (error) {
-			if (operation.ignoreIfNotExists) {
+			const isMissing =
+				error instanceof Error &&
+				(error as NodeJS.ErrnoException).code === "ENOENT";
+			if (operation.ignoreIfNotExists && isMissing) {
 				return;
 			}
 			throw error;
