@@ -129,7 +129,7 @@ export function ServiceStatusIndicators() {
 	if (ordered.length === 0) return null;
 
 	return (
-		<div className="no-drag flex items-center gap-1">
+		<div className="no-drag flex items-center gap-1 mr-2">
 			{ordered.map((snapshot) => (
 				<ServiceStatusIndicator
 					key={snapshot.id}
