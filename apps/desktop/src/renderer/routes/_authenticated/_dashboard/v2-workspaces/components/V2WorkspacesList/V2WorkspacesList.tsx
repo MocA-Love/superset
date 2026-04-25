@@ -113,6 +113,12 @@ export function V2WorkspacesList({ pinned, others }: V2WorkspacesListProps) {
 	const hasAnyMatches = pinnedCount > 0 || othersCount > 0;
 	const hasActiveFilters = searchQuery.trim() !== "" || deviceFilter !== "all";
 
+	// FORK NOTE: upstream #3714 (99db5be26) は SortableHeader を使った
+	// columnHeader 行を導入したが、fork の V2WorkspacesList は sortField /
+	// sortDirection / handleSort を保持していないためそのまま取り込めない。
+	// constants.ts の grid 列変更と V2WorkspaceRow の sidebar 操作位置変更は
+	// 取り込み済みなので、列ヘッダーは別 PR で fork 側に hook を足してから
+	// 戻す。empty 判定は fork の `!hasAnyMatches` (フィルタ込み) を維持。
 	if (!hasAnyMatches) {
 		return (
 			<Empty className="flex-1 border-0">

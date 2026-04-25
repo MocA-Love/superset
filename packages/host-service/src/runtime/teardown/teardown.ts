@@ -106,6 +106,7 @@ export async function runTeardown({
 		workspaceId,
 		db,
 		initialCommand,
+		listed: false,
 	});
 	if ("error" in session) {
 		return {
