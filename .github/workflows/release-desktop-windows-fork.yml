@@ -1,0 +1,166 @@
+name: Release Desktop Windows (Fork)
+
+# フォーク独自の Windows パッケージ自動ビルドワークフロー。
+# `v*-fork.*` タグ push で発火し、NSIS インストーラ (.exe) と
+# latest.yml (auto-update manifest) を windows-latest 上でビルドして
+# 同名 Release に添付する。macOS リリースは現行通りローカルから
+# 手動で実施し、Linux は release-desktop-linux-fork.yml が並行して走る。
+
+on:
+  push:
+    tags:
+      - "v*-fork.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build Windows artifacts for (e.g. v1.5.10-fork.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows packages
+    # フォーク外での誤発火防止。upstream 取り込みなどで workflow が混入しても
+    # 別リポジトリでは no-op にする。
+    if: github.repository == 'MocA-Love/superset'
+    runs-on: windows-latest
+    environment: production
+
+    defaults:
+      run:
+        # bash (Git Bash) は windows-latest に標準同梱されており、
+        # cross-platform スクリプトを macOS/Linux と同じ挙動で動かすため使用。
+        shell: bash
+
+    steps:
+      - name: Enable git long paths
+        # Electron + Bun の deep node_modules ツリーは MAX_PATH (260) を
+        # 簡単に超えるため、checkout 前にロングパスを許可しないと
+        # checkout が "Filename too long" で落ちる。
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # workflow_dispatch で既存タグを指定した場合はそのタグを、
+          # tag push で走った場合は github.ref (= refs/tags/v*-fork.*) を checkout。
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Cache bun dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install workspace dependencies
+        run: bun install --frozen --ignore-scripts
+
+      - name: Install desktop native dependencies
+        working-directory: apps/desktop
+        run: bun run install:deps
+
+      - name: Generate file icons
+        working-directory: apps/desktop
+        run: bun run generate:icons
+
+      - name: Compile app with electron-vite
+        working-directory: apps/desktop
+        env:
+          # フォーク/upstream 共通で必要な build-time 値。未設定 secrets は
+          # 空文字で bundle され起動時に graceful degradation する。
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GH_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
+          NEXT_PUBLIC_WEB_URL: ${{ secrets.NEXT_PUBLIC_WEB_URL }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_DOCS_URL: ${{ secrets.NEXT_PUBLIC_DOCS_URL }}
+          NEXT_PUBLIC_STREAMS_URL: ${{ secrets.NEXT_PUBLIC_STREAMS_URL }}
+          NEXT_PUBLIC_ELECTRIC_URL: ${{ secrets.NEXT_PUBLIC_ELECTRIC_URL }}
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          RELAY_URL: ${{ secrets.RELAY_URL }}
+          # フォーク固有: 未指定だと bundle に "default" が焼き込まれて
+          # ワークスペースが空の初期状態を見に行ってしまう (AGENTS.md 参照)。
+          SUPERSET_WORKSPACE_NAME: superset
+        run: bun run compile:app
+
+      - name: Copy native modules and validate runtime
+        # Windows では npmRebuild=false (electron-builder.ts) なので、
+        # install:deps + copy:native-modules でバイナリ実体を materialize する
+        # 必要がある。validate:native-runtime はその確認。
+        working-directory: apps/desktop
+        run: |
+          bun run copy:native-modules
+          bun run validate:native-runtime
+
+      - name: Build superset-browser-mcp single binary
+        # Bun は npm の pre/post フックを自動実行しないため、Windows でも
+        # build を叩く前に browser-mcp バイナリ (superset-browser-mcp.exe) を
+        # 明示的に生成する。これを忘れると NSIS から
+        # Resources/resources/superset-browser-mcp/ が脱落し、Connect モーダルで
+        # "Browser MCP binary is not available" トーストが出る (fork.12 で踏んだ事故)。
+        working-directory: apps/desktop
+        run: bun run build:browser-mcp
+
+      - name: Build Windows packages (NSIS)
+        working-directory: apps/desktop
+        # electron-builder を直接呼ぶ理由: workflow_dispatch で過去タグを
+        # backfill するとき、そのタグの package.json に Windows 用 build
+        # スクリプトが無いケースがある。CLI を直接叩けば scripts に依存せず
+        # 過去リリースにも Windows パッケージを後乗せできる。
+        env:
+          # フォーク配布は Windows コード署名証明書を持たないので auto-discovery を切る。
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: bunx electron-builder --win --x64 --publish never
+
+      - name: Verify Windows artifacts exist
+        working-directory: apps/desktop
+        run: |
+          ls -la release/
+          test -n "$(ls -1 release/*.exe 2>/dev/null)" || {
+            echo "::error::No NSIS .exe generated in apps/desktop/release"
+            exit 1
+          }
+          test -f release/latest.yml || {
+            echo "::error::latest.yml (auto-update manifest) missing"
+            exit 1
+          }
+
+      - name: Resolve target tag
+        id: resolve_tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release target tag: $TAG"
+
+      - name: Attach Windows artifacts to GitHub Release
+        # softprops/action-gh-release は既存 Release があればファイル追加、
+        # なければ作成する (macOS / Linux ビルドと競合した場合もファイル併合でよしなに処理)。
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          fail_on_unmatched_files: true
+          files: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+            apps/desktop/release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
