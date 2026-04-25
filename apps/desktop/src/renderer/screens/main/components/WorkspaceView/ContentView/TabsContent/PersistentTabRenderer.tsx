@@ -69,7 +69,11 @@ export function PersistentTabRenderer({
 									}
 						}
 					>
-						<TabView tab={tab} isWorkspaceActive={isWorkspaceActive} />
+						<TabView
+							tab={tab}
+							isWorkspaceActive={isWorkspaceActive}
+							isTabActive={isActive}
+						/>
 					</div>
 				);
 			})}

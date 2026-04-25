@@ -22,6 +22,7 @@ import {
 import { useTheme } from "renderer/stores/theme";
 import { ActionLogsPane } from "./ActionLogsPane";
 import { BrowserPane } from "./BrowserPane";
+import { BrowserPaneV3 } from "./BrowserPaneV3";
 import { ChatPane } from "./ChatPane";
 import { CommentPane } from "./CommentPane";
 import { MosaicSplitOverlay } from "./components";
@@ -38,9 +39,14 @@ export const MOSAIC_ID = "superset-mosaic";
 interface TabViewProps {
 	tab: Tab;
 	isWorkspaceActive: boolean;
+	isTabActive: boolean;
 }
 
-export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
+export function TabView({
+	tab,
+	isWorkspaceActive,
+	isTabActive,
+}: TabViewProps) {
 	const activeTheme = useTheme();
 	const updateTabLayout = useTabsStore((s) => s.updateTabLayout);
 	const removePane = useTabsStore((s) => s.removePane);
@@ -318,8 +324,32 @@ export function TabView({ tab, isWorkspaceActive }: TabViewProps) {
 				);
 			}
 
-			// Route browser panes to BrowserPane component
+			// Route browser panes to BrowserPane component.
+			// Feature flag: SUPERSET_BROWSER_V3=1 uses the new
+			// WebContentsView-backed pane (v3). Default: legacy
+			// <webview>-based v1.
 			if (paneInfo.type === "webview") {
+				const useV3 =
+					typeof localStorage !== "undefined" &&
+					localStorage.getItem("superset.browserV3") === "1";
+				if (useV3) {
+					const initialUrl =
+						(paneInfo.data as { url?: string } | undefined)?.url ??
+						"about:blank";
+					return (
+						<BrowserPaneV3
+							paneId={paneId}
+							path={path}
+							tabId={tab.id}
+							initialUrl={initialUrl}
+							isHostVisible={isWorkspaceActive && isTabActive}
+							splitPaneAuto={splitPaneAuto}
+							removePane={removePane}
+							setFocusedPane={setFocusedPane}
+							onPopOut={isTearoff ? undefined : () => handlePopOut(paneId)}
+						/>
+					);
+				}
 				return (
 					<BrowserPane
 						paneId={paneId}
