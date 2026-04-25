@@ -32,8 +32,8 @@ import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import { useSettings } from "renderer/stores/settings";
 import { getV2NotificationSourcesForPane } from "renderer/stores/v2-notifications";
-import { V2NotificationStatusIndicator } from "../../components/V2NotificationStatusIndicator";
 import { isSpreadsheetFile } from "shared/file-types";
+import { V2NotificationStatusIndicator } from "../../components/V2NotificationStatusIndicator";
 import {
 	getDocument,
 	useSharedFileDocument,
