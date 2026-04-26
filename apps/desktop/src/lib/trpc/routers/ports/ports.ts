@@ -8,6 +8,8 @@ import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { getWorkspacePath } from "../workspaces/utils/worktree";
 
+export { invalidatePortLabelCache } from "./label-cache";
+
 type PortEvent =
 	| { type: "add"; port: DetectedPort }
 	| { type: "remove"; port: DetectedPort };
@@ -69,9 +71,10 @@ export const createPortsRouter = () => {
 					detected: true,
 					pid: port.pid,
 					processName: port.processName,
-					paneId: port.paneId,
+					terminalId: port.terminalId,
 					detectedAt: port.detectedAt,
 					address: port.address,
+					hostUrl: null,
 				};
 			});
 
@@ -89,9 +92,10 @@ export const createPortsRouter = () => {
 						detected: false,
 						pid: null,
 						processName: null,
-						paneId: null,
+						terminalId: null,
 						detectedAt: null,
 						address: null,
+						hostUrl: null,
 					});
 				}
 			}
@@ -122,7 +126,8 @@ export const createPortsRouter = () => {
 		kill: publicProcedure
 			.input(
 				z.object({
-					paneId: z.string(),
+					workspaceId: z.string(),
+					terminalId: z.string(),
 					port: z.number().int().positive(),
 				}),
 			)

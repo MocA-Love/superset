@@ -93,6 +93,7 @@
 		"@superset/macos-process-metrics": "workspace:*",
 		"@superset/macos-window-blur": "workspace:*",
 		"@superset/panes": "workspace:*",
+		"@superset/port-scanner": "workspace:*",
 		"@superset/shared": "workspace:*",
 		"@superset/trpc": "workspace:*",
 		"@superset/ui": "workspace:*",

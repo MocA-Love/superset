@@ -168,6 +168,7 @@
         "@superset/macos-process-metrics": "workspace:*",
         "@superset/macos-window-blur": "workspace:*",
         "@superset/panes": "workspace:*",
+        "@superset/port-scanner": "workspace:*",
         "@superset/shared": "workspace:*",
         "@superset/trpc": "workspace:*",
         "@superset/ui": "workspace:*",
@@ -812,6 +813,7 @@
         "@mastra/core": "1.26.0-alpha.3",
         "@octokit/rest": "^22.0.1",
         "@superset/chat": "workspace:*",
+        "@superset/port-scanner": "workspace:*",
         "@superset/shared": "workspace:*",
         "@superset/trpc": "workspace:*",
         "@superset/workspace-fs": "workspace:*",
@@ -825,6 +827,7 @@
         "node-pty": "1.1.0",
         "simple-git": "^3.30.0",
         "superjson": "^2.2.5",
+        "tree-kill": "^1.2.2",
         "zod": "^4.3.5",
       },
       "devDependencies": {
@@ -902,6 +905,18 @@
       },
       "peerDependencies": {
         "react": "19.2.0",
+      },
+    },
+    "packages/port-scanner": {
+      "name": "@superset/port-scanner",
+      "version": "0.1.0",
+      "dependencies": {
+        "pidtree": "^0.6.0",
+      },
+      "devDependencies": {
+        "@superset/typescript": "workspace:*",
+        "bun-types": "^1.3.1",
+        "typescript": "^5.9.3",
       },
     },
     "packages/shared": {
@@ -2699,6 +2714,8 @@
     "@superset/open-link": ["@superset/open-link@workspace:apps/open-link"],
 
     "@superset/panes": ["@superset/panes@workspace:packages/panes"],
+
+    "@superset/port-scanner": ["@superset/port-scanner@workspace:packages/port-scanner"],
 
     "@superset/relay": ["@superset/relay@workspace:apps/relay"],
 

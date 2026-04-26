@@ -52,13 +52,10 @@ export function usePortsData() {
 
 	const utils = electronTrpc.useUtils();
 
-	const { data: detectedPorts } = electronTrpc.ports.getAll.useQuery(
-		undefined,
-		{
-			// Keep a low-frequency safety net in case subscription events are missed.
-			refetchInterval: PORTS_FALLBACK_REFETCH_INTERVAL_MS,
-		},
-	);
+	const { data: localPorts } = electronTrpc.ports.getAll.useQuery(undefined, {
+		// Keep a low-frequency safety net in case subscription events are missed.
+		refetchInterval: PORTS_FALLBACK_REFETCH_INTERVAL_MS,
+	});
 
 	electronTrpc.ports.subscribe.useSubscription(undefined, {
 		onData: () => {
@@ -68,11 +65,11 @@ export function usePortsData() {
 
 	const showConfiguredOnly = usePortsStore((s) => s.showConfiguredOnly);
 
-	const ports = useMemo(() => {
-		const all = detectedPorts ?? [];
+	const ports = useMemo<EnrichedPort[]>(() => {
+		const all = localPorts ?? [];
 		if (!showConfiguredOnly) return all;
 		return all.filter((p) => p.label != null);
-	}, [detectedPorts, showConfiguredOnly]);
+	}, [localPorts, showConfiguredOnly]);
 
 	const workspaceNames = useMemo(() => {
 		if (!allWorkspaceGroups) return {};
