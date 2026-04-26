@@ -530,7 +530,9 @@ describe("fork language service invariants", () => {
 			expect(routerFile).toContain(method);
 			expect(types).toContain(method);
 		}
-		expect(manager).toContain("reject stale `TextDocumentEdit`");
+		expect(manager).toContain("typeof operation.expectedVersion");
+		expect(manager).toContain("tracked !== operation.expectedVersion");
+		expect(manager).toContain("stale text edit");
 		expect(manager).toContain("fs.rename");
 	});
 });
