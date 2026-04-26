@@ -62,6 +62,8 @@ export const SETTING_ITEM_ID = {
 	MODELS_OPENAI: "models-openai",
 	MODELS_NEXT_EDIT: "models-next-edit",
 
+	EXPERIMENTAL_SUPERSET_V2: "experimental-superset-v2",
+
 	INTEGRATIONS_LINEAR: "integrations-linear",
 	INTEGRATIONS_GITHUB: "integrations-github",
 	INTEGRATIONS_SLACK: "integrations-slack",
@@ -976,6 +978,28 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"autocomplete",
 			"api key",
 			"mercury coder",
+		],
+	},
+	// FORK NOTE: upstream added EXPERIMENTAL_SUPERSET_V2 entry (869386993).
+	// Fork retains the entry alongside the existing MODELS_NEXT_EDIT entry.
+	{
+		id: SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2,
+		section: "experimental",
+		title: "Try Superset Version 2 (Early Access)",
+		description: "Switch between Superset V1 and the new V2 experience",
+		keywords: [
+			"experimental",
+			"experiments",
+			"v2",
+			"v1",
+			"version",
+			"early access",
+			"beta",
+			"preview",
+			"workspace",
+			"workspaces",
+			"toggle",
+			"switch",
 		],
 	},
 	{
