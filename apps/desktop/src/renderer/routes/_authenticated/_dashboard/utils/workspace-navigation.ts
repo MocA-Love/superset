@@ -11,6 +11,15 @@ export interface WorkspaceSearchParams {
 	column?: number;
 }
 
+export interface V2WorkspaceSearchParams {
+	terminalId?: string;
+	chatSessionId?: string;
+	focusRequestId?: string;
+	openUrl?: string;
+	openUrlTarget?: "current-tab" | "new-tab";
+	openUrlRequestId?: string;
+}
+
 /**
  * Navigate to a workspace and update localStorage to remember it as the last viewed workspace.
  * This ensures the workspace will be restored when the app is reopened.
@@ -42,9 +51,15 @@ export function navigateToWorkspace(
 export function navigateToV2Workspace(
 	workspaceId: string,
 	navigate: UseNavigateResult<string>,
+	options?: Omit<NavigateOptions, "to" | "params" | "search"> & {
+		search?: V2WorkspaceSearchParams;
+	},
 ): Promise<void> {
+	const { search, ...rest } = options ?? {};
 	return navigate({
 		to: "/v2-workspace/$workspaceId",
 		params: { workspaceId },
+		search: search ?? {},
+		...rest,
 	});
 }

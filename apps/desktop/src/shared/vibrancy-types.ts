@@ -28,7 +28,7 @@ export const DEFAULT_VIBRANCY_STATE: VibrancyState = {
 };
 
 /** Lower bound matched by the settings slider. Keep in sync with UI. */
-export const VIBRANCY_OPACITY_MIN = 10;
+export const VIBRANCY_OPACITY_MIN = 0;
 export const VIBRANCY_OPACITY_MAX = 100;
 export const VIBRANCY_BLUR_RADIUS_MIN = 0;
 export const VIBRANCY_BLUR_RADIUS_MAX = 100;

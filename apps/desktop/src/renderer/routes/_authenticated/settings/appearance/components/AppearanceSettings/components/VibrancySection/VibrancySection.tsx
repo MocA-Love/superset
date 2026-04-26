@@ -44,12 +44,31 @@ export function VibrancySection() {
 	const hydrated = useVibrancyStore((s) => s.hydrated);
 	const supported = useVibrancyStore((s) => s.supported);
 	const nativeBlurSupported = useVibrancyStore((s) => s.nativeBlurSupported);
+	const platform = useVibrancyStore((s) => s.platform);
+	const bootTransparent = useVibrancyStore((s) => s.bootTransparent);
 	const enabled = useVibrancyStore((s) => s.enabled);
 	const opacity = useVibrancyStore((s) => s.opacity);
 	const blurLevel = useVibrancyStore((s) => s.blurLevel);
 	const blurRadius = useVibrancyStore((s) => s.blurRadius);
 	const setState = useVibrancyStore((s) => s.setState);
 	const previewOpacity = useVibrancyStore((s) => s.previewOpacity);
+
+	// macOS exposes either the continuous CIGaussianBlur (when the native
+	// addon loaded) or the four-step NSVisualEffectView material picker.
+	// Windows uses Acrylic, which has no app-controllable blur strength.
+	// Linux relies on the user's compositor — there's nothing to slide.
+	const showBlurControl = platform === "mac";
+
+	// On Win/Linux, `transparent: true` is decided at window construction and
+	// can't be toggled at runtime. If the user flips vibrancy on/off after
+	// launch, the rgba background change won't actually let pixels through
+	// until the app restarts and the window is built with the matching
+	// transparent flag. macOS always opts into transparent so this never
+	// applies there.
+	const restartRequired =
+		platform !== "mac" &&
+		bootTransparent !== null &&
+		bootTransparent !== enabled;
 
 	// Drag-local opacity: drives the slider thumb and a CSS preview via the
 	// `--vibrancy-alpha` variable, so the window updates in real time without
@@ -111,23 +130,39 @@ export function VibrancySection() {
 			<div>
 				<h3 className="text-sm font-medium">ウィンドウ透過</h3>
 				<p className="mt-1 text-xs text-muted-foreground">
-					この機能は現在 macOS でのみ利用できます。
+					この機能はお使いのプラットフォームではサポートされていません。
 				</p>
 			</div>
 		);
 	}
 
+	const platformNote =
+		platform === "mac"
+			? "macOS は NSVisualEffectView を使ってウィンドウ全体をぼかしながら半透明にします。"
+			: platform === "windows"
+				? "Windows 11 22H2 以降は Acrylic でぼかし付きの半透明になります。それ以前のバージョンでは半透明のみ (ぼかしなし) です。"
+				: "Linux ではぼかしの有無はお使いのコンポジタ依存です (KDE Plasma の KWin はブラーあり、GNOME Shell はブラーなし)。";
+
 	return (
 		<div className="space-y-5">
 			<div>
-				<h3 className="text-sm font-medium">ウィンドウ透過 (macOS)</h3>
+				<h3 className="text-sm font-medium">ウィンドウ透過</h3>
 				<p className="mt-1 text-xs text-muted-foreground">
 					Warp
-					のようにウィンドウ全体を半透明にし、背景をぼかしてデスクトップが透けて見えるようにします。
-					ブラウザペイン (webview) は macOS
+					のようにウィンドウ全体を半透明にして、背景にデスクトップが透けて見えるようにします。
+					ブラウザペイン (webview) は OS
 					の制約により透過できず、不透明のまま残ります。
 				</p>
+				<p className="mt-1 text-xs text-muted-foreground">{platformNote}</p>
 			</div>
+
+			{restartRequired ? (
+				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+					{platform === "windows"
+						? "Windows ではウィンドウの透過を切り替えるにはアプリの再起動が必要です。"
+						: "Linux ではウィンドウの透過を切り替えるにはアプリの再起動が必要です。"}
+				</div>
+			) : null}
 
 			<div className="flex items-center justify-between gap-4">
 				<div className="space-y-0.5">
@@ -183,76 +218,77 @@ export function VibrancySection() {
 				</p>
 			</div>
 
-			{nativeBlurSupported ? (
-				<div className="space-y-3">
-					<div className="flex items-center justify-between gap-4">
-						<Label className="text-sm font-medium">
-							ブラー半径
-							<span className="ml-2 text-xs text-muted-foreground">
-								{displayBlurRadius} pt
-							</span>
-						</Label>
+			{showBlurControl &&
+				(nativeBlurSupported ? (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between gap-4">
+							<Label className="text-sm font-medium">
+								ブラー半径
+								<span className="ml-2 text-xs text-muted-foreground">
+									{displayBlurRadius} pt
+								</span>
+							</Label>
+						</div>
+						<Slider
+							value={[displayBlurRadius]}
+							min={VIBRANCY_BLUR_RADIUS_MIN}
+							max={VIBRANCY_BLUR_RADIUS_MAX}
+							step={1}
+							disabled={!enabled || !hydrated}
+							onValueChange={(values) => {
+								const value = values[0];
+								if (typeof value !== "number") return;
+								blurRadiusDraftRevisionRef.current += 1;
+								setDraftBlurRadius(value);
+							}}
+							onValueCommit={(values) => {
+								const value = values[0];
+								if (typeof value !== "number") return;
+								commitBlurRadius(value);
+							}}
+						/>
+						<p className="text-xs text-muted-foreground">
+							CIGaussianBlur を 1 単位で調整します (ネイティブアドオン使用)。
+						</p>
 					</div>
-					<Slider
-						value={[displayBlurRadius]}
-						min={VIBRANCY_BLUR_RADIUS_MIN}
-						max={VIBRANCY_BLUR_RADIUS_MAX}
-						step={1}
-						disabled={!enabled || !hydrated}
-						onValueChange={(values) => {
-							const value = values[0];
-							if (typeof value !== "number") return;
-							blurRadiusDraftRevisionRef.current += 1;
-							setDraftBlurRadius(value);
-						}}
-						onValueCommit={(values) => {
-							const value = values[0];
-							if (typeof value !== "number") return;
-							commitBlurRadius(value);
-						}}
-					/>
-					<p className="text-xs text-muted-foreground">
-						CIGaussianBlur を 1 単位で調整します (ネイティブアドオン使用)。
-					</p>
-				</div>
-			) : (
-				<div className="space-y-3">
-					<div className="flex items-center justify-between gap-4">
-						<Label className="text-sm font-medium">
-							ブラー強度
-							<span className="ml-2 text-xs text-muted-foreground">
-								{
-									BLUR_LEVEL_LABEL[
-										sliderValueToBlurLevel(displayBlurLevelValue)
-									]
-								}
-							</span>
-						</Label>
+				) : (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between gap-4">
+							<Label className="text-sm font-medium">
+								ブラー強度
+								<span className="ml-2 text-xs text-muted-foreground">
+									{
+										BLUR_LEVEL_LABEL[
+											sliderValueToBlurLevel(displayBlurLevelValue)
+										]
+									}
+								</span>
+							</Label>
+						</div>
+						<Slider
+							value={[displayBlurLevelValue]}
+							min={0}
+							max={100}
+							step={1}
+							disabled={!enabled || !hydrated}
+							onValueChange={(values) => {
+								const value = values[0];
+								if (typeof value !== "number") return;
+								blurLevelDraftRevisionRef.current += 1;
+								setDraftBlurLevelValue(value);
+							}}
+							onValueCommit={(values) => {
+								const value = values[0];
+								if (typeof value !== "number") return;
+								commitBlurLevelValue(value);
+							}}
+						/>
+						<p className="text-xs text-muted-foreground">
+							ネイティブブラーアドオンが未ロードのため、NSVisualEffectView の
+							material を 4 段階で切り替えます (弱 → 標準 → 強 → 最強)。
+						</p>
 					</div>
-					<Slider
-						value={[displayBlurLevelValue]}
-						min={0}
-						max={100}
-						step={1}
-						disabled={!enabled || !hydrated}
-						onValueChange={(values) => {
-							const value = values[0];
-							if (typeof value !== "number") return;
-							blurLevelDraftRevisionRef.current += 1;
-							setDraftBlurLevelValue(value);
-						}}
-						onValueCommit={(values) => {
-							const value = values[0];
-							if (typeof value !== "number") return;
-							commitBlurLevelValue(value);
-						}}
-					/>
-					<p className="text-xs text-muted-foreground">
-						ネイティブブラーアドオンが未ロードのため、NSVisualEffectView の
-						material を 4 段階で切り替えます (弱 → 標準 → 強 → 最強)。
-					</p>
-				</div>
-			)}
+				))}
 		</div>
 	);
 }

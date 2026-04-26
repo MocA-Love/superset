@@ -1,6 +1,7 @@
 import type { RendererContext } from "@superset/panes";
 import { alert } from "@superset/ui/atoms/Alert";
 import { useCallback, useEffect } from "react";
+import { getBaseName } from "renderer/lib/pathBasename";
 import {
 	deriveMemoDisplayName,
 	getTrustedMemoRootPath,
@@ -88,7 +89,7 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 	const hasConflict = document.conflict !== null;
 	useEffect(() => {
 		if (!hasConflict) return;
-		const name = filePath.split(/[/\\]/).pop();
+		const name = getBaseName(filePath);
 		alert({
 			title: `Do you want to save the changes you made to ${name}?`,
 			description: "Your changes will be lost if you don't save them.",

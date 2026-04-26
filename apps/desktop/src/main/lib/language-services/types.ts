@@ -124,6 +124,168 @@ export interface LanguageServiceIncomingCall {
 	}>;
 }
 
+export interface LanguageServiceTextEdit {
+	range: LanguageServiceRange;
+	newText: string;
+}
+
+export type LanguageServiceWorkspaceEditOperation =
+	| {
+			kind: "edits";
+			absolutePath: string;
+			edits: LanguageServiceTextEdit[];
+			/**
+			 * Version of the document the LSP server computed these edits
+			 * against (`TextDocumentEdit.textDocument.version`). When set and
+			 * the provider has a different tracked version, the edit is
+			 * stale and must be rejected to avoid applying ranges against the
+			 * wrong offsets.
+			 */
+			expectedVersion?: number | null;
+	  }
+	| {
+			kind: "create";
+			absolutePath: string;
+			overwrite?: boolean;
+			ignoreIfExists?: boolean;
+	  }
+	| {
+			kind: "rename";
+			oldAbsolutePath: string;
+			newAbsolutePath: string;
+			overwrite?: boolean;
+			ignoreIfExists?: boolean;
+	  }
+	| {
+			kind: "delete";
+			absolutePath: string;
+			recursive?: boolean;
+			ignoreIfNotExists?: boolean;
+	  };
+
+/** Subset of {@link LanguageServiceWorkspaceEditOperation} excluding text edits. */
+export type LanguageServiceFileOperation = Exclude<
+	LanguageServiceWorkspaceEditOperation,
+	{ kind: "edits" }
+>;
+
+export interface LanguageServiceWorkspaceEdit {
+	/**
+	 * Operations to apply in order. Mirrors LSP `documentChanges` semantics:
+	 * sequence matters because a `create` or `rename` may precede `edits`
+	 * targeting the same path.
+	 */
+	operations: LanguageServiceWorkspaceEditOperation[];
+}
+
+export interface LanguageServiceCompletionItem {
+	label: string;
+	kind: number | null;
+	detail: string | null;
+	documentation: LanguageServiceMarkupContent | null;
+	sortText: string | null;
+	filterText: string | null;
+	insertText: string;
+	insertTextFormat: "plaintext" | "snippet";
+	textEditRange: LanguageServiceRange | null;
+	additionalTextEdits: LanguageServiceTextEdit[];
+	commitCharacters: string[] | null;
+	preselect: boolean;
+	deprecated: boolean;
+	tags: number[];
+	command: {
+		title: string;
+		command: string;
+		arguments?: unknown[];
+	} | null;
+	data: unknown;
+}
+
+export interface LanguageServiceCompletionList {
+	isIncomplete: boolean;
+	items: LanguageServiceCompletionItem[];
+}
+
+export interface LanguageServiceParameterInformation {
+	label: string;
+	documentation: LanguageServiceMarkupContent | null;
+}
+
+export interface LanguageServiceSignatureInformation {
+	label: string;
+	documentation: LanguageServiceMarkupContent | null;
+	parameters: LanguageServiceParameterInformation[];
+	activeParameter: number | null;
+}
+
+export interface LanguageServiceSignatureHelp {
+	signatures: LanguageServiceSignatureInformation[];
+	activeSignature: number;
+	activeParameter: number;
+}
+
+export type LanguageServiceDocumentHighlightKind = "text" | "read" | "write";
+
+export interface LanguageServiceDocumentHighlight {
+	range: LanguageServiceRange;
+	kind: LanguageServiceDocumentHighlightKind;
+}
+
+export interface LanguageServiceCodeAction {
+	title: string;
+	kind: string | null;
+	isPreferred: boolean;
+	disabledReason: string | null;
+	edit: LanguageServiceWorkspaceEdit | null;
+	command: {
+		title: string;
+		command: string;
+		arguments?: unknown[];
+	} | null;
+	data: unknown;
+}
+
+export interface LanguageServicePrepareRenameResult {
+	range: LanguageServiceRange | null;
+	placeholder: string | null;
+	/**
+	 * True when the server returned `{ defaultBehavior: true }`, meaning
+	 * rename is allowed at this position but the client should compute the
+	 * range itself (typically using the word under the cursor).
+	 */
+	defaultBehavior: boolean;
+}
+
+export interface LanguageServiceInlayHint {
+	line: number;
+	column: number;
+	label: string;
+	kind: "type" | "parameter" | null;
+	paddingLeft: boolean;
+	paddingRight: boolean;
+	tooltip: LanguageServiceMarkupContent | null;
+}
+
+export interface LanguageServiceSemanticTokens {
+	resultId: string | null;
+	data: number[];
+}
+
+export interface LanguageServiceSemanticTokensLegend {
+	tokenTypes: string[];
+	tokenModifiers: string[];
+}
+
+export interface LanguageServiceDocumentSymbol {
+	name: string;
+	detail: string | null;
+	kind: number;
+	tags: number[];
+	range: LanguageServiceRange;
+	selectionRange: LanguageServiceRange;
+	children: LanguageServiceDocumentSymbol[];
+}
+
 export interface LanguageServiceProvider {
 	readonly id: string;
 	readonly label: string;
@@ -207,4 +369,143 @@ export interface LanguageServiceProvider {
 		workspaceId: string;
 		item: LanguageServiceCallHierarchyItem;
 	}): Promise<LanguageServiceIncomingCall[] | null>;
+
+	getTypeDefinition?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null>;
+
+	getImplementation?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null>;
+
+	getDocumentHighlights?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceDocumentHighlight[] | null>;
+
+	getCompletion?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+	}): Promise<LanguageServiceCompletionList | null>;
+
+	resolveCompletionItem?(args: {
+		workspaceId: string;
+		item: LanguageServiceCompletionItem;
+	}): Promise<LanguageServiceCompletionItem | null>;
+
+	getSignatureHelp?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+		isRetrigger?: boolean;
+	}): Promise<LanguageServiceSignatureHelp | null>;
+
+	getCodeActions?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+		only?: string[];
+		diagnostics?: LanguageServiceDiagnostic[];
+	}): Promise<LanguageServiceCodeAction[] | null>;
+
+	resolveCodeAction?(args: {
+		workspaceId: string;
+		action: LanguageServiceCodeAction;
+	}): Promise<LanguageServiceCodeAction | null>;
+
+	prepareRename?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServicePrepareRenameResult | null>;
+
+	rename?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		line: number;
+		column: number;
+		newName: string;
+	}): Promise<LanguageServiceWorkspaceEdit | null>;
+
+	getInlayHints?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+	}): Promise<LanguageServiceInlayHint[] | null>;
+
+	getSemanticTokens?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+	}): Promise<LanguageServiceSemanticTokens | null>;
+
+	getSemanticTokensLegend?(args: {
+		workspaceId: string;
+	}): LanguageServiceSemanticTokensLegend | null;
+
+	getDocumentSymbols?(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+	}): Promise<LanguageServiceDocumentSymbol[] | null>;
+
+	/**
+	 * Called by the manager after `applyWorkspaceEdit` writes a file to disk
+	 * so the provider can re-sync any sessions that had the file open. The
+	 * provider must NOT throw; it should resolve once all best-effort
+	 * resyncs are dispatched.
+	 */
+	notifyDocumentChangedOnDisk?(args: {
+		absolutePath: string;
+		content: string;
+	}): Promise<void>;
+
+	/**
+	 * Latest document version tracked by the provider for the given path,
+	 * or null when the provider has no open buffer for it. Used by
+	 * `applyWorkspaceEdit` to reject stale `TextDocumentEdit` operations.
+	 */
+	getTrackedDocumentVersion?(absolutePath: string): number | null;
+
+	/**
+	 * Called by the manager after a file is renamed or deleted on disk so
+	 * the provider can release any tracked state and notify the server.
+	 */
+	notifyFileResourceChange?(
+		operation:
+			| { kind: "rename"; oldAbsolutePath: string; newAbsolutePath: string }
+			| { kind: "delete"; absolutePath: string }
+			| { kind: "create"; absolutePath: string },
+	): Promise<void>;
 }

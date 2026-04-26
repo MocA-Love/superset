@@ -26,6 +26,7 @@ import {
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getBaseName } from "renderer/lib/pathBasename";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
@@ -51,6 +52,7 @@ import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
+import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
 import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
@@ -72,11 +74,26 @@ import type {
 	PaneViewerData,
 	TerminalPaneData,
 } from "./types";
+import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
 interface WorkspaceSearch {
 	terminalId?: string;
 	chatSessionId?: string;
 	focusRequestId?: string;
+	openUrl?: string;
+	openUrlTarget?: V2WorkspaceUrlOpenTarget;
+	openUrlRequestId?: string;
+}
+
+function parseOpenUrlTarget(
+	value: unknown,
+): V2WorkspaceUrlOpenTarget | undefined {
+	if (value === "current-tab" || value === "new-tab") return value;
+	return undefined;
+}
+
+function parseNonEmptyString(value: unknown): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 export const Route = createFileRoute(
@@ -84,11 +101,12 @@ export const Route = createFileRoute(
 )({
 	component: V2WorkspacePage,
 	validateSearch: (raw: Record<string, unknown>): WorkspaceSearch => ({
-		terminalId: typeof raw.terminalId === "string" ? raw.terminalId : undefined,
-		chatSessionId:
-			typeof raw.chatSessionId === "string" ? raw.chatSessionId : undefined,
-		focusRequestId:
-			typeof raw.focusRequestId === "string" ? raw.focusRequestId : undefined,
+		terminalId: parseNonEmptyString(raw.terminalId),
+		chatSessionId: parseNonEmptyString(raw.chatSessionId),
+		focusRequestId: parseNonEmptyString(raw.focusRequestId),
+		openUrl: parseNonEmptyString(raw.openUrl),
+		openUrlTarget: parseOpenUrlTarget(raw.openUrlTarget),
+		openUrlRequestId: parseNonEmptyString(raw.openUrlRequestId),
 	}),
 });
 
@@ -129,7 +147,14 @@ function getNodeAtPathInLayout(
 
 function V2WorkspacePage() {
 	const { workspaceId } = Route.useParams();
-	const { terminalId, chatSessionId, focusRequestId } = Route.useSearch();
+	const {
+		terminalId,
+		chatSessionId,
+		focusRequestId,
+		openUrl,
+		openUrlTarget,
+		openUrlRequestId,
+	} = Route.useSearch();
 	const collections = useCollections();
 
 	const { data: workspaces } = useLiveQuery(
@@ -157,6 +182,9 @@ function V2WorkspacePage() {
 			terminalId={terminalId}
 			chatSessionId={chatSessionId}
 			focusRequestId={focusRequestId}
+			openUrl={openUrl}
+			openUrlTarget={openUrlTarget}
+			openUrlRequestId={openUrlRequestId}
 		/>
 	);
 }
@@ -199,6 +227,9 @@ function WorkspaceContent({
 	terminalId,
 	chatSessionId,
 	focusRequestId,
+	openUrl,
+	openUrlTarget,
+	openUrlRequestId,
 }: {
 	projectId: string;
 	workspaceId: string;
@@ -206,6 +237,9 @@ function WorkspaceContent({
 	terminalId?: string;
 	chatSessionId?: string;
 	focusRequestId?: string;
+	openUrl?: string;
+	openUrlTarget?: V2WorkspaceUrlOpenTarget;
+	openUrlRequestId?: string;
 }) {
 	const navigate = useNavigate();
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
@@ -246,6 +280,12 @@ function WorkspaceContent({
 			},
 		},
 	);
+	useConsumeOpenUrlRequest({
+		store,
+		url: openUrl,
+		target: openUrlTarget,
+		requestId: openUrlRequestId,
+	});
 
 	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
 		id: workspaceId,
@@ -709,8 +749,11 @@ function WorkspaceContent({
 
 	return (
 		<FileDocumentStoreProvider workspaceId={workspaceId}>
-			<ResizablePanelGroup direction="horizontal" className="flex-1">
-				<ResizablePanel defaultSize={80} minSize={30}>
+			<ResizablePanelGroup
+				direction="horizontal"
+				className="min-h-0 min-w-0 flex-1 overflow-auto"
+			>
+				<ResizablePanel className="min-w-[320px]" defaultSize={80} minSize={30}>
 					<div
 						className="flex min-h-0 min-w-0 h-full flex-col overflow-hidden"
 						data-workspace-id={workspaceId}
@@ -760,7 +803,7 @@ function WorkspaceContent({
 									return getDocument(workspaceId, filePath)?.dirty === true;
 								});
 								const dirtyFileNames = dirtyPanes.map((p) =>
-									(p.data as FilePaneData).filePath.split(/[/\\]/).pop(),
+									getBaseName((p.data as FilePaneData).filePath),
 								);
 								if (dirtyPanes.length === 0) return true;
 								const title =
@@ -819,7 +862,12 @@ function WorkspaceContent({
 				{sidebarOpen && (
 					<>
 						<ResizableHandle />
-						<ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+						<ResizablePanel
+							className="min-w-[220px]"
+							defaultSize={20}
+							minSize={15}
+							maxSize={40}
+						>
 							<WorkspaceSidebar
 								workspaceId={workspaceId}
 								workspaceName={workspaceName}

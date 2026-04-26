@@ -34,6 +34,11 @@ export interface EditorActions {
 	onCopySupersetLinkWithLine?: () => void;
 	onFind?: () => void;
 	onGoToDefinition?: () => void;
+	onGoToTypeDefinition?: () => void;
+	onGoToImplementation?: () => void;
+	onFindAllReferences?: () => void;
+	onRenameSymbol?: () => void;
+	onShowCodeActions?: () => void;
 	onShowReferenceGraph?: () => void;
 }
 
@@ -67,6 +72,11 @@ export function EditorContextMenu({
 		onCopySupersetLinkWithLine,
 		onFind,
 		onGoToDefinition,
+		onGoToTypeDefinition,
+		onGoToImplementation,
+		onFindAllReferences,
+		onRenameSymbol,
+		onShowCodeActions,
 		onShowReferenceGraph,
 	} = editorActions;
 	const showCutPaste = !!onCut && !!onPaste;
@@ -148,6 +158,39 @@ export function EditorContextMenu({
 						<LuMousePointerClick className="size-4" />
 						Go to Definition
 						<ContextMenuShortcut>F12</ContextMenuShortcut>
+					</ContextMenuItem>
+				)}
+				{onGoToTypeDefinition && (
+					<ContextMenuItem onSelect={onGoToTypeDefinition}>
+						<LuMousePointerClick className="size-4" />
+						Go to Type Definition
+					</ContextMenuItem>
+				)}
+				{onGoToImplementation && (
+					<ContextMenuItem onSelect={onGoToImplementation}>
+						<LuMousePointerClick className="size-4" />
+						Go to Implementation
+					</ContextMenuItem>
+				)}
+				{onFindAllReferences && (
+					<ContextMenuItem onSelect={onFindAllReferences}>
+						<LuSearch className="size-4" />
+						Find All References
+						<ContextMenuShortcut>Shift+F12</ContextMenuShortcut>
+					</ContextMenuItem>
+				)}
+				{onRenameSymbol && (
+					<ContextMenuItem onSelect={onRenameSymbol}>
+						<LuMousePointerClick className="size-4" />
+						Rename Symbol
+						<ContextMenuShortcut>F2</ContextMenuShortcut>
+					</ContextMenuItem>
+				)}
+				{onShowCodeActions && (
+					<ContextMenuItem onSelect={onShowCodeActions}>
+						<LuMousePointerClick className="size-4" />
+						Quick Fix / Refactor
+						<ContextMenuShortcut>{cmdKey}+.</ContextMenuShortcut>
 					</ContextMenuItem>
 				)}
 

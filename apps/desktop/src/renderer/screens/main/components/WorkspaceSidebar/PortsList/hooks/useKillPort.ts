@@ -2,13 +2,18 @@ import { toast } from "@superset/ui/sonner";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { EnrichedPort } from "shared/types";
 
+// FORK NOTE: v1 PortsList uses terminalId-based kill routing on EnrichedPort.
+// upstream PR #3676 introduced `usePortKillActions` for v2 with terminalId +
+// hostUrl routing, but the v1 schema (terminalId, no hostUrl on local Electron
+// ports) is incompatible — keep the inline implementation until v1 is retired.
 export function useKillPort() {
 	const killMutation = electronTrpc.ports.kill.useMutation();
 
 	const killPort = async (port: EnrichedPort) => {
-		if (!port.paneId) return;
+		if (!port.terminalId) return;
 		const result = await killMutation.mutateAsync({
-			paneId: port.paneId,
+			workspaceId: port.workspaceId,
+			terminalId: port.terminalId,
 			port: port.port,
 		});
 		if (!result.success) {
@@ -19,13 +24,14 @@ export function useKillPort() {
 	};
 
 	const killPorts = async (ports: EnrichedPort[]) => {
-		const killable = ports.filter((p) => p.paneId != null);
+		const killable = ports.filter((p) => p.terminalId != null);
 		if (killable.length === 0) return;
 
 		const results = await Promise.all(
 			killable.map((port) =>
 				killMutation.mutateAsync({
-					paneId: port.paneId as string,
+					workspaceId: port.workspaceId,
+					terminalId: port.terminalId as string,
 					port: port.port,
 				}),
 			),

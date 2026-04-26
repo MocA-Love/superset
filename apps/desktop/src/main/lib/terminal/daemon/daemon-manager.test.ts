@@ -204,8 +204,8 @@ mock.module("@superset/local-db", () => ({
 
 mock.module("../port-manager", () => ({
 	portManager: {
-		upsertDaemonSession: () => {},
-		unregisterDaemonSession: () => {},
+		upsertSession: () => {},
+		unregisterSession: () => {},
 		checkOutputForHint: () => {},
 	},
 }));

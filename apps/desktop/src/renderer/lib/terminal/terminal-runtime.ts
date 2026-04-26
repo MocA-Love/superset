@@ -19,6 +19,9 @@ const STORAGE_KEY_PREFIX = "terminal-buffer:";
 const DIMS_KEY_PREFIX = "terminal-dims:";
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 32;
+const RESIZE_DEBOUNCE_MS = 75;
+const FONT_SETTLE_TIMEOUT_MS = 1000;
+const FONT_LOAD_SAMPLE_TEXT = "W";
 
 // xterm's _keyDown calls stopPropagation after processing, so any chord we
 // want the host (react-hotkeys-hook, Electron menu accelerators) or the shell
@@ -85,6 +88,11 @@ export interface TerminalRuntime {
 	wrapper: HTMLDivElement;
 	container: HTMLDivElement | null;
 	resizeObserver: ResizeObserver | null;
+	_disposeResizeObserver: (() => void) | null;
+	_disposeFontSettle: (() => void) | null;
+	_onResize: (() => void) | null;
+	_clearTextureAtlas: (() => void) | null;
+	_fontSettleToken: number;
 	lastCols: number;
 	lastRows: number;
 	_disposeAddons: (() => void) | null;
@@ -183,6 +191,53 @@ function hostIsVisible(container: HTMLDivElement | null): boolean {
 	return container.clientWidth > 0 && container.clientHeight > 0;
 }
 
+function waitForNextFrame(): Promise<void> {
+	if (typeof requestAnimationFrame !== "function") {
+		return Promise.resolve();
+	}
+	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function waitForTerminalFont(
+	terminal: XTerm,
+	timeoutMs = FONT_SETTLE_TIMEOUT_MS,
+): Promise<void> {
+	const fontFamily = terminal.options.fontFamily;
+	const fontSize = terminal.options.fontSize;
+	if (
+		typeof document === "undefined" ||
+		!("fonts" in document) ||
+		typeof fontFamily !== "string" ||
+		typeof fontSize !== "number"
+	) {
+		return waitForNextFrame();
+	}
+
+	const fontSpec = `${fontSize}px ${fontFamily}`;
+	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+	const timeout = new Promise<void>((resolve) => {
+		timeoutId = setTimeout(resolve, timeoutMs);
+	});
+	let fontLoad: Promise<void>;
+	try {
+		fontLoad = document.fonts
+			.load(fontSpec, FONT_LOAD_SAMPLE_TEXT)
+			.catch(() => document.fonts.ready)
+			.then(() => undefined)
+			.catch(() => undefined);
+	} catch {
+		fontLoad = document.fonts.ready
+			.then(() => undefined)
+			.catch(() => undefined);
+	}
+
+	return Promise.race([fontLoad, timeout])
+		.then(() => waitForNextFrame())
+		.finally(() => {
+			if (timeoutId !== null) clearTimeout(timeoutId);
+		});
+}
+
 // Body-level hidden container that owns wrapper divs of terminals whose
 // React component is currently unmounted (e.g. workspace switch). Keeps
 // xterm attached to the document so it survives provider remounts without
@@ -211,11 +266,97 @@ function getParkingContainer(): HTMLDivElement {
 	return el;
 }
 
-function measureAndResize(runtime: TerminalRuntime) {
-	if (!hostIsVisible(runtime.container)) return;
+function measureAndResize(runtime: TerminalRuntime): boolean {
+	if (!hostIsVisible(runtime.container)) return false;
+	const { terminal } = runtime;
+	const buffer = terminal.buffer.active;
+	const wasPinnedToBottom = buffer.viewportY >= buffer.baseY;
+	const savedViewportY = buffer.viewportY;
+	const prevCols = terminal.cols;
+	const prevRows = terminal.rows;
+
 	runtime.fitAddon.fit();
-	runtime.lastCols = runtime.terminal.cols;
-	runtime.lastRows = runtime.terminal.rows;
+	runtime.lastCols = terminal.cols;
+	runtime.lastRows = terminal.rows;
+
+	if (wasPinnedToBottom) {
+		terminal.scrollToBottom();
+	} else {
+		const targetY = Math.min(savedViewportY, terminal.buffer.active.baseY);
+		if (terminal.buffer.active.viewportY !== targetY) {
+			terminal.scrollToLine(targetY);
+		}
+	}
+
+	terminal.refresh(0, Math.max(0, terminal.rows - 1));
+
+	return terminal.cols !== prevCols || terminal.rows !== prevRows;
+}
+
+function scheduleFontSettleRefit(runtime: TerminalRuntime) {
+	runtime._disposeFontSettle?.();
+
+	let disposed = false;
+	const token = runtime._fontSettleToken + 1;
+	runtime._fontSettleToken = token;
+
+	runtime._disposeFontSettle = () => {
+		disposed = true;
+		if (runtime._fontSettleToken === token) {
+			runtime._disposeFontSettle = null;
+		}
+	};
+
+	void waitForTerminalFont(runtime.terminal).then(() => {
+		if (disposed || runtime._fontSettleToken !== token) return;
+		runtime._disposeFontSettle = null;
+		if (!hostIsVisible(runtime.container)) return;
+
+		// A late-loading font can change cell metrics after xterm's first fit.
+		runtime._clearTextureAtlas?.();
+		if (measureAndResize(runtime)) {
+			runtime._onResize?.();
+		}
+	});
+}
+
+function createResizeScheduler(
+	runtime: TerminalRuntime,
+	onResize?: () => void,
+): {
+	observe: ResizeObserverCallback;
+	dispose: () => void;
+} {
+	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+	const dispose = () => {
+		if (timeoutId !== null) {
+			clearTimeout(timeoutId);
+			timeoutId = null;
+		}
+	};
+
+	const run = () => {
+		timeoutId = null;
+		const changed = measureAndResize(runtime);
+		if (changed) onResize?.();
+	};
+
+	const observe: ResizeObserverCallback = (entries) => {
+		if (
+			entries.some(
+				(entry) =>
+					entry.contentRect.width <= 0 || entry.contentRect.height <= 0,
+			)
+		) {
+			dispose();
+			return;
+		}
+		dispose();
+		timeoutId = setTimeout(run, RESIZE_DEBOUNCE_MS);
+	};
+
+	return { observe, dispose };
 }
 
 export function createRuntime(
@@ -242,14 +383,19 @@ export function createRuntime(
 
 	// Activate Unicode 11 widths (inside loadAddons) before restoring the buffer,
 	// else CJK/emoji/ZWJ widths get baked wrong into the replay. (#3572)
-	const addonsResult = loadAddons(terminal);
+	let runtime: TerminalRuntime | null = null;
+	const addonsResult = loadAddons(terminal, {
+		onRendererChange: () => {
+			if (runtime) scheduleFontSettleRefit(runtime);
+		},
+	});
 	if (options.initialBuffer !== undefined) {
 		terminal.write(options.initialBuffer);
 	} else {
 		restoreBuffer(terminalId, terminal);
 	}
 
-	return {
+	runtime = {
 		terminalId,
 		terminal,
 		fitAddon,
@@ -259,10 +405,16 @@ export function createRuntime(
 		wrapper,
 		container: null,
 		resizeObserver: null,
+		_disposeResizeObserver: null,
+		_disposeFontSettle: null,
+		_onResize: null,
+		_clearTextureAtlas: addonsResult.clearTextureAtlas,
+		_fontSettleToken: 0,
 		lastCols: cols,
 		lastRows: rows,
 		_disposeAddons: addonsResult.dispose,
 	};
+	return runtime;
 }
 
 export function attachToContainer(
@@ -273,6 +425,7 @@ export function attachToContainer(
 	// If we're already attached to this exact container, do nothing. Prevents
 	// redundant refresh/focus/fit from transient remounts during provider key
 	// churn — VSCode setVisible() is idempotent for the same host element.
+	runtime._onResize = onResize ?? null;
 	const sameContainer =
 		runtime.container === container &&
 		runtime.wrapper.parentElement === container;
@@ -287,9 +440,11 @@ export function attachToContainer(
 		containerWidth: container.clientWidth,
 		containerHeight: container.clientHeight,
 	});
-	measureAndResize(runtime);
+	if (measureAndResize(runtime)) onResize?.();
+	scheduleFontSettleRefit(runtime);
 
 	// Renderer may have skipped frames while the wrapper was detached.
+	// (refresh is now handled inside measureAndResize)
 	terminalRendererDebug.info(
 		"runtime-refresh",
 		{
@@ -301,15 +456,15 @@ export function attachToContainer(
 			fingerprint: ["terminal.renderer", "runtime-refresh"],
 		},
 	);
-	runtime.terminal.refresh(0, runtime.terminal.rows - 1);
 
+	runtime._disposeResizeObserver?.();
+	runtime._disposeResizeObserver = null;
 	runtime.resizeObserver?.disconnect();
-	const observer = new ResizeObserver(() => {
-		measureAndResize(runtime);
-		onResize?.();
-	});
+	const scheduler = createResizeScheduler(runtime, onResize);
+	const observer = new ResizeObserver(scheduler.observe);
 	observer.observe(container);
 	runtime.resizeObserver = observer;
+	runtime._disposeResizeObserver = scheduler.dispose;
 
 	runtime.terminal.focus();
 }
@@ -329,6 +484,11 @@ export function detachFromContainer(runtime: TerminalRuntime) {
 			fingerprint: ["terminal.renderer", "runtime-detach-from-container"],
 		},
 	);
+	runtime._disposeResizeObserver?.();
+	runtime._disposeResizeObserver = null;
+	runtime._disposeFontSettle?.();
+	runtime._disposeFontSettle = null;
+	runtime._onResize = null;
 	runtime.resizeObserver?.disconnect();
 	runtime.resizeObserver = null;
 	// Park instead of .remove() so xterm survives the React unmount —
@@ -341,7 +501,7 @@ export function updateRuntimeAppearance(
 	runtime: TerminalRuntime,
 	appearance: TerminalAppearance,
 ) {
-	const { terminal, fitAddon } = runtime;
+	const { terminal } = runtime;
 	terminal.options.theme = appearance.theme;
 
 	const fontChanged =
@@ -352,9 +512,8 @@ export function updateRuntimeAppearance(
 		terminal.options.fontFamily = appearance.fontFamily;
 		terminal.options.fontSize = appearance.fontSize;
 		if (hostIsVisible(runtime.container)) {
-			fitAddon.fit();
-			runtime.lastCols = terminal.cols;
-			runtime.lastRows = terminal.rows;
+			measureAndResize(runtime);
+			scheduleFontSettleRefit(runtime);
 		}
 	}
 }
@@ -370,6 +529,11 @@ export function disposeRuntime(
 	}
 	runtime._disposeAddons?.();
 	runtime._disposeAddons = null;
+	runtime._disposeResizeObserver?.();
+	runtime._disposeResizeObserver = null;
+	runtime._disposeFontSettle?.();
+	runtime._disposeFontSettle = null;
+	runtime._onResize = null;
 	runtime.resizeObserver?.disconnect();
 	runtime.resizeObserver = null;
 	runtime.wrapper.remove();
