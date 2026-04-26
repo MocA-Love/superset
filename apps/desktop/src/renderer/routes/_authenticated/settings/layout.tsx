@@ -46,6 +46,7 @@ const SECTION_ORDER: SettingsSection[] = [
 	"metrics",
 	"security",
 	"permissions",
+	"hosts",
 ];
 
 function getSectionFromPath(pathname: string): SettingsSection | null {
@@ -68,6 +69,7 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/permissions")) return "permissions";
 	if (pathname.includes("/settings/metrics")) return "metrics";
 	if (pathname.includes("/settings/service-status")) return "serviceStatus";
+	if (pathname.includes("/settings/hosts")) return "hosts";
 	if (pathname.includes("/settings/project")) return "project";
 	return null;
 }
@@ -110,6 +112,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/metrics";
 		case "serviceStatus":
 			return "/settings/service-status";
+		case "hosts":
+			return "/settings/hosts";
 		default:
 			return "/settings/account";
 	}
@@ -136,6 +140,7 @@ function SettingsLayout() {
 		if (!currentSection) return;
 
 		if (currentSection === "project") return;
+		if (currentSection === "hosts") return;
 
 		const matchCounts = getMatchCountBySection(normalizedSearchQuery);
 		const currentHasMatches = (matchCounts[currentSection] ?? 0) > 0;
