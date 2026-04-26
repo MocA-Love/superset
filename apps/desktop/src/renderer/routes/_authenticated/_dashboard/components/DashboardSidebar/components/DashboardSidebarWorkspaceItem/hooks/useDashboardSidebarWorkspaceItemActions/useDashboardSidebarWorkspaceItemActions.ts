@@ -12,6 +12,7 @@ import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/u
 import { useOptimisticCollectionActions } from "renderer/routes/_authenticated/hooks/useOptimisticCollectionActions";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
+import { useV2NotificationStore } from "renderer/stores/v2-notifications";
 
 interface UseDashboardSidebarWorkspaceItemActionsOptions {
 	workspaceId: string;
@@ -33,6 +34,9 @@ export function useDashboardSidebarWorkspaceItemActions({
 	const { copyToClipboard } = useCopyToClipboard();
 	const { v2Workspaces: workspaceActions } = useOptimisticCollectionActions();
 	const { requestSectionRename } = useDashboardSidebarSectionRename();
+	const clearWorkspaceAttention = useV2NotificationStore(
+		(s) => s.clearWorkspaceAttention,
+	);
 	const { createSection, moveWorkspaceToSection, removeWorkspaceFromSidebar } =
 		useDashboardSidebarState();
 
@@ -48,6 +52,7 @@ export function useDashboardSidebarWorkspaceItemActions({
 
 	const handleClick = () => {
 		if (isRenaming) return;
+		clearWorkspaceAttention(workspaceId);
 		navigate({
 			to: "/v2-workspace/$workspaceId",
 			params: { workspaceId },
