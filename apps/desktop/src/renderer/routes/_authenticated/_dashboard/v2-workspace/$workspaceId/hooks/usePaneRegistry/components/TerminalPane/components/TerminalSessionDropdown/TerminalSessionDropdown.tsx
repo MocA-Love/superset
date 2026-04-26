@@ -18,8 +18,9 @@ import {
 	TerminalSquare,
 	Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { markTerminalForBackground } from "renderer/lib/terminal/terminal-background-intents";
+import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-registry";
 import type {
 	PaneViewerData,
 	TerminalPaneData,
@@ -38,6 +39,7 @@ interface VisibleTerminalSession {
 	exited: boolean;
 	exitCode: number;
 	attached: boolean;
+	title: string | null;
 	pending?: boolean;
 }
 
@@ -46,6 +48,8 @@ interface TerminalPaneLocation {
 	paneId: string;
 	titleOverride?: string;
 }
+
+const EMPTY_TERMINAL_PANE_LOCATIONS = new Map<string, TerminalPaneLocation[]>();
 
 function formatCreatedAt(createdAt: number | undefined): string {
 	if (!createdAt) return "Creating";
@@ -82,6 +86,7 @@ export function TerminalSessionDropdown({
 	const [isOpen, setIsOpen] = useState(false);
 	const data = context.pane.data as TerminalPaneData;
 	const { terminalId } = data;
+	const terminalInstanceId = context.pane.id;
 	const utils = workspaceTrpc.useUtils();
 	const killTerminalSession = workspaceTrpc.terminal.killSession.useMutation();
 	const sessionsQuery = workspaceTrpc.terminal.listSessions.useQuery(
@@ -104,12 +109,32 @@ export function TerminalSessionDropdown({
 				exited: false,
 				exitCode: 0,
 				attached: false,
+				title: null,
 				pending: true,
 			},
 			...liveSessions,
 		];
 	}, [sessionsQuery.data?.sessions, terminalId, workspaceId]);
-	const renderTerminalPaneLocations = getTerminalPaneLocations(context);
+	const currentSession = sessions.find(
+		(session) => session.terminalId === terminalId,
+	);
+	const subscribeTitle = useCallback(
+		(callback: () => void) =>
+			terminalRuntimeRegistry.onTitleChange(
+				terminalId,
+				callback,
+				terminalInstanceId,
+			),
+		[terminalId, terminalInstanceId],
+	);
+	const getTitleSnapshot = useCallback(
+		() => terminalRuntimeRegistry.getTitle(terminalId, terminalInstanceId),
+		[terminalId, terminalInstanceId],
+	);
+	const runtimeTitle = useSyncExternalStore(subscribeTitle, getTitleSnapshot);
+	const renderTerminalPaneLocations = isOpen
+		? getTerminalPaneLocations(context)
+		: EMPTY_TERMINAL_PANE_LOCATIONS;
 
 	const handleSelectSession = (nextTerminalId: string) => {
 		if (nextTerminalId === terminalId) {
@@ -202,11 +227,10 @@ export function TerminalSessionDropdown({
 		setIsOpen(false);
 	};
 
-	const triggerTitle = context.pane.titleOverride ?? "Terminal";
-	const currentSession = sessions.find(
-		(session) => session.terminalId === terminalId,
-	);
-	const currentCreatedAtLabel = formatCreatedAt(currentSession?.createdAt);
+	const hostTitle =
+		runtimeTitle !== undefined ? runtimeTitle : currentSession?.title;
+	const titleOverride = context.pane.titleOverride;
+	const triggerTitle = hostTitle ?? titleOverride ?? "Terminal";
 
 	return (
 		<DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -215,14 +239,13 @@ export function TerminalSessionDropdown({
 					type="button"
 					aria-label="Terminal sessions"
 					title={triggerTitle}
-					className="@container/terminal-session flex min-w-0 max-w-full flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					className="flex min-w-32 max-w-96 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 					onMouseDown={(event) => event.stopPropagation()}
 					onClick={(event) => event.stopPropagation()}
 				>
 					<TerminalSquare className="size-3.5 shrink-0" />
-					<span className="min-w-0 truncate">{triggerTitle}</span>
-					<span className="hidden shrink-0 text-[10px] text-muted-foreground/70 @min-[160px]/terminal-session:inline">
-						{currentCreatedAtLabel}
+					<span className="min-w-0 flex-1 truncate text-left">
+						{triggerTitle}
 					</span>
 					{sessionsQuery.isFetching && isOpen ? (
 						<LoaderCircle className="size-3 shrink-0 animate-spin" />
@@ -231,7 +254,7 @@ export function TerminalSessionDropdown({
 					)}
 				</button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" className="w-80">
+			<DropdownMenuContent align="start" className="w-96">
 				<DropdownMenuLabel className="text-xs">
 					Terminal Sessions
 				</DropdownMenuLabel>
@@ -253,7 +276,7 @@ export function TerminalSessionDropdown({
 										: "Detached";
 							const title = isCurrent
 								? triggerTitle
-								: (location?.titleOverride ?? "Terminal");
+								: (session.title ?? location?.titleOverride ?? "Terminal");
 
 							return (
 								<DropdownMenuItem
@@ -269,7 +292,7 @@ export function TerminalSessionDropdown({
 									<span className="min-w-0 flex-1 truncate text-xs">
 										{title}
 									</span>
-									<span className="shrink-0 text-[10px] text-muted-foreground/70">
+									<span className="shrink-0 text-xs text-muted-foreground/70">
 										{createdAtLabel}
 									</span>
 									<span className="shrink-0 text-xs text-muted-foreground">
