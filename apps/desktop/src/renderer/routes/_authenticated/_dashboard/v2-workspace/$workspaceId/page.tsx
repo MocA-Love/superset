@@ -3,9 +3,7 @@ import {
 	type PaneActionConfig,
 	type SplitPath,
 	Workspace,
-	type WorkspaceStore,
 } from "@superset/panes";
-import { alert } from "@superset/ui/atoms/Alert";
 import {
 	ResizableHandle,
 	ResizablePanel,
@@ -33,25 +31,18 @@ import {
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { getBaseName } from "renderer/lib/pathBasename";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
 	CommandPalette,
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
-import {
-	getV2NotificationSourcesForPane,
-	getV2NotificationSourcesForTab,
-	useV2NotificationStore,
-	useV2PaneNotificationStatus,
-} from "renderer/stores/v2-notifications";
+import { getV2NotificationSourcesForTab } from "renderer/stores/v2-notifications";
 import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
 import { useStore } from "zustand";
-import type { StoreApi } from "zustand/vanilla";
 import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
@@ -70,17 +61,25 @@ import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActio
 import { useDirtyTabCloseGuard } from "./hooks/useDirtyTabCloseGuard";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
-import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
-import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 // FORK NOTE: useWorkspaceFileNavigation and useWorkspacePaneOpeners are imported by upstream (b1e1eb742)
 // but fork keeps inline implementations. These imports are kept to avoid import errors
 // if any indirect dependency uses them, but they are not called directly.
 // import { useWorkspaceFileNavigation } from "./hooks/useWorkspaceFileNavigation";
 // import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
 import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
+import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
+import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
-import type { PaneViewerData } from "./types";
+import type {
+	BrowserPaneData,
+	ChatPaneData,
+	CommentPaneData,
+	DiffPaneData,
+	FilePaneData,
+	PaneViewerData,
+	TerminalPaneData,
+} from "./types";
 import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
 interface WorkspaceSearch {
