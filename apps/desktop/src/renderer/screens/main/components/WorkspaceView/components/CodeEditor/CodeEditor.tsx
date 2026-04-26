@@ -87,6 +87,11 @@ interface CodeEditorProps {
 		position: SymbolPosition,
 	) => Promise<SymbolHoverResult | null> | SymbolHoverResult | null;
 	onGoToDefinition?: (position: SymbolPosition) => Promise<void> | void;
+	onGoToTypeDefinition?: (position: SymbolPosition) => Promise<void> | void;
+	onGoToImplementation?: (position: SymbolPosition) => Promise<void> | void;
+	onFindAllReferences?: (position: SymbolPosition) => Promise<void> | void;
+	onRenameSymbol?: (position: SymbolPosition) => Promise<void> | void;
+	onShowCodeActions?: (position: SymbolPosition) => Promise<void> | void;
 }
 
 const HIGHLIGHT_CLEAR_DELAY_MS = 1800;
@@ -523,6 +528,11 @@ export function CodeEditor({
 	inlineCompletionRequest = null,
 	resolveSymbolHover,
 	onGoToDefinition,
+	onGoToTypeDefinition,
+	onGoToImplementation,
+	onFindAllReferences,
+	onRenameSymbol,
+	onShowCodeActions,
 }: CodeEditorProps) {
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchQuery, setSearchQueryState] = useState("");
@@ -555,6 +565,11 @@ export function CodeEditor({
 	);
 	const resolveSymbolHoverRef = useRef(resolveSymbolHover);
 	const onGoToDefinitionRef = useRef(onGoToDefinition);
+	const onGoToTypeDefinitionRef = useRef(onGoToTypeDefinition);
+	const onGoToImplementationRef = useRef(onGoToImplementation);
+	const onFindAllReferencesRef = useRef(onFindAllReferences);
+	const onRenameSymbolRef = useRef(onRenameSymbol);
+	const onShowCodeActionsRef = useRef(onShowCodeActions);
 	// Guards against re-entrant onChange calls triggered by the value-sync effect's own dispatch.
 	const isExternalUpdateRef = useRef(false);
 	const { data: fontSettings } = useQuery({
@@ -586,6 +601,11 @@ export function CodeEditor({
 	inlineCompletionRequestRef.current = inlineCompletionRequest;
 	resolveSymbolHoverRef.current = resolveSymbolHover;
 	onGoToDefinitionRef.current = onGoToDefinition;
+	onGoToTypeDefinitionRef.current = onGoToTypeDefinition;
+	onGoToImplementationRef.current = onGoToImplementation;
+	onFindAllReferencesRef.current = onFindAllReferences;
+	onRenameSymbolRef.current = onRenameSymbol;
+	onShowCodeActionsRef.current = onShowCodeActions;
 	searchModeRef.current = searchMode;
 	isSearchOpenRef.current = isSearchOpen;
 
@@ -883,8 +903,48 @@ export function CodeEditor({
 				...createSymbolInteractions({
 					resolveHover: (position) =>
 						resolveSymbolHoverRef.current?.(position) ?? null,
-					onGoToDefinition: (position) =>
-						onGoToDefinitionRef.current?.(position),
+					// Wrappers always close over a ref so keybindings stay live
+					// when handlers are attached after mount, but they only
+					// claim the event when the ref actually holds a handler.
+					// Returning `false` lets the keymap entry fall through so
+					// shortcuts aren't silently consumed in editors that never
+					// wire up these actions.
+					onGoToDefinition: (position) => {
+						const handler = onGoToDefinitionRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onGoToTypeDefinition: (position) => {
+						const handler = onGoToTypeDefinitionRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onGoToImplementation: (position) => {
+						const handler = onGoToImplementationRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onFindAllReferences: (position) => {
+						const handler = onFindAllReferencesRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onRenameSymbol: (position) => {
+						const handler = onRenameSymbolRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onShowCodeActions: (position) => {
+						const handler = onShowCodeActionsRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
 				}),
 				updateListener,
 				overlaySearchUpdateListener,

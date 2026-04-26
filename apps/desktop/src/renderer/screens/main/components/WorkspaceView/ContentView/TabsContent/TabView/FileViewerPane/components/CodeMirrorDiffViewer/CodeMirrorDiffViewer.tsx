@@ -637,7 +637,12 @@ export const CodeMirrorDiffViewer = forwardRef<
 			...createSymbolInteractions({
 				resolveHover: (position) =>
 					resolveSymbolHoverRef.current?.(position) ?? null,
-				onGoToDefinition: (position) => onGoToDefinitionRef.current?.(position),
+				onGoToDefinition: (position) => {
+					const handler = onGoToDefinitionRef.current;
+					if (!handler) return false;
+					void Promise.resolve(handler(position));
+					return true;
+				},
 			}),
 		];
 

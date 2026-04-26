@@ -597,6 +597,40 @@ export function FileViewerContent({
 		],
 	);
 
+	const navigateToLocation = useCallback(
+		(target: { absolutePath: string; line: number; column: number }) => {
+			if (!workspaceId || !absoluteFilePath) {
+				return;
+			}
+
+			if (pathsMatch(target.absolutePath, absoluteFilePath)) {
+				if (viewMode === "diff") {
+					onSwitchToRawAtLocation(target.line, target.column);
+					return;
+				}
+
+				editorRef.current?.revealPosition(target.line, target.column);
+				return;
+			}
+
+			addFileViewerPane(workspaceId, {
+				filePath: target.absolutePath,
+				line: target.line,
+				column: target.column,
+				isPinned: false,
+				useRightSidebarOpenViewWidth: true,
+			});
+		},
+		[
+			absoluteFilePath,
+			addFileViewerPane,
+			editorRef,
+			onSwitchToRawAtLocation,
+			viewMode,
+			workspaceId,
+		],
+	);
+
 	const goToDefinition = useCallback(
 		async (position: SymbolPosition) => {
 			if (!workspaceId || !absoluteFilePath || !languageId) {
@@ -622,33 +656,88 @@ export function FileViewerContent({
 				return;
 			}
 
-			if (pathsMatch(target.absolutePath, absoluteFilePath)) {
-				if (viewMode === "diff") {
-					onSwitchToRawAtLocation(target.line, target.column);
-					return;
-				}
-
-				editorRef.current?.revealPosition(target.line, target.column);
-				return;
-			}
-
-			addFileViewerPane(workspaceId, {
-				filePath: target.absolutePath,
-				line: target.line,
-				column: target.column,
-				isPinned: false,
-				useRightSidebarOpenViewWidth: true,
-			});
+			navigateToLocation(target);
 		},
 		[
 			absoluteFilePath,
-			addFileViewerPane,
 			documentVersion,
-			editorRef,
 			languageId,
-			onSwitchToRawAtLocation,
+			navigateToLocation,
 			renderedContent,
-			viewMode,
+			workspaceId,
+		],
+	);
+
+	const goToTypeDefinition = useCallback(
+		async (position: SymbolPosition) => {
+			if (!workspaceId || !absoluteFilePath || !languageId) {
+				return;
+			}
+
+			const definitions =
+				await electronTrpcClient.languageServices.getTypeDefinition.query({
+					workspaceId,
+					absolutePath: absoluteFilePath,
+					languageId,
+					line: position.line,
+					column: position.column,
+					...(documentVersion !== undefined
+						? {
+								content: renderedContent,
+								version: documentVersion,
+							}
+						: {}),
+				});
+			const target = definitions?.[0];
+			if (!target) {
+				return;
+			}
+
+			navigateToLocation(target);
+		},
+		[
+			absoluteFilePath,
+			documentVersion,
+			languageId,
+			navigateToLocation,
+			renderedContent,
+			workspaceId,
+		],
+	);
+
+	const goToImplementation = useCallback(
+		async (position: SymbolPosition) => {
+			if (!workspaceId || !absoluteFilePath || !languageId) {
+				return;
+			}
+
+			const definitions =
+				await electronTrpcClient.languageServices.getImplementation.query({
+					workspaceId,
+					absolutePath: absoluteFilePath,
+					languageId,
+					line: position.line,
+					column: position.column,
+					...(documentVersion !== undefined
+						? {
+								content: renderedContent,
+								version: documentVersion,
+							}
+						: {}),
+				});
+			const target = definitions?.[0];
+			if (!target) {
+				return;
+			}
+
+			navigateToLocation(target);
+		},
+		[
+			absoluteFilePath,
+			documentVersion,
+			languageId,
+			navigateToLocation,
+			renderedContent,
 			workspaceId,
 		],
 	);
@@ -1020,6 +1109,30 @@ export function FileViewerContent({
 							}
 
 							void goToDefinition(position);
+						}
+					: undefined
+			}
+			onGoToTypeDefinition={
+				canResolveSymbols
+					? () => {
+							const position = editorRef.current?.getCursorPosition();
+							if (!position) {
+								return;
+							}
+
+							void goToTypeDefinition(position);
+						}
+					: undefined
+			}
+			onGoToImplementation={
+				canResolveSymbols
+					? () => {
+							const position = editorRef.current?.getCursorPosition();
+							if (!position) {
+								return;
+							}
+
+							void goToImplementation(position);
 						}
 					: undefined
 			}

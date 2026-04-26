@@ -1,4 +1,110 @@
+import * as fs from "node:fs/promises";
 import { languageDiagnosticsStore } from "./diagnostics-store";
+import { setExternalLspWorkspaceEditApplier } from "./lsp/ExternalLspLanguageProvider";
+import type {
+	LanguageServiceFileOperation,
+	LanguageServiceTextEdit,
+	LanguageServiceWorkspaceEditOperation,
+} from "./types";
+
+async function fileExists(absolutePath: string): Promise<boolean> {
+	try {
+		await fs.access(absolutePath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function lineColumnToOffset(
+	content: string,
+	line: number,
+	column: number,
+): number {
+	let currentLine = 1;
+	let lineStartOffset = 0;
+	for (let i = 0; i < content.length && currentLine < line; i += 1) {
+		const ch = content[i];
+		if (ch === "\n") {
+			currentLine += 1;
+			lineStartOffset = i + 1;
+		} else if (ch === "\r") {
+			currentLine += 1;
+			if (content[i + 1] === "\n") i += 1;
+			lineStartOffset = i + 1;
+		}
+	}
+	if (currentLine !== line) {
+		return content.length;
+	}
+	// Find the end of the requested line so an oversized column clamps to
+	// the line's end-of-line boundary instead of spilling forward into the
+	// next line and rewriting unrelated text.
+	let lineEndOffset = lineStartOffset;
+	while (lineEndOffset < content.length) {
+		const ch = content[lineEndOffset];
+		if (ch === "\n" || ch === "\r") {
+			break;
+		}
+		lineEndOffset += 1;
+	}
+	return Math.min(lineEndOffset, lineStartOffset + Math.max(0, column - 1));
+}
+
+function detectOverlap(
+	sortedEdits: LanguageServiceTextEdit[],
+	content: string,
+): { aIndex: number; bIndex: number } | null {
+	const offsets = sortedEdits.map((edit) => ({
+		start: lineColumnToOffset(content, edit.range.line, edit.range.column),
+		end: lineColumnToOffset(content, edit.range.endLine, edit.range.endColumn),
+	}));
+	for (let i = 0; i < offsets.length - 1; i += 1) {
+		const current = offsets[i];
+		const next = offsets[i + 1];
+		if (next === undefined || current === undefined) continue;
+		// sorted descending: next.end should be <= current.start
+		if (next.end > current.start) {
+			return { aIndex: i, bIndex: i + 1 };
+		}
+	}
+	return null;
+}
+
+function applyTextEditsToContent(
+	content: string,
+	edits: LanguageServiceTextEdit[],
+): { result: string; overlap: boolean } {
+	const sorted = [...edits].sort((a, b) => {
+		if (a.range.line !== b.range.line) return b.range.line - a.range.line;
+		if (a.range.column !== b.range.column) {
+			return b.range.column - a.range.column;
+		}
+		if (a.range.endLine !== b.range.endLine) {
+			return b.range.endLine - a.range.endLine;
+		}
+		return b.range.endColumn - a.range.endColumn;
+	});
+	if (detectOverlap(sorted, content)) {
+		return { result: content, overlap: true };
+	}
+	let result = content;
+	for (const edit of sorted) {
+		const start = lineColumnToOffset(
+			result,
+			edit.range.line,
+			edit.range.column,
+		);
+		const end = lineColumnToOffset(
+			result,
+			edit.range.endLine,
+			edit.range.endColumn,
+		);
+		result = result.slice(0, start) + edit.newText + result.slice(end);
+	}
+	return { result, overlap: false };
+}
+
 import { CssLanguageProvider } from "./providers/css/CssLanguageProvider";
 import { DartLanguageProvider } from "./providers/dart/DartLanguageProvider";
 import { DockerfileLanguageProvider } from "./providers/dockerfile/DockerfileLanguageProvider";
@@ -13,12 +119,23 @@ import { TypeScriptLanguageProvider } from "./providers/typescript/TypeScriptLan
 import { YamlLanguageProvider } from "./providers/yaml/YamlLanguageProvider";
 import type {
 	LanguageServiceCallHierarchyItem,
+	LanguageServiceCodeAction,
+	LanguageServiceCompletionItem,
+	LanguageServiceCompletionList,
 	LanguageServiceDocument,
+	LanguageServiceDocumentHighlight,
+	LanguageServiceDocumentSymbol,
 	LanguageServiceHover,
 	LanguageServiceIncomingCall,
+	LanguageServiceInlayHint,
 	LanguageServiceLocation,
+	LanguageServicePrepareRenameResult,
 	LanguageServiceProvider,
 	LanguageServiceProviderDescriptor,
+	LanguageServiceSemanticTokens,
+	LanguageServiceSemanticTokensLegend,
+	LanguageServiceSignatureHelp,
+	LanguageServiceWorkspaceEdit,
 	LanguageServiceWorkspaceSnapshot,
 } from "./types";
 
@@ -250,6 +367,401 @@ export class LanguageServiceManager {
 		);
 	}
 
+	async getTypeDefinition(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getTypeDefinition?.(args)) ?? null;
+	}
+
+	async getImplementation(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceLocation[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getImplementation?.(args)) ?? null;
+	}
+
+	async getDocumentHighlights(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServiceDocumentHighlight[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getDocumentHighlights?.(args)) ?? null;
+	}
+
+	async getCompletion(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+	}): Promise<LanguageServiceCompletionList | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getCompletion?.(args)) ?? null;
+	}
+
+	async resolveCompletionItem(args: {
+		workspaceId: string;
+		languageId: string;
+		item: LanguageServiceCompletionItem;
+	}): Promise<LanguageServiceCompletionItem | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (
+			(await provider.resolveCompletionItem?.({
+				workspaceId: args.workspaceId,
+				item: args.item,
+			})) ?? null
+		);
+	}
+
+	async getSignatureHelp(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+		triggerKind?: 1 | 2 | 3;
+		triggerCharacter?: string;
+		isRetrigger?: boolean;
+	}): Promise<LanguageServiceSignatureHelp | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getSignatureHelp?.(args)) ?? null;
+	}
+
+	async getCodeActions(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+		only?: string[];
+	}): Promise<LanguageServiceCodeAction[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		const diagnostics = languageDiagnosticsStore.getFileDiagnostics(
+			args.workspaceId,
+			args.absolutePath,
+		);
+		return (
+			(await provider.getCodeActions?.({
+				...args,
+				diagnostics,
+			})) ?? null
+		);
+	}
+
+	async resolveCodeAction(args: {
+		workspaceId: string;
+		languageId: string;
+		action: LanguageServiceCodeAction;
+	}): Promise<LanguageServiceCodeAction | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (
+			(await provider.resolveCodeAction?.({
+				workspaceId: args.workspaceId,
+				action: args.action,
+			})) ?? null
+		);
+	}
+
+	async prepareRename(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+	}): Promise<LanguageServicePrepareRenameResult | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.prepareRename?.(args)) ?? null;
+	}
+
+	async rename(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		line: number;
+		column: number;
+		newName: string;
+	}): Promise<LanguageServiceWorkspaceEdit | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.rename?.(args)) ?? null;
+	}
+
+	async getInlayHints(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+		startLine: number;
+		startColumn: number;
+		endLine: number;
+		endColumn: number;
+	}): Promise<LanguageServiceInlayHint[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getInlayHints?.(args)) ?? null;
+	}
+
+	async getSemanticTokens(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+	}): Promise<LanguageServiceSemanticTokens | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getSemanticTokens?.(args)) ?? null;
+	}
+
+	getSemanticTokensLegend(args: {
+		workspaceId: string;
+		languageId: string;
+	}): LanguageServiceSemanticTokensLegend | null {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (
+			provider.getSemanticTokensLegend?.({
+				workspaceId: args.workspaceId,
+			}) ?? null
+		);
+	}
+
+	async getDocumentSymbols(args: {
+		workspaceId: string;
+		workspacePath: string;
+		absolutePath: string;
+		languageId: string;
+	}): Promise<LanguageServiceDocumentSymbol[] | null> {
+		const provider = this.resolveProvider(args.languageId);
+		if (!provider || !this.isProviderEnabled(provider.id)) return null;
+		return (await provider.getDocumentSymbols?.(args)) ?? null;
+	}
+
+	async applyWorkspaceEdit(edit: LanguageServiceWorkspaceEdit): Promise<{
+		applied: boolean;
+		failures: Array<{ absolutePath: string; reason: string }>;
+	}> {
+		const failures: Array<{ absolutePath: string; reason: string }> = [];
+
+		// Walk operations IN ORDER. LSP `documentChanges` semantics require
+		// that a `create` or `rename` ahead of an `edits` op resolves before
+		// the edit is applied — otherwise the edit may target the wrong file.
+		// We advertise `failureHandling: "abort"` in client capabilities, so
+		// stop at the first failure rather than partially mutating the
+		// workspace.
+		for (const operation of edit.operations) {
+			try {
+				if (operation.kind === "edits") {
+					await this.applyTextEditsOperation(operation);
+				} else {
+					await this.executeFileOperation(operation);
+				}
+			} catch (error) {
+				failures.push({
+					absolutePath: this.operationAbsolutePath(operation),
+					reason: error instanceof Error ? error.message : String(error),
+				});
+				break;
+			}
+		}
+
+		return {
+			applied: failures.length === 0,
+			failures,
+		};
+	}
+
+	private operationAbsolutePath(
+		operation: LanguageServiceWorkspaceEditOperation,
+	): string {
+		switch (operation.kind) {
+			case "rename":
+				return operation.newAbsolutePath;
+			default:
+				return operation.absolutePath;
+		}
+	}
+
+	private async applyTextEditsOperation(operation: {
+		kind: "edits";
+		absolutePath: string;
+		edits: LanguageServiceTextEdit[];
+		expectedVersion?: number | null;
+	}): Promise<void> {
+		// When the server stamped a version on the TextDocumentEdit, refuse
+		// to apply if any provider's tracked document version disagrees: the
+		// edit was computed against a stale buffer and applying its ranges
+		// against current bytes can corrupt the file.
+		if (
+			typeof operation.expectedVersion === "number" &&
+			operation.expectedVersion >= 0
+		) {
+			for (const provider of this.providers) {
+				const tracked = provider.getTrackedDocumentVersion?.(
+					operation.absolutePath,
+				);
+				if (
+					typeof tracked === "number" &&
+					tracked !== operation.expectedVersion
+				) {
+					throw new Error(
+						`stale text edit: server expected version ${operation.expectedVersion} but provider ${provider.id} tracks version ${tracked}`,
+					);
+				}
+			}
+		}
+
+		const original = await fs.readFile(operation.absolutePath, "utf8");
+		const { result, overlap } = applyTextEditsToContent(
+			original,
+			operation.edits,
+		);
+		if (overlap) {
+			throw new Error("overlapping text edit ranges");
+		}
+		if (result !== original) {
+			await fs.writeFile(operation.absolutePath, result, "utf8");
+		}
+		await Promise.all(
+			this.providers.map((provider) =>
+				provider
+					.notifyDocumentChangedOnDisk?.({
+						absolutePath: operation.absolutePath,
+						content: result,
+					})
+					.catch(() => {
+						/* best-effort */
+					}),
+			),
+		);
+	}
+
+	private async executeFileOperation(
+		operation: LanguageServiceFileOperation,
+	): Promise<void> {
+		if (operation.kind === "create") {
+			const exists = await fileExists(operation.absolutePath);
+			if (exists) {
+				if (operation.ignoreIfExists && !operation.overwrite) {
+					return;
+				}
+				if (!operation.overwrite) {
+					throw new Error(`file already exists: ${operation.absolutePath}`);
+				}
+			}
+			await fs.writeFile(operation.absolutePath, "", "utf8");
+			await Promise.all(
+				this.providers.map((provider) =>
+					provider
+						.notifyFileResourceChange?.({
+							kind: "create",
+							absolutePath: operation.absolutePath,
+						})
+						.catch(() => {
+							/* best-effort */
+						}),
+				),
+			);
+			return;
+		}
+
+		if (operation.kind === "rename") {
+			const destExists = await fileExists(operation.newAbsolutePath);
+			if (destExists) {
+				if (operation.ignoreIfExists && !operation.overwrite) {
+					return;
+				}
+				if (!operation.overwrite) {
+					throw new Error(
+						`destination already exists: ${operation.newAbsolutePath}`,
+					);
+				}
+				// `fs.rename` does not atomically replace an existing target on
+				// Windows (EPERM / EEXIST), so explicitly drop the destination
+				// first when `overwrite` is requested. POSIX would replace
+				// transparently, but going through `rm` works on every
+				// platform and keeps semantics consistent.
+				await fs.rm(operation.newAbsolutePath, { recursive: false });
+			}
+			await fs.rename(operation.oldAbsolutePath, operation.newAbsolutePath);
+			await Promise.all(
+				this.providers.map((provider) =>
+					provider
+						.notifyFileResourceChange?.({
+							kind: "rename",
+							oldAbsolutePath: operation.oldAbsolutePath,
+							newAbsolutePath: operation.newAbsolutePath,
+						})
+						.catch(() => {
+							/* best-effort */
+						}),
+				),
+			);
+			return;
+		}
+
+		// delete. `force: true` would mask all errors including permission
+		// denials and non-empty-dir failures, so we keep `force: false` and
+		// only swallow ENOENT (and only when ignoreIfNotExists is set).
+		try {
+			await fs.rm(operation.absolutePath, {
+				recursive: operation.recursive ?? false,
+			});
+		} catch (error) {
+			const isMissing =
+				error instanceof Error &&
+				(error as NodeJS.ErrnoException).code === "ENOENT";
+			if (operation.ignoreIfNotExists && isMissing) {
+				return;
+			}
+			throw error;
+		}
+		await Promise.all(
+			this.providers.map((provider) =>
+				provider
+					.notifyFileResourceChange?.({
+						kind: "delete",
+						absolutePath: operation.absolutePath,
+					})
+					.catch(() => {
+						/* best-effort */
+					}),
+			),
+		);
+	}
+
 	private isProviderEnabled(providerId: string): boolean {
 		return this.enabledProviders.get(providerId) ?? false;
 	}
@@ -268,3 +780,8 @@ export class LanguageServiceManager {
 }
 
 export const languageServiceManager = new LanguageServiceManager();
+
+setExternalLspWorkspaceEditApplier(async (edit) => {
+	const result = await languageServiceManager.applyWorkspaceEdit(edit);
+	return { applied: result.applied, failures: result.failures };
+});
