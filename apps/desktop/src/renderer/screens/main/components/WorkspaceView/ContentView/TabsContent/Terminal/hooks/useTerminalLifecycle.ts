@@ -294,6 +294,7 @@ export function useTerminalLifecycle({
 				handleFileLinkClickRef.current(event, link),
 			onUrlClickRef: handleUrlClickRef,
 		});
+		v1TerminalCache.setFocused(paneId, isFocusedRef.current);
 
 		const { xterm, fitAddon, searchAddon } = cached;
 

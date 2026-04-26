@@ -92,6 +92,7 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 	wrapper: HTMLDivElement;
 	linkManager: TerminalLinkManager;
 	openOnce: () => void;
+	setGpuAccelerationEnabled: (enabled: boolean) => void;
 	cleanup: () => void;
 } {
 	const {
@@ -115,6 +116,7 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 	let opened = false;
 	let webglAddon: WebglAddon | null = null;
 	let webglRafId: number | null = null;
+	let gpuAccelerationEnabled = false;
 
 	// Create a detached wrapper div. xterm.open() is deferred until the wrapper
 	// is attached to a live DOM container.
@@ -137,15 +139,63 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		// Ligatures not supported by current font
 	}
 
-	const openOnce = () => {
-		if (disposed || opened) return;
-		opened = true;
-		xterm.open(wrapper);
+	const disposeWebglAddon = () => {
+		if (webglRafId !== null) {
+			cancelAnimationFrame(webglRafId);
+			webglRafId = null;
+		}
+		if (!webglAddon) return;
+		try {
+			webglAddon.dispose();
+		} catch (error) {
+			terminalRendererDebug.warn(
+				"webgl-addon-dispose-failed",
+				{
+					errorMessage: error instanceof Error ? error.message : String(error),
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "webgl-dispose-failed"],
+				},
+			);
+		}
+		webglAddon = null;
+		if (opened && !disposed) {
+			xterm.refresh(0, Math.max(0, xterm.rows - 1));
+		}
+	};
 
-		// Defer WebGL until after open() so renderer initialization sees a live DOM node.
+	// scheduleWebglEnable / disposeWebglAddon are mutually exclusive:
+	// disposeWebglAddon cancels any pending RAF and nulls webglRafId before it
+	// returns, so a rapid attach -> detach -> attach sequence cannot leave two
+	// WebglAddon instances loaded — the pending callback bails out via the
+	// disposed / !gpuAccelerationEnabled / webglAddon guards below.
+	const scheduleWebglEnable = () => {
+		if (
+			disposed ||
+			!gpuAccelerationEnabled ||
+			!opened ||
+			!wrapper.isConnected ||
+			suggestedRendererType === "dom" ||
+			webglAddon ||
+			webglRafId !== null
+		) {
+			return;
+		}
+
+		// Defer WebGL until after open()/attach so renderer initialization
+		// sees a live DOM node.
 		webglRafId = requestAnimationFrame(() => {
 			webglRafId = null;
-			if (disposed || suggestedRendererType === "dom") return;
+			if (
+				disposed ||
+				!gpuAccelerationEnabled ||
+				!wrapper.isConnected ||
+				suggestedRendererType === "dom" ||
+				webglAddon
+			) {
+				return;
+			}
 
 			try {
 				webglAddon = new WebglAddon();
@@ -159,7 +209,7 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 						captureMessage: true,
 						fingerprint: ["terminal.renderer", "webgl-context-lost"],
 					});
-					xterm.refresh(0, xterm.rows - 1);
+					xterm.refresh(0, Math.max(0, xterm.rows - 1));
 				});
 				xterm.loadAddon(webglAddon);
 				// v1 terminal path: same vibrancy fix as v2 in `terminal-addons.ts`.
@@ -175,6 +225,22 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 				});
 			}
 		});
+	};
+
+	const setGpuAccelerationEnabled = (enabled: boolean) => {
+		gpuAccelerationEnabled = enabled;
+		if (!enabled) {
+			disposeWebglAddon();
+			return;
+		}
+		scheduleWebglEnable();
+	};
+
+	const openOnce = () => {
+		if (disposed || opened) return;
+		opened = true;
+		xterm.open(wrapper);
+		scheduleWebglEnable();
 	};
 
 	const cleanupQuerySuppression = suppressQueryResponses(xterm);
@@ -239,17 +305,12 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		wrapper,
 		linkManager,
 		openOnce,
+		setGpuAccelerationEnabled,
 		cleanup: () => {
 			disposed = true;
-			if (webglRafId !== null) {
-				cancelAnimationFrame(webglRafId);
-			}
+			disposeWebglAddon();
 			cleanupQuerySuppression();
 			linkManager.dispose();
-			try {
-				webglAddon?.dispose();
-			} catch {}
-			webglAddon = null;
 		},
 	};
 }
