@@ -157,10 +157,16 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		try {
 			webglAddon.dispose();
 		} catch (error) {
-			terminalRendererDebug.warn("webgl-addon-dispose-failed", undefined, {
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "webgl-dispose-failed"],
-			});
+			terminalRendererDebug.warn(
+				"webgl-addon-dispose-failed",
+				{
+					errorMessage: error instanceof Error ? error.message : String(error),
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "webgl-dispose-failed"],
+				},
+			);
 		}
 		webglAddon = null;
 		if (opened && !disposed) {
@@ -168,6 +174,11 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		}
 	};
 
+	// scheduleWebglEnable / disposeWebglAddon are mutually exclusive:
+	// disposeWebglAddon cancels any pending RAF and nulls webglRafId before it
+	// returns, so a rapid attach -> detach -> attach sequence cannot leave two
+	// WebglAddon instances loaded — the pending callback bails out via the
+	// disposed / !gpuAccelerationEnabled / webglAddon guards below.
 	const scheduleWebglEnable = () => {
 		if (
 			disposed ||

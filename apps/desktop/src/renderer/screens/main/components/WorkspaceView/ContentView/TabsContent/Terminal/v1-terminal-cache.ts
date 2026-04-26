@@ -288,23 +288,24 @@ function routeEvent(
 		}
 		entry.pendingUnmountedBytes += event.data.length;
 
-		// Trim oldest data when the cap is exceeded, preserving the tail.
-		while (entry.pendingUnmountedBytes > MAX_PENDING_UNMOUNTED_BYTES) {
-			const first = entry.pendingUnmountedEvents[0];
-			if (!first) break;
-			if (first.type !== "data") {
-				entry.pendingUnmountedEvents.shift();
-				break;
-			}
-			const excess = entry.pendingUnmountedBytes - MAX_PENDING_UNMOUNTED_BYTES;
-			if (first.data.length <= excess) {
-				entry.pendingUnmountedBytes -= first.data.length;
-				entry.pendingUnmountedEvents.shift();
-			} else {
-				first.data = first.data.slice(excess);
-				entry.pendingUnmountedBytes -= excess;
-				break;
-			}
+		// Hard-reset the buffer when the cap is exceeded. Slicing a coalesced
+		// data chunk at a char index could land in the middle of an ANSI escape
+		// sequence (e.g. `\x1b[31m`) or a UTF-8 multi-byte boundary, and xterm's
+		// parser would stay broken from there on. Hitting 10MB while hidden is
+		// already an outlier (long-lived high-output TUI behind an inactive tab),
+		// so we drop everything and emit RIS (`\x1bc`) instead — TUIs redraw on
+		// the next output anyway.
+		if (entry.pendingUnmountedBytes > MAX_PENDING_UNMOUNTED_BYTES) {
+			terminalRendererDebug.warn(
+				"hidden-buffer-overflow",
+				{ paneId, droppedBytes: entry.pendingUnmountedBytes },
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "hidden-buffer-overflow"],
+				},
+			);
+			entry.pendingUnmountedEvents = [{ type: "data", data: "\x1bc" }];
+			entry.pendingUnmountedBytes = 2;
 		}
 		return;
 	}
@@ -342,6 +343,12 @@ export function startStream(paneId: string): void {
 			// so the next remount goes through the full create/attach path.
 			entry.subscription = null;
 			entry.streamReady = false;
+			// Drop the hidden replay buffer too. Keeping it would splice
+			// pre-error events into whatever the new subscription emits on
+			// remount, mixing two terminal states and corrupting xterm's
+			// parser. The user re-runs whatever they were running anyway.
+			entry.pendingUnmountedEvents = [];
+			entry.pendingUnmountedBytes = 0;
 			terminalRendererDebug.error(
 				"cache-stream-error",
 				{
