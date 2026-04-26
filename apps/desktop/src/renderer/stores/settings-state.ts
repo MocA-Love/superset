@@ -14,6 +14,7 @@ export type SettingsSection =
 	| "terminal"
 	| "links"
 	| "models"
+	| "experimental"
 	| "integrations"
 	| "extensions"
 	| "billing"
