@@ -11,12 +11,7 @@ import { installRectangleRendererAlphaPatch } from "./webgl-vibrancy-patch";
 export interface LoadAddonsResult {
 	searchAddon: SearchAddon;
 	progressAddon: ProgressAddon;
-	clearTextureAtlas: () => void;
 	dispose: () => void;
-}
-
-interface LoadAddonsOptions {
-	onRendererChange?: () => void;
 }
 
 // Once WebGL fails, skip it for all subsequent runtimes (VS Code pattern).
@@ -27,10 +22,7 @@ let suggestedRendererType: "webgl" | "dom" | undefined;
  * function and addon instances. WebGL is deferred to rAF to avoid
  * racing with xterm's post-open viewport sync.
  */
-export function loadAddons(
-	terminal: XTerm,
-	options: LoadAddonsOptions = {},
-): LoadAddonsResult {
+export function loadAddons(terminal: XTerm): LoadAddonsResult {
 	let disposed = false;
 	let webglAddon: WebglAddon | null = null;
 
@@ -60,7 +52,6 @@ export function loadAddons(
 			webglAddon.onContextLoss(() => {
 				webglAddon?.dispose();
 				webglAddon = null;
-				options.onRendererChange?.();
 				terminal.refresh(0, terminal.rows - 1);
 			});
 			terminal.loadAddon(webglAddon);
@@ -69,7 +60,6 @@ export function loadAddons(
 			// Claude Code TUI blocks render as opaque black even though the
 			// rest of the terminal is transparent. See `webgl-vibrancy-patch.ts`.
 			installRectangleRendererAlphaPatch(webglAddon);
-			options.onRendererChange?.();
 		} catch {
 			suggestedRendererType = "dom";
 			webglAddon = null;
@@ -79,11 +69,6 @@ export function loadAddons(
 	return {
 		searchAddon,
 		progressAddon,
-		clearTextureAtlas: () => {
-			try {
-				webglAddon?.clearTextureAtlas();
-			} catch {}
-		},
 		dispose: () => {
 			disposed = true;
 			cancelAnimationFrame(rafId);
