@@ -7,6 +7,7 @@ const repoRoot = path.resolve(import.meta.dir, "../../..");
 
 interface DesktopPackageJson {
 	scripts: Record<string, string>;
+	dependencies: Record<string, string>;
 }
 
 interface WorkflowStep {
@@ -330,5 +331,253 @@ describe("fork local database schema invariants", () => {
 		]) {
 			expect(schema).toContain(column);
 		}
+	});
+});
+
+describe("fork host-service persistence invariants", () => {
+	it("keeps Linux host-service spawns in a persistent systemd scope", () => {
+		const coordinator = readRepoText(
+			"apps/desktop/src/main/lib/host-service-coordinator.ts",
+		);
+		const persistence = readRepoText(
+			"apps/desktop/src/main/lib/process-persistence.ts",
+		);
+		const organizationIdTemplate = "$" + "{organizationId}";
+		const unitTemplate = "$" + "{unit}";
+
+		expect(coordinator).toContain("killPersistentScope");
+		expect(coordinator).toContain("spawnPersistent");
+		expect(coordinator).toContain("scopeUnit: string | null");
+		expect(coordinator).toContain("instance.scopeUnit = scopeUnit");
+		expect(coordinator).toContain("detached: true");
+		expect(coordinator).toContain("windowsHide: true");
+		expect(coordinator).toContain(
+			`unitLabel: \`superset-host-service-${organizationIdTemplate}\``,
+		);
+		expect(coordinator).toContain("result?.json?.version ?? result?.version");
+
+		expect(persistence).toContain('"systemd-run"');
+		expect(persistence).toContain('"--user"');
+		expect(persistence).toContain('"--scope"');
+		expect(persistence).toContain('"--collect"');
+		expect(persistence).toContain('"systemctl"');
+		expect(persistence).toContain('"kill"');
+		expect(persistence).toContain(`scopeUnit: \`${unitTemplate}.scope\``);
+	});
+});
+
+describe("fork ports integration invariants", () => {
+	it("keeps fork port metadata compatible with local and remote port routing", () => {
+		const sharedTypes = readRepoText("apps/desktop/src/shared/types/ports.ts");
+		const desktopPortsRouter = readRepoText(
+			"apps/desktop/src/lib/trpc/routers/ports/ports.ts",
+		);
+		const v1KillHook = readRepoText(
+			"apps/desktop/src/renderer/screens/main/components/WorkspaceSidebar/PortsList/hooks/useKillPort.ts",
+		);
+		const v1Badge = readRepoText(
+			"apps/desktop/src/renderer/screens/main/components/WorkspaceSidebar/PortsList/components/MergedPortBadge/MergedPortBadge.tsx",
+		);
+		const v1Group = readRepoText(
+			"apps/desktop/src/renderer/screens/main/components/WorkspaceSidebar/PortsList/components/WorkspacePortGroup/WorkspacePortGroup.tsx",
+		);
+
+		for (const field of [
+			"detected: boolean",
+			"pid: number | null",
+			"processName: string | null",
+			"terminalId: string | null",
+			"detectedAt: number | null",
+			"address: string | null",
+			"hostUrl: string | null",
+		]) {
+			expect(sharedTypes).toContain(field);
+		}
+
+		expect(desktopPortsRouter).toContain("buildLabelCache");
+		expect(desktopPortsRouter).toContain("matchedStaticPorts");
+		expect(desktopPortsRouter).toContain("detected: true");
+		expect(desktopPortsRouter).toContain("detected: false");
+		expect(desktopPortsRouter).toContain("terminalId: port.terminalId");
+		expect(desktopPortsRouter).toContain("hostUrl: null");
+		expect(desktopPortsRouter).toContain("workspaceId: z.string()");
+		expect(desktopPortsRouter).toContain("terminalId: z.string()");
+
+		expect(v1KillHook).toContain("FORK NOTE");
+		expect(v1KillHook).toContain("workspaceId: port.workspaceId");
+		expect(v1KillHook).toContain("terminalId: port.terminalId");
+		expect(v1Badge).toContain("const isDetected = port.detected");
+		expect(v1Badge).toContain("const canJumpToTerminal = !!port.terminalId");
+		expect(v1Badge).toContain("Not detected");
+		expect(v1Group).toContain("const detectedPorts = group.ports.filter");
+		expect(v1Group).toContain("void killPorts(detectedPorts)");
+	});
+
+	it("keeps the shared port-scanner exports used by fork browser automation", () => {
+		const pkg = readRepoJson<{ dependencies: Record<string, string> }>(
+			"apps/desktop/package.json",
+		);
+		const portScannerIndex = readRepoText("packages/port-scanner/src/index.ts");
+		const browserAutomation = readRepoText(
+			"apps/desktop/src/lib/trpc/routers/browser-automation/index.ts",
+		);
+		const paneResolver = readRepoText(
+			"apps/desktop/src/main/lib/browser-mcp-bridge/pane-resolver.ts",
+		);
+		const killTarget = readRepoText(
+			"apps/desktop/src/renderer/hooks/ports/usePortKillActions/killPortTarget.ts",
+		);
+
+		expect(pkg.dependencies["@superset/port-scanner"]).toBe("workspace:*");
+		for (const exportName of [
+			"getListeningPortsForPids",
+			"getProcessCommand",
+			"getProcessName",
+			"getProcessTree",
+			"PortManager",
+			"parseStaticPortsConfig",
+		]) {
+			expect(portScannerIndex).toContain(exportName);
+		}
+		expect(browserAutomation).toContain('from "@superset/port-scanner"');
+		expect(paneResolver).toContain('from "@superset/port-scanner"');
+		expect(paneResolver).toContain("getProcessCommand");
+		expect(killTarget).toContain("getHostServiceClientByUrl");
+		expect(killTarget).toContain("if (target.hostUrl)");
+		expect(killTarget).toContain("ports.kill.mutate");
+	});
+});
+
+describe("fork terminal vibrancy invariants", () => {
+	it("keeps the WebGL rectangle alpha patch installed after renderer load", () => {
+		const terminalAddons = readRepoText(
+			"apps/desktop/src/renderer/lib/terminal/terminal-addons.ts",
+		);
+		const vibrancyStore = readRepoText(
+			"apps/desktop/src/renderer/stores/vibrancy/store.ts",
+		);
+
+		expect(terminalAddons).toContain("installRectangleRendererAlphaPatch");
+		expect(terminalAddons).toContain("terminal.loadAddon(webglAddon)");
+		expect(terminalAddons).toContain(
+			"installRectangleRendererAlphaPatch(webglAddon)",
+		);
+		expect(terminalAddons).toContain("options.onRendererChange?.()");
+		expect(vibrancyStore).toContain("setRgbTransparencyForVibrancy");
+		expect(vibrancyStore).toContain(
+			"setRgbTransparencyForVibrancy(state.enabled)",
+		);
+		expect(vibrancyStore).toContain(
+			'root.dataset.vibrancy = state.enabled ? "on" : "off"',
+		);
+		expect(vibrancyStore).toContain('--background", "transparent"');
+	});
+});
+
+describe("fork language service invariants", () => {
+	it("keeps TypeScript and Dart providers on real LSP backends", () => {
+		const pkg = readRepoJson<DesktopPackageJson>("apps/desktop/package.json");
+		const tsProvider = readRepoText(
+			"apps/desktop/src/main/lib/language-services/providers/typescript/TypeScriptLanguageProvider.ts",
+		);
+		const dartProvider = readRepoText(
+			"apps/desktop/src/main/lib/language-services/providers/dart/DartLanguageProvider.ts",
+		);
+
+		expect(pkg.dependencies["@vtsls/language-server"]).toBe("^0.3.0");
+		expect(tsProvider).toContain("extends ExternalLspLanguageProvider");
+		expect(tsProvider).toContain('packageName: "@vtsls/language-server"');
+		expect(tsProvider).toContain('binName: "vtsls"');
+		expect(tsProvider).toContain('args: ["--stdio"]');
+		expect(tsProvider).toContain("maxTsServerMemory: 8192");
+
+		expect(dartProvider).toContain("extends ExternalLspLanguageProvider");
+		expect(dartProvider).toContain('"language-server"');
+		expect(dartProvider).toContain('"--protocol=lsp"');
+		expect(dartProvider).toContain("DART_SDK");
+		expect(dartProvider).toContain("FLUTTER_ROOT");
+	});
+
+	it("keeps the expanded language-service capability surface wired through manager and tRPC", () => {
+		const manager = readRepoText(
+			"apps/desktop/src/main/lib/language-services/manager.ts",
+		);
+		const routerFile = readRepoText(
+			"apps/desktop/src/lib/trpc/routers/language-services/index.ts",
+		);
+		const types = readRepoText(
+			"apps/desktop/src/main/lib/language-services/types.ts",
+		);
+
+		for (const method of [
+			"getTypeDefinition",
+			"getImplementation",
+			"getDocumentHighlights",
+			"getCompletion",
+			"resolveCompletionItem",
+			"getSignatureHelp",
+			"getCodeActions",
+			"resolveCodeAction",
+			"prepareRename",
+			"rename",
+			"applyWorkspaceEdit",
+			"getInlayHints",
+			"getSemanticTokens",
+			"getSemanticTokensLegend",
+			"getDocumentSymbols",
+		]) {
+			expect(manager).toContain(method);
+			expect(routerFile).toContain(method);
+			expect(types).toContain(method);
+		}
+		expect(manager).toContain("reject stale `TextDocumentEdit`");
+		expect(manager).toContain("fs.rename");
+	});
+});
+
+describe("fork vibrancy invariants", () => {
+	it("keeps cross-platform vibrancy state, routing, and restart awareness wired", () => {
+		const sharedTypes = readRepoText(
+			"apps/desktop/src/shared/vibrancy-types.ts",
+		);
+		const mainVibrancy = readRepoText(
+			"apps/desktop/src/main/lib/vibrancy/index.ts",
+		);
+		const routerIndex = readRepoText(
+			"apps/desktop/src/lib/trpc/routers/index.ts",
+		);
+		const vibrancyRouter = readRepoText(
+			"apps/desktop/src/lib/trpc/routers/vibrancy.ts",
+		);
+		const store = readRepoText(
+			"apps/desktop/src/renderer/stores/vibrancy/store.ts",
+		);
+
+		expect(sharedTypes).toContain('export type VibrancyBlurLevel = "subtle"');
+		expect(sharedTypes).toContain("blurRadius: number");
+		expect(sharedTypes).toContain("VIBRANCY_OPACITY_MIN = 0");
+		expect(sharedTypes).toContain("VIBRANCY_OPACITY_MAX = 100");
+		expect(sharedTypes).toContain("VIBRANCY_BLUR_RADIUS_MIN = 0");
+		expect(sharedTypes).toContain("VIBRANCY_BLUR_RADIUS_MAX = 100");
+
+		expect(mainVibrancy).toContain("@superset/macos-window-blur");
+		expect(mainVibrancy).toContain("setWindowBlurRadius");
+		expect(mainVibrancy).toContain("isNativeContinuousBlurSupported");
+		expect(mainVibrancy).toContain("getBootTransparent");
+		expect(mainVibrancy).toContain("getInitialWindowOptions");
+		expect(mainVibrancy).toContain(
+			'backgroundMaterial: state.enabled ? "acrylic" : "none"',
+		);
+		expect(mainVibrancy).toContain("transparent: true");
+
+		expect(routerIndex).toContain("createVibrancyRouter");
+		expect(routerIndex).toContain("vibrancy: createVibrancyRouter(wm)");
+		expect(vibrancyRouter).toContain("bootTransparent: getBootTransparent()");
+		expect(vibrancyRouter).toContain("nativeBlurSupported");
+		expect(vibrancyRouter).toContain("vibrancyEmitter.emit");
+		expect(vibrancyRouter).toContain("VIBRANCY_EVENTS.CHANGED");
+		expect(store).toContain("bootTransparent");
+		expect(store).toContain("nativeBlurSupported");
+		expect(store).toContain("electronTrpcClient.vibrancy.onChanged.subscribe");
 	});
 });
