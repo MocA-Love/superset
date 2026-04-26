@@ -54,6 +54,7 @@ import { V2NotificationStatusIndicator } from "./components/V2NotificationStatus
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { useBrowserShellInteractionPassthrough } from "./hooks/useBrowserShellInteractionPassthrough";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
@@ -725,7 +726,13 @@ function WorkspaceContent({
 		[],
 	);
 
+	// FORK NOTE: fork は sidebar 状態を v2UserPreferences ではなく
+	// localWorkspaceState から読む (cycle 09 の portal slot まわりの設計と整合)。
+	// upstream #3744 の useBrowserShellInteractionPassthrough は fork の sidebarOpen
+	// (= localWorkspaceState 由来) をそのまま渡せば動く。
 	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
+	const { onSidebarResizeDragging, onWorkspaceInteractionStateChange } =
+		useBrowserShellInteractionPassthrough({ sidebarOpen });
 
 	useWorkspaceHotkeys({
 		store,
@@ -873,13 +880,14 @@ function WorkspaceContent({
 									});
 								});
 							}}
+							onInteractionStateChange={onWorkspaceInteractionStateChange}
 							store={store}
 						/>
 					</div>
 				</ResizablePanel>
 				{sidebarOpen && (
 					<>
-						<ResizableHandle />
+						<ResizableHandle onDragging={onSidebarResizeDragging} />
 						<ResizablePanel
 							className="min-w-[220px]"
 							defaultSize={20}

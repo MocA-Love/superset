@@ -73,6 +73,8 @@ class BrowserRuntimeRegistryImpl {
 	private tabsSnapshots = new Map<string, BrowserTabSummary[]>();
 	private rootContainer: HTMLDivElement | null = null;
 	private globalListenersInstalled = false;
+	private windowDragPassthrough = false;
+	private shellInteractionPassthrough = false;
 
 	private getStateListeners(paneId: string): Set<() => void> {
 		let set = this.stateListenersByPaneId.get(paneId);
@@ -99,12 +101,16 @@ class BrowserRuntimeRegistryImpl {
 	}
 
 	private ensureRootContainer(): HTMLDivElement {
-		if (this.rootContainer?.isConnected) return this.rootContainer;
+		if (this.rootContainer?.isConnected) {
+			this.installGlobalListeners();
+			return this.rootContainer;
+		}
 		const existing = document.getElementById(
 			ROOT_CONTAINER_ID,
 		) as HTMLDivElement | null;
 		if (existing) {
 			this.rootContainer = existing;
+			this.installGlobalListeners();
 			return existing;
 		}
 		const root = document.createElement("div");
@@ -125,17 +131,22 @@ class BrowserRuntimeRegistryImpl {
 	private installGlobalListeners() {
 		if (this.globalListenersInstalled) return;
 		this.globalListenersInstalled = true;
-		const setPassthrough = (passthrough: boolean) => {
-			for (const group of this.groups.values()) {
-				if (!group.visible) continue;
-				const active = group.tabs.find((t) => t.tabId === group.activeTabId);
-				if (!active) continue;
-				active.webview.style.pointerEvents = passthrough ? "none" : "auto";
-			}
-		};
-		window.addEventListener("dragstart", () => setPassthrough(true), true);
-		window.addEventListener("dragend", () => setPassthrough(false), true);
-		window.addEventListener("drop", () => setPassthrough(false), true);
+		window.addEventListener(
+			"dragstart",
+			() => this.setWindowDragPassthrough(true),
+			true,
+		);
+		window.addEventListener(
+			"dragend",
+			() => this.setWindowDragPassthrough(false),
+			true,
+		);
+		window.addEventListener(
+			"drop",
+			() => this.setWindowDragPassthrough(false),
+			true,
+		);
+		window.addEventListener("blur", () => this.setWindowDragPassthrough(false));
 		window.addEventListener("resize", () => {
 			for (const group of this.groups.values()) {
 				if (group.placeholder) this.applyLayout(group);
@@ -174,6 +185,41 @@ class BrowserRuntimeRegistryImpl {
 				w.style.pointerEvents = "none";
 			}
 			w.style.visibility = "visible";
+		}
+	}
+
+	// FORK NOTE: upstream #3744 の pointer passthrough API。
+	// upstream は single-tab (entries Map) を iterate するが、fork は
+	// multi-tab (groups Map + tabs[]) なので active tab だけ操作する形に
+	// adapt。setShellInteractionPassthrough は v2 resize hook から呼ばれる。
+	private setWindowDragPassthrough(passthrough: boolean) {
+		const wasActive = this.isPointerPassthroughActive();
+		this.windowDragPassthrough = passthrough;
+		this.applyPointerPassthroughIfChanged(wasActive);
+	}
+
+	setShellInteractionPassthrough(passthrough: boolean): void {
+		const wasActive = this.isPointerPassthroughActive();
+		this.shellInteractionPassthrough = passthrough;
+		this.applyPointerPassthroughIfChanged(wasActive);
+	}
+
+	private isPointerPassthroughActive() {
+		return this.windowDragPassthrough || this.shellInteractionPassthrough;
+	}
+
+	private applyPointerPassthroughIfChanged(wasActive: boolean) {
+		const isActive = this.isPointerPassthroughActive();
+		if (wasActive !== isActive) this.applyPointerPassthrough();
+	}
+
+	private applyPointerPassthrough() {
+		const passthrough = this.isPointerPassthroughActive();
+		for (const group of this.groups.values()) {
+			if (!group.visible) continue;
+			const active = group.tabs.find((t) => t.tabId === group.activeTabId);
+			if (!active) continue;
+			active.webview.style.pointerEvents = passthrough ? "none" : "auto";
 		}
 	}
 
@@ -523,6 +569,9 @@ class BrowserRuntimeRegistryImpl {
 		group.resizeObserver = observer;
 		this.applyLayout(group);
 		this.notifyTabs(paneId);
+		// FORK NOTE: upstream #3744 — newly attached pane must reflect current
+		// passthrough state so an in-flight v2 resize doesn't lose its mask.
+		this.applyPointerPassthrough();
 	}
 
 	detach(paneId: string): void {
