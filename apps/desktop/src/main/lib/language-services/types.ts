@@ -134,6 +134,14 @@ export type LanguageServiceWorkspaceEditOperation =
 			kind: "edits";
 			absolutePath: string;
 			edits: LanguageServiceTextEdit[];
+			/**
+			 * Version of the document the LSP server computed these edits
+			 * against (`TextDocumentEdit.textDocument.version`). When set and
+			 * the provider has a different tracked version, the edit is
+			 * stale and must be rejected to avoid applying ranges against the
+			 * wrong offsets.
+			 */
+			expectedVersion?: number | null;
 	  }
 	| {
 			kind: "create";
@@ -482,6 +490,13 @@ export interface LanguageServiceProvider {
 		absolutePath: string;
 		content: string;
 	}): Promise<void>;
+
+	/**
+	 * Latest document version tracked by the provider for the given path,
+	 * or null when the provider has no open buffer for it. Used by
+	 * `applyWorkspaceEdit` to reject stale `TextDocumentEdit` operations.
+	 */
+	getTrackedDocumentVersion?(absolutePath: string): number | null;
 
 	/**
 	 * Called by the manager after a file is renamed or deleted on disk so

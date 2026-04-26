@@ -618,7 +618,31 @@ export class LanguageServiceManager {
 		kind: "edits";
 		absolutePath: string;
 		edits: LanguageServiceTextEdit[];
+		expectedVersion?: number | null;
 	}): Promise<void> {
+		// When the server stamped a version on the TextDocumentEdit, refuse
+		// to apply if any provider's tracked document version disagrees: the
+		// edit was computed against a stale buffer and applying its ranges
+		// against current bytes can corrupt the file.
+		if (
+			typeof operation.expectedVersion === "number" &&
+			operation.expectedVersion >= 0
+		) {
+			for (const provider of this.providers) {
+				const tracked = provider.getTrackedDocumentVersion?.(
+					operation.absolutePath,
+				);
+				if (
+					typeof tracked === "number" &&
+					tracked !== operation.expectedVersion
+				) {
+					throw new Error(
+						`stale text edit: server expected version ${operation.expectedVersion} but provider ${provider.id} tracks version ${tracked}`,
+					);
+				}
+			}
+		}
+
 		const original = await fs.readFile(operation.absolutePath, "utf8");
 		const { result, overlap } = applyTextEditsToContent(
 			original,

@@ -342,6 +342,12 @@ export const createLanguageServicesRouter = () => {
 											newText: z.string(),
 										}),
 									),
+									expectedVersion: z
+										.number()
+										.int()
+										.nonnegative()
+										.nullable()
+										.optional(),
 								}),
 								z.object({
 									kind: z.literal("create"),

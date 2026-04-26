@@ -340,7 +340,7 @@ function normalizeWorkspaceEdit(
 			}
 
 			const textChange = change as {
-				textDocument?: { uri: string };
+				textDocument?: { uri: string; version?: number | null };
 				edits?: Array<{ range: LspRange; newText: string }>;
 			};
 			const uri = textChange.textDocument?.uri;
@@ -354,7 +354,13 @@ function normalizeWorkspaceEdit(
 				edits.push({ range, newText: e.newText });
 			}
 			if (edits.length > 0) {
-				operations.push({ kind: "edits", absolutePath, edits });
+				const version = textChange.textDocument?.version;
+				operations.push({
+					kind: "edits",
+					absolutePath,
+					edits,
+					expectedVersion: typeof version === "number" ? version : null,
+				});
 			}
 		}
 	} else if (edit.changes) {
@@ -389,7 +395,7 @@ function denormalizeWorkspaceEdit(edit: LanguageServiceWorkspaceEdit): unknown {
 				documentChanges.push({
 					textDocument: {
 						uri: absolutePathToFileUri(operation.absolutePath),
-						version: null,
+						version: operation.expectedVersion ?? null,
 					},
 					edits: operation.edits.map((textEdit) => ({
 						range: {
@@ -1791,6 +1797,16 @@ export class ExternalLspLanguageProvider implements LanguageServiceProvider {
 			this.recordError(session, args.workspaceId, error);
 			return null;
 		}
+	}
+
+	getTrackedDocumentVersion(absolutePath: string): number | null {
+		for (const session of this.sessions.values()) {
+			const entry = session.openDocuments.get(absolutePath);
+			if (entry) {
+				return entry.version;
+			}
+		}
+		return null;
 	}
 
 	async notifyDocumentChangedOnDisk(args: {
