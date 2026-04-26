@@ -708,6 +708,12 @@ export class LanguageServiceManager {
 						`destination already exists: ${operation.newAbsolutePath}`,
 					);
 				}
+				// `fs.rename` does not atomically replace an existing target on
+				// Windows (EPERM / EEXIST), so explicitly drop the destination
+				// first when `overwrite` is requested. POSIX would replace
+				// transparently, but going through `rm` works on every
+				// platform and keeps semantics consistent.
+				await fs.rm(operation.newAbsolutePath, { recursive: false });
 			}
 			await fs.rename(operation.oldAbsolutePath, operation.newAbsolutePath);
 			await Promise.all(

@@ -15,16 +15,28 @@ import type {
 	SymbolPosition,
 } from "./symbolInteractions.types";
 
+/**
+ * Symbol-action callback. Returns `true` when a handler was actually
+ * dispatched (so the caller should consume the corresponding key /
+ * mouse event), `false` when no handler is currently bound (so the
+ * caller should let the event fall through to default behavior).
+ *
+ * Wrappers passed from `CodeEditor` always return `false` when their
+ * underlying ref has not been set yet, so keybindings registered by
+ * `createSymbolInteractions` are never consumed prematurely.
+ */
+type SymbolAction = (position: SymbolPosition) => boolean;
+
 interface CreateSymbolInteractionsOptions {
 	resolveHover?: (
 		position: SymbolPosition,
 	) => Promise<SymbolHoverResult | null> | SymbolHoverResult | null;
-	onGoToDefinition?: (position: SymbolPosition) => Promise<void> | void;
-	onGoToTypeDefinition?: (position: SymbolPosition) => Promise<void> | void;
-	onGoToImplementation?: (position: SymbolPosition) => Promise<void> | void;
-	onFindAllReferences?: (position: SymbolPosition) => Promise<void> | void;
-	onRenameSymbol?: (position: SymbolPosition) => Promise<void> | void;
-	onShowCodeActions?: (position: SymbolPosition) => Promise<void> | void;
+	onGoToDefinition?: SymbolAction;
+	onGoToTypeDefinition?: SymbolAction;
+	onGoToImplementation?: SymbolAction;
+	onFindAllReferences?: SymbolAction;
+	onRenameSymbol?: SymbolAction;
+	onShowCodeActions?: SymbolAction;
 	onCursorChange?: (position: SymbolPosition | null) => void;
 }
 
@@ -286,14 +298,17 @@ export function createSymbolInteractions({
 	const extensions: Extension[] = [];
 	const wrapAction = (
 		label: string,
-		action?: (position: SymbolPosition) => Promise<void> | void,
-	) =>
+		action?: SymbolAction,
+	): SymbolAction | undefined =>
 		action === undefined
 			? undefined
 			: (position: SymbolPosition) => {
-					void Promise.resolve(action(position)).catch((error) => {
+					try {
+						return action(position);
+					} catch (error) {
 						logSymbolInteractionError(label, error);
-					});
+						return false;
+					}
 				};
 	const runGoToDefinition = wrapAction("go to definition", onGoToDefinition);
 	const runGoToTypeDefinition = wrapAction(
@@ -351,13 +366,12 @@ export function createSymbolInteractions({
 				{
 					key: "F12",
 					run(view) {
-						runGoToDefinition(
+						return runGoToDefinition(
 							docOffsetToPosition(
 								view.state.doc,
 								view.state.selection.main.head,
 							),
 						);
-						return true;
 					},
 				},
 			]),
@@ -382,9 +396,13 @@ export function createSymbolInteractions({
 						return false;
 					}
 
-					event.preventDefault();
-					runGoToDefinition(docOffsetToPosition(view.state.doc, offset));
-					return true;
+					const handled = runGoToDefinition(
+						docOffsetToPosition(view.state.doc, offset),
+					);
+					if (handled) {
+						event.preventDefault();
+					}
+					return handled;
 				},
 			}),
 		);
@@ -399,10 +417,9 @@ export function createSymbolInteractions({
 		additionalKeyBindings.push({
 			key: "Shift-F12",
 			run(view) {
-				runFindAllReferences(
+				return runFindAllReferences(
 					docOffsetToPosition(view.state.doc, view.state.selection.main.head),
 				);
-				return true;
 			},
 		});
 	}
@@ -411,10 +428,9 @@ export function createSymbolInteractions({
 		additionalKeyBindings.push({
 			key: "F2",
 			run(view) {
-				runRenameSymbol(
+				return runRenameSymbol(
 					docOffsetToPosition(view.state.doc, view.state.selection.main.head),
 				);
-				return true;
 			},
 		});
 	}
@@ -423,10 +439,9 @@ export function createSymbolInteractions({
 		additionalKeyBindings.push({
 			key: "Mod-.",
 			run(view) {
-				runShowCodeActions(
+				return runShowCodeActions(
 					docOffsetToPosition(view.state.doc, view.state.selection.main.head),
 				);
-				return true;
 			},
 		});
 	}

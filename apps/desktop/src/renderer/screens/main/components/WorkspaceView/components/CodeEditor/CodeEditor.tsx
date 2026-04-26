@@ -927,22 +927,48 @@ export function CodeEditor({
 				...createSymbolInteractions({
 					resolveHover: (position) =>
 						resolveSymbolHoverRef.current?.(position) ?? null,
-					// Always pass ref-based wrappers — the editor is mounted with
-					// a `[]` dep effect, so gating on the prop value at mount time
-					// would never re-bind keymap entries when handlers become
-					// available later. Wrappers no-op silently when the ref is
-					// unset.
-					onGoToDefinition: (position) =>
-						onGoToDefinitionRef.current?.(position),
-					onGoToTypeDefinition: (position) =>
-						onGoToTypeDefinitionRef.current?.(position),
-					onGoToImplementation: (position) =>
-						onGoToImplementationRef.current?.(position),
-					onFindAllReferences: (position) =>
-						onFindAllReferencesRef.current?.(position),
-					onRenameSymbol: (position) => onRenameSymbolRef.current?.(position),
-					onShowCodeActions: (position) =>
-						onShowCodeActionsRef.current?.(position),
+					// Wrappers always close over a ref so keybindings stay live
+					// when handlers are attached after mount, but they only
+					// claim the event when the ref actually holds a handler.
+					// Returning `false` lets the keymap entry fall through so
+					// shortcuts aren't silently consumed in editors that never
+					// wire up these actions.
+					onGoToDefinition: (position) => {
+						const handler = onGoToDefinitionRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onGoToTypeDefinition: (position) => {
+						const handler = onGoToTypeDefinitionRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onGoToImplementation: (position) => {
+						const handler = onGoToImplementationRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onFindAllReferences: (position) => {
+						const handler = onFindAllReferencesRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onRenameSymbol: (position) => {
+						const handler = onRenameSymbolRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
+					onShowCodeActions: (position) => {
+						const handler = onShowCodeActionsRef.current;
+						if (!handler) return false;
+						void Promise.resolve(handler(position));
+						return true;
+					},
 				}),
 				updateListener,
 				overlaySearchUpdateListener,
