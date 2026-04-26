@@ -100,7 +100,7 @@ const REMOTE_CONTROL_URL_RE =
 	/https:\/\/claude\.ai\/code\/session_[A-Za-z0-9_-]+/;
 
 const ATTACHMENT_PATH_RE =
-	/!\[[^\]]*\]\(([^()\s]*[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
+	/!\[[^\]]*\]\(((?:\/[^()\s]*|[A-Za-z]:[\\/][^()\s]*|\\\\[^()\s]+[\\/][^()\s]*)[/\\]todo-agent[/\\]attachments[/\\][^)\s]+)\)/g;
 
 // =============================================================================
 // Public entry point
