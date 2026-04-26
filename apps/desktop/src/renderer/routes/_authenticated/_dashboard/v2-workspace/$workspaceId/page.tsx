@@ -51,6 +51,7 @@ import { V2NotificationStatusIndicator } from "./components/V2NotificationStatus
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { useBrowserShellInteractionPassthrough } from "./hooks/useBrowserShellInteractionPassthrough";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
 import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
@@ -707,7 +708,12 @@ function WorkspaceContent({
 		[],
 	);
 
+	// FORK NOTE: fork tracks rightSidebarOpen via localWorkspaceState (per-workspace persisted state)
+	// rather than upstream's v2UserPreferences. Both expose the same boolean; we use fork's source
+	// to avoid breaking the existing rightSidebarOpen persistence mechanism.
 	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
+	const { onSidebarResizeDragging, onWorkspaceInteractionStateChange } =
+		useBrowserShellInteractionPassthrough({ sidebarOpen });
 
 	useWorkspaceHotkeys({
 		store,
@@ -855,13 +861,14 @@ function WorkspaceContent({
 									});
 								});
 							}}
+							onInteractionStateChange={onWorkspaceInteractionStateChange}
 							store={store}
 						/>
 					</div>
 				</ResizablePanel>
 				{sidebarOpen && (
 					<>
-						<ResizableHandle />
+						<ResizableHandle onDragging={onSidebarResizeDragging} />
 						<ResizablePanel
 							className="min-w-[220px]"
 							defaultSize={20}
