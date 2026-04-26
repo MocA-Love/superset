@@ -73,6 +73,8 @@ class BrowserRuntimeRegistryImpl {
 	private tabsSnapshots = new Map<string, BrowserTabSummary[]>();
 	private rootContainer: HTMLDivElement | null = null;
 	private globalListenersInstalled = false;
+	private windowDragPassthrough = false;
+	private shellInteractionPassthrough = false;
 
 	private getStateListeners(paneId: string): Set<() => void> {
 		let set = this.stateListenersByPaneId.get(paneId);
@@ -99,12 +101,16 @@ class BrowserRuntimeRegistryImpl {
 	}
 
 	private ensureRootContainer(): HTMLDivElement {
-		if (this.rootContainer?.isConnected) return this.rootContainer;
+		if (this.rootContainer?.isConnected) {
+			this.installGlobalListeners();
+			return this.rootContainer;
+		}
 		const existing = document.getElementById(
 			ROOT_CONTAINER_ID,
 		) as HTMLDivElement | null;
 		if (existing) {
 			this.rootContainer = existing;
+			this.installGlobalListeners();
 			return existing;
 		}
 		const root = document.createElement("div");
@@ -125,22 +131,67 @@ class BrowserRuntimeRegistryImpl {
 	private installGlobalListeners() {
 		if (this.globalListenersInstalled) return;
 		this.globalListenersInstalled = true;
-		const setPassthrough = (passthrough: boolean) => {
-			for (const group of this.groups.values()) {
-				if (!group.visible) continue;
-				const active = group.tabs.find((t) => t.tabId === group.activeTabId);
-				if (!active) continue;
-				active.webview.style.pointerEvents = passthrough ? "none" : "auto";
-			}
-		};
-		window.addEventListener("dragstart", () => setPassthrough(true), true);
-		window.addEventListener("dragend", () => setPassthrough(false), true);
-		window.addEventListener("drop", () => setPassthrough(false), true);
+
+		// FORK NOTE: upstream refactored inline setPassthrough to setWindowDragPassthrough method.
+		// We adopt the method-based approach while keeping fork's multi-tab/group structure intact.
+		window.addEventListener(
+			"dragstart",
+			() => this.setWindowDragPassthrough(true),
+			true,
+		);
+		window.addEventListener(
+			"dragend",
+			() => this.setWindowDragPassthrough(false),
+			true,
+		);
+		window.addEventListener(
+			"drop",
+			() => this.setWindowDragPassthrough(false),
+			true,
+		);
+		window.addEventListener("blur", () => this.setWindowDragPassthrough(false));
 		window.addEventListener("resize", () => {
 			for (const group of this.groups.values()) {
 				if (group.placeholder) this.applyLayout(group);
 			}
 		});
+	}
+
+	// FORK NOTE: upstream uses setWindowDragPassthrough / setShellInteractionPassthrough
+	// with a single-entry registry (RegistryEntry). Fork uses a multi-tab/group structure
+	// (PaneGroup with TabEntry[]). We port upstream's passthrough concept to apply across
+	// all visible active tabs in the fork's group model.
+	private setWindowDragPassthrough(passthrough: boolean) {
+		const wasActive = this.isPointerPassthroughActive();
+		this.windowDragPassthrough = passthrough;
+		this.applyPointerPassthroughIfChanged(wasActive);
+	}
+
+	setShellInteractionPassthrough(passthrough: boolean): void {
+		const wasActive = this.isPointerPassthroughActive();
+		this.shellInteractionPassthrough = passthrough;
+		this.applyPointerPassthroughIfChanged(wasActive);
+	}
+
+	private isPointerPassthroughActive() {
+		return this.windowDragPassthrough || this.shellInteractionPassthrough;
+	}
+
+	private applyPointerPassthroughIfChanged(wasActive: boolean) {
+		const isActive = this.isPointerPassthroughActive();
+		if (wasActive !== isActive) this.applyPointerPassthrough();
+	}
+
+	// FORK NOTE: upstream's applyPointerPassthrough iterates over this.entries (single-entry model).
+	// Fork iterates over groups and applies only to the active tab of each visible group.
+	private applyPointerPassthrough() {
+		const passthrough = this.isPointerPassthroughActive();
+		for (const group of this.groups.values()) {
+			if (!group.visible) continue;
+			const active = group.tabs.find((t) => t.tabId === group.activeTabId);
+			if (!active) continue;
+			active.webview.style.pointerEvents = passthrough ? "none" : "auto";
+		}
 	}
 
 	private applyLayout(group: PaneGroup) {
@@ -163,7 +214,10 @@ class BrowserRuntimeRegistryImpl {
 				w.style.height = `${rect.height}px`;
 				w.style.opacity = "1";
 				w.style.zIndex = "100";
-				w.style.pointerEvents = "auto";
+				// Respect passthrough state when making active tab interactive
+				w.style.pointerEvents = this.isPointerPassthroughActive()
+					? "none"
+					: "auto";
 			} else {
 				w.style.top = "-100000px";
 				w.style.left = "-100000px";
@@ -521,6 +575,9 @@ class BrowserRuntimeRegistryImpl {
 		const observer = new ResizeObserver(() => this.applyLayout(groupRef));
 		observer.observe(placeholder);
 		group.resizeObserver = observer;
+		// FORK NOTE: upstream calls updateLayout(entry) + applyPointerPassthrough() separately.
+		// Fork uses applyLayout(group) which handles all tabs in the group and also applies
+		// pointer passthrough state via isPointerPassthroughActive() check within applyLayout.
 		this.applyLayout(group);
 		this.notifyTabs(paneId);
 	}

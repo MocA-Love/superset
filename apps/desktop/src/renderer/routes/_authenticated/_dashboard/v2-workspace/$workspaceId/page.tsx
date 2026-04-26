@@ -3,14 +3,19 @@ import {
 	type PaneActionConfig,
 	type SplitPath,
 	Workspace,
-	type WorkspaceStore,
 } from "@superset/panes";
-import { alert } from "@superset/ui/atoms/Alert";
 import {
 	ResizableHandle,
 	ResizablePanel,
 	ResizablePanelGroup,
 } from "@superset/ui/resizable";
+// FORK NOTE: fork retains the full import set including fork-only imports
+// (toast, workspaceTrpc, useNavigate, HiMiniXMark, TbLayout*, useRightSidebarOpenViewWidth,
+// addBrowserShortcutListener, dispatchBrowserShortcutEvent, electronTrpc, getBaseName,
+// createWorkspaceMemo, useCommandPalette, getV2NotificationSourcesForPane,
+// useV2NotificationStore, useV2PaneNotificationStatus, toAbsoluteWorkspacePath,
+// toRelativeWorkspacePath, useStore, StoreApi).
+// Upstream reduced imports as part of the refactor but fork cannot drop these.
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { eq } from "@tanstack/db";
@@ -26,45 +31,46 @@ import {
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { getBaseName } from "renderer/lib/pathBasename";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
 	CommandPalette,
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
-import {
-	getV2NotificationSourcesForPane,
-	getV2NotificationSourcesForTab,
-	useV2NotificationStore,
-	useV2PaneNotificationStatus,
-} from "renderer/stores/v2-notifications";
+import { getV2NotificationSourcesForTab } from "renderer/stores/v2-notifications";
 import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
 import { useStore } from "zustand";
-import type { StoreApi } from "zustand/vanilla";
 import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { useBrowserShellInteractionPassthrough } from "./hooks/useBrowserShellInteractionPassthrough";
+import { useClearActivePaneAttention } from "./hooks/useClearActivePaneAttention";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
 import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
+// FORK NOTE: useDefaultPaneActions was added by upstream (b1e1eb742) to replace inline defaultPaneActions.
+// Fork keeps the inline useMemo implementation in WorkspaceContent to preserve fork-specific split behavior.
+// import { useDefaultPaneActions } from "./hooks/useDefaultPaneActions";
+import { useDirtyTabCloseGuard } from "./hooks/useDirtyTabCloseGuard";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
+// FORK NOTE: useWorkspaceFileNavigation and useWorkspacePaneOpeners are imported by upstream (b1e1eb742)
+// but fork keeps inline implementations. These imports are kept to avoid import errors
+// if any indirect dependency uses them, but they are not called directly.
+// import { useWorkspaceFileNavigation } from "./hooks/useWorkspaceFileNavigation";
+// import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
 import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
-import {
-	FileDocumentStoreProvider,
-	getDocument,
-} from "./state/fileDocumentStore";
+import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
@@ -189,37 +195,6 @@ function V2WorkspacePage() {
 	);
 }
 
-/**
- * Clear post-completion attention only for the pane the user is actually
- * viewing. Clearing every review status on route entry would drop background
- * tab attention before the user has looked at that pane.
- */
-function useClearActivePaneAttention({
-	workspaceId,
-	store,
-}: {
-	workspaceId: string;
-	store: StoreApi<WorkspaceStore<PaneViewerData>>;
-}): void {
-	const activePane = useStore(store, (state) => {
-		const tab = state.tabs.find(
-			(candidate) => candidate.id === state.activeTabId,
-		);
-		return tab?.activePaneId ? tab.panes[tab.activePaneId] : undefined;
-	});
-	const activePaneStatus = useV2PaneNotificationStatus(workspaceId, activePane);
-	const clearSourceAttention = useV2NotificationStore(
-		(state) => state.clearSourceAttention,
-	);
-
-	useEffect(() => {
-		if (activePaneStatus !== "review") return;
-		for (const source of getV2NotificationSourcesForPane(activePane)) {
-			clearSourceAttention(source, workspaceId);
-		}
-	}, [activePane, activePaneStatus, clearSourceAttention, workspaceId]);
-}
-
 function WorkspaceContent({
 	projectId,
 	workspaceId,
@@ -287,6 +262,12 @@ function WorkspaceContent({
 		requestId: openUrlRequestId,
 	});
 
+	// FORK NOTE: upstream introduced useWorkspaceFileNavigation (b1e1eb742) with openFilePane(filePath, openInNewTab?)
+	// and revealPath using setRightSidebarOpen/setRightSidebarTab from useV2UserPreferences.
+	// Fork keeps the inline implementation below because:
+	//   1. fork's openFilePane is a 3-argument variant (filePath, displayName?, location?) for memo tab titles
+	//   2. fork's revealPath uses collections.v2WorkspaceLocalState.update (per-workspace state)
+	//      rather than v2UserPreferences (global state)
 	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
 		id: workspaceId,
 	});
@@ -517,6 +498,10 @@ function WorkspaceContent({
 		onRevealPath: revealPath,
 	});
 	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
+	// FORK NOTE: fork keeps openDiffPane, addTerminalTab, addChatTab, addBrowserTab,
+	// addMemoTab, openCommentPane inline rather than moving them to useWorkspacePaneOpeners.
+	// This is because fork has additional logic (addMemoTab, fork's openDiffPane variant, etc.)
+	// that upstream's useWorkspacePaneOpeners does not include.
 
 	const openDiffPane = useCallback(
 		(filePath: string, openInNewTab?: boolean) => {
@@ -706,8 +691,16 @@ function WorkspaceContent({
 		],
 		[],
 	);
+	// FORK NOTE: upstream moved the dirty-tab close guard logic to useDirtyTabCloseGuard hook (b1e1eb742).
+	// Fork adopts the new hook call instead of keeping the inline implementation.
+	const onBeforeCloseTab = useDirtyTabCloseGuard({ workspaceId });
 
+	// FORK NOTE: fork tracks rightSidebarOpen via localWorkspaceState (per-workspace persisted state)
+	// rather than upstream's v2UserPreferences. Both expose the same boolean; we use fork's source
+	// to avoid breaking the existing rightSidebarOpen persistence mechanism.
 	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
+	const { onSidebarResizeDragging, onWorkspaceInteractionStateChange } =
+		useBrowserShellInteractionPassthrough({ sidebarOpen });
 
 	useWorkspaceHotkeys({
 		store,
@@ -796,72 +789,15 @@ function WorkspaceContent({
 									onOpenTerminal={addTerminalTab}
 								/>
 							)}
-							onBeforeCloseTab={(tab) => {
-								const dirtyPanes = Object.values(tab.panes).filter((p) => {
-									if (p.kind !== "file") return false;
-									const filePath = (p.data as FilePaneData).filePath;
-									return getDocument(workspaceId, filePath)?.dirty === true;
-								});
-								const dirtyFileNames = dirtyPanes.map((p) =>
-									getBaseName((p.data as FilePaneData).filePath),
-								);
-								if (dirtyPanes.length === 0) return true;
-								const title =
-									dirtyPanes.length === 1
-										? `Do you want to save the changes you made to ${dirtyFileNames[0]}?`
-										: `Do you want to save changes to ${dirtyPanes.length} files?`;
-								return new Promise<boolean>((resolve) => {
-									alert({
-										title,
-										description:
-											"Your changes will be lost if you don't save them.",
-										actions: [
-											{
-												label: "Save All",
-												onClick: async () => {
-													for (const pane of dirtyPanes) {
-														const filePath = (pane.data as FilePaneData)
-															.filePath;
-														const doc = getDocument(workspaceId, filePath);
-														if (!doc) continue;
-														const result = await doc.save();
-														if (result.status !== "saved") {
-															resolve(false);
-															return;
-														}
-													}
-													resolve(true);
-												},
-											},
-											{
-												label: "Don't Save",
-												variant: "secondary",
-												onClick: async () => {
-													for (const pane of dirtyPanes) {
-														const filePath = (pane.data as FilePaneData)
-															.filePath;
-														const doc = getDocument(workspaceId, filePath);
-														if (doc) await doc.reload();
-													}
-													resolve(true);
-												},
-											},
-											{
-												label: "Cancel",
-												variant: "ghost",
-												onClick: () => resolve(false),
-											},
-										],
-									});
-								});
-							}}
+							onBeforeCloseTab={onBeforeCloseTab}
+							onInteractionStateChange={onWorkspaceInteractionStateChange}
 							store={store}
 						/>
 					</div>
 				</ResizablePanel>
 				{sidebarOpen && (
 					<>
-						<ResizableHandle />
+						<ResizableHandle onDragging={onSidebarResizeDragging} />
 						<ResizablePanel
 							className="min-w-[220px]"
 							defaultSize={20}
