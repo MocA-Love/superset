@@ -9,15 +9,15 @@ import {
 	workspaces,
 	worktrees,
 } from "@superset/local-db";
-import { observable } from "@trpc/server/observable";
-import { and, eq, ne } from "drizzle-orm";
-import { app } from "electron";
-import { localDb } from "main/lib/local-db";
 import {
 	getProcessCommand,
 	getProcessName,
 	getProcessTree,
-} from "main/lib/terminal/port-scanner";
+} from "@superset/port-scanner";
+import { observable } from "@trpc/server/observable";
+import { and, eq, ne } from "drizzle-orm";
+import { app } from "electron";
+import { localDb } from "main/lib/local-db";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";

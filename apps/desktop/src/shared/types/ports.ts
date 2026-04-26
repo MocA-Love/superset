@@ -1,7 +1,5 @@
 export type { DetectedPort } from "@superset/port-scanner";
 
-import type { DetectedPort } from "@superset/port-scanner";
-
 export interface StaticPort {
 	port: number;
 	label: string;

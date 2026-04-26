@@ -5,6 +5,8 @@ export {
 } from "./port-manager";
 export {
 	getListeningPortsForPids,
+	getProcessCommand,
+	getProcessName,
 	getProcessTree,
 	type PortInfo,
 } from "./scanner";

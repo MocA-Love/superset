@@ -2,7 +2,7 @@ import {
 	getProcessCommand,
 	getProcessName,
 	getProcessTree,
-} from "main/lib/terminal/port-scanner";
+} from "@superset/port-scanner";
 import { getTerminalHostClient } from "main/lib/terminal-host/client";
 import { bindingStore } from "../../../lib/trpc/routers/browser-automation/index";
 
