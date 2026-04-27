@@ -6,7 +6,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GoGitBranch } from "react-icons/go";
 import { HiCheck, HiExclamationTriangle } from "react-icons/hi2";
-import { env } from "renderer/env.renderer";
+import { useHostTargetUrl } from "renderer/hooks/host-service/useHostTargetUrl";
+import { authClient } from "renderer/lib/auth-client";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
@@ -59,6 +60,9 @@ function useFireIntent(pendingId: string, pending: PendingWorkspaceRow | null) {
 	const trpcUtils = electronTrpc.useUtils();
 	const { activeHostUrl } = useLocalHostService();
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
+	const hostUrl = useHostTargetUrl(pending?.hostTarget ?? null);
+	const { data: session } = authClient.useSession();
+	const activeOrganizationId = session?.session?.activeOrganizationId ?? null;
 
 	const fire = useCallback(async () => {
 		if (!pending) return;
@@ -113,10 +117,6 @@ function useFireIntent(pendingId: string, pending: PendingWorkspaceRow | null) {
 					if (!pending.linkedPR) {
 						throw new Error("pr-checkout intent requires a linkedPR");
 					}
-					const hostUrl =
-						pending.hostTarget.kind === "local"
-							? activeHostUrl
-							: `${env.RELAY_URL}/hosts/${pending.hostTarget.hostId}`;
 					if (!hostUrl) {
 						throw new Error("Host service not available");
 					}
@@ -174,6 +174,7 @@ function useFireIntent(pendingId: string, pending: PendingWorkspaceRow | null) {
 					loadedAttachments,
 					agentConfigs,
 					activeHostUrl,
+					activeOrganizationId,
 					resolvedPr,
 					onApplyToRow: (patch) => {
 						collections.pendingWorkspaces.update(pendingId, (draft) => {
@@ -212,6 +213,8 @@ function useFireIntent(pendingId: string, pending: PendingWorkspaceRow | null) {
 		pendingId,
 		trpcUtils,
 		activeHostUrl,
+		activeOrganizationId,
+		hostUrl,
 	]);
 
 	return fire;
@@ -221,7 +224,6 @@ function PendingWorkspacePage() {
 	const { pendingId } = Route.useParams();
 	const navigate = useNavigate();
 	const collections = useCollections();
-	const { activeHostUrl } = useLocalHostService();
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
 	const navigatedRef = useRef(false);
 	const firedRef = useRef(false);
@@ -278,11 +280,7 @@ function PendingWorkspacePage() {
 	// adopt is fast and doesn't instrument progress).
 	const intentHasProgress =
 		pending?.intent === "fork" || pending?.intent === "checkout";
-	const hostUrl = !pending
-		? activeHostUrl
-		: pending.hostTarget.kind === "local"
-			? activeHostUrl
-			: `${env.RELAY_URL}/hosts/${pending.hostTarget.hostId}`;
+	const hostUrl = useHostTargetUrl(pending?.hostTarget ?? null);
 
 	const { data: progress } = useQuery({
 		queryKey: ["workspaceCreation", "getProgress", pendingId, hostUrl],

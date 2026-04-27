@@ -13,6 +13,9 @@ export const env = createEnv({
 		QSTASH_TOKEN: z.string().min(1),
 		QSTASH_CURRENT_SIGNING_KEY: z.string().min(1),
 		QSTASH_NEXT_SIGNING_KEY: z.string().min(1),
+		// FORK NOTE: optional. fork はサポートメール送信先 (resend) を持たないため
+		// 未設定なら support.sendMigrationReport を 503 で no-op にする。
+		RESEND_API_KEY: z.string().min(1).optional(),
 		NEXT_PUBLIC_API_URL: z.string().url(),
 		NEXT_PUBLIC_WEB_URL: z.string().url(),
 		KV_REST_API_URL: z.string().url().optional(),
