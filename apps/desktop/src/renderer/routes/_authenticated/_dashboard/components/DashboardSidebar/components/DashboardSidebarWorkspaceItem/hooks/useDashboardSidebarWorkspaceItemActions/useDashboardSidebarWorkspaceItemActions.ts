@@ -1,3 +1,4 @@
+import { getActiveIdAfterRemoval } from "@superset/panes";
 import { toast } from "@superset/ui/sonner";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -5,7 +6,6 @@ import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useDashboardSidebarSectionRename } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/components/DashboardSidebarSectionRenameContext";
-import { getDeleteFocusTargetWorkspaceId } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/utils/getDeleteFocusTargetWorkspaceId";
 import { getFlattenedV2WorkspaceIds } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/utils/getFlattenedV2WorkspaceIds";
 import { navigateToV2Workspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
@@ -88,8 +88,9 @@ export function useDashboardSidebarWorkspaceItemActions({
 	 */
 	const handleDeleted = () => {
 		const focusTargetId = isActive
-			? getDeleteFocusTargetWorkspaceId(
+			? getActiveIdAfterRemoval(
 					getFlattenedV2WorkspaceIds(collections),
+					workspaceId,
 					workspaceId,
 				)
 			: null;
