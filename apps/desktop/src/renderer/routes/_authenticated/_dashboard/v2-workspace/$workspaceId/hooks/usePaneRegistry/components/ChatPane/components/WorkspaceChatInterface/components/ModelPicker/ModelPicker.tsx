@@ -1,4 +1,3 @@
-import { chatServiceTrpc } from "@superset/chat/client";
 import {
 	ModelSelector,
 	ModelSelectorContent,
@@ -10,6 +9,7 @@ import {
 } from "@superset/ui/ai-elements/model-selector";
 import { PromptInputButton } from "@superset/ui/ai-elements/prompt-input";
 import { claudeIcon } from "@superset/ui/icons/preset-icons";
+import { workspaceTrpc } from "@superset/workspace-client";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -43,9 +43,9 @@ export function ModelPicker({
 		? providerToLogo(selectedModel.provider)
 		: null;
 	const { data: anthropicStatus, refetch: refetchAnthropicStatus } =
-		chatServiceTrpc.auth.getAnthropicStatus.useQuery();
+		workspaceTrpc.auth.getAnthropicStatus.useQuery();
 	const { data: openAIStatus, refetch: refetchOpenAIStatus } =
-		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
+		workspaceTrpc.auth.getOpenAIStatus.useQuery();
 
 	useEffect(() => {
 		if (!open) return;
