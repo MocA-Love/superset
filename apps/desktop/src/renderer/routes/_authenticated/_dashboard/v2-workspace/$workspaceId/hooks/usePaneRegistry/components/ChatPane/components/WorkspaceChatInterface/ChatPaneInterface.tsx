@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 import { chatServiceTrpc } from "@superset/chat/client";
-=======
 import type { AppRouter } from "@superset/host-service";
->>>>>>> 6c2a7719a (feat(chat): v2 chat architecture proposals + reference research +interim fix to v2 (#3716))
 import {
 	PromptInputAttachment,
 	type PromptInputMessage,

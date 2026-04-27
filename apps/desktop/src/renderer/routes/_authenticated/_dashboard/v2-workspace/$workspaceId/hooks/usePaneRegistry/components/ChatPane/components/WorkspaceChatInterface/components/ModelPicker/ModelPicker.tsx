@@ -1,4 +1,3 @@
-import { chatServiceTrpc } from "@superset/chat/client";
 import {
 	ModelSelector,
 	ModelSelectorContent,
@@ -44,15 +43,9 @@ export function ModelPicker({
 		? providerToLogo(selectedModel.provider)
 		: null;
 	const { data: anthropicStatus, refetch: refetchAnthropicStatus } =
-<<<<<<< HEAD
-		chatServiceTrpc.auth.getAnthropicStatus.useQuery();
-	const { data: openAIStatus, refetch: refetchOpenAIStatus } =
-		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
-=======
 		workspaceTrpc.auth.getAnthropicStatus.useQuery();
 	const { data: openAIStatus, refetch: refetchOpenAIStatus } =
 		workspaceTrpc.auth.getOpenAIStatus.useQuery();
->>>>>>> 6c2a7719a (feat(chat): v2 chat architecture proposals + reference research +interim fix to v2 (#3716))
 
 	useEffect(() => {
 		if (!open) return;
