@@ -10,6 +10,7 @@ import {
 } from "@superset/ui/ai-elements/model-selector";
 import { PromptInputButton } from "@superset/ui/ai-elements/prompt-input";
 import { claudeIcon } from "@superset/ui/icons/preset-icons";
+import { workspaceTrpc } from "@superset/workspace-client";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -43,9 +44,15 @@ export function ModelPicker({
 		? providerToLogo(selectedModel.provider)
 		: null;
 	const { data: anthropicStatus, refetch: refetchAnthropicStatus } =
+<<<<<<< HEAD
 		chatServiceTrpc.auth.getAnthropicStatus.useQuery();
 	const { data: openAIStatus, refetch: refetchOpenAIStatus } =
 		chatServiceTrpc.auth.getOpenAIStatus.useQuery();
+=======
+		workspaceTrpc.auth.getAnthropicStatus.useQuery();
+	const { data: openAIStatus, refetch: refetchOpenAIStatus } =
+		workspaceTrpc.auth.getOpenAIStatus.useQuery();
+>>>>>>> 6c2a7719a (feat(chat): v2 chat architecture proposals + reference research +interim fix to v2 (#3716))
 
 	useEffect(() => {
 		if (!open) return;
