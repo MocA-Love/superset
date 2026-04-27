@@ -15,7 +15,6 @@ import {
 import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";
-import { V1MigrationSummaryModal } from "renderer/routes/_authenticated/components/V1MigrationSummaryModal";
 import { useDevSeedV2Sidebar } from "renderer/routes/_authenticated/hooks/useDevSeedV2Sidebar";
 import { useMigrateV1DataToV2 } from "renderer/routes/_authenticated/hooks/useMigrateV1DataToV2";
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
@@ -147,7 +146,6 @@ function DashboardLayout() {
 					<KeepAliveWorkspaces />
 				</div>
 				<AddRepositoryModals />
-				<V1MigrationSummaryModal />
 				{deleteTarget && (
 					<DeleteWorkspaceDialog
 						workspaceId={deleteTarget.workspaceId}
