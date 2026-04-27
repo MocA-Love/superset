@@ -1,4 +1,3 @@
-import { getActiveIdAfterRemoval } from "@superset/panes";
 import { toast } from "@superset/ui/sonner";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -6,11 +5,9 @@ import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useDashboardSidebarSectionRename } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/components/DashboardSidebarSectionRenameContext";
-import { getFlattenedV2WorkspaceIds } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/utils/getFlattenedV2WorkspaceIds";
-import { navigateToV2Workspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
+import { useNavigateAwayFromWorkspace } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/hooks/useNavigateAwayFromWorkspace";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useOptimisticCollectionActions } from "renderer/routes/_authenticated/hooks/useOptimisticCollectionActions";
-import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import {
 	useV2NotificationStore,
@@ -22,6 +19,7 @@ interface UseDashboardSidebarWorkspaceItemActionsOptions {
 	projectId: string;
 	workspaceName: string;
 	branch: string;
+	isMainWorkspace?: boolean;
 }
 
 export function useDashboardSidebarWorkspaceItemActions({
@@ -29,10 +27,11 @@ export function useDashboardSidebarWorkspaceItemActions({
 	projectId,
 	workspaceName,
 	branch,
+	isMainWorkspace = false,
 }: UseDashboardSidebarWorkspaceItemActionsOptions) {
 	const navigate = useNavigate();
 	const matchRoute = useMatchRoute();
-	const collections = useCollections();
+	const navigateAway = useNavigateAwayFromWorkspace();
 	const { activeHostUrl } = useLocalHostService();
 	const { copyToClipboard } = useCopyToClipboard();
 	const { v2Workspaces: workspaceActions } = useOptimisticCollectionActions();
@@ -42,8 +41,12 @@ export function useDashboardSidebarWorkspaceItemActions({
 	);
 	const setManualUnread = useV2NotificationStore((s) => s.setManualUnread);
 	const isUnread = useV2WorkspaceIsUnread(workspaceId);
-	const { createSection, moveWorkspaceToSection, removeWorkspaceFromSidebar } =
-		useDashboardSidebarState();
+	const {
+		createSection,
+		hideWorkspaceInSidebar,
+		moveWorkspaceToSection,
+		removeWorkspaceFromSidebar,
+	} = useDashboardSidebarState();
 
 	const [isRenaming, setIsRenaming] = useState(false);
 	const [renameValue, setRenameValue] = useState(workspaceName);
@@ -81,28 +84,17 @@ export function useDashboardSidebarWorkspaceItemActions({
 		workspaceActions.renameWorkspace(workspaceId, trimmed);
 	};
 
-	/**
-	 * Runs after `workspaceCleanup.destroy` succeeds. Removes the row from
-	 * the sidebar and, if we were viewing the deleted workspace, navigates
-	 * to the next sibling or home.
-	 */
 	const handleDeleted = () => {
-		const focusTargetId = isActive
-			? getActiveIdAfterRemoval(
-					getFlattenedV2WorkspaceIds(collections),
-					workspaceId,
-					workspaceId,
-				)
-			: null;
-
 		removeWorkspaceFromSidebar(workspaceId);
+	};
 
-		if (!isActive) return;
-		if (focusTargetId) {
-			void navigateToV2Workspace(focusTargetId, navigate);
-		} else {
-			void navigate({ to: "/" });
+	const handleRemoveFromSidebar = () => {
+		navigateAway(workspaceId);
+		if (isMainWorkspace) {
+			hideWorkspaceInSidebar(workspaceId, projectId);
+			return;
 		}
+		removeWorkspaceFromSidebar(workspaceId);
 	};
 
 	const handleCreateSection = () => {
@@ -182,13 +174,13 @@ export function useDashboardSidebarWorkspaceItemActions({
 		handleCreateSection,
 		handleDeleted,
 		handleOpenInFinder,
+		handleRemoveFromSidebar,
 		handleToggleUnread,
 		isActive,
 		isDeleteDialogOpen,
 		isRenaming,
 		isUnread,
 		moveWorkspaceToSection,
-		removeWorkspaceFromSidebar,
 		renameValue,
 		setIsDeleteDialogOpen,
 		setRenameValue,
