@@ -38,6 +38,7 @@ export const workspaceLocalStateSchema = z.object({
 		changesFilter: changesFilterSchema.default({ kind: "all" }),
 		activeTab: z.enum(["changes", "files"]).default("changes"),
 		changesSubtab: z.enum(["diffs", "review"]).default("diffs"),
+		isHidden: z.boolean().default(false),
 	}),
 	paneLayout: paneWorkspaceStateSchema,
 	rightSidebarOpen: z.boolean().default(false),

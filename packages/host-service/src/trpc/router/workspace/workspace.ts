@@ -8,6 +8,7 @@ import { projects, workspaces } from "../../../db/schema";
 import { invalidateLabelCache } from "../../../ports/static-ports";
 import { createSimpleGitWithEnv } from "../../../runtime/git/simple-git";
 import { protectedProcedure, router } from "../../index";
+import { ensureMainWorkspace } from "../project/utils/ensure-main-workspace";
 
 export const workspaceRouter = router({
 	get: protectedProcedure
@@ -79,6 +80,8 @@ export const workspaceRouter = router({
 
 				localProject = inserted;
 			}
+
+			await ensureMainWorkspace(ctx, input.projectId, localProject.repoPath);
 
 			const worktreePath = join(
 				localProject.repoPath,
@@ -175,17 +178,42 @@ export const workspaceRouter = router({
 				});
 			}
 
-			await ctx.api.v2Workspace.delete.mutate({ id: input.id });
-
 			const localWorkspace = ctx.db.query.workspaces
 				.findFirst({ where: eq(workspaces.id, input.id) })
 				.sync();
+			const localProject = localWorkspace
+				? ctx.db.query.projects
+						.findFirst({ where: eq(projects.id, localWorkspace.projectId) })
+						.sync()
+				: undefined;
+
+			if (
+				localWorkspace &&
+				localProject &&
+				localWorkspace.worktreePath === localProject.repoPath
+			) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						"Main workspaces cannot be deleted. Remove them from the sidebar or remove the project from this host instead.",
+				});
+			}
+
+			const cloudWorkspace = await ctx.api.v2Workspace.getFromHost.query({
+				organizationId: ctx.organizationId,
+				id: input.id,
+			});
+			if (cloudWorkspace?.type === "main") {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						"Main workspaces cannot be deleted. Remove them from the sidebar or remove the project from this host instead.",
+				});
+			}
+
+			await ctx.api.v2Workspace.delete.mutate({ id: input.id });
 
 			if (localWorkspace) {
-				const localProject = ctx.db.query.projects
-					.findFirst({ where: eq(projects.id, localWorkspace.projectId) })
-					.sync();
-
 				if (localProject) {
 					try {
 						const git = await ctx.git(localProject.repoPath);

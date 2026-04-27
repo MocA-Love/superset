@@ -8,6 +8,7 @@ import {
 	resolveUpstream,
 } from "../../../../runtime/git/refs";
 import { protectedProcedure } from "../../../index";
+import { ensureMainWorkspace } from "../../project/utils/ensure-main-workspace";
 import { createInputSchema } from "../schemas";
 import { enablePushAutoSetupRemote } from "../shared/git-config";
 import { requireLocalProject } from "../shared/local-project";
@@ -29,6 +30,7 @@ export const create = protectedProcedure
 		setProgress(input.pendingId, "ensuring_repo");
 
 		const localProject = requireLocalProject(ctx, input.projectId);
+		await ensureMainWorkspace(ctx, input.projectId, localProject.repoPath);
 
 		setProgress(input.pendingId, "creating_worktree");
 
