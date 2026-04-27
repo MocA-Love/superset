@@ -224,7 +224,6 @@ export function ChatPaneInterface({
 	onStartFreshSession,
 	onConsumeLaunchConfig,
 	onUserMessageSubmitted,
-	onRawSnapshotChange,
 }: ChatPaneInterfaceProps) {
 	const {
 		models: availableModels,
@@ -551,23 +550,6 @@ export function ChatPaneInterface({
 		}
 		setSubmitStatus(undefined);
 	}, [isRunning]);
-
-	useEffect(() => {
-		onRawSnapshotChange?.({
-			sessionId,
-			isRunning: canAbort,
-			currentMessage: currentMessage ?? null,
-			messages: messages ?? [],
-			error,
-		});
-	}, [
-		canAbort,
-		currentMessage,
-		error,
-		messages,
-		onRawSnapshotChange,
-		sessionId,
-	]);
 
 	useEffect(() => {
 		messagesLengthRef.current = messages?.length ?? 0;
