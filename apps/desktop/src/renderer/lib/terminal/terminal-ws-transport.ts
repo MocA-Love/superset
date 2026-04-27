@@ -119,6 +119,22 @@ function cancelReconnect(transport: TerminalTransport) {
 	}
 }
 
+function formatWsEndpoint(wsUrl: string | null): string {
+	if (!wsUrl) return "unknown endpoint";
+	try {
+		const url = new URL(wsUrl);
+		return `${url.protocol}//${url.host}${url.pathname}`;
+	} catch {
+		return "invalid terminal WebSocket URL";
+	}
+}
+
+function formatCloseDetails(event: CloseEvent): string {
+	const code = event.code || "unknown";
+	const reason = event.reason ? `, reason: ${event.reason}` : "";
+	return `code: ${code}${reason}`;
+}
+
 export function connect(
 	transport: TerminalTransport,
 	terminal: XTerm,
@@ -245,7 +261,7 @@ export function connect(
 		}
 	});
 
-	socket.addEventListener("close", () => {
+	socket.addEventListener("close", (event) => {
 		if (transport.socket !== socket) return;
 		terminalRendererDebug.warn(
 			"ws-close",
@@ -261,12 +277,23 @@ export function connect(
 		);
 		setConnectionState(transport, "closed");
 		transport.socket = null;
+		if (!transport._exited && event.code !== 1000) {
+			const willReconnect =
+				!transport._reconnectTimer &&
+				Boolean(transport.currentUrl && transport._terminal) &&
+				transport._reconnectAttempt < MAX_RECONNECT_ATTEMPTS;
+			terminal.writeln(
+				`\r\n[terminal] WebSocket closed while connected to ${formatWsEndpoint(transport.currentUrl)} (${formatCloseDetails(event)}). ${willReconnect ? "Reconnecting..." : "Max reconnect attempts reached."}`,
+			);
+		}
 		// Auto-reconnect on unexpected close (host-service restart, network blip)
 		scheduleReconnect(transport);
 	});
 
 	socket.addEventListener("error", () => {
 		if (transport.socket !== socket) return;
+		// FORK NOTE: keep Sentry debug capture (terminalRendererDebug.error)
+		// alongside upstream's user-facing detailed diagnostic message.
 		terminalRendererDebug.error(
 			"ws-error",
 			{ terminalId: transport.debugId },
@@ -275,7 +302,9 @@ export function connect(
 				fingerprint: ["terminal.renderer", "ws-error"],
 			},
 		);
-		terminal.writeln("\r\n[terminal] websocket error");
+		terminal.writeln(
+			`\r\n[terminal] WebSocket error while connecting to ${formatWsEndpoint(transport.currentUrl)}. Check host-service or relay connectivity.`,
+		);
 	});
 
 	transport.onDataDisposable?.dispose();
