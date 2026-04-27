@@ -8,7 +8,6 @@ import {
 } from "@superset/ui/dialog";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import { Link } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
 	LuChevronDown,
@@ -190,7 +189,6 @@ export function V1MigrationSummaryModal() {
 							summary={summary}
 							expandedSection={expandedSection}
 							onToggleSection={toggleSection}
-							onDismiss={dismiss}
 						/>
 					)}
 				</div>
@@ -277,14 +275,12 @@ interface ResultsPageProps {
 	summary: MigrationSummary;
 	expandedSection: "projects" | "workspaces" | "errors" | null;
 	onToggleSection: (section: "projects" | "workspaces" | "errors") => void;
-	onDismiss: () => void;
 }
 
 function ResultsPage({
 	summary,
 	expandedSection,
 	onToggleSection,
-	onDismiss,
 }: ResultsPageProps) {
 	const copyText = electronTrpc.external.copyText.useMutation();
 	const [isSendingSupportReport, setIsSendingSupportReport] = useState(false);
@@ -350,14 +346,6 @@ function ResultsPage({
 					>
 						Contact us
 					</button>
-					. You can go back to V1 in{" "}
-					<Link
-						to="/settings/experimental"
-						onClick={onDismiss}
-						className="font-medium text-primary hover:underline"
-					>
-						settings
-					</Link>
 					.
 				</p>
 			</div>

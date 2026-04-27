@@ -70,8 +70,7 @@ export const supportRouter = createTRPCRouter({
 			if (!resend) {
 				throw new TRPCError({
 					code: "SERVICE_UNAVAILABLE",
-					message:
-						"Support report is not configured (RESEND_API_KEY missing).",
+					message: "Support report is not configured (RESEND_API_KEY missing).",
 				});
 			}
 			const organizationId = ctx.activeOrganizationId;
