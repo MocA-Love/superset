@@ -36,7 +36,10 @@ export const workspaceLocalStateSchema = z.object({
 		tabOrder: z.number().int().default(0),
 		sectionId: z.string().uuid().nullable().default(null),
 		changesFilter: changesFilterSchema.default({ kind: "all" }),
-		activeTab: z.enum(["changes", "files"]).default("changes"),
+		activeTab: z.enum(["changes", "files", "review"]).default("changes"),
+		// FORK NOTE: keep `changesSubtab` for the fork's in-Changes review
+		// UX. upstream #3777 promoted review to a top-level tab; keeping
+		// both lets existing rows migrate cleanly.
 		changesSubtab: z.enum(["diffs", "review"]).default("diffs"),
 		isHidden: z.boolean().default(false),
 	}),
@@ -245,6 +248,7 @@ export const v2UserPreferencesSchema = z.object({
 	urlLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	rightSidebarOpen: z.boolean().default(true),
 	rightSidebarTab: z.enum(["changes", "files"]).default("changes"),
+	rightSidebarWidth: z.number().default(340),
 	deleteLocalBranch: z.boolean().default(false),
 });
 
@@ -258,5 +262,6 @@ export const DEFAULT_V2_USER_PREFERENCES: V2UserPreferencesRow = {
 	urlLinks: DEFAULT_LINK_TIER_MAP,
 	rightSidebarOpen: true,
 	rightSidebarTab: "changes",
+	rightSidebarWidth: 340,
 	deleteLocalBranch: false,
 };
