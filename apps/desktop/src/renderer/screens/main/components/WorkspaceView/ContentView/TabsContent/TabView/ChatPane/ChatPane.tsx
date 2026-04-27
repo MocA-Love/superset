@@ -161,33 +161,10 @@ export function ChatPane({
 								onSplitPane={handlers.onSplitPane}
 								onSplitPaneOpposite={handlers.onSplitPaneOpposite}
 								onClosePane={handlers.onClosePane}
-								// FORK NOTE: keep popOut + dev raw snapshot copy on the
-								// v1 ChatPane toolbar even after the v2 chat header
-								// collapse (#3805). dev raw snapshot is gated behind
-								// `showDevToolbarActions`, popOut keeps the existing
-								// tear-off chat workflow available.
+								// FORK NOTE: v1 ChatPane の onPopOut は維持。upstream
+								// #3805 で dev raw snapshot copy は ChatPaneInterface
+								// の onRawSnapshotChange 削除に伴い消えるため取り込み。
 								onPopOut={handlers.onPopOut}
-								leadingActions={
-									showDevToolbarActions ? (
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<button
-													type="button"
-													onClick={() => {
-														void handleCopyRawSnapshot();
-													}}
-													disabled={!snapshotAvailableForSession}
-													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
-												>
-													<CopyIcon className="size-3.5" />
-												</button>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" showArrow={false}>
-												Copy raw chat JSON (dev)
-											</TooltipContent>
-										</Tooltip>
-									) : null
-								}
 								closeHotkeyId="CLOSE_TERMINAL"
 							/>
 						</div>
