@@ -285,13 +285,11 @@ export const v2WorkspaceRouter = {
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
+			// FORK NOTE: full-row select so the return type aligns with
+			// `getFromHost` (HostWorkspace). Selecting only 4 columns made
+			// host-service `adopt.ts` type-fail when feeding `updatedCloud`
+			// into `adoptResult` after #3784 + #3779 landed together.
 			const workspace = await dbWs.query.v2Workspaces.findFirst({
-				columns: {
-					id: true,
-					organizationId: true,
-					name: true,
-					branch: true,
-				},
 				where: eq(v2Workspaces.id, input.id),
 			});
 			if (!workspace) {
