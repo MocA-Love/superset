@@ -1,4 +1,6 @@
-import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { getHostId, getHostName } from "@superset/shared/host-info";
 import { TRPCError } from "@trpc/server";
 import { workspaces } from "../../../../db/schema";
 import {
@@ -25,8 +27,8 @@ import { deduplicateBranchName } from "../utils/sanitize-branch";
 export const create = protectedProcedure
 	.input(createInputSchema)
 	.mutation(async ({ ctx, input }) => {
-		const deviceClientId = getHashedDeviceId();
-		const deviceName = getDeviceName();
+		const machineId = getHostId();
+		const hostName = getHostName();
 		setProgress(input.pendingId, "ensuring_repo");
 
 		const localProject = requireLocalProject(ctx, input.projectId);
@@ -196,15 +198,15 @@ export const create = protectedProcedure
 			}
 		};
 
-		let host: { id: string };
+		let host: { machineId: string };
 		try {
-			host = await ctx.api.device.ensureV2Host.mutate({
+			host = await ctx.api.host.ensure.mutate({
 				organizationId: ctx.organizationId,
-				machineId: deviceClientId,
-				name: deviceName,
+				machineId,
+				name: hostName,
 			});
 		} catch (err) {
-			console.error("[workspaceCreation.create] ensureV2Host failed", err);
+			console.error("[workspaceCreation.create] host.ensure failed", err);
 			clearProgress(input.pendingId);
 			await rollbackWorktree();
 			throw new TRPCError({
@@ -219,7 +221,7 @@ export const create = protectedProcedure
 				projectId: input.projectId,
 				name: input.names.workspaceName,
 				branch: branchName,
-				hostId: host.id,
+				hostId: host.machineId,
 			})
 			.catch(async (err) => {
 				console.error(
