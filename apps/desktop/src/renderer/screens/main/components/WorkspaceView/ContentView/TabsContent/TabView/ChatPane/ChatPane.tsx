@@ -2,12 +2,9 @@ import {
 	ChatRuntimeServiceProvider,
 	ChatServiceProvider,
 } from "@superset/chat/client";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { CopyIcon } from "lucide-react";
 import { useCallback } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { createChatServiceIpcClient } from "renderer/components/Chat/utils/chat-service-client";
-import { env } from "renderer/env.renderer";
 import { electronQueryClient } from "renderer/providers/ElectronTRPCProvider";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { SplitPaneOptions, Tab } from "renderer/stores/tabs/types";
@@ -16,7 +13,6 @@ import { BasePaneWindow, PaneToolbarActions } from "../components";
 import { ChatPaneInterface } from "./ChatPaneInterface";
 import { SessionSelector } from "./components/SessionSelector";
 import { useChatPaneController } from "./hooks/useChatPaneController";
-import { useChatRawSnapshot } from "./hooks/useChatRawSnapshot";
 import { createChatRuntimeServiceIpcClient } from "./utils/chat-runtime-service-client";
 
 const chatRuntimeIpcClient = createChatRuntimeServiceIpcClient();
@@ -68,7 +64,6 @@ export function ChatPane({
 	onMoveToNewTab,
 	onPopOut,
 }: ChatPaneProps) {
-	const showDevToolbarActions = env.NODE_ENV === "development";
 	const isFocused = useTabsStore((s) => s.focusedPaneIds[tabId] === paneId);
 	const equalizePaneSplits = useTabsStore((s) => s.equalizePaneSplits);
 	const paneName = useTabsStore((s) => s.panes[paneId]?.name ?? "New Chat");
@@ -92,11 +87,6 @@ export function ChatPane({
 		paneId,
 		workspaceId,
 	});
-	const {
-		snapshotAvailableForSession,
-		handleRawSnapshotChange,
-		handleCopyRawSnapshot,
-	} = useChatRawSnapshot({ sessionId });
 
 	const applySubmittedMessageFallbackTitle = useCallback(
 		(message: string) => {
@@ -171,28 +161,10 @@ export function ChatPane({
 								onSplitPane={handlers.onSplitPane}
 								onSplitPaneOpposite={handlers.onSplitPaneOpposite}
 								onClosePane={handlers.onClosePane}
+								// FORK NOTE: v1 ChatPane の onPopOut は維持。upstream
+								// #3805 で dev raw snapshot copy は ChatPaneInterface
+								// の onRawSnapshotChange 削除に伴い消えるため取り込み。
 								onPopOut={handlers.onPopOut}
-								leadingActions={
-									showDevToolbarActions ? (
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<button
-													type="button"
-													onClick={() => {
-														void handleCopyRawSnapshot();
-													}}
-													disabled={!snapshotAvailableForSession}
-													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
-												>
-													<CopyIcon className="size-3.5" />
-												</button>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" showArrow={false}>
-												Copy raw chat JSON (dev)
-											</TooltipContent>
-										</Tooltip>
-									) : null
-								}
 								closeHotkeyId="CLOSE_TERMINAL"
 							/>
 						</div>
@@ -231,9 +203,6 @@ export function ChatPane({
 								onStartFreshSession={handleStartFreshSession}
 								onConsumeLaunchConfig={consumeLaunchConfig}
 								onUserMessageSubmitted={applySubmittedMessageFallbackTitle}
-								onRawSnapshotChange={
-									showDevToolbarActions ? handleRawSnapshotChange : undefined
-								}
 							/>
 						</div>
 					</TabContentContextMenu>
