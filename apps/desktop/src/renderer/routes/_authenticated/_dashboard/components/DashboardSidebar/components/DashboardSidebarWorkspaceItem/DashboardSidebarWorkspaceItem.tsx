@@ -44,11 +44,7 @@ export function DashboardSidebarWorkspaceItem({
 		handleCreateSection,
 		handleDeleted,
 		handleOpenInFinder,
-<<<<<<< HEAD
-=======
-		handleRemoveFromSidebar,
 		handleToggleUnread,
->>>>>>> 6ada9bf8d (Add v2 mark workspace as unread (#3773))
 		isActive,
 		isDeleteDialogOpen,
 		isUnread,
@@ -105,13 +101,13 @@ export function DashboardSidebarWorkspaceItem({
 
 		return (
 			<>
-<<<<<<< HEAD
 				{isPending ? (
 					content
 				) : (
 					<DashboardSidebarWorkspaceContextMenu
 						projectId={projectId}
 						isInSection={isInSection}
+						isUnread={isUnread}
 						onHoverCardOpen={
 							hostType === "local-device" ? onHoverCardOpen : undefined
 						}
@@ -132,46 +128,11 @@ export function DashboardSidebarWorkspaceItem({
 						onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
 						onRename={startRename}
 						onDelete={() => setIsDeleteDialogOpen(true)}
+						onToggleUnread={handleToggleUnread}
 					>
 						{content}
 					</DashboardSidebarWorkspaceContextMenu>
 				)}
-=======
-				<div hidden={isDeleting}>
-					{isPending ? (
-						content
-					) : (
-						<DashboardSidebarWorkspaceContextMenu
-							projectId={projectId}
-							isInSection={isInSection}
-							isUnread={isUnread}
-							onHoverCardOpen={
-								hostType === "local-device" ? onHoverCardOpen : undefined
-							}
-							hoverCardContent={
-								<DashboardSidebarWorkspaceHoverCardContent
-									workspace={workspace}
-									diffStats={diffStats}
-								/>
-							}
-							isLocalWorkspace={hostType === "local-device"}
-							onCreateSection={handleCreateSection}
-							onMoveToSection={(targetSectionId) =>
-								moveWorkspaceToSection(id, projectId, targetSectionId)
-							}
-							onOpenInFinder={handleOpenInFinder}
-							onCopyPath={handleCopyPath}
-							onCopyBranchName={handleCopyBranchName}
-							onRemoveFromSidebar={handleRemoveFromSidebar}
-							onRename={startRename}
-							onDelete={() => setIsDeleteDialogOpen(true)}
-							onToggleUnread={handleToggleUnread}
-						>
-							{content}
-						</DashboardSidebarWorkspaceContextMenu>
-					)}
-				</div>
->>>>>>> 6ada9bf8d (Add v2 mark workspace as unread (#3773))
 
 				{!isPending && (
 					<DashboardSidebarDeleteDialog
@@ -206,13 +167,13 @@ export function DashboardSidebarWorkspaceItem({
 
 	return (
 		<>
-<<<<<<< HEAD
 			{isPending ? (
 				expandedContent
 			) : (
 				<DashboardSidebarWorkspaceContextMenu
 					projectId={projectId}
 					isInSection={isInSection}
+					isUnread={isUnread}
 					onHoverCardOpen={
 						hostType === "local-device" ? onHoverCardOpen : undefined
 					}
@@ -233,46 +194,11 @@ export function DashboardSidebarWorkspaceItem({
 					onRemoveFromSidebar={() => removeWorkspaceFromSidebar(id)}
 					onRename={startRename}
 					onDelete={() => setIsDeleteDialogOpen(true)}
+					onToggleUnread={handleToggleUnread}
 				>
 					{expandedContent}
 				</DashboardSidebarWorkspaceContextMenu>
 			)}
-=======
-			<div hidden={isDeleting}>
-				{isPending ? (
-					expandedContent
-				) : (
-					<DashboardSidebarWorkspaceContextMenu
-						projectId={projectId}
-						isInSection={isInSection}
-						isUnread={isUnread}
-						onHoverCardOpen={
-							hostType === "local-device" ? onHoverCardOpen : undefined
-						}
-						hoverCardContent={
-							<DashboardSidebarWorkspaceHoverCardContent
-								workspace={workspace}
-								diffStats={diffStats}
-							/>
-						}
-						onCreateSection={handleCreateSection}
-						onMoveToSection={(targetSectionId) =>
-							moveWorkspaceToSection(id, projectId, targetSectionId)
-						}
-						isLocalWorkspace={hostType === "local-device"}
-						onOpenInFinder={handleOpenInFinder}
-						onCopyPath={handleCopyPath}
-						onCopyBranchName={handleCopyBranchName}
-						onRemoveFromSidebar={handleRemoveFromSidebar}
-						onRename={startRename}
-						onDelete={() => setIsDeleteDialogOpen(true)}
-						onToggleUnread={handleToggleUnread}
-					>
-						{expandedContent}
-					</DashboardSidebarWorkspaceContextMenu>
-				)}
-			</div>
->>>>>>> 6ada9bf8d (Add v2 mark workspace as unread (#3773))
 
 			{!isPending && (
 				<DashboardSidebarDeleteDialog
