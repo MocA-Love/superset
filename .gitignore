@@ -100,3 +100,6 @@ test-conflict-repo/
 # Claude Code session lock (runtime artifact)
 .claude/scheduled_tasks.lock
 temp/
+
+# Local-only plans (not tracked)
+plans/local/
