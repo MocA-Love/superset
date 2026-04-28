@@ -3,8 +3,8 @@ import { cn } from "@superset/ui/utils";
 import { useV2LocalOverrideStore } from "renderer/stores/v2-local-override";
 
 export function VersionToggle() {
-	const { forceV1, toggle } = useV2LocalOverrideStore();
-	const activeVersion = forceV1 ? "v1" : "v2";
+	const { optInV2, toggle } = useV2LocalOverrideStore();
+	const activeVersion = optInV2 ? "v2" : "v1";
 
 	return (
 		<Tooltip delayDuration={300}>
@@ -37,9 +37,9 @@ export function VersionToggle() {
 				</button>
 			</TooltipTrigger>
 			<TooltipContent>
-				{forceV1
-					? "Early Access: Switch to Superset V2"
-					: "Switch to Superset V1"}
+				{optInV2
+					? "Switch to Superset V1"
+					: "Early Access: Switch to Superset V2"}
 			</TooltipContent>
 		</Tooltip>
 	);
