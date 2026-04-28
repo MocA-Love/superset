@@ -26,6 +26,7 @@ import { createExternalRouter } from "./external";
 import { createFilesystemRouter } from "./filesystem";
 import { createGitHubMetricsRouter } from "./github-metrics";
 import { createHostServiceCoordinatorRouter } from "./host-service-coordinator";
+import { createKeyboardLayoutRouter } from "./keyboardLayout";
 import { createLanguageServicesRouter } from "./language-services";
 import { createMenuRouter } from "./menu";
 import { createMigrationRouter } from "./migration";
@@ -97,6 +98,7 @@ export const createAppRouter = (
 		vibrancy: createVibrancyRouter(wm),
 		vscodeExtensions: createVscodeExtensionsRouter(),
 		todoAgent: createTodoAgentRouter(),
+		keyboardLayout: createKeyboardLayoutRouter(),
 		migration: createMigrationRouter(),
 	});
 };
