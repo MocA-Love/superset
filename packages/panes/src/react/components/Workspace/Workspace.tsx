@@ -78,6 +78,9 @@ export function Workspace<TData>({
 				onReorderTab={(tabId, toIndex) =>
 					store.getState().reorderTab({ tabId, toIndex })
 				}
+				onMovePaneToNewTab={(paneId, toIndex) =>
+					store.getState().movePaneToNewTab({ paneId, toIndex })
+				}
 				getTabTitle={(tab) => resolveTabTitle(tab, tabs, registry)}
 				renderTabIcon={renderTabIcon}
 				renderAddTabMenu={renderAddTabMenu}
