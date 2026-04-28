@@ -114,6 +114,11 @@ function DashboardLayout() {
 	);
 
 	return (
+		// FORK NOTE: keep `bg-tertiary` outer wrapper, `isTearoff` /
+		// `isScratchRoute` conditional rendering and `<KeepAliveWorkspaces />`.
+		// upstream #3777 introduces a `workspace-right-sidebar-slot` portal
+		// at the dashboard level for the new PR action header — that slot is
+		// kept further down (outside this conflict block).
 		<div className="flex flex-col h-full w-full bg-tertiary">
 			{!isTearoff && <TopBar />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -145,19 +150,20 @@ function DashboardLayout() {
 				<div className="flex flex-1 min-h-0 min-w-0">
 					<KeepAliveWorkspaces />
 				</div>
-				<AddRepositoryModals />
-				{deleteTarget && (
-					<DeleteWorkspaceDialog
-						workspaceId={deleteTarget.workspaceId}
-						workspaceName={deleteTarget.workspaceName}
-						workspaceType={deleteTarget.workspaceType}
-						open={true}
-						onOpenChange={(open) => {
-							if (!open) setDeleteTarget(null);
-						}}
-					/>
-				)}
 			</div>
+			<div id="workspace-right-sidebar-slot" className="flex h-full shrink-0" />
+			<AddRepositoryModals />
+			{deleteTarget && (
+				<DeleteWorkspaceDialog
+					workspaceId={deleteTarget.workspaceId}
+					workspaceName={deleteTarget.workspaceName}
+					workspaceType={deleteTarget.workspaceType}
+					open={true}
+					onOpenChange={(open) => {
+						if (!open) setDeleteTarget(null);
+					}}
+				/>
+			)}
 		</div>
 	);
 }
