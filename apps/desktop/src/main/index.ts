@@ -49,6 +49,10 @@ import {
 import { getHostServiceCoordinator as getHostServiceManager } from "./lib/host-service-coordinator";
 import { closeLocalDb, localDb } from "./lib/local-db";
 import { requestLocalNetworkAccess } from "./lib/local-network-permission";
+import {
+	initTanstackDbPersistence,
+	shutdownTanstackDbPersistence,
+} from "./lib/persistence/persistence";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { reportError } from "./lib/report-error";
 import { initSentry } from "./lib/sentry";
@@ -470,6 +474,9 @@ app.on("before-quit", async (event) => {
 	try {
 		const { getTodoScheduler } = await import("./todo-agent/scheduler");
 		getTodoScheduler().stop();
+		getHostServiceManager().releaseAll();
+		shutdownTanstackDbPersistence();
+		disposeTray();
 	} catch (error) {
 		console.warn("[main] todo-agent scheduler stop skipped", error);
 	}
@@ -900,6 +907,7 @@ if (!gotTheLock) {
 		setWorkspaceDockIcon();
 		initSentry();
 		await initAppState();
+		initTanstackDbPersistence();
 
 		await loadWebviewBrowserExtension();
 		await loadInstalledExtensions();
