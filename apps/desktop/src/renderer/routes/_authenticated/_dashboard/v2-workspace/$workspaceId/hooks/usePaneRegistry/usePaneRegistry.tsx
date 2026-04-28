@@ -17,10 +17,8 @@ import {
 	TerminalSquare,
 } from "lucide-react";
 import { useMemo } from "react";
-import { FaGithub } from "react-icons/fa";
 import {
 	LuArrowDownToLine,
-	LuArrowUpRight,
 	LuClipboard,
 	LuClipboardCopy,
 	LuEraser,
@@ -50,7 +48,10 @@ import type {
 } from "../../types";
 import { BrowserPane, BrowserPaneToolbar } from "./components/BrowserPane";
 import { ChatPane } from "./components/ChatPane";
+import { ChatPaneTitle } from "./components/ChatPane/components/ChatPaneTitle";
 import { CommentPane } from "./components/CommentPane";
+import { CommentPaneHeaderExtras } from "./components/CommentPane/components/CommentPaneHeaderExtras";
+import { CommentPaneTitle } from "./components/CommentPane/components/CommentPaneTitle";
 import { DiffPane } from "./components/DiffPane";
 import { FilePane } from "./components/FilePane";
 import { FilePaneHeaderExtras } from "./components/FilePane/components/FilePaneHeaderExtras";
@@ -521,21 +522,7 @@ export function usePaneRegistry(
 				getIcon: () => <MessageSquare className="size-3.5" />,
 				getTitle: () => "Chat",
 				renderTitle: (ctx: RendererContext<PaneViewerData>) => (
-					<div className="flex min-w-0 flex-1 items-center gap-1.5">
-						<MessageSquare className="size-3.5 shrink-0" />
-						<span
-							className={cn(
-								"min-w-0 flex-1 truncate text-xs transition-colors duration-150",
-								ctx.isActive ? "text-foreground" : "text-muted-foreground",
-							)}
-						>
-							Chat
-						</span>
-						<V2NotificationStatusIndicator
-							workspaceId={workspaceId}
-							sources={getV2NotificationSourcesForPane(ctx.pane)}
-						/>
-					</div>
+					<ChatPaneTitle context={ctx} workspaceId={workspaceId} />
 				),
 				renderPane: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as ChatPaneData;
@@ -576,25 +563,15 @@ export function usePaneRegistry(
 					const data = pane.data as CommentPaneData;
 					return data.authorLogin;
 				},
+				renderTitle: (ctx: RendererContext<PaneViewerData>) => (
+					<CommentPaneTitle context={ctx} />
+				),
 				renderPane: (ctx: RendererContext<PaneViewerData>) => (
 					<CommentPane context={ctx} />
 				),
-				renderHeaderExtras: (ctx: RendererContext<PaneViewerData>) => {
-					const data = ctx.pane.data as CommentPaneData;
-					if (!data.url) return null;
-					return (
-						<a
-							href={data.url}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="flex shrink-0 items-center gap-0.5 rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-							aria-label="View on GitHub"
-						>
-							<FaGithub className="size-3.5" />
-							<LuArrowUpRight className="size-3" />
-						</a>
-					);
-				},
+				renderHeaderExtras: (ctx: RendererContext<PaneViewerData>) => (
+					<CommentPaneHeaderExtras context={ctx} />
+				),
 				contextMenuActions: (_ctx, defaults) =>
 					defaults.map((d) =>
 						d.key === "close-pane" ? { ...d, label: "Close Comment" } : d,
