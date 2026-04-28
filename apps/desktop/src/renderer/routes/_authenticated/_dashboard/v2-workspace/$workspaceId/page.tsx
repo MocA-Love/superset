@@ -198,7 +198,10 @@ function V2WorkspacePage() {
 	}
 
 	return (
+		// key={workspaceId} so each workspace gets its own pane store rather
+		// than sharing one and replaceState-ing data across switches.
 		<WorkspaceContent
+			key={workspace.id}
 			projectId={workspace.projectId}
 			workspaceId={workspace.id}
 			terminalId={terminalId}
