@@ -30,6 +30,7 @@ import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferen
 import { useEnabledAgents } from "renderer/hooks/useEnabledAgents";
 import { PLATFORM } from "renderer/hotkeys";
 import { useNewWorkspaceModalOpen } from "renderer/stores/new-workspace-modal";
+import { useV2WorkspaceCreateDefaultsStore } from "renderer/stores/v2-workspace-create-defaults";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
 import { DevicePicker } from "../components/DevicePicker";
 import { AttachmentButtons } from "./components/AttachmentButtons";
@@ -66,6 +67,19 @@ export function PromptGroup({
 	const isNewWorkspaceModalOpen = useNewWorkspaceModalOpen();
 	const { closeModal, draft, updateDraft } = useDashboardNewWorkspaceDraft();
 	const attachments = useProviderAttachments();
+	const persistedBaseBranchDefault = useV2WorkspaceCreateDefaultsStore(
+		(state) =>
+			projectId ? (state.baseBranchesByProjectId[projectId] ?? null) : null,
+	);
+	const setBaseBranchDefault = useV2WorkspaceCreateDefaultsStore(
+		(state) => state.setBaseBranchDefault,
+	);
+	const clearBaseBranchDefault = useV2WorkspaceCreateDefaultsStore(
+		(state) => state.clearBaseBranchDefault,
+	);
+	const setLastHostTarget = useV2WorkspaceCreateDefaultsStore(
+		(state) => state.setLastHostTarget,
+	);
 	const {
 		baseBranch,
 		hostTarget,
@@ -98,7 +112,8 @@ export function PromptGroup({
 		? sanitizeUserBranchName(branchName)
 		: slugifyForBranch(trimmedPrompt);
 
-	// Reset baseBranch on project or host change.
+	// Reset baseBranch on project or host change, defaulting to the user's
+	// last selected branch for that project when one exists.
 	const previousProjectIdRef = useRef(projectId);
 	const previousHostRef = useRef(JSON.stringify(hostTarget));
 	useEffect(() => {
@@ -109,9 +124,12 @@ export function PromptGroup({
 		) {
 			previousProjectIdRef.current = projectId;
 			previousHostRef.current = nextHost;
-			updateDraft({ baseBranch: null, baseBranchSource: null });
+			updateDraft({
+				baseBranch: persistedBaseBranchDefault?.branchName ?? null,
+				baseBranchSource: persistedBaseBranchDefault?.source ?? null,
+			});
 		}
-	}, [projectId, hostTarget, updateDraft]);
+	}, [projectId, hostTarget, persistedBaseBranchDefault, updateDraft]);
 
 	// ── Branch picker controller ─────────────────────────────────────
 	const { pickerProps } = useBranchPickerController({
@@ -120,8 +138,16 @@ export function PromptGroup({
 		baseBranch,
 		runSetupScript: draft.runSetupScript,
 		typedWorkspaceName: workspaceName,
-		onBaseBranchChange: (branch, source) =>
-			updateDraft({ baseBranch: branch, baseBranchSource: source }),
+		onBaseBranchChange: (branch, source) => {
+			if (projectId) {
+				if (branch && source) {
+					setBaseBranchDefault(projectId, branch, source);
+				} else {
+					clearBaseBranchDefault(projectId);
+				}
+			}
+			updateDraft({ baseBranch: branch, baseBranchSource: source });
+		},
 		closeModal,
 	});
 
@@ -365,7 +391,10 @@ export function PromptGroup({
 				<div className="flex items-center gap-2 min-w-0 flex-1">
 					<DevicePicker
 						hostTarget={hostTarget}
-						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
+						onSelectHostTarget={(t) => {
+							setLastHostTarget(t);
+							updateDraft({ hostTarget: t });
+						}}
 					/>
 					<ProjectPickerPill
 						selectedProject={selectedProject}
