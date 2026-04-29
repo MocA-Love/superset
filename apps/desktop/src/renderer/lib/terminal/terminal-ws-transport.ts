@@ -139,6 +139,7 @@ export function connect(
 	transport: TerminalTransport,
 	terminal: XTerm,
 	wsUrl: string,
+	options: { initialCommand?: string } = {},
 ) {
 	// Idempotent: skip if already connected/connecting to the same endpoint.
 	const isActive =
@@ -184,6 +185,14 @@ export function connect(
 		);
 		setConnectionState(transport, "open");
 		sendResize(transport, terminal.cols, terminal.rows);
+		if (options.initialCommand) {
+			socket.send(
+				JSON.stringify({
+					type: "initialCommand",
+					data: options.initialCommand,
+				}),
+			);
+		}
 	});
 
 	socket.addEventListener("message", (event) => {
