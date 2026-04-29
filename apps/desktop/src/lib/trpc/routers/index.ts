@@ -18,6 +18,7 @@ import { createChatRuntimeServiceRouter } from "./chat-runtime-service";
 import { createChatServiceRouter } from "./chat-service";
 import { createConfigRouter } from "./config";
 import { createDatabasesRouter } from "./databases";
+import { createDeviceRouter } from "./device";
 import { createDiagnosticsRouter } from "./diagnostics";
 import { createDockerRouter } from "./docker";
 import { createExtensionsRouter } from "./extensions";
@@ -82,6 +83,7 @@ export const createAppRouter = (
 		settings: createSettingsRouter(),
 		config: createConfigRouter(),
 		databases: createDatabasesRouter(),
+		device: createDeviceRouter(),
 		diagnostics: createDiagnosticsRouter(),
 		docker: createDockerRouter(),
 		uiState: createUiStateRouter(),
