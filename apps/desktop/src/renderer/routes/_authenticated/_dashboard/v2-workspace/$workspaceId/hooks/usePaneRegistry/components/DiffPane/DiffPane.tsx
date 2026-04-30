@@ -81,10 +81,10 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 		[updateData],
 	);
 
-	if (!isLoading && files.length === 0) {
+	if (files.length === 0) {
 		return (
 			<div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-				No changes
+				{isLoading ? "Loading…" : "No changes"}
 			</div>
 		);
 	}
@@ -92,7 +92,7 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 	return (
 		<Virtualizer
 			className="h-full w-full overflow-auto"
-			contentClassName="space-y-2 px-2 py-2"
+			contentClassName="space-y-2"
 		>
 			<ScrollToFile path={data.path} />
 			{files.map((file) => (
