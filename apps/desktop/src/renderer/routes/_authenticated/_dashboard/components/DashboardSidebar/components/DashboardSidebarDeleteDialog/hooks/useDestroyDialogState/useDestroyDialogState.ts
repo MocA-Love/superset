@@ -1,16 +1,16 @@
 import { toast } from "@superset/ui/sonner";
-import { useCallback, useRef, useState } from "react";
-import type { DestroyWorkspaceSuccess } from "renderer/hooks/host-service/useDestroyWorkspace";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+	DestroyWorkspacePreview,
+	DestroyWorkspaceSuccess,
+} from "renderer/hooks/host-service/useDestroyWorkspace";
 import {
 	type DestroyWorkspaceError,
 	useDestroyWorkspace,
 } from "renderer/hooks/host-service/useDestroyWorkspace";
 import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences/useV2UserPreferences";
-import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useNavigateAwayFromWorkspace } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/hooks/useNavigateAwayFromWorkspace";
 import { useDeletingWorkspaces } from "renderer/routes/_authenticated/providers/DeletingWorkspacesProvider";
-
-const STATUS_STALE_TIME_MS = 5_000;
 
 interface UseDestroyDialogStateOptions {
 	workspaceId: string;
@@ -20,22 +20,12 @@ interface UseDestroyDialogStateOptions {
 	onDeleted?: () => void;
 }
 
-/**
- * Drives the delete flow for `DashboardSidebarDeleteDialog`.
- *
- * UX pattern:
- *   - On confirm, close the dialog immediately, mark the workspace as
- *     deleting (sidebar row hides optimistically), and run destroy in
- *     the background silently. No loading toast — destroy can take
- *     10–20s and a persistent toast across that window feels bad. The
- *     hidden row is the feedback.
- *   - On success, `onDeleted` removes the row from sidebar state.
- *   - On error, `clearDeleting` runs in the `finally` block so the row
- *     reappears. For decision-required errors (TEARDOWN_FAILED)
- *     we reopen the dialog in the matching error pane so the user can
- *     force-retry with full context.
- *   - For unknown errors we just toast.error — no reopen.
- */
+type InspectState =
+	| { status: "idle" }
+	| { status: "loading" }
+	| { status: "ready"; preview: DestroyWorkspacePreview }
+	| { status: "error" };
+
 export function useDestroyDialogState({
 	workspaceId,
 	workspaceName,
@@ -43,27 +33,69 @@ export function useDestroyDialogState({
 	onOpenChange,
 	onDeleted,
 }: UseDestroyDialogStateOptions) {
-	const { destroy } = useDestroyWorkspace(workspaceId);
+	const { destroy, inspect, hostTarget } = useDestroyWorkspace(workspaceId);
 	const { markDeleting, clearDeleting } = useDeletingWorkspaces();
 	const navigateAway = useNavigateAwayFromWorkspace();
+
 	const { preferences, setDeleteLocalBranch: setDeleteBranch } =
 		useV2UserPreferences();
 	const deleteBranch = preferences.deleteLocalBranch;
 
-	const { data: canDeleteData, isPending: isCheckingStatus } =
-		electronTrpc.workspaces.canDelete.useQuery(
-			{ id: workspaceId },
-			{
-				enabled: open,
-				staleTime: STATUS_STALE_TIME_MS,
-				refetchOnWindowFocus: false,
-			},
-		);
-	const hasChanges = canDeleteData?.hasChanges ?? false;
-	const hasUnpushedCommits = canDeleteData?.hasUnpushedCommits ?? false;
-
+	const [inspectState, setInspectState] = useState<InspectState>({
+		status: "idle",
+	});
 	const [error, setError] = useState<DestroyWorkspaceError | null>(null);
 	const inFlight = useRef(false);
+
+	// Run inspect when the dialog opens AND the host is ready. Distinguish
+	// transient pending-host states (loading / local-starting → silent
+	// "Checking…") from terminal ones (not-found → blocking banner) so the
+	// user can't sit in a forever-disabled dialog.
+	useEffect(() => {
+		if (!open) {
+			setInspectState({ status: "idle" });
+			return;
+		}
+		if (
+			hostTarget.status === "loading" ||
+			hostTarget.status === "local-starting"
+		) {
+			setInspectState({ status: "loading" });
+			return;
+		}
+		if (hostTarget.status === "not-found") {
+			setInspectState({
+				status: "ready",
+				preview: {
+					canDelete: false,
+					reason: "Workspace is no longer available on this host.",
+					hasChanges: false,
+					hasUnpushedCommits: false,
+				},
+			});
+			return;
+		}
+
+		let cancelled = false;
+		setInspectState({ status: "loading" });
+		inspect()
+			.then((preview) => {
+				if (cancelled) return;
+				setInspectState({ status: "ready", preview });
+			})
+			.catch(() => {
+				if (cancelled) return;
+				// Inspect-failure is non-fatal — let the user attempt destroy and
+				// surface real errors there. Treat as "no warnings, no block".
+				setInspectState({ status: "error" });
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [open, hostTarget.status, inspect]);
+
+	const preview = inspectState.status === "ready" ? inspectState.preview : null;
 
 	const handleOpenChange = useCallback(
 		(next: boolean) => {
@@ -80,13 +112,12 @@ export function useDestroyDialogState({
 
 			// Navigate off the doomed workspace FIRST. Closing the dialog
 			// and hiding the row were swallowing the nav otherwise.
-			// State (deleteBranch) preserved in case we re-open on a
-			// decision-required error.
 			navigateAway(workspaceId);
 
 			setError(null);
 			onOpenChange(false);
 			markDeleting(workspaceId);
+			toast(`Deleting "${workspaceName}"...`);
 
 			try {
 				let result: DestroyWorkspaceSuccess;
@@ -94,9 +125,12 @@ export function useDestroyDialogState({
 					result = await destroy({ deleteBranch, force });
 				} catch (firstErr) {
 					const e = firstErr as DestroyWorkspaceError;
-					// Race: preflight said clean but worktree was dirty by the time
-					// destroy ran. The user already confirmed once — don't make them
-					// confirm a second "uncommitted changes" warning, just force.
+					// Silent force-retry on the dirty-worktree race: preflight said
+					// clean but the worktree was dirty by destroy time. The user
+					// already confirmed once — don't bounce them back through a
+					// second warning. Do NOT extend this to `in-progress` (that's
+					// a different CONFLICT cause; retrying just races the same
+					// guard).
 					if (e.kind === "conflict" && !force) {
 						result = await destroy({ deleteBranch, force: true });
 					} else {
@@ -110,8 +144,12 @@ export function useDestroyDialogState({
 				if (e.kind === "teardown-failed") {
 					setError(e);
 					onOpenChange(true);
+				} else if (e.kind === "in-progress") {
+					toast.error(`A delete is already in progress for ${workspaceName}.`);
 				} else {
-					toast.error(`Failed to delete ${workspaceName}: ${e.message}`);
+					toast.error(
+						`Failed to delete ${workspaceName}: ${"message" in e ? e.message : String(e.kind)}`,
+					);
 				}
 			} finally {
 				clearDeleting(workspaceId);
@@ -126,10 +164,7 @@ export function useDestroyDialogState({
 			onOpenChange,
 			onDeleted,
 			markDeleting,
-			clearDeleting, // Navigate off the doomed workspace FIRST. Closing the dialog
-			// and hiding the row were swallowing the nav otherwise.
-			// State (deleteBranch) preserved in case we re-open on a
-			// decision-required error.
+			clearDeleting,
 			navigateAway,
 		],
 	);
@@ -137,9 +172,11 @@ export function useDestroyDialogState({
 	return {
 		deleteBranch,
 		setDeleteBranch,
-		hasChanges,
-		hasUnpushedCommits,
-		isCheckingStatus,
+		hasChanges: preview?.hasChanges ?? false,
+		hasUnpushedCommits: preview?.hasUnpushedCommits ?? false,
+		canConfirm: preview ? preview.canDelete : true,
+		blockingReason: preview && !preview.canDelete ? preview.reason : null,
+		isCheckingStatus: open && inspectState.status === "loading",
 		error,
 		handleOpenChange,
 		run,
