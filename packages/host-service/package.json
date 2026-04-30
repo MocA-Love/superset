@@ -35,6 +35,10 @@
 		"./attachments": {
 			"types": "./src/trpc/router/attachments/index.ts",
 			"default": "./src/trpc/router/attachments/index.ts"
+		},
+		"./settings": {
+			"types": "./src/trpc/router/settings/index.ts",
+			"default": "./src/trpc/router/settings/index.ts"
 		}
 	},
 	"scripts": {
