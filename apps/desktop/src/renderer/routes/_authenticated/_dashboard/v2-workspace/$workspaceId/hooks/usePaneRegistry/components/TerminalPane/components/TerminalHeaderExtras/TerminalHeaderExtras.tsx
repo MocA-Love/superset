@@ -6,6 +6,7 @@ import type {
 	PaneViewerData,
 	TerminalPaneData,
 } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/types";
+import { TerminalLogsButton } from "../TerminalLogsButton";
 
 interface TerminalHeaderExtrasProps {
 	context: RendererContext<PaneViewerData>;
@@ -16,6 +17,7 @@ export function TerminalHeaderExtras({ context }: TerminalHeaderExtrasProps) {
 
 	const data = context.pane.data as TerminalPaneData;
 
+	// FORK NOTE: keep fork-only move-to-background handler.
 	const handleMoveToBackground = () => {
 		// Check whether other panes sharing the same terminalId still exist.
 		// If so, only close this pane without marking the background intent —
@@ -38,23 +40,29 @@ export function TerminalHeaderExtras({ context }: TerminalHeaderExtrasProps) {
 	};
 
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<button
-					type="button"
-					aria-label="Move terminal to background"
-					onClick={(event) => {
-						event.stopPropagation();
-						handleMoveToBackground();
-					}}
-					className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-				>
-					<Archive className="size-3.5" />
-				</button>
-			</TooltipTrigger>
-			<TooltipContent side="bottom" showArrow={false}>
-				Move terminal to background
-			</TooltipContent>
-		</Tooltip>
+		<div className="flex items-center gap-0.5">
+			<TerminalLogsButton
+				terminalId={data.terminalId}
+				terminalInstanceId={context.pane.id}
+			/>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="Move terminal to background"
+						onClick={(event) => {
+							event.stopPropagation();
+							handleMoveToBackground();
+						}}
+						className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+					>
+						<Archive className="size-3.5" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom" showArrow={false}>
+					Move terminal to background
+				</TooltipContent>
+			</Tooltip>
+		</div>
 	);
 }
