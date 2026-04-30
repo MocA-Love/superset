@@ -867,7 +867,6 @@ function WorkspaceContent({
 						>
 							<WorkspaceSidebar
 								workspaceId={workspaceId}
-								workspaceName={workspaceName}
 								onSelectFile={openSidebarFilePane}
 								onSelectDiffFile={openDiffPane}
 								onOpenComment={openCommentPane}
@@ -897,7 +896,6 @@ function WorkspaceContent({
 				recentlyViewedFiles={recentFiles}
 				scope={commandPalette.scope}
 				searchResults={commandPalette.searchResults}
-				workspaceName={workspaceName}
 				includeIgnored={commandPalette.includeIgnored}
 				onToggleIncludeIgnored={commandPalette.toggleIncludeIgnored}
 			/>
