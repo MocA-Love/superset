@@ -178,7 +178,6 @@ function V2WorkspacePage() {
 		<WorkspaceContent
 			projectId={workspace.projectId}
 			workspaceId={workspace.id}
-			workspaceName={workspace.name}
 			terminalId={terminalId}
 			chatSessionId={chatSessionId}
 			focusRequestId={focusRequestId}
@@ -223,7 +222,6 @@ function useClearActivePaneAttention({
 function WorkspaceContent({
 	projectId,
 	workspaceId,
-	workspaceName,
 	terminalId,
 	chatSessionId,
 	focusRequestId,
@@ -233,7 +231,6 @@ function WorkspaceContent({
 }: {
 	projectId: string;
 	workspaceId: string;
-	workspaceName: string;
 	terminalId?: string;
 	chatSessionId?: string;
 	focusRequestId?: string;
