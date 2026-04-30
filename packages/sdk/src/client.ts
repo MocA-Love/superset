@@ -58,8 +58,8 @@ import {
 	AutomationLogsResponse,
 	AutomationRun,
 	AutomationRunDispatched,
-	Automations,
 	AutomationSummary,
+	Automations,
 	AutomationUpdateParams,
 } from "./resources/automations";
 import { Host, HostListResponse, Hosts } from "./resources/hosts";

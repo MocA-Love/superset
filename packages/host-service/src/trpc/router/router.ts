@@ -1,5 +1,6 @@
 import { router } from "../index";
 import { agentsRouter } from "./agents";
+import { attachmentsRouter } from "./attachments";
 import { authRouter } from "./auth";
 import { chatRouter } from "./chat";
 import { cloudRouter } from "./cloud";
@@ -21,6 +22,7 @@ import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
 	agents: agentsRouter,
+	attachments: attachmentsRouter,
 	auth: authRouter,
 	health: healthRouter,
 	host: hostRouter,
