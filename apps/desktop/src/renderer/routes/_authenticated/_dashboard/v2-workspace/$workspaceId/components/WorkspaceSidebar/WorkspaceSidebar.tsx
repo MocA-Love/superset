@@ -131,6 +131,7 @@ export function WorkspaceSidebar({
 		workspaceId,
 		gitStatus,
 		onSelectFile: onSelectDiffFile,
+		onOpenFile: onSelectFile,
 	});
 	const changesTab: SidebarTabDefinition = {
 		...changesTabDef,
