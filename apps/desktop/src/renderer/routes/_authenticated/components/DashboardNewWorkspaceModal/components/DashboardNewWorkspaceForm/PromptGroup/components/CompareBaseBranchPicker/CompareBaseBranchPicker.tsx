@@ -138,7 +138,7 @@ export function CompareBaseBranchPicker({
 						className="p-2"
 					>
 						<TabsList className="grid w-full grid-cols-2 h-7 bg-transparent">
-							<TabsTrigger value="branch" className="text-[11px]">
+							<TabsTrigger value="all" className="text-[11px]">
 								Branch
 							</TabsTrigger>
 							<TabsTrigger value="worktree" className="text-[11px]">

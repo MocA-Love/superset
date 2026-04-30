@@ -1,11 +1,6 @@
 import { dbWs } from "@superset/db/client";
 import { v2WorkspaceTypeValues } from "@superset/db/enums";
-import {
-	tasks,
-	v2Hosts,
-	v2Projects,
-	v2Workspaces,
-} from "@superset/db/schema";
+import { tasks, v2Hosts, v2Projects, v2Workspaces } from "@superset/db/schema";
 import { getCurrentTxid } from "@superset/db/utils";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";

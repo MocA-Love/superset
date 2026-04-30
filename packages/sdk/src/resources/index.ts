@@ -7,8 +7,8 @@ export {
 	type AutomationLogsResponse,
 	type AutomationRun,
 	type AutomationRunDispatched,
-	Automations,
 	type AutomationSummary,
+	Automations,
 	type AutomationUpdateParams,
 } from "./automations";
 export { type Host, type HostListResponse, Hosts } from "./hosts";
