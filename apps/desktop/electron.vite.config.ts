@@ -122,6 +122,9 @@ export default defineConfig({
 					"extension-host-worker": resolve(
 						"src/main/extension-host-worker/index.ts",
 					),
+					// pty-daemon - long-lived per-org Unix-socket server that owns PTYs.
+					// Spawned by PtyDaemonCoordinator; survives host-service restarts.
+					"pty-daemon": resolve("src/main/pty-daemon/index.ts"),
 				},
 				output: {
 					dir: resolve(devPath, "main"),

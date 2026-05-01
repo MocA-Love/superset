@@ -101,7 +101,7 @@ export async function runTeardown({
 	// impossible on both POSIX and Windows shells.
 	const initialCommand = match.buildCommand(scriptPath);
 
-	const session = createTerminalSessionInternal({
+	const session = await createTerminalSessionInternal({
 		terminalId,
 		workspaceId,
 		db,

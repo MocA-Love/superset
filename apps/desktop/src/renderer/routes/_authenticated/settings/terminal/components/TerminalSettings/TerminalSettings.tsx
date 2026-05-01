@@ -10,6 +10,7 @@ import { PresetsSection } from "./components/PresetsSection";
 import { SessionsSection } from "./components/SessionsSection";
 import { SuggestionsSetting } from "./components/SuggestionsSetting";
 import { V2PresetsSection } from "./components/V2PresetsSection";
+import { V2SessionsSection } from "./components/V2SessionsSection";
 
 interface TerminalSettingsProps {
 	visibleItems?: SettingItemId[] | null;
@@ -103,7 +104,12 @@ export function TerminalSettings({
 					/>
 				)}
 				{showLinkBehavior && <LinkBehaviorSetting key="link-behavior" />}
-				{showSessions && <SessionsSection key="sessions" />}
+				{showSessions &&
+					(isV2CloudEnabled ? (
+						<V2SessionsSection key="sessions" />
+					) : (
+						<SessionsSection key="sessions" />
+					))}
 			</SectionList>
 		</div>
 	);

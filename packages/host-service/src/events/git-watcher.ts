@@ -3,9 +3,9 @@ import { type FSWatcher, watch } from "node:fs";
 import { sep } from "node:path";
 import { promisify } from "node:util";
 import type { FsWatchEvent } from "@superset/workspace-fs/host";
-import type { HostDb } from "../db";
-import { workspaces } from "../db/schema";
-import type { WorkspaceFilesystemManager } from "../runtime/filesystem";
+import type { HostDb } from "../db/index.ts";
+import { workspaces } from "../db/schema.ts";
+import type { WorkspaceFilesystemManager } from "../runtime/filesystem/index.ts";
 
 const execFileAsync = promisify(execFile);
 

@@ -2,17 +2,17 @@ export {
 	type KillFn,
 	PortManager,
 	type PortManagerOptions,
-} from "./port-manager";
+} from "./port-manager.ts";
 export {
 	getListeningPortsForPids,
 	getProcessCommand,
 	getProcessName,
 	getProcessTree,
 	type PortInfo,
-} from "./scanner";
+} from "./scanner.ts";
 export {
 	parseStaticPortsConfig,
 	type StaticPortLabel,
 	type StaticPortsParseResult,
-} from "./static-ports";
-export type { DetectedPort } from "./types";
+} from "./static-ports.ts";
+export type { DetectedPort } from "./types.ts";
