@@ -5,12 +5,10 @@ import { ImageAddon } from "@xterm/addon-image";
 import { LigaturesAddon } from "@xterm/addon-ligatures";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import type { DetectedLink } from "renderer/lib/terminal/links";
 import { TerminalLinkManager } from "renderer/lib/terminal/terminal-link-manager";
-import { installRectangleRendererAlphaPatch } from "renderer/lib/terminal/webgl-vibrancy-patch";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { toXtermTheme } from "renderer/stores/theme/utils";
 import {
@@ -19,7 +17,6 @@ import {
 	getTerminalColors,
 } from "shared/themes";
 import { TERMINAL_OPTIONS } from "./config";
-import { terminalRendererDebug } from "./debug";
 import { suppressQueryResponses } from "./suppressQueryResponses";
 
 /**
@@ -57,14 +54,6 @@ export function getDefaultTerminalTheme(): ITheme {
 export function getDefaultTerminalBg(): string {
 	return getDefaultTerminalTheme().background ?? "#151110";
 }
-
-/**
- * Load GPU-accelerated renderer with automatic fallback.
- * Tries WebGL first, falls back to DOM if WebGL fails.
- * This follows VS Code's approach: WebGL → DOM (canvas addon removed in xterm.js 6.0).
- */
-// Once WebGL fails, skip it for all subsequent terminals (VS Code pattern).
-let suggestedRendererType: "webgl" | "dom" | undefined;
 
 export interface CreateTerminalOptions {
 	/**
@@ -113,8 +102,6 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 
 	let disposed = false;
 	let opened = false;
-	let webglAddon: WebglAddon | null = null;
-	let webglRafId: number | null = null;
 
 	// Create a detached wrapper div. xterm.open() is deferred until the wrapper
 	// is attached to a live DOM container.
@@ -137,44 +124,13 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		// Ligatures not supported by current font
 	}
 
+	// xterm.open() is deferred via openOnce() so the wrapper has been
+	// attached to a live DOM container by the parking/cache layer.
+	// FORK: v1-terminal-cache.ts relies on this openOnce pattern.
 	const openOnce = () => {
 		if (disposed || opened) return;
 		opened = true;
 		xterm.open(wrapper);
-
-		// Defer WebGL until after open() so renderer initialization sees a live DOM node.
-		webglRafId = requestAnimationFrame(() => {
-			webglRafId = null;
-			if (disposed || suggestedRendererType === "dom") return;
-
-			try {
-				webglAddon = new WebglAddon();
-				terminalRendererDebug.info("webgl-addon-loaded", {
-					suggestedRendererType: suggestedRendererType ?? "auto",
-				});
-				webglAddon.onContextLoss(() => {
-					webglAddon?.dispose();
-					webglAddon = null;
-					terminalRendererDebug.warn("webgl-context-lost", undefined, {
-						captureMessage: true,
-						fingerprint: ["terminal.renderer", "webgl-context-lost"],
-					});
-					xterm.refresh(0, xterm.rows - 1);
-				});
-				xterm.loadAddon(webglAddon);
-				// v1 terminal path: same vibrancy fix as v2 in `terminal-addons.ts`.
-				// Without this, codex / Claude Code TUI blocks render as opaque
-				// black on top of the otherwise-transparent terminal.
-				installRectangleRendererAlphaPatch(webglAddon);
-			} catch {
-				suggestedRendererType = "dom";
-				webglAddon = null;
-				terminalRendererDebug.warn("webgl-addon-fallback-dom", undefined, {
-					captureMessage: true,
-					fingerprint: ["terminal.renderer", "webgl-fallback-dom"],
-				});
-			}
-		});
 	};
 
 	const cleanupQuerySuppression = suppressQueryResponses(xterm);
@@ -241,15 +197,8 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		openOnce,
 		cleanup: () => {
 			disposed = true;
-			if (webglRafId !== null) {
-				cancelAnimationFrame(webglRafId);
-			}
 			cleanupQuerySuppression();
 			linkManager.dispose();
-			try {
-				webglAddon?.dispose();
-			} catch {}
-			webglAddon = null;
 		},
 	};
 }
