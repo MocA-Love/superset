@@ -1814,3 +1814,57 @@ export function isItemVisible(
 ): boolean {
 	return !visibleItems || visibleItems.includes(itemId);
 }
+
+/**
+ * Items in `section` that are allowed for the active v1/v2 variant and
+ * (if a search query is provided) also match the query. Returns an array
+ * suitable for passing to `isItemVisible` at the leaf — never `null`, so
+ * variant-hidden items are always excluded.
+ */
+export function getVisibleItemsForSection(params: {
+	section: SettingsSection;
+	searchQuery: string;
+	isV2: boolean;
+}): SettingItemId[] {
+	const { section, searchQuery, isV2 } = params;
+	const matched = searchQuery.trim()
+		? getMatchingItemsForSection(searchQuery, section)
+		: SETTINGS_ITEMS.filter((item) => item.section === section);
+	return matched
+		.filter((item) => isItemAllowedForVariant(item.id, isV2))
+		.map((item) => item.id);
+}
+
+/**
+ * Like `getMatchCountBySection`, but excludes items that are hidden by the
+ * active v1/v2 variant. Used by the sidebar so search counts and section
+ * visibility agree.
+ */
+export function getVisibleMatchCountBySection(
+	query: string,
+	isV2: boolean,
+): Partial<Record<SettingsSection, number>> {
+	const matches = searchSettings(query).filter((item) =>
+		isItemAllowedForVariant(item.id, isV2),
+	);
+	const counts: Partial<Record<SettingsSection, number>> = {};
+	for (const item of matches) {
+		counts[item.section] = (counts[item.section] || 0) + 1;
+	}
+	return counts;
+}
+
+/**
+ * Sections that contain at least one item allowed for the active variant.
+ * Sections with no allowed items (e.g. `git` in v2, `links` in v1) should
+ * be hidden from the sidebar entirely.
+ */
+export function getAllowedSectionsForVariant(
+	isV2: boolean,
+): Set<SettingsSection> {
+	const sections = new Set<SettingsSection>();
+	for (const item of SETTINGS_ITEMS) {
+		if (isItemAllowedForVariant(item.id, isV2)) sections.add(item.section);
+	}
+	return sections;
+}
