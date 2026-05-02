@@ -1,160 +1,93 @@
 /**
- * OSC 133 / OSC 777 shell readiness scanner.
+ * OSC 133 shell readiness scanner (FinalTerm semantic prompt standard).
  *
- * Recognises two markers:
- *   - OSC 133;A  ("\x1b]133;A" + optional params + "\a") — current standard
- *   - OSC 777    ("\x1b]777;superset-shell-ready\a")     — legacy marker
- *
- * Pure scanning logic — no side effects. Callers handle their own readiness
- * resolution (promises, state machines, event broadcasts, etc.).
+ * Pure scanning logic, byte-oriented — no per-chunk UTF-8 decoding hop.
+ * The marker (`\x1b]133;A...\x07`) is pure ASCII, so byte-level matching
+ * is identical to char-level matching while letting callers keep PTY
+ * output as opaque bytes from the daemon all the way to xterm.js.
  *
  * Protocol ref: https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md
  * Vendored from WezTerm (MIT, Copyright 2018-Present Wez Furlong).
  */
 
-/** The OSC 133;A prefix that signals shell prompt start (= shell ready). */
-const OSC_133_A = "\x1b]133;A";
+const OSC_133_A_BYTES = Uint8Array.from(
+	[..."\x1b]133;A"].map((c) => c.charCodeAt(0)),
+);
+const BEL_BYTE = 0x07;
 
-/**
- * Legacy OSC 777 marker emitted by older shell wrappers.
- * Full string must match before \a — no optional params.
- */
-const OSC_777 = "\x1b]777;superset-shell-ready";
-
-/** Both markers share the "\x1b]" ESC-] prefix. */
-const SHARED_PREFIX = "\x1b]";
-
-/** Shells whose wrapper files inject OSC markers. */
+/** Shells whose wrapper files inject OSC 133 markers. */
 export const SHELLS_WITH_READY_MARKER = new Set(["zsh", "bash", "fish"]);
 
 /**
- * Mutable state for the character-by-character scanner.
+ * Mutable state for the byte-by-byte scanner.
  * Callers should create one per terminal session via {@link createScanState}.
  */
 export interface ShellReadyScanState {
 	matchPos: number;
-	heldBytes: string;
-	/** Which marker we're currently tracking after the shared ESC-] prefix. */
-	matchTarget: "osc133" | "osc777" | null;
+	/** Bytes withheld from output while a match is in progress. */
+	heldBytes: number[];
 }
 
 export interface ShellReadyScanResult {
-	/** Output data with the marker stripped (if found). */
-	output: string;
-	/** Whether a shell-ready marker was matched in this chunk. */
+	// Tight ArrayBuffer-backed shape: matches Buffer and what
+	// hono/ws WSContext.send accepts, so callers don't need casts.
+	output: Uint8Array<ArrayBuffer>;
 	matched: boolean;
 }
 
 export function createScanState(): ShellReadyScanState {
-	return { matchPos: 0, heldBytes: "", matchTarget: null };
-}
-
-function resetState(state: ShellReadyScanState): void {
-	state.matchPos = 0;
-	state.heldBytes = "";
-	state.matchTarget = null;
+	return { matchPos: 0, heldBytes: [] };
 }
 
 /**
- * Scan a chunk of PTY output for a shell-ready marker (OSC 133;A or OSC 777).
+ * Scan a chunk of PTY output for the OSC 133;A (prompt start) marker.
  *
- * Matching bytes are held back from output. On full match, they're discarded
- * and `matched` is true. On mismatch, held bytes are flushed as regular output.
+ * Matching bytes are held back from output. On full match (prefix + optional
+ * params + string terminator `\a`), they're discarded and `matched` is true.
+ * On mismatch, held bytes are flushed as regular terminal output.
  *
- * The scanner handles markers spanning multiple data chunks.
+ * The scanner handles the marker spanning multiple data chunks.
  */
 export function scanForShellReady(
 	state: ShellReadyScanState,
-	data: string,
+	data: Uint8Array,
 ): ShellReadyScanResult {
-	let output = "";
+	const out: number[] = [];
 
 	for (let i = 0; i < data.length; i++) {
-		const ch = data[i] as string;
-
-		// Phase 1: match the shared "\x1b]" prefix (matchPos 0-1, target=null)
-		if (state.matchTarget === null) {
-			if (ch === SHARED_PREFIX[state.matchPos]) {
-				state.heldBytes += ch;
-				state.matchPos++;
-				if (state.matchPos === SHARED_PREFIX.length) {
-					// Shared prefix matched — peek ahead to determine the target.
-					// We'll resolve on the next character.
-					state.matchTarget = "pending" as "osc133"; // temporary sentinel
-				}
-			} else {
-				output += state.heldBytes;
-				resetState(state);
-				if (ch === SHARED_PREFIX[0]) {
-					state.heldBytes = ch;
-					state.matchPos = 1;
-				} else {
-					output += ch;
-				}
-			}
-			continue;
-		}
-
-		// Phase 1b: shared prefix matched, resolve target from next char
-		if ((state.matchTarget as string) === "pending") {
-			if (ch === "1") {
-				state.matchTarget = "osc133";
-			} else if (ch === "7") {
-				state.matchTarget = "osc777";
-			} else {
-				// Not a recognised marker — flush and reset
-				output += state.heldBytes;
-				resetState(state);
-				output += ch;
-				continue;
-			}
-			state.heldBytes += ch;
-			state.matchPos++;
-			continue;
-		}
-
-		// Phase 2: continue matching the chosen target prefix
-		const target = state.matchTarget === "osc133" ? OSC_133_A : OSC_777;
-
-		if (state.matchPos < target.length) {
-			if (ch === target[state.matchPos]) {
-				state.heldBytes += ch;
+		const b = data[i] as number;
+		if (state.matchPos < OSC_133_A_BYTES.length) {
+			if (b === OSC_133_A_BYTES[state.matchPos]) {
+				state.heldBytes.push(b);
 				state.matchPos++;
 			} else {
-				// Mismatch — flush held bytes, re-test current char
-				output += state.heldBytes;
-				resetState(state);
-				if (ch === SHARED_PREFIX[0]) {
-					state.heldBytes = ch;
+				for (const h of state.heldBytes) out.push(h);
+				state.heldBytes.length = 0;
+				state.matchPos = 0;
+				if (b === OSC_133_A_BYTES[0]) {
+					state.heldBytes.push(b);
 					state.matchPos = 1;
 				} else {
-					output += ch;
+					out.push(b);
 				}
 			}
 		} else {
-			// Matched full target prefix — consume until string terminator \a
-			if (ch === "\x07") {
-				// Full match — discard held bytes
-				const remaining = data.slice(i + 1);
-				resetState(state);
-				return { output: output + remaining, matched: true };
-			}
-			if (state.matchTarget === "osc777") {
-				// OSC 777 must match exactly — any extra char is a mismatch
-				output += state.heldBytes;
-				resetState(state);
-				if (ch === SHARED_PREFIX[0]) {
-					state.heldBytes = ch;
-					state.matchPos = 1;
-				} else {
-					output += ch;
+			if (b === BEL_BYTE) {
+				state.heldBytes.length = 0;
+				state.matchPos = 0;
+				const remaining = data.subarray(i + 1);
+				const head = Uint8Array.from(out);
+				if (remaining.length === 0) {
+					return { output: head, matched: true };
 				}
-			} else {
-				// OSC 133;A: consume optional params (e.g. ";cl=m;aid=123") before \a
-				state.heldBytes += ch;
+				const merged = new Uint8Array(head.length + remaining.length);
+				merged.set(head, 0);
+				merged.set(remaining, head.length);
+				return { output: merged, matched: true };
 			}
+			state.heldBytes.push(b);
 		}
 	}
 
-	return { output, matched: false };
+	return { output: Uint8Array.from(out), matched: false };
 }

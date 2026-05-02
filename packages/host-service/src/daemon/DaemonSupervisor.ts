@@ -931,8 +931,8 @@ export async function listDaemonSessions(
 		sock.on("data", (chunk: Buffer) => {
 			try {
 				decoder.push(chunk);
-				for (const raw of decoder.drain()) {
-					const msg = raw as ServerMessage;
+				for (const decoded of decoder.drain()) {
+					const msg = decoded.message as ServerMessage;
 					if (!helloAcked) {
 						if (msg.type !== "hello-ack") {
 							cleanup(null);
@@ -1065,8 +1065,8 @@ export async function probeDaemonVersion(
 		sock.on("data", (chunk: Buffer) => {
 			try {
 				decoder.push(chunk);
-				for (const raw of decoder.drain()) {
-					const msg = raw as ServerMessage;
+				for (const decoded of decoder.drain()) {
+					const msg = decoded.message as ServerMessage;
 					if (msg.type === "hello-ack") {
 						cleanup(msg.daemonVersion ?? null);
 						return;

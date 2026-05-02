@@ -16,11 +16,14 @@ export interface TerminalLogEntry {
 	message: string;
 }
 
+// PTY output bytes arrive as binary WebSocket frames and are fed straight
+// into xterm.write(Uint8Array) — no UTF-8 decoding hop, so multi-byte
+// codepoints that straddle a frame boundary stay intact (xterm.js buffers
+// partial sequences internally). Control messages (title/error/exit) stay
+// JSON.
 type TerminalServerMessage =
-	| { type: "data"; data: string }
 	| { type: "error"; message: string }
 	| { type: "exit"; exitCode: number; signal: number }
-	| { type: "replay"; data: string }
 	| { type: "title"; title: string | null };
 
 export interface TerminalTransport {
@@ -243,10 +246,7 @@ export function connect(
 		},
 	);
 	setConnectionState(transport, "connecting");
-	const actualUrl = transport._hasReceivedBytes
-		? appendQueryParam(wsUrl, "replay", "0")
-		: wsUrl;
-	const socket = new WebSocket(actualUrl);
+	const socket = new WebSocket(wsUrl);
 	// Receive PTY bytes as ArrayBuffer (the default would be Blob, which
 	// forces an async read); we want to feed bytes synchronously into
 	// xterm.write to keep render order strict.
@@ -284,7 +284,6 @@ export function connect(
 		// xterm without any decoding step.
 		if (event.data instanceof ArrayBuffer) {
 			terminal.write(new Uint8Array(event.data));
-			transport._hasReceivedBytes = true;
 			return;
 		}
 
@@ -301,21 +300,6 @@ export function connect(
 				},
 			);
 			terminal.writeln("\r\n[terminal] invalid server payload");
-			return;
-		}
-
-		if (message.type === "data" || message.type === "replay") {
-			terminalRendererDebug.increment("ws-receive-events", 1, {
-				data: { terminalId: transport.debugId, type: message.type },
-			});
-			terminalRendererDebug.observe("ws-receive-bytes", message.data.length, {
-				data: { terminalId: transport.debugId, type: message.type },
-			});
-			logTerminalWrite("ws-message", message.data.length, {
-				terminalId: transport.debugId,
-				messageType: message.type,
-			});
-			terminal.write(message.data);
 			return;
 		}
 

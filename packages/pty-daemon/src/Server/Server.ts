@@ -34,6 +34,12 @@ export interface ServerOptions {
 	socketPath: string;
 	daemonVersion: string;
 	bufferCap?: number;
+	/**
+	 * Override for the PTY-spawn factory. Production leaves this unset;
+	 * `defaultSpawn` (real node-pty) is used. Tests inject a fake here so
+	 * they can drive sessions deterministically without a real shell.
+	 */
+	spawnPty?: HandlerCtx["spawnPty"];
 }
 
 interface ConnState extends Conn {
@@ -293,15 +299,15 @@ export class Server {
 			decoder: new FrameDecoder(),
 			negotiated: null,
 			subscriptions: new Set(),
-			send: (msg) => writeMessage(socket, msg),
+			send: (msg, payload) => writeMessage(socket, msg, payload),
 		};
 		this.conns.add(conn);
 
 		socket.on("data", (chunk) => {
 			try {
 				conn.decoder.push(chunk);
-				for (const raw of conn.decoder.drain()) {
-					this.dispatch(conn, raw as ClientMessage);
+				for (const frame of conn.decoder.drain()) {
+					this.dispatch(conn, frame.message as ClientMessage, frame.payload);
 				}
 			} catch (err) {
 				conn.send({
@@ -320,7 +326,11 @@ export class Server {
 		});
 	}
 
-	private dispatch(conn: ConnState, msg: ClientMessage): void {
+	private dispatch(
+		conn: ConnState,
+		msg: ClientMessage,
+		payload: Uint8Array | null,
+	): void {
 		// Handshake must come first.
 		if (conn.negotiated === null) {
 			if (msg.type !== "hello") {
@@ -362,7 +372,7 @@ export class Server {
 				return;
 			}
 			case "input": {
-				const reply = handleInput(ctx, msg);
+				const reply = handleInput(ctx, msg, payload);
 				if (reply) conn.send(reply);
 				return;
 			}
@@ -421,6 +431,7 @@ export class Server {
 		return {
 			store: this.store,
 			wireSession: (session) => this.wireSession(session),
+			spawnPty: this.opts.spawnPty,
 		};
 	}
 
@@ -431,13 +442,9 @@ export class Server {
 	private wireSession(session: Session): void {
 		session.pty.onData((chunk) => {
 			this.store.appendOutput(session, chunk);
-			const out: ServerMessage = {
-				type: "output",
-				id: session.id,
-				data: chunk.toString("base64"),
-			};
+			const out: ServerMessage = { type: "output", id: session.id };
 			for (const c of this.conns) {
-				if (c.subscriptions.has(session.id)) c.send(out);
+				if (c.subscriptions.has(session.id)) c.send(out, chunk);
 			}
 		});
 		session.pty.onExit((info) => {
@@ -526,7 +533,11 @@ function pickProtocol(hello: HelloMessage): number | null {
 	return best;
 }
 
-function writeMessage(socket: net.Socket, msg: ServerMessage): void {
+function writeMessage(
+	socket: net.Socket,
+	msg: ServerMessage,
+	payload?: Uint8Array,
+): void {
 	if (socket.destroyed) return;
-	socket.write(encodeFrame(msg));
+	socket.write(encodeFrame(msg, payload));
 }
