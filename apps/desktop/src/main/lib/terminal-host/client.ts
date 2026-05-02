@@ -9,7 +9,7 @@
  * - Event streaming
  */
 
-import type { ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
@@ -1186,28 +1186,35 @@ export class TerminalHostClient extends EventEmitter {
 				logFd = -1;
 			}
 
-			// Spawn daemon as detached process.
-			// On Linux, spawnPersistent wraps with `systemd-run --user --scope`
-			// so the daemon survives Electron's systemd-logind app scope
-			// terminating on quit. We don't use the returned `scopeUnit` —
-			// terminal-host is stopped via IPC `shutdown`, not signals, so
-			// per-scope kill isn't needed.
+			// Prod: detached so terminal sessions survive Electron restarts.
+			// Dev: attached so it dies with Electron on `bun dev` kill.
+			const isDev = !app.isPackaged;
 			let child: ChildProcess | null = null;
 			try {
-				child = spawnPersistent(
-					process.execPath,
-					[daemonScript],
-					{
-						detached: true,
-						stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
-						env: {
-							...process.env,
-							ELECTRON_RUN_AS_NODE: "1",
-							NODE_ENV: process.env.NODE_ENV,
-						},
-					},
-					{ unitLabel: "superset-terminal-host" },
-				).child;
+				child = isDev
+					? spawn(process.execPath, [daemonScript], {
+							detached: false,
+							stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
+							env: {
+								...process.env,
+								ELECTRON_RUN_AS_NODE: "1",
+								NODE_ENV: process.env.NODE_ENV,
+							},
+						})
+					: spawnPersistent(
+							process.execPath,
+							[daemonScript],
+							{
+								detached: true,
+								stdio: logFd >= 0 ? ["ignore", logFd, logFd] : "ignore",
+								env: {
+									...process.env,
+									ELECTRON_RUN_AS_NODE: "1",
+									NODE_ENV: process.env.NODE_ENV,
+								},
+							},
+							{ unitLabel: "superset-terminal-host" },
+						).child;
 			} finally {
 				if (logFd >= 0) {
 					try {
@@ -1228,8 +1235,7 @@ export class TerminalHostClient extends EventEmitter {
 				);
 			}
 
-			// Unref to allow parent to exit independently
-			child.unref();
+			if (!isDev) child.unref();
 
 			// Wait for daemon to start
 			if (DEBUG_CLIENT) {
