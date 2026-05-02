@@ -124,7 +124,7 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 	}, [source.kind, worktreePath, path, workspaceId, utils]);
 
 	return (
-		<div className="flex flex-col overflow-hidden">
+		<div className="flex flex-col">
 			<DiffFileHeader
 				path={path}
 				status={status}
