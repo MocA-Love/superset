@@ -66,6 +66,11 @@ export const updateAutomationSchema = z.object({
 	mcpScope: z.array(z.string()).optional(),
 });
 
+export const setAutomationPromptSchema = z.object({
+	id: z.string().uuid(),
+	prompt: z.string().min(1).max(100_000),
+});
+
 export const listRunsSchema = z.object({
 	automationId: z.string().uuid(),
 	limit: z.number().int().min(1).max(100).default(20),

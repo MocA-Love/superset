@@ -28,11 +28,18 @@ import {
 } from "../utils/active-org";
 import { dispatchAutomation } from "./dispatch";
 import {
+	getAutomationForUser,
+	promptSourceFromSession,
+	recordPromptVersion,
+} from "./helpers";
+import {
 	createAutomationSchema,
 	listRunsSchema,
 	parseRruleSchema,
+	setAutomationPromptSchema,
 	updateAutomationSchema,
 } from "./schema";
+import { automationVersionsRouter } from "./versions";
 
 function requirePaidSubscription(subscription: SelectSubscription | null) {
 	if (
@@ -128,36 +135,28 @@ async function verifyProjectInOrg(organizationId: string, projectId: string) {
 	}
 }
 
-async function getAutomationForUser(
-	userId: string,
-	organizationId: string,
-	id: string,
-) {
-	const [automation] = await db
-		.select()
-		.from(automations)
-		.where(
-			and(
-				eq(automations.id, id),
-				eq(automations.organizationId, organizationId),
-			),
-		)
-		.limit(1);
-
-	if (!automation || automation.ownerUserId !== userId) {
-		throw new TRPCError({
-			code: "NOT_FOUND",
-			message: "Automation not found",
-		});
-	}
-
-	return automation;
-}
-
 export const automationRouter = {
-	/** List automations scoped to the caller's active organization. */
-	list: paidPlanProcedure.query(async ({ ctx }) => {
-		const organizationId = await requireActiveOrgMembership(ctx);
+	versions: automationVersionsRouter,
+
+	/**
+	 * List automations scoped to the caller's active organization.
+	 * FORK: gated behind paidPlanProcedure.
+	 */
+	list: paidPlanProcedure
+		.input(
+			z
+				.object({
+					name: z
+						.string()
+						.trim()
+						.min(1)
+						.optional()
+						.describe("Case-insensitive substring match on automation name."),
+				})
+				.optional(),
+		)
+		.query(async ({ ctx, input }) => {
+			const organizationId = await requireActiveOrgMembership(ctx);
 
 		const rows = await db
 			.select()
@@ -242,24 +241,43 @@ export const automationRouter = {
 				timezone: input.timezone,
 			});
 
-			const [created] = await dbWs
-				.insert(automations)
-				.values({
-					organizationId,
-					ownerUserId: ctx.session.user.id,
-					name: input.name,
-					prompt: input.prompt,
-					agentConfig: input.agentConfig,
-					targetHostId: input.targetHostId ?? null,
-					v2ProjectId,
-					v2WorkspaceId: input.v2WorkspaceId ?? null,
-					rrule: input.rrule,
-					dtstart,
-					timezone: input.timezone,
-					mcpScope: input.mcpScope,
-					nextRunAt,
-				})
-				.returning();
+			const created = await dbWs.transaction(async (tx) => {
+				const inserted = await tx
+					.insert(automations)
+					.values({
+						organizationId,
+						ownerUserId: ctx.session.user.id,
+						name: input.name,
+						prompt: input.prompt,
+						agentConfig: input.agentConfig,
+						targetHostId: input.targetHostId ?? null,
+						v2ProjectId,
+						v2WorkspaceId: input.v2WorkspaceId ?? null,
+						rrule: input.rrule,
+						dtstart,
+						timezone: input.timezone,
+						mcpScope: input.mcpScope,
+						nextRunAt,
+					})
+					.returning();
+
+				const row = inserted[0];
+				if (!row) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: "Failed to create automation",
+					});
+				}
+
+				await recordPromptVersion(tx, {
+					automationId: row.id,
+					authorUserId: ctx.session.user.id,
+					content: input.prompt,
+					source: promptSourceFromSession(ctx.session),
+				});
+
+				return row;
+			});
 
 			return { ...created, scheduleText: safeDescribeRrule(created) };
 		}),
@@ -324,6 +342,59 @@ export const automationRouter = {
 				})
 				.where(eq(automations.id, input.id))
 				.returning();
+
+			return { ...updated, scheduleText: safeDescribeRrule(updated) };
+		}),
+
+	getPrompt: paidPlanProcedure
+		.input(z.object({ id: z.string().uuid() }))
+		.query(async ({ ctx, input }) => {
+			const organizationId = await requireActiveOrgMembership(ctx);
+			const existing = await getAutomationForUser(
+				ctx.session.user.id,
+				organizationId,
+				input.id,
+			);
+			return { id: existing.id, prompt: existing.prompt };
+		}),
+
+	setPrompt: paidPlanProcedure
+		.input(setAutomationPromptSchema)
+		.mutation(async ({ ctx, input }) => {
+			const organizationId = await requireActiveOrgMembership(ctx);
+			const existing = await getAutomationForUser(
+				ctx.session.user.id,
+				organizationId,
+				input.id,
+			);
+
+			if (existing.prompt === input.prompt) {
+				return { ...existing, scheduleText: safeDescribeRrule(existing) };
+			}
+
+			const updated = await dbWs.transaction(async (tx) => {
+				const [row] = await tx
+					.update(automations)
+					.set({ prompt: input.prompt })
+					.where(eq(automations.id, input.id))
+					.returning();
+
+				if (!row) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Automation not found",
+					});
+				}
+
+				await recordPromptVersion(tx, {
+					automationId: input.id,
+					authorUserId: ctx.session.user.id,
+					content: input.prompt,
+					source: promptSourceFromSession(ctx.session),
+				});
+
+				return row;
+			});
 
 			return { ...updated, scheduleText: safeDescribeRrule(updated) };
 		}),
