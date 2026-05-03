@@ -12,6 +12,7 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { posthog } from "../../lib/analytics";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
 import { requireActiveOrgId } from "../utils/active-org";
 import {
@@ -186,10 +187,54 @@ export const v2WorkspaceRouter = {
 			);
 			const host = await getScopedHost(input.organizationId, input.hostId);
 
+<<<<<<< HEAD
 			if (input.taskId) {
 				const found = await dbWs.query.tasks.findFirst({
 					columns: { id: true, organizationId: true },
 					where: eq(tasks.id, input.taskId),
+=======
+			// Relies on the partial unique index
+			// (project_id, host_id) WHERE type='main' for idempotency — race-safe
+			// even if two callers (e.g. the startup sweep and project.setup) both
+			// miss the existence check at the same instant.
+			const [inserted] = await dbWs
+				.insert(v2Workspaces)
+				.values({
+					organizationId: project.organizationId,
+					projectId: project.id,
+					name: input.name,
+					branch: input.branch,
+					hostId: host.machineId,
+					type: input.type,
+					createdByUserId: ctx.userId,
+				})
+				.onConflictDoNothing()
+				.returning();
+
+			if (inserted) {
+				posthog.capture({
+					distinctId: ctx.userId,
+					event: "workspace_created",
+					properties: {
+						workspace_id: inserted.id,
+						project_id: inserted.projectId,
+						organization_id: inserted.organizationId,
+						host_id: inserted.hostId,
+						branch: inserted.branch,
+						type: inserted.type,
+					},
+				});
+				return inserted;
+			}
+
+			if (input.type === "main") {
+				const existing = await dbWs.query.v2Workspaces.findFirst({
+					where: and(
+						eq(v2Workspaces.projectId, project.id),
+						eq(v2Workspaces.hostId, host.machineId),
+						eq(v2Workspaces.type, "main"),
+					),
+>>>>>>> 48c0d1dc8 (feat(posthog): tag person profiles with billing status (#4004))
 				});
 				if (!found) {
 					throw new TRPCError({
@@ -499,7 +544,14 @@ export const v2WorkspaceRouter = {
 		.input(z.object({ id: z.string().uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const workspace = await dbWs.query.v2Workspaces.findFirst({
-				columns: { id: true, organizationId: true, type: true },
+				columns: {
+					id: true,
+					organizationId: true,
+					type: true,
+					projectId: true,
+					hostId: true,
+					branch: true,
+				},
 				where: eq(v2Workspaces.id, input.id),
 			});
 			if (!workspace) {
@@ -519,6 +571,20 @@ export const v2WorkspaceRouter = {
 				});
 			}
 			await dbWs.delete(v2Workspaces).where(eq(v2Workspaces.id, workspace.id));
+
+			posthog.capture({
+				distinctId: ctx.userId,
+				event: "workspace_deleted",
+				properties: {
+					workspace_id: workspace.id,
+					project_id: workspace.projectId,
+					organization_id: workspace.organizationId,
+					host_id: workspace.hostId,
+					branch: workspace.branch,
+					type: workspace.type,
+				},
+			});
+
 			return { success: true, alreadyGone: false as const };
 		}),
 
