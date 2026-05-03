@@ -3,6 +3,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { markTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
+import { getTerminalParkingContainer } from "renderer/lib/terminal/terminal-parking";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { DEBUG_TERMINAL } from "./config";
 import { logTerminalWrite, terminalRendererDebug } from "./debug";
@@ -200,7 +201,9 @@ export function detachFromContainer(paneId: string): void {
 	entry.resizeObserver?.disconnect();
 	entry.resizeObserver = null;
 	entry.container = null;
-	entry.wrapper.remove();
+	// Park instead of .remove() so xterm survives the React unmount —
+	// see getTerminalParkingContainer.
+	getTerminalParkingContainer().appendChild(entry.wrapper);
 }
 
 // --- Appearance ---
@@ -443,6 +446,7 @@ export function dispose(paneId: string): void {
 	entry.resizeObserver?.disconnect();
 	entry.subscription?.unsubscribe();
 	entry.cleanupCreation();
+	entry.wrapper.remove();
 	entry.xterm.dispose();
 	cache.delete(paneId);
 }

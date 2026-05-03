@@ -4,7 +4,7 @@ import { translateLineEditChord } from "renderer/lib/terminal/line-edit-translat
 import {
 	shouldBubbleClipboardShortcut,
 	shouldSelectAllShortcut,
-} from "./clipboardShortcuts";
+} from "renderer/lib/terminal/clipboard-shortcuts";
 
 // FORK NOTE: ActiveSuggestionHandle and suggestion-related options were
 // originally defined in helpers.ts and are now co-located here alongside

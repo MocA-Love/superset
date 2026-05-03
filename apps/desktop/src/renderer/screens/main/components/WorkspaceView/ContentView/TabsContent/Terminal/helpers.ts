@@ -5,10 +5,12 @@ import { ImageAddon } from "@xterm/addon-image";
 import { LigaturesAddon } from "@xterm/addon-ligatures";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import type { DetectedLink } from "renderer/lib/terminal/links";
 import { TerminalLinkManager } from "renderer/lib/terminal/terminal-link-manager";
+import { installRectangleRendererAlphaPatch } from "renderer/lib/terminal/webgl-vibrancy-patch";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { toXtermTheme } from "renderer/stores/theme/utils";
 import {
@@ -54,6 +56,9 @@ export function getDefaultTerminalTheme(): ITheme {
 export function getDefaultTerminalBg(): string {
 	return getDefaultTerminalTheme().background ?? "#151110";
 }
+
+// Once WebGL fails, skip it for all subsequent terminals (VS Code pattern).
+let suggestedRendererType: "webgl" | "dom" | undefined;
 
 export interface CreateTerminalOptions {
 	/**
@@ -102,6 +107,8 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 
 	let disposed = false;
 	let opened = false;
+	let webglAddon: WebglAddon | null = null;
+	let webglRafId: number | null = null;
 
 	// Create a detached wrapper div. xterm.open() is deferred until the wrapper
 	// is attached to a live DOM container.
@@ -131,6 +138,30 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		if (disposed || opened) return;
 		opened = true;
 		xterm.open(wrapper);
+
+		// Defer WebGL to rAF so renderer initialization sees a live DOM node
+		// (mirrors upstream #3997 + fork's vibrancy patch from v2 terminal-addons.ts).
+		webglRafId = requestAnimationFrame(() => {
+			webglRafId = null;
+			if (disposed || suggestedRendererType === "dom") return;
+
+			try {
+				webglAddon = new WebglAddon();
+				webglAddon.onContextLoss(() => {
+					webglAddon?.dispose();
+					webglAddon = null;
+					xterm.refresh(0, xterm.rows - 1);
+				});
+				xterm.loadAddon(webglAddon);
+				// FORK: v1 terminal vibrancy fix. Without this, codex / Claude
+				// Code TUI blocks render as opaque black on top of the
+				// otherwise-transparent terminal. Mirrors v2 terminal-addons.ts.
+				installRectangleRendererAlphaPatch(webglAddon);
+			} catch {
+				suggestedRendererType = "dom";
+				webglAddon = null;
+			}
+		});
 	};
 
 	const cleanupQuerySuppression = suppressQueryResponses(xterm);
@@ -197,8 +228,15 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 		openOnce,
 		cleanup: () => {
 			disposed = true;
+			if (webglRafId !== null) {
+				cancelAnimationFrame(webglRafId);
+			}
 			cleanupQuerySuppression();
 			linkManager.dispose();
+			try {
+				webglAddon?.dispose();
+			} catch {}
+			webglAddon = null;
 		},
 	};
 }
