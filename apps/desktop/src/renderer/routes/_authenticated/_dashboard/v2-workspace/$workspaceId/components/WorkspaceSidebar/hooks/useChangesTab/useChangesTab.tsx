@@ -182,6 +182,7 @@ export function useChangesTab({
 
 	const content = (
 		<ChangesTabContent
+			workspaceId={workspaceId}
 			status={status}
 			commits={commits}
 			branches={branches}

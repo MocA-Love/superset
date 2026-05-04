@@ -1,8 +1,8 @@
 import { MultiFileDiff } from "@pierre/diffs/react";
-import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { useQuery } from "@tanstack/react-query";
 import { memo, useMemo } from "react";
+import { toast } from "@superset/ui/sonner";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import {
 	getDiffsTheme,
@@ -28,6 +28,7 @@ interface WorkspaceDiffProps {
 	onToggleViewed: () => void;
 	onOpenFile?: (openInNewTab?: boolean) => void;
 	onOpenInExternalEditor?: () => void;
+	onDiscard?: () => void;
 }
 
 export const WorkspaceDiff = memo(function WorkspaceDiff({
@@ -46,6 +47,7 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 	onToggleViewed,
 	onOpenFile,
 	onOpenInExternalEditor,
+	onDiscard,
 }: WorkspaceDiffProps) {
 	const activeTheme = useResolvedTheme();
 	const terminalTheme = useTerminalTheme();
@@ -138,7 +140,7 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 				onToggleViewed={onToggleViewed}
 				onOpenFile={onOpenFile}
 				onOpenInExternalEditor={onOpenInExternalEditor}
-				onDiscard={handleDiscard}
+				onDiscard={onDiscard}
 			/>
 			{diffQuery.data ? (
 				<MultiFileDiff
