@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { app, dialog } from "electron";
+import log from "electron-log/main";
 import { autoUpdater } from "electron-updater";
 import { env } from "main/env.main";
 import { prepareQuit } from "main/index";
@@ -21,9 +22,9 @@ async function clearCachedUpdate(reason: string): Promise<void> {
 	if (!helper) return;
 	try {
 		await helper.clear();
-		console.info(`[auto-updater] Cleared cached update (${reason})`);
+		log.info(`[auto-updater] Cleared cached update (${reason})`);
 	} catch (error) {
-		console.error("[auto-updater] Failed to clear cached update:", error);
+		log.error("[auto-updater] Failed to clear cached update:", error);
 	}
 }
 
@@ -120,7 +121,9 @@ export function installUpdate(): void {
 	if (IS_FORK) {
 		import("electron")
 			.then(({ shell }) => shell.openExternal(FORK_RELEASES_URL))
-			.catch(() => {});
+			.catch((error) => {
+				log.error("[auto-updater:fork] Failed to open releases page:", error);
+			});
 		emitStatus(AUTO_UPDATE_STATUS.IDLE);
 		return;
 	}
@@ -178,7 +181,7 @@ async function checkForkForUpdates(interactive: boolean): Promise<void> {
 		const currentAppVersion = app.getVersion();
 
 		if (!latestVersion) {
-			console.info("[auto-updater:fork] Could not determine latest version");
+			log.info("[auto-updater:fork] Could not determine latest version");
 			emitStatus(AUTO_UPDATE_STATUS.IDLE);
 			if (interactive) {
 				dialog.showMessageBox({
@@ -190,17 +193,17 @@ async function checkForkForUpdates(interactive: boolean): Promise<void> {
 			return;
 		}
 
-		console.info(
+		log.info(
 			`[auto-updater:fork] Current: ${currentAppVersion}, Latest: ${latestVersion}`,
 		);
 
 		if (gt(latestVersion, currentAppVersion)) {
-			console.info(
+			log.info(
 				`[auto-updater:fork] Update available: ${currentAppVersion} → ${latestVersion}`,
 			);
 			emitStatus(AUTO_UPDATE_STATUS.READY, latestVersion);
 		} else {
-			console.info("[auto-updater:fork] Already up to date");
+			log.info("[auto-updater:fork] Already up to date");
 			emitStatus(AUTO_UPDATE_STATUS.IDLE);
 			if (interactive) {
 				dialog.showMessageBox({
@@ -214,7 +217,7 @@ async function checkForkForUpdates(interactive: boolean): Promise<void> {
 	} catch (error) {
 		const err = error instanceof Error ? error : new Error(String(error));
 		if (isNetworkError(err)) {
-			console.info("[auto-updater:fork] Network unavailable, will retry later");
+			log.info("[auto-updater:fork] Network unavailable, will retry later");
 			emitStatus(AUTO_UPDATE_STATUS.IDLE);
 			if (interactive) {
 				dialog.showMessageBox({
@@ -226,10 +229,7 @@ async function checkForkForUpdates(interactive: boolean): Promise<void> {
 			}
 			return;
 		}
-		console.error(
-			"[auto-updater:fork] Failed to check for updates:",
-			err.message,
-		);
+		log.error("[auto-updater:fork] Failed to check for updates:", err.message);
 		emitStatus(AUTO_UPDATE_STATUS.ERROR, undefined, err.message);
 		if (interactive) {
 			dialog.showMessageBox({
@@ -261,11 +261,11 @@ export function checkForUpdates(): void {
 	emitStatus(AUTO_UPDATE_STATUS.CHECKING);
 	autoUpdater.checkForUpdates().catch((error) => {
 		if (isNetworkError(error)) {
-			console.info("[auto-updater] Network unavailable, will retry later");
+			log.info("[auto-updater] Network unavailable, will retry later");
 			emitStatus(AUTO_UPDATE_STATUS.IDLE);
 			return;
 		}
-		console.error("[auto-updater] Failed to check for updates:", error);
+		log.error("[auto-updater] Failed to check for updates:", error);
 		emitStatus(AUTO_UPDATE_STATUS.ERROR, undefined, error.message);
 	});
 }
@@ -316,7 +316,7 @@ export function checkForUpdatesInteractive(): void {
 		})
 		.catch((error) => {
 			if (isNetworkError(error)) {
-				console.info("[auto-updater] Network unavailable");
+				log.info("[auto-updater] Network unavailable");
 				emitStatus(AUTO_UPDATE_STATUS.IDLE);
 				dialog.showMessageBox({
 					type: "info",
@@ -326,7 +326,7 @@ export function checkForUpdatesInteractive(): void {
 				});
 				return;
 			}
-			console.error("[auto-updater] Failed to check for updates:", error);
+			log.error("[auto-updater] Failed to check for updates:", error);
 			emitStatus(AUTO_UPDATE_STATUS.ERROR, undefined, error.message);
 			dialog.showMessageBox({
 				type: "error",
@@ -367,9 +367,15 @@ export function setupAutoUpdater(): void {
 		return;
 	}
 
+	// Squirrel.Mac install failures happen in ShipIt out-of-process and never
+	// reach the lib's `error` event, so route both electron-updater internals
+	// and fork/upstream handler narration through electron-log.
+	log.transports.file.level = "info";
+	autoUpdater.logger = log;
+
 	// Fork builds: periodic GitHub API check (no electron-updater)
 	if (IS_FORK) {
-		console.info(
+		log.info(
 			`[auto-updater:fork] Initialized: version=${app.getVersion()}, checking ${FORK_API_URL}`,
 		);
 
@@ -383,7 +389,7 @@ export function setupAutoUpdater(): void {
 				.whenReady()
 				.then(() => checkForUpdates())
 				.catch((error) => {
-					console.error(
+					log.error(
 						"[auto-updater:fork] Failed to start update checks:",
 						error,
 					);
@@ -411,17 +417,17 @@ export function setupAutoUpdater(): void {
 		url: UPDATE_FEED_URL,
 	});
 
-	console.info(
+	log.info(
 		`[auto-updater] Initialized: version=${app.getVersion()}, channel=${IS_PRERELEASE ? "canary" : "stable"}, feedURL=${UPDATE_FEED_URL}`,
 	);
 
 	autoUpdater.on("error", (error) => {
 		if (isNetworkError(error)) {
-			console.info("[auto-updater] Network unavailable, will retry later");
+			log.info("[auto-updater] Network unavailable, will retry later");
 			emitStatus(AUTO_UPDATE_STATUS.IDLE);
 			return;
 		}
-		console.error(
+		log.error(
 			`[auto-updater] Error during update (currentVersion=${app.getVersion()}):`,
 			error?.message || error,
 		);
@@ -430,34 +436,34 @@ export function setupAutoUpdater(): void {
 	});
 
 	autoUpdater.on("checking-for-update", () => {
-		console.info(
+		log.info(
 			`[auto-updater] Checking for updates... (currentVersion=${app.getVersion()}, feedURL=${UPDATE_FEED_URL})`,
 		);
 		emitStatus(AUTO_UPDATE_STATUS.CHECKING);
 	});
 
 	autoUpdater.on("update-available", (info) => {
-		console.info(
+		log.info(
 			`[auto-updater] Update available: ${app.getVersion()} → ${info.version} (files: ${info.files?.map((f: { url: string }) => f.url).join(", ")})`,
 		);
 		emitStatus(AUTO_UPDATE_STATUS.DOWNLOADING, info.version);
 	});
 
 	autoUpdater.on("update-not-available", (info) => {
-		console.info(
+		log.info(
 			`[auto-updater] No updates available (currentVersion=${app.getVersion()}, latestVersion=${info.version})`,
 		);
 		emitStatus(AUTO_UPDATE_STATUS.IDLE);
 	});
 
 	autoUpdater.on("download-progress", (progress) => {
-		console.info(
+		log.info(
 			`[auto-updater] Download progress: ${progress.percent.toFixed(1)}% (${(progress.transferred / 1024 / 1024).toFixed(1)}MB / ${(progress.total / 1024 / 1024).toFixed(1)}MB)`,
 		);
 	});
 
 	autoUpdater.on("update-downloaded", (info) => {
-		console.info(
+		log.info(
 			`[auto-updater] Update downloaded: ${app.getVersion()} → ${info.version}. Ready to install.`,
 		);
 		emitStatus(AUTO_UPDATE_STATUS.READY, info.version);
@@ -473,7 +479,7 @@ export function setupAutoUpdater(): void {
 			.whenReady()
 			.then(() => checkForUpdates())
 			.catch((error) => {
-				console.error("[auto-updater] Failed to start update checks:", error);
+				log.error("[auto-updater] Failed to start update checks:", error);
 			});
 	}
 }
