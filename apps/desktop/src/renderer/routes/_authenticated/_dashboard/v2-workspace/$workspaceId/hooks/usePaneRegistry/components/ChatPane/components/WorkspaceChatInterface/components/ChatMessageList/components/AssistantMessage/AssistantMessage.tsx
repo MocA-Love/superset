@@ -12,6 +12,7 @@ import { createShikiTheme } from "renderer/screens/main/components/WorkspaceView
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { useResolvedTheme } from "renderer/stores/theme";
 import { AttachmentChip } from "../AttachmentChip";
+import { ImageHoverPreview } from "../ImageHoverPreview";
 import { PendingPlanApprovalMessage } from "../PendingPlanApprovalMessage";
 import { SubagentExecutionMessage } from "../SubagentExecutionMessage";
 import type { SubagentEntries } from "../SubagentExecutionMessage/utils/toSubagentViewModels";
@@ -235,33 +236,47 @@ export function AssistantMessage({
 			}
 
 			if (part.type === "image" && "mimeType" in part && !rawPart.mediaType) {
+				const legacySrc = `data:${part.mimeType};base64,${part.data}`;
 				nodes.push(
-					<div key={`${message.id}-${partIndex}`} className="max-w-[85%]">
+					<ImageHoverPreview
+						key={`${message.id}-${partIndex}`}
+						src={legacySrc}
+						mediaType={part.mimeType}
+						triggerClassName="max-w-[85%]"
+					>
 						<ImagePart data={part.data} mimeType={part.mimeType} />
-					</div>,
+					</ImageHoverPreview>,
 				);
 				continue;
 			}
 
 			if (mediaType.startsWith("image/")) {
 				nodes.push(
-					<button
-						type="button"
+					<ImageHoverPreview
 						key={`${message.id}-${partIndex}`}
-						className="max-w-[85%] cursor-pointer"
-						aria-label={
-							rawPart.filename
-								? `View ${rawPart.filename}`
-								: "View generated image"
-						}
-						onClick={() => handleAttachmentClick(data, rawPart.filename)}
+						src={data}
+						filename={rawPart.filename}
+						mediaType={mediaType}
+						alt={rawPart.filename ?? "Generated"}
+						triggerClassName="max-w-[85%]"
 					>
-						<img
-							src={data}
-							alt={rawPart.filename ?? "Generated"}
-							className="max-h-48 rounded-lg object-contain"
-						/>
-					</button>,
+						<button
+							type="button"
+							className="cursor-pointer"
+							aria-label={
+								rawPart.filename
+									? `View ${rawPart.filename}`
+									: "View generated image"
+							}
+							onClick={() => handleAttachmentClick(data, rawPart.filename)}
+						>
+							<img
+								src={data}
+								alt={rawPart.filename ?? "Generated"}
+								className="max-h-48 rounded-lg object-contain"
+							/>
+						</button>
+					</ImageHoverPreview>,
 				);
 			} else {
 				nodes.push(

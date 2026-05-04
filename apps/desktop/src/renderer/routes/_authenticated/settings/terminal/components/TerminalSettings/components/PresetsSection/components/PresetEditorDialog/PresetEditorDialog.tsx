@@ -2,7 +2,6 @@ import type { HostAgentConfigDto } from "@superset/host-service/settings";
 import type { ExecutionMode, TerminalPreset } from "@superset/local-db";
 import { Alert, AlertDescription } from "@superset/ui/alert";
 import { Button } from "@superset/ui/button";
-import { Switch } from "@superset/ui/switch";
 import {
 	Dialog,
 	DialogContent,
@@ -19,8 +18,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@superset/ui/select";
-import { Link } from "@tanstack/react-router";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { Switch } from "@superset/ui/switch";
+import { Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { HiExclamationTriangle, HiOutlineFolderOpen } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
