@@ -10,6 +10,8 @@ import { protectedProcedure, router } from "../../index";
 // Auto-derived from this package's package.json so a host-service version
 // bump automatically flows through to `host.info` and the desktop's
 // strict-equality adoption check (see host-service-coordinator.tryAdopt).
+// 0.8.0: terminal creation moved to `terminal.createSession`; WebSocket
+// `/terminal/:terminalId` is attach-only.
 const HOST_SERVICE_VERSION: string = hostServicePackageJson.version;
 
 const ORGANIZATION_CACHE_TTL_MS = 60 * 60 * 1000;

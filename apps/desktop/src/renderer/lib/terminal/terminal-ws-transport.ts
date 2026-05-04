@@ -22,6 +22,7 @@ export interface TerminalLogEntry {
 // partial sequences internally). Control messages (title/error/exit) stay
 // JSON.
 type TerminalServerMessage =
+	| { type: "attached"; terminalId: string }
 	| { type: "error"; message: string }
 	| { type: "exit"; exitCode: number; signal: number }
 	| { type: "title"; title: string | null };
@@ -235,7 +236,6 @@ export function connect(
 	transport: TerminalTransport,
 	terminal: XTerm,
 	wsUrl: string,
-	options: { initialCommand?: string } = {},
 ) {
 	// Idempotent: skip if already connected/connecting to the same endpoint.
 	const isActive =
@@ -265,7 +265,10 @@ export function connect(
 		},
 	);
 	setConnectionState(transport, "connecting");
-	const socket = new WebSocket(wsUrl);
+	const actualUrl = transport._hasReceivedBytes
+		? appendQueryParam(wsUrl, "replay", "0")
+		: wsUrl;
+	const socket = new WebSocket(actualUrl);
 	// Receive PTY bytes as ArrayBuffer (the default would be Blob, which
 	// forces an async read); we want to feed bytes synchronously into
 	// xterm.write to keep render order strict.
@@ -283,16 +286,6 @@ export function connect(
 				fingerprint: ["terminal.renderer", "ws-open"],
 			},
 		);
-		setConnectionState(transport, "open");
-		sendResize(transport, terminal.cols, terminal.rows);
-		if (options.initialCommand) {
-			socket.send(
-				JSON.stringify({
-					type: "initialCommand",
-					data: options.initialCommand,
-				}),
-			);
-		}
 	});
 
 	socket.addEventListener("message", (event) => {
@@ -303,6 +296,7 @@ export function connect(
 		// xterm without any decoding step.
 		if (event.data instanceof ArrayBuffer) {
 			terminal.write(new Uint8Array(event.data));
+			transport._hasReceivedBytes = true;
 			return;
 		}
 
@@ -324,6 +318,12 @@ export function connect(
 
 		if (message.type === "title") {
 			setTerminalTitle(transport, message.title);
+			return;
+		}
+
+		if (message.type === "attached") {
+			setConnectionState(transport, "open");
+			sendResize(transport, terminal.cols, terminal.rows);
 			return;
 		}
 
@@ -417,6 +417,7 @@ export function connect(
 	transport.onDataDisposable?.dispose();
 	transport.onDataDisposable = terminal.onData((data) => {
 		if (socket.readyState !== WebSocket.OPEN) return;
+		if (transport.connectionState !== "open") return;
 		logTerminalInput("ws-input", data.length, {
 			terminalId: transport.debugId,
 		});
@@ -463,12 +464,14 @@ export function sendResize(
 ) {
 	if (!transport.socket || transport.socket.readyState !== WebSocket.OPEN)
 		return;
+	if (transport.connectionState !== "open") return;
 	transport.socket.send(JSON.stringify({ type: "resize", cols, rows }));
 }
 
 export function sendInput(transport: TerminalTransport, data: string) {
 	if (!transport.socket || transport.socket.readyState !== WebSocket.OPEN)
 		return;
+	if (transport.connectionState !== "open") return;
 	transport.socket.send(JSON.stringify({ type: "input", data }));
 }
 
