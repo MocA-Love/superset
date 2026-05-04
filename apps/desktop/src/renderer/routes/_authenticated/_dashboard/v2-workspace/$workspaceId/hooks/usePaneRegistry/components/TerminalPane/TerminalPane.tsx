@@ -32,6 +32,7 @@ import { LinkHoverTooltip } from "./components/LinkHoverTooltip";
 import { useLinkClickHint } from "./hooks/useLinkClickHint";
 import { useLinkHoverState } from "./hooks/useLinkHoverState";
 import { useTerminalAppearance } from "./hooks/useTerminalAppearance";
+import { useTerminalInterruptClear } from "./hooks/useTerminalInterruptClear";
 import { shellEscapePaths } from "./utils";
 
 interface TerminalPaneProps {
@@ -309,6 +310,13 @@ export function TerminalPane({
 		getFileAction,
 		getUrlAction,
 	]);
+
+	useTerminalInterruptClear({
+		terminalId,
+		terminalInstanceId,
+		workspaceId,
+		connectionState,
+	});
 
 	useHotkey(
 		"CLEAR_TERMINAL",
