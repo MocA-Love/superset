@@ -364,9 +364,25 @@ allocate_port_base() {
   fi
 
   if [ -n "$existing" ]; then
-    export SUPERSET_PORT_BASE="$existing"
-    release_port_alloc_lock "$lock_dir"
-    return 0
+    if port_base_is_safe "$existing" "$range"; then
+      export SUPERSET_PORT_BASE="$existing"
+      release_port_alloc_lock "$lock_dir"
+      return 0
+    fi
+    echo "  Existing port base $existing overlaps a reserved port (${SUPERSET_RESERVED_PORTS}); reallocating..."
+    local tmp_file="${alloc_file}.tmp.$$"
+    if ! jq --arg k "$key" 'del(.[$k])' "$alloc_file" > "$tmp_file"; then
+      error "Failed to release stale port allocation"
+      rm -f "$tmp_file"
+      release_port_alloc_lock "$lock_dir"
+      return 1
+    fi
+    if ! mv "$tmp_file" "$alloc_file"; then
+      error "Failed to persist port allocation cleanup"
+      rm -f "$tmp_file"
+      release_port_alloc_lock "$lock_dir"
+      return 1
+    fi
   fi
 
   # Collect used port bases
@@ -377,9 +393,10 @@ allocate_port_base() {
     return 1
   fi
 
-  # Find first available slot
+  # Find first available slot, skipping any window that overlaps a reserved port
   local candidate=$start
-  while echo "$used" | grep -qx "$candidate" 2>/dev/null; do
+  while echo "$used" | grep -qx "$candidate" 2>/dev/null \
+    || ! port_base_is_safe "$candidate" "$range"; do
     candidate=$((candidate + range))
   done
 
