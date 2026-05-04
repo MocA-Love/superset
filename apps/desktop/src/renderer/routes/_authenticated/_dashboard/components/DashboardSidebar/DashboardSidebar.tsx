@@ -18,12 +18,17 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMatchRoute } from "@tanstack/react-router";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
+import { cn } from "@superset/ui/utils";
+import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { HiOutlineCog6Tooth } from "react-icons/hi2";
+import { useHotkeyDisplay } from "renderer/hotkeys";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { DashboardSidebarHeader } from "./components/DashboardSidebarHeader";
+import { DashboardSidebarHelpMenu } from "./components/DashboardSidebarHelpMenu";
 import { DashboardSidebarHoverCardOverlay } from "./components/DashboardSidebarHoverCardOverlay";
 import { DashboardSidebarPortsList } from "./components/DashboardSidebarPortsList";
 import { DashboardSidebarProjectSection } from "./components/DashboardSidebarProjectSection";
@@ -94,10 +99,13 @@ export function DashboardSidebar({
 		useDashboardSidebarData();
 	const workspaceShortcutLabels = useDashboardSidebarShortcuts(groups);
 	const { reorderProjects } = useDashboardSidebarState();
+	const navigate = useNavigate();
 	const matchRoute = useMatchRoute();
 	const { activeHostUrl } = useLocalHostService();
 	const v2RouteMatch = matchRoute({ to: "/v2-workspace/$workspaceId" });
 	const activeV2WorkspaceId = v2RouteMatch ? v2RouteMatch.workspaceId : null;
+	const settingsHotkey = useHotkeyDisplay("OPEN_SETTINGS").text;
+	const isSettingsOpen = !!matchRoute({ to: "/settings", fuzzy: true });
 
 	const sensors = useSensors(
 		useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -228,6 +236,61 @@ export function DashboardSidebar({
 								projectName={activeV2Project.name}
 							/>
 						)}
+						<div
+							className={cn(
+								"border-t border-border",
+								isCollapsed
+									? "flex flex-col items-center gap-1 py-1"
+									: "flex items-center gap-1 px-2 py-1",
+							)}
+						>
+							{isCollapsed ? (
+								<Tooltip delayDuration={300}>
+									<TooltipTrigger asChild>
+										<button
+											type="button"
+											aria-label="Settings"
+											onClick={() => navigate({ to: "/settings/account" })}
+											className={cn(
+												"flex size-8 items-center justify-center rounded-md transition-colors",
+												isSettingsOpen
+													? "bg-accent text-foreground"
+													: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+											)}
+										>
+											<HiOutlineCog6Tooth className="size-4" />
+										</button>
+									</TooltipTrigger>
+									<TooltipContent side="right">Settings</TooltipContent>
+								</Tooltip>
+							) : (
+								<button
+									type="button"
+									onClick={() => navigate({ to: "/settings/account" })}
+									className={cn(
+										"group flex flex-1 min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+										isSettingsOpen
+											? "bg-accent text-foreground"
+											: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+									)}
+								>
+									<HiOutlineCog6Tooth className="size-4 shrink-0" />
+									<span className="flex-1 text-left">Settings</span>
+									{settingsHotkey !== "Unassigned" && (
+										<span
+											className={cn(
+												"shrink-0 text-[10px] font-mono tabular-nums text-muted-foreground/60",
+												"opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
+											)}
+										>
+											{settingsHotkey}
+										</span>
+									)}
+								</button>
+							)}
+
+							<DashboardSidebarHelpMenu isCollapsed={isCollapsed} />
+						</div>
 					</div>
 				</DashboardSidebarHoverCardOverlay>
 			</DashboardSidebarHoverProvider>
