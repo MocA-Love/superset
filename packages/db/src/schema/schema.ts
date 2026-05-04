@@ -407,6 +407,7 @@ export const v2Projects = pgTable(
 			() => githubRepositories.id,
 			{ onDelete: "set null" },
 		),
+		iconUrl: text("icon_url"),
 		createdAt: timestamp("created_at", { withTimezone: true })
 			.notNull()
 			.defaultNow(),

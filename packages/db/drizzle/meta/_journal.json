@@ -283,10 +283,10 @@
       "breakpoints": true
     },
     {
-      "idx": 44,
+      "idx": 40,
       "version": "7",
-      "when": 1777874337162,
-      "tag": "0044_add_task_id_to_v2_workspaces",
+      "when": 1777575539318,
+      "tag": "0040_better_auth_165_columns",
       "breakpoints": true
     },
     {
@@ -308,6 +308,20 @@
       "version": "7",
       "when": 1777854769892,
       "tag": "0043_submitted_prompts",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1777874337162,
+      "tag": "0044_add_task_id_to_v2_workspaces",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1777881871315,
+      "tag": "0045_v2_projects_icon_url",
       "breakpoints": true
     }
   ]
