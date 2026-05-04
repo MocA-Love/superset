@@ -6,8 +6,8 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createApiClient } from "./api";
-import { createDb } from "./db";
-import { EventBus, registerEventBusRoute } from "./events";
+import { createDb, type HostDb } from "./db";
+import { EventBus, GitWatcher, registerEventBusRoute } from "./events";
 import type { ApiAuthProvider } from "./providers/auth";
 import type { HostAuthProvider } from "./providers/host-auth";
 import type { ModelProviderRuntimeResolver } from "./providers/model-providers";
@@ -51,6 +51,7 @@ export interface CreateAppResult {
 	app: Hono;
 	injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
 	api: ApiClient;
+	dispose: () => Promise<void>;
 }
 
 export function createApp(options: CreateAppOptions): CreateAppResult {
@@ -74,17 +75,25 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		});
 	const execGh: ExecGh = options.execGh ?? defaultExecGh;
 
+	const filesystem = new WorkspaceFilesystemManager({ db });
+	// GitWatcher is the single source of truth for `.git/` and worktree fs
+	// activity per workspace. Both EventBus (broadcasts to clients) and the
+	// pull-requests runtime (event-driven branch sync) subscribe to it.
+	const gitWatcher = new GitWatcher(db, filesystem);
+	gitWatcher.start();
 	const pullRequestRuntime = new PullRequestRuntimeManager({
 		db,
 		git,
 		github,
+		gitWatcher,
 	});
 	pullRequestRuntime.start();
-	const filesystem = new WorkspaceFilesystemManager({ db });
-	const chatRuntime = new ChatRuntimeManager({
-		db,
-		runtimeResolver: providers.modelResolver,
-	});
+	const chatRuntime =
+		options.chatRuntime ??
+		new ChatRuntimeManager({
+			db,
+			runtimeResolver: providers.modelResolver,
+		});
 	// Provider auth (Anthropic / OpenAI OAuth + API keys) is per-machine, not
 	// per-workspace. ChatService is a long-lived singleton wrapping mastra's
 	// auth storage; the `host.auth.*` router proxies to it.
@@ -107,7 +116,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		}),
 	);
 
-	const eventBus = new EventBus({ db, filesystem });
+	const eventBus = new EventBus({ db, filesystem, gitWatcher });
 	eventBus.start();
 
 	// Backfill `kind='main'` v2 workspaces for projects already set up before
@@ -162,5 +171,34 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		}),
 	);
 
-	return { app, injectWebSocket, api };
+	const ownsDb = options.db === undefined;
+	const dispose = async (): Promise<void> => {
+		// Each step is best-effort and isolated: a throw in one cleanup must
+		// not skip the others, otherwise a flaky `.stop()` could leak the
+		// open SQLite handle for the rest of the process lifetime.
+		try {
+			pullRequestRuntime.stop();
+		} catch (err) {
+			console.warn("[host-service] pullRequestRuntime.stop failed:", err);
+		}
+		try {
+			eventBus.close();
+		} catch (err) {
+			console.warn("[host-service] eventBus.close failed:", err);
+		}
+		try {
+			gitWatcher.close();
+		} catch (err) {
+			console.warn("[host-service] gitWatcher.close failed:", err);
+		}
+		if (ownsDb) {
+			try {
+				(db as unknown as { $client?: { close: () => void } }).$client?.close();
+			} catch {
+				// best-effort close; tests should not fail on teardown
+			}
+		}
+	};
+
+	return { app, injectWebSocket, api, dispose };
 }
