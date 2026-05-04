@@ -131,6 +131,7 @@ interface FileSearchIndex {
 interface FileSearchCacheEntry {
 	index: FileSearchIndex;
 	builtAt: number;
+	lastAccessedAt: number;
 }
 
 interface PathFilterMatcher {
@@ -291,6 +292,44 @@ interface LineSearchMatch {
 const searchIndexCache = new Map<string, FileSearchCacheEntry>();
 const searchIndexBuilds = new Map<string, Promise<FileSearchIndex>>();
 const searchIndexVersions = new Map<string, number>();
+
+// LRU + idle-TTL on the index cache: bound JS heap as worktree count grows.
+// Inactive worktrees pay a fresh ripgrep/fast-glob walk on next search (~50-200 ms
+// for a 5k-file repo) — cheap relative to keeping every index resident.
+const SEARCH_INDEX_CACHE_MAX = 12;
+const SEARCH_INDEX_CACHE_IDLE_TTL_MS = 30 * 60_000;
+
+function evictLruSearchIndexEntries(): void {
+	// Map iteration is insertion-order; re-inserting on hit moves an entry to
+	// the end, so the first key is least-recently-used.
+	while (searchIndexCache.size >= SEARCH_INDEX_CACHE_MAX) {
+		const oldestKey = searchIndexCache.keys().next().value;
+		if (!oldestKey) break;
+		searchIndexCache.delete(oldestKey);
+	}
+}
+
+function setSearchIndexCacheEntry(
+	cacheKey: string,
+	index: FileSearchIndex,
+): FileSearchCacheEntry {
+	const now = Date.now();
+	searchIndexCache.delete(cacheKey);
+	evictLruSearchIndexEntries();
+	const entry = { index, builtAt: now, lastAccessedAt: now };
+	searchIndexCache.set(cacheKey, entry);
+	return entry;
+}
+
+function touchSearchIndexCacheEntry(
+	cacheKey: string,
+	entry: FileSearchCacheEntry,
+): FileSearchCacheEntry {
+	const touched = { ...entry, lastAccessedAt: Date.now() };
+	searchIndexCache.delete(cacheKey);
+	searchIndexCache.set(cacheKey, touched);
+	return touched;
+}
 
 function createSearchIndexEntry(
 	rootPath: string,
@@ -690,12 +729,17 @@ async function getSearchIndex(
 	options: BuildSearchIndexOptions,
 ): Promise<FileSearchIndex> {
 	const cacheKey = getSearchCacheKey(options);
-	const cached = searchIndexCache.get(cacheKey);
+	let cached = searchIndexCache.get(cacheKey);
 	const now = Date.now();
 	const inFlight = searchIndexBuilds.get(cacheKey);
 
+	if (cached && now - cached.lastAccessedAt > SEARCH_INDEX_CACHE_IDLE_TTL_MS) {
+		searchIndexCache.delete(cacheKey);
+		cached = undefined;
+	}
+
 	if (cached && now - cached.builtAt < SEARCH_INDEX_TTL_MS) {
-		return cached.index;
+		return touchSearchIndexCacheEntry(cacheKey, cached).index;
 	}
 
 	if (cached && !inFlight) {
@@ -703,7 +747,7 @@ async function getSearchIndex(
 		const buildPromise = buildSearchIndex(options)
 			.then((index) => {
 				if (getSearchIndexVersion(cacheKey) === buildVersion) {
-					searchIndexCache.set(cacheKey, { index, builtAt: Date.now() });
+					setSearchIndexCacheEntry(cacheKey, index);
 				}
 				searchIndexBuilds.delete(cacheKey);
 				return index;
@@ -713,11 +757,11 @@ async function getSearchIndex(
 				throw error;
 			});
 		searchIndexBuilds.set(cacheKey, buildPromise);
-		return cached.index;
+		return touchSearchIndexCacheEntry(cacheKey, cached).index;
 	}
 
 	if (cached) {
-		return cached.index;
+		return touchSearchIndexCacheEntry(cacheKey, cached).index;
 	}
 
 	if (inFlight) {
@@ -728,7 +772,7 @@ async function getSearchIndex(
 	const buildPromise = buildSearchIndex(options)
 		.then((index) => {
 			if (getSearchIndexVersion(cacheKey) === buildVersion) {
-				searchIndexCache.set(cacheKey, { index, builtAt: Date.now() });
+				setSearchIndexCacheEntry(cacheKey, index);
 			}
 			searchIndexBuilds.delete(cacheKey);
 			return index;
@@ -1299,10 +1343,8 @@ export function patchSearchIndexesForRoot(
 		}
 		const nextItems = Array.from(nextItemsByPath.values());
 
-		searchIndexCache.set(cacheKey, {
-			index: createFileSearchIndex(nextItems),
-			builtAt: Date.now(),
-		});
+		// Patches imply the worktree is alive — bump to MRU and refresh access time.
+		setSearchIndexCacheEntry(cacheKey, createFileSearchIndex(nextItems));
 	}
 }
 
