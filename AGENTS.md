@@ -299,6 +299,7 @@ CI 側でもワークフロー実行前に `node_modules` を毎回ゼロから�
 5. **Mastra dependencies** - use the published upstream `mastracode` and `@mastra/*` packages. Do not add fork tarball overrides or custom patch steps unless explicitly requested.
 6. **Package age security policy** - global `npm`, `bun`, `pnpm`, and `uv` configs enforce a 7-day minimum release age, and `npm` also has `ignore-scripts=true`. If package install/update/add commands fail because a version is too new or a lifecycle script is blocked, do not keep retrying, disable the policy, or suggest bypass flags. Choose an older version that satisfies the policy, or stop and surface the blocked dependency clearly.
 7. **Plan & doc placement** - implementation plans go in `plans/` (cross-cutting) or `apps/<app>/plans/` (app-scoped); shipped plans move to `plans/done/`. Architecture/reference docs go in `<app>/docs/`. Never drop `*_PLAN.md` at an app root or inside `src/`.
+8. **Always fix lint warnings before pushing** - CI fails on Biome warnings, not just errors (the lint script treats warnings as errors). Run `bun run lint:fix` after edits and verify `bun run lint` exits 0 before `git push`. Never push code that produces lint output, even auto-fixable formatting.
 
 
 ---
