@@ -39,12 +39,15 @@ import {
 	useV2NotificationStore,
 	useV2PaneNotificationStatus,
 } from "renderer/stores/v2-notifications";
+import { useWorkspaceCreatesStore } from "renderer/stores/workspace-creates";
 import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
+import { WorkspaceCreateErrorState } from "../components/WorkspaceCreateErrorState";
+import { WorkspaceCreatingState } from "../components/WorkspaceCreatingState";
 import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
@@ -53,7 +56,6 @@ import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
-import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
@@ -165,12 +167,32 @@ function V2WorkspacePage() {
 		[collections, workspaceId],
 	);
 	const workspace = workspaces?.[0] ?? null;
+	const inFlight = useWorkspaceCreatesStore((store) =>
+		store.entries.find((entry) => entry.snapshot.id === workspaceId),
+	);
 
 	if (!workspaces) {
 		return <div className="flex h-full w-full" />;
 	}
 
 	if (!workspace) {
+		if (inFlight?.state === "creating") {
+			return (
+				<WorkspaceCreatingState
+					name={inFlight.snapshot.name}
+					branch={inFlight.snapshot.branch}
+				/>
+			);
+		}
+		if (inFlight?.state === "error") {
+			return (
+				<WorkspaceCreateErrorState
+					workspaceId={workspaceId}
+					name={inFlight.snapshot.name}
+					error={inFlight.error ?? "Unknown error"}
+				/>
+			);
+		}
 		return <WorkspaceNotFoundState workspaceId={workspaceId} />;
 	}
 
@@ -249,7 +271,6 @@ function WorkspaceContent({
 		workspaceId,
 		projectId,
 	});
-	useConsumePendingLaunch({ workspaceId, store });
 	useConsumeAutomationRunLink({
 		store,
 		terminalId,
