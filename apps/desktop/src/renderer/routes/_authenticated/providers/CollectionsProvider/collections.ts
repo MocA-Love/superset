@@ -43,8 +43,6 @@ import {
 	type DashboardSidebarSectionRow,
 	dashboardSidebarProjectSchema,
 	dashboardSidebarSectionSchema,
-	type PendingWorkspaceRow,
-	pendingWorkspaceSchema,
 	type V2TerminalPresetRow,
 	type V2UserPreferencesRow,
 	v2TerminalPresetSchema,
@@ -131,13 +129,6 @@ export interface OrgCollections {
 		LocalStorageCollectionUtils,
 		typeof v2TerminalPresetSchema,
 		z.input<typeof v2TerminalPresetSchema>
-	>;
-	pendingWorkspaces: Collection<
-		PendingWorkspaceRow,
-		string,
-		LocalStorageCollectionUtils,
-		typeof pendingWorkspaceSchema,
-		z.input<typeof pendingWorkspaceSchema>
 	>;
 	v2UserPreferences: Collection<
 		V2UserPreferencesRow,
@@ -658,15 +649,6 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		}),
 	);
 
-	const pendingWorkspaces = createIndexedCollection(
-		localStorageCollectionOptions({
-			id: `pending_workspaces-${organizationId}`,
-			storageKey: `pending-workspaces-${organizationId}`,
-			schema: pendingWorkspaceSchema,
-			getKey: (item) => item.id,
-		}),
-	);
-
 	const v2UserPreferences = createCollection(
 		localStorageCollectionOptions({
 			id: `v2_user_preferences-${organizationId}`,
@@ -705,7 +687,6 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		v2WorkspaceLocalState,
 		v2SidebarSections,
 		v2TerminalPresets,
-		pendingWorkspaces,
 		v2UserPreferences,
 	};
 }

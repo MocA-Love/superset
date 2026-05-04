@@ -1,11 +1,6 @@
-import {
-	sanitizeUserBranchName,
-	slugifyForBranch,
-} from "@superset/shared/workspace-launch";
+import { sanitizeUserBranchName } from "@superset/shared/workspace-launch";
 import {
 	PromptInput,
-	PromptInputAttachment,
-	PromptInputAttachments,
 	PromptInputButton,
 	PromptInputFooter,
 	PromptInputSubmit,
@@ -13,10 +8,12 @@ import {
 	PromptInputTools,
 	useProviderAttachments,
 } from "@superset/ui/ai-elements/prompt-input";
+import { Button } from "@superset/ui/button";
 import { Input } from "@superset/ui/input";
 import { isEnterSubmit } from "@superset/ui/lib/keyboard";
+import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
-import type { FileUIPart } from "ai";
+import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -26,13 +23,18 @@ import { SiLinear } from "react-icons/si";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { LinkedIssuePill } from "renderer/components/Chat/ChatInterface/components/ChatInputFooter/components/LinkedIssuePill";
 import { IssueLinkCommand } from "renderer/components/Chat/ChatInterface/components/IssueLinkCommand";
+import { resolveHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
 import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferences";
 import { useEnabledAgents } from "renderer/hooks/useEnabledAgents";
 import { PLATFORM } from "renderer/hotkeys";
+import { authClient } from "renderer/lib/auth-client";
+import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { useNewWorkspaceModalOpen } from "renderer/stores/new-workspace-modal";
+import { useNewWorkspacePromptContext } from "renderer/stores/new-workspace-prompt-context";
 import { useV2WorkspaceCreateDefaultsStore } from "renderer/stores/v2-workspace-create-defaults";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
 import { DevicePicker } from "../components/DevicePicker";
+import { useWorkspaceHostOptions } from "../components/DevicePicker/hooks/useWorkspaceHostOptions";
 import { AttachmentButtons } from "./components/AttachmentButtons";
 import { CompareBaseBranchPicker } from "./components/CompareBaseBranchPicker";
 import { GitHubIssueLinkCommand } from "./components/GitHubIssueLinkCommand";
@@ -40,9 +42,14 @@ import { LinkedGitHubIssuePill } from "./components/LinkedGitHubIssuePill";
 import { LinkedPRPill } from "./components/LinkedPRPill";
 import { PRLinkCommand } from "./components/PRLinkCommand";
 import { ProjectPickerPill } from "./components/ProjectPickerPill";
+import { UploadingAttachmentPill } from "./components/UploadingAttachmentPill";
 import { useBranchPickerController } from "./hooks/useBranchPickerController";
 import { useLinkedContext } from "./hooks/useLinkedContext";
 import { useSubmitWorkspace } from "./hooks/useSubmitWorkspace";
+import {
+	useFileIdsForHost,
+	useUploadAttachments,
+} from "./hooks/useUploadAttachments";
 import {
 	AGENT_STORAGE_KEY,
 	PILL_BUTTON_CLASS,
@@ -66,7 +73,12 @@ export function PromptGroup({
 	const modKey = PLATFORM === "mac" ? "⌘" : "Ctrl";
 	const isNewWorkspaceModalOpen = useNewWorkspaceModalOpen();
 	const { closeModal, draft, updateDraft } = useDashboardNewWorkspaceDraft();
+	const navigate = useNavigate();
 	const attachments = useProviderAttachments();
+	const { activeHostUrl, machineId } = useLocalHostService();
+	const { data: session } = authClient.useSession();
+	const activeOrganizationId = session?.session?.activeOrganizationId;
+	const needsSetup = selectedProject?.needsSetup === true;
 	const persistedBaseBranchDefault = useV2WorkspaceCreateDefaultsStore(
 		(state) =>
 			projectId ? (state.baseBranchesByProjectId[projectId] ?? null) : null,
@@ -77,12 +89,21 @@ export function PromptGroup({
 	const clearBaseBranchDefault = useV2WorkspaceCreateDefaultsStore(
 		(state) => state.clearBaseBranchDefault,
 	);
-	const setLastHostTarget = useV2WorkspaceCreateDefaultsStore(
-		(state) => state.setLastHostTarget,
+	const setLastHostId = useV2WorkspaceCreateDefaultsStore(
+		(state) => state.setLastHostId,
 	);
+	const handleGoToSetup = useCallback(() => {
+		if (!selectedProject?.id) return;
+		const targetProjectId = selectedProject.id;
+		closeModal();
+		void navigate({
+			to: "/settings/projects/$projectId",
+			params: { projectId: targetProjectId },
+		});
+	}, [closeModal, navigate, selectedProject?.id]);
 	const {
 		baseBranch,
-		hostTarget,
+		hostId,
 		prompt,
 		workspaceName,
 		branchName,
@@ -107,36 +128,33 @@ export function PromptGroup({
 			agentsReady: agentsFetched,
 		});
 
-	const trimmedPrompt = prompt.trim();
 	const branchPreview = branchNameEdited
 		? sanitizeUserBranchName(branchName)
-		: slugifyForBranch(trimmedPrompt);
+		: "";
 
 	// Reset baseBranch on project or host change, defaulting to the user's
 	// last selected branch for that project when one exists.
 	const previousProjectIdRef = useRef(projectId);
-	const previousHostRef = useRef(JSON.stringify(hostTarget));
+	const previousHostIdRef = useRef(hostId);
 	useEffect(() => {
-		const nextHost = JSON.stringify(hostTarget);
 		if (
 			previousProjectIdRef.current !== projectId ||
-			previousHostRef.current !== nextHost
+			previousHostIdRef.current !== hostId
 		) {
 			previousProjectIdRef.current = projectId;
-			previousHostRef.current = nextHost;
+			previousHostIdRef.current = hostId;
 			updateDraft({
 				baseBranch: persistedBaseBranchDefault?.branchName ?? null,
 				baseBranchSource: persistedBaseBranchDefault?.source ?? null,
 			});
 		}
-	}, [projectId, hostTarget, persistedBaseBranchDefault, updateDraft]);
+	}, [projectId, hostId, persistedBaseBranchDefault, updateDraft]);
 
 	// ── Branch picker controller ─────────────────────────────────────
 	const { pickerProps } = useBranchPickerController({
 		projectId,
-		hostTarget,
+		hostId,
 		baseBranch,
-		runSetupScript: draft.runSetupScript,
 		typedWorkspaceName: workspaceName,
 		onBaseBranchChange: (branch, source) => {
 			if (projectId) {
@@ -151,39 +169,88 @@ export function PromptGroup({
 		closeModal,
 	});
 
+	// ── Optimistic attachment upload ─────────────────────────────────
+	const uploadHostUrl = useMemo(() => {
+		const id = draft.hostId ?? machineId;
+		if (!id || !activeOrganizationId) return null;
+		return (
+			resolveHostUrl({
+				hostId: id,
+				machineId,
+				activeHostUrl,
+				organizationId: activeOrganizationId,
+			}) ?? null
+		);
+	}, [draft.hostId, machineId, activeHostUrl, activeOrganizationId]);
+	const uploadAttachments = useUploadAttachments({
+		files: attachments.files,
+		hostUrl: uploadHostUrl,
+	});
+
+	// File pills follow the picker: only files attached *while* on this host
+	// show, with previous-host attachments preserved silently in the upload
+	// store for return visits.
+	const fileIdsForCurrentHost = useFileIdsForHost(uploadHostUrl);
+	const visibleFiles = useMemo(() => {
+		const idSet = new Set(fileIdsForCurrentHost);
+		return attachments.files.filter((file) => idSet.has(file.id));
+	}, [attachments.files, fileIdsForCurrentHost]);
+
+	// Submit gating: surface preconditions inline next to the submit button
+	// instead of letting all three submit paths (button, Enter, Cmd+Enter)
+	// fall into a toast.
+	const { otherHosts } = useWorkspaceHostOptions();
+	const submitBlocker = useMemo<string | null>(() => {
+		if (!projectId) return "Select a project";
+		const selectedHostId = draft.hostId ?? machineId;
+		if (!selectedHostId) return "No active host";
+		if (selectedHostId !== machineId) {
+			const remote = otherHosts.find((h) => h.id === selectedHostId);
+			if (!remote?.isOnline) return "Host is offline";
+		} else if (!activeHostUrl) {
+			return "Host service is not running";
+		}
+		return null;
+	}, [projectId, draft.hostId, machineId, activeHostUrl, otherHosts]);
+
+	// ── Linked-context prefetch ──────────────────────────────────────
+	const promptContext = useNewWorkspacePromptContext({
+		projectId,
+		hostId,
+		linkedPR,
+		linkedIssues,
+	});
+
 	// ── Submit (fork) ────────────────────────────────────────────────
-	const handleCreate = useSubmitWorkspace(projectId, selectedAgent);
-	const handlePromptSubmit = useCallback(
-		(message: { text?: string; files?: FileUIPart[] }) => {
-			// Library converts blob: → data: URLs before calling us; pass them
-			// through. We intentionally do not read attachments from the
-			// provider here — the library clears + revokes before onSubmit, so
-			// the provider's state is stale by this point.
-			const files = (message.files ?? [])
-				.filter((f) => typeof f.url === "string" && f.url.length > 0)
-				.map((f) => ({
-					url: f.url,
-					mediaType: f.mediaType,
-					filename: f.filename,
-				}));
-			void handleCreate(files);
-		},
-		[handleCreate],
+	const createWorkspace = useSubmitWorkspace(
+		projectId,
+		selectedAgent,
+		uploadAttachments,
+		promptContext,
 	);
+	const handleSubmit = useCallback(() => {
+		if (needsSetup) {
+			handleGoToSetup();
+			return;
+		}
+		if (submitBlocker) {
+			toast.error(submitBlocker);
+			return;
+		}
+		void createWorkspace();
+	}, [createWorkspace, handleGoToSetup, needsSetup, submitBlocker]);
 
 	useEffect(() => {
 		if (!isNewWorkspaceModalOpen) return;
 		const handler = (e: KeyboardEvent) => {
+			if (e.repeat) return;
 			if (!isEnterSubmit(e, { requireMod: true })) return;
 			e.preventDefault();
-			// Keyboard fallback: submit without attachments. Inside the
-			// modal's form focus, PromptInput's own Enter handler fires
-			// instead and routes through handlePromptSubmit with files.
-			void handleCreate();
+			handleSubmit();
 		};
 		window.addEventListener("keydown", handler);
 		return () => window.removeEventListener("keydown", handler);
-	}, [isNewWorkspaceModalOpen, handleCreate]);
+	}, [isNewWorkspaceModalOpen, handleSubmit]);
 
 	// ── Linked issues / PR ───────────────────────────────────────────
 	const {
@@ -239,15 +306,13 @@ export function PromptGroup({
 
 			{/* Prompt input */}
 			<PromptInput
-				onSubmit={handlePromptSubmit}
+				onSubmit={handleSubmit}
 				multiple
 				maxFiles={5}
 				maxFileSize={10 * 1024 * 1024}
 				className="[&>[data-slot=input-group]]:rounded-[13px] [&>[data-slot=input-group]]:border-[0.5px] [&>[data-slot=input-group]]:shadow-none [&>[data-slot=input-group]]:bg-foreground/[0.02]"
 			>
-				{(linkedPR ||
-					linkedIssues.length > 0 ||
-					attachments.files.length > 0) && (
+				{(linkedPR || linkedIssues.length > 0 || visibleFiles.length > 0) && (
 					<div className="flex flex-wrap items-start gap-2 px-3 pt-3 self-stretch">
 						<AnimatePresence initial={false}>
 							{linkedPR && (
@@ -293,9 +358,13 @@ export function PromptGroup({
 								</motion.div>
 							))}
 						</AnimatePresence>
-						<PromptInputAttachments>
-							{(file) => <PromptInputAttachment data={file} />}
-						</PromptInputAttachments>
+						{visibleFiles.map((file) => (
+							<UploadingAttachmentPill
+								key={file.id}
+								file={file}
+								hostUrl={uploadHostUrl}
+							/>
+						))}
 					</div>
 				)}
 				<PromptInputTextarea
@@ -304,6 +373,12 @@ export function PromptGroup({
 					className="min-h-10"
 					value={prompt}
 					onChange={(e) => updateDraft({ prompt: e.target.value })}
+					onKeyDown={(e) => {
+						// Disable the library's plain-Enter → submit. Submit only
+						// happens via the button or the window-level Cmd/Ctrl+Enter
+						// listener. Plain Enter inserts a newline (default).
+						if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) return;
+					}}
 				/>
 				<PromptInputFooter>
 					<PromptInputTools className="gap-1.5">
@@ -346,7 +421,7 @@ export function PromptGroup({
 										)
 									}
 									projectId={projectId}
-									hostTarget={hostTarget}
+									hostId={hostId}
 									tooltipLabel="Link GitHub issue"
 								>
 									<PromptInputButton
@@ -361,7 +436,7 @@ export function PromptGroup({
 								<PRLinkCommand
 									onSelect={setLinkedPR}
 									projectId={projectId}
-									hostTarget={hostTarget}
+									hostId={hostId}
 									tooltipLabel="Link pull request"
 								>
 									<PromptInputButton
@@ -375,9 +450,10 @@ export function PromptGroup({
 						/>
 						<PromptInputSubmit
 							className="size-[22px] rounded-full border border-transparent bg-foreground/10 shadow-none p-[5px] hover:bg-foreground/20"
+							disabled={needsSetup}
 							onClick={(e) => {
 								e.preventDefault();
-								void handleCreate();
+								handleSubmit();
 							}}
 						>
 							<ArrowUpIcon className="size-3.5 text-muted-foreground" />
@@ -390,10 +466,10 @@ export function PromptGroup({
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2 min-w-0 flex-1">
 					<DevicePicker
-						hostTarget={hostTarget}
-						onSelectHostTarget={(t) => {
-							setLastHostTarget(t);
-							updateDraft({ hostTarget: t });
+						hostId={hostId}
+						onSelectHostId={(next) => {
+							setLastHostId(next);
+							updateDraft({ hostId: next });
 						}}
 					/>
 					<ProjectPickerPill
@@ -429,19 +505,21 @@ export function PromptGroup({
 					</AnimatePresence>
 				</div>
 				<div className="flex items-center gap-1.5">
-					<DevicePicker
-						className="w-[160px]"
-						hostTarget={hostTarget}
-						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
-					/>
-					{selectedProject?.needsSetup === true && (
-						<span className="text-[11px] text-amber-500">
-							Project needs to be set up
+					{needsSetup ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-6 px-2 text-[11px] text-amber-500 hover:text-amber-500"
+							onClick={handleGoToSetup}
+						>
+							Set up project…
+						</Button>
+					) : (
+						<span className="text-[11px] text-muted-foreground/50">
+							{modKey}↵
 						</span>
 					)}
-					<span className="text-[11px] text-muted-foreground/50">
-						{modKey}↵
-					</span>
 				</div>
 			</div>
 		</div>

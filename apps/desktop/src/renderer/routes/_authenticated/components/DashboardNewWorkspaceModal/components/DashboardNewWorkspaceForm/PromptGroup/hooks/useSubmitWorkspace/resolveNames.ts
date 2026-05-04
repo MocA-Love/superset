@@ -1,38 +1,28 @@
-import {
-	generateFriendlyBranchName,
-	sanitizeUserBranchName,
-	slugifyForBranch,
-} from "@superset/shared/workspace-launch";
+import { sanitizeUserBranchName } from "@superset/shared/workspace-launch";
 import type { DashboardNewWorkspaceDraft } from "../../../../../DashboardNewWorkspaceDraftContext";
 
 interface ResolvedNames {
-	branchName: string;
-	workspaceName: string;
+	/** User-typed (sanitized) branch, or null when not typed. */
+	branchName: string | null;
+	/** User-typed workspace name, or null when not typed. */
+	workspaceName: string | null;
 }
 
 /**
- * Resolves the branch name and workspace display name from draft state.
- * Pure function — no side effects, no hooks.
- *
- * Priority:
- * - Branch: user-typed (sanitized) > prompt slug > friendly random
- * - Workspace: user-typed > prompt text > same as branch
+ * Returns whatever the user typed; null otherwise. The host-service
+ * generates a friendly random for the missing side and runs the AI
+ * rename for any side that wasn't user-supplied.
  */
 export function resolveNames(draft: DashboardNewWorkspaceDraft): ResolvedNames {
-	const trimmedPrompt = draft.prompt.trim();
-	const friendlyFallback = generateFriendlyBranchName();
-
 	const branchName =
 		draft.branchNameEdited && draft.branchName.trim()
 			? sanitizeUserBranchName(draft.branchName.trim())
-			: trimmedPrompt
-				? slugifyForBranch(trimmedPrompt)
-				: friendlyFallback;
+			: null;
 
 	const workspaceName =
 		draft.workspaceNameEdited && draft.workspaceName.trim()
 			? draft.workspaceName.trim()
-			: trimmedPrompt || friendlyFallback;
+			: null;
 
 	return { branchName, workspaceName };
 }
