@@ -1,5 +1,4 @@
 import type { SettingsSection } from "renderer/stores/settings-state";
-import { SUPPORTS_AGENT_SLEEP_PREVENTION } from "shared/constants";
 
 export const SETTING_ITEM_ID = {
 	ACCOUNT_PROFILE: "account-profile",
@@ -18,32 +17,18 @@ export const SETTING_ITEM_ID = {
 	APPEARANCE_CUSTOM_THEMES: "appearance-custom-themes",
 	APPEARANCE_EDITOR_FONT: "appearance-editor-font",
 	APPEARANCE_TERMINAL_FONT: "appearance-terminal-font",
-	APPEARANCE_VIBRANCY: "appearance-vibrancy",
 
 	RINGTONES_NOTIFICATION: "ringtones-notification",
-	RINGTONES_AIVIS: "ringtones-aivis",
-	RINGTONES_AIVIS_DICTIONARY: "ringtones-aivis-dictionary",
-	RINGTONES_AIVIS_USAGE: "ringtones-aivis-usage",
 
 	KEYBOARD_SHORTCUTS: "keyboard-shortcuts",
 	BEHAVIOR_CONFIRM_QUIT: "behavior-confirm-quit",
-	BEHAVIOR_TELEMETRY: "behavior-telemetry",
-	BEHAVIOR_PREVENT_AGENT_SLEEP: "behavior-prevent-agent-sleep",
 	BEHAVIOR_FILE_OPEN_MODE: "behavior-file-open-mode",
-	BEHAVIOR_FILE_DRAG_BEHAVIOR: "behavior-file-drag-behavior",
-	BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH:
-		"behavior-right-sidebar-open-view-width",
 	BEHAVIOR_RESOURCE_MONITOR: "behavior-resource-monitor",
 	BEHAVIOR_OPEN_LINKS_IN_APP: "behavior-open-links-in-app",
-	BEHAVIOR_LANGUAGE_DIAGNOSTICS: "behavior-language-diagnostics",
 
 	GIT_BRANCH_PREFIX: "git-branch-prefix",
 	GIT_DELETE_LOCAL_BRANCH: "git-delete-local-branch",
 	GIT_WORKTREE_LOCATION: "git-worktree-location",
-	GIT_SMART_COMMIT: "git-smart-commit",
-	GIT_AUTO_STASH: "git-auto-stash",
-	GIT_BRANCH_SORT_ORDER: "git-branch-sort-order",
-	GIT_POST_COMMIT_COMMAND: "git-post-commit-command",
 
 	AGENTS_ENABLED: "agents-enabled",
 	AGENTS_COMMANDS: "agents-commands",
@@ -52,19 +37,17 @@ export const SETTING_ITEM_ID = {
 	TERMINAL_PRESETS: "terminal-presets",
 	TERMINAL_QUICK_ADD: "terminal-quick-add",
 	TERMINAL_SESSIONS: "terminal-sessions",
-	TERMINAL_SUGGESTIONS: "terminal-suggestions",
 	TERMINAL_LINK_BEHAVIOR: "terminal-link-behavior",
 
 	LINKS_FILE: "links-file",
 	LINKS_URL: "links-url",
+	LINKS_SIDEBAR_FILE: "links-sidebar-file",
 
 	MODELS_ANTHROPIC: "models-anthropic",
 	MODELS_OPENAI: "models-openai",
-	MODELS_NEXT_EDIT: "models-next-edit",
 
 	EXPERIMENTAL_SUPERSET_V2: "experimental-superset-v2",
 	EXPERIMENTAL_V1_MIGRATION: "experimental-v1-migration",
-	EXPERIMENTAL_RESTART_ONBOARDING: "experimental-restart-onboarding",
 
 	INTEGRATIONS_LINEAR: "integrations-linear",
 	INTEGRATIONS_GITHUB: "integrations-github",
@@ -80,31 +63,14 @@ export const SETTING_ITEM_ID = {
 	PROJECT_BRANCH_PREFIX: "project-branch-prefix",
 	PROJECT_WORKTREE_LOCATION: "project-worktree-location",
 	PROJECT_IMPORT_WORKTREES: "project-import-worktrees",
-	PROJECT_AUTO_IMPORT_WORKTREES: "project-auto-import-worktrees",
-	PROJECT_AUTO_REMOVE_WORKTREES: "project-auto-remove-worktrees",
 	PROJECT_ENV_VARS: "project-env-vars",
 
 	API_KEYS_LIST: "api-keys-list",
 	API_KEYS_GENERATE: "api-keys-generate",
 
-	EXTENSIONS_BROWSER: "extensions-browser",
-
-	VSCODE_EXTENSIONS_MANAGE: "vscode-extensions-manage",
-	VSCODE_EXTENSIONS_INDENT_RAINBOW: "vscode-extensions-indent-rainbow",
-	VSCODE_EXTENSIONS_TRAILING_SPACES: "vscode-extensions-trailing-spaces",
-	VSCODE_EXTENSIONS_REFERENCE_GRAPH: "vscode-extensions-reference-graph",
-
-	METRICS_GITHUB_OVERVIEW: "metrics-github-overview",
-	METRICS_GITHUB_TRAFFIC: "metrics-github-traffic",
-	METRICS_GITHUB_COPY: "metrics-github-copy",
-
-	SERVICE_STATUS_PROVIDERS: "service-status-providers",
-	SERVICE_STATUS_ADD: "service-status-add",
-
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
-	PERMISSIONS_CAMERA: "permissions-camera",
 	PERMISSIONS_APPLE_EVENTS: "permissions-apple-events",
 	PERMISSIONS_LOCAL_NETWORK: "permissions-local-network",
 
@@ -154,12 +120,8 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.APPEARANCE_CUSTOM_THEMES]: "shared",
 	[SETTING_ITEM_ID.APPEARANCE_EDITOR_FONT]: "shared",
 	[SETTING_ITEM_ID.APPEARANCE_TERMINAL_FONT]: "shared",
-	[SETTING_ITEM_ID.APPEARANCE_VIBRANCY]: "shared",
 
 	[SETTING_ITEM_ID.RINGTONES_NOTIFICATION]: "shared",
-	[SETTING_ITEM_ID.RINGTONES_AIVIS]: "shared",
-	[SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY]: "shared",
-	[SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE]: "shared",
 
 	[SETTING_ITEM_ID.KEYBOARD_SHORTCUTS]: "shared",
 
@@ -167,54 +129,29 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE]: "v1",
 	[SETTING_ITEM_ID.BEHAVIOR_RESOURCE_MONITOR]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP]: "v1",
-	[SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR]: "shared",
-	[SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS]: "shared",
-	[SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP]: "shared",
-	[SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH]: "shared",
-	[SETTING_ITEM_ID.BEHAVIOR_TELEMETRY]: "shared",
 
 	[SETTING_ITEM_ID.GIT_BRANCH_PREFIX]: "v1",
 	[SETTING_ITEM_ID.GIT_DELETE_LOCAL_BRANCH]: "v1",
 	[SETTING_ITEM_ID.GIT_WORKTREE_LOCATION]: "v1",
-	[SETTING_ITEM_ID.GIT_AUTO_STASH]: "shared",
-	[SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER]: "shared",
-	[SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND]: "shared",
-	[SETTING_ITEM_ID.GIT_SMART_COMMIT]: "shared",
 
 	[SETTING_ITEM_ID.AGENTS_ENABLED]: "shared",
 	[SETTING_ITEM_ID.AGENTS_COMMANDS]: "shared",
 	[SETTING_ITEM_ID.AGENTS_TASK_PROMPTS]: "shared",
 
 	[SETTING_ITEM_ID.TERMINAL_PRESETS]: "shared",
-	[SETTING_ITEM_ID.TERMINAL_QUICK_ADD]: "shared",
+	[SETTING_ITEM_ID.TERMINAL_QUICK_ADD]: "v1",
 	[SETTING_ITEM_ID.TERMINAL_SESSIONS]: "shared",
 	[SETTING_ITEM_ID.TERMINAL_LINK_BEHAVIOR]: "v1",
-	[SETTING_ITEM_ID.TERMINAL_SUGGESTIONS]: "shared",
-
-	[SETTING_ITEM_ID.SERVICE_STATUS_ADD]: "shared",
-	[SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS]: "shared",
-
-	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_INDENT_RAINBOW]: "shared",
-	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE]: "shared",
-	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_REFERENCE_GRAPH]: "shared",
-	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_TRAILING_SPACES]: "shared",
 
 	[SETTING_ITEM_ID.LINKS_FILE]: "v2",
 	[SETTING_ITEM_ID.LINKS_URL]: "v2",
+	[SETTING_ITEM_ID.LINKS_SIDEBAR_FILE]: "v2",
 
 	[SETTING_ITEM_ID.MODELS_ANTHROPIC]: "shared",
 	[SETTING_ITEM_ID.MODELS_OPENAI]: "shared",
-	[SETTING_ITEM_ID.MODELS_NEXT_EDIT]: "shared",
 
 	[SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2]: "shared",
 	[SETTING_ITEM_ID.EXPERIMENTAL_V1_MIGRATION]: "v2",
-	[SETTING_ITEM_ID.EXPERIMENTAL_RESTART_ONBOARDING]: "v2",
-
-	[SETTING_ITEM_ID.EXTENSIONS_BROWSER]: "shared",
-
-	[SETTING_ITEM_ID.METRICS_GITHUB_COPY]: "shared",
-	[SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW]: "shared",
-	[SETTING_ITEM_ID.METRICS_GITHUB_TRAFFIC]: "shared",
 
 	[SETTING_ITEM_ID.INTEGRATIONS_LINEAR]: "shared",
 	[SETTING_ITEM_ID.INTEGRATIONS_GITHUB]: "shared",
@@ -231,8 +168,6 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.PROJECT_WORKTREE_LOCATION]: "v1",
 	[SETTING_ITEM_ID.PROJECT_IMPORT_WORKTREES]: "v1",
 	[SETTING_ITEM_ID.PROJECT_ENV_VARS]: "v2",
-	[SETTING_ITEM_ID.PROJECT_AUTO_IMPORT_WORKTREES]: "v1",
-	[SETTING_ITEM_ID.PROJECT_AUTO_REMOVE_WORKTREES]: "v1",
 
 	[SETTING_ITEM_ID.API_KEYS_LIST]: "shared",
 	[SETTING_ITEM_ID.API_KEYS_GENERATE]: "shared",
@@ -242,7 +177,6 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.PERMISSIONS_MICROPHONE]: "shared",
 	[SETTING_ITEM_ID.PERMISSIONS_APPLE_EVENTS]: "shared",
 	[SETTING_ITEM_ID.PERMISSIONS_LOCAL_NETWORK]: "shared",
-	[SETTING_ITEM_ID.PERMISSIONS_CAMERA]: "shared",
 
 	[SETTING_ITEM_ID.SECURITY_EXPOSE_HOST_SERVICE_VIA_RELAY]: "shared",
 
@@ -483,26 +417,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
-		id: SETTING_ITEM_ID.APPEARANCE_VIBRANCY,
-		section: "appearance",
-		title: "Window Vibrancy",
-		description: "Make the window semi-transparent with a macOS vibrancy blur",
-		keywords: [
-			"appearance",
-			"vibrancy",
-			"transparent",
-			"transparency",
-			"blur",
-			"opacity",
-			"glass",
-			"warp",
-			"macos",
-			"ウィンドウ透過",
-			"不透明度",
-			"ブラー",
-		],
-	},
-	{
 		id: SETTING_ITEM_ID.RINGTONES_NOTIFICATION,
 		section: "ringtones",
 		title: "Notification Sound",
@@ -522,53 +436,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"chime",
 			"mute",
 			"volume",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.RINGTONES_AIVIS,
-		section: "ringtones",
-		title: "Aivis Voice Announcement",
-		description:
-			"Speak the workspace/branch via Aivis API after the notification sound",
-		keywords: [
-			"aivis",
-			"tts",
-			"voice",
-			"speech",
-			"announce",
-			"読み上げ",
-			"音声合成",
-			"アイビス",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY,
-		section: "ringtones",
-		title: "Aivis User Dictionary",
-		description:
-			"Register custom pronunciations for branch names, acronyms, and proper nouns",
-		keywords: [
-			"aivis",
-			"dictionary",
-			"pronunciation",
-			"辞書",
-			"読み方",
-			"カスタム読み",
-			"固有名詞",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE,
-		section: "ringtones",
-		title: "Aivis Usage",
-		description: "Daily Aivis API request count, characters and credits",
-		keywords: [
-			"aivis",
-			"usage",
-			"credits",
-			"使用量",
-			"クレジット",
-			"リクエスト",
 		],
 	},
 	{
@@ -644,104 +511,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
-		id: SETTING_ITEM_ID.GIT_SMART_COMMIT,
-		section: "git",
-		title: "Smart Commit",
-		description:
-			"Commit all changes when there are no staged changes (VS Code style)",
-		keywords: [
-			"git",
-			"commit",
-			"smart",
-			"stage",
-			"staged",
-			"unstaged",
-			"tracked",
-			"auto",
-			"all",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.GIT_AUTO_STASH,
-		section: "git",
-		title: "Auto Stash",
-		description:
-			"Stash local changes before pull/sync and restore after (VS Code style)",
-		keywords: ["git", "stash", "pull", "sync", "auto", "restore", "pop"],
-	},
-	{
-		id: SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER,
-		section: "git",
-		title: "Branch Sort Order",
-		description:
-			"Order used in the base branch picker (committer date or alphabetical)",
-		keywords: [
-			"git",
-			"branch",
-			"sort",
-			"order",
-			"committer",
-			"date",
-			"alphabetical",
-			"picker",
-			"pin",
-			"default",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND,
-		section: "git",
-		title: "Post Commit Command",
-		description:
-			"Run push or sync automatically after a successful commit (VS Code style)",
-		keywords: ["git", "commit", "post", "push", "sync", "auto", "after"],
-	},
-	{
-		id: SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,
-		section: "behavior",
-		title: "Send anonymous usage data",
-		description: "Help improve Superset by sending anonymous usage data",
-		keywords: [
-			"telemetry",
-			"analytics",
-			"tracking",
-			"privacy",
-			"data",
-			"usage",
-			"anonymous",
-			"metrics",
-			"opt out",
-			"disable",
-		],
-	},
-	...(SUPPORTS_AGENT_SLEEP_PREVENTION
-		? [
-				{
-					id: SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
-					section: "behavior",
-					title: "Prevent system sleep during agent tasks",
-					description:
-						"Keep your computer awake while agents are running in Superset terminals on supported macOS and Linux systems",
-					keywords: [
-						"sleep",
-						"mac",
-						"macos",
-						"linux",
-						"arch",
-						"awake",
-						"caffeinate",
-						"systemd",
-						"systemd-inhibit",
-						"agent",
-						"claude",
-						"codex",
-						"terminal",
-						"power",
-					],
-				} satisfies SettingsItem,
-			]
-		: []),
-	{
 		id: SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
 		section: "behavior",
 		title: "File open mode",
@@ -758,45 +527,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"split pane",
 			"viewer",
 			"behavior",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR,
-		section: "behavior",
-		title: "Sidebar file drag behavior",
-		description:
-			"Choose whether dragging files from the Files or Changes sidebar opens the file viewer or pastes file paths into terminals",
-		keywords: [
-			"file",
-			"drag",
-			"drop",
-			"drag and drop",
-			"sidebar",
-			"files",
-			"changes",
-			"terminal",
-			"path",
-			"viewer",
-			"behavior",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
-		section: "behavior",
-		title: "Right sidebar open view width",
-		description:
-			"Choose the initial width for new file and diff views opened from the Files or Git sidebar",
-		keywords: [
-			"right sidebar",
-			"files",
-			"git",
-			"diff",
-			"width",
-			"split",
-			"pane",
-			"initial",
-			"viewer",
-			"changes",
 		],
 	},
 	{
@@ -850,28 +580,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"chat",
 			"terminal",
 			"url",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS,
-		section: "diagnostics",
-		title: "Language diagnostics",
-		description:
-			"Choose which language services report errors and warnings in Problems",
-		keywords: [
-			"diagnostics",
-			"problems",
-			"errors",
-			"warnings",
-			"typescript",
-			"tsx",
-			"json",
-			"toml",
-			"dart",
-			"flutter",
-			"language server",
-			"lint",
-			"validation",
 		],
 	},
 	{
@@ -986,22 +694,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
-		id: SETTING_ITEM_ID.TERMINAL_SUGGESTIONS,
-		section: "terminal",
-		title: "Shell History Suggestions",
-		description: "Show command suggestions from shell history",
-		keywords: [
-			"terminal",
-			"suggest",
-			"suggestion",
-			"autocomplete",
-			"history",
-			"shell",
-			"command",
-			"dropdown",
-		],
-	},
-	{
 		id: SETTING_ITEM_ID.TERMINAL_LINK_BEHAVIOR,
 		section: "terminal",
 		title: "Link Behavior",
@@ -1071,6 +763,32 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
+		id: SETTING_ITEM_ID.LINKS_SIDEBAR_FILE,
+		section: "links",
+		title: "Sidebar file rows",
+		description:
+			"How file rows in the file tree, changes list, and diff header open when clicked",
+		keywords: [
+			"links",
+			"sidebar",
+			"file tree",
+			"changes",
+			"diff",
+			"file",
+			"click",
+			"cmd",
+			"ctrl",
+			"shift",
+			"meta",
+			"new tab",
+			"editor",
+			"external",
+			"open",
+			"select",
+			"behavior",
+		],
+	},
+	{
 		id: SETTING_ITEM_ID.MODELS_ANTHROPIC,
 		section: "models",
 		title: "Anthropic Model Auth",
@@ -1103,35 +821,41 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
-		id: SETTING_ITEM_ID.MODELS_NEXT_EDIT,
-		section: "models",
-		title: "Next Edit",
-		description: "Configure Inception inline code completion for the editor",
+		id: SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2,
+		section: "experimental",
+		title: "Try Superset Version 2 (Early Access)",
+		description: "Switch between Superset V1 and the new V2 experience",
 		keywords: [
-			"models",
-			"next edit",
-			"inception",
-			"inline completion",
-			"tab completion",
-			"ghost text",
-			"autocomplete",
-			"api key",
-			"mercury coder",
+			"experimental",
+			"experiments",
+			"v2",
+			"v1",
+			"version",
+			"early access",
+			"beta",
+			"preview",
+			"workspace",
+			"workspaces",
+			"toggle",
+			"switch",
 		],
 	},
 	{
-		id: SETTING_ITEM_ID.EXPERIMENTAL_RESTART_ONBOARDING,
+		id: SETTING_ITEM_ID.EXPERIMENTAL_V1_MIGRATION,
 		section: "experimental",
-		title: "Restart onboarding",
-		description: "Walk through the v2 setup flow again",
+		title: "V1 to V2 Migration",
+		description: "Rerun the V1 to V2 data migration",
 		keywords: [
-			"onboarding",
-			"setup",
-			"restart",
-			"redo",
-			"walkthrough",
-			"tour",
+			"experimental",
+			"migration",
+			"migrate",
+			"rerun",
+			"retry",
+			"recover",
+			"v1",
 			"v2",
+			"projects",
+			"workspaces",
 		],
 	},
 	{
@@ -1334,45 +1058,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
-		id: SETTING_ITEM_ID.PROJECT_AUTO_IMPORT_WORKTREES,
-		section: "project",
-		title: "Auto-import detected worktrees",
-		description:
-			"Automatically import worktrees created outside Superset (e.g. by LLM agents)",
-		keywords: [
-			"project",
-			"auto",
-			"automatic",
-			"import",
-			"worktree",
-			"worktrees",
-			"detect",
-			"llm",
-			"claude",
-			"agent",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.PROJECT_AUTO_REMOVE_WORKTREES,
-		section: "project",
-		title: "Auto-remove missing worktrees",
-		description:
-			"Automatically remove worktrees from the sidebar when they are deleted from disk",
-		keywords: [
-			"project",
-			"auto",
-			"automatic",
-			"remove",
-			"delete",
-			"cleanup",
-			"missing",
-			"worktree",
-			"worktrees",
-			"orphan",
-			"sync",
-		],
-	},
-	{
 		id: SETTING_ITEM_ID.PROJECT_ENV_VARS,
 		section: "project",
 		title: "Environment Variables",
@@ -1418,179 +1103,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"mcp",
 			"claude desktop",
 			"claude code",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.EXTENSIONS_BROWSER,
-		section: "extensions",
-		title: "Browser Extensions",
-		description:
-			"Install and manage Chrome extensions from the Chrome Web Store",
-		keywords: [
-			"extensions",
-			"chrome",
-			"browser",
-			"web store",
-			"addon",
-			"plugin",
-			"install",
-			"crx",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE,
-		section: "vscodeExtensions",
-		title: "VS Code Extensions",
-		description:
-			"Manage VS Code extensions like Claude Code, ChatGPT, and Kimi Code running inside Superset",
-		keywords: [
-			"vscode",
-			"vs code",
-			"extension",
-			"claude",
-			"chatgpt",
-			"codex",
-			"kimi",
-			"ai",
-			"install",
-			"manage",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_INDENT_RAINBOW,
-		section: "vscodeExtensions",
-		title: "Indent Rainbow",
-		description:
-			"Colorize indentation levels in the code editor with customizable rainbow colors",
-		keywords: [
-			"indent",
-			"rainbow",
-			"color",
-			"indentation",
-			"editor",
-			"highlight",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_TRAILING_SPACES,
-		section: "vscodeExtensions",
-		title: "Trailing Spaces",
-		description:
-			"Highlight trailing whitespace at the end of lines in the code editor",
-		keywords: [
-			"trailing",
-			"spaces",
-			"whitespace",
-			"trim",
-			"editor",
-			"highlight",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_REFERENCE_GRAPH,
-		section: "vscodeExtensions",
-		title: "Reference Graph",
-		description:
-			"Visualize code symbol references and call hierarchies as interactive graphs",
-		keywords: [
-			"reference",
-			"graph",
-			"call",
-			"hierarchy",
-			"symbol",
-			"visualization",
-			"editor",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW,
-		section: "metrics",
-		title: "GitHub Overview",
-		description:
-			"GitHub sync health, active workspaces, rate limits, and scheduler state",
-		keywords: [
-			"metrics",
-			"github",
-			"overview",
-			"health",
-			"rate limit",
-			"scheduler",
-			"debug",
-			"sync",
-			"status",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.METRICS_GITHUB_TRAFFIC,
-		section: "metrics",
-		title: "GitHub Traffic",
-		description:
-			"Operation volume, cache efficiency, and workspace-level GitHub activity",
-		keywords: [
-			"metrics",
-			"github",
-			"traffic",
-			"cache",
-			"efficiency",
-			"calls",
-			"api",
-			"preview",
-			"comments",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.METRICS_GITHUB_COPY,
-		section: "metrics",
-		title: "GitHub Debug Copy",
-		description:
-			"Copy summary, JSON bundle, and repro template for GitHub sync debugging",
-		keywords: [
-			"metrics",
-			"github",
-			"copy",
-			"debug bundle",
-			"repro",
-			"json",
-			"support",
-			"diagnostics",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS,
-		section: "serviceStatus",
-		title: "Service Status Providers",
-		description:
-			"Manage which external status pages appear in the header (Claude, Codex, GitHub, …)",
-		keywords: [
-			"service status",
-			"status",
-			"providers",
-			"statuspage",
-			"external",
-			"header",
-			"indicator",
-			"health",
-			"uptime",
-			"incident",
-			"dashboard",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.SERVICE_STATUS_ADD,
-		section: "serviceStatus",
-		title: "Add Custom Status Provider",
-		description:
-			"Add a Statuspage.io-compatible provider with a custom label and icon",
-		keywords: [
-			"add service status",
-			"new provider",
-			"custom",
-			"statuspage",
-			"api",
-			"favicon",
-			"icon",
-			"upload",
-			"url",
 		],
 	},
 	{
@@ -1647,24 +1159,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"push to talk",
 			"codex",
 			"privacy",
-		],
-	},
-	{
-		id: SETTING_ITEM_ID.PERMISSIONS_CAMERA,
-		section: "permissions",
-		title: "Camera",
-		description:
-			"Use video input in websites and tools running inside Superset",
-		keywords: [
-			"permissions",
-			"camera",
-			"webcam",
-			"video",
-			"recording",
-			"capture",
-			"privacy",
-			"browser",
-			"website",
 		],
 	},
 	{
@@ -1772,20 +1266,13 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 export function searchSettings(query: string): SettingsItem[] {
 	if (!query.trim()) return SETTINGS_ITEMS;
 
-	const words = query
-		.toLowerCase()
-		.split(/\s+/)
-		.filter((w) => w.length > 0);
-	if (words.length === 0) return SETTINGS_ITEMS;
-
-	return SETTINGS_ITEMS.filter((item) => {
-		const haystack = [
-			item.title.toLowerCase(),
-			item.description.toLowerCase(),
-			...item.keywords.map((kw) => kw.toLowerCase()),
-		].join(" ");
-		return words.every((word) => haystack.includes(word));
-	});
+	const q = query.toLowerCase();
+	return SETTINGS_ITEMS.filter(
+		(item) =>
+			item.title.toLowerCase().includes(q) ||
+			item.description.toLowerCase().includes(q) ||
+			item.keywords.some((kw) => kw.toLowerCase().includes(q)),
+	);
 }
 
 export function getMatchCountBySection(

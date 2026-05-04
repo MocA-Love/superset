@@ -1,5 +1,4 @@
-import type { FileDragBehavior, FileOpenMode } from "@superset/local-db";
-import { Input } from "@superset/ui/input";
+import type { FileOpenMode } from "@superset/local-db";
 import { Label } from "@superset/ui/label";
 import {
 	Select,
@@ -9,15 +8,7 @@ import {
 	SelectValue,
 } from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
-import { type FocusEvent, useCallback, useEffect, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import {
-	clampRightSidebarOpenViewWidth,
-	DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
-	MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
-	MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
-	SUPPORTS_AGENT_SLEEP_PREVENTION,
-} from "shared/constants";
 import {
 	isItemVisible,
 	SETTING_ITEM_ID,
@@ -33,23 +24,8 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		SETTING_ITEM_ID.BEHAVIOR_CONFIRM_QUIT,
 		visibleItems,
 	);
-	const showTelemetry = isItemVisible(
-		SETTING_ITEM_ID.BEHAVIOR_TELEMETRY,
-		visibleItems,
-	);
-	const showPreventAgentSleep =
-		SUPPORTS_AGENT_SLEEP_PREVENTION &&
-		isItemVisible(SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP, visibleItems);
 	const showFileOpenMode = isItemVisible(
 		SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
-		visibleItems,
-	);
-	const showFileDragBehavior = isItemVisible(
-		SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR,
-		visibleItems,
-	);
-	const showRightSidebarOpenViewWidth = isItemVisible(
-		SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
 		visibleItems,
 	);
 	const showResourceMonitor = isItemVisible(
@@ -60,6 +36,7 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP,
 		visibleItems,
 	);
+
 	const utils = electronTrpc.useUtils();
 
 	const { data: confirmOnQuit, isLoading: isConfirmLoading } =
@@ -85,59 +62,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		setConfirmOnQuit.mutate({ enabled });
 	};
 
-	const { data: preventAgentSleep, isLoading: isPreventAgentSleepLoading } =
-		electronTrpc.settings.getPreventAgentSleep.useQuery();
-	const setPreventAgentSleep =
-		electronTrpc.settings.setPreventAgentSleep.useMutation({
-			onMutate: async ({ enabled }) => {
-				await utils.settings.getPreventAgentSleep.cancel();
-				const previous = utils.settings.getPreventAgentSleep.getData();
-				utils.settings.getPreventAgentSleep.setData(undefined, enabled);
-				return { previous };
-			},
-			onError: (_err, _vars, context) => {
-				if (context?.previous !== undefined) {
-					utils.settings.getPreventAgentSleep.setData(
-						undefined,
-						context.previous,
-					);
-				}
-			},
-			onSettled: () => {
-				utils.settings.getPreventAgentSleep.invalidate();
-			},
-		});
-
-	// TODO: remove telemetry query/mutation/handler once telemetry procedures are removed
-	const { data: telemetryEnabled, isLoading: isTelemetryLoading } =
-		electronTrpc.settings.getTelemetryEnabled.useQuery();
-	const setTelemetryEnabled =
-		electronTrpc.settings.setTelemetryEnabled.useMutation({
-			onMutate: async ({ enabled }) => {
-				await utils.settings.getTelemetryEnabled.cancel();
-				const previous = utils.settings.getTelemetryEnabled.getData();
-				utils.settings.getTelemetryEnabled.setData(undefined, enabled);
-				return { previous };
-			},
-			onError: (err, _vars, context) => {
-				console.error("[settings/telemetry] Failed to update:", err);
-				if (context?.previous !== undefined) {
-					utils.settings.getTelemetryEnabled.setData(
-						undefined,
-						context.previous,
-					);
-				}
-			},
-			onSettled: () => {
-				utils.settings.getTelemetryEnabled.invalidate();
-			},
-		});
-
-	const handleTelemetryToggle = (enabled: boolean) => {
-		console.log("[settings/telemetry] Toggling to:", enabled);
-		setTelemetryEnabled.mutate({ enabled });
-	};
-
 	const { data: fileOpenMode, isLoading: isFileOpenModeLoading } =
 		electronTrpc.settings.getFileOpenMode.useQuery();
 	const setFileOpenMode = electronTrpc.settings.setFileOpenMode.useMutation({
@@ -156,77 +80,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 			utils.settings.getFileOpenMode.invalidate();
 		},
 	});
-	const { data: fileDragBehavior, isLoading: isFileDragBehaviorLoading } =
-		electronTrpc.settings.getFileDragBehavior.useQuery();
-	const setFileDragBehavior =
-		electronTrpc.settings.setFileDragBehavior.useMutation({
-			onMutate: async ({ behavior }) => {
-				await utils.settings.getFileDragBehavior.cancel();
-				const previous = utils.settings.getFileDragBehavior.getData();
-				utils.settings.getFileDragBehavior.setData(undefined, behavior);
-				return { previous };
-			},
-			onError: (_err, _vars, context) => {
-				if (context?.previous !== undefined) {
-					utils.settings.getFileDragBehavior.setData(
-						undefined,
-						context.previous,
-					);
-				}
-			},
-			onSettled: () => {
-				utils.settings.getFileDragBehavior.invalidate();
-			},
-		});
-
-	const {
-		data: rightSidebarOpenViewWidth,
-		isLoading: isRightSidebarOpenViewWidthLoading,
-	} = electronTrpc.settings.getRightSidebarOpenViewWidth.useQuery();
-	const setRightSidebarOpenViewWidth =
-		electronTrpc.settings.setRightSidebarOpenViewWidth.useMutation({
-			onMutate: async ({ width }) => {
-				await utils.settings.getRightSidebarOpenViewWidth.cancel();
-				const previous = utils.settings.getRightSidebarOpenViewWidth.getData();
-				utils.settings.getRightSidebarOpenViewWidth.setData(undefined, width);
-				return { previous };
-			},
-			onError: (_err, _vars, context) => {
-				if (context?.previous !== undefined) {
-					utils.settings.getRightSidebarOpenViewWidth.setData(
-						undefined,
-						context.previous,
-					);
-				}
-			},
-			onSettled: () => {
-				utils.settings.getRightSidebarOpenViewWidth.invalidate();
-			},
-		});
-	const [rightSidebarOpenViewWidthDraft, setRightSidebarOpenViewWidthDraft] =
-		useState<string | null>(null);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: sync draft state when setting changes
-	useEffect(() => {
-		setRightSidebarOpenViewWidthDraft(null);
-	}, [rightSidebarOpenViewWidth]);
-
-	const handleRightSidebarOpenViewWidthBlur = useCallback(
-		(event: FocusEvent<HTMLInputElement>) => {
-			const parsedWidth = Number.parseInt(event.target.value, 10);
-			if (Number.isNaN(parsedWidth)) {
-				setRightSidebarOpenViewWidthDraft(null);
-				return;
-			}
-
-			const nextWidth = clampRightSidebarOpenViewWidth(parsedWidth);
-			if (nextWidth !== rightSidebarOpenViewWidth) {
-				setRightSidebarOpenViewWidth.mutate({ width: nextWidth });
-			}
-			setRightSidebarOpenViewWidthDraft(null);
-		},
-		[rightSidebarOpenViewWidth, setRightSidebarOpenViewWidth],
-	);
 
 	const { data: resourceMonitorEnabled, isLoading: isResourceMonitorLoading } =
 		electronTrpc.settings.getShowResourceMonitor.useQuery();
@@ -301,34 +154,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 					</div>
 				)}
 
-				{showPreventAgentSleep && (
-					<div className="flex items-center justify-between">
-						<div className="space-y-0.5">
-							<Label
-								htmlFor="prevent-agent-sleep"
-								className="text-sm font-medium"
-							>
-								Prevent system sleep during agent tasks
-							</Label>
-							<p className="text-xs text-muted-foreground">
-								Keep your computer awake while Claude, Codex, and other agents
-								are running in Superset terminals on supported macOS and Linux
-								systems
-							</p>
-						</div>
-						<Switch
-							id="prevent-agent-sleep"
-							checked={preventAgentSleep ?? false}
-							onCheckedChange={(enabled) =>
-								setPreventAgentSleep.mutate({ enabled })
-							}
-							disabled={
-								isPreventAgentSleepLoading || setPreventAgentSleep.isPending
-							}
-						/>
-					</div>
-				)}
-
 				{showFileOpenMode && (
 					<div className="flex items-center justify-between">
 						<div className="space-y-0.5">
@@ -352,84 +177,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 								<SelectItem value="new-tab">New tab</SelectItem>
 							</SelectContent>
 						</Select>
-					</div>
-				)}
-
-				{showFileDragBehavior && (
-					<div className="flex items-center justify-between">
-						<div className="space-y-0.5">
-							<Label className="text-sm font-medium">
-								Sidebar file drag behavior
-							</Label>
-							<p className="text-xs text-muted-foreground">
-								Choose whether dragging files from the Files or Changes sidebar
-								into the main area opens them in the file viewer or pastes their
-								path into terminals
-							</p>
-						</div>
-						<Select
-							value={fileDragBehavior ?? "open-file-viewer"}
-							onValueChange={(value) =>
-								setFileDragBehavior.mutate({
-									behavior: value as FileDragBehavior,
-								})
-							}
-							disabled={
-								isFileDragBehaviorLoading || setFileDragBehavior.isPending
-							}
-						>
-							<SelectTrigger className="w-[220px]">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="open-file-viewer">
-									Open file viewer
-								</SelectItem>
-								<SelectItem value="paste-path">Paste file path</SelectItem>
-							</SelectContent>
-						</Select>
-					</div>
-				)}
-
-				{showRightSidebarOpenViewWidth && (
-					<div className="flex items-center justify-between gap-6">
-						<div className="space-y-0.5">
-							<Label
-								htmlFor="right-sidebar-open-view-width"
-								className="text-sm font-medium"
-							>
-								Right sidebar open view width
-							</Label>
-							<p className="text-xs text-muted-foreground">
-								Initial width for new file and diff views opened from the Files
-								or Git sidebar
-							</p>
-						</div>
-						<div className="flex items-center gap-2">
-							<Input
-								id="right-sidebar-open-view-width"
-								type="number"
-								min={MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH}
-								max={MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH}
-								value={
-									rightSidebarOpenViewWidthDraft ??
-									String(
-										rightSidebarOpenViewWidth ??
-											DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
-									)
-								}
-								onChange={(event) =>
-									setRightSidebarOpenViewWidthDraft(event.target.value)
-								}
-								onBlur={handleRightSidebarOpenViewWidthBlur}
-								disabled={
-									isRightSidebarOpenViewWidthLoading ||
-									setRightSidebarOpenViewWidth.isPending
-								}
-								className="w-24"
-							/>
-							<span className="text-sm text-muted-foreground">%</span>
-						</div>
 					</div>
 				)}
 
@@ -477,24 +224,6 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 								setOpenLinksInApp.mutate({ enabled })
 							}
 							disabled={isOpenLinksInAppLoading || setOpenLinksInApp.isPending}
-						/>
-					</div>
-				)}
-				{false && showTelemetry && (
-					<div className="flex items-center justify-between">
-						<div className="space-y-0.5">
-							<Label htmlFor="telemetry" className="text-sm font-medium">
-								Send anonymous usage data
-							</Label>
-							<p className="text-xs text-muted-foreground">
-								Help improve Superset by sending anonymous usage data
-							</p>
-						</div>
-						<Switch
-							id="telemetry"
-							checked={telemetryEnabled ?? true}
-							onCheckedChange={handleTelemetryToggle}
-							disabled={isTelemetryLoading || setTelemetryEnabled.isPending}
 						/>
 					</div>
 				)}

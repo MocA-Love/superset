@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { RouteErrorBoundary } from "renderer/components/RouteErrorBoundary";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type SettingsSection,
@@ -31,20 +30,14 @@ const SECTION_ORDER: SettingsSection[] = [
 	"ringtones",
 	"keyboard",
 	"behavior",
-	"diagnostics",
 	"git",
 	"terminal",
 	"links",
 	"models",
-	"extensions",
-	"vscodeExtensions",
 	"organization",
 	"integrations",
-	"serviceStatus",
 	"billing",
 	"apikeys",
-	"metrics",
-	"security",
 	"permissions",
 	"hosts",
 	"experimental",
@@ -57,20 +50,13 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/ringtones")) return "ringtones";
 	if (pathname.includes("/settings/keyboard")) return "keyboard";
 	if (pathname.includes("/settings/behavior")) return "behavior";
-	if (pathname.includes("/settings/diagnostics")) return "diagnostics";
 	if (pathname.includes("/settings/git")) return "git";
 	if (pathname.includes("/settings/terminal")) return "terminal";
 	if (pathname.includes("/settings/links")) return "links";
 	if (pathname.includes("/settings/models")) return "models";
 	if (pathname.includes("/settings/experimental")) return "experimental";
 	if (pathname.includes("/settings/integrations")) return "integrations";
-	if (pathname.includes("/settings/vscode-extensions"))
-		return "vscodeExtensions";
-	if (pathname.includes("/settings/extensions")) return "extensions";
-	if (pathname.includes("/settings/security")) return "security";
 	if (pathname.includes("/settings/permissions")) return "permissions";
-	if (pathname.includes("/settings/metrics")) return "metrics";
-	if (pathname.includes("/settings/service-status")) return "serviceStatus";
 	if (pathname.includes("/settings/hosts")) return "hosts";
 	if (pathname.includes("/settings/project")) return "project";
 	return null;
@@ -90,8 +76,6 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/keyboard";
 		case "behavior":
 			return "/settings/behavior";
-		case "diagnostics":
-			return "/settings/diagnostics";
 		case "git":
 			return "/settings/git";
 		case "terminal":
@@ -104,18 +88,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/experimental";
 		case "integrations":
 			return "/settings/integrations";
-		case "extensions":
-			return "/settings/extensions";
-		case "vscodeExtensions":
-			return "/settings/vscode-extensions";
-		case "security":
-			return "/settings/security";
 		case "permissions":
 			return "/settings/permissions";
-		case "metrics":
-			return "/settings/metrics";
-		case "serviceStatus":
-			return "/settings/service-status";
 		case "hosts":
 			return "/settings/hosts";
 		default:
@@ -162,25 +136,18 @@ function SettingsLayout() {
 	useHotkeys(
 		"escape",
 		(event) => {
-			// FORK NOTE: upstream #3466 used `[data-state="open"]` which also
-			// matches Radix Collapsible (AgentCard etc.), silently disabling
-			// Escape whenever any card was expanded. Narrow to explicit
-			// overlay shapes: role-based (Dialog/AlertDialog/Menu/Select) plus
-			// popper-based content (Popover/HoverCard) which has no semantic
-			// role but is always rendered inside [data-radix-popper-content-wrapper].
-			// Collapsible is inline (not popper), so it stays excluded.
-			if (
-				document.querySelector(
-					'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"], [data-radix-popper-content-wrapper] [data-state="open"]',
-				)
-			)
-				return;
+			if (document.querySelector('[data-state="open"]')) return;
 			event.preventDefault();
-			navigate({ to: originRoute, replace: true });
+			navigate({ to: originRoute });
 		},
 		{ enableOnFormTags: false, enableOnContentEditable: false },
 		[navigate, originRoute],
 	);
+
+	const usesInnerSidebar =
+		location.pathname.startsWith("/settings/projects") ||
+		location.pathname.startsWith("/settings/hosts") ||
+		location.pathname.startsWith("/settings/agents");
 
 	return (
 		<div className="flex flex-col h-screen w-screen bg-tertiary">
@@ -201,12 +168,13 @@ function SettingsLayout() {
 							onClear={() => setSearchQuery("")}
 						/>
 					)}
-					<RouteErrorBoundary
-						key={getSectionFromPath(location.pathname) ?? "unknown"}
-						routeName={`settings/${getSectionFromPath(location.pathname) ?? "unknown"}`}
-					>
+					{usesInnerSidebar ? (
 						<Outlet />
-					</RouteErrorBoundary>
+					) : (
+						<div className="mx-auto max-w-4xl">
+							<Outlet />
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

@@ -1,25 +1,9 @@
 import { Button } from "@superset/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@superset/ui/dropdown-menu";
 import { Label } from "@superset/ui/label";
 import { Switch } from "@superset/ui/switch";
 import { cn } from "@superset/ui/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	HiCheck,
-	HiEllipsisHorizontal,
-	HiPencil,
-	HiPlay,
-	HiPlus,
-	HiScissors,
-	HiStop,
-	HiTrash,
-} from "react-icons/hi2";
-import { SiYoutube } from "react-icons/si";
+import { HiArrowPath, HiCheck, HiPlay, HiPlus, HiStop } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import {
@@ -34,44 +18,33 @@ import {
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
-import { DeleteRingtoneDialog } from "./components/DeleteRingtoneDialog";
-import { EditCustomRingtoneDialog } from "./components/EditCustomRingtoneDialog";
-import { RenameRingtoneDialog } from "./components/RenameRingtoneDialog";
 import { VolumeDropdown } from "./components/VolumeDropdown";
-import { YouTubeImportDialog } from "./components/YouTubeImportDialog";
 
 function formatDuration(seconds: number): string {
 	return `${seconds}s`;
 }
 
-interface RingtoneCardProps {
+interface RingtoneRowProps {
 	ringtone: Ringtone;
 	isSelected: boolean;
 	isPlaying: boolean;
 	onSelect: () => void;
 	onTogglePlay: () => void;
-	onRename?: () => void;
-	onEdit?: () => void;
-	onDelete?: () => void;
 }
 
-function RingtoneCard({
+function RingtoneRow({
 	ringtone,
 	isSelected,
 	isPlaying,
 	onSelect,
 	onTogglePlay,
-	onRename,
-	onEdit,
-	onDelete,
-}: RingtoneCardProps) {
-	const showActions = Boolean(onRename || onEdit || onDelete);
-
+}: RingtoneRowProps) {
 	return (
-		// biome-ignore lint/a11y/useSemanticElements: Using div with role="button" to allow nested play/stop button
+		// biome-ignore lint/a11y/useSemanticElements: div role=button needed so the inner play button can be nested
 		<div
 			role="button"
 			tabIndex={0}
+			aria-pressed={isSelected}
 			onClick={onSelect}
 			onKeyDown={(e) => {
 				if (e.key === "Enter" || e.key === " ") {
@@ -80,119 +53,51 @@ function RingtoneCard({
 				}
 			}}
 			className={cn(
-				"relative flex flex-col rounded-lg border-2 overflow-hidden transition-all text-left cursor-pointer",
-				isSelected
-					? "border-primary ring-2 ring-primary/20"
-					: "border-border hover:border-muted-foreground/50",
+				"flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+				isSelected ? "bg-accent/40" : "hover:bg-muted/50",
 			)}
 		>
-			{/* Preview area */}
-			<div
+			<span className="text-xl shrink-0 w-7 text-center leading-none">
+				{ringtone.emoji}
+			</span>
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center gap-2">
+					<span className="text-sm font-medium truncate">{ringtone.name}</span>
+					{ringtone.duration && (
+						<span className="text-xs text-muted-foreground tabular-nums shrink-0">
+							{formatDuration(ringtone.duration)}
+						</span>
+					)}
+				</div>
+				<div className="text-xs text-muted-foreground truncate">
+					{ringtone.description}
+				</div>
+			</div>
+			<div className="w-5 flex justify-center shrink-0">
+				{isSelected && <HiCheck className="h-4 w-4 text-primary" />}
+			</div>
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onTogglePlay();
+				}}
+				aria-label={
+					isPlaying ? `Stop ${ringtone.name}` : `Play ${ringtone.name}`
+				}
 				className={cn(
-					"h-24 flex items-center justify-center relative",
-					isSelected ? "bg-accent/50" : "bg-muted/30",
+					"h-7 w-7 rounded-full flex items-center justify-center transition-colors border shrink-0",
+					isPlaying
+						? "bg-destructive text-destructive-foreground border-destructive hover:bg-destructive/90"
+						: "text-foreground border-border hover:bg-accent",
 				)}
 			>
-				{/* Thumbnail or Emoji */}
-				{ringtone.thumbnailUrl ? (
-					<img
-						src={ringtone.thumbnailUrl}
-						alt=""
-						className="w-full h-full object-cover absolute inset-0"
-					/>
+				{isPlaying ? (
+					<HiStop className="h-3.5 w-3.5" />
 				) : (
-					<span className="text-4xl">{ringtone.emoji}</span>
+					<HiPlay className="h-3.5 w-3.5 ml-0.5" />
 				)}
-
-				{/* Duration badge */}
-				{ringtone.duration && (
-					<span className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-1.5 py-0.5 rounded z-10">
-						{formatDuration(ringtone.duration)}
-					</span>
-				)}
-
-				{/* Actions menu (custom ringtones only) */}
-				{showActions && (
-					// biome-ignore lint/a11y/noStaticElementInteractions: wrapper exists only to stop click bubbling to the outer card button
-					<div
-						className="absolute top-1.5 left-1.5 z-10"
-						onClick={(e) => e.stopPropagation()}
-						onKeyDown={(e) => e.stopPropagation()}
-					>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<button
-									type="button"
-									aria-label="Custom ringtone actions"
-									className="h-7 w-7 rounded-full flex items-center justify-center bg-background/80 text-foreground border border-border hover:bg-accent"
-								>
-									<HiEllipsisHorizontal className="h-4 w-4" />
-								</button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="start">
-								{onEdit && (
-									<DropdownMenuItem onClick={onEdit}>
-										<HiScissors className="mr-2 h-4 w-4" />
-										Edit clip
-									</DropdownMenuItem>
-								)}
-								{onRename && (
-									<DropdownMenuItem onClick={onRename}>
-										<HiPencil className="mr-2 h-4 w-4" />
-										Rename
-									</DropdownMenuItem>
-								)}
-								{onDelete && (
-									<DropdownMenuItem
-										onClick={onDelete}
-										className="text-destructive focus:text-destructive"
-									>
-										<HiTrash className="mr-2 h-4 w-4" />
-										Delete
-									</DropdownMenuItem>
-								)}
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				)}
-
-				{/* Play/Stop button */}
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						onTogglePlay();
-					}}
-					className={cn(
-						"absolute bottom-2 right-2 h-8 w-8 rounded-full flex items-center justify-center z-10",
-						"transition-colors border",
-						isPlaying
-							? "bg-destructive text-destructive-foreground border-destructive hover:bg-destructive/90"
-							: "bg-card text-foreground border-border hover:bg-accent",
-					)}
-				>
-					{isPlaying ? (
-						<HiStop className="h-4 w-4" />
-					) : (
-						<HiPlay className="h-4 w-4 ml-0.5" />
-					)}
-				</button>
-			</div>
-
-			{/* Info */}
-			<div className="p-3 bg-card border-t flex items-center justify-between">
-				<div>
-					<div className="text-sm font-medium">{ringtone.name}</div>
-					<div className="text-xs text-muted-foreground">
-						{ringtone.description}
-					</div>
-				</div>
-				{isSelected && (
-					<div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
-						<HiCheck className="h-3 w-3 text-primary-foreground" />
-					</div>
-				)}
-			</div>
+			</button>
 		</div>
 	);
 }
@@ -263,52 +168,6 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 		},
 	});
 
-	const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
-
-	const handleYouTubeImportSuccess = useCallback(async () => {
-		if (previewTimerRef.current) {
-			clearTimeout(previewTimerRef.current);
-			previewTimerRef.current = null;
-		}
-		try {
-			await electronTrpcClient.ringtone.stop.mutate();
-		} catch (error) {
-			console.error("Failed to stop ringtone before import:", error);
-		}
-		setPlayingId(null);
-		await utils.ringtone.getCustom.invalidate();
-		setRingtone(CUSTOM_RINGTONE_ID);
-	}, [utils, setRingtone]);
-
-	const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-	const [renameError, setRenameError] = useState<string | null>(null);
-	const renameCustomRingtone = electronTrpc.ringtone.renameCustom.useMutation({
-		onSuccess: async () => {
-			setRenameError(null);
-			setRenameDialogOpen(false);
-			await utils.ringtone.getCustom.invalidate();
-		},
-		onError: (error) => {
-			setRenameError(error.message);
-		},
-	});
-
-	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-	const [deleteError, setDeleteError] = useState<string | null>(null);
-	const deleteCustomRingtone = electronTrpc.ringtone.deleteCustom.useMutation({
-		onSuccess: async () => {
-			if (selectedRingtoneId === CUSTOM_RINGTONE_ID) {
-				setRingtone(AVAILABLE_RINGTONES[0]?.id ?? "");
-			}
-			setDeleteError(null);
-			setDeleteDialogOpen(false);
-			await utils.ringtone.getCustom.invalidate();
-		},
-		onError: (error) => {
-			setDeleteError(error.message);
-		},
-	});
-
 	const handleMutedToggle = (enabled: boolean) => {
 		setMuted.mutate({ muted: !enabled });
 	};
@@ -316,32 +175,6 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 	const handleImportCustomRingtone = useCallback(() => {
 		importCustomRingtone.mutate();
 	}, [importCustomRingtone]);
-
-	const [editClipDialogOpen, setEditClipDialogOpen] = useState(false);
-
-	// Radix DropdownMenu closes on click; the trailing pointerup fires on the
-	// document and, if the dialog has already mounted, its pointer-down-outside
-	// handler catches it and closes the dialog. Defer open by one frame so the
-	// menu fully tears down first.
-	const handleRenameCustom = useCallback(() => {
-		setRenameError(null);
-		requestAnimationFrame(() => setRenameDialogOpen(true));
-	}, []);
-
-	const handleEditCustom = useCallback(() => {
-		requestAnimationFrame(() => setEditClipDialogOpen(true));
-	}, []);
-
-	const handleDeleteCustom = useCallback(() => {
-		setDeleteError(null);
-		requestAnimationFrame(() => setDeleteDialogOpen(true));
-	}, []);
-
-	const handleConfirmDelete = useCallback(async () => {
-		await deleteCustomRingtone.mutateAsync().catch(() => {
-			// Error surfaced via deleteError state.
-		});
-	}, [deleteCustomRingtone]);
 
 	// Clean up timer and stop any playing sound on unmount
 	useEffect(() => {
@@ -417,11 +250,11 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 			<div className="mb-8">
 				<h2 className="text-xl font-semibold">Notifications</h2>
 				<p className="text-sm text-muted-foreground mt-1">
-					Choose the notification sound for completed tasks
+					Sounds and ringtone for completed tasks
 				</p>
 			</div>
 
-			<div className="space-y-8">
+			<div className="space-y-6">
 				{/* Sound Toggle */}
 				{showNotification && (
 					<div className="flex items-center justify-between">
@@ -451,106 +284,44 @@ export function RingtonesSettings({ visibleItems }: RingtonesSettingsProps) {
 				{/* Ringtone Section */}
 				{showNotification && !isMuted && (
 					<div>
-						<div className="mb-4 flex items-center justify-between gap-2">
-							<h3 className="text-sm font-medium">Notification Sound</h3>
-							<div className="flex items-center gap-2">
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									onClick={() => setYoutubeDialogOpen(true)}
-								>
-									<SiYoutube className="mr-1.5 h-3.5 w-3.5" />
-									From YouTube
-								</Button>
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									onClick={handleImportCustomRingtone}
-									disabled={importCustomRingtone.isPending}
-								>
-									<HiPlus className="mr-1.5 h-3.5 w-3.5" />
-									{customRingtone ? "Replace Custom Audio" : "Add Custom Audio"}
-								</Button>
+						<div className="mb-3 flex items-start justify-between gap-2">
+							<div>
+								<h3 className="text-sm font-medium mb-1">Notification sound</h3>
+								<p className="text-xs text-muted-foreground">
+									Pick a sound or add your own. Custom audio supports .mp3,
+									.wav, and .ogg.
+								</p>
 							</div>
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={handleImportCustomRingtone}
+								disabled={importCustomRingtone.isPending}
+							>
+								{customRingtone ? (
+									<HiArrowPath className="mr-1.5 h-3.5 w-3.5" />
+								) : (
+									<HiPlus className="mr-1.5 h-3.5 w-3.5" />
+								)}
+								{customRingtone ? "Replace custom audio" : "Add custom audio"}
+							</Button>
 						</div>
-						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-							{ringtoneOptions.map((ringtone) => {
-								const isCustom = ringtone.id === CUSTOM_RINGTONE_ID;
-								return (
-									<RingtoneCard
-										key={ringtone.id}
-										ringtone={ringtone}
-										isSelected={selectedRingtoneId === ringtone.id}
-										isPlaying={playingId === ringtone.id}
-										onSelect={() => handleSelect(ringtone.id)}
-										onTogglePlay={() => handleTogglePlay(ringtone)}
-										onRename={isCustom ? handleRenameCustom : undefined}
-										onEdit={isCustom ? handleEditCustom : undefined}
-										onDelete={isCustom ? handleDeleteCustom : undefined}
-									/>
-								);
-							})}
+						<div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+							{ringtoneOptions.map((ringtone) => (
+								<RingtoneRow
+									key={ringtone.id}
+									ringtone={ringtone}
+									isSelected={selectedRingtoneId === ringtone.id}
+									isPlaying={playingId === ringtone.id}
+									onSelect={() => handleSelect(ringtone.id)}
+									onTogglePlay={() => handleTogglePlay(ringtone)}
+								/>
+							))}
 						</div>
-					</div>
-				)}
-
-				{/* Tip */}
-				{showNotification && !isMuted && (
-					<div className="pt-6 border-t">
-						<p className="text-sm text-muted-foreground">
-							Click the play button to preview a sound. Use Add Custom Audio to
-							import your own .mp3, .wav, or .ogg file, or From YouTube to clip
-							a section from a YouTube video.
-						</p>
 					</div>
 				)}
 			</div>
-
-			<YouTubeImportDialog
-				open={youtubeDialogOpen}
-				onOpenChange={setYoutubeDialogOpen}
-				onImportSuccess={handleYouTubeImportSuccess}
-			/>
-
-			<DeleteRingtoneDialog
-				open={deleteDialogOpen}
-				onOpenChange={(open) => {
-					setDeleteDialogOpen(open);
-					if (!open) setDeleteError(null);
-				}}
-				ringtoneName={customRingtone?.name ?? ""}
-				onConfirm={handleConfirmDelete}
-				isSubmitting={deleteCustomRingtone.isPending}
-				errorMessage={deleteError}
-			/>
-
-			<RenameRingtoneDialog
-				open={renameDialogOpen}
-				onOpenChange={(open) => {
-					setRenameDialogOpen(open);
-					if (!open) setRenameError(null);
-				}}
-				currentName={customRingtone?.name ?? ""}
-				onSubmit={async (name) => {
-					await renameCustomRingtone.mutateAsync({ name }).catch(() => {
-						// Error surfaced via renameError state.
-					});
-				}}
-				isSubmitting={renameCustomRingtone.isPending}
-				errorMessage={renameError}
-			/>
-
-			<EditCustomRingtoneDialog
-				open={editClipDialogOpen}
-				onOpenChange={setEditClipDialogOpen}
-				currentDisplayName={customRingtone?.name ?? ""}
-				currentThumbnailUrl={customRingtone?.thumbnailUrl}
-				onSaveSuccess={async () => {
-					await utils.ringtone.getCustom.invalidate();
-				}}
-			/>
 		</div>
 	);
 }
