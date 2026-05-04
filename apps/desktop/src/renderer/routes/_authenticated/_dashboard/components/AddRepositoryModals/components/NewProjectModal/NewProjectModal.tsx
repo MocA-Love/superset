@@ -8,7 +8,8 @@ import {
 	DialogTitle,
 } from "@superset/ui/dialog";
 import { Input } from "@superset/ui/input";
-import { cn } from "@superset/ui/utils";
+import { Label } from "@superset/ui/label";
+import { toast } from "@superset/ui/sonner";
 import { useEffect, useState } from "react";
 import { FaGithub } from "react-icons/fa";
 import {
@@ -24,8 +25,6 @@ import {
 	useFinalizeProjectSetup,
 } from "renderer/react-query/projects";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
-
-type NewProjectMode = "clone" | "empty" | "template";
 
 interface NewProjectModalProps {
 	open: boolean;
@@ -79,10 +78,8 @@ export function NewProjectModal({
 	const selectDirectory = electronTrpc.window.selectDirectory.useMutation();
 	const { data: homeDir } = electronTrpc.window.getHomeDir.useQuery();
 
-	const [mode, setMode] = useState<NewProjectMode>("clone");
 	const [parentDir, setParentDir] = useState("");
 	const [url, setUrl] = useState("");
-	const [error, setError] = useState<string | null>(null);
 	const [working, setWorking] = useState(false);
 
 	useEffect(() => {
@@ -92,7 +89,6 @@ export function NewProjectModal({
 
 	const reset = () => {
 		setUrl("");
-		setError(null);
 		setWorking(false);
 	};
 
@@ -112,23 +108,23 @@ export function NewProjectModal({
 				setParentDir(result.path);
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			toast.error(err instanceof Error ? err.message : String(err));
 		}
 	};
 
 	const createFromClone = async () => {
 		if (!activeHostUrl) {
-			setError("Host service not available");
+			toast.error("Host service not available");
 			return;
 		}
 		const trimmedUrl = url.trim();
 		const trimmedParent = parentDir.trim();
 		if (!trimmedUrl) {
-			setError("Please enter a repository URL");
+			toast.error("Please enter a repository URL");
 			return;
 		}
 		if (!trimmedParent) {
-			setError("Please select a project location");
+			toast.error("Please select a project location");
 			return;
 		}
 		const name = deriveProjectNameFromUrl(trimmedUrl);
@@ -138,7 +134,6 @@ export function NewProjectModal({
 		}
 
 		setWorking(true);
-		setError(null);
 		try {
 			const client = getHostServiceClientByUrl(activeHostUrl);
 			const result = await client.project.create.mutate({
@@ -160,9 +155,9 @@ export function NewProjectModal({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-xl">
+			<DialogContent className="max-w-[420px]">
 				<DialogHeader>
-					<DialogTitle>New project</DialogTitle>
+					<DialogTitle>Clone a repository</DialogTitle>
 					<DialogDescription className="sr-only">
 						Create a new project by cloning a repository.
 					</DialogDescription>
@@ -170,12 +165,28 @@ export function NewProjectModal({
 
 				<div className="flex flex-col gap-4">
 					<div className="flex flex-col gap-1.5">
-						<label
-							htmlFor="project-path"
-							className="text-xs font-medium text-muted-foreground"
-						>
+						<Label htmlFor="clone-url" className="text-xs">
+							Repository URL or path
+						</Label>
+						<Input
+							id="clone-url"
+							value={url}
+							onChange={(e) => setUrl(e.target.value)}
+							placeholder="https://github.com/owner/repo.git or /path/to/repo"
+							disabled={working}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && !working) {
+									void createFromClone();
+								}
+							}}
+							autoFocus
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="project-path" className="text-xs">
 							Location
-						</label>
+						</Label>
 						<div className="flex gap-1.5">
 							<Input
 								id="project-path"
@@ -283,17 +294,21 @@ export function NewProjectModal({
 				<DialogFooter>
 					<Button
 						type="button"
-						variant="outline"
+						variant="ghost"
 						onClick={() => handleOpenChange(false)}
 						disabled={working}
 					>
 						Cancel
 					</Button>
-					<Button
-						onClick={() => void createFromClone()}
-						disabled={working || mode !== "clone"}
-					>
-						{working ? "Cloning…" : "Clone"}
+					<Button onClick={() => void createFromClone()} disabled={working}>
+						{working ? (
+							<>
+								<LuLoaderCircle className="size-4 animate-spin" />
+								Cloning…
+							</>
+						) : (
+							"Clone"
+						)}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
