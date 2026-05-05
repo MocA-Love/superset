@@ -1,11 +1,9 @@
 import {
 	type LayoutNode,
-	type PaneActionConfig,
 	type SplitPath,
 	Workspace,
 	type WorkspaceStore,
 } from "@superset/panes";
-import { alert } from "@superset/ui/atoms/Alert";
 import {
 	ResizableHandle,
 	ResizablePanel,
@@ -17,16 +15,13 @@ import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { HiMiniXMark } from "react-icons/hi2";
-import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
-import { HotkeyLabel, useHotkey } from "renderer/hotkeys";
+import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
+import { useHotkey } from "renderer/hotkeys";
 import {
 	addBrowserShortcutListener,
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
-import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
-import { getBaseName } from "renderer/lib/pathBasename";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
@@ -57,26 +52,23 @@ import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useBrowserShellInteractionPassthrough } from "./hooks/useBrowserShellInteractionPassthrough";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
+import { useClearActivePaneAttention } from "./hooks/useClearActivePaneAttention";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
+import { useDefaultPaneActions } from "./hooks/useDefaultPaneActions";
+import { useDirtyTabCloseGuard } from "./hooks/useDirtyTabCloseGuard";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
 import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
-import { useClearActivePaneAttention } from "./hooks/useClearActivePaneAttention";
+import { useV2TerminalLauncher } from "./hooks/useV2TerminalLauncher";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
-import {
-	FileDocumentStoreProvider,
-	getDocument,
-} from "./state/fileDocumentStore";
+import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
+import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
 import type {
 	BrowserPaneData,
-	ChatPaneData,
-	CommentPaneData,
-	DiffPaneData,
 	FilePaneData,
 	PaneViewerData,
-	TerminalPaneData,
 } from "./types";
 import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
@@ -243,10 +235,11 @@ function WorkspaceContent({
 	} = useV2UserPreferences();
 	const showPresetsBar = v2UserPreferences.showPresetsBar;
 	useClearActivePaneAttention({ store });
+	const launcher = useV2TerminalLauncher();
 	const { matchedPresets, executePreset } = useV2PresetExecution({
 		store,
-		workspaceId,
 		projectId,
+		launcher,
 	});
 	useConsumeAutomationRunLink({
 		store,
@@ -492,90 +485,20 @@ function WorkspaceContent({
 		onOpenFile: handleTerminalOpenFile,
 		onRevealPath: revealPath,
 	});
-	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
+	const defaultContextMenuActions = useDefaultContextMenuActions({
+		paneRegistry,
+		launcher,
+	});
+	const {
+		openDiffPane,
+		addTerminalTab,
+		addChatTab,
+		addBrowserTab,
+		openCommentPane,
+	} = useWorkspacePaneOpeners({ store, launcher });
 
-	const openDiffPane = useCallback(
-		(filePath: string, openInNewTab?: boolean) => {
-			const state = store.getState();
-			if (openInNewTab) {
-				state.addTab({
-					panes: [
-						{
-							kind: "diff",
-							data: {
-								path: filePath,
-								collapsedFiles: [],
-							} as DiffPaneData,
-						},
-					],
-				});
-				return;
-			}
-			for (const tab of state.tabs) {
-				for (const pane of Object.values(tab.panes)) {
-					if (pane.kind !== "diff") continue;
-					const prev = pane.data as DiffPaneData;
-					state.setPaneData({
-						paneId: pane.id,
-						data: {
-							...prev,
-							path: filePath,
-						} as PaneViewerData,
-					});
-					state.setActiveTab(tab.id);
-					state.setActivePane({ tabId: tab.id, paneId: pane.id });
-					return;
-				}
-			}
-			state.openPane({
-				pane: {
-					kind: "diff",
-					data: {
-						path: filePath,
-						collapsedFiles: [],
-					} as DiffPaneData,
-				},
-			});
-		},
-		[store],
-	);
-
-	const addTerminalTab = useCallback(() => {
-		store.getState().addTab({
-			panes: [
-				{
-					kind: "terminal",
-					data: {
-						terminalId: crypto.randomUUID(),
-					} as TerminalPaneData,
-				},
-			],
-		});
-	}, [store]);
-
-	const addChatTab = useCallback(() => {
-		store.getState().addTab({
-			panes: [
-				{
-					kind: "chat",
-					data: { sessionId: null } as ChatPaneData,
-				},
-			],
-		});
-	}, [store]);
-
-	const addBrowserTab = useCallback(() => {
-		store.getState().addTab({
-			panes: [
-				{
-					kind: "browser",
-					data: {
-						url: "about:blank",
-					} as BrowserPaneData,
-				},
-			],
-		});
-	}, [store]);
+	const defaultPaneActions = useDefaultPaneActions({ launcher });
+	const onBeforeCloseTab = useDirtyTabCloseGuard();
 
 	// FORK NOTE: Fork-only "New Memo" action from the add-tab menu. Creates
 	// an empty markdown memo in ~/.superset/memos and opens it in the file
@@ -589,33 +512,6 @@ function WorkspaceContent({
 				toast.error(`Failed to create memo: ${error.message}`);
 			});
 	}, [openFilePane, workspaceId]);
-
-	const openCommentPane = useCallback(
-		(comment: CommentPaneData) => {
-			const state = store.getState();
-			for (const tab of state.tabs) {
-				for (const pane of Object.values(tab.panes)) {
-					if (pane.kind !== "comment") continue;
-					state.setPaneData({
-						paneId: pane.id,
-						data: comment as PaneViewerData,
-					});
-					state.setActiveTab(tab.id);
-					state.setActivePane({ tabId: tab.id, paneId: pane.id });
-					return;
-				}
-			}
-			state.addTab({
-				panes: [
-					{
-						kind: "comment",
-						data: comment as PaneViewerData,
-					},
-				],
-			});
-		},
-		[store],
-	);
 
 	const openFilePathsList = useMemo(
 		() => Array.from(openFilePaths),
@@ -651,38 +547,6 @@ function WorkspaceContent({
 		commandPalette.toggle();
 	}, [commandPalette]);
 
-	const defaultPaneActions = useMemo<PaneActionConfig<PaneViewerData>[]>(
-		() => [
-			{
-				key: "split",
-				icon: (ctx) =>
-					ctx.pane.parentDirection === "horizontal" ? (
-						<TbLayoutRows className="size-3.5" />
-					) : (
-						<TbLayoutColumns className="size-3.5" />
-					),
-				tooltip: <HotkeyLabel label="Split pane" id="SPLIT_AUTO" />,
-				onClick: (ctx) => {
-					const position =
-						ctx.pane.parentDirection === "horizontal" ? "down" : "right";
-					ctx.actions.split(position, {
-						kind: "terminal",
-						data: {
-							terminalId: crypto.randomUUID(),
-						} as TerminalPaneData,
-					});
-				},
-			},
-			{
-				key: "close",
-				icon: <HiMiniXMark className="size-3.5" />,
-				tooltip: <HotkeyLabel label="Close pane" id="CLOSE_PANE" />,
-				onClick: (ctx) => ctx.actions.close(),
-			},
-		],
-		[],
-	);
-
 	// FORK NOTE: fork は sidebar 状態を v2UserPreferences ではなく
 	// localWorkspaceState から読む (cycle 09 の portal slot まわりの設計と整合)。
 	// upstream #3744 の useBrowserShellInteractionPassthrough は fork の sidebarOpen
@@ -697,6 +561,7 @@ function WorkspaceContent({
 		matchedPresets,
 		executePreset,
 		paneRegistry,
+		launcher,
 	});
 	useHotkey("QUICK_OPEN", handleQuickOpen);
 	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
@@ -781,65 +646,7 @@ function WorkspaceContent({
 									onOpenTerminal={addTerminalTab}
 								/>
 							)}
-							onBeforeCloseTab={(tab) => {
-								const dirtyPanes = Object.values(tab.panes).filter((p) => {
-									if (p.kind !== "file") return false;
-									const filePath = (p.data as FilePaneData).filePath;
-									return getDocument(workspaceId, filePath)?.dirty === true;
-								});
-								const dirtyFileNames = dirtyPanes.map((p) =>
-									getBaseName((p.data as FilePaneData).filePath),
-								);
-								if (dirtyPanes.length === 0) return true;
-								const title =
-									dirtyPanes.length === 1
-										? `Do you want to save the changes you made to ${dirtyFileNames[0]}?`
-										: `Do you want to save changes to ${dirtyPanes.length} files?`;
-								return new Promise<boolean>((resolve) => {
-									alert({
-										title,
-										description:
-											"Your changes will be lost if you don't save them.",
-										actions: [
-											{
-												label: "Save All",
-												onClick: async () => {
-													for (const pane of dirtyPanes) {
-														const filePath = (pane.data as FilePaneData)
-															.filePath;
-														const doc = getDocument(workspaceId, filePath);
-														if (!doc) continue;
-														const result = await doc.save();
-														if (result.status !== "saved") {
-															resolve(false);
-															return;
-														}
-													}
-													resolve(true);
-												},
-											},
-											{
-												label: "Don't Save",
-												variant: "secondary",
-												onClick: async () => {
-													for (const pane of dirtyPanes) {
-														const filePath = (pane.data as FilePaneData)
-															.filePath;
-														const doc = getDocument(workspaceId, filePath);
-														if (doc) await doc.reload();
-													}
-													resolve(true);
-												},
-											},
-											{
-												label: "Cancel",
-												variant: "ghost",
-												onClick: () => resolve(false),
-											},
-										],
-									});
-								});
-							}}
+							onBeforeCloseTab={onBeforeCloseTab}
 							onInteractionStateChange={onWorkspaceInteractionStateChange}
 							store={store}
 						/>

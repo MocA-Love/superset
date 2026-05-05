@@ -15,7 +15,6 @@ export interface FilePaneData {
 export interface TerminalPaneData {
 	terminalId: string;
 	workspaceId?: string;
-	initialCommand?: string;
 }
 
 export interface ChatPaneData {

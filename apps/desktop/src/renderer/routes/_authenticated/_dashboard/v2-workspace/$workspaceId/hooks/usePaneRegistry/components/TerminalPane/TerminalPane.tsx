@@ -58,7 +58,6 @@ export function TerminalPane({
 	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
 	const paneData = ctx.pane.data as TerminalPaneData;
 	const { terminalId } = paneData;
-	const initialCommandRef = useRef(paneData.initialCommand);
 	const terminalInstanceId = ctx.pane.id;
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const activeTheme = useTheme();
@@ -121,9 +120,13 @@ export function TerminalPane({
 	//      is visible immediately, even on cold start. For a warm return
 	//      (workspace switch) this reparents the wrapper from the parking
 	//      container back into the live tree, preserving the buffer.
-	//   2. connect() opens the WebSocket immediately. The host-service terminal
-	//      route creates the session from the URL workspaceId if needed, avoiding
-	//      tRPC head-of-line blocking during workspace switches.
+	//   2. connect() attaches the WebSocket to that terminalId. The socket is
+	//      transport only; it does not carry creation-time intent.
+	// The pane never calls createSession — that's useV2TerminalLauncher's job,
+	// awaited at the call site before the pane is added to the store. By the
+	// time this effect runs, the host-service session already exists.
+	// The URL still carries workspaceId/themeType as a fallback for persisted
+	// panes whose sessions need to be adopted after a host-service restart.
 	// Deps narrowed to the terminal identity so provider key remount churn
 	// (workspaceId briefly flipping while pane data catches up) doesn't re-run
 	// this effect. workspaceId / websocketUrl are read through refs.
@@ -142,25 +145,12 @@ export function TerminalPane({
 			terminalId,
 			websocketUrlRef.current,
 			terminalInstanceId,
-			{ initialCommand: initialCommandRef.current },
 		);
 
 		return () => {
 			terminalRuntimeRegistry.detach(terminalId, terminalInstanceId);
 		};
 	}, [terminalId, terminalInstanceId]);
-
-	useEffect(() => {
-		if (connectionState !== "open" || !initialCommandRef.current) return;
-
-		initialCommandRef.current = undefined;
-		if (paneData.initialCommand === undefined) return;
-
-		ctx.actions.updateData({
-			...paneData,
-			initialCommand: undefined,
-		} as PaneViewerData);
-	}, [connectionState, ctx.actions, paneData]);
 
 	const lastInvalidatedOpenSessionRef = useRef<string | null>(null);
 	useEffect(() => {
