@@ -62,6 +62,10 @@ export const SETTING_ITEM_ID = {
 	MODELS_OPENAI: "models-openai",
 	MODELS_NEXT_EDIT: "models-next-edit",
 
+	EXPERIMENTAL_SUPERSET_V2: "experimental-superset-v2",
+	EXPERIMENTAL_V1_MIGRATION: "experimental-v1-migration",
+	EXPERIMENTAL_RESTART_ONBOARDING: "experimental-restart-onboarding",
+
 	INTEGRATIONS_LINEAR: "integrations-linear",
 	INTEGRATIONS_GITHUB: "integrations-github",
 	INTEGRATIONS_SLACK: "integrations-slack",
@@ -121,6 +125,140 @@ export interface SettingsItem {
 	title: string;
 	description: string;
 	keywords: string[];
+}
+
+/**
+ * Which v1/v2 variant of the desktop UI a setting applies to.
+ * - "v1": only used by the legacy desktop UI; hide when the user is on v2.
+ * - "v2": only meaningful in the v2 desktop UI; hide when the user is on v1.
+ * - "shared": applies to both (or is provided by a global/cloud surface).
+ *
+ * Source of truth for the v1/v2 settings audit. When adding a new setting,
+ * pick a variant or it will fail typecheck on the registry below.
+ */
+export type SettingVariant = "v1" | "v2" | "shared";
+
+export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
+	[SETTING_ITEM_ID.ACCOUNT_PROFILE]: "shared",
+	[SETTING_ITEM_ID.ACCOUNT_SIGNOUT]: "shared",
+
+	[SETTING_ITEM_ID.ORGANIZATION_LOGO]: "shared",
+	[SETTING_ITEM_ID.ORGANIZATION_NAME]: "shared",
+	[SETTING_ITEM_ID.ORGANIZATION_SLUG]: "shared",
+	[SETTING_ITEM_ID.ORGANIZATION_MEMBERS_LIST]: "shared",
+	[SETTING_ITEM_ID.ORGANIZATION_MEMBERS_INVITE]: "shared",
+	[SETTING_ITEM_ID.ORGANIZATION_MEMBERS_PENDING_INVITATIONS]: "shared",
+
+	[SETTING_ITEM_ID.APPEARANCE_THEME]: "shared",
+	[SETTING_ITEM_ID.APPEARANCE_MARKDOWN]: "shared",
+	[SETTING_ITEM_ID.APPEARANCE_CUSTOM_THEMES]: "shared",
+	[SETTING_ITEM_ID.APPEARANCE_EDITOR_FONT]: "shared",
+	[SETTING_ITEM_ID.APPEARANCE_TERMINAL_FONT]: "shared",
+	[SETTING_ITEM_ID.APPEARANCE_VIBRANCY]: "shared",
+
+	[SETTING_ITEM_ID.RINGTONES_NOTIFICATION]: "shared",
+	[SETTING_ITEM_ID.RINGTONES_AIVIS]: "shared",
+	[SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY]: "shared",
+	[SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE]: "shared",
+
+	[SETTING_ITEM_ID.KEYBOARD_SHORTCUTS]: "shared",
+
+	[SETTING_ITEM_ID.BEHAVIOR_CONFIRM_QUIT]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE]: "v1",
+	[SETTING_ITEM_ID.BEHAVIOR_RESOURCE_MONITOR]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP]: "v1",
+	[SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_TELEMETRY]: "shared",
+
+	[SETTING_ITEM_ID.GIT_BRANCH_PREFIX]: "v1",
+	[SETTING_ITEM_ID.GIT_DELETE_LOCAL_BRANCH]: "v1",
+	[SETTING_ITEM_ID.GIT_WORKTREE_LOCATION]: "v1",
+	[SETTING_ITEM_ID.GIT_AUTO_STASH]: "shared",
+	[SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER]: "shared",
+	[SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND]: "shared",
+	[SETTING_ITEM_ID.GIT_SMART_COMMIT]: "shared",
+
+	[SETTING_ITEM_ID.AGENTS_ENABLED]: "shared",
+	[SETTING_ITEM_ID.AGENTS_COMMANDS]: "shared",
+	[SETTING_ITEM_ID.AGENTS_TASK_PROMPTS]: "shared",
+
+	[SETTING_ITEM_ID.TERMINAL_PRESETS]: "shared",
+	[SETTING_ITEM_ID.TERMINAL_QUICK_ADD]: "shared",
+	[SETTING_ITEM_ID.TERMINAL_SESSIONS]: "shared",
+	[SETTING_ITEM_ID.TERMINAL_LINK_BEHAVIOR]: "v1",
+	[SETTING_ITEM_ID.TERMINAL_SUGGESTIONS]: "shared",
+
+	[SETTING_ITEM_ID.SERVICE_STATUS_ADD]: "shared",
+	[SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS]: "shared",
+
+	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_INDENT_RAINBOW]: "shared",
+	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE]: "shared",
+	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_REFERENCE_GRAPH]: "shared",
+	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_TRAILING_SPACES]: "shared",
+
+	[SETTING_ITEM_ID.LINKS_FILE]: "v2",
+	[SETTING_ITEM_ID.LINKS_URL]: "v2",
+	[SETTING_ITEM_ID.LINKS_SIDEBAR_FILE]: "v2",
+
+	[SETTING_ITEM_ID.MODELS_ANTHROPIC]: "shared",
+	[SETTING_ITEM_ID.MODELS_OPENAI]: "shared",
+	[SETTING_ITEM_ID.MODELS_NEXT_EDIT]: "shared",
+
+	[SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2]: "shared",
+	[SETTING_ITEM_ID.EXPERIMENTAL_V1_MIGRATION]: "v2",
+	[SETTING_ITEM_ID.EXPERIMENTAL_RESTART_ONBOARDING]: "v2",
+
+	[SETTING_ITEM_ID.EXTENSIONS_BROWSER]: "shared",
+
+	[SETTING_ITEM_ID.METRICS_GITHUB_COPY]: "shared",
+	[SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW]: "shared",
+	[SETTING_ITEM_ID.METRICS_GITHUB_TRAFFIC]: "shared",
+
+	[SETTING_ITEM_ID.INTEGRATIONS_LINEAR]: "shared",
+	[SETTING_ITEM_ID.INTEGRATIONS_GITHUB]: "shared",
+	[SETTING_ITEM_ID.INTEGRATIONS_SLACK]: "shared",
+
+	[SETTING_ITEM_ID.BILLING_OVERVIEW]: "shared",
+	[SETTING_ITEM_ID.BILLING_PLANS]: "shared",
+	[SETTING_ITEM_ID.BILLING_USAGE]: "shared",
+
+	[SETTING_ITEM_ID.PROJECT_NAME]: "shared",
+	[SETTING_ITEM_ID.PROJECT_PATH]: "shared",
+	[SETTING_ITEM_ID.PROJECT_SCRIPTS]: "v1",
+	[SETTING_ITEM_ID.PROJECT_BRANCH_PREFIX]: "v1",
+	[SETTING_ITEM_ID.PROJECT_WORKTREE_LOCATION]: "v1",
+	[SETTING_ITEM_ID.PROJECT_IMPORT_WORKTREES]: "v1",
+	[SETTING_ITEM_ID.PROJECT_ENV_VARS]: "v2",
+	[SETTING_ITEM_ID.PROJECT_AUTO_IMPORT_WORKTREES]: "v1",
+	[SETTING_ITEM_ID.PROJECT_AUTO_REMOVE_WORKTREES]: "v1",
+
+	[SETTING_ITEM_ID.API_KEYS_LIST]: "shared",
+	[SETTING_ITEM_ID.API_KEYS_GENERATE]: "shared",
+
+	[SETTING_ITEM_ID.PERMISSIONS_FULL_DISK_ACCESS]: "shared",
+	[SETTING_ITEM_ID.PERMISSIONS_ACCESSIBILITY]: "shared",
+	[SETTING_ITEM_ID.PERMISSIONS_MICROPHONE]: "shared",
+	[SETTING_ITEM_ID.PERMISSIONS_APPLE_EVENTS]: "shared",
+	[SETTING_ITEM_ID.PERMISSIONS_LOCAL_NETWORK]: "shared",
+	[SETTING_ITEM_ID.PERMISSIONS_CAMERA]: "shared",
+
+	[SETTING_ITEM_ID.SECURITY_EXPOSE_HOST_SERVICE_VIA_RELAY]: "shared",
+
+	[SETTING_ITEM_ID.HOST_MEMBERS]: "shared",
+	[SETTING_ITEM_ID.HOST_INVITE_MEMBER]: "shared",
+	[SETTING_ITEM_ID.HOST_MEMBER_ROLE]: "shared",
+};
+
+export function isItemAllowedForVariant(
+	itemId: SettingItemId,
+	isV2: boolean,
+): boolean {
+	const variant = SETTING_ITEM_VARIANT[itemId];
+	if (variant === "shared") return true;
+	return isV2 ? variant === "v2" : variant === "v1";
 }
 
 export const SETTINGS_ITEMS: SettingsItem[] = [
@@ -980,6 +1118,21 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"autocomplete",
 			"api key",
 			"mercury coder",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.EXPERIMENTAL_RESTART_ONBOARDING,
+		section: "experimental",
+		title: "Restart onboarding",
+		description: "Walk through the v2 setup flow again",
+		keywords: [
+			"onboarding",
+			"setup",
+			"restart",
+			"redo",
+			"walkthrough",
+			"tour",
+			"v2",
 		],
 	},
 	{

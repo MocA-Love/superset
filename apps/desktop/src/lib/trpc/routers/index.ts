@@ -39,6 +39,7 @@ import { createRingtoneRouter } from "./ringtone";
 import { createScratchRouter } from "./scratch";
 import { createServiceStatusRouter } from "./service-status";
 import { createSettingsRouter } from "./settings";
+import { createSystemRouter } from "./system";
 import { createTabTearoffRouter } from "./tab-tearoff";
 import { createTerminalRouter } from "./terminal";
 import { createUiStateRouter } from "./ui-state";
@@ -81,6 +82,7 @@ export const createAppRouter = (
 		referenceGraph: createReferenceGraphRouter(),
 		external: createExternalRouter(),
 		settings: createSettingsRouter(),
+		system: createSystemRouter(),
 		config: createConfigRouter(),
 		databases: createDatabasesRouter(),
 		device: createDeviceRouter(),
