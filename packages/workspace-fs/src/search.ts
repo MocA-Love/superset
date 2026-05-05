@@ -60,7 +60,20 @@ const FALLBACK_IGNORE_PATTERNS = [
 	"**/.next/**",
 	"**/.turbo/**",
 	"**/coverage/**",
+	"**/.cache/**",
+	"**/.parcel-cache/**",
+	"**/.vite/**",
+	"**/.svelte-kit/**",
+	"**/.vercel/**",
+	"**/target/**",
+	"**/out/**",
+	"**/*.tsbuildinfo",
 ];
+
+// Watcher-level ignores are broader than search-level defaults. On Linux these
+// are applied at watch creation by @parcel/watcher, avoiding inotify watches for
+// build-output directories; on macOS they at least filter events before fan-out.
+export const WATCH_IGNORE_PATTERNS = FALLBACK_IGNORE_PATTERNS;
 
 // Returns `null` as soon as `signal` fires, without waiting on `promise`.
 // Shared async work (e.g. the memoized index build) keeps running for other

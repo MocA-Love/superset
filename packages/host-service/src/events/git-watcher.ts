@@ -52,9 +52,9 @@ interface WatchedWorkspace {
  *    operations from an external terminal.
  * 2. Worktree root (via `@superset/workspace-fs` watcher manager) — catches
  *    working-tree file edits that change `git status` output. The underlying
- *    watcher honors `DEFAULT_IGNORE_PATTERNS`, which excludes `.git/`,
- *    `node_modules/`, `dist/`, etc. — exactly the paths that don't affect
- *    `git status`, so we don't waste refetches on them. Subscription is
+ *    watcher honors broad watcher ignore patterns for `.git/`, `node_modules/`,
+ *    `dist/`, etc. — exactly the paths that don't affect `git status`, so we
+ *    don't waste refetches on them. Subscription is
  *    multiplexed by `FsWatcherManager` per absolute path, so this shares the
  *    underlying native watcher with any client-owned `fs:watch` subscriptions.
  *
