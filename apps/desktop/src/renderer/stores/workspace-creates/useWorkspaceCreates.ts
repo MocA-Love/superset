@@ -22,9 +22,13 @@ export interface SubmitArgs {
 	snapshot: WorkspacesCreateInput;
 }
 
+export type SubmitResult =
+	| { ok: true; workspaceId: string; alreadyExists: boolean }
+	| { ok: false; error: string };
+
 export interface UseWorkspaceCreatesApi {
 	entries: InFlightEntry[];
-	submit: (args: SubmitArgs) => Promise<void>;
+	submit: (args: SubmitArgs) => Promise<SubmitResult>;
 	retry: (workspaceId: string) => Promise<void>;
 	dismiss: (workspaceId: string) => void;
 }
@@ -37,7 +41,7 @@ export function useWorkspaceCreates(): UseWorkspaceCreatesApi {
 	const collections = useCollections();
 
 	const dispatch = useCallback(
-		async (args: SubmitArgs) => {
+		async (args: SubmitArgs): Promise<SubmitResult> => {
 			const workspaceId = args.snapshot.id;
 			if (!workspaceId) {
 				throw new Error(
@@ -45,10 +49,9 @@ export function useWorkspaceCreates(): UseWorkspaceCreatesApi {
 				);
 			}
 			if (!organizationId) {
-				useWorkspaceCreatesStore
-					.getState()
-					.markError(workspaceId, "No active organization");
-				return;
+				const error = "No active organization";
+				useWorkspaceCreatesStore.getState().markError(workspaceId, error);
+				return { ok: false, error };
 			}
 			const hostUrl = resolveHostUrl({
 				hostId: args.hostId,
@@ -57,10 +60,9 @@ export function useWorkspaceCreates(): UseWorkspaceCreatesApi {
 				organizationId,
 			});
 			if (!hostUrl) {
-				useWorkspaceCreatesStore
-					.getState()
-					.markError(workspaceId, "Host service not available");
-				return;
+				const error = "Host service not available";
+				useWorkspaceCreatesStore.getState().markError(workspaceId, error);
+				return { ok: false, error };
 			}
 			try {
 				const client = getHostServiceClientByUrl(hostUrl);
@@ -122,20 +124,30 @@ export function useWorkspaceCreates(): UseWorkspaceCreatesApi {
 						recentlyViewedFiles: [],
 					});
 				}
+				// On alreadyExists the server returns the canonical workspace id,
+				// which can differ from our optimistic snapshot id. The in-flight
+				// entry is still keyed by snapshot id and won't ever resolve, so
+				// drop it — the canonical workspace now lives in collections and
+				// callers redirect there.
+				if (result.alreadyExists && result.workspace.id !== workspaceId) {
+					useWorkspaceCreatesStore.getState().remove(workspaceId);
+				}
+				return {
+					ok: true,
+					workspaceId: result.workspace.id,
+					alreadyExists: result.alreadyExists,
+				};
 			} catch (err) {
-				useWorkspaceCreatesStore
-					.getState()
-					.markError(
-						workspaceId,
-						err instanceof Error ? err.message : String(err),
-					);
+				const error = err instanceof Error ? err.message : String(err);
+				useWorkspaceCreatesStore.getState().markError(workspaceId, error);
+				return { ok: false, error };
 			}
 		},
 		[machineId, activeHostUrl, organizationId, collections],
 	);
 
 	const submit = useCallback(
-		async (args: SubmitArgs) => {
+		async (args: SubmitArgs): Promise<SubmitResult> => {
 			const workspaceId = args.snapshot.id;
 			if (!workspaceId) {
 				throw new Error(
@@ -147,7 +159,7 @@ export function useWorkspaceCreates(): UseWorkspaceCreatesApi {
 				snapshot: args.snapshot,
 				state: "creating",
 			});
-			await dispatch(args);
+			return await dispatch(args);
 		},
 		[dispatch],
 	);
