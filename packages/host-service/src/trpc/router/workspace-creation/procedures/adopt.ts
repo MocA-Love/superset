@@ -149,11 +149,7 @@ export const adopt = protectedProcedure
 			branch = actualBranch;
 			worktreePath = input.worktreePath;
 		} else {
-			// FORK NOTE: listWorktreeBranches uses (git, repoPath) — fork variant.
-			const { worktreeMap } = await listWorktreeBranches(
-				git,
-				localProject.repoPath,
-			);
+			const { worktreeMap } = await listWorktreeBranches(git);
 			const found = worktreeMap.get(branch);
 			if (!found) {
 				throw new TRPCError({

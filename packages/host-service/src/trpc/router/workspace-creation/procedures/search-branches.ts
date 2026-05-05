@@ -50,11 +50,7 @@ export const searchBranches = protectedProcedure
 		}
 
 		const defaultBranch = await resolveDefaultBranchName(git);
-		// FORK NOTE: listWorktreeBranches uses (git, repoPath) — fork variant.
-		const { worktreeMap, checkedOutBranches } = await listWorktreeBranches(
-			git,
-			localProject.repoPath,
-		);
+		const { worktreeMap, checkedOutBranches } = await listWorktreeBranches(git);
 		const recencyMap = await getRecentBranchOrder(git, 30);
 
 		// Branches that already have a workspace row on this host. The
