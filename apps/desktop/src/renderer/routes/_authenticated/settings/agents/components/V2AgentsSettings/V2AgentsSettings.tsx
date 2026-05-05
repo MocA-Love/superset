@@ -6,15 +6,27 @@ import { Skeleton } from "@superset/ui/skeleton";
 import { toast } from "@superset/ui/sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+	V2_AGENT_CONFIGS_QUERY_KEY as QUERY_KEY,
+	useV2AgentConfigs,
+} from "renderer/hooks/useV2AgentConfigs";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { AgentDetail } from "./components/AgentDetail";
 import { AgentsSettingsSidebar } from "./components/AgentsSettingsSidebar";
 
-const QUERY_KEY = ["host-agent-configs"] as const;
+interface V2AgentsSettingsProps {
+	/**
+	 * Builtin preset id to pre-select on mount (e.g. "claude"). Resolved
+	 * against `HostAgentConfigDto.presetId`. Consumed once per visit.
+	 */
+	initialAgentPresetId?: string | null;
+}
 
-export function V2AgentsSettings() {
+export function V2AgentsSettings({
+	initialAgentPresetId,
+}: V2AgentsSettingsProps = {}) {
 	const { activeHostUrl } = useLocalHostService();
 	const queryClient = useQueryClient();
 
@@ -118,17 +130,28 @@ export function V2AgentsSettings() {
 	);
 
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+	const consumedInitialPresetIdRef = useRef(false);
 
 	// Auto-select first agent when none selected, and clear selection when the
-	// selected agent disappears.
+	// selected agent disappears. If `initialAgentPresetId` is provided (deep
+	// link from a preset's "Open" button), prefer the matching config the
+	// first time configs become available.
 	useEffect(() => {
 		if (configs.length === 0) {
 			if (selectedAgentId !== null) setSelectedAgentId(null);
 			return;
 		}
+		if (initialAgentPresetId && !consumedInitialPresetIdRef.current) {
+			const match = configs.find((c) => c.presetId === initialAgentPresetId);
+			if (match) {
+				consumedInitialPresetIdRef.current = true;
+				setSelectedAgentId(match.id);
+				return;
+			}
+		}
 		const stillExists = configs.some((c) => c.id === selectedAgentId);
 		if (!stillExists) setSelectedAgentId(configs[0].id);
-	}, [configs, selectedAgentId]);
+	}, [configs, selectedAgentId, initialAgentPresetId]);
 
 	const selectedAgent =
 		configs.find((c) => c.id === selectedAgentId) ?? null;
