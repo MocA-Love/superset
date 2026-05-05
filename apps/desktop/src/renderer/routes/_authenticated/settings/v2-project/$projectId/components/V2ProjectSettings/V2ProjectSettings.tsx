@@ -9,6 +9,7 @@ import { ProjectSettingsHeader } from "../../../../project/$projectId/components
 import { DeleteProjectSection } from "./components/DeleteProjectSection";
 import { ProjectLocationSection } from "./components/ProjectLocationSection";
 import { RepositorySection } from "./components/RepositorySection";
+import { V2ScriptsEditor } from "./components/V2ScriptsEditor";
 
 interface V2ProjectSettingsProps {
 	projectId: string;
@@ -66,6 +67,15 @@ export function V2ProjectSettings({ projectId }: V2ProjectSettingsProps) {
 						onChanged={() => refetchHostProject()}
 					/>
 				</SettingsSection>
+
+				{activeHostUrl && (
+					<SettingsSection
+						title="Scripts"
+						description="Runs in a terminal when workspaces are created or deleted. Saved to .superset/config.json in the main repo."
+					>
+						<V2ScriptsEditor hostUrl={activeHostUrl} projectId={projectId} />
+					</SettingsSection>
+				)}
 
 				<SettingsSection title="Danger Zone">
 					<DeleteProjectSection
