@@ -11,6 +11,7 @@ import {
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
+import { useWorkspaceCreatesStore } from "renderer/stores/workspace-creates";
 import { WorkspaceTrpcProvider } from "./providers/WorkspaceTrpcProvider";
 
 export const Route = createFileRoute("/_authenticated/_dashboard/v2-workspace")(
@@ -44,7 +45,16 @@ function V2WorkspaceLayout() {
 				})),
 		[collections, workspaceId],
 	);
-	const workspace = workspaces[0] ?? null;
+	const syncedWorkspace = workspaces?.[0] ?? null;
+	const inFlight = useWorkspaceCreatesStore((store) =>
+		workspaceId
+			? store.entries.find((entry) => entry.snapshot.id === workspaceId)
+			: undefined,
+	);
+	// Fall back to the cloud row cached on the in-flight entry while
+	// Electric hasn't yet delivered the synced row. The cloud has already
+	// confirmed the workspace at this point — no need to block on sync.
+	const workspace = syncedWorkspace ?? inFlight?.cloudRow ?? null;
 
 	const isLocal = workspace?.hostId === machineId;
 	const hostUrl = !workspace
