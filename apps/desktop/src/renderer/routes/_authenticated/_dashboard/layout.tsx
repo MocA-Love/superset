@@ -30,7 +30,6 @@ import {
 import { AddRepositoryModals } from "./components/AddRepositoryModals";
 import { KeepAliveWorkspaces } from "./components/KeepAliveWorkspaces";
 import { TopBar } from "./components/TopBar";
-import { V1ImportBanner } from "./components/V1ImportBanner";
 
 export const Route = createFileRoute("/_authenticated/_dashboard")({
 	component: DashboardLayout,
@@ -121,7 +120,6 @@ function DashboardLayout() {
 		<div className="flex flex-col h-full w-full bg-tertiary">
 			<WorkspaceCreatesManager />
 			{!isTearoff && <TopBar />}
-			{!isTearoff && <V1ImportBanner />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
 				{!isTearoff && !isScratchRoute && isWorkspaceSidebarOpen && (
 					<ResizablePanel
