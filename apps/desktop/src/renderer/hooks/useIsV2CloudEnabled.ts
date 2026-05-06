@@ -1,5 +1,3 @@
-import { FEATURE_FLAGS } from "@superset/shared/constants";
-import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useV2LocalOverrideStore } from "renderer/stores/v2-local-override";
 
 const IS_DEV = process.env.NODE_ENV === "development";

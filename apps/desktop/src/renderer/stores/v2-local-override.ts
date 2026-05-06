@@ -1,7 +1,6 @@
+import { hasPriorSupersetUsage } from "renderer/lib/hasPriorSupersetUsage";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
-
-const IS_DEV = process.env.NODE_ENV === "development";
 
 interface V2LocalOverrideState {
 	/**
@@ -19,11 +18,20 @@ interface V2LocalOverrideState {
 	toggle: () => void;
 }
 
+// FORK: dev installs default to v2 unconditionally so fresh dev clones
+// land on v2 immediately.
+const IS_DEV = process.env.NODE_ENV === "development";
+
+// Fresh installs default to v2; returning v1 users default to v1 and discover
+// v2 via the in-sidebar banner. Persist hydration overrides this for anyone
+// with a saved override.
+const initialOptInV2 = IS_DEV ? true : !hasPriorSupersetUsage();
+
 export const useV2LocalOverrideStore = create<V2LocalOverrideState>()(
 	devtools(
 		persist(
 			(set, get) => ({
-				optInV2: IS_DEV ? true : null,
+				optInV2: initialOptInV2,
 				setOptInV2: (optInV2) => set({ optInV2 }),
 				toggle: () => set({ optInV2: !(get().optInV2 === true) }),
 			}),

@@ -3,6 +3,7 @@ import { HiOutlineWifi } from "react-icons/hi2";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useWorkspaceSidebarStore } from "renderer/stores/workspace-sidebar-state";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { NavigationControls } from "./components/NavigationControls";
 import { OpenInMenuButton } from "./components/OpenInMenuButton";
@@ -32,6 +33,8 @@ export function TopBar() {
 	);
 	const isOnline = useOnlineStatus();
 	const { isV2CloudEnabled } = useIsV2CloudEnabled();
+	const isSidebarOpen = useWorkspaceSidebarStore((s) => s.isOpen);
+	const isSidebarCollapsed = useWorkspaceSidebarStore((s) => s.isCollapsed());
 	// Default to Mac layout while loading to avoid overlap with traffic lights
 	const isMac = platform === undefined || platform === "darwin";
 

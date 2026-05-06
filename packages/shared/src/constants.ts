@@ -71,8 +71,6 @@ export const FEATURE_FLAGS = {
 	CLOUD_ACCESS: "cloud-access",
 	/** When enabled, blocks remote agent execution on the desktop (e.g., for enterprise orgs). */
 	DISABLE_REMOTE_AGENT: "disable-remote-agent",
-	/** Gates access to V2 Cloud features (host-service, cloud sprites). */
-	V2_CLOUD: "v2-cloud",
 	/**
 	 * Routes the Slack agent to the v2 MCP server (`@superset/mcp-v2`)
 	 * instead of v1 (`@superset/mcp`). Evaluated against the linking
