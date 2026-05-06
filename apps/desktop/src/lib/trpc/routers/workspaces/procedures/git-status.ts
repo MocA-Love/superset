@@ -26,6 +26,7 @@ import {
 	type PullRequestCommentsTarget,
 } from "../utils/github";
 import { githubSyncService } from "../utils/github/github-sync-service";
+import { selectExternalWorktreesForImport } from "../utils/select-external-worktrees-for-import";
 import { getWorkspacePath } from "../utils/worktree";
 
 const gitHubPRCommentsInputSchema = z.object({
@@ -368,20 +369,14 @@ export const createGitStatusProcedures = () => {
 					.all();
 				const trackedPaths = new Set(trackedWorktrees.map((wt) => wt.path));
 
-				return allWorktrees
-					.filter((wt) => {
-						if (wt.path === project.mainRepoPath) return false;
-						if (wt.isBare) return false;
-						if (wt.isDetached) return false;
-						if (!wt.branch) return false;
-						if (trackedPaths.has(wt.path)) return false;
-						return true;
-					})
-					.map((wt) => ({
-						path: wt.path,
-						// biome-ignore lint/style/noNonNullAssertion: filtered above
-						branch: wt.branch!,
-					}));
+				return selectExternalWorktreesForImport(allWorktrees, {
+					mainRepoPath: project.mainRepoPath,
+					trackedPaths,
+				}).map((wt) => ({
+					path: wt.path,
+					// biome-ignore lint/style/noNonNullAssertion: filtered above
+					branch: wt.branch!,
+				}));
 			}),
 	});
 };

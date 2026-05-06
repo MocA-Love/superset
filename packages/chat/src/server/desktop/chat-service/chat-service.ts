@@ -55,6 +55,10 @@ import {
 	OAuthFlowController,
 	type OAuthFlowOptions,
 } from "./oauth-flow-controller";
+import {
+	OpenAIOAuthLoopback,
+	parseLoopbackTargetFromAuthUrl,
+} from "./openai-oauth-loopback";
 
 type OpenAIAuthStorage = ReturnType<typeof createAuthStorage>;
 
@@ -85,6 +89,8 @@ export class ChatService {
 	private readonly oauthFlowController = new OAuthFlowController(() =>
 		this.getAuthStorage(),
 	);
+	private openAIOAuthLoopback: OpenAIOAuthLoopback | null = null;
+	private pendingOpenAIOAuthCallbackUrl: string | null = null;
 	private readonly anthropicEnvConfigPath: string | undefined;
 	private readonly nextEditConfigPath: string | undefined;
 	private readonly nextEditUsagePath: string | undefined;
@@ -599,11 +605,55 @@ export class ChatService {
 	}
 
 	async startOpenAIOAuth(): Promise<{ url: string; instructions: string }> {
-		return this.oauthFlowController.start(this.getOpenAIOAuthFlowOptions());
+		this.stopOpenAIOAuthLoopback();
+		this.pendingOpenAIOAuthCallbackUrl = null;
+		const result = await this.oauthFlowController.start(
+			this.getOpenAIOAuthFlowOptions(),
+		);
+
+		const target = parseLoopbackTargetFromAuthUrl(result.url);
+		if (target) {
+			const loopback = new OpenAIOAuthLoopback();
+			try {
+				await loopback.start({
+					host: target.host,
+					port: target.port,
+					path: target.path,
+					onCallback: (callbackUrl) => {
+						// Stash the callback URL so the renderer can consume it on its
+						// next poll. The renderer drives completion through the same
+						// completeOpenAIOAuth mutation as the manual-paste flow, so
+						// the dialog dismissal + navigation behavior stays consistent.
+						this.pendingOpenAIOAuthCallbackUrl = callbackUrl;
+					},
+				});
+				this.openAIOAuthLoopback = loopback;
+			} catch {
+				// Port unavailable or other bind failure — fall back to manual paste.
+				loopback.stop();
+			}
+		}
+
+		return result;
+	}
+
+	consumeOpenAIOAuthCallback(): { callbackUrl: string | null } {
+		const callbackUrl = this.pendingOpenAIOAuthCallbackUrl;
+		this.pendingOpenAIOAuthCallbackUrl = null;
+		return { callbackUrl };
 	}
 
 	cancelOpenAIOAuth(): { success: true } {
+		this.stopOpenAIOAuthLoopback();
+		this.pendingOpenAIOAuthCallbackUrl = null;
 		return this.oauthFlowController.cancel(this.getOpenAIOAuthFlowOptions());
+	}
+
+	private stopOpenAIOAuthLoopback(): void {
+		if (this.openAIOAuthLoopback) {
+			this.openAIOAuthLoopback.stop();
+			this.openAIOAuthLoopback = null;
+		}
 	}
 
 	async disconnectOpenAIOAuth(): Promise<{ success: true }> {
@@ -634,10 +684,15 @@ export class ChatService {
 		for (const providerId of OPENAI_AUTH_PROVIDER_IDS) {
 			backupApiKeyBeforeOAuth(this.getAuthStorage(), providerId);
 		}
-		await this.oauthFlowController.complete(
-			this.getOpenAIOAuthFlowOptions(),
-			input.code,
-		);
+		try {
+			await this.oauthFlowController.complete(
+				this.getOpenAIOAuthFlowOptions(),
+				input.code,
+			);
+		} finally {
+			this.stopOpenAIOAuthLoopback();
+			this.pendingOpenAIOAuthCallbackUrl = null;
+		}
 		return { success: true };
 	}
 
