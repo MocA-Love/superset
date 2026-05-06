@@ -9,7 +9,8 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiOutlinePlus } from "react-icons/hi2";
 import { useIsDarkTheme } from "renderer/assets/app-icons/preset-icons";
-import { useMigrateV1PresetsToV2 } from "renderer/routes/_authenticated/hooks/useMigrateV1PresetsToV2";
+import { useV2AgentConfigs } from "renderer/hooks/useV2AgentConfigs";
+import { buildAgentLaunchCommand } from "renderer/lib/agent-launch-command";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { V2TerminalPresetRow } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal";
 import type { PresetColumnKey } from "renderer/routes/_authenticated/settings/presets/types";
@@ -48,7 +49,6 @@ export function V2PresetsSection({
 }: V2PresetsSectionProps) {
 	const isDark = useIsDarkTheme();
 	const collections = useCollections();
-	useMigrateV1PresetsToV2();
 
 	const { data: v2Presets = [] } = useLiveQuery(
 		(query) =>
