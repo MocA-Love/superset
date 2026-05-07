@@ -97,7 +97,6 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
 	const { groups, refreshWorkspacePullRequest, toggleProjectCollapsed } =
 		useDashboardSidebarData();
-	const workspaceShortcutLabels = useDashboardSidebarShortcuts(groups);
 	const { reorderProjects } = useDashboardSidebarState();
 	const navigate = useNavigate();
 	const matchRoute = useMatchRoute();
@@ -134,6 +133,8 @@ export function DashboardSidebar({
 			.map((id) => byId.get(id))
 			.filter((g): g is DashboardSidebarProject => g != null);
 	}, [groups, projectOrder]);
+
+	const workspaceShortcutLabels = useDashboardSidebarShortcuts(orderedGroups);
 
 	const activeV2Project = useMemo(() => {
 		if (!activeV2WorkspaceId) return null;
