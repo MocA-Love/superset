@@ -124,15 +124,6 @@ export const createQueryProcedures = () => {
 				.sort((a, b) => a.tabOrder - b.tabOrder);
 		}),
 
-		hasAny: publicProcedure.query(() => {
-			const row = localDb
-				.select({ id: workspaces.id })
-				.from(workspaces)
-				.limit(1)
-				.all();
-			return row.length > 0;
-		}),
-
 		getAllGrouped: publicProcedure.query(async () => {
 			type WorkspaceItem = {
 				id: string;

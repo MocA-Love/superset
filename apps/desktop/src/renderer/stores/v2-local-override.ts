@@ -8,9 +8,7 @@ interface V2LocalOverrideState {
 	 * on this install (fresh launch).
 	 */
 	optInV2: boolean | null;
-	isFreshInstall: boolean | null;
 	setOptInV2: (optInV2: boolean) => void;
-	setIsFreshInstall: (isFreshInstall: boolean) => void;
 	/** FORK: convenience toggle used by the experimental settings UI. */
 	toggle: () => void;
 }
@@ -20,9 +18,7 @@ export const useV2LocalOverrideStore = create<V2LocalOverrideState>()(
 		persist(
 			(set, get) => ({
 				optInV2: null,
-				isFreshInstall: null,
 				setOptInV2: (optInV2) => set({ optInV2 }),
-				setIsFreshInstall: (isFreshInstall) => set({ isFreshInstall }),
 				toggle: () => set({ optInV2: !(get().optInV2 === true) }),
 			}),
 			{ name: "v2-local-override-v2" },
