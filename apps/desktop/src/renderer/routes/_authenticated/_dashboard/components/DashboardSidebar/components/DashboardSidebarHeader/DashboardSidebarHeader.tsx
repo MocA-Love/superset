@@ -58,6 +58,7 @@ export function DashboardSidebarHeader({
 			toast.success("Project ready — open it from the sidebar.");
 		}
 	};
+
 	const shortcutText = useHotkeyDisplay("NEW_WORKSPACE").text;
 	const matchRoute = useMatchRoute();
 	const { gateFeature } = usePaywall();
@@ -186,7 +187,10 @@ export function DashboardSidebarHeader({
 						</TooltipTrigger>
 						<TooltipContent side="right">Add repository</TooltipContent>
 					</Tooltip>
-					<DropdownMenuContent align="start">
+					<DropdownMenuContent
+						align="start"
+						onCloseAutoFocus={(event) => event.preventDefault()}
+					>
 						<DropdownMenuItem onSelect={() => openNewProject()}>
 							<HiMiniPlus className="size-4" />
 							Create new project
@@ -284,7 +288,10 @@ export function DashboardSidebarHeader({
 						</TooltipTrigger>
 						<TooltipContent side="right">Add repository</TooltipContent>
 					</Tooltip>
-					<DropdownMenuContent align="end">
+					<DropdownMenuContent
+						align="end"
+						onCloseAutoFocus={(event) => event.preventDefault()}
+					>
 						<DropdownMenuItem onSelect={() => openNewProject()}>
 							<HiMiniPlus className="size-4" />
 							Create new project
