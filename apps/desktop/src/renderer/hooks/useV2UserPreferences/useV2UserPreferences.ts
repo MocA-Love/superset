@@ -19,6 +19,7 @@ export interface V2UserPreferencesApi {
 	setRightSidebarTab: (next: RightSidebarTab) => void;
 	setRightSidebarWidth: (next: number) => void;
 	setDeleteLocalBranch: (next: boolean) => void;
+	setShowPresetsBar: (next: boolean) => void;
 }
 
 export function useV2UserPreferences(): V2UserPreferencesApi {
@@ -143,6 +144,25 @@ export function useV2UserPreferences(): V2UserPreferencesApi {
 		[collections],
 	);
 
+	const setShowPresetsBar = useCallback(
+		(next: boolean) => {
+			const existing = collections.v2UserPreferences.get(
+				V2_USER_PREFERENCES_ID,
+			);
+			if (!existing) {
+				collections.v2UserPreferences.insert({
+					...DEFAULT_V2_USER_PREFERENCES,
+					showPresetsBar: next,
+				});
+				return;
+			}
+			collections.v2UserPreferences.update(V2_USER_PREFERENCES_ID, (draft) => {
+				draft.showPresetsBar = next;
+			});
+		},
+		[collections],
+	);
+
 	return {
 		preferences,
 		setFileLinks,
@@ -151,5 +171,6 @@ export function useV2UserPreferences(): V2UserPreferencesApi {
 		setRightSidebarTab,
 		setRightSidebarWidth,
 		setDeleteLocalBranch,
+		setShowPresetsBar,
 	};
 }

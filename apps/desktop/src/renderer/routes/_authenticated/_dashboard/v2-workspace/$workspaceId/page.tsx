@@ -25,7 +25,7 @@ import {
 	addBrowserShortcutListener,
 	dispatchBrowserShortcutEvent,
 } from "renderer/lib/browser-shortcut-events";
-import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
 import { getBaseName } from "renderer/lib/pathBasename";
 import { createWorkspaceMemo } from "renderer/lib/workspace-memos";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
@@ -237,6 +237,11 @@ function WorkspaceContent({
 }) {
 	const navigate = useNavigate();
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout();
+	const {
+		preferences: v2UserPreferences,
+		setShowPresetsBar,
+	} = useV2UserPreferences();
+	const showPresetsBar = v2UserPreferences.showPresetsBar;
 	useClearActivePaneAttention({ store });
 	const { matchedPresets, executePreset } = useV2PresetExecution({
 		store,
@@ -251,25 +256,6 @@ function WorkspaceContent({
 	});
 	const collections = useCollections();
 	const rightSidebarOpenViewWidth = useRightSidebarOpenViewWidth();
-	const utils = electronTrpc.useUtils();
-	const { data: showPresetsBar } =
-		electronTrpc.settings.getShowPresetsBar.useQuery();
-	const setShowPresetsBar = electronTrpc.settings.setShowPresetsBar.useMutation(
-		{
-			onMutate: async ({ enabled }) => {
-				await utils.settings.getShowPresetsBar.cancel();
-				const previous = utils.settings.getShowPresetsBar.getData();
-				utils.settings.getShowPresetsBar.setData(undefined, enabled);
-				return { previous };
-			},
-			onError: (_error, _variables, context) => {
-				utils.settings.getShowPresetsBar.setData(undefined, context?.previous);
-			},
-			onSettled: () => {
-				utils.settings.getShowPresetsBar.invalidate();
-			},
-		},
-	);
 	useConsumeOpenUrlRequest({
 		store,
 		url: openUrl,
@@ -764,22 +750,26 @@ function WorkspaceContent({
 									sources={getV2NotificationSourcesForTab(tab)}
 								/>
 							)}
-							renderBelowTabBar={() => (
-								<V2PresetsBar
-									matchedPresets={matchedPresets}
-									executePreset={executePreset}
-								/>
-							)}
+							renderBelowTabBar={
+								showPresetsBar
+									? () => (
+											<V2PresetsBar
+												matchedPresets={matchedPresets}
+												executePreset={executePreset}
+												showPresetsBar={showPresetsBar}
+												onToggleShowPresetsBar={setShowPresetsBar}
+											/>
+										)
+									: undefined
+							}
 							renderAddTabMenu={() => (
 								<AddTabMenu
 									onAddTerminal={addTerminalTab}
 									onAddChat={addChatTab}
 									onAddBrowser={addBrowserTab}
 									onAddMemo={addMemoTab}
-									showPresetsBar={showPresetsBar ?? false}
-									onTogglePresetsBar={(enabled) =>
-										setShowPresetsBar.mutate({ enabled })
-									}
+									showPresetsBar={showPresetsBar}
+									onToggleShowPresetsBar={setShowPresetsBar}
 								/>
 							)}
 							renderEmptyState={() => (

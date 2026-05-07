@@ -14,7 +14,7 @@ interface AddTabMenuProps {
 	onAddBrowser: () => void;
 	onAddMemo: () => void;
 	showPresetsBar: boolean;
-	onTogglePresetsBar: (enabled: boolean) => void;
+	onToggleShowPresetsBar: (enabled: boolean) => void;
 }
 
 export function AddTabMenu({
@@ -23,7 +23,7 @@ export function AddTabMenu({
 	onAddBrowser,
 	onAddMemo,
 	showPresetsBar,
-	onTogglePresetsBar,
+	onToggleShowPresetsBar,
 }: AddTabMenuProps) {
 	return (
 		<>
@@ -49,7 +49,7 @@ export function AddTabMenu({
 			<DropdownMenuSeparator />
 			<DropdownMenuCheckboxItem
 				checked={showPresetsBar}
-				onCheckedChange={(checked) => onTogglePresetsBar(checked === true)}
+				onCheckedChange={(checked) => onToggleShowPresetsBar(checked === true)}
 				onSelect={(event) => event.preventDefault()}
 			>
 				Show Preset Bar
