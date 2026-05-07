@@ -3,7 +3,7 @@ import { app, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import { env } from "main/env.main";
 import { prepareQuit } from "main/index";
-import { gt, prerelease, valid } from "semver";
+import { gt, gte, prerelease, valid } from "semver";
 import { AUTO_UPDATE_STATUS, type AutoUpdateStatus } from "shared/auto-update";
 import { PLATFORM } from "shared/constants";
 
@@ -303,7 +303,7 @@ export function checkForUpdatesInteractive(): void {
 		.then((result) => {
 			if (
 				!result?.updateInfo ||
-				result.updateInfo.version === app.getVersion()
+				gte(app.getVersion(), result.updateInfo.version)
 			) {
 				emitStatus(AUTO_UPDATE_STATUS.IDLE);
 				dialog.showMessageBox({
