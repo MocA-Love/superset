@@ -12,6 +12,9 @@ import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/u
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { useWorkspaceCreatesStore } from "renderer/stores/workspace-creates";
+import { WorkspaceHostIncompatibleState } from "./components/WorkspaceHostIncompatibleState";
+import { WorkspaceHostOfflineState } from "./components/WorkspaceHostOfflineState";
+import { useRemoteHostStatus } from "./hooks/useRemoteHostStatus";
 import { WorkspaceTrpcProvider } from "./providers/WorkspaceTrpcProvider";
 
 export const Route = createFileRoute("/_authenticated/_dashboard/v2-workspace")(
@@ -72,12 +75,30 @@ function V2WorkspaceLayout() {
 		ensureWorkspaceInSidebar(workspace.id, workspace.projectId);
 	}, [ensureWorkspaceInSidebar, workspace]);
 
+	const hostStatus = useRemoteHostStatus(workspace);
+
 	if (!workspaceId || !isReady) {
 		return null;
 	}
 
 	if (!workspace || !hostUrl) {
 		return <Outlet />;
+	}
+
+	if (hostStatus.status === "offline") {
+		return <WorkspaceHostOfflineState hostName={hostStatus.hostName} />;
+	}
+	if (hostStatus.status === "incompatible") {
+		return (
+			<WorkspaceHostIncompatibleState
+				hostName={hostStatus.hostName}
+				hostVersion={hostStatus.hostVersion}
+				minVersion={hostStatus.minVersion}
+			/>
+		);
+	}
+	if (hostStatus.status === "loading") {
+		return <div className="flex h-full w-full" />;
 	}
 
 	return (
