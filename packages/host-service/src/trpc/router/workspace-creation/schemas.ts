@@ -122,6 +122,7 @@ export const githubSearchInputSchema = z.object({
 	query: z.string().optional(),
 	limit: z.number().min(1).max(100).optional(),
 	includeClosed: z.boolean().optional(),
+	page: z.number().int().min(1).optional(),
 });
 
 export const githubIssueContentInputSchema = z.object({
