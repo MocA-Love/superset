@@ -10,6 +10,7 @@ import {
 	TbClock,
 	TbCopy,
 	TbDots,
+	TbExternalLink,
 	TbPlus,
 	TbReload,
 	TbTrash,
@@ -44,6 +45,12 @@ export function BrowserOverflowMenu({
 	const handleCopyUrl = () => {
 		if (currentUrl) {
 			copyToClipboard(currentUrl);
+		}
+	};
+
+	const handleOpenExternal = () => {
+		if (currentUrl) {
+			electronTrpcClient.external.openUrl.mutate(currentUrl).catch(() => {});
 		}
 	};
 
@@ -107,6 +114,14 @@ export function BrowserOverflowMenu({
 				>
 					<TbCopy className="size-4" />
 					Copy URL
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={handleOpenExternal}
+					disabled={!hasPage}
+					className="gap-2"
+				>
+					<TbExternalLink className="size-4" />
+					Open in Browser
 				</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem onClick={handleClearHistory} className="gap-2">

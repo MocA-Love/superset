@@ -13,6 +13,7 @@ import {
 	TbCopy,
 	TbDots,
 	TbDownload,
+	TbExternalLink,
 	TbFolderPlus,
 	TbReload,
 	TbTrash,
@@ -42,6 +43,7 @@ export function BrowserOverflowMenu({
 	const clearBrowsingDataMutation =
 		electronTrpc.browser.clearBrowsingData.useMutation();
 	const clearHistoryMutation = electronTrpc.browserHistory.clear.useMutation();
+	const openExternalMutation = electronTrpc.external.openUrl.useMutation();
 	const openTextFileMutation = electronTrpc.external.openTextFile.useMutation();
 	const saveTextFileMutation = electronTrpc.external.saveTextFile.useMutation();
 	const currentUrl = useTabsStore((s) => s.panes[paneId]?.browser?.currentUrl);
@@ -87,6 +89,12 @@ export function BrowserOverflowMenu({
 	const handleCopyUrl = () => {
 		if (currentUrl) {
 			copyToClipboard(currentUrl);
+		}
+	};
+
+	const handleOpenExternal = () => {
+		if (currentUrl) {
+			openExternalMutation.mutate(currentUrl);
 		}
 	};
 
@@ -211,6 +219,14 @@ export function BrowserOverflowMenu({
 					>
 						<TbCopy className="size-4" />
 						Copy URL
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={handleOpenExternal}
+						disabled={!hasPage}
+						className="gap-2"
+					>
+						<TbExternalLink className="size-4" />
+						Open in Browser
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
