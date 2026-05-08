@@ -1,7 +1,9 @@
 import type { RendererContext } from "@superset/panes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useCallback } from "react";
+import { LuCheck, LuCopy } from "react-icons/lu";
 import { TbExternalLink } from "react-icons/tb";
+import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useOpenInExternalEditor } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useOpenInExternalEditor";
 import { isSpreadsheetFile } from "shared/file-types";
 import { useSharedFileDocument } from "../../../../../../state/fileDocumentStore";
@@ -48,6 +50,7 @@ function FilePaneHeaderExtrasInner({
 	data: FilePaneData;
 }) {
 	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
+	const { copyToClipboard, copied } = useCopyToClipboard();
 	const document = useSharedFileDocument({
 		workspaceId,
 		absolutePath: filePath,
@@ -81,6 +84,25 @@ function FilePaneHeaderExtrasInner({
 					onChange={handleChangeView}
 				/>
 			)}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="Copy path"
+						onClick={() => void copyToClipboard(filePath)}
+						className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+					>
+						{copied ? (
+							<LuCheck className="size-3.5" />
+						) : (
+							<LuCopy className="size-3.5" />
+						)}
+					</button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom" showArrow={false}>
+					{copied ? "Copied" : "Copy path"}
+				</TooltipContent>
+			</Tooltip>
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<button
