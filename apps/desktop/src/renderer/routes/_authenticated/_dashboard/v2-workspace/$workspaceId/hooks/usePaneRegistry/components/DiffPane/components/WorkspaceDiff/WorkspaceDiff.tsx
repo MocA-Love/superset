@@ -1,8 +1,7 @@
 import { MultiFileDiff } from "@pierre/diffs/react";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { useQuery } from "@tanstack/react-query";
-import { memo, useMemo } from "react";
-import { toast } from "@superset/ui/sonner";
+import { memo, useCallback, useMemo } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import {
 	getDiffsTheme,
@@ -10,7 +9,12 @@ import {
 } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
 import { useResolvedTheme, useTerminalTheme } from "renderer/stores/theme";
 import type { DiffFileSource } from "../../../../../useChangeset";
+import { CommentThread } from "../CommentThread";
 import { DiffFileHeader } from "../DiffFileHeader";
+import {
+	type DiffCommentThread,
+	useDiffAnnotations,
+} from "./hooks/useDiffAnnotations";
 
 interface WorkspaceDiffProps {
 	workspaceId: string;
@@ -29,6 +33,8 @@ interface WorkspaceDiffProps {
 	onOpenFile?: (openInNewTab?: boolean) => void;
 	onOpenInExternalEditor?: () => void;
 	onDiscard?: () => void;
+	focusLine?: number;
+	focusTick?: number;
 }
 
 export const WorkspaceDiff = memo(function WorkspaceDiff({
@@ -48,6 +54,8 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 	onOpenFile,
 	onOpenInExternalEditor,
 	onDiscard,
+	focusLine,
+	focusTick,
 }: WorkspaceDiffProps) {
 	const activeTheme = useResolvedTheme();
 	const terminalTheme = useTerminalTheme();
@@ -102,28 +110,25 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 		staleTime: Number.POSITIVE_INFINITY,
 	});
 
-	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
-		id: workspaceId,
-	});
-	const worktreePath = workspaceQuery.data?.worktreePath;
-
-	const utils = workspaceTrpc.useUtils();
-	const handleDiscard = useMemo(() => {
-		if (source.kind !== "unstaged" || !worktreePath) return undefined;
-		return () => {
-			electronTrpcClient.changes.discardChanges
-				.mutate({ worktreePath, filePath: path })
-				.then(() => {
-					void utils.git.getDiff.invalidate({ workspaceId, path });
-					void utils.git.getStatus.invalidate({ workspaceId });
-				})
-				.catch((err) => {
-					toast.error("Couldn't discard changes", {
-						description: err instanceof Error ? err.message : String(err),
-					});
-				});
-		};
-	}, [source.kind, worktreePath, path, workspaceId, utils]);
+	const lineAnnotations = useDiffAnnotations({ workspaceId, path });
+	const renderAnnotation = useCallback(
+		(annotation: { lineNumber: number; metadata: DiffCommentThread }) => (
+			<CommentThread
+				workspaceId={workspaceId}
+				threadId={annotation.metadata.threadId}
+				isResolved={annotation.metadata.isResolved}
+				isOutdated={annotation.metadata.isOutdated}
+				url={annotation.metadata.url}
+				comments={annotation.metadata.comments}
+				focusTick={
+					focusLine != null && annotation.lineNumber === focusLine
+						? focusTick
+						: undefined
+				}
+			/>
+		),
+		[workspaceId, focusLine, focusTick],
+	);
 
 	return (
 		<div className="flex flex-col">
@@ -143,10 +148,12 @@ export const WorkspaceDiff = memo(function WorkspaceDiff({
 				onDiscard={onDiscard}
 			/>
 			{diffQuery.data ? (
-				<MultiFileDiff
+				<MultiFileDiff<DiffCommentThread>
 					oldFile={diffQuery.data.oldFile}
 					newFile={diffQuery.data.newFile}
 					style={themeVars}
+					lineAnnotations={lineAnnotations}
+					renderAnnotation={renderAnnotation}
 					options={{
 						diffStyle,
 						expandUnchanged,
