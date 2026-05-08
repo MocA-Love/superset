@@ -134,10 +134,12 @@
 
 :root[data-vibrancy="on"] {
 	--background: rgba(21, 17, 16, var(--vibrancy-alpha));
-	--card: rgba(32, 30, 28, min(1, calc(var(--vibrancy-alpha) + 0.1)));
 	--popover: rgba(32, 30, 28, 0.95);
-	--muted: rgba(42, 40, 39, min(1, calc(var(--vibrancy-alpha) + 0.1)));
-	--accent: rgba(42, 40, 39, min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	/* Keep --card / --muted / --accent opaque under vibrancy: Tailwind v4
+	 * utilities like `bg-muted/40` apply their own /xx alpha modifier, so if
+	 * the underlying token is already translucent the result is double alpha
+	 * (e.g. 0.27 * 0.40 ≈ 0.108) and pill/chip backgrounds disappear. Only
+	 * the shell-only tokens (sidebar / tertiary) remain translucent. */
 	--sidebar: rgba(26, 23, 22, max(0, calc(var(--vibrancy-alpha) - 0.05)));
 	--sidebar-accent: rgba(
 		37,
@@ -172,10 +174,9 @@
 
 :root[data-vibrancy="on"].light {
 	--background: rgb(255 255 255 / var(--vibrancy-alpha));
-	--card: rgb(255 255 255 / min(1, calc(var(--vibrancy-alpha) + 0.1)));
 	--popover: rgb(255 255 255 / 0.95);
-	--muted: rgb(247 247 247 / min(1, calc(var(--vibrancy-alpha) + 0.1)));
-	--accent: rgb(247 247 247 / min(1, calc(var(--vibrancy-alpha) + 0.1)));
+	/* See dark variant comment: keep --card / --muted / --accent opaque so
+	 * Tailwind /xx utilities only apply alpha once. */
 	--sidebar: rgb(251 251 251 / max(0, calc(var(--vibrancy-alpha) - 0.05)));
 	--sidebar-accent: rgb(
 		247 247 247 /

@@ -103,9 +103,15 @@ function applyVibrancyOverlay(theme: Theme, alpha: number): void {
 	// and the window felt opaque. 0.05 keeps a hairline tint so the chrome
 	// is still visible against transparent body without dominating it.
 	const chromeAlpha = clampAlpha(alpha + 0.05);
-	set("--card", theme.ui.card, chromeAlpha);
-	set("--muted", theme.ui.muted, chromeAlpha);
-	set("--accent", theme.ui.accent, chromeAlpha);
+	// Tailwind v4 utilities like `bg-muted/40` apply their own slash-alpha on
+	// top of the resolved color, so if `--muted` itself is already translucent
+	// the result is double-alpha (e.g. 0.27 * 0.40 ≈ 0.108) and pill/chip
+	// backgrounds disappear. Keep `--card` / `--muted` / `--accent` opaque
+	// here — they are the colors Tailwind utilities multiply against — and
+	// only translucify the chrome-only tokens (sidebar / tertiary).
+	if (theme.ui.card) root.style.setProperty("--card", theme.ui.card);
+	if (theme.ui.muted) root.style.setProperty("--muted", theme.ui.muted);
+	if (theme.ui.accent) root.style.setProperty("--accent", theme.ui.accent);
 	set("--sidebar", theme.ui.sidebar, chromeAlpha);
 	set("--sidebar-accent", theme.ui.sidebarAccent, chromeAlpha);
 	set("--tertiary", theme.ui.tertiary, chromeAlpha);
