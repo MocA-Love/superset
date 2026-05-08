@@ -35,6 +35,8 @@ export interface CreateAppOptions {
 		credentials: GitCredentialProvider;
 		modelResolver: ModelProviderRuntimeResolver;
 	};
+	api?: ApiClient;
+	db?: ReturnType<typeof createDb>;
 }
 
 export interface CreateAppResult {
@@ -46,8 +48,10 @@ export interface CreateAppResult {
 export function createApp(options: CreateAppOptions): CreateAppResult {
 	const { config, providers } = options;
 
-	const api = createApiClient(config.cloudApiUrl, providers.auth);
-	const db = createDb(config.dbPath, config.migrationsFolder);
+	const api =
+		options.api ??
+		createApiClient(config.cloudApiUrl, providers.auth, config.organizationId);
+	const db = options.db ?? createDb(config.dbPath, config.migrationsFolder);
 	const git = createGitFactory(providers.credentials);
 	const github = async () => {
 		const token = await providers.credentials.getToken("github.com");

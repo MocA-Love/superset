@@ -307,6 +307,38 @@ step_start_electric() {
   return 0
 }
 
+# Ports we must avoid because the OS (or commonly-installed services) listen on
+# them, OR because Node/Next.js refuses to bind them. Bases whose
+# [base, base+range) window contains any of these are skipped during allocation.
+#
+# - 5000, 7000: macOS Control Center / AirPlay Receiver (Sonoma+). Cannot be
+#   freed without disabling AirPlay Receiver in System Settings, so we just
+#   route around them.
+# - Node/Next.js "unsafe ports" in our [3000, ...) allocation range. Next.js
+#   refuses to start on these with errors like "Bad port: '5060' is reserved
+#   for sip" (see https://nextjs.org/docs/messages/reserved-port).
+#     3659  apple-sasl
+#     4045  lockd / npp
+#     5060  sip
+#     5061  sips
+#     6000  X11
+#     6566  sane-port
+#     6665-6669, 6697  IRC / IRC+TLS
+SUPERSET_RESERVED_PORTS="3659 4045 5000 5060 5061 6000 6566 6665 6666 6667 6668 6669 6697 7000"
+
+# Returns 0 if the [base, base+range) window contains no reserved port.
+port_base_is_safe() {
+  local base=$1
+  local range=$2
+  local reserved
+  for reserved in $SUPERSET_RESERVED_PORTS; do
+    if [ "$reserved" -ge "$base" ] && [ "$reserved" -lt "$((base + range))" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 allocate_port_base() {
   local alloc_file="$HOME/.superset/port-allocations.json"
   local lock_dir="$HOME/.superset/port-allocations.lock"
