@@ -1,16 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { useHostTargetUrl } from "renderer/hooks/host-service/useHostTargetUrl";
+import { useHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
-import type { WorkspaceHostTarget } from "../../../DashboardNewWorkspaceForm/components/DevicePicker/types";
 
 /**
  * IDs of projects already set up on the selected host. Returns `null` when
  * we couldn't reach that host (treat as "unknown" — no setup indicator).
  */
 export function useSelectedHostProjectIds(
-	hostTarget: WorkspaceHostTarget,
+	hostId: string | null,
 ): Set<string> | null {
-	const hostUrl = useHostTargetUrl(hostTarget);
+	const hostUrl = useHostUrl(hostId);
 
 	const { data } = useQuery({
 		queryKey: ["project", "list", hostUrl],

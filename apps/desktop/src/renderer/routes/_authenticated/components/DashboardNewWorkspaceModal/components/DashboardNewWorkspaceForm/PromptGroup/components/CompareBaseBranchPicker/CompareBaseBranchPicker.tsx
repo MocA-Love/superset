@@ -39,7 +39,6 @@ interface CompareBaseBranchPickerProps {
 	) => void;
 	onCheckoutBranch: (branchName: string) => void;
 	onOpenExisting: (branchName: string) => void;
-	onAdoptWorktree: (branchName: string) => void;
 	// Authoritative (cloud-synced) answer to "does a workspace row exist for
 	// this branch on this host?". Computed from the v2Workspaces collection
 	// so it stays in sync with soft-deletes. Trumps any server-side
@@ -63,7 +62,6 @@ export function CompareBaseBranchPicker({
 	onSelectCompareBaseBranch,
 	onCheckoutBranch,
 	onOpenExisting,
-	onAdoptWorktree,
 	hasWorkspaceForBranch,
 }: CompareBaseBranchPickerProps) {
 	const [open, setOpen] = useState(false);
@@ -140,7 +138,7 @@ export function CompareBaseBranchPicker({
 						className="p-2"
 					>
 						<TabsList className="grid w-full grid-cols-2 h-7 bg-transparent">
-							<TabsTrigger value="branch" className="text-[11px]">
+							<TabsTrigger value="all" className="text-[11px]">
 								Branch
 							</TabsTrigger>
 							<TabsTrigger value="worktree" className="text-[11px]">
@@ -211,7 +209,7 @@ export function CompareBaseBranchPicker({
 																if (hasWorkspace) {
 																	onOpenExisting(branch.name);
 																} else {
-																	onAdoptWorktree(branch.name);
+																	onCheckoutBranch(branch.name);
 																}
 															}}
 														>

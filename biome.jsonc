@@ -12,7 +12,8 @@
 			"!**/*.template.js",
 			"!**/*.template.sh",
 			"!apps/mobile/uniwind-types.d.ts",
-			"!mock.html"
+			"!mock.html",
+			"!packages/sdk/src/client.ts"
 		]
 	},
 	"formatter": {

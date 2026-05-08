@@ -21,6 +21,7 @@ import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel"
 import { WorkspaceSidebar } from "renderer/screens/main/components/WorkspaceSidebar";
 import { DeleteWorkspaceDialog } from "renderer/screens/main/components/WorkspaceSidebar/WorkspaceListItem/components";
 import { useOpenNewWorkspaceModal } from "renderer/stores/new-workspace-modal";
+import { WorkspaceCreatesManager } from "renderer/stores/workspace-creates";
 import {
 	COLLAPSED_WORKSPACE_SIDEBAR_WIDTH,
 	DEFAULT_WORKSPACE_SIDEBAR_WIDTH,
@@ -114,12 +115,12 @@ function DashboardLayout() {
 	);
 
 	return (
-		// FORK NOTE: keep `bg-tertiary` outer wrapper, `isTearoff` /
-		// `isScratchRoute` conditional rendering and `<KeepAliveWorkspaces />`.
-		// upstream #3777 introduces a `workspace-right-sidebar-slot` portal
-		// at the dashboard level for the new PR action header — that slot is
-		// kept further down (outside this conflict block).
+		// FORK NOTE: keep custom outer wrapper, isTearoff / isScratchRoute
+		// conditional rendering and <KeepAliveWorkspaces />. Upstream PR1
+		// adds the <WorkspaceCreatesManager /> mount required to drive
+		// in-flight workspace.create state from the renderer-side store.
 		<div className="flex flex-col h-full w-full bg-tertiary">
+			<WorkspaceCreatesManager />
 			{!isTearoff && <TopBar />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
 				{!isTearoff && !isScratchRoute && isWorkspaceSidebarOpen && (

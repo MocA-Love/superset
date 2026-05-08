@@ -83,19 +83,29 @@ jobs:
         working-directory: apps/desktop
         run: bun run install:deps
 
-      # `bun install --ignore-scripts` skips postinstalls for safety; the
-      # @vscode/ripgrep package uses its postinstall to download the
-      # platform-specific ripgrep binary. workspace-fs tests that exercise
-      # the streaming / multiline paths need that binary, so run the
-      # postinstall explicitly for just this package.
-      - name: Download bundled ripgrep binary
+      # @vscode/ripgrep ships the platform binary in different ways across
+      # versions: pre-1.18 used a postinstall script (lib/postinstall.js),
+      # 1.18+ uses optional platform-specific subpackages (e.g. @vscode/ripgrep-linux-x64).
+      # workspace-fs tests need the binary on disk, so handle both shapes.
+      - name: Ensure ripgrep binary is present
         run: |
           rg_pkg=$(ls -d node_modules/.bun/@vscode+ripgrep@*/node_modules/@vscode/ripgrep | head -1)
           if [ -z "$rg_pkg" ]; then
             echo "::error::@vscode/ripgrep not found in node_modules"
             exit 1
           fi
-          node "$rg_pkg/lib/postinstall.js"
+          if [ -f "$rg_pkg/lib/postinstall.js" ]; then
+            node "$rg_pkg/lib/postinstall.js"
+          fi
+          # 1.18+ optional-package layout: link the platform binary into bin/
+          if [ ! -x "$rg_pkg/bin/rg" ]; then
+            platform_pkg=$(ls -d node_modules/.bun/@vscode+ripgrep-linux-x64@*/node_modules/@vscode/ripgrep-linux-x64 2>/dev/null | head -1)
+            if [ -n "$platform_pkg" ] && [ -x "$platform_pkg/bin/rg" ]; then
+              mkdir -p "$rg_pkg/bin"
+              cp "$platform_pkg/bin/rg" "$rg_pkg/bin/rg"
+              chmod +x "$rg_pkg/bin/rg"
+            fi
+          fi
           ls -la "$rg_pkg/bin" || true
 
       - name: Test
