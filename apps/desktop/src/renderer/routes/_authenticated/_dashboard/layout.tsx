@@ -150,7 +150,7 @@ function DashboardLayout() {
 					<KeepAliveWorkspaces />
 				</div>
 			</div>
-			<div id="workspace-right-sidebar-slot" className="flex h-full shrink-0" />
+			<div id="workspace-right-sidebar-slot" className="contents" />
 			<AddRepositoryModals />
 			{deleteTarget && (
 				<DeleteWorkspaceDialog
