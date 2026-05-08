@@ -74,10 +74,10 @@ export const FEATURE_FLAGS = {
 	/** Gates access to V2 Cloud features (host-service, cloud sprites). */
 	V2_CLOUD: "v2-cloud",
 	/**
-	 * Gates the Automations feature in the UI (sidebar entry, routes, create
-	 * flow). Complementary to the subscriptions.plan paid-tier check —
-	 * server-side procedures still enforce paid plan; this flag controls
-	 * UI visibility and staged rollout.
+	 * Routes the Slack agent to the v2 MCP server (`@superset/mcp-v2`)
+	 * instead of v1 (`@superset/mcp`). Evaluated against the linking
+	 * user's id (the Superset user behind the Slack mention) so it
+	 * piggybacks on the existing All Access cohort. Off → v1.
 	 */
-	AUTOMATIONS_ACCESS: "automations-access",
+	SLACK_MCP_V2: "slack-mcp-v2",
 } as const;
