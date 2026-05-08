@@ -25,7 +25,6 @@ import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showW
 import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
-import { V1MigrationSummaryModal } from "renderer/routes/_authenticated/components/V1MigrationSummaryModal";
 import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
 import {
@@ -239,7 +238,6 @@ function AuthenticatedLayout() {
 							<WorktreeAutoSyncManager />
 							<V2NotificationController />
 							<Outlet />
-							<V1MigrationSummaryModal />
 							<WorkspaceInitEffects />
 							{isV2CloudEnabled ? (
 								<DashboardNewWorkspaceModal />
