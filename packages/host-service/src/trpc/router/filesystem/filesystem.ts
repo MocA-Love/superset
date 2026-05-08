@@ -3,7 +3,7 @@ import { isAbsolute, join, normalize, resolve } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { HostServiceContext } from "../../../types";
-import { protectedProcedure, router } from "../../index";
+import { protectedProcedure, queryProcedure, router } from "../../index";
 
 function getFilesystemService(ctx: HostServiceContext, workspaceId: string) {
 	try {
@@ -79,20 +79,21 @@ const replaceContentInputSchema = z.object({
 });
 
 export const filesystemRouter = router({
-	listDirectory: protectedProcedure
+	listDirectory: queryProcedure
 		.input(
 			z.object({
 				workspaceId: z.string(),
 				absolutePath: z.string(),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
+		.query(async ({ ctx, input, signal }) => {
 			const { workspaceId, ...serviceInput } = input;
 			const service = getFilesystemService(ctx, workspaceId);
-			return await service.listDirectory(serviceInput);
+			return await service.listDirectory(serviceInput, { signal });
 		}),
 
-	readFile: protectedProcedure
+	readFile: queryProcedure
+		.meta({ timeoutMs: 30_000 })
 		.input(
 			z.object({
 				workspaceId: z.string(),
@@ -117,7 +118,7 @@ export const filesystemRouter = router({
 			return result;
 		}),
 
-	getMetadata: protectedProcedure
+	getMetadata: queryProcedure
 		.input(
 			z.object({
 				workspaceId: z.string(),
@@ -276,7 +277,8 @@ export const filesystemRouter = router({
 			return await service.copyPath(serviceInput);
 		}),
 
-	searchFiles: protectedProcedure
+	searchFiles: queryProcedure
+		.meta({ timeoutMs: 30_000 })
 		.input(
 			z
 				.object({
@@ -326,7 +328,8 @@ export const filesystemRouter = router({
 			return await service.warmupSearchIndex(serviceInput);
 		}),
 
-	searchContent: protectedProcedure
+	searchContent: queryProcedure
+		.meta({ timeoutMs: 60_000 })
 		.input(searchContentInputSchema)
 		.query(async ({ ctx, input }) => {
 			const trimmedQuery = input.query.trim();

@@ -178,7 +178,6 @@ function V2WorkspacePage() {
 		<WorkspaceContent
 			projectId={workspace.projectId}
 			workspaceId={workspace.id}
-			workspaceName={workspace.name}
 			terminalId={terminalId}
 			chatSessionId={chatSessionId}
 			focusRequestId={focusRequestId}
@@ -223,7 +222,6 @@ function useClearActivePaneAttention({
 function WorkspaceContent({
 	projectId,
 	workspaceId,
-	workspaceName,
 	terminalId,
 	chatSessionId,
 	focusRequestId,
@@ -233,7 +231,6 @@ function WorkspaceContent({
 }: {
 	projectId: string;
 	workspaceId: string;
-	workspaceName: string;
 	terminalId?: string;
 	chatSessionId?: string;
 	focusRequestId?: string;
@@ -870,7 +867,6 @@ function WorkspaceContent({
 						>
 							<WorkspaceSidebar
 								workspaceId={workspaceId}
-								workspaceName={workspaceName}
 								onSelectFile={openSidebarFilePane}
 								onSelectDiffFile={openDiffPane}
 								onOpenComment={openCommentPane}
@@ -900,7 +896,6 @@ function WorkspaceContent({
 				recentlyViewedFiles={recentFiles}
 				scope={commandPalette.scope}
 				searchResults={commandPalette.searchResults}
-				workspaceName={workspaceName}
 				includeIgnored={commandPalette.includeIgnored}
 				onToggleIncludeIgnored={commandPalette.toggleIncludeIgnored}
 			/>
