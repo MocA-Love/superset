@@ -25,7 +25,7 @@ export type RemoteHostStatus =
 const HOST_INFO_STALE_MS = 30_000;
 
 export function useRemoteHostStatus(
-	workspace: SelectV2Workspace | null,
+	workspace: Pick<SelectV2Workspace, "id" | "organizationId" | "hostId"> | null,
 ): RemoteHostStatus {
 	const collections = useCollections();
 	const { machineId } = useLocalHostService();
