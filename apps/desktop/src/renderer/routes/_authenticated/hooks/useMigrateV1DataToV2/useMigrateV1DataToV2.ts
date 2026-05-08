@@ -26,6 +26,25 @@ function getShownKey(organizationId: string): string {
 }
 
 export const V1_MIGRATION_SUMMARY_EVENT = "v1-migration-summary-updated";
+export const V1_MIGRATION_LAST_RUN_AT_EVENT = V1_MIGRATION_SUMMARY_EVENT;
+
+/**
+ * Reads the timestamp (epoch ms) of the most recent v1→v2 migration run for an
+ * organization, or null if no run has been recorded.
+ */
+export function readLastMigrationRunAt(
+	organizationId: string | null,
+): number | null {
+	if (!organizationId) return null;
+	const raw = localStorage.getItem(getSummaryKey(organizationId));
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw) as { createdAt?: number };
+		return typeof parsed.createdAt === "number" ? parsed.createdAt : null;
+	} catch {
+		return null;
+	}
+}
 
 function persistSummary(organizationId: string, summary: MigrationSummary) {
 	localStorage.setItem(
