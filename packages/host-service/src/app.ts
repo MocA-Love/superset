@@ -83,6 +83,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 	gitWatcher.start();
 	const pullRequestRuntime = new PullRequestRuntimeManager({
 		db,
+		execGh,
 		git,
 		github,
 		gitWatcher,
