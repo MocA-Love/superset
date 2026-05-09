@@ -18,7 +18,7 @@ import { HOOKS_DIR } from "./paths";
 export const CURSOR_HOOK_SCRIPT_NAME = `cursor-hook.${hookScriptExtension()}`;
 
 const CURSOR_HOOK_SIGNATURE = "# Superset cursor hook";
-const CURSOR_HOOK_VERSION = "v1";
+const CURSOR_HOOK_VERSION = "v2";
 export const CURSOR_HOOK_MARKER = `${CURSOR_HOOK_SIGNATURE} ${CURSOR_HOOK_VERSION}`;
 
 const CURSOR_HOOK_TEMPLATE_PATH = path.join(
@@ -51,7 +51,7 @@ export function getCursorHookScriptContent(): string {
 	return template
 		.replace("{{MARKER}}", CURSOR_HOOK_MARKER)
 		.replace("{{SLEEP_INHIBITOR_SNIPPET}}", getSleepInhibitorSnippet())
-		.replace(/\{\{DEFAULT_PORT\}\}/g, String(env.DESKTOP_NOTIFICATIONS_PORT));
+		.replaceAll("{{DEFAULT_PORT}}", String(env.DESKTOP_NOTIFICATIONS_PORT));
 }
 
 /**
@@ -80,6 +80,8 @@ export function getCursorHooksJsonContent(hookScriptPath: string): string {
 	}
 
 	const ourHooks: Record<string, CursorHookEntry> = {
+		sessionStart: { command: buildHookCommand(hookScriptPath, "SessionStart") },
+		sessionEnd: { command: buildHookCommand(hookScriptPath, "SessionEnd") },
 		beforeSubmitPrompt: { command: buildHookCommand(hookScriptPath, "Start") },
 		stop: { command: buildHookCommand(hookScriptPath, "Stop") },
 		beforeShellExecution: {
@@ -117,7 +119,9 @@ export function createCursorHookScript(): void {
 }
 
 export function createCursorAgentWrapper(): void {
-	const script = buildWrapperScript("cursor-agent", `exec "$REAL_BIN" "$@"`);
+	const script = buildWrapperScript("cursor-agent", `exec "$REAL_BIN" "$@"`, {
+		agentId: "cursor-agent",
+	});
 	createWrapper("cursor-agent", script);
 }
 

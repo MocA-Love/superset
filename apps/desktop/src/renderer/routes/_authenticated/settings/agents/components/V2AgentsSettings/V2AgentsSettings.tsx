@@ -30,17 +30,9 @@ export function V2AgentsSettings({
 	const { activeHostUrl } = useLocalHostService();
 	const queryClient = useQueryClient();
 
-	const configsQuery = useQuery({
-		queryKey: [...QUERY_KEY, activeHostUrl] as const,
-		enabled: !!activeHostUrl,
-		queryFn: () => {
-			if (!activeHostUrl) return [] as HostAgentConfigDto[];
-			return getHostServiceClientByUrl(
-				activeHostUrl,
-			).settings.agentConfigs.list.query();
-		},
-	});
-
+	const configsQuery = useV2AgentConfigs(activeHostUrl);
+	const queryKey = [...QUERY_KEY, activeHostUrl] as const;
+	const queryFamily = { queryKey: QUERY_KEY };
 	const presetsQuery = useQuery({
 		queryKey: [...QUERY_KEY, "presets", activeHostUrl] as const,
 		enabled: !!activeHostUrl,
@@ -52,8 +44,18 @@ export function V2AgentsSettings({
 		},
 	});
 
-	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: [...QUERY_KEY, activeHostUrl] });
+	const invalidate = () => {
+		void queryClient.invalidateQueries(queryFamily);
+		void queryClient.refetchQueries(queryFamily);
+	};
+
+	const updateCachedConfig = (updated: HostAgentConfigDto) => {
+		queryClient.setQueriesData<HostAgentConfigDto[]>(queryFamily, (current) =>
+			current?.map((config) =>
+				config.id === updated.id ? { ...config, ...updated } : config,
+			),
+		);
+	};
 
 	const addMutation = useMutation({
 		mutationFn: (presetId: string) => {
@@ -81,10 +83,7 @@ export function V2AgentsSettings({
 			await queryClient.cancelQueries({
 				queryKey: [...QUERY_KEY, activeHostUrl],
 			});
-			const previous = queryClient.getQueryData<HostAgentConfigDto[]>([
-				...QUERY_KEY,
-				activeHostUrl,
-			]);
+			const previous = queryClient.getQueryData<HostAgentConfigDto[]>(queryKey);
 			if (previous) {
 				const byId = new Map(previous.map((row) => [row.id, row]));
 				const next = ids
@@ -93,13 +92,13 @@ export function V2AgentsSettings({
 						return row ? { ...row, order: index } : null;
 					})
 					.filter((row): row is HostAgentConfigDto => row !== null);
-				queryClient.setQueryData([...QUERY_KEY, activeHostUrl], next);
+				queryClient.setQueryData(queryKey, next);
 			}
 			return { previous };
 		},
 		onError: (err, _ids, ctx) => {
 			if (ctx?.previous) {
-				queryClient.setQueryData([...QUERY_KEY, activeHostUrl], ctx.previous);
+				queryClient.setQueryData(queryKey, ctx.previous);
 			}
 			toast.error(err instanceof Error ? err.message : "Failed to reorder");
 		},
@@ -192,7 +191,10 @@ export function V2AgentsSettings({
 							descriptionByPresetId.get(selectedAgent.presetId) ??
 							"Terminal agent launch configuration"
 						}
-						onChanged={invalidate}
+						onChanged={(updated) => {
+							updateCachedConfig(updated);
+							invalidate();
+						}}
 						onDeleted={() => {
 							setSelectedAgentId(null);
 							invalidate();

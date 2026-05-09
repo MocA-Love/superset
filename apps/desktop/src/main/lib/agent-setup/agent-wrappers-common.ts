@@ -3,7 +3,7 @@ import path from "node:path";
 import { SUPERSET_MANAGED_BINARIES } from "./desktop-agent-capabilities";
 import { BIN_DIR } from "./paths";
 
-export const WRAPPER_MARKER = "# Superset agent-wrapper v1";
+export const WRAPPER_MARKER = "# Superset agent-wrapper v2";
 export { SUPERSET_MANAGED_BINARIES };
 
 export const IS_WIN_AGENT = process.platform === "win32";
@@ -141,10 +141,24 @@ export function getWrapperPath(binaryName: string): string {
 	return path.join(BIN_DIR, binaryName);
 }
 
+export interface BuildWrapperScriptOptions {
+	/**
+	 * `BuiltinAgentId` for the wrapped binary (e.g. "claude", "codex"). When
+	 * set, the wrapper exports `SUPERSET_AGENT_ID` so the agent process and
+	 * any hook subprocess it spawns inherit the wrapper-level identity. The
+	 * notify-hook script forwards this into the v2 hook payload.
+	 */
+	agentId?: string;
+}
+
 export function buildWrapperScript(
 	binaryName: string,
 	execLine: string,
+	options: BuildWrapperScriptOptions = {},
 ): string {
+	const exportAgentId = options.agentId
+		? `export SUPERSET_AGENT_ID="${options.agentId}"\n\n`
+		: "";
 	return `#!/bin/bash
 ${WRAPPER_MARKER}
 # Superset wrapper for ${binaryName}
@@ -158,7 +172,7 @@ fi
 
 export SUPERSET_WRAPPER_PID="$$"
 
-${execLine}
+${exportAgentId}${execLine}
 `;
 }
 
