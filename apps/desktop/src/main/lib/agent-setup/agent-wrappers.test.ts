@@ -202,8 +202,31 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
 		expect(wrapper).toContain(`"$REAL_BIN" --enable codex_hooks "$@"`);
-		expect(wrapper).toContain("SUPERSET_CODEX_START_WATCHER_PID");
-		expect(wrapper).toContain('kill "$SUPERSET_CODEX_START_WATCHER_PID"');
+		expect(wrapper).toContain('export SUPERSET_AGENT_ID="codex"');
+
+		expect(wrapper).toContain("# Superset agent-wrapper v2");
+
+		// Native hooks remain enabled, but the process-scoped TUI session log is
+		// the reliable Start signal for installed Codex TUI builds.
+		expect(wrapper).toContain("SUPERSET_CODEX_SESSION_WATCHER_PID");
+		expect(wrapper).toContain("CODEX_TUI_RECORD_SESSION");
+		expect(wrapper).toContain("CODEX_TUI_SESSION_LOG_PATH");
+		expect(wrapper).toContain("SUPERSET_TERMINAL_ID$SUPERSET_TAB_ID");
+		expect(wrapper).not.toContain("rollout-*.jsonl");
+		expect(wrapper).not.toContain("_superset_sessions_dir");
+		expect(wrapper).not.toContain("$" + "{CODEX_HOME:-$HOME/.codex}");
+		expect(wrapper).toContain("SUPERSET_HOOK_DEBUG_LOG");
+		expect(wrapper).toContain("tail -n +1 -F");
+		expect(wrapper).toContain("_superset_cleanup_session_watcher");
+		expect(wrapper).toContain("_superset_child_pids_for");
+		expect(wrapper).toContain('kill -TERM "$_superset_child_pid"');
+		expect(wrapper).toContain('kill -KILL "$_superset_watcher_pid"');
+		expect(wrapper).not.toContain("mkfifo");
+		expect(wrapper).not.toContain(
+			"SUPERSET_CODEX_SESSION_WATCHER_TAIL_PID_PATH",
+		);
+		expect(wrapper).toContain('"UserTurn"');
+		expect(wrapper).toContain("_approval_request");
 
 		const execLine = buildCodexWrapperExecLine(
 			path.join(TEST_HOOKS_DIR, "notify.sh"),
