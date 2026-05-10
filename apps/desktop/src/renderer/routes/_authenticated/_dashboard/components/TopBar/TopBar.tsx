@@ -48,7 +48,7 @@ export function TopBar() {
 			>
 				<SidebarToggle />
 				<NavigationControls />
-				<ResourceConsumption />
+				<ResourceConsumption surface={isV2CloudEnabled ? "v2" : "v1"} />
 			</div>
 
 			{isV2WorkspaceRoute ? (
