@@ -201,6 +201,8 @@ async function ensureProjectGitHubOwner(project: Project): Promise<Project> {
 }
 
 async function ensureMainWorkspace(project: Project): Promise<void> {
+	activateProject(project);
+
 	const existingBranchWorkspace = getBranchWorkspace(project.id);
 
 	if (existingBranchWorkspace) {
@@ -268,8 +270,6 @@ async function ensureMainWorkspace(project: Project): Promise<void> {
 	setLastActiveWorkspace(workspace.id);
 
 	if (!wasExisting) {
-		activateProject(project);
-
 		track("workspace_opened", {
 			workspace_id: workspace.id,
 			project_id: project.id,
