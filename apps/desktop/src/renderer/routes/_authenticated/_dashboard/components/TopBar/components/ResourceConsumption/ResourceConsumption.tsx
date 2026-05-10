@@ -90,10 +90,12 @@ function getTerminalTitleOverrides(
 
 interface ResourceConsumptionProps {
 	surface?: "v1" | "v2";
+	className?: string;
 }
 
 export function ResourceConsumption({
 	surface = "v1",
+	className,
 }: ResourceConsumptionProps) {
 	const [open, setOpen] = useState(false);
 	const [sortOption, setSortOption] = useState<SortOption>("memory");
@@ -346,7 +348,10 @@ export function ResourceConsumption({
 					<PopoverTrigger asChild>
 						<button
 							type="button"
-							className="no-drag inline-flex items-center gap-1.5 h-6 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+							className={cn(
+								"no-drag inline-flex items-center gap-1.5 h-6 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+								className,
+							)}
 							aria-label="Resource consumption"
 						>
 							<span className="relative flex items-center">
