@@ -421,6 +421,7 @@ export const createSettingsRouter = () => {
 					commands: z.array(z.string()),
 					projectIds: z.array(z.string()).nullable().optional(),
 					pinnedToBar: z.boolean().optional(),
+					useAsWorkspaceRun: z.boolean().optional(),
 					executionMode: z.enum(EXECUTION_MODES).optional(),
 				}),
 			)
@@ -451,6 +452,7 @@ export const createSettingsRouter = () => {
 						commands: z.array(z.string()).optional(),
 						projectIds: z.array(z.string()).nullable().optional(),
 						pinnedToBar: z.boolean().optional(),
+						useAsWorkspaceRun: z.boolean().optional(),
 						executionMode: z.enum(EXECUTION_MODES).optional(),
 					}),
 				}),
@@ -476,6 +478,8 @@ export const createSettingsRouter = () => {
 					preset.projectIds = normalizePresetProjectIds(input.patch.projectIds);
 				if (input.patch.pinnedToBar !== undefined)
 					preset.pinnedToBar = input.patch.pinnedToBar;
+				if (input.patch.useAsWorkspaceRun !== undefined)
+					preset.useAsWorkspaceRun = input.patch.useAsWorkspaceRun;
 				if (input.patch.executionMode !== undefined)
 					preset.executionMode = input.patch.executionMode;
 

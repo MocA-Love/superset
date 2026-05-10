@@ -47,6 +47,7 @@ import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
 import { V2PresetsBar } from "./components/V2PresetsBar";
+import { V2WorkspaceRunButton } from "./components/V2WorkspaceRunButton";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceMissingWorktreeState } from "./components/WorkspaceMissingWorktreeState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
@@ -63,6 +64,7 @@ import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2TerminalLauncher } from "./hooks/useV2TerminalLauncher";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
+import { useV2WorkspaceRun } from "./hooks/useV2WorkspaceRun";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
@@ -259,10 +261,17 @@ function WorkspaceContent({
 	const showPresetsBar = v2UserPreferences.showPresetsBar;
 	useClearActivePaneAttention({ store });
 	const launcher = useV2TerminalLauncher();
-	const { matchedPresets, executePreset } = useV2PresetExecution({
+	const { matchedPresets, executePreset, resolvePresetCommands } =
+		useV2PresetExecution({
+			store,
+			projectId,
+			launcher,
+		});
+	const workspaceRun = useV2WorkspaceRun({
 		store,
-		projectId,
 		launcher,
+		matchedPresets,
+		resolvePresetCommands,
 	});
 	useConsumeAutomationRunLink({
 		store,
@@ -587,6 +596,9 @@ function WorkspaceContent({
 		launcher,
 	});
 	useHotkey("QUICK_OPEN", handleQuickOpen);
+	useHotkey("RUN_WORKSPACE_COMMAND", () => {
+		void workspaceRun.toggleWorkspaceRun();
+	});
 	// FORK NOTE: SEARCH_IN_FILES opens CommandPalette in v2 (equivalent to classic's right sidebar search tab)
 	useHotkey("SEARCH_IN_FILES", handleQuickOpen);
 	// FORK NOTE: useHotkey wiring so remapped keys also trigger browser reload
@@ -617,6 +629,18 @@ function WorkspaceContent({
 		});
 	}, [store]);
 
+	const workspaceRunButton = (
+		<V2WorkspaceRunButton
+			projectId={projectId}
+			definition={workspaceRun.definition}
+			isRunning={workspaceRun.isRunning}
+			isPending={workspaceRun.isPending}
+			canForceStop={workspaceRun.canForceStop}
+			onToggle={workspaceRun.toggleWorkspaceRun}
+			onForceStop={workspaceRun.forceStopWorkspaceRun}
+		/>
+	);
+
 	return (
 		<FileDocumentStoreProvider>
 			<ResizablePanelGroup
@@ -638,17 +662,20 @@ function WorkspaceContent({
 									sources={getV2NotificationSourcesForTab(tab)}
 								/>
 							)}
-							renderBelowTabBar={
-								showPresetsBar
-									? () => (
-											<V2PresetsBar
-												matchedPresets={matchedPresets}
-												executePreset={executePreset}
-												showPresetsBar={showPresetsBar}
-												onToggleShowPresetsBar={setShowPresetsBar}
-											/>
-										)
-									: undefined
+							renderBelowTabBar={() =>
+								showPresetsBar ? (
+									<V2PresetsBar
+										matchedPresets={matchedPresets}
+										executePreset={executePreset}
+										showPresetsBar={showPresetsBar}
+										onToggleShowPresetsBar={setShowPresetsBar}
+										trailing={workspaceRunButton}
+									/>
+								) : (
+									<div className="flex h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-2">
+										{workspaceRunButton}
+									</div>
+								)
 							}
 							renderAddTabMenu={() => (
 								<AddTabMenu

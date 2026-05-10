@@ -10,6 +10,7 @@ import { DeleteProjectSection } from "./components/DeleteProjectSection";
 import { IconUploadField } from "./components/IconUploadField";
 import { ProjectLocationSection } from "./components/ProjectLocationSection";
 import { RepositorySection } from "./components/RepositorySection";
+import { V2ScriptsEditor } from "./components/V2ScriptsEditor";
 
 interface V2ProjectSettingsProps {
 	projectId: string;
@@ -78,6 +79,15 @@ export function V2ProjectSettings({ projectId }: V2ProjectSettingsProps) {
 						hasGitHubRepo={project.repoCloneUrl != null}
 					/>
 				</SettingsSection>
+
+				{activeHostUrl && (
+					<SettingsSection
+						title="Scripts"
+						description="Runs in a terminal for setup, teardown, and the workspace Run button. Saved to .superset/config.json in the main repo."
+					>
+						<V2ScriptsEditor hostUrl={activeHostUrl} projectId={projectId} />
+					</SettingsSection>
+				)}
 
 				<SettingsSection title="Danger Zone">
 					<DeleteProjectSection

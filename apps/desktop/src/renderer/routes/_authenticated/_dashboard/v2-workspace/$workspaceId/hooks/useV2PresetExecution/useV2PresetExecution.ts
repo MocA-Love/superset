@@ -200,5 +200,5 @@ export function useV2PresetExecution({
 		[store, launcher, resolvePresetCommands],
 	);
 
-	return { matchedPresets, executePreset };
+	return { matchedPresets, executePreset, resolvePresetCommands };
 }

@@ -12,14 +12,12 @@ interface CreateOptions {
 	 */
 	terminalId?: string;
 	command?: string;
+	cwd?: string;
 }
 
 export interface TerminalLauncher {
 	/**
-	 * Awaits host-service session creation when a command is provided and
-	 * returns the terminalId. Blank terminals still use the WebSocket fallback
-	 * path because this fork's host-service `launchSession` requires an
-	 * initial command.
+	 * Awaits host-service session creation and returns the terminalId.
 	 */
 	create(options?: CreateOptions): Promise<string>;
 }
@@ -36,14 +34,13 @@ export function useV2TerminalLauncher(): TerminalLauncher {
 	const create = useCallback(
 		async (options?: CreateOptions): Promise<string> => {
 			const terminalId = options?.terminalId ?? crypto.randomUUID();
-			if (options?.command) {
-				await trpcClient.terminal.launchSession.mutate({
-					terminalId,
-					workspaceId,
-					themeType,
-					initialCommand: options.command,
-				});
-			}
+			await trpcClient.terminal.createSession.mutate({
+				terminalId,
+				workspaceId,
+				themeType,
+				initialCommand: options?.command,
+				cwd: options?.cwd,
+			});
 			return terminalId;
 		},
 		[trpcClient, workspaceId, themeType],
