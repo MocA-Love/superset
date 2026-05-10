@@ -351,7 +351,7 @@ export function ResourceConsumption({
 						>
 							<span className="relative flex items-center">
 								<HiOutlineCpuChip className="h-3.5 w-3.5 shrink-0" />
-								{triggerDotColorClass && (
+								{!isV2 && triggerDotColorClass && (
 									<span
 										className={cn(
 											"absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-2 ring-background",
