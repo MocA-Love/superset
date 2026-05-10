@@ -8,7 +8,10 @@ import {
 	type BranchFilter,
 	useBranchContext,
 } from "../../../hooks/useBranchContext";
-import type { CompareBaseBranchPicker } from "../../components/CompareBaseBranchPicker";
+import type {
+	CompareBaseBranchPicker,
+	OpenWorkspaceTarget,
+} from "../../components/CompareBaseBranchPicker";
 
 type PickerProps = React.ComponentProps<typeof CompareBaseBranchPicker>;
 
@@ -71,7 +74,7 @@ export function useBranchPickerController(args: UseBranchPickerControllerArgs) {
 	// id — the existing-row and adoption paths can return an id different from
 	// the optimistic snapshot id, which would otherwise 404.
 	const onOpenWorkspace = useCallback(
-		async (branchName: string) => {
+		async (target: OpenWorkspaceTarget) => {
 			if (!projectId) {
 				toast.error("Select a project first");
 				return;
@@ -80,31 +83,27 @@ export function useBranchPickerController(args: UseBranchPickerControllerArgs) {
 				toast.error("No active host");
 				return;
 			}
+			const branchName = target.branchName;
 			const snapshotId = crypto.randomUUID();
 			const workspaceName = resolveActionWorkspaceName(branchName);
 			closeModal();
-			// FORK NOTE: fork's submit() returns Promise<void>; in-flight tracker
-			// (useWorkspaceCreatesStore) carries error state. cycle 44b will
-			// upgrade submit to SubmitResult and restore upstream foreign-worktree
-			// adoption with canonical workspaceId.
-			try {
-				await submit({
-					hostId: resolvedHostId,
-					snapshot: {
-						id: snapshotId,
-						projectId,
-						name: workspaceName,
-						branch: branchName,
-					},
-				});
+			const result = await submit({
+				hostId: resolvedHostId,
+				snapshot: {
+					id: snapshotId,
+					projectId,
+					name: workspaceName,
+					branch: branchName,
+					...(target.worktreePath ? { worktreePath: target.worktreePath } : {}),
+				},
+			});
+			if (result.ok) {
 				void navigate({
 					to: "/v2-workspace/$workspaceId",
-					params: { workspaceId: snapshotId },
+					params: { workspaceId: result.workspaceId },
 				});
-			} catch (err) {
-				toast.error(
-					err instanceof Error ? err.message : "Failed to open workspace",
-				);
+			} else {
+				toast.error(result.error || "Failed to open workspace");
 			}
 		},
 		[
