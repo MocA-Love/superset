@@ -39,6 +39,7 @@ import { setPaneWorkspaceRunState } from "renderer/stores/tabs/workspace-run";
 import { useWorkspaceInitStore } from "renderer/stores/workspace-init";
 import { MOCK_ORG_ID, NOTIFICATION_EVENTS } from "shared/constants";
 import { AgentHooks } from "./components/AgentHooks";
+import { FileMenuListener } from "./components/FileMenuListener";
 import { GlobalBrowserLifecycle } from "./components/GlobalBrowserLifecycle";
 import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
@@ -223,6 +224,7 @@ function AuthenticatedLayout() {
 							highlighterOptions={{ preferredHighlighter: "shiki-wasm" }}
 						>
 							<AgentHooks />
+							<FileMenuListener />
 							<LanguageServicesProvider />
 							<MainWindowEffects />
 							<WorktreeAutoSyncManager />

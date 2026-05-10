@@ -12,7 +12,8 @@ import { publicProcedure, router } from "..";
 type MenuEvent =
 	| { type: "open-settings"; data: OpenSettingsEvent }
 	| { type: "open-workspace"; data: OpenWorkspaceEvent }
-	| { type: "browser-action"; data: BrowserActionEvent };
+	| { type: "browser-action"; data: BrowserActionEvent }
+	| { type: "open-project" };
 
 export const createMenuRouter = () => {
 	return router({
@@ -30,14 +31,20 @@ export const createMenuRouter = () => {
 					emit.next({ type: "browser-action", data: { action } });
 				};
 
+				const onOpenProject = () => {
+					emit.next({ type: "open-project" });
+				};
+
 				menuEmitter.on("open-settings", onOpenSettings);
 				menuEmitter.on("open-workspace", onOpenWorkspace);
 				menuEmitter.on("browser-action", onBrowserAction);
+				menuEmitter.on("open-project", onOpenProject);
 
 				return () => {
 					menuEmitter.off("open-settings", onOpenSettings);
 					menuEmitter.off("open-workspace", onOpenWorkspace);
 					menuEmitter.off("browser-action", onBrowserAction);
+					menuEmitter.off("open-project", onOpenProject);
 				};
 			});
 		}),

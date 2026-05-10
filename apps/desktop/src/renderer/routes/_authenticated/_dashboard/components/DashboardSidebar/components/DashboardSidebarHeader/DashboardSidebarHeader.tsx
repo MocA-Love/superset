@@ -189,11 +189,11 @@ export function DashboardSidebarHeader({
 					>
 						<DropdownMenuItem onSelect={() => openNewProject()}>
 							<HiMiniPlus className="size-4" />
-							Create new project
+							Clone from URL
 						</DropdownMenuItem>
 						<DropdownMenuItem onSelect={handleImportFolder}>
 							<LuFolderInput className="size-4" />
-							Import project
+							Open from folder
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -290,11 +290,11 @@ export function DashboardSidebarHeader({
 					>
 						<DropdownMenuItem onSelect={() => openNewProject()}>
 							<HiMiniPlus className="size-4" />
-							Create new project
+							Clone from URL
 						</DropdownMenuItem>
 						<DropdownMenuItem onSelect={handleImportFolder}>
 							<LuFolderInput className="size-4" />
-							Import project
+							Open from folder
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
