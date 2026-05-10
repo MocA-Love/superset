@@ -48,6 +48,7 @@ import { AddTabMenu } from "./components/AddTabMenu";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
+import { WorkspaceMissingWorktreeState } from "./components/WorkspaceMissingWorktreeState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useBrowserShellInteractionPassthrough } from "./hooks/useBrowserShellInteractionPassthrough";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
@@ -164,6 +165,13 @@ function V2WorkspacePage() {
 	const inFlight = useWorkspaceCreatesStore((store) =>
 		store.entries.find((entry) => entry.snapshot.id === workspaceId),
 	);
+	const workspaceStatusQuery = workspaceTrpc.workspace.get.useQuery(
+		{ id: workspaceId },
+		{
+			refetchOnWindowFocus: true,
+			retry: false,
+		},
+	);
 
 	if (!workspaces) {
 		return <div className="flex h-full w-full" />;
@@ -189,6 +197,21 @@ function V2WorkspacePage() {
 			);
 		}
 		return <WorkspaceNotFoundState workspaceId={workspaceId} />;
+	}
+
+	if (workspaceStatusQuery.data?.worktreeExists === false) {
+		return (
+			<WorkspaceMissingWorktreeState
+				workspaceId={workspace.id}
+				workspaceName={workspace.name}
+				branch={workspace.branch}
+				worktreePath={workspaceStatusQuery.data.worktreePath}
+				onRefresh={() => {
+					void workspaceStatusQuery.refetch();
+				}}
+				isRefreshing={workspaceStatusQuery.isFetching}
+			/>
+		);
 	}
 
 	return (
