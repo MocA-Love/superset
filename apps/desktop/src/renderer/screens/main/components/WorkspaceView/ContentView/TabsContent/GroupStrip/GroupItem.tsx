@@ -307,33 +307,37 @@ export function GroupItem({
 								<span className="text-sm truncate flex-1 text-left">
 									{displayName}
 								</span>
-								{status && status !== "idle" && (
-									<StatusIndicator status={status} />
-								)}
 							</button>
 							{!isBulkMode && (
-								<div className="absolute right-1 top-1/2 -translate-y-1/2 hidden items-center gap-0.5 group-hover:flex">
-									<Tooltip delayDuration={500}>
-										<TooltipTrigger asChild>
-											<Button
-												type="button"
-												variant="ghost"
-												size="icon"
-												onClick={(e) => {
-													e.stopPropagation();
-													onClose();
-												}}
-												className="cursor-pointer size-6 hover:bg-muted"
-												aria-label="Close pane"
-											>
-												<HiMiniXMark className="size-4" />
-											</Button>
-										</TooltipTrigger>
-										<TooltipContent side="top" showArrow={false}>
-											Close pane
-										</TooltipContent>
-									</Tooltip>
-								</div>
+								<>
+									{status && status !== "idle" && (
+										<div className="pointer-events-none absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center group-hover:hidden">
+											<StatusIndicator status={status} />
+										</div>
+									)}
+									<div className="absolute right-1 top-1/2 -translate-y-1/2 hidden items-center gap-0.5 group-hover:flex">
+										<Tooltip delayDuration={500}>
+											<TooltipTrigger asChild>
+												<Button
+													type="button"
+													variant="ghost"
+													size="icon"
+													onClick={(e) => {
+														e.stopPropagation();
+														onClose();
+													}}
+													className="cursor-pointer size-6 hover:bg-muted"
+													aria-label="Close pane"
+												>
+													<HiMiniXMark className="size-4" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent side="top" showArrow={false}>
+												Close pane
+											</TooltipContent>
+										</Tooltip>
+									</div>
+								</>
 							)}
 						</>
 					)}
