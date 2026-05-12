@@ -137,11 +137,18 @@ function SettingsLayout() {
 		"escape",
 		(event) => {
 			if (document.querySelector('[data-state="open"]')) return;
+			const segments = location.pathname.split("/").filter(Boolean);
 			event.preventDefault();
-			navigate({ to: originRoute });
+			if (segments.length <= 2) {
+				navigate({ to: originRoute });
+				return;
+			}
+
+			const parent = `/${segments.slice(0, -1).join("/")}`;
+			navigate({ to: parent });
 		},
 		{ enableOnFormTags: false, enableOnContentEditable: false },
-		[navigate, originRoute],
+		[navigate, location.pathname, originRoute],
 	);
 
 	const usesInnerSidebar =
