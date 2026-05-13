@@ -20,7 +20,7 @@ interface TeardownScriptCandidate {
 const POSIX_TEARDOWN_CANDIDATES: TeardownScriptCandidate[] = [
 	{
 		relativePath: TEARDOWN_SCRIPT_REL_PATH,
-		buildCommand: (p) => `bash ${singleQuote(p)} ; exit $?`,
+		buildCommand: buildTeardownInitialCommand,
 	},
 ];
 
@@ -181,6 +181,13 @@ export async function runTeardown({
 		}, timeoutMs);
 		timer.unref();
 	});
+}
+
+export function buildTeardownInitialCommand(scriptPath: string): string {
+	// `exec` replaces the user's login shell with the teardown process. That
+	// avoids shell-specific exit-status syntax like `$?`, which breaks in fish
+	// and leaves the hidden teardown terminal open until timeout.
+	return `exec bash ${singleQuote(scriptPath)}`;
 }
 
 /** POSIX single-quote escape: safe for any byte sequence in a path. */
