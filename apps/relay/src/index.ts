@@ -49,7 +49,7 @@ const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
 	const hostId = c.req.param("hostId");
 	if (!hostId) return c.json({ error: "Missing hostId" }, 400);
 
-	const hasAccess = await checkHostAccess(token, hostId);
+	const hasAccess = await checkHostAccess(auth, token, hostId);
 	if (!hasAccess) return c.json({ error: "Forbidden" }, 403);
 
 	if (!tunnelManager.hasTunnel(hostId))
@@ -83,7 +83,7 @@ app.get(
 					return;
 				}
 
-				const hasAccess = await checkHostAccess(token, hostId);
+				const hasAccess = await checkHostAccess(auth, token, hostId);
 				if (!hasAccess) {
 					ws.close(1008, "Forbidden");
 					return;
