@@ -190,6 +190,7 @@ function FilePaneContent({ context, workspaceId }: FilePaneProps) {
 					initialLine={data.line}
 					initialColumn={data.column}
 					cursorRequestId={data.cursorRequestId}
+					isActive={context.isActive}
 					onChangeView={handleChangeView}
 					onForceView={handleForceView}
 				/>

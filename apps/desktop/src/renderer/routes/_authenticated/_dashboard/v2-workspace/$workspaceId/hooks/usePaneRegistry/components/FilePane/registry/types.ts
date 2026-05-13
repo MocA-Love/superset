@@ -37,6 +37,7 @@ export interface ViewProps {
 	initialLine?: number;
 	initialColumn?: number;
 	cursorRequestId?: string;
+	isActive: boolean;
 	onChangeView: (viewId: string) => void;
 	onForceView: (viewId: string) => void;
 }
