@@ -254,7 +254,7 @@
 		"shell-env": "^4.0.3",
 		"shell-quote": "^1.8.3",
 		"shiki": "^3.21.0",
-		"simple-git": "^3.30.0",
+		"simple-git": "^3.36.0",
 		"streamdown": "2.5.0",
 		"strip-ansi": "^7.1.2",
 		"superjson": "^2.2.5",
