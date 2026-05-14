@@ -229,7 +229,14 @@ export class TunnelClient {
 
 	private cleanupChannels(): void {
 		for (const ws of this.localChannels.values()) {
-			ws.close(1001, "Tunnel disconnected");
+			try {
+				ws.close(1000, "Tunnel disconnected");
+			} catch (err) {
+				console.warn(
+					"[host-service:tunnel] error closing local channel ws",
+					err,
+				);
+			}
 		}
 		this.localChannels.clear();
 	}
