@@ -9,6 +9,7 @@ import type {
 
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 20_000;
 
 export interface TunnelClientOptions {
 	relayUrl: string;
@@ -40,12 +41,37 @@ export class TunnelClient {
 
 	async connect(): Promise<void> {
 		if (this.closed) return;
+		if (
+			this.socket?.readyState === WebSocket.CONNECTING ||
+			this.socket?.readyState === WebSocket.OPEN
+		) {
+			return;
+		}
+
+		let timedOut = false;
+		const deadline = setTimeout(() => {
+			if (this.closed) return;
+			timedOut = true;
+			console.warn(
+				`[host-service:tunnel] connect did not complete within ${CONNECT_TIMEOUT_MS}ms, forcing retry`,
+			);
+			try {
+				this.socket?.close(4001, "Connect timeout");
+			} catch {}
+			this.socket = null;
+			this.scheduleReconnect();
+		}, CONNECT_TIMEOUT_MS);
 
 		// An unhandled rejection here (e.g. DNS failure inside getAuthToken on
 		// wake from sleep) crashes host-service and orphans every PTY.
 		try {
 			const token = await this.getAuthToken();
+			if (timedOut || this.closed) {
+				clearTimeout(deadline);
+				return;
+			}
 			if (!token) {
+				clearTimeout(deadline);
 				console.warn("[host-service:tunnel] no auth token available, retrying");
 				this.scheduleReconnect();
 				return;
@@ -60,6 +86,7 @@ export class TunnelClient {
 			this.socket = socket;
 
 			socket.onopen = () => {
+				clearTimeout(deadline);
 				this.reconnectAttempts = 0;
 				console.log(
 					`[host-service:tunnel] connected to relay for host ${this.hostId}`,
@@ -70,11 +97,24 @@ export class TunnelClient {
 				void this.handleMessage(event.data);
 			};
 
-			socket.onclose = () => {
-				this.socket = null;
-				this.cleanupChannels();
-				if (!this.closed) {
-					this.scheduleReconnect();
+			socket.onclose = (event) => {
+				if (this.socket !== socket) return;
+				clearTimeout(deadline);
+				try {
+					this.socket = null;
+					this.cleanupChannels();
+					if (event.code === 1008) {
+						console.warn(
+							`[host-service:tunnel] relay rejected connection (code=${event.code}, reason=${event.reason ?? ""}); retrying`,
+						);
+					}
+				} catch (err) {
+					console.warn(
+						"[host-service:tunnel] error during onclose cleanup",
+						err,
+					);
+				} finally {
+					if (!this.closed) this.scheduleReconnect();
 				}
 			};
 
@@ -82,6 +122,8 @@ export class TunnelClient {
 				console.error("[host-service:tunnel] socket error:", event);
 			};
 		} catch (error) {
+			clearTimeout(deadline);
+			if (timedOut) return;
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`[host-service:tunnel] connect failed: ${message}`);
 			this.socket = null;
