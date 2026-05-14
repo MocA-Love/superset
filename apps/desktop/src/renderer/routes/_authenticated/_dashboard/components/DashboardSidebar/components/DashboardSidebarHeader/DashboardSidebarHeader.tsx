@@ -20,7 +20,10 @@ import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
 import { useHotkeyDisplay } from "renderer/hotkeys";
 import { useFolderFirstImport } from "renderer/routes/_authenticated/_dashboard/components/AddRepositoryModals/hooks/useFolderFirstImport";
 import { OrganizationDropdown } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/OrganizationDropdown";
-import { useTasksFilterStore } from "renderer/routes/_authenticated/_dashboard/tasks/stores/tasks-filter-state";
+import {
+	tasksSearchFromFilters,
+	useTasksFilterStore,
+} from "renderer/routes/_authenticated/_dashboard/tasks/stores/tasks-filter-state";
 import { STROKE_WIDTH_THICK } from "renderer/screens/main/components/WorkspaceSidebar/constants";
 import { useOpenNewProjectModal } from "renderer/stores/add-repository-modal";
 import { useOpenNewWorkspaceModal } from "renderer/stores/new-workspace-modal";
@@ -84,13 +87,16 @@ export function DashboardSidebarHeader({
 
 	const handleTasksClick = () => {
 		gateFeature(GATED_FEATURES.TASKS, () => {
-			const search: Record<string, string> = {};
-			if (lastTab !== "all") search.tab = lastTab;
-			if (lastAssignee) search.assignee = lastAssignee;
-			if (lastSearch) search.search = lastSearch;
-			if (lastTypeTab !== "tasks") search.type = lastTypeTab;
-			if (lastProjectFilter) search.project = lastProjectFilter;
-			navigate({ to: "/tasks", search });
+			navigate({
+				to: "/tasks",
+				search: tasksSearchFromFilters({
+					tab: lastTab,
+					assignee: lastAssignee,
+					search: lastSearch,
+					typeTab: lastTypeTab,
+					projectFilter: lastProjectFilter,
+				}),
+			});
 		});
 	};
 
