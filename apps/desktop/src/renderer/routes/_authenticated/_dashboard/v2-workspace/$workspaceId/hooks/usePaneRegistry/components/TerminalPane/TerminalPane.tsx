@@ -78,18 +78,23 @@ export function TerminalPane({
 	const appearance = useTerminalAppearance();
 	const appearanceRef = useRef(appearance);
 	appearanceRef.current = appearance;
+	const themeType = resolveTerminalThemeType({
+		activeThemeType: activeTheme?.type,
+	});
 	const initialThemeTypeRef = useRef<
 		ReturnType<typeof resolveTerminalThemeType>
-	>(
-		resolveTerminalThemeType({
-			activeThemeType: activeTheme?.type,
-		}),
-	);
+	>(themeType);
 	const { trpcClient } = useWorkspaceClient();
 	const trpcClientRef = useRef(trpcClient);
 	trpcClientRef.current = trpcClient;
 
-	const websocketUrl = useWorkspaceWsUrl(`/terminal/${terminalId}`);
+	// themeType reaches the host-side respawn fallback so a restored shell
+	// gets the right COLORFGBG; PTY env is set at spawn time only.
+	const baseWebsocketUrl = useWorkspaceWsUrl(`/terminal/${terminalId}`);
+	const themedUrl = new URL(baseWebsocketUrl);
+	themedUrl.searchParams.set("workspaceId", workspaceId);
+	themedUrl.searchParams.set("themeType", themeType);
+	const websocketUrl = themedUrl.toString();
 	const websocketUrlRef = useRef(websocketUrl);
 	websocketUrlRef.current = websocketUrl;
 	const workspaceIdRef = useRef(workspaceId);

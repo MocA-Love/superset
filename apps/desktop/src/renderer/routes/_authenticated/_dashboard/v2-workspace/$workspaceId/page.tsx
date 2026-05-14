@@ -516,6 +516,7 @@ function WorkspaceContent({
 	const paneRegistry = usePaneRegistry({
 		onOpenFile: handleTerminalOpenFile,
 		onRevealPath: revealPath,
+		launcher,
 	});
 	const defaultContextMenuActions = useDefaultContextMenuActions({
 		paneRegistry,
