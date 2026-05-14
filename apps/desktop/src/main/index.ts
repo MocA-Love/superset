@@ -70,6 +70,7 @@ import {
 import { disposeTray, initTray } from "./lib/tray";
 import { windowManager } from "./lib/window-manager";
 import { createWorkspaceMediaProtocolHandler } from "./lib/workspace-media-protocol";
+import { startNetworkLogger, stopNetworkLogger } from "./network-logger";
 
 // Lazy import to avoid module resolution issues during Vite build
 const loadVscodeShim = () =>
@@ -544,6 +545,12 @@ app.on("before-quit", async (event) => {
 		console.error("[main] Failed to collect tearoff tabs before quit:", error);
 	}
 
+	try {
+		await stopNetworkLogger();
+	} catch (error) {
+		console.warn("[main] network logger stop skipped", error);
+	}
+
 	app.exit(0);
 });
 
@@ -586,7 +593,9 @@ if (process.env.NODE_ENV === "development") {
 		if (signalHandled) return;
 		signalHandled = true;
 		console.log(`[main] Received ${signal}, quitting...`);
-		void runDevQuitCleanup().finally(() => app.exit(0));
+		void Promise.allSettled([runDevQuitCleanup(), stopNetworkLogger()]).finally(
+			() => app.exit(0),
+		);
 	};
 
 	process.on("SIGTERM", () => handleTerminationSignal("SIGTERM"));
@@ -934,6 +943,12 @@ if (!gotTheLock) {
 		initSentry();
 		await initAppState();
 		initTanstackDbPersistence();
+
+		try {
+			await startNetworkLogger();
+		} catch (error) {
+			console.error("[main] Failed to start network logger:", error);
+		}
 
 		await loadWebviewBrowserExtension();
 		await loadInstalledExtensions();
