@@ -86,6 +86,8 @@ export function NewProjectModal({
 	const [mode, setMode] = useState<NewProjectMode>("clone");
 	const [parentDir, setParentDir] = useState("");
 	const [url, setUrl] = useState("");
+	const [name, setName] = useState("");
+	const [nameTouched, setNameTouched] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [working, setWorking] = useState(false);
 
@@ -94,8 +96,15 @@ export function NewProjectModal({
 		setParentDir(`${homeDir}/.superset/projects`);
 	}, [homeDir, parentDir]);
 
+	useEffect(() => {
+		if (nameTouched) return;
+		setName(deriveProjectNameFromUrl(url));
+	}, [url, nameTouched]);
+
 	const reset = () => {
 		setUrl("");
+		setName("");
+		setNameTouched(false);
 		setError(null);
 		setWorking(false);
 	};
@@ -135,9 +144,9 @@ export function NewProjectModal({
 			setError("Please select a project location");
 			return;
 		}
-		const name = deriveProjectNameFromUrl(trimmedUrl);
-		if (!name) {
-			setError("Could not derive a project name from the URL or path");
+		const trimmedName = name.trim() || deriveProjectNameFromUrl(trimmedUrl);
+		if (!trimmedName) {
+			setError("Please enter a project name");
 			return;
 		}
 
@@ -146,7 +155,7 @@ export function NewProjectModal({
 		try {
 			const client = getHostServiceClientByUrl(activeHostUrl);
 			const result = await client.project.create.mutate({
-				name,
+				name: trimmedName,
 				mode: { kind: "clone", parentDir: trimmedParent, url: trimmedUrl },
 			});
 			finalizeSetup(activeHostUrl, result);
@@ -252,27 +261,48 @@ export function NewProjectModal({
 					</div>
 
 					{mode === "clone" && (
-						<div className="flex flex-col gap-1.5">
-							<label
-								htmlFor="clone-url"
-								className="text-xs font-medium text-muted-foreground"
-							>
-								Repository URL or path
-							</label>
-							<Input
-								id="clone-url"
-								value={url}
-								onChange={(e) => setUrl(e.target.value)}
-								placeholder="https://github.com/owner/repo.git or /path/to/repo"
-								disabled={working}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" && !working) {
-										void createFromClone();
-									}
-								}}
-								autoFocus
-							/>
-						</div>
+						<>
+							<div className="flex flex-col gap-1.5">
+								<label
+									htmlFor="clone-url"
+									className="text-xs font-medium text-muted-foreground"
+								>
+									Repository URL or path
+								</label>
+								<Input
+									id="clone-url"
+									value={url}
+									onChange={(e) => setUrl(e.target.value)}
+									placeholder="https://github.com/owner/repo.git or /path/to/repo"
+									disabled={working}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" && !working) {
+											void createFromClone();
+										}
+									}}
+									autoFocus
+								/>
+							</div>
+
+							<div className="flex flex-col gap-1.5">
+								<label
+									htmlFor="project-name"
+									className="text-xs font-medium text-muted-foreground"
+								>
+									Project name
+								</label>
+								<Input
+									id="project-name"
+									value={name}
+									onChange={(e) => {
+										setName(e.target.value);
+										setNameTouched(true);
+									}}
+									placeholder="my-project"
+									disabled={working}
+								/>
+							</div>
+						</>
 					)}
 
 					{error && (
