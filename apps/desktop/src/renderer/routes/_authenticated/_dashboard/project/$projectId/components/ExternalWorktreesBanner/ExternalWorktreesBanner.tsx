@@ -24,6 +24,9 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 	const { data: project } = electronTrpc.projects.get.useQuery({
 		id: projectId,
 	});
+	const importableWorktrees = externalWorktrees.filter(
+		(worktree) => !worktree.hasActiveWorkspace,
+	);
 
 	const importAllWorktrees = useImportAllWorktrees();
 	const autoImportEnabled = project?.autoImportExternalWorktrees === true;
@@ -34,7 +37,7 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 		return null;
 	}
 
-	if (isLoading || externalWorktrees.length === 0) {
+	if (isLoading || importableWorktrees.length === 0) {
 		return null;
 	}
 
@@ -51,8 +54,8 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 		}
 	};
 
-	const visibleBranches = externalWorktrees.slice(0, MAX_VISIBLE_BRANCHES);
-	const remainingCount = externalWorktrees.length - visibleBranches.length;
+	const visibleBranches = importableWorktrees.slice(0, MAX_VISIBLE_BRANCHES);
+	const remainingCount = importableWorktrees.length - visibleBranches.length;
 
 	return (
 		<motion.div
@@ -65,8 +68,8 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 			<div className="flex items-start justify-between gap-4">
 				<div className="space-y-2 min-w-0">
 					<p className="text-sm font-medium text-foreground">
-						{externalWorktrees.length} existing worktree
-						{externalWorktrees.length === 1 ? "" : "s"} found
+						{importableWorktrees.length} existing worktree
+						{importableWorktrees.length === 1 ? "" : "s"} found
 					</p>
 					<div className="flex flex-wrap gap-1.5">
 						{visibleBranches.map((wt) => (
@@ -101,8 +104,8 @@ export function ExternalWorktreesBanner({ projectId }: { projectId: string }) {
 						<AlertDialogHeader>
 							<AlertDialogTitle>Import all worktrees</AlertDialogTitle>
 							<AlertDialogDescription>
-								This will import {externalWorktrees.length} existing worktree
-								{externalWorktrees.length === 1 ? "" : "s"} into Superset as
+								This will import {importableWorktrees.length} existing worktree
+								{importableWorktrees.length === 1 ? "" : "s"} into Superset as
 								workspaces. Each worktree on disk will be tracked and appear in
 								your sidebar. No files will be modified.
 							</AlertDialogDescription>
