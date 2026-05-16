@@ -4,7 +4,10 @@ import type { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { DEFAULT_TERMINAL_SCROLLBACK } from "shared/constants";
-import type { TerminalAppearance } from "./appearance";
+import {
+	applyTerminalFontFamilyCssVariable,
+	type TerminalAppearance,
+} from "./appearance";
 import { logTerminalWrite, terminalRendererDebug } from "./debug";
 import { translateLineEditChord } from "./line-edit-translations";
 import { loadAddons } from "./terminal-addons";
@@ -213,6 +216,7 @@ export function createRuntime(
 	const wrapper = document.createElement("div");
 	wrapper.style.width = "100%";
 	wrapper.style.height = "100%";
+	applyTerminalFontFamilyCssVariable(wrapper, appearance.fontFamily);
 	terminal.open(wrapper);
 
 	installTerminalKeyEventHandler(terminal);
@@ -336,6 +340,7 @@ export function updateRuntimeAppearance(
 		terminal.options.fontSize !== appearance.fontSize;
 
 	if (fontChanged) {
+		applyTerminalFontFamilyCssVariable(runtime.wrapper, appearance.fontFamily);
 		terminal.options.fontFamily = appearance.fontFamily;
 		terminal.options.fontSize = appearance.fontSize;
 		if (hostIsVisible(runtime.container)) {

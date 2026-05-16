@@ -8,6 +8,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
+import { applyTerminalFontFamilyCssVariable } from "renderer/lib/terminal/appearance";
 import type { DetectedLink } from "renderer/lib/terminal/links";
 import { TerminalLinkManager } from "renderer/lib/terminal/terminal-link-manager";
 import { installRectangleRendererAlphaPatch } from "renderer/lib/terminal/webgl-vibrancy-patch";
@@ -18,7 +19,7 @@ import {
 	DEFAULT_THEME_ID,
 	getTerminalColors,
 } from "shared/themes";
-import { TERMINAL_OPTIONS } from "./config";
+import { DEFAULT_TERMINAL_FONT_FAMILY, TERMINAL_OPTIONS } from "./config";
 import { suppressQueryResponses } from "./suppressQueryResponses";
 
 /**
@@ -118,6 +119,10 @@ export function createTerminalInWrapper(options: CreateTerminalOptions = {}): {
 	wrapper.style.minWidth = "0";
 	wrapper.style.minHeight = "0";
 	wrapper.style.overflow = "hidden";
+	applyTerminalFontFamilyCssVariable(
+		wrapper,
+		terminalOptions.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY,
+	);
 
 	xterm.loadAddon(fitAddon);
 	xterm.loadAddon(searchAddon);

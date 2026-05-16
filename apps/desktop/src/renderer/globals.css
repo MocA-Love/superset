@@ -288,21 +288,26 @@
 		width: 100%;
 	}
 
-	/* Vibrancy: force every nested xterm surface to be transparent so
-	 * the canvas / WebGL layer can render with the rgba theme background
-	 * that the terminal theme store is injecting. Without this override
-	 * the .xterm-viewport / .xterm-screen elements keep the stylesheet
-	 * defaults and hide the alpha channel underneath the terminal pane. */
+		/* Vibrancy: force every nested xterm surface to be transparent so
+		 * the canvas / WebGL layer can render with the rgba theme background
+		 * that the terminal theme store is injecting. Without this override
+		 * the .xterm-viewport / .xterm-screen elements keep the stylesheet
+		 * defaults and hide the alpha channel underneath the terminal pane. */
 	:root[data-vibrancy="on"] .xterm,
 	:root[data-vibrancy="on"] .xterm .xterm-viewport,
 	:root[data-vibrancy="on"] .xterm .xterm-screen,
-	:root[data-vibrancy="on"] .xterm canvas {
-		background-color: transparent;
-	}
-	.xterm .xterm-rows a {
-		color: inherit;
-		cursor: pointer;
-	}
+		:root[data-vibrancy="on"] .xterm canvas {
+			background-color: transparent;
+		}
+
+		.xterm {
+			font-family: var(--superset-terminal-font-family, ui-monospace, monospace);
+		}
+
+		.xterm .xterm-rows a {
+			color: inherit;
+			cursor: pointer;
+		}
 
 	.xterm .xterm-rows a.xterm-underline-5 {
 		text-decoration-color: #3b8eea;
