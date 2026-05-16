@@ -34,6 +34,8 @@ const contentSecurityPolicy = [
 		"connect-src 'self'",
 		apiOrigin,
 		relayWsOrigin,
+		"wss://relay-backup.superset.sh",
+		"https://relay-backup.superset.sh",
 		"https://*.ingest.sentry.io",
 		"https://*.sentry.io",
 		"https://us.i.posthog.com",
