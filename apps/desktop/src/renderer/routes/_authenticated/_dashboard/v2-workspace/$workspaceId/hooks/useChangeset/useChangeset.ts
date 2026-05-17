@@ -82,19 +82,9 @@ export function useChangeset({
 		if (!status) return [];
 
 		if (ref.kind === "uncommitted") {
-			// Merge staged and unstaged by path, preferring unstaged (working-tree
-			// diff) when both exist for the same file (partial-stage case).
+			// Merge unstaged and staged in sidebar order, preferring unstaged
+			// (working-tree diff) when both exist for the same file.
 			const byPath = new Map<string, ChangesetFile>();
-			for (const file of status.staged) {
-				byPath.set(file.path, {
-					path: file.path,
-					oldPath: file.oldPath,
-					status: file.status as FileStatus,
-					additions: file.additions,
-					deletions: file.deletions,
-					source: { kind: "staged" },
-				});
-			}
 			for (const file of status.unstaged) {
 				byPath.set(file.path, {
 					path: file.path,
@@ -105,25 +95,36 @@ export function useChangeset({
 					source: { kind: "unstaged" },
 				});
 			}
+			for (const file of status.staged) {
+				if (byPath.has(file.path)) continue;
+				byPath.set(file.path, {
+					path: file.path,
+					oldPath: file.oldPath,
+					status: file.status as FileStatus,
+					additions: file.additions,
+					deletions: file.deletions,
+					source: { kind: "staged" },
+				});
+			}
 			return Array.from(byPath.values());
 		}
 
-		// against-base: merge committed + dirty, last-wins by path, each file
-		// tagged with its actual source so downstream getDiff fetches the right
-		// bucket (dirty files show their working-tree diff; purely committed
-		// files show the base-branch diff).
+		// against-base: merge committed + dirty by path in the same order the
+		// sidebar renders sections. Dirty files win over committed files so
+		// downstream getDiff fetches the right bucket.
 		const seen = new Map<string, ChangesetFile>();
-		for (const file of status.againstBase) {
+		for (const file of status.unstaged) {
 			seen.set(file.path, {
 				path: file.path,
 				oldPath: file.oldPath,
 				status: file.status as FileStatus,
 				additions: file.additions,
 				deletions: file.deletions,
-				source: { kind: "against-base", baseBranch: ref.baseBranch },
+				source: { kind: "unstaged" },
 			});
 		}
 		for (const file of status.staged) {
+			if (seen.has(file.path)) continue;
 			seen.set(file.path, {
 				path: file.path,
 				oldPath: file.oldPath,
@@ -133,14 +134,15 @@ export function useChangeset({
 				source: { kind: "staged" },
 			});
 		}
-		for (const file of status.unstaged) {
+		for (const file of status.againstBase) {
+			if (seen.has(file.path)) continue;
 			seen.set(file.path, {
 				path: file.path,
 				oldPath: file.oldPath,
 				status: file.status as FileStatus,
 				additions: file.additions,
 				deletions: file.deletions,
-				source: { kind: "unstaged" },
+				source: { kind: "against-base", baseBranch: ref.baseBranch },
 			});
 		}
 		return Array.from(seen.values());
