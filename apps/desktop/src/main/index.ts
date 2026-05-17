@@ -479,8 +479,8 @@ app.on("before-quit", async (event) => {
 	try {
 		const { getTodoScheduler } = await import("./todo-agent/scheduler");
 		getTodoScheduler().stop();
-		if (isDev) {
-			await runDevQuitCleanup();
+		if (isDev || quitMode === "stop") {
+			await runFullQuitCleanup();
 		} else {
 			// Prod: leave services running so the next launch re-adopts via manifest.
 			getHostServiceManager().releaseAll();
@@ -555,11 +555,14 @@ app.on("before-quit", async (event) => {
 });
 
 /**
- * Dev only — kill host-service + terminal-host children. They're spawned
- * attached + ref'd in dev, so they'd reparent to init without an explicit stop.
+ * Full cleanup — kill host-service + terminal-host children. Used in dev, on
+ * update installs via quitMode, and on the tray's "Quit Superset Completely"
+ * path in prod.
  */
-async function runDevQuitCleanup(): Promise<void> {
-	getHostServiceManager().stopAll();
+async function runFullQuitCleanup(): Promise<void> {
+	const coordinator = getHostServiceManager();
+	await coordinator.teardownKnownManifests();
+	coordinator.stopAll();
 	try {
 		await getTerminalHostClient().shutdownIfRunning({ killSessions: true });
 	} catch (err) {
@@ -593,9 +596,10 @@ if (process.env.NODE_ENV === "development") {
 		if (signalHandled) return;
 		signalHandled = true;
 		console.log(`[main] Received ${signal}, quitting...`);
-		void Promise.allSettled([runDevQuitCleanup(), stopNetworkLogger()]).finally(
-			() => app.exit(0),
-		);
+		void Promise.allSettled([
+			runFullQuitCleanup(),
+			stopNetworkLogger(),
+		]).finally(() => app.exit(0));
 	};
 
 	process.on("SIGTERM", () => handleTerminationSignal("SIGTERM"));

@@ -117,6 +117,10 @@ export function getUpdateStatus(): AutoUpdateStatusEvent {
 	return { status: currentStatus, version: currentVersion };
 }
 
+export function isUpdateReadyToInstall(): boolean {
+	return currentStatus === AUTO_UPDATE_STATUS.READY;
+}
+
 export function installUpdate(): void {
 	if (IS_FORK) {
 		import("electron")
