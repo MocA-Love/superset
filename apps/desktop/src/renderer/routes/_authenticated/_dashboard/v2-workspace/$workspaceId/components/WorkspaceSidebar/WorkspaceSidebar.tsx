@@ -101,8 +101,9 @@ export function WorkspaceSidebar({
 	);
 	const localState = localStateRows[0];
 	const activeTab: SidebarTabId =
-		(localState?.sidebarState?.activeTab as SidebarTabId | undefined) ??
-		"changes";
+		localState && isSidebarTabId(localState.sidebarState.activeTab)
+			? localState.sidebarState.activeTab
+			: "changes";
 
 	function setActiveTab(tab: string) {
 		if (!isSidebarTabId(tab)) return;
