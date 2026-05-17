@@ -475,6 +475,7 @@ export function WorkspaceListItem({
 				name={name}
 				isBranchWorkspace={isBranchWorkspace}
 				isUnread={isUnread}
+				showDeleteHotkey={isActive}
 				workspaceStatus={workspaceStatus}
 				sections={sections}
 				onRename={rename.startRename}
