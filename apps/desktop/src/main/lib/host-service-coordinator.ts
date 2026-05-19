@@ -90,6 +90,37 @@ interface HostServiceProcess {
 }
 
 const ADOPTED_LIVENESS_INTERVAL = 5_000;
+// High, uncommon user-space range: above usual web/dev server ports and below
+// macOS's default ephemeral range, while still falling back if occupied.
+const STABLE_PORT_BASE = 48_000;
+const STABLE_PORT_COUNT = 1_000;
+
+function getStablePortForOrganization(organizationId: string): number {
+	let hash = 2_166_136_261;
+	for (let index = 0; index < organizationId.length; index++) {
+		hash ^= organizationId.charCodeAt(index);
+		hash = Math.imul(hash, 16_777_619);
+	}
+	return STABLE_PORT_BASE + ((hash >>> 0) % STABLE_PORT_COUNT);
+}
+
+function getPortFromEndpoint(endpoint: string): number | undefined {
+	try {
+		const port = Number(new URL(endpoint).port);
+		return isValidPort(port) ? port : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function isValidPort(port: number | null | undefined): port is number {
+	return (
+		typeof port === "number" &&
+		Number.isInteger(port) &&
+		port > 0 &&
+		port <= 65_535
+	);
+}
 
 /**
  * Cap how long an adoption health check can take before we decide the adopted
@@ -101,6 +132,7 @@ const ADOPT_HEALTH_CHECK_TIMEOUT_MS = 2_000;
 export class HostServiceCoordinator extends EventEmitter {
 	private instances = new Map<string, HostServiceProcess>();
 	private pendingStarts = new Map<string, Promise<Connection>>();
+	private lastKnownPorts = new Map<string, number>();
 	private adoptedLivenessTimers = new Map<
 		string,
 		ReturnType<typeof setInterval>
@@ -117,6 +149,14 @@ export class HostServiceCoordinator extends EventEmitter {
 		organizationId: string,
 		config: SpawnConfig,
 	): Promise<Connection> {
+		return this.startWithPreferredPorts(organizationId, config);
+	}
+
+	private async startWithPreferredPorts(
+		organizationId: string,
+		config: SpawnConfig,
+		preferredPorts?: Iterable<number>,
+	): Promise<Connection> {
 		const existing = this.instances.get(organizationId);
 		if (existing?.status === "running") {
 			return {
@@ -130,9 +170,11 @@ export class HostServiceCoordinator extends EventEmitter {
 		if (pending) return pending;
 
 		const startPromise = (async (): Promise<Connection> => {
+			const resolvedPreferredPorts =
+				preferredPorts ?? this.getPreferredPorts(organizationId);
 			const adopted = await this.tryAdopt(organizationId);
 			if (adopted) return adopted;
-			return this.spawn(organizationId, config);
+			return this.spawn(organizationId, config, resolvedPreferredPorts);
 		})();
 		this.pendingStarts.set(organizationId, startPromise);
 
@@ -143,6 +185,45 @@ export class HostServiceCoordinator extends EventEmitter {
 		}
 	}
 
+	private getPreferredPorts(organizationId: string): number[] {
+		const ports = [
+			this.instances.get(organizationId)?.port,
+			this.lastKnownPorts.get(organizationId),
+			this.getManifestPort(organizationId),
+			getStablePortForOrganization(organizationId),
+		];
+		const uniquePorts: number[] = [];
+		const seen = new Set<number>();
+
+		for (const port of ports) {
+			if (!isValidPort(port) || seen.has(port)) continue;
+			seen.add(port);
+			uniquePorts.push(port);
+		}
+
+		return uniquePorts;
+	}
+
+	private getManifestPort(organizationId: string): number | undefined {
+		const manifest = readManifest(organizationId);
+		if (!manifest) return undefined;
+		return this.rememberManifestPort(organizationId, manifest);
+	}
+
+	private rememberManifestPort(
+		organizationId: string,
+		manifest: HostServiceManifest,
+	): number | undefined {
+		const port = getPortFromEndpoint(manifest.endpoint);
+		if (port) this.rememberPort(organizationId, port);
+		return port;
+	}
+
+	private rememberPort(organizationId: string, port: number): void {
+		if (!isValidPort(port)) return;
+		this.lastKnownPorts.set(organizationId, port);
+	}
+
 	stop(organizationId: string): void {
 		const instance = this.instances.get(organizationId);
 		this.stopAdoptedLivenessCheck(organizationId);
@@ -151,6 +232,7 @@ export class HostServiceCoordinator extends EventEmitter {
 
 		const previousStatus = instance.status;
 		instance.status = "stopped";
+		this.rememberPort(organizationId, instance.port);
 
 		try {
 			process.kill(instance.pid, "SIGTERM");
@@ -190,8 +272,9 @@ export class HostServiceCoordinator extends EventEmitter {
 		organizationId: string,
 		config: SpawnConfig,
 	): Promise<Connection> {
+		const preferredPorts = this.getPreferredPorts(organizationId);
 		this.stop(organizationId);
-		return this.start(organizationId, config);
+		return this.startWithPreferredPorts(organizationId, config, preferredPorts);
 	}
 
 	/**
@@ -209,6 +292,7 @@ export class HostServiceCoordinator extends EventEmitter {
 		// Capture the manifest pid *before* stop() — stop() removes the manifest
 		// for tracked instances and only sends SIGTERM, which a wedged process
 		// can ignore. We escalate to SIGKILL on whatever pid the manifest named.
+		const preferredPorts = this.getPreferredPorts(organizationId);
 		const manifestPid = readManifest(organizationId)?.pid;
 
 		this.stop(organizationId);
@@ -226,7 +310,7 @@ export class HostServiceCoordinator extends EventEmitter {
 
 		removeManifest(organizationId);
 
-		return this.start(organizationId, config);
+		return this.startWithPreferredPorts(organizationId, config, preferredPorts);
 	}
 
 	getConnection(organizationId: string): Connection | null {
@@ -360,6 +444,7 @@ export class HostServiceCoordinator extends EventEmitter {
 
 		const url = new URL(manifest.endpoint);
 		const port = Number(url.port);
+		this.rememberPort(organizationId, port);
 
 		const currentAppVersion = app.getVersion();
 		if (manifest.spawnedByAppVersion !== currentAppVersion) {
@@ -419,6 +504,7 @@ export class HostServiceCoordinator extends EventEmitter {
 	): HostServiceManifest | null {
 		const manifest = readManifest(organizationId);
 		if (!manifest) return null;
+		this.rememberManifestPort(organizationId, manifest);
 
 		if (!isProcessAlive(manifest.pid)) {
 			removeManifest(organizationId);
@@ -433,8 +519,10 @@ export class HostServiceCoordinator extends EventEmitter {
 	private async spawn(
 		organizationId: string,
 		config: SpawnConfig,
+		preferredPorts: Iterable<number> = this.getPreferredPorts(organizationId),
 	): Promise<Connection> {
-		const port = await findFreePort();
+		const port = await findFreePort(preferredPorts);
+		this.rememberPort(organizationId, port);
 		const secret = randomBytes(32).toString("hex");
 
 		const instance: HostServiceProcess = {
@@ -513,6 +601,7 @@ export class HostServiceCoordinator extends EventEmitter {
 			if (!current || current.pid !== childPid || current.status === "stopped")
 				return;
 
+			this.rememberPort(organizationId, current.port);
 			this.instances.delete(organizationId);
 			removeManifest(organizationId);
 			this.emitStatus(organizationId, "stopped", "running");
@@ -596,6 +685,7 @@ export class HostServiceCoordinator extends EventEmitter {
 					log.info(
 						`[host-service:${organizationId}] Adopted process ${pid} died`,
 					);
+					this.rememberPort(organizationId, instance.port);
 					this.instances.delete(organizationId);
 					removeManifest(organizationId);
 					this.emitStatus(organizationId, "stopped", "running");

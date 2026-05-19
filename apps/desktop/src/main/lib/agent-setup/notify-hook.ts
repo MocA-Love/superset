@@ -10,7 +10,7 @@ import {
 import { HOOKS_DIR } from "./paths";
 
 export const NOTIFY_SCRIPT_NAME = IS_WIN_AGENT ? "notify.ps1" : "notify.sh";
-export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook";
+export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v3";
 
 const NOTIFY_SCRIPT_TEMPLATE_PATH = path.join(
 	__dirname,
