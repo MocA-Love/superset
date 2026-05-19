@@ -16,7 +16,7 @@ export interface DiffStats {
 export function useDiffStats(workspaceId: string): DiffStats | null {
 	const utils = workspaceTrpc.useUtils();
 	const { data: status } = workspaceTrpc.git.getStatus.useQuery(
-		{ workspaceId },
+		{ workspaceId, priority: "background" },
 		{
 			enabled: Boolean(workspaceId),
 			// Match the pre-RQ behavior: only update on `git:changed`, never
@@ -31,7 +31,7 @@ export function useDiffStats(workspaceId: string): DiffStats | null {
 		void utils.git.getStatus.invalidate({ workspaceId });
 	}, [utils, workspaceId]);
 
-	useWorkspaceEvent("git:changed", workspaceId, invalidate);
+	useWorkspaceEvent("git:changed", workspaceId, invalidate, Boolean(workspaceId));
 
 	return useMemo<DiffStats | null>(() => {
 		if (!status) return null;

@@ -67,6 +67,7 @@ import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useV2WorkspaceRun } from "./hooks/useV2WorkspaceRun";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
+import { WorkspaceGitStatusProvider } from "./providers/WorkspaceGitStatusProvider";
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
 import type {
 	BrowserPaneData,
@@ -665,88 +666,98 @@ function WorkspaceContent({
 
 	return (
 		<FileDocumentStoreProvider>
-			<ResizablePanelGroup
-				direction="horizontal"
-				className="min-h-0 min-w-0 flex-1 overflow-auto"
+			<WorkspaceGitStatusProvider
+				workspaceId={workspaceId}
+				store={store}
+				sidebarOpen={sidebarOpen}
 			>
-				<ResizablePanel className="min-w-[320px]" defaultSize={80} minSize={30}>
-					<div
-						className="flex min-h-0 min-w-0 h-full flex-col overflow-hidden"
-						data-workspace-id={workspaceId}
+				<ResizablePanelGroup
+					direction="horizontal"
+					className="min-h-0 min-w-0 flex-1 overflow-auto"
+				>
+					<ResizablePanel
+						className="min-w-[320px]"
+						defaultSize={80}
+						minSize={30}
 					>
-						<Workspace<PaneViewerData>
-							key={workspaceId}
-							registry={paneRegistry}
-							paneActions={defaultPaneActions}
-							contextMenuActions={defaultContextMenuActions}
-							renderTabIcon={renderBrowserTabIcon}
-							renderTabAccessory={(tab) => (
-								<V2NotificationStatusIndicator
-									sources={getV2NotificationSourcesForTab(tab)}
-								/>
-							)}
-							renderBelowTabBar={() =>
-								showPresetsBar ? (
-									<V2PresetsBar
-										matchedPresets={matchedPresets}
-										executePreset={executePreset}
+						<div
+							className="flex min-h-0 min-w-0 h-full flex-col overflow-hidden"
+							data-workspace-id={workspaceId}
+						>
+							<Workspace<PaneViewerData>
+								key={workspaceId}
+								registry={paneRegistry}
+								paneActions={defaultPaneActions}
+								contextMenuActions={defaultContextMenuActions}
+								renderTabIcon={renderBrowserTabIcon}
+								renderTabAccessory={(tab) => (
+									<V2NotificationStatusIndicator
+										sources={getV2NotificationSourcesForTab(tab)}
+									/>
+								)}
+								renderBelowTabBar={() =>
+									showPresetsBar ? (
+										<V2PresetsBar
+											matchedPresets={matchedPresets}
+											executePreset={executePreset}
+											showPresetsBar={showPresetsBar}
+											onToggleShowPresetsBar={setShowPresetsBar}
+											trailing={workspaceRunButton}
+										/>
+									) : (
+										<div className="flex h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-2">
+											{workspaceRunButton}
+										</div>
+									)
+								}
+								renderAddTabMenu={() => (
+									<AddTabMenu
+										onAddTerminal={addTerminalTab}
+										onAddChat={addChatTab}
+										onAddBrowser={addBrowserTab}
+										onAddMemo={addMemoTab}
 										showPresetsBar={showPresetsBar}
 										onToggleShowPresetsBar={setShowPresetsBar}
-										trailing={workspaceRunButton}
 									/>
-								) : (
-									<div className="flex h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-2">
-										{workspaceRunButton}
-									</div>
-								)
-							}
-							renderAddTabMenu={() => (
-								<AddTabMenu
-									onAddTerminal={addTerminalTab}
-									onAddChat={addChatTab}
-									onAddBrowser={addBrowserTab}
-									onAddMemo={addMemoTab}
-									showPresetsBar={showPresetsBar}
-									onToggleShowPresetsBar={setShowPresetsBar}
-								/>
-							)}
-							renderEmptyState={() => (
-								<WorkspaceEmptyState
-									onOpenBrowser={addBrowserTab}
-									onOpenChat={addChatTab}
-									onOpenMemo={addMemoTab}
-									onOpenQuickOpen={handleQuickOpen}
-									onOpenTerminal={addTerminalTab}
-								/>
-							)}
-							onBeforeCloseTab={onBeforeCloseTab}
-							onInteractionStateChange={onWorkspaceInteractionStateChange}
-							store={store}
-						/>
-					</div>
-				</ResizablePanel>
-				{sidebarOpen && (
-					<>
-						<ResizableHandle onDragging={onSidebarResizeDragging} />
-						<ResizablePanel
-							className="min-w-[220px]"
-							defaultSize={20}
-							minSize={15}
-							maxSize={40}
-						>
-							<WorkspaceSidebar
-								workspaceId={workspaceId}
-								onSelectFile={openSidebarFilePane}
-								onSelectDiffFile={openDiffPane}
-								onOpenComment={openCommentPane}
-								onSearch={handleQuickOpen}
-								selectedFilePath={selectedFilePath}
-								pendingReveal={pendingReveal}
+								)}
+								renderEmptyState={() => (
+									<WorkspaceEmptyState
+										onOpenBrowser={addBrowserTab}
+										onOpenChat={addChatTab}
+										onOpenMemo={addMemoTab}
+										onOpenQuickOpen={handleQuickOpen}
+										onOpenTerminal={addTerminalTab}
+									/>
+								)}
+								onBeforeCloseTab={onBeforeCloseTab}
+								onInteractionStateChange={onWorkspaceInteractionStateChange}
+								store={store}
 							/>
-						</ResizablePanel>
-					</>
-				)}
-			</ResizablePanelGroup>
+						</div>
+					</ResizablePanel>
+					{sidebarOpen && (
+						<>
+							<ResizableHandle onDragging={onSidebarResizeDragging} />
+							<ResizablePanel
+								className="min-w-[220px]"
+								defaultSize={20}
+								minSize={15}
+								maxSize={40}
+							>
+								<WorkspaceSidebar
+									workspaceId={workspaceId}
+									onSelectFile={openSidebarFilePane}
+									onSelectDiffFile={openDiffPane}
+									onOpenComment={openCommentPane}
+									onSearch={handleQuickOpen}
+									selectedFilePath={selectedFilePath}
+									pendingReveal={pendingReveal}
+								/>
+							</ResizablePanel>
+						</>
+					)}
+				</ResizablePanelGroup>
+			</WorkspaceGitStatusProvider>
 			<CommandPalette
 				excludePattern={commandPalette.excludePattern}
 				filtersOpen={commandPalette.filtersOpen}

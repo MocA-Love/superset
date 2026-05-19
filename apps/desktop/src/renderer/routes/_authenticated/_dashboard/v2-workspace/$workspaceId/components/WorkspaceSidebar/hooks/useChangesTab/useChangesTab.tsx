@@ -5,11 +5,11 @@ import { cn } from "@superset/ui/utils";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { useGitStatus } from "renderer/hooks/host-service/useGitStatus";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useChangeset } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useChangeset";
 import { useOpenInExternalEditor } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useOpenInExternalEditor";
 import { useSidebarDiffRef } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useSidebarDiffRef";
+import { useWorkspaceGitStatus } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/providers/WorkspaceGitStatusProvider";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { ChangesFilter } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
@@ -20,17 +20,16 @@ export type { ChangesFilter };
 
 interface UseChangesTabParams {
 	workspaceId: string;
-	gitStatus: ReturnType<typeof useGitStatus>;
 	onSelectFile?: (path: string, openInNewTab?: boolean) => void;
 	onOpenFile?: (absolutePath: string, openInNewTab?: boolean) => void;
 }
 
 export function useChangesTab({
 	workspaceId,
-	gitStatus: status,
 	onSelectFile,
 	onOpenFile,
 }: UseChangesTabParams): SidebarTabDefinition {
+	const status = useWorkspaceGitStatus();
 	const collections = useCollections();
 	const utils = workspaceTrpc.useUtils();
 	const localState = collections.v2WorkspaceLocalState.get(workspaceId);
@@ -45,7 +44,10 @@ export function useChangesTab({
 	const baseBranch = baseBranchQuery.data?.baseBranch ?? null;
 
 	const ref = useSidebarDiffRef(workspaceId);
-	const { files, isLoading } = useChangeset({ workspaceId, ref });
+	const { files, isLoading } = useChangeset({
+		workspaceId,
+		ref,
+	});
 
 	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
 		id: workspaceId,
