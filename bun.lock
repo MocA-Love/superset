@@ -463,6 +463,8 @@
         "@superset/shared": "workspace:*",
         "@superset/ui": "workspace:*",
         "@t3-oss/env-nextjs": "^0.13.8",
+        "@upstash/ratelimit": "^2.0.4",
+        "@upstash/redis": "^1.34.3",
         "framer-motion": "^12.23.26",
         "geist": "^1.7.0",
         "gray-matter": "^4.0.3",
