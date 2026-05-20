@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "streamdown/styles.css";
+/* Force fade-edge utilities into Tailwind utilities layer.
+ * Vite hoists JS-imported CSS to the top of the bundle; without
+ * layer(utilities) here, fade-edge.css would create a NEW utilities
+ * layer at the bundle top with the LOWEST priority, sinking all
+ * Tailwind utilities (text-*, font-*, etc.) below theme/base. */
+@import "@superset/ui/overflow-fade.css" layer(utilities);
 
 @source "./**/*.{ts,tsx}";
 @source "../../../../packages/ui/src/**/*.{ts,tsx}";
