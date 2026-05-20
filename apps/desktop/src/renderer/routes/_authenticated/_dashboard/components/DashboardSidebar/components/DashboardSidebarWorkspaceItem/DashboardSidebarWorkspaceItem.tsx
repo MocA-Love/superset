@@ -37,6 +37,7 @@ export function DashboardSidebarWorkspaceItem({
 		name,
 		branch,
 		creationStatus,
+		pendingTransaction,
 		pullRequest,
 	} = workspace;
 	const isMainWorkspace = workspace.type === "main";
@@ -77,7 +78,8 @@ export function DashboardSidebarWorkspaceItem({
 	const handleAfterBranchRename = (newBranchName: string) => {
 		v2WorkspaceActions.updateWorkspace(id, { branch: newBranchName });
 	};
-	const isPending = !!creationStatus;
+	const isCreatePending = pendingTransaction?.type === "insert";
+	const isPending = !!creationStatus || isCreatePending;
 	const isFailedInFlight = creationStatus === "failed";
 	// Keep the delete dialog outside the hidden wrapper below — the destroy
 	// flow reopens it into an error pane on conflict/teardown-failed.
@@ -143,9 +145,10 @@ export function DashboardSidebarWorkspaceItem({
 					workspaceStatus={workspaceStatus}
 					onClick={handleClick}
 					creationStatus={creationStatus}
+					isCreatePending={isCreatePending}
 					pullRequestState={pullRequest?.state ?? null}
 					aria-label={
-						creationStatus ? `Creating workspace: ${name}` : undefined
+						isPending ? `Creating workspace: ${name}` : undefined
 					}
 				/>
 			</div>

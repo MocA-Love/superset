@@ -26,6 +26,7 @@ interface DashboardSidebarWorkspaceIconProps {
 	variant: "collapsed" | "expanded";
 	workspaceStatus?: ActivePaneStatus | null;
 	creationStatus?: "preparing" | "generating-branch" | "creating" | "failed";
+	isCreatePending?: boolean;
 	pullRequestState?: DashboardSidebarWorkspacePullRequest["state"] | null;
 }
 
@@ -56,6 +57,7 @@ export function DashboardSidebarWorkspaceIcon({
 	variant,
 	workspaceStatus = null,
 	creationStatus,
+	isCreatePending = false,
 	pullRequestState = null,
 }: DashboardSidebarWorkspaceIconProps) {
 	const overlayPosition = OVERLAY_POSITION[variant];
@@ -105,7 +107,7 @@ export function DashboardSidebarWorkspaceIcon({
 		<>
 			{creationStatus === "failed" ? (
 				<HiExclamationTriangle className="size-4 text-destructive" />
-			) : creationStatus || workspaceStatus === "working" ? (
+			) : creationStatus || isCreatePending || workspaceStatus === "working" ? (
 				<AsciiSpinner className="text-base" />
 			) : (
 				renderPrimaryIcon()

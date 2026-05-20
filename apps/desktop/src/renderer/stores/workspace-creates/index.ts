@@ -10,3 +10,10 @@ export {
 	type UseWorkspaceCreatesApi,
 	useWorkspaceCreates,
 } from "./useWorkspaceCreates";
+export {
+	type TrackableWorkspaceTransactionState,
+	useWorkspaceTransactionsStore,
+	type WorkspaceTransactionSnapshot,
+	type WorkspaceTransactionState,
+	type WorkspaceTransactionType,
+} from "./workspaceTransactions";

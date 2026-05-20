@@ -3,8 +3,17 @@ import { toast } from "@superset/ui/sonner";
 import { useCallback, useMemo } from "react";
 import { isDesktopChatDevMode } from "renderer/lib/dev-chat";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import {
+	type TrackableWorkspaceTransactionState,
+	useWorkspaceTransactionsStore,
+	type WorkspaceTransactionType,
+} from "renderer/stores/workspace-creates";
 
 export type PersistableTransaction = {
+	id: string;
+	state: TrackableWorkspaceTransactionState;
+	createdAt: Date;
+	mutations: Array<{ type: WorkspaceTransactionType }>;
 	isPersisted: {
 		promise: Promise<unknown>;
 	};
@@ -72,6 +81,9 @@ function useOptimisticMutationRunner() {
 export function useOptimisticCollectionActions() {
 	const collections = useCollections();
 	const runMutation = useOptimisticMutationRunner();
+	const trackWorkspaceTransaction = useWorkspaceTransactionsStore(
+		(state) => state.track,
+	);
 
 	return useMemo(() => {
 		const runTaskMutation = (
@@ -177,26 +189,40 @@ export function useOptimisticCollectionActions() {
 					),
 			},
 			v2Workspaces: {
-				updateWorkspace: (workspaceId: string, patch: V2WorkspacePatch) =>
-					runWorkspaceMutation("Failed to update workspace", () =>
-						collections.v2Workspaces.update(workspaceId, (draft) => {
-							if (patch.name !== undefined) {
-								draft.name = patch.name;
-							}
-							if (patch.branch !== undefined) {
-								draft.branch = patch.branch;
-							}
-							if (patch.hostId !== undefined) {
-								draft.hostId = patch.hostId;
-							}
-						}),
-					),
-				renameWorkspace: (workspaceId: string, name: string) =>
-					runWorkspaceMutation("Failed to rename workspace", () =>
-						collections.v2Workspaces.update(workspaceId, (draft) => {
-							draft.name = name;
-						}),
-					),
+				updateWorkspace: (workspaceId: string, patch: V2WorkspacePatch) => {
+					const transaction = runWorkspaceMutation(
+						"Failed to update workspace",
+						() =>
+							collections.v2Workspaces.update(workspaceId, (draft) => {
+								if (patch.name !== undefined) {
+									draft.name = patch.name;
+								}
+								if (patch.branch !== undefined) {
+									draft.branch = patch.branch;
+								}
+								if (patch.hostId !== undefined) {
+									draft.hostId = patch.hostId;
+								}
+							}),
+					);
+					if (transaction) {
+						trackWorkspaceTransaction(workspaceId, transaction);
+					}
+					return transaction;
+				},
+				renameWorkspace: (workspaceId: string, name: string) => {
+					const transaction = runWorkspaceMutation(
+						"Failed to rename workspace",
+						() =>
+							collections.v2Workspaces.update(workspaceId, (draft) => {
+								draft.name = name;
+							}),
+					);
+					if (transaction) {
+						trackWorkspaceTransaction(workspaceId, transaction);
+					}
+					return transaction;
+				},
 			},
 			chatSessions: {
 				deleteSession: (sessionId: string) => {
@@ -245,5 +271,5 @@ export function useOptimisticCollectionActions() {
 					),
 			},
 		};
-	}, [collections, runMutation]);
+	}, [collections, runMutation, trackWorkspaceTransaction]);
 }

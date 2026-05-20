@@ -84,7 +84,11 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 			branch,
 			pullRequest,
 			creationStatus,
+			pendingTransaction,
 		} = workspace;
+		const isCreatePending = pendingTransaction?.type === "insert";
+		const displayCreationStatus =
+			creationStatus ?? (isCreatePending ? "creating" : undefined);
 		const showsStandaloneActiveStripe = accentColor == null;
 		const localRef = useRef<HTMLDivElement>(null);
 		const openUrl = electronTrpc.external.openUrl.useMutation();
@@ -99,8 +103,8 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 		}, [isActive]);
 
 		const creationStatusText = useMemo(
-			() => getCreationStatusText(creationStatus),
-			[creationStatus],
+			() => getCreationStatusText(displayCreationStatus),
+			[displayCreationStatus],
 		);
 		const isMainWorkspace = workspace.type === "main";
 		const workspaceKindTitle = isMainWorkspace
@@ -115,7 +119,7 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 			<div
 				role={onClick ? "button" : undefined}
 				tabIndex={onClick ? 0 : undefined}
-				aria-disabled={creationStatus ? true : undefined}
+				aria-disabled={displayCreationStatus ? true : undefined}
 				ref={(node) => {
 					localRef.current = node;
 					if (typeof ref === "function") ref(node);
@@ -175,6 +179,7 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 									variant="expanded"
 									workspaceStatus={workspaceStatus}
 									creationStatus={creationStatus}
+									isCreatePending={isCreatePending}
 									pullRequestState={pullRequest.state}
 								/>
 							</button>
@@ -188,6 +193,7 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 									variant="expanded"
 									workspaceStatus={workspaceStatus}
 									creationStatus={creationStatus}
+									isCreatePending={isCreatePending}
 									pullRequestState={null}
 								/>
 							</div>
@@ -276,9 +282,9 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 								/>
 							)
 						)}
-						{(!creationStatus || creationStatus === "failed") && (
+						{(!displayCreationStatus || creationStatus === "failed") && (
 							<div className="hidden items-center justify-end gap-1.5 group-hover:flex">
-								{shortcutLabel && !creationStatus && (
+								{shortcutLabel && !displayCreationStatus && (
 									<span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
 										{shortcutLabel}
 									</span>

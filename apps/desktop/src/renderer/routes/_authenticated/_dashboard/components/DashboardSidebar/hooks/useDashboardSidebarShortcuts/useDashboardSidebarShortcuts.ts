@@ -57,7 +57,11 @@ export function useDashboardSidebarShortcuts(
 		() =>
 			groups
 				.flatMap((project) => getProjectChildrenWorkspaces(project.children))
-				.filter((workspace) => !workspace.creationStatus),
+				.filter(
+					(workspace) =>
+						!workspace.creationStatus &&
+						workspace.pendingTransaction?.type !== "insert",
+				),
 		[groups],
 	);
 	const workspaceShortcutLabels =

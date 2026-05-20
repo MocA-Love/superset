@@ -8,7 +8,10 @@ import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/u
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { getVisibleSidebarWorkspaces } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
-import { useWorkspaceCreatesStore } from "renderer/stores/workspace-creates";
+import {
+	useWorkspaceCreatesStore,
+	useWorkspaceTransactionsStore,
+} from "renderer/stores/workspace-creates";
 import { MOCK_ORG_ID } from "shared/constants";
 import type {
 	DashboardSidebarProject,
@@ -132,6 +135,9 @@ export function useDashboardSidebarData() {
 	const { machineId, activeHostUrl } = useLocalHostService();
 	const { toggleProjectCollapsed } = useDashboardSidebarState();
 	const queryClient = useQueryClient();
+	const workspaceTransactionsById = useWorkspaceTransactionsStore(
+		(state) => state.byWorkspaceId,
+	);
 
 	// In-flight workspace.create operations. These don't have a backing DB row
 	// — they're kept in renderer memory until the real v2Workspaces row arrives
@@ -491,6 +497,7 @@ export function useDashboardSidebarData() {
 				behindCount: null,
 				createdAt: workspace.createdAt,
 				updatedAt: workspace.updatedAt,
+				pendingTransaction: workspaceTransactionsById[workspace.id] ?? null,
 			};
 
 			if (workspace.sectionId) {
@@ -542,6 +549,7 @@ export function useDashboardSidebarData() {
 				createdAt: new Date(),
 				updatedAt: new Date(),
 				creationStatus: pw.status,
+				pendingTransaction: null,
 			};
 
 			project.childEntries.push({
@@ -603,6 +611,7 @@ export function useDashboardSidebarData() {
 	}, [
 		machineId,
 		pullRequestsByWorkspaceId,
+		workspaceTransactionsById,
 		inFlightSidebarRows,
 		localStateWorkspaceIds,
 		sidebarProjects,
