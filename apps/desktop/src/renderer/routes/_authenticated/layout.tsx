@@ -23,6 +23,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showWorkspaceAutoNameWarningToast } from "renderer/lib/workspaces/showWorkspaceAutoNameWarningToast";
 import { LanguageServicesProvider } from "renderer/providers/LanguageServicesProvider";
 import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
+import { DaemonAutoUpdateFailureDialog } from "renderer/routes/_authenticated/components/DaemonAutoUpdateFailureDialog";
 import { DashboardNewWorkspaceModal } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal";
 import { GitOperationDialog } from "renderer/screens/main/components/GitOperationDialog";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
@@ -229,6 +230,7 @@ function AuthenticatedLayout() {
 							<MainWindowEffects />
 							<WorktreeAutoSyncManager />
 							<V2NotificationController />
+							<DaemonAutoUpdateFailureDialog />
 							<Outlet />
 							<WorkspaceInitEffects />
 							{isV2CloudEnabled ? (
