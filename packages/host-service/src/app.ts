@@ -19,6 +19,10 @@ import { runMainWorkspaceSweep } from "./runtime/main-workspace-sweep";
 import { PullRequestRuntimeManager } from "./runtime/pull-requests";
 import { registerWorkspaceTerminalRoute } from "./terminal/terminal";
 import { appRouter } from "./trpc/router";
+import {
+	execGh as defaultExecGh,
+	type ExecGh,
+} from "./trpc/router/workspace-creation/utils/exec-gh";
 import type { ApiClient } from "./types";
 
 export interface CreateAppOptions {
@@ -37,6 +41,10 @@ export interface CreateAppOptions {
 	};
 	api?: ApiClient;
 	db?: ReturnType<typeof createDb>;
+	github?: () => Promise<Octokit>;
+	execGh?: ExecGh;
+	chatRuntime?: ChatRuntimeManager;
+	chatService?: ChatService;
 }
 
 export interface CreateAppResult {
@@ -53,15 +61,18 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		createApiClient(config.cloudApiUrl, providers.auth, config.organizationId);
 	const db = options.db ?? createDb(config.dbPath, config.migrationsFolder);
 	const git = createGitFactory(providers.credentials);
-	const github = async () => {
-		const token = await providers.credentials.getToken("github.com");
-		if (!token) {
-			throw new Error(
-				"No GitHub token available. Set GITHUB_TOKEN/GH_TOKEN or authenticate via git credential manager.",
-			);
-		}
-		return new Octokit({ auth: token });
-	};
+	const github =
+		options.github ??
+		(async () => {
+			const token = await providers.credentials.getToken("github.com");
+			if (!token) {
+				throw new Error(
+					"No GitHub token available. Set GITHUB_TOKEN/GH_TOKEN or authenticate via git credential manager.",
+				);
+			}
+			return new Octokit({ auth: token });
+		});
+	const execGh: ExecGh = options.execGh ?? defaultExecGh;
 
 	const pullRequestRuntime = new PullRequestRuntimeManager({
 		db,
@@ -139,6 +150,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 				return {
 					git,
 					github,
+					execGh,
 					api,
 					db,
 					runtime,
