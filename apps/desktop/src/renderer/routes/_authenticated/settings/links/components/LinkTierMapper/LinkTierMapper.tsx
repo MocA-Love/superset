@@ -7,19 +7,19 @@ import {
 	SelectValue,
 } from "@superset/ui/select";
 import { useCallback } from "react";
-import {
-	actionLabel,
-	type LinkAction,
-	type LinkTier,
-	type LinkTierMap,
-	modifierLabel,
-	type Surface,
-} from "renderer/lib/clickPolicy";
+import type {
+	LinkAction,
+	LinkTier,
+	LinkTierMap,
+} from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 
 type SlotValue = LinkAction | "none";
 
-const TIERS: LinkTier[] = ["plain", "shift", "meta", "metaShift"];
-const ACTIONS: LinkAction[] = ["pane", "newTab", "external"];
+const TIER_LABELS: Array<{ key: LinkTier; label: string }> = [
+	{ key: "plain", label: "Click" },
+	{ key: "meta", label: "⌘-click" },
+	{ key: "metaShift", label: "⌘⇧-click" },
+];
 
 function toSlot(action: LinkAction | null): SlotValue {
 	return action ?? "none";
@@ -29,13 +29,18 @@ function fromSlot(slot: SlotValue): LinkAction | null {
 	return slot === "none" ? null : slot;
 }
 
+export interface ActionLabels {
+	pane: string;
+	external: string;
+}
+
 export interface LinkTierMapperProps {
 	title: string;
 	description: string;
 	value: LinkTierMap;
 	onChange: (next: LinkTierMap) => void;
 	idPrefix: string;
-	surface: Surface;
+	actionLabels: ActionLabels;
 }
 
 export function LinkTierMapper({
@@ -44,7 +49,7 @@ export function LinkTierMapper({
 	value,
 	onChange,
 	idPrefix,
-	surface,
+	actionLabels,
 }: LinkTierMapperProps) {
 	const pick = useCallback(
 		(tier: LinkTier, nextSlot: SlotValue) => {
@@ -55,30 +60,35 @@ export function LinkTierMapper({
 		[value, onChange],
 	);
 
+	const options: Array<{ value: SlotValue; label: string }> = [
+		{ value: "none", label: "Do nothing" },
+		{ value: "pane", label: actionLabels.pane },
+		{ value: "external", label: actionLabels.external },
+	];
+
 	return (
-		<div>
-			<h3 className="text-sm font-medium mb-1">{title}</h3>
-			<p className="text-xs text-muted-foreground mb-3">{description}</p>
-			<div className="space-y-2">
-				{TIERS.map((tier) => {
-					const id = `${idPrefix}-${tier}`;
+		<section className="rounded-md border border-border p-5">
+			<div className="mb-1 text-sm font-medium">{title}</div>
+			<p className="mb-4 text-xs text-muted-foreground">{description}</p>
+			<div className="space-y-3">
+				{TIER_LABELS.map(({ key, label }) => {
+					const id = `${idPrefix}-${key}`;
 					return (
-						<div key={tier} className="flex items-center justify-between gap-4">
-							<Label htmlFor={id} className="text-sm font-medium capitalize">
-								{modifierLabel(tier)}
+						<div key={key} className="flex items-center justify-between">
+							<Label htmlFor={id} className="text-sm">
+								{label}
 							</Label>
 							<Select
-								value={toSlot(value[tier])}
-								onValueChange={(v) => pick(tier, v as SlotValue)}
+								value={toSlot(value[key])}
+								onValueChange={(v) => pick(key, v as SlotValue)}
 							>
-								<SelectTrigger id={id} size="sm" className="w-44">
+								<SelectTrigger id={id} className="w-[180px]">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="none">Do nothing</SelectItem>
-									{ACTIONS.map((action) => (
-										<SelectItem key={action} value={action}>
-											{actionLabel(action, surface)}
+									{options.map((opt) => (
+										<SelectItem key={opt.value} value={opt.value}>
+											{opt.label}
 										</SelectItem>
 									))}
 								</SelectContent>
@@ -87,6 +97,6 @@ export function LinkTierMapper({
 					);
 				})}
 			</div>
-		</div>
+		</section>
 	);
 }

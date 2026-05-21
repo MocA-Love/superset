@@ -18,7 +18,6 @@ interface ProjectRow {
 	kind: "v1" | "v2";
 	id: string;
 	name: string;
-	iconUrl: string | null;
 }
 
 interface ProjectsSettingsSidebarProps {
@@ -48,7 +47,6 @@ export function ProjectsSettingsSidebar({
 				.select(({ projects }) => ({
 					id: projects.id,
 					name: projects.name,
-					iconUrl: projects.iconUrl,
 				})),
 		[collections, activeOrganizationId],
 	);
@@ -60,7 +58,6 @@ export function ProjectsSettingsSidebar({
 			kind: "v2",
 			id: p.id,
 			name: p.name,
-			iconUrl: p.iconUrl ?? null,
 		}));
 
 		const v1Rows: ProjectRow[] = groups
@@ -72,7 +69,6 @@ export function ProjectsSettingsSidebar({
 				kind: "v1",
 				id: g.project.id,
 				name: g.project.name,
-				iconUrl: g.project.iconUrl,
 			}));
 
 		return [
@@ -102,7 +98,7 @@ export function ProjectsSettingsSidebar({
 				>
 					<ProjectThumbnail
 						projectName={row.name}
-						iconUrl={row.iconUrl}
+						githubOwner={null}
 						className="size-5"
 					/>
 					<span className="truncate">{row.name}</span>
