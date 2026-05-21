@@ -85,7 +85,6 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		db,
 		git,
 		github,
-		gitWatcher,
 	});
 	pullRequestRuntime.start();
 	const chatRuntime =

@@ -23,7 +23,11 @@ export const searchBranchesInputSchema = z.object({
 	cursor: z.string().optional(),
 	limit: z.number().min(1).max(200).optional(),
 	refresh: z.boolean().optional(),
-	filter: z.enum(["branch", "worktree"]).optional(),
+	// FORK NOTE: keep "all" alongside upstream's "branch" + "worktree" so the
+	// fork's CompareBaseBranchPicker tabs ("all"/"local"/"recent") and
+	// useBranchContext default ("all") continue to type-check. Server-side
+	// "all" is handled as "no filter" — same semantics as omitting the field.
+	filter: z.enum(["all", "branch", "worktree"]).optional(),
 });
 
 export const generateBranchNameInputSchema = z.object({
