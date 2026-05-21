@@ -28,6 +28,7 @@ import {
 	useWorkspaceSidebarStore,
 } from "renderer/stores/workspace-sidebar-state";
 import { AddRepositoryModals } from "./components/AddRepositoryModals";
+import { CrossVersionMismatchState } from "./components/CrossVersionMismatchState";
 import { KeepAliveWorkspaces } from "./components/KeepAliveWorkspaces";
 import { TopBar } from "./components/TopBar";
 
@@ -48,6 +49,19 @@ function DashboardLayout() {
 	});
 	const currentWorkspaceId =
 		currentWorkspaceMatch !== false ? currentWorkspaceMatch.workspaceId : null;
+
+	// #4211: when active version (v1 vs v2) doesn't match the current
+	// workspace route, swap KeepAliveWorkspaces for a pick-workspace
+	// placeholder so users land on the version-correct sidebar.
+	const v2WorkspaceMatch = matchRoute({
+		to: "/v2-workspace/$workspaceId",
+		fuzzy: true,
+	});
+	const onV1WorkspaceRoute = currentWorkspaceMatch !== false;
+	const onV2WorkspaceRoute = v2WorkspaceMatch !== false;
+	const versionMismatch =
+		(isV2CloudEnabled && onV1WorkspaceRoute) ||
+		(!isV2CloudEnabled && onV2WorkspaceRoute);
 
 	// Q3:B — scratch route hides the workspace sidebar so a dropped file opens
 	// as a focused editor with no project chrome around it.
@@ -147,7 +161,11 @@ function DashboardLayout() {
 					</ResizablePanel>
 				)}
 				<div className="flex flex-1 min-h-0 min-w-0">
-					<KeepAliveWorkspaces />
+					{versionMismatch ? (
+						<CrossVersionMismatchState />
+					) : (
+						<KeepAliveWorkspaces />
+					)}
 				</div>
 			</div>
 			<div id="workspace-right-sidebar-slot" className="contents" />
