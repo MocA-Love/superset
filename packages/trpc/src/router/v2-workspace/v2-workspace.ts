@@ -187,54 +187,10 @@ export const v2WorkspaceRouter = {
 			);
 			const host = await getScopedHost(input.organizationId, input.hostId);
 
-<<<<<<< HEAD
 			if (input.taskId) {
 				const found = await dbWs.query.tasks.findFirst({
 					columns: { id: true, organizationId: true },
 					where: eq(tasks.id, input.taskId),
-=======
-			// Relies on the partial unique index
-			// (project_id, host_id) WHERE type='main' for idempotency — race-safe
-			// even if two callers (e.g. the startup sweep and project.setup) both
-			// miss the existence check at the same instant.
-			const [inserted] = await dbWs
-				.insert(v2Workspaces)
-				.values({
-					organizationId: project.organizationId,
-					projectId: project.id,
-					name: input.name,
-					branch: input.branch,
-					hostId: host.machineId,
-					type: input.type,
-					createdByUserId: ctx.userId,
-				})
-				.onConflictDoNothing()
-				.returning();
-
-			if (inserted) {
-				posthog.capture({
-					distinctId: ctx.userId,
-					event: "workspace_created",
-					properties: {
-						workspace_id: inserted.id,
-						project_id: inserted.projectId,
-						organization_id: inserted.organizationId,
-						host_id: inserted.hostId,
-						branch: inserted.branch,
-						type: inserted.type,
-					},
-				});
-				return inserted;
-			}
-
-			if (input.type === "main") {
-				const existing = await dbWs.query.v2Workspaces.findFirst({
-					where: and(
-						eq(v2Workspaces.projectId, project.id),
-						eq(v2Workspaces.hostId, host.machineId),
-						eq(v2Workspaces.type, "main"),
-					),
->>>>>>> 48c0d1dc8 (feat(posthog): tag person profiles with billing status (#4004))
 				});
 				if (!found) {
 					throw new TRPCError({
@@ -270,9 +226,18 @@ export const v2WorkspaceRouter = {
 					.returning();
 
 				if (inserted) {
-					// FORK NOTE: upstream emits a PostHog `workspace_created` event
-					// here. The fork doesn't ship the trpc-side posthog client yet,
-					// so the capture is omitted.
+					posthog.capture({
+						distinctId: ctx.userId,
+						event: "workspace_created",
+						properties: {
+							workspace_id: inserted.id,
+							project_id: inserted.projectId,
+							organization_id: inserted.organizationId,
+							host_id: inserted.hostId,
+							branch: inserted.branch,
+							type: inserted.type,
+						},
+					});
 					return inserted;
 				}
 
