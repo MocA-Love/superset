@@ -27,7 +27,7 @@ export function ExperimentalSettings({
 		SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2,
 		visibleItems,
 	);
-	const { isV2CloudEnabled, isRemoteV2Enabled } = useIsV2CloudEnabled();
+	const isV2CloudEnabled = useIsV2CloudEnabled();
 	const setOptInV2 = useV2LocalOverrideStore((state) => state.setOptInV2);
 
 	return (
