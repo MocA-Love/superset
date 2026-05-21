@@ -62,6 +62,7 @@ import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
 import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
+import { useClearActivePaneAttention } from "./hooks/useClearActivePaneAttention";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import {
@@ -215,37 +216,6 @@ function V2WorkspacePage() {
 	);
 }
 
-/**
- * Clear post-completion attention only for the pane the user is actually
- * viewing. Clearing every review status on route entry would drop background
- * tab attention before the user has looked at that pane.
- */
-function useClearActivePaneAttention({
-	workspaceId,
-	store,
-}: {
-	workspaceId: string;
-	store: StoreApi<WorkspaceStore<PaneViewerData>>;
-}): void {
-	const activePane = useStore(store, (state) => {
-		const tab = state.tabs.find(
-			(candidate) => candidate.id === state.activeTabId,
-		);
-		return tab?.activePaneId ? tab.panes[tab.activePaneId] : undefined;
-	});
-	const activePaneStatus = useV2PaneNotificationStatus(workspaceId, activePane);
-	const clearSourceAttention = useV2NotificationStore(
-		(state) => state.clearSourceAttention,
-	);
-
-	useEffect(() => {
-		if (activePaneStatus !== "review") return;
-		for (const source of getV2NotificationSourcesForPane(activePane)) {
-			clearSourceAttention(source, workspaceId);
-		}
-	}, [activePane, activePaneStatus, clearSourceAttention, workspaceId]);
-}
-
 function WorkspaceContent({
 	projectId,
 	workspaceId,
@@ -266,11 +236,8 @@ function WorkspaceContent({
 	openUrlRequestId?: string;
 }) {
 	const navigate = useNavigate();
-	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
-		projectId,
-		workspaceId,
-	});
-	useClearActivePaneAttention({ workspaceId, store });
+	const { localWorkspaceState, store } = useV2WorkspacePaneLayout();
+	useClearActivePaneAttention({ store });
 	const { matchedPresets, executePreset } = useV2PresetExecution({
 		store,
 		workspaceId,
@@ -535,7 +502,7 @@ function WorkspaceContent({
 		[openFilePane, openSidebarFilePane],
 	);
 
-	const paneRegistry = usePaneRegistry(workspaceId, {
+	const paneRegistry = usePaneRegistry({
 		onOpenFile: handleTerminalOpenFile,
 		onRevealPath: revealPath,
 	});
@@ -777,7 +744,7 @@ function WorkspaceContent({
 	}, [store]);
 
 	return (
-		<FileDocumentStoreProvider workspaceId={workspaceId}>
+		<FileDocumentStoreProvider>
 			<ResizablePanelGroup
 				direction="horizontal"
 				className="min-h-0 min-w-0 flex-1 overflow-auto"
@@ -794,7 +761,6 @@ function WorkspaceContent({
 							renderTabIcon={renderBrowserTabIcon}
 							renderTabAccessory={(tab) => (
 								<V2NotificationStatusIndicator
-									workspaceId={workspaceId}
 									sources={getV2NotificationSourcesForTab(tab)}
 								/>
 							)}

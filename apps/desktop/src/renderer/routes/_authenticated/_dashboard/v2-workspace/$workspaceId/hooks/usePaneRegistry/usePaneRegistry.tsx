@@ -26,6 +26,7 @@ import { useHotkeyDisplay } from "renderer/hotkeys";
 import { getBaseName } from "renderer/lib/pathBasename";
 import { consumeTerminalBackgroundIntent } from "renderer/lib/terminal/terminal-background-intents";
 import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-registry";
+import { useWorkspace } from "renderer/routes/_authenticated/_dashboard/v2-workspace/providers/WorkspaceProvider";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import {
 	clearV2TerminalRunStatus,
@@ -186,10 +187,12 @@ interface UsePaneRegistryOptions {
 	onRevealPath: (path: string) => void;
 }
 
-export function usePaneRegistry(
-	workspaceId: string,
-	{ onOpenFile, onRevealPath }: UsePaneRegistryOptions,
-): PaneRegistry<PaneViewerData> {
+export function usePaneRegistry({
+	onOpenFile,
+	onRevealPath,
+}: UsePaneRegistryOptions): PaneRegistry<PaneViewerData> {
+	const { workspace } = useWorkspace();
+	const workspaceId = workspace.id;
 	const clearShortcut = useHotkeyDisplay("CLEAR_TERMINAL").text;
 	const scrollToBottomShortcut = useHotkeyDisplay("SCROLL_TO_BOTTOM").text;
 	const workspaceTrpcUtils = workspaceTrpc.useUtils();
@@ -197,7 +200,9 @@ export function usePaneRegistry(
 		workspaceTrpc.terminal.killSession.useMutation({
 			onSuccess: () => {
 				toast.success("Terminal session killed");
-				void workspaceTrpcUtils.terminal.listSessions.invalidate();
+				void workspaceTrpcUtils.terminal.listSessions.invalidate({
+					workspaceId,
+				});
 			},
 			onError: (error) => {
 				toast.error("Failed to kill terminal session", {
@@ -332,7 +337,6 @@ export function usePaneRegistry(
 					<div className="flex min-w-0 flex-1 items-center gap-1.5">
 						<TerminalSessionDropdown context={ctx} workspaceId={workspaceId} />
 						<V2NotificationStatusIndicator
-							workspaceId={workspaceId}
 							sources={getV2NotificationSourcesForPane(ctx.pane)}
 						/>
 					</div>
