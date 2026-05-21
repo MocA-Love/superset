@@ -110,7 +110,6 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 				id: project.id,
 				name: project.name,
 				githubOwner: repo?.owner ?? null,
-				iconUrl: project.iconUrl ?? null,
 				needsSetup:
 					setUpProjectIds === null ? null : !setUpProjectIds.has(project.id),
 			};
@@ -312,7 +311,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 									<>
 										<ProjectThumbnail
 											projectName={selectedProject.name}
-											iconUrl={selectedProject.iconUrl}
+											githubOwner={null}
 											className="size-4"
 										/>
 										<span className="truncate">{selectedProject.name}</span>
@@ -339,7 +338,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 								>
 									<ProjectThumbnail
 										projectName={project.name}
-										iconUrl={project.iconUrl}
+										githubOwner={null}
 										className="size-4"
 									/>
 									<span className="flex-1 truncate">{project.name}</span>

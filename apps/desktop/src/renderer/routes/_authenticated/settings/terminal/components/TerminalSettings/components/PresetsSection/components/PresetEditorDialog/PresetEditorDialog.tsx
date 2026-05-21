@@ -19,7 +19,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@superset/ui/select";
-import { Switch } from "@superset/ui/switch";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { useMemo } from "react";
