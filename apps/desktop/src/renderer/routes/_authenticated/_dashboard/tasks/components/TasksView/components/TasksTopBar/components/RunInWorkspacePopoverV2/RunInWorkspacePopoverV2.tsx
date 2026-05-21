@@ -117,6 +117,7 @@ export function RunInWorkspacePopoverV2({
 			return {
 				id: project.id,
 				name: project.name,
+				iconUrl: project.iconUrl ?? null,
 				githubOwner: repo?.owner ?? null,
 				needsSetup:
 					setUpProjectIds === null ? null : !setUpProjectIds.has(project.id),
@@ -303,7 +304,7 @@ export function RunInWorkspacePopoverV2({
 										<>
 											<ProjectThumbnail
 												projectName={selectedProject.name}
-												githubOwner={null}
+												iconUrl={selectedProject.iconUrl ?? null}
 												className="size-4"
 											/>
 											<span className="truncate">{selectedProject.name}</span>
@@ -335,7 +336,7 @@ export function RunInWorkspacePopoverV2({
 											>
 												<ProjectThumbnail
 													projectName={project.name}
-													githubOwner={null}
+													iconUrl={project.iconUrl ?? null}
 													className="size-4"
 												/>
 												<span className="flex-1 truncate">{project.name}</span>

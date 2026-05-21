@@ -17,11 +17,13 @@ import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 
 interface DeleteProjectSectionProps {
 	projectId: string;
+	organizationId: string;
 	projectName: string;
 }
 
 export function DeleteProjectSection({
 	projectId,
+	organizationId,
 	projectName,
 }: DeleteProjectSectionProps) {
 	const navigate = useNavigate();
@@ -31,7 +33,7 @@ export function DeleteProjectSection({
 	const handleDelete = async () => {
 		setIsDeleting(true);
 		try {
-			await apiTrpcClient.v2Project.delete.mutate({ id: projectId });
+			await apiTrpcClient.v2Project.delete.mutate({ id: projectId, organizationId });
 			toast.success(`Deleted "${projectName}"`);
 			setIsOpen(false);
 			navigate({ to: "/settings/projects" });

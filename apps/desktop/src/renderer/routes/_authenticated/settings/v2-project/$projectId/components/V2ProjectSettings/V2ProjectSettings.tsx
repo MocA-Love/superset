@@ -82,6 +82,7 @@ export function V2ProjectSettings({ projectId }: V2ProjectSettingsProps) {
 				<SettingsSection title="Danger Zone">
 					<DeleteProjectSection
 						projectId={projectId}
+						organizationId={project.organizationId}
 						projectName={project.name}
 					/>
 				</SettingsSection>
