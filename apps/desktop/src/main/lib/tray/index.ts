@@ -103,7 +103,7 @@ async function confirmAndQuitCompletely(): Promise<void> {
 				"All open terminal sessions will be killed and any running host-services will be stopped. Use “Close Superset” instead if you want services to keep running for the next launch.",
 		});
 		if (response === 0) {
-			quitAppCompletely();
+			requestQuit("stop");
 		}
 	} catch (error) {
 		console.error("[Tray] Quit-completely confirmation failed:", error);

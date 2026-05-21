@@ -138,6 +138,7 @@ export type LinkAction = z.infer<typeof linkActionSchema>;
 const linkTierMapSchema = z.object({
 	plain: linkActionSchema.nullable(),
 	meta: linkActionSchema.nullable(),
+	shift: linkActionSchema.nullable(),
 	metaShift: linkActionSchema.nullable(),
 });
 
@@ -147,6 +148,7 @@ export type LinkTier = keyof LinkTierMap;
 const DEFAULT_LINK_TIER_MAP: LinkTierMap = {
 	plain: null,
 	meta: "pane",
+	shift: null,
 	metaShift: "external",
 };
 
@@ -154,6 +156,7 @@ export const v2UserPreferencesSchema = z.object({
 	id: z.literal("preferences"),
 	fileLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	urlLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
+	sidebarFileLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	rightSidebarOpen: z.boolean().default(true),
 	rightSidebarTab: z.enum(["changes", "files"]).default("changes"),
 	rightSidebarWidth: z.number().default(340),
@@ -168,6 +171,7 @@ export const DEFAULT_V2_USER_PREFERENCES: V2UserPreferencesRow = {
 	id: V2_USER_PREFERENCES_ID,
 	fileLinks: DEFAULT_LINK_TIER_MAP,
 	urlLinks: DEFAULT_LINK_TIER_MAP,
+	sidebarFileLinks: DEFAULT_LINK_TIER_MAP,
 	rightSidebarOpen: true,
 	rightSidebarTab: "changes",
 	rightSidebarWidth: 340,

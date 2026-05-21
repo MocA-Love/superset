@@ -21,6 +21,7 @@ interface DestroyConfirmPaneProps {
 	hasUnpushedCommits: boolean;
 	canConfirm: boolean;
 	blockingReason: string | null;
+	isCheckingStatus: boolean;
 	onConfirm: () => void;
 	confirmLabel: string;
 }
@@ -35,6 +36,7 @@ export function DestroyConfirmPane({
 	hasUnpushedCommits,
 	canConfirm,
 	blockingReason,
+	isCheckingStatus,
 	onConfirm,
 	confirmLabel,
 }: DestroyConfirmPaneProps) {

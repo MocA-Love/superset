@@ -83,24 +83,28 @@ export function useBranchPickerController(args: UseBranchPickerControllerArgs) {
 			const snapshotId = crypto.randomUUID();
 			const workspaceName = resolveActionWorkspaceName(branchName);
 			closeModal();
-			const result = await submit({
-				hostId: resolvedHostId,
-				snapshot: {
-					id: snapshotId,
-					projectId,
-					name: workspaceName,
-					branch: branchName,
-				},
-			});
-			if (result.ok) {
+			// FORK NOTE: fork's submit() returns Promise<void>; in-flight tracker
+			// (useWorkspaceCreatesStore) carries error state. cycle 44b will
+			// upgrade submit to SubmitResult and restore upstream foreign-worktree
+			// adoption with canonical workspaceId.
+			try {
+				await submit({
+					hostId: resolvedHostId,
+					snapshot: {
+						id: snapshotId,
+						projectId,
+						name: workspaceName,
+						branch: branchName,
+					},
+				});
 				void navigate({
 					to: "/v2-workspace/$workspaceId",
-					params: { workspaceId: result.workspaceId },
+					params: { workspaceId: snapshotId },
 				});
-			} else {
-				// `submit` records the failure for the in-flight tracker but
-				// doesn't toast; surface it here so the closed modal isn't silent.
-				toast.error(result.error || "Failed to open workspace");
+			} catch (err) {
+				toast.error(
+					err instanceof Error ? err.message : "Failed to open workspace",
+				);
 			}
 		},
 		[
