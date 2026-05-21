@@ -754,7 +754,7 @@ export async function createTerminalSessionInternal({
 		// host-service lifetime — flag it as queued so we don't double-fire it.
 		initialCommandQueued: isAdopted,
 		portHintDecoder: new StringDecoder("utf8"),
-		modeTracker: createModeTracker(cols, rows),
+		modeTracker: createModeTracker(120, 32),
 	};
 	sessions.set(terminalId, session);
 	portManager.upsertSession(terminalId, workspaceId, pty.pid);
