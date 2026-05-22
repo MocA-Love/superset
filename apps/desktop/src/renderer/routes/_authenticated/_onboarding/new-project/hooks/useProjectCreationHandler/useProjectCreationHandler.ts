@@ -1,9 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 
 export function useProjectCreationHandler(onError: (error: string) => void) {
 	const utils = electronTrpc.useUtils();
 	const navigate = useNavigate();
+	const { ensureProjectInSidebar } = useDashboardSidebarState();
 
 	const handleResult = (
 		result: {
@@ -16,6 +18,7 @@ export function useProjectCreationHandler(onError: (error: string) => void) {
 	) => {
 		if (result.canceled) return;
 		if (result.success && result.project) {
+			ensureProjectInSidebar(result.project.id);
 			utils.projects.getRecents.invalidate();
 			resetState?.();
 			navigate({
