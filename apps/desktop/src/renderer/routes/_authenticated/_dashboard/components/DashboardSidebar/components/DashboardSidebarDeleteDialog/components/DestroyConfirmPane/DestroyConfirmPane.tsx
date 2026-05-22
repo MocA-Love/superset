@@ -66,10 +66,10 @@ export function DestroyConfirmPane({
 								? "Has uncommitted changes and unpushed commits"
 								: hasChanges
 									? "Has uncommitted changes"
-									: "Has unpushed commits"
-							: " "}
+									: "Has unpushed commits"}
+						</div>
 					</div>
-				</div>
+				)}
 				{blockingReason && (
 					<div className="px-4 pb-2">
 						<div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-2.5 py-1.5">

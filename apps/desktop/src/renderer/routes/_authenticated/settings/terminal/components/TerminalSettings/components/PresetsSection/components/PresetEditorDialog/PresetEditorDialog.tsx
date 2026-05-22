@@ -19,7 +19,8 @@ import {
 	SelectValue,
 } from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
-import { Trash2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ExternalLink, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { HiExclamationTriangle, HiOutlineFolderOpen } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
