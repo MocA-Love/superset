@@ -6,7 +6,11 @@ export type {
 	ServerMessage as EventBusServerMessage,
 } from "./events";
 export type { ApiAuthProvider } from "./providers/auth";
-export { DeviceKeyApiAuthProvider, JwtApiAuthProvider } from "./providers/auth";
+export {
+	ConfigFileSessionTokenSource,
+	DeviceKeyApiAuthProvider,
+	JwtApiAuthProvider,
+} from "./providers/auth";
 export {
 	CloudGitCredentialProvider,
 	LocalGitCredentialProvider,

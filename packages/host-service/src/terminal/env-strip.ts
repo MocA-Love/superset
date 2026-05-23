@@ -21,6 +21,7 @@ const HOST_SERVICE_RUNTIME_KEYS = new Set([
 	"HOST_NAME",
 	"KEEP_ALIVE_AFTER_PARENT",
 	"ORGANIZATION_ID",
+	"SUPERSET_AUTH_CONFIG_PATH",
 ]);
 
 const NODE_APP_KEYS = new Set(["NODE_ENV", "NODE_OPTIONS", "NODE_PATH"]);
@@ -41,12 +42,18 @@ const SUPERSET_KEEP_KEYS = new Set([
 	"SUPERSET_AGENT_HOOK_VERSION",
 ]);
 
+const SENSITIVE_AUTH_KEYS = new Set([
+	"OAUTH_REFRESH_TOKEN",
+	"SUPERSET_REFRESH_TOKEN",
+]);
+
 export function stripTerminalRuntimeEnv(
 	baseEnv: Record<string, string>,
 ): Record<string, string> {
 	const result: Record<string, string> = {};
 
 	for (const [key, value] of Object.entries(baseEnv)) {
+		if (SENSITIVE_AUTH_KEYS.has(key)) continue;
 		if (HOST_SERVICE_RUNTIME_KEYS.has(key)) continue;
 		if (NODE_APP_KEYS.has(key)) continue;
 		if (STRIP_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;

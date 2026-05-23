@@ -19,6 +19,7 @@ import {
 	resolveTerminalBaseEnv,
 } from "@superset/host-service/terminal-env";
 import { connectRelay } from "@superset/host-service/tunnel";
+import { loadToken } from "lib/trpc/routers/auth/utils/auth-functions";
 import { writeManifest } from "main/lib/host-service-manifest";
 import { env } from "./env";
 
@@ -26,10 +27,13 @@ async function main(): Promise<void> {
 	const terminalBaseEnv = await resolveTerminalBaseEnv();
 	initTerminalBaseEnv(terminalBaseEnv);
 
-	const authProvider = new JwtApiAuthProvider(
-		env.AUTH_TOKEN,
-		env.CLOUD_API_URL,
-	);
+	const authProvider = new JwtApiAuthProvider({
+		getSessionToken: async () => {
+			const { token } = await loadToken();
+			return token ?? env.AUTH_TOKEN;
+		},
+		apiUrl: env.CLOUD_API_URL,
+	});
 
 	const { app, injectWebSocket, api } = createApp({
 		config: {

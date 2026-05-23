@@ -4,6 +4,7 @@ import { CLIError } from "@superset/cli-framework";
 import type { SupersetConfig } from "./config";
 
 const LOOPBACK_CANDIDATES = [51789, 51790];
+const LOGIN_AGAIN_SUGGESTION = "Try `superset auth login` again.";
 
 export interface LoginResult {
 	accessToken: string;
@@ -164,10 +165,9 @@ export async function login(
 	});
 
 	if (!response.ok) {
-		const body = await response.text();
 		throw new CLIError(
-			`Token exchange failed: ${response.status} ${body}`,
-			"Try `superset auth login` again.",
+			`Token exchange failed: ${response.status}`,
+			LOGIN_AGAIN_SUGGESTION,
 		);
 	}
 
