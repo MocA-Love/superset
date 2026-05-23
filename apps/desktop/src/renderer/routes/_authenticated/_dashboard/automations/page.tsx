@@ -1,5 +1,4 @@
 import type {
-	SelectAutomation,
 	SelectUser,
 	SelectV2Host,
 	SelectV2Workspace,
@@ -79,9 +78,10 @@ function AutomationsPage() {
 	const [initialTemplate, setInitialTemplate] =
 		useState<AutomationTemplate | null>(null);
 	const [scope, setScope] = useState<Scope>("mine");
-	const [pendingDelete, setPendingDelete] = useState<SelectAutomation | null>(
-		null,
-	);
+	const [pendingDelete, setPendingDelete] = useState<{
+		id: string;
+		name: string;
+	} | null>(null);
 
 	const runNowMutation = useMutation({
 		mutationFn: ({ id }: { id: string; name: string }) =>
