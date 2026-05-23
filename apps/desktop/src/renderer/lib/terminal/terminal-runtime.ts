@@ -9,6 +9,7 @@ import {
 	type TerminalAppearance,
 } from "./appearance";
 import { logTerminalWrite, terminalRendererDebug } from "./debug";
+import { scheduleFontSettleRefit } from "./font-settle";
 import { translateLineEditChord } from "./line-edit-translations";
 import { loadAddons } from "./terminal-addons";
 import { installImagePasteFallback } from "./terminal-image-paste-fallback";
@@ -276,6 +277,12 @@ export function attachToContainer(
 		containerHeight: container.clientHeight,
 	});
 	if (measureAndResize(runtime)) onResize?.();
+	scheduleFontSettleRefit(
+		runtime.terminal,
+		() => hostIsVisible(runtime.container),
+		() => measureAndResize(runtime),
+		onResize,
+	);
 
 	// Renderer may have skipped frames while the wrapper was detached.
 	// (refresh is now handled inside measureAndResize)
@@ -331,6 +338,7 @@ export function detachFromContainer(runtime: TerminalRuntime) {
 export function updateRuntimeAppearance(
 	runtime: TerminalRuntime,
 	appearance: TerminalAppearance,
+	onResize?: () => void,
 ) {
 	const { terminal } = runtime;
 	terminal.options.theme = appearance.theme;
@@ -346,6 +354,14 @@ export function updateRuntimeAppearance(
 		if (hostIsVisible(runtime.container)) {
 			measureAndResize(runtime);
 		}
+		// The freshly-selected font may still be loading. Refit once it
+		// resolves so dimensions track the rendered glyphs.
+		scheduleFontSettleRefit(
+			runtime.terminal,
+			() => hostIsVisible(runtime.container),
+			() => measureAndResize(runtime),
+			onResize,
+		);
 	}
 }
 

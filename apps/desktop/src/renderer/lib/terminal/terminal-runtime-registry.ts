@@ -162,7 +162,14 @@ class TerminalRuntimeRegistryImpl {
 				entry.pendingLinkHandlers = null;
 			}
 		} else {
-			updateRuntimeAppearance(entry.runtime, appearance);
+			updateRuntimeAppearance(entry.runtime, appearance, () => {
+				if (!entry.runtime) return;
+				sendResize(
+					entry.transport,
+					entry.runtime.terminal.cols,
+					entry.runtime.terminal.rows,
+				);
+			});
 		}
 
 		const { runtime, transport } = entry;
@@ -262,7 +269,14 @@ class TerminalRuntimeRegistryImpl {
 		const prevCols = entry.runtime.terminal.cols;
 		const prevRows = entry.runtime.terminal.rows;
 
-		updateRuntimeAppearance(entry.runtime, appearance);
+		updateRuntimeAppearance(entry.runtime, appearance, () => {
+			if (!entry.runtime) return;
+			sendResize(
+				entry.transport,
+				entry.runtime.terminal.cols,
+				entry.runtime.terminal.rows,
+			);
+		});
 
 		const { cols, rows } = entry.runtime.terminal;
 		if (cols !== prevCols || rows !== prevRows) {

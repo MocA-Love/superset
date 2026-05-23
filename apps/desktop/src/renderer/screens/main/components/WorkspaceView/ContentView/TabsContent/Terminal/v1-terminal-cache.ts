@@ -3,6 +3,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { applyTerminalFontFamilyCssVariable } from "renderer/lib/terminal/appearance";
+import { scheduleFontSettleRefit } from "renderer/lib/terminal/font-settle";
 import { markTerminalSessionReady } from "renderer/lib/terminal/session-readiness";
 import { getTerminalParkingContainer } from "renderer/lib/terminal/terminal-parking";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
@@ -164,6 +165,12 @@ export function attachToContainer(
 	});
 
 	fitAndRefresh(entry);
+	scheduleFontSettleRefit(
+		entry.xterm,
+		() => cache.get(paneId) === entry && hostIsVisible(entry.container),
+		() => fitAndRefresh(entry),
+		onResize,
+	);
 
 	// Manage ResizeObserver lifecycle in the cache, not in React.
 	entry.resizeObserver?.disconnect();
@@ -218,6 +225,7 @@ export function updateAppearance(
 	paneId: string,
 	fontFamily: string,
 	fontSize: number,
+	onDeferredResize?: (dims: { cols: number; rows: number }) => void,
 ): { cols: number; rows: number; changed: boolean } | null {
 	const entry = cache.get(paneId);
 	if (!entry) return null;
@@ -233,6 +241,14 @@ export function updateAppearance(
 	xterm.options.fontSize = fontSize;
 
 	const changed = fitAndRefresh(entry);
+	scheduleFontSettleRefit(
+		xterm,
+		() => cache.get(paneId) === entry && hostIsVisible(entry.container),
+		() => fitAndRefresh(entry),
+		onDeferredResize
+			? () => onDeferredResize({ cols: xterm.cols, rows: xterm.rows })
+			: undefined,
+	);
 
 	return {
 		cols: xterm.cols,
