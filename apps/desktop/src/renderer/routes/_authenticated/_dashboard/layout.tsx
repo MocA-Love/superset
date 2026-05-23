@@ -18,6 +18,7 @@ import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { DashboardSidebar } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar";
 import { DashboardSidebarDeleteDialog } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/components/DashboardSidebarDeleteDialog";
+import { RemoveFromSidebarDialog } from "renderer/routes/_authenticated/_dashboard/components/RemoveFromSidebarDialog";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useDevSeedV2Sidebar } from "renderer/routes/_authenticated/hooks/useDevSeedV2Sidebar";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
@@ -222,6 +223,7 @@ function DashboardLayout() {
 			</div>
 			<div id="workspace-right-sidebar-slot" className="contents" />
 			<AddRepositoryModals />
+			<RemoveFromSidebarDialog />
 			{deleteTarget?.version === "v1" && (
 				<DeleteWorkspaceDialog
 					workspaceId={deleteTarget.workspaceId}
