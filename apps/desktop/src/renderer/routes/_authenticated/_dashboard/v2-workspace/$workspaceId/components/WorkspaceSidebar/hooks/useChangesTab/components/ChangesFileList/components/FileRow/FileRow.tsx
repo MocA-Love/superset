@@ -10,6 +10,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from "@superset/ui/dropdown-menu";
@@ -201,6 +202,16 @@ export const FileRow = memo(function FileRow({
 								</DropdownMenuShortcut>
 							)}
 						</DropdownMenuItem>
+						{absolutePath && (
+							<>
+								<DropdownMenuSeparator />
+								<PathActionsMenuItems
+									absolutePath={absolutePath}
+									relativePath={file.path}
+									menuType="dropdown"
+								/>
+							</>
+						)}
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
