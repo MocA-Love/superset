@@ -361,30 +361,34 @@ function WorkspaceContent({
 			const state = store.getState();
 			const cursorRequestId =
 				location?.line !== undefined ? crypto.randomUUID() : undefined;
-			const active = state.getActivePane();
-			if (
-				active?.pane.kind === "file" &&
-				(active.pane.data as FilePaneData).filePath === filePath
-			) {
-				const activeData = active.pane.data as FilePaneData;
-				const shouldUpdateData =
-					(displayName && activeData.displayName !== displayName) ||
-					location?.line !== undefined ||
-					location?.column !== undefined;
-				if (shouldUpdateData) {
+			for (const tab of state.tabs) {
+				for (const pane of Object.values(tab.panes)) {
+					if (
+						pane.kind !== "file" ||
+						(pane.data as FilePaneData).filePath !== filePath
+					) {
+						continue;
+					}
+					const paneData = pane.data as FilePaneData;
+					const shouldUpdateData =
+						(displayName && paneData.displayName !== displayName) ||
+						location?.line !== undefined ||
+						location?.column !== undefined;
+					state.setActiveTab(tab.id);
+					state.setActivePane({ tabId: tab.id, paneId: pane.id });
+					if (!shouldUpdateData) return;
 					state.setPaneData({
-						paneId: active.pane.id,
+						paneId: pane.id,
 						data: {
-							...activeData,
-							displayName: displayName ?? activeData.displayName,
+							...paneData,
+							displayName: displayName ?? paneData.displayName,
 							line: location?.line,
 							column: location?.column,
 							cursorRequestId,
 						} as FilePaneData,
 					});
+					return;
 				}
-				state.setPanePinned({ paneId: active.pane.id, pinned: true });
-				return;
 			}
 			state.openPane({
 				pane: {
@@ -442,6 +446,18 @@ function WorkspaceContent({
 			) {
 				state.setPanePinned({ paneId: active.pane.id, pinned: true });
 				return;
+			}
+			for (const tab of state.tabs) {
+				for (const pane of Object.values(tab.panes)) {
+					if (
+						pane.kind === "file" &&
+						(pane.data as FilePaneData).filePath === absoluteFilePath
+					) {
+						state.setActiveTab(tab.id);
+						state.setActivePane({ tabId: tab.id, paneId: pane.id });
+						return;
+					}
+				}
 			}
 
 			const activeTabId = state.activeTabId;
@@ -573,6 +589,10 @@ function WorkspaceContent({
 				});
 				return;
 			}
+			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+				draft.rightSidebarOpen = true;
+				draft.sidebarState.activeTab = "files";
+			});
 			openFilePane(filePath, undefined, { line, column });
 		},
 	});

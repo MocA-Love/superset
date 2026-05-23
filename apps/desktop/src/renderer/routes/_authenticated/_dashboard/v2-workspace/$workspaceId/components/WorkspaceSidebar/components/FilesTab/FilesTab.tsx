@@ -42,6 +42,7 @@ import { FolderMenuItems } from "./components/FolderMenuItems";
 import { RowContextMenu } from "./components/RowContextMenu";
 import { useFilesTabBridge } from "./hooks/useFilesTabBridge";
 import { loadFallthroughIcons } from "./utils/loadFallthroughIcons";
+import { scrollTreeToRow } from "./utils/scrollTreeToRow";
 import {
 	asDirectoryHandle,
 	basename,
@@ -293,7 +294,14 @@ export function FilesTab({
 			}
 
 			requestAnimationFrame(() => {
+				const targetKey = isDirectory ? `${rel}/` : rel;
+				for (const selectedPath of model.getSelectedPaths()) {
+					if (selectedPath === targetKey) continue;
+					model.getItem(selectedPath)?.deselect();
+				}
+				model.getItem(targetKey)?.select();
 				model.focusPath(rel);
+				scrollTreeToRow(model, bridge.knownPaths, targetKey, ROW_HEIGHT);
 			});
 		},
 		[model, rootPath, bridge.fetchDir, bridge.knownPaths],
@@ -451,6 +459,7 @@ export function FilesTab({
 	handlersRef.current.onRename = (event) => void handleRename(event);
 	handlersRef.current.onSelect = (treePath) => {
 		const abs = toAbs(rootPath, treePath);
+		if (selectedFilePath === abs) return;
 		lastSelectedFromUserRef.current = abs;
 		onSelectFile(abs);
 	};
@@ -510,8 +519,9 @@ export function FilesTab({
 	// File rows: settings-driven via `useSidebarFilePolicy`. Folders: fixed
 	// rule via `folderIntentFor` (meta=reveal, metaShift=external) — they're
 	// not user-configurable because the action vocabulary doesn't fit.
-	// Unbound tiers and plain "pane" defer to Pierre's onSelectionChange so
-	// the visual selection stays in sync; intercepting would swallow the click.
+	// Always intercept row clicks. Pierre's selectOnlyPath no-ops when the
+	// clicked row is already selected, which silently drops legitimate re-clicks
+	// such as click-to-pin or reopening a file after closing its pane.
 	const handleClickCapture = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
 			if (!rootPath) return;
@@ -529,9 +539,8 @@ export function FilesTab({
 				return;
 			}
 
-			const { tier, action } = filePolicy.resolve(e);
+			const { action } = filePolicy.resolve(e);
 			if (action === null) return;
-			if (tier === "plain" && action === "pane") return;
 			e.preventDefault();
 			e.stopPropagation();
 			if (action === "external") openInExternalEditor(abs);
