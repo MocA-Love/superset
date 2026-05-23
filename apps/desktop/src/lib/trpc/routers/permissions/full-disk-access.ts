@@ -43,8 +43,8 @@ export function checkFullDiskAccess({
 			readProbe(probePath);
 			return true;
 		} catch (error) {
-			// Optional protected app data may be absent. Permission failures mean
-			// macOS denied access to protected data, so the app lacks FDA.
+			// Some protected app data files are optional. Missing path probes fall
+			// through; permission errors mean macOS denied access to protected data.
 			if (isSkippableProbeError(error)) {
 				continue;
 			}
