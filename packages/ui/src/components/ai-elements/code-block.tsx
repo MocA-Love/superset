@@ -1,17 +1,20 @@
 "use client";
 
+import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
 	type ComponentProps,
 	createContext,
+	Fragment,
 	type HTMLAttributes,
 	useContext,
 	useEffect,
 	useState,
 } from "react";
+import { jsx, jsxs } from "react/jsx-runtime";
 import {
 	type BundledLanguage,
-	codeToHtml,
+	codeToHast,
 	type ShikiTransformer,
 	type ThemeRegistrationAny,
 } from "shiki";
@@ -36,6 +39,8 @@ const CodeBlockContext = createContext<CodeBlockContextType>({
 	code: "",
 });
 
+export type HighlightedCode = Awaited<ReturnType<typeof codeToHast>>;
+
 const lineNumberTransformer: ShikiTransformer = {
 	name: "line-numbers",
 	line(node, line) {
@@ -44,6 +49,7 @@ const lineNumberTransformer: ShikiTransformer = {
 			tagName: "span",
 			properties: {
 				className: [
+					"shiki-line-number",
 					"inline-block",
 					"min-w-10",
 					"mr-4",
@@ -57,6 +63,27 @@ const lineNumberTransformer: ShikiTransformer = {
 	},
 };
 
+function plainTextToHast(code: string) {
+	return {
+		type: "root",
+		children: [
+			{
+				type: "element",
+				tagName: "pre",
+				properties: {},
+				children: [
+					{
+						type: "element",
+						tagName: "code",
+						properties: {},
+						children: [{ type: "text", value: code }],
+					},
+				],
+			},
+		],
+	} satisfies HighlightedCode;
+}
+
 export async function highlightCode(
 	code: string,
 	language: BundledLanguage,
@@ -65,23 +92,44 @@ export async function highlightCode(
 		lightTheme?: CodeBlockTheme;
 		darkTheme?: CodeBlockTheme;
 	},
-) {
+): Promise<[HighlightedCode, HighlightedCode]> {
 	const transformers: ShikiTransformer[] = showLineNumbers
 		? [lineNumberTransformer]
 		: [];
 
-	return await Promise.all([
-		codeToHtml(code, {
-			lang: language,
-			theme: options?.lightTheme ?? "one-light",
-			transformers,
-		}),
-		codeToHtml(code, {
-			lang: language,
-			theme: options?.darkTheme ?? "one-dark-pro",
-			transformers,
-		}),
-	]);
+	try {
+		return await Promise.all([
+			codeToHast(code, {
+				lang: language,
+				theme: options?.lightTheme ?? "one-light",
+				transformers,
+			}),
+			codeToHast(code, {
+				lang: language,
+				theme: options?.darkTheme ?? "one-dark-pro",
+				transformers,
+			}),
+		]);
+	} catch {
+		if (language === ("text" as BundledLanguage)) {
+			const plainText = plainTextToHast(code);
+			return [plainText, plainText];
+		}
+
+		return highlightCode(code, "text" as BundledLanguage, showLineNumbers, {
+			lightTheme: options?.lightTheme,
+			darkTheme: options?.darkTheme,
+		});
+	}
+}
+
+export function renderHighlightedCode(root: HighlightedCode) {
+	return toJsxRuntime(root, {
+		Fragment,
+		development: false,
+		jsx,
+		jsxs,
+	});
 }
 
 export const CodeBlock = ({
@@ -94,8 +142,10 @@ export const CodeBlock = ({
 	children,
 	...props
 }: CodeBlockProps) => {
-	const [html, setHtml] = useState<string>("");
-	const [darkHtml, setDarkHtml] = useState<string>("");
+	const [highlightedCode, setHighlightedCode] =
+		useState<HighlightedCode | null>(null);
+	const [darkHighlightedCode, setDarkHighlightedCode] =
+		useState<HighlightedCode | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -104,8 +154,8 @@ export const CodeBlock = ({
 			darkTheme,
 		}).then(([light, dark]) => {
 			if (!cancelled) {
-				setHtml(light);
-				setDarkHtml(dark);
+				setHighlightedCode(light);
+				setDarkHighlightedCode(dark);
 			}
 		});
 		return () => {
@@ -123,16 +173,14 @@ export const CodeBlock = ({
 				{...props}
 			>
 				<div className="relative">
-					<div
-						className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
-						// biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-						dangerouslySetInnerHTML={{ __html: html }}
-					/>
-					<div
-						className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
-						// biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-						dangerouslySetInnerHTML={{ __html: darkHtml }}
-					/>
+					<div className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm">
+						{highlightedCode ? renderHighlightedCode(highlightedCode) : null}
+					</div>
+					<div className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm">
+						{darkHighlightedCode
+							? renderHighlightedCode(darkHighlightedCode)
+							: null}
+					</div>
 					{children && (
 						<div className="absolute top-2 right-2 flex items-center gap-2">
 							{children}
