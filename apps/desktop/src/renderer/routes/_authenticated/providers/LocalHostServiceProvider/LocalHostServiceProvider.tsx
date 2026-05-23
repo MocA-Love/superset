@@ -16,6 +16,7 @@ import { useCollections } from "../CollectionsProvider";
 interface LocalHostServiceContextValue {
 	machineId: string;
 	activeHostUrl: string | null;
+	activeOrganizationId: string | null;
 }
 
 const LocalHostServiceContext =
@@ -67,7 +68,7 @@ export function LocalHostServiceProvider({
 		const machineId = machineIdData.machineId;
 
 		if (!activeConnection?.port) {
-			return { machineId, activeHostUrl: null };
+			return { machineId, activeHostUrl: null, activeOrganizationId };
 		}
 
 		const activeHostUrl = `http://127.0.0.1:${activeConnection.port}`;
@@ -75,8 +76,8 @@ export function LocalHostServiceProvider({
 			setHostServiceSecret(activeHostUrl, activeConnection.secret);
 		}
 
-		return { machineId, activeHostUrl };
-	}, [machineIdData, activeConnection]);
+		return { machineId, activeHostUrl, activeOrganizationId };
+	}, [machineIdData, activeConnection, activeOrganizationId]);
 
 	if (!value) return null;
 
