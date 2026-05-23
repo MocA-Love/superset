@@ -1,85 +1,42 @@
-import fs from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
-import { shell, systemPreferences } from "electron";
-import { requestMediaAccess } from "lib/electron/request-media-access";
 import { publicProcedure, router } from "..";
-
-function checkFullDiskAccess(): boolean {
-	try {
-		// Safari bookmarks are TCC-protected — readable only with Full Disk Access
-		const tccProtectedPath = path.join(
-			homedir(),
-			"Library/Safari/Bookmarks.plist",
-		);
-		fs.accessSync(tccProtectedPath, fs.constants.R_OK);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function checkAccessibility(): boolean {
-	return systemPreferences.isTrustedAccessibilityClient(false);
-}
-
-function checkMicrophone(): boolean {
-	try {
-		return systemPreferences.getMediaAccessStatus("microphone") === "granted";
-	} catch {
-		return false;
-	}
-}
-
-function checkCamera(): boolean {
-	try {
-		return systemPreferences.getMediaAccessStatus("camera") === "granted";
-	} catch {
-		return false;
-	}
-}
+import {
+	getPermissionStatus,
+	requestAccessibility,
+	requestAppleEvents,
+	requestCamera,
+	requestFullDiskAccess,
+	requestLocalNetwork,
+	requestMicrophone,
+} from "./permissions/native-permissions";
 
 export const createPermissionsRouter = () => {
 	return router({
 		getStatus: publicProcedure.query(() => {
-			return {
-				fullDiskAccess: checkFullDiskAccess(),
-				accessibility: checkAccessibility(),
-				microphone: checkMicrophone(),
-				camera: checkCamera(),
-			};
+			return getPermissionStatus();
 		}),
 
 		requestFullDiskAccess: publicProcedure.mutation(async () => {
-			await shell.openExternal(
-				"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
-			);
+			await requestFullDiskAccess();
 		}),
 
 		requestAccessibility: publicProcedure.mutation(async () => {
-			await shell.openExternal(
-				"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-			);
+			await requestAccessibility();
 		}),
 
 		requestMicrophone: publicProcedure.mutation(async () => {
-			return requestMediaAccess("microphone");
+			return requestMicrophone();
 		}),
 
 		requestCamera: publicProcedure.mutation(async () => {
-			return requestMediaAccess("camera");
+			return requestCamera();
 		}),
 
 		requestAppleEvents: publicProcedure.mutation(async () => {
-			await shell.openExternal(
-				"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Automation",
-			);
+			await requestAppleEvents();
 		}),
 
 		requestLocalNetwork: publicProcedure.mutation(async () => {
-			await shell.openExternal(
-				"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocalNetwork",
-			);
+			await requestLocalNetwork();
 		}),
 	});
 };
