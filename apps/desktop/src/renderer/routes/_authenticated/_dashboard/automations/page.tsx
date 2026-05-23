@@ -235,7 +235,7 @@ function AutomationsPage() {
 			</header>
 
 			<div className="flex-1 overflow-y-auto px-8 py-6">
-				{!automationsReady ? null : automations.length === 0 ? (
+				{!automationsReady ? null : visible.length === 0 && scope === "mine" ? (
 					<AutomationsEmptyState onSelectTemplate={handleSelectTemplate} />
 				) : (
 					<>
@@ -266,9 +266,7 @@ function AutomationsPage() {
 
 						{visible.length === 0 ? (
 							<div className="rounded-md border border-dashed px-8 py-12 text-center text-sm text-muted-foreground">
-								{scope === "mine"
-									? "You haven't created any automations yet."
-									: "Nobody on your team has shared automations yet."}
+								Nobody on your team has shared automations yet.
 							</div>
 						) : (
 							<Table>
