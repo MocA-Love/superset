@@ -385,10 +385,11 @@ export class PullRequestRuntimeManager {
 			.all();
 
 		const projectIds = [...new Set(rows.map((row) => row.projectId))];
+		// Branch changes use the shared TTL cache rather than bypassing it. A
+		// short delay before attaching a newly-opened external PR is preferable
+		// to multiplying GitHub lookups under high-churn workspaces.
 		await Promise.all(
-			projectIds.map((projectId) =>
-				this.refreshProject(projectId, { bypassCache: true }),
-			),
+			projectIds.map((projectId) => this.refreshProject(projectId)),
 		);
 	}
 
