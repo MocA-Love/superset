@@ -26,14 +26,19 @@ import { LuArrowUpRight, LuCheck, LuCopy } from "react-icons/lu";
 import { VscChevronRight } from "react-icons/vsc";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { getMarkdownPreviewText } from "renderer/utils/markdownPreview";
-import type { CommentPaneData } from "../../../../../../types";
+import type { CommentPaneData, DiffFocusSide } from "../../../../../../types";
 import type { NormalizedComment } from "../../types";
 
 interface CommentsSectionProps {
 	comments: NormalizedComment[];
 	isLoading: boolean;
 	onOpenComment?: (comment: CommentPaneData) => void;
-	onOpenInDiff?: (path: string, line?: number, openInNewTab?: boolean) => void;
+	onOpenInDiff?: (
+		path: string,
+		line?: number,
+		openInNewTab?: boolean,
+		side?: DiffFocusSide,
+	) => void;
 }
 
 export function CommentsSection({
@@ -263,7 +268,12 @@ interface CommentRowProps {
 	copiedActionKey: string | null;
 	onCopy: (comment: NormalizedComment) => void;
 	onOpen?: (comment: CommentPaneData) => void;
-	onOpenInDiff?: (path: string, line?: number, openInNewTab?: boolean) => void;
+	onOpenInDiff?: (
+		path: string,
+		line?: number,
+		openInNewTab?: boolean,
+		side?: DiffFocusSide,
+	) => void;
 }
 
 function CommentRow({
@@ -281,7 +291,12 @@ function CommentRow({
 		// standalone comment pane when there's no file anchor (conversation
 		// comments) or no diff handler wired up.
 		if (comment.kind === "review" && comment.path && onOpenInDiff) {
-			onOpenInDiff(comment.path, comment.line);
+			onOpenInDiff(
+				comment.path,
+				comment.line,
+				undefined,
+				toDiffFocusSide(comment.diffSide),
+			);
 			return;
 		}
 		onOpen?.({
@@ -366,7 +381,12 @@ function CommentRow({
 							<>
 								<DropdownMenuItem
 									onSelect={() =>
-										onOpenInDiff(comment.path as string, comment.line)
+										onOpenInDiff(
+											comment.path as string,
+											comment.line,
+											undefined,
+											toDiffFocusSide(comment.diffSide),
+										)
 									}
 								>
 									<GitCompare />
@@ -374,7 +394,12 @@ function CommentRow({
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									onSelect={() =>
-										onOpenInDiff(comment.path as string, comment.line, true)
+										onOpenInDiff(
+											comment.path as string,
+											comment.line,
+											true,
+											toDiffFocusSide(comment.diffSide),
+										)
 									}
 								>
 									<SquarePlus />
@@ -418,4 +443,12 @@ function CommentRow({
 			</div>
 		</div>
 	);
+}
+
+function toDiffFocusSide(
+	side: NormalizedComment["diffSide"],
+): DiffFocusSide | undefined {
+	if (side === "LEFT") return "deletions";
+	if (side === "RIGHT") return "additions";
+	return undefined;
 }
