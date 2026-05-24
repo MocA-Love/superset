@@ -314,7 +314,21 @@ async function runDestroy(
 				worktreeRemoved = true;
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
+				// If the worktree dir is already gone, the user's goal is met
+				// regardless of what git complains about — locale-translated
+				// messages, future git phrasing, or "locked working tree" with
+				// the dir already rm'd. The substring matcher below stays as
+				// belt-and-braces for the rare race where the dir disappears
+				// between this check and the git invocation, but `existsSync`
+				// is the authoritative signal.
 				if (!existsSync(local.worktreePath)) {
+					worktreeRemoved = true;
+				} else if (
+					message.includes("is not a working tree") ||
+					message.includes("No such file or directory") ||
+					message.includes("does not exist") ||
+					message.includes("ENOENT")
+				) {
 					worktreeRemoved = true;
 				} else {
 					throw new TRPCError({
