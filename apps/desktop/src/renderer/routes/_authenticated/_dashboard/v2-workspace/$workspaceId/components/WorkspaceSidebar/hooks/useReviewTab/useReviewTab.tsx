@@ -85,10 +85,13 @@ export function useReviewTab({
 		return normalizeThreadsToComments(data);
 	}, [pr, threadsQuery.data]);
 
-	const openCommentCount = comments.filter((c) => !c.isResolved).length;
+	const openReviewCount = comments.filter(
+		(c) => c.kind === "review" && !c.isResolved,
+	).length;
 
 	const content = (
 		<ReviewTabContent
+			workspaceId={workspaceId}
 			pr={pr}
 			comments={comments}
 			isLoading={prQuery.isLoading}
@@ -105,7 +108,7 @@ export function useReviewTab({
 		icon: LuMessageSquare,
 		// FORK NOTE: suppress `0` badge when there are no open comments —
 		// Changes tab does the same.
-		badge: openCommentCount > 0 ? openCommentCount : undefined,
+		badge: openReviewCount > 0 ? openReviewCount : undefined,
 		content,
 	};
 }
@@ -156,6 +159,7 @@ function normalizeThreadsToComments(data: V2ThreadsData): NormalizedComment[] {
 				line: thread.line ?? undefined,
 				diffSide: thread.diffSide,
 				isResolved: thread.isResolved,
+				isOutdated: thread.isOutdated,
 				threadId: thread.id,
 			});
 		}
