@@ -45,6 +45,33 @@ export async function run(opts: RunOptions): Promise<void> {
 	}
 }
 
+function formatZodIssues(message: string): string | null {
+	const trimmed = message.trim();
+	if (!trimmed.startsWith("[")) return null;
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(trimmed);
+	} catch {
+		return null;
+	}
+
+	if (!Array.isArray(parsed) || parsed.length === 0) return null;
+
+	const lines: string[] = [];
+	for (const issue of parsed) {
+		if (!issue || typeof issue !== "object") return null;
+		const item = issue as { path?: unknown; message?: unknown };
+		const pathSegments = Array.isArray(item.path) ? item.path : [];
+		const path = pathSegments.length > 0 ? pathSegments.join(".") : "input";
+		const msg =
+			typeof item.message === "string" ? item.message : "invalid value";
+		lines.push(`${path}: ${msg}`);
+	}
+
+	return lines.join("\n");
+}
+
 function handleError(error: unknown, cliName: string): never {
 	if (error instanceof CLIError) {
 		process.stderr.write(`Error: ${error.message}\n`);
@@ -71,7 +98,8 @@ function handleError(error: unknown, cliName: string): never {
 				"Error: Could not connect to API\nHint: Is the API running?\n",
 			);
 		} else {
-			process.stderr.write(`Error: ${error.message}\n`);
+			const formatted = formatZodIssues(error.message);
+			process.stderr.write(`Error: ${formatted ?? error.message}\n`);
 		}
 		process.exit(1);
 	}
