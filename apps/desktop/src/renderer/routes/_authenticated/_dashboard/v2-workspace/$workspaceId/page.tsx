@@ -1,9 +1,4 @@
-import {
-	type LayoutNode,
-	type SplitPath,
-	Workspace,
-	type WorkspaceStore,
-} from "@superset/panes";
+import { type LayoutNode, type SplitPath, Workspace } from "@superset/panes";
 import {
 	ResizableHandle,
 	ResizablePanel,
@@ -28,19 +23,13 @@ import {
 	CommandPalette,
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
-import {
-	getV2NotificationSourcesForPane,
-	getV2NotificationSourcesForTab,
-	useV2NotificationStore,
-	useV2PaneNotificationStatus,
-} from "renderer/stores/v2-notifications";
+import { getV2NotificationSourcesForTab } from "renderer/stores/v2-notifications";
 import { useWorkspaceCreatesStore } from "renderer/stores/workspace-creates";
 import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
 import { useStore } from "zustand";
-import type { StoreApi } from "zustand/vanilla";
 import { WorkspaceCreateErrorState } from "../components/WorkspaceCreateErrorState";
 import { WorkspaceCreatingState } from "../components/WorkspaceCreatingState";
 import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
@@ -53,9 +42,9 @@ import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceMissingWorktreeState } from "./components/WorkspaceMissingWorktreeState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useBrowserShellInteractionPassthrough } from "./hooks/useBrowserShellInteractionPassthrough";
+import { useClearActivePaneAttention } from "./hooks/useClearActivePaneAttention";
 import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
 import { useConsumeOpenUrlRequest } from "./hooks/useConsumeOpenUrlRequest";
-import { useClearActivePaneAttention } from "./hooks/useClearActivePaneAttention";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { useDefaultPaneActions } from "./hooks/useDefaultPaneActions";
 import { useDirtyTabCloseGuard } from "./hooks/useDirtyTabCloseGuard";
@@ -192,6 +181,7 @@ function V2WorkspacePage() {
 				<WorkspaceCreateErrorState
 					workspaceId={workspaceId}
 					name={inFlight.snapshot.name}
+					branch={inFlight.snapshot.branch}
 					error={inFlight.error ?? "Unknown error"}
 				/>
 			);

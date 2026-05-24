@@ -73,6 +73,7 @@ function V2WorkspaceLayout() {
 				<WorkspaceCreateErrorState
 					workspaceId={workspaceId}
 					name={inFlight.snapshot.name}
+					branch={inFlight.snapshot.branch}
 					error={inFlight.error ?? "Unknown error"}
 				/>
 			);
