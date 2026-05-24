@@ -45,6 +45,7 @@ import { WorkspaceCreateErrorState } from "../components/WorkspaceCreateErrorSta
 import { WorkspaceCreatingState } from "../components/WorkspaceCreatingState";
 import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
+import { BackgroundTerminalsButton } from "./components/BackgroundTerminalsButton";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { V2WorkspaceRunButton } from "./components/V2WorkspaceRunButton";
@@ -69,11 +70,7 @@ import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
 import { WorkspaceGitStatusProvider } from "./providers/WorkspaceGitStatusProvider";
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
-import type {
-	BrowserPaneData,
-	FilePaneData,
-	PaneViewerData,
-} from "./types";
+import type { BrowserPaneData, FilePaneData, PaneViewerData } from "./types";
 import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
 interface WorkspaceSearch {
@@ -255,10 +252,8 @@ function WorkspaceContent({
 }) {
 	const navigate = useNavigate();
 	const { localWorkspaceState, store } = useV2WorkspacePaneLayout();
-	const {
-		preferences: v2UserPreferences,
-		setShowPresetsBar,
-	} = useV2UserPreferences();
+	const { preferences: v2UserPreferences, setShowPresetsBar } =
+		useV2UserPreferences();
 	const showPresetsBar = v2UserPreferences.showPresetsBar;
 	useClearActivePaneAttention({ store });
 	const launcher = useV2TerminalLauncher();
@@ -693,6 +688,12 @@ function WorkspaceContent({
 								renderTabAccessory={(tab) => (
 									<V2NotificationStatusIndicator
 										sources={getV2NotificationSourcesForTab(tab)}
+									/>
+								)}
+								renderTabBarTrailing={() => (
+									<BackgroundTerminalsButton
+										workspaceId={workspaceId}
+										store={store}
 									/>
 								)}
 								renderBelowTabBar={() =>

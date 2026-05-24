@@ -105,6 +105,7 @@ export interface WorkspaceProps<TData> {
 	renderTabIcon?: (tab: Tab<TData>) => ReactNode;
 	renderEmptyState?: () => ReactNode;
 	renderAddTabMenu?: () => ReactNode;
+	renderTabBarTrailing?: () => ReactNode;
 	renderBelowTabBar?: () => ReactNode;
 	onBeforeClosePane?: (
 		pane: Pane<TData>,
