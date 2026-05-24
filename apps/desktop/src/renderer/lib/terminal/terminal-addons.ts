@@ -60,6 +60,7 @@ export function loadAddons(
 			webglAddon.onContextLoss(() => {
 				webglAddon?.dispose();
 				webglAddon = null;
+				suggestedRendererType = "dom";
 				options.onRendererChange?.();
 				terminal.refresh(0, terminal.rows - 1);
 			});
