@@ -20,10 +20,8 @@ export function DiffHeaderPrefix({
 	);
 
 	return (
-		// Flex row so the chevron button and FileIcon stay on one line —
-		// Tailwind's preflight forces `img { display: block }`, which would
-		// otherwise drop the FileIcon below the button inside Pierre's
-		// default block slot wrapper.
+		// Flex wrapper: Tailwind preflight sets `img { display: block }`,
+		// so without this the FileIcon drops below the chevron button.
 		<div className="flex shrink-0 items-center gap-1">
 			<button
 				type="button"

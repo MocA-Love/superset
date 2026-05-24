@@ -93,14 +93,12 @@ export function useDiffCodeViewTheme({
 				[data-diffs-header='default'] [data-change-icon] {
 					display: none;
 				}
-				/* Match the rest of the v2 git-stat UI colors. */
 				[data-diffs-header='default'] [data-additions-count] {
 					color: ${additionColor};
 				}
 				[data-diffs-header='default'] [data-deletions-count] {
 					color: ${deletionColor};
 				}
-				/* Reveal the destructive discard button only on header hover. */
 				[data-diffs-header='default'] [data-discard-button] {
 					opacity: 0;
 				}
