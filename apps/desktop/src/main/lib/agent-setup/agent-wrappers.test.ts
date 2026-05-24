@@ -204,9 +204,7 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('awk -F\'"approval_id":"\'');
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
-		expect(wrapper).toContain(
-			`"$REAL_BIN" --enable codex_hooks --dangerously-bypass-hook-trust "$@"`,
-		);
+		expect(wrapper).toContain(`"$REAL_BIN" --enable codex_hooks "$@"`);
 		expect(wrapper).toContain('export SUPERSET_AGENT_ID="codex"');
 
 		expect(wrapper).toContain("# Superset agent-wrapper v2");

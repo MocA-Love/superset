@@ -139,7 +139,7 @@ else
   _superset_debug "session watcher disabled hasSupersetContext=$_superset_has_superset_context terminalId=$SUPERSET_TERMINAL_ID tabId=$SUPERSET_TAB_ID paneId=$SUPERSET_PANE_ID notifyExists=$_superset_notify_exists notify=$_superset_notify_path"
 fi
 
-"$REAL_BIN" --enable codex_hooks --dangerously-bypass-hook-trust "$@"
+"$REAL_BIN" --enable codex_hooks "$@"
 SUPERSET_CODEX_STATUS=$?
 _superset_debug "codex exited status=$SUPERSET_CODEX_STATUS"
 
