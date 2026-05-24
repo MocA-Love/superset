@@ -10,7 +10,7 @@ import {
 import { getCurrentTxid } from "@superset/db/utils";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { posthog } from "../../lib/analytics";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
@@ -22,6 +22,10 @@ import {
 
 const MAIN_WORKSPACE_DELETE_MESSAGE =
 	"Main workspaces cannot be deleted through workspace delete. Remove them from the sidebar or remove the project from this host instead.";
+
+function escapeLikePattern(value: string): string {
+	return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
 
 async function getScopedProject(organizationId: string, projectId: string) {
 	return requireOrgScopedResource(
@@ -114,6 +118,9 @@ export const v2WorkspaceRouter = {
 			z.object({
 				organizationId: z.string().uuid(),
 				hostId: z.string().min(1).optional(),
+				projectId: z.string().uuid().optional(),
+				projectName: z.string().min(1).optional(),
+				search: z.string().min(1).optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {
@@ -123,6 +130,16 @@ export const v2WorkspaceRouter = {
 					message: "Not a member of this organization",
 				});
 			}
+
+			const searchPattern = input.search
+				? `%${escapeLikePattern(input.search)}%`
+				: null;
+			const searchMatch = searchPattern
+				? or(
+						ilike(v2Workspaces.name, searchPattern),
+						ilike(v2Workspaces.branch, searchPattern),
+					)
+				: undefined;
 
 			const rows = await db
 				.select({
@@ -147,6 +164,13 @@ export const v2WorkspaceRouter = {
 						eq(v2Workspaces.organizationId, input.organizationId),
 						eq(v2UsersHosts.userId, ctx.userId),
 						input.hostId ? eq(v2Workspaces.hostId, input.hostId) : undefined,
+						input.projectId
+							? eq(v2Workspaces.projectId, input.projectId)
+							: undefined,
+						input.projectName
+							? sql`lower(${v2Projects.name}) = lower(${input.projectName})`
+							: undefined,
+						searchMatch,
 					),
 				);
 
