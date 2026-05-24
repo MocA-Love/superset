@@ -1,7 +1,10 @@
+import { Button } from "@superset/ui/button";
 import { Label } from "@superset/ui/label";
 import { Switch } from "@superset/ui/switch";
+import { useNavigate } from "@tanstack/react-router";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { track } from "renderer/lib/analytics";
+import { useOnboardingStore } from "renderer/stores/onboarding";
 import { useV2LocalOverrideStore } from "renderer/stores/v2-local-override";
 import {
 	isItemVisible,
@@ -27,8 +30,20 @@ export function ExperimentalSettings({
 		SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2,
 		visibleItems,
 	);
+	const showRerunOnboarding = isItemVisible(
+		SETTING_ITEM_ID.EXPERIMENTAL_RERUN_ONBOARDING,
+		visibleItems,
+	);
 	const isV2CloudEnabled = useIsV2CloudEnabled();
 	const setOptInV2 = useV2LocalOverrideStore((state) => state.setOptInV2);
+	const resetOnboarding = useOnboardingStore((state) => state.reset);
+	const navigate = useNavigate();
+
+	const handleRerunOnboarding = () => {
+		track("onboarding_rerun_opened");
+		resetOnboarding();
+		void navigate({ to: "/setup/providers" });
+	};
 
 	return (
 		<div className="p-6 max-w-4xl w-full mx-auto">
@@ -61,6 +76,27 @@ export function ExperimentalSettings({
 								setOptInV2(enabled);
 							}}
 						/>
+					</div>
+				)}
+
+				{showRerunOnboarding && (
+					<div className="flex items-center justify-between gap-6">
+						<div className="min-w-0 flex-1 space-y-0.5">
+							<Label className="text-sm font-medium">Run setup again</Label>
+							<p className="text-xs text-muted-foreground">
+								Reopen the setup guide to connect agents, the GitHub CLI, and
+								add a project. You can skip any step.
+							</p>
+						</div>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={handleRerunOnboarding}
+							className="shrink-0"
+						>
+							Open setup
+						</Button>
 					</div>
 				)}
 			</div>

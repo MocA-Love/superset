@@ -49,6 +49,7 @@ export const SETTING_ITEM_ID = {
 
 	EXPERIMENTAL_SUPERSET_V2: "experimental-superset-v2",
 	EXPERIMENTAL_V1_MIGRATION: "experimental-v1-migration",
+	EXPERIMENTAL_RERUN_ONBOARDING: "experimental-rerun-onboarding",
 
 	INTEGRATIONS_LINEAR: "integrations-linear",
 	INTEGRATIONS_GITHUB: "integrations-github",
@@ -176,6 +177,7 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 
 	[SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2]: "shared",
 	[SETTING_ITEM_ID.EXPERIMENTAL_V1_MIGRATION]: "v2",
+	[SETTING_ITEM_ID.EXPERIMENTAL_RERUN_ONBOARDING]: "v2",
 
 	[SETTING_ITEM_ID.INTEGRATIONS_LINEAR]: "shared",
 	[SETTING_ITEM_ID.INTEGRATIONS_GITHUB]: "shared",
@@ -590,6 +592,26 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
+		id: SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
+		section: "behavior",
+		title: "Right sidebar open view width",
+		description:
+			"Choose the initial width for new file and diff views opened from the Files or Git sidebar",
+		keywords: [
+			"right sidebar",
+			"sidebar split width",
+			"files",
+			"git",
+			"diff",
+			"width",
+			"split",
+			"pane",
+			"initial",
+			"viewer",
+			"changes",
+		],
+	},
+	{
 		id: SETTING_ITEM_ID.BEHAVIOR_RESOURCE_MONITOR,
 		section: "behavior",
 		title: "Resource monitor",
@@ -916,6 +938,27 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"v2",
 			"projects",
 			"workspaces",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.EXPERIMENTAL_RERUN_ONBOARDING,
+		section: "experimental",
+		title: "Run Setup Again",
+		description: "Reopen the setup guide to connect agents and add projects",
+		keywords: [
+			"experimental",
+			"onboarding",
+			"setup",
+			"guide",
+			"rerun",
+			"re-run",
+			"restart",
+			"welcome",
+			"getting started",
+			"connect",
+			"github cli",
+			"providers",
+			"agents",
 		],
 	},
 	{

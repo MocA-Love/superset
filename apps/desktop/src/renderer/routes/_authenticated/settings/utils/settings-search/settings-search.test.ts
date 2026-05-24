@@ -70,4 +70,10 @@ describe("settings search - font settings", () => {
 		expect(editorFont?.section).toBe("appearance");
 		expect(terminalFont?.section).toBe("appearance");
 	});
+
+	it('searching "setup" returns the setup rerun setting', () => {
+		const results = searchSettings("setup");
+		const ids = getIds(results);
+		expect(ids).toContain(SETTING_ITEM_ID.EXPERIMENTAL_RERUN_ONBOARDING);
+	});
 });
