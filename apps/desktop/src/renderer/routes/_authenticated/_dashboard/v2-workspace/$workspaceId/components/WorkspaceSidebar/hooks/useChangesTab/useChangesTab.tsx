@@ -11,21 +11,27 @@ import { useOpenInExternalEditor } from "renderer/routes/_authenticated/_dashboa
 import { useSidebarDiffRef } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useSidebarDiffRef";
 import { useWorkspaceGitStatus } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/providers/WorkspaceGitStatusProvider";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
-import type { ChangesFilter } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
+import type {
+	ChangesFilter,
+	ChangesViewMode,
+} from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
 import type { SidebarTabDefinition } from "../../types";
 import { ChangesTabContent } from "./components/ChangesTabContent";
 
-export type { ChangesFilter };
+export type { ChangesFilter, ChangesViewMode };
 
 interface UseChangesTabParams {
 	workspaceId: string;
+	/** Absolute path of the file whose diff/preview is currently open. */
+	selectedFilePath?: string;
 	onSelectFile?: (path: string, openInNewTab?: boolean) => void;
 	onOpenFile?: (absolutePath: string, openInNewTab?: boolean) => void;
 }
 
 export function useChangesTab({
 	workspaceId,
+	selectedFilePath,
 	onSelectFile,
 	onOpenFile,
 }: UseChangesTabParams): SidebarTabDefinition {
@@ -36,6 +42,8 @@ export function useChangesTab({
 	const filter: ChangesFilter = localState?.sidebarState?.changesFilter ?? {
 		kind: "all",
 	};
+	const viewMode: ChangesViewMode =
+		localState?.sidebarState?.changesViewMode ?? "folders";
 
 	const baseBranchQuery = workspaceTrpc.git.getBaseBranch.useQuery(
 		{ workspaceId },
@@ -68,6 +76,16 @@ export function useChangesTab({
 			if (!collections.v2WorkspaceLocalState.get(workspaceId)) return;
 			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
 				draft.sidebarState.changesFilter = next;
+			});
+		},
+		[collections, workspaceId],
+	);
+
+	const setViewMode = useCallback(
+		(next: ChangesViewMode) => {
+			if (!collections.v2WorkspaceLocalState.get(workspaceId)) return;
+			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+				draft.sidebarState.changesViewMode = next;
 			});
 		},
 		[collections, workspaceId],
@@ -189,6 +207,7 @@ export function useChangesTab({
 			commits={commits}
 			branches={branches}
 			filter={filter}
+			viewMode={viewMode}
 			baseBranch={baseBranch}
 			files={files}
 			isLoading={isLoading}
@@ -196,10 +215,12 @@ export function useChangesTab({
 			totalAdditions={totalAdditions}
 			totalDeletions={totalDeletions}
 			worktreePath={worktreePath}
+			selectedFilePath={selectedFilePath}
 			onSelectFile={onSelectFile}
 			onOpenFile={onOpenFile}
 			onOpenInEditor={handleOpenInEditor}
 			onFilterChange={setFilter}
+			onViewModeChange={setViewMode}
 			onBaseBranchChange={setBaseBranch}
 			onRenameBranch={handleRenameBranch}
 			canRenameBranch={canRenameBranch}

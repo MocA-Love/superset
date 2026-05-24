@@ -133,6 +133,7 @@ export function WorkspaceSidebar({
 
 	const changesTabDef = useChangesTab({
 		workspaceId,
+		selectedFilePath,
 		onSelectFile: onSelectDiffFile,
 		onOpenFile: onSelectFile,
 	});
