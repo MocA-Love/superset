@@ -210,7 +210,7 @@ async function execute(
 	}
 
 	if (args.includes("--version") || args.includes("-v")) {
-		console.log(`${name} v${version}`);
+		console.log(version);
 		return;
 	}
 
