@@ -52,6 +52,15 @@ export function useDiffCodeViewTheme({
 		],
 	);
 
+	const additionColor =
+		activeTheme.type === "dark"
+			? "var(--color-green-400)"
+			: "var(--color-green-700)";
+	const deletionColor =
+		activeTheme.type === "dark"
+			? "var(--color-red-500)"
+			: "var(--color-red-700)";
+
 	const options = useMemo<CodeViewOptions<DiffCommentThread>>(
 		() => ({
 			diffStyle,
@@ -73,8 +82,30 @@ export function useDiffCodeViewTheme({
 			maxLineDiffLength: 5_000,
 			unsafeCSS: `
 				* { user-select: text; -webkit-user-select: text; }
-				[data-diffs-header='custom'] {
-					padding: 0 !important;
+				/* Container query host for the "Viewed" label visibility rule
+				 * (see DiffHeaderMetadata: @min-[380px]/diff-header:inline). */
+				[data-diffs-header='default'] {
+					container-type: inline-size;
+					container-name: diff-header;
+				}
+				/* Drop Pierre's status badge — we render a language-specific
+				 * FileIcon in the prefix slot instead. */
+				[data-diffs-header='default'] [data-change-icon] {
+					display: none;
+				}
+				/* Match the rest of the v2 git-stat UI colors. */
+				[data-diffs-header='default'] [data-additions-count] {
+					color: ${additionColor};
+				}
+				[data-diffs-header='default'] [data-deletions-count] {
+					color: ${deletionColor};
+				}
+				/* Reveal the destructive discard button only on header hover. */
+				[data-diffs-header='default'] [data-discard-button] {
+					opacity: 0;
+				}
+				[data-diffs-header='default']:hover [data-discard-button] {
+					opacity: 1;
 				}
 				/* Pierre sets --diffs-light-bg/--diffs-dark-bg
 				 * inline on <pre data-diff> from the Shiki theme;
@@ -98,7 +129,14 @@ export function useDiffCodeViewTheme({
 				}
 			`,
 		}),
-		[activeTheme, diffStyle, expandUnchanged, surfaceBg],
+		[
+			activeTheme,
+			additionColor,
+			deletionColor,
+			diffStyle,
+			expandUnchanged,
+			surfaceBg,
+		],
 	);
 
 	return { options, style };

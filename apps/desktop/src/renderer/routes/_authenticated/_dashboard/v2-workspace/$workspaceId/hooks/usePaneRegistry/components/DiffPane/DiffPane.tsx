@@ -13,7 +13,8 @@ import { useOpenInExternalEditor } from "../../../useOpenInExternalEditor";
 import { useSidebarDiffRef } from "../../../useSidebarDiffRef";
 import { useViewedFiles } from "../../../useViewedFiles";
 import { CommentThread } from "./components/CommentThread";
-import { DiffCodeViewHeader } from "./components/DiffCodeViewHeader";
+import { DiffHeaderMetadata } from "./components/DiffHeaderMetadata";
+import { DiffHeaderPrefix } from "./components/DiffHeaderPrefix";
 import {
 	type DiffCommentThread,
 	useDiffAnnotationsByPath,
@@ -84,16 +85,29 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 		setCollapsed,
 	});
 
-	const renderCustomHeader = useCallback(
+	const renderHeaderPrefix = useCallback(
 		(item: CodeViewItem<DiffCommentThread>) => {
 			const file = fileByItemId.get(item.id);
 			if (!file) return null;
-
 			return (
-				<DiffCodeViewHeader
+				<DiffHeaderPrefix
+					file={file}
+					collapsed={collapsedSet.has(file.path)}
+					onSetCollapsed={setCollapsed}
+				/>
+			);
+		},
+		[fileByItemId, collapsedSet, setCollapsed],
+	);
+
+	const renderHeaderMetadata = useCallback(
+		(item: CodeViewItem<DiffCommentThread>) => {
+			const file = fileByItemId.get(item.id);
+			if (!file) return null;
+			return (
+				<DiffHeaderMetadata
 					file={file}
 					workspaceId={workspaceId}
-					collapsed={collapsedSet.has(file.path)}
 					onSetCollapsed={setCollapsed}
 					expandUnchanged={expandUnchanged}
 					onToggleExpandUnchanged={() =>
@@ -109,7 +123,6 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 		[
 			fileByItemId,
 			workspaceId,
-			collapsedSet,
 			setCollapsed,
 			expandUnchanged,
 			viewedSet,
@@ -176,7 +189,8 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 			style={style}
 			items={items}
 			options={options}
-			renderCustomHeader={renderCustomHeader}
+			renderHeaderPrefix={renderHeaderPrefix}
+			renderHeaderMetadata={renderHeaderMetadata}
 			renderAnnotation={renderAnnotation}
 		/>
 	);
