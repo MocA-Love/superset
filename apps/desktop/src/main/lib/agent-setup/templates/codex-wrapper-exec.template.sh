@@ -14,11 +14,33 @@ _superset_debug_log="${SUPERSET_HOOK_DEBUG_LOG:-/tmp/superset-codex-hooks.log}"
 _superset_has_superset_context="0"
 [ -n "$SUPERSET_TERMINAL_ID$SUPERSET_TAB_ID$SUPERSET_PANE_ID" ] && _superset_has_superset_context="1"
 SUPERSET_CODEX_SESSION_WATCHER_PID=""
+_superset_codex_args=()
 
 _superset_debug() {
   [ "$_superset_debug_enabled" = "1" ] || return 0
   printf '%s [codex-wrapper] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date)" "$*" >> "$_superset_debug_log" 2>/dev/null || true
 }
+
+_superset_toml_escape() {
+  local _superset_value="$1"
+  _superset_value="${_superset_value//\\/\\\\}"
+  _superset_value="${_superset_value//\"/\\\"}"
+  printf '%s' "$_superset_value"
+}
+
+_superset_configure_project_trust() {
+  [ -n "${SUPERSET_WORKSPACE_PATH:-}" ] || return 0
+
+  local _superset_workspace_codex_home="$SUPERSET_WORKSPACE_PATH/.codex"
+  [ -f "$_superset_workspace_codex_home/config.toml" ] || return 0
+
+  local _superset_workspace_path_toml
+  _superset_workspace_path_toml="$(_superset_toml_escape "$SUPERSET_WORKSPACE_PATH")"
+  _superset_codex_args+=("-c" "projects={\"$_superset_workspace_path_toml\"={trust_level=\"trusted\"}}")
+  _superset_debug "using trusted workspace Codex project config path=$SUPERSET_WORKSPACE_PATH"
+}
+
+_superset_configure_project_trust
 
 _superset_child_pids_for() {
   if command -v pgrep >/dev/null 2>&1; then
@@ -139,7 +161,7 @@ else
   _superset_debug "session watcher disabled hasSupersetContext=$_superset_has_superset_context terminalId=$SUPERSET_TERMINAL_ID tabId=$SUPERSET_TAB_ID paneId=$SUPERSET_PANE_ID notifyExists=$_superset_notify_exists notify=$_superset_notify_path"
 fi
 
-"$REAL_BIN" --enable codex_hooks "$@"
+"$REAL_BIN" "${_superset_codex_args[@]}" --enable codex_hooks "$@"
 SUPERSET_CODEX_STATUS=$?
 _superset_debug "codex exited status=$SUPERSET_CODEX_STATUS"
 

@@ -185,7 +185,9 @@ describe("agent-wrappers copilot", () => {
 		const wrapperPath = path.join(TEST_BIN_DIR, "codex");
 		const wrapper = readFileSync(wrapperPath, "utf-8");
 
-		expect(wrapper).toContain("export CODEX_TUI_RECORD_SESSION=1");
+		expect(wrapper).toContain(
+			'export CODEX_TUI_RECORD_SESSION="${CODEX_TUI_RECORD_SESSION:-1}"',
+		);
 		expect(wrapper).toContain('"msg":{"type":"task_started"');
 		expect(wrapper).toContain('_superset_last_turn_id=""');
 		expect(wrapper).toContain('_superset_last_approval_id=""');
@@ -204,10 +206,12 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('awk -F\'"approval_id":"\'');
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
-		expect(wrapper).toContain(`"$REAL_BIN" --enable codex_hooks "$@"`);
+		expect(wrapper).toContain(
+			`"$REAL_BIN" "\${_superset_codex_args[@]}" --enable codex_hooks "$@"`,
+		);
 		expect(wrapper).toContain('export SUPERSET_AGENT_ID="codex"');
 
-		expect(wrapper).toContain("# Superset agent-wrapper v2");
+		expect(wrapper).toContain("# Superset agent-wrapper v3");
 
 		// Native hooks remain enabled, but the process-scoped TUI session log is
 		// the reliable Start signal for installed Codex TUI builds.
@@ -215,6 +219,12 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain("CODEX_TUI_RECORD_SESSION");
 		expect(wrapper).toContain("CODEX_TUI_SESSION_LOG_PATH");
 		expect(wrapper).toContain("SUPERSET_TERMINAL_ID$SUPERSET_TAB_ID");
+		expect(wrapper).toContain("_superset_configure_project_trust");
+		expect(wrapper).toContain("SUPERSET_WORKSPACE_PATH/.codex");
+		expect(wrapper).toContain(
+			'projects={\\"$_superset_workspace_path_toml\\"={trust_level=\\"trusted\\"}}',
+		);
+		expect(wrapper).not.toContain("export CODEX_HOME=");
 		expect(wrapper).not.toContain("rollout-*.jsonl");
 		expect(wrapper).not.toContain("_superset_sessions_dir");
 		expect(wrapper).not.toContain("$" + "{CODEX_HOME:-$HOME/.codex}");
@@ -236,6 +246,53 @@ describe("agent-wrappers copilot", () => {
 		);
 		expect(execLine).not.toContain("{{NOTIFY_PATH}}");
 		expect(wrapper).toContain(execLine);
+	});
+
+	it("trusts the Superset workspace codex project config without replacing CODEX_HOME", () => {
+		const realBinDir = path.join(TEST_ROOT, "real-bin");
+		const realCodex = path.join(realBinDir, "codex");
+		const wrapperPath = path.join(TEST_BIN_DIR, "codex");
+		const workspacePath = path.join(TEST_ROOT, "workspace");
+		const workspaceCodexHome = path.join(workspacePath, ".codex");
+		const explicitCodexHome = path.join(TEST_ROOT, "custom-codex-home");
+		const codexHomeFile = path.join(TEST_ROOT, "codex-home.txt");
+		const argsFile = path.join(TEST_ROOT, "codex-trust-args.txt");
+
+		mkdirSync(realBinDir, { recursive: true });
+		mkdirSync(workspaceCodexHome, { recursive: true });
+		writeFileSync(path.join(workspaceCodexHome, "config.toml"), "\n");
+		writeFileSync(
+			realCodex,
+			`#!/bin/bash
+printf '%s\n' "\${CODEX_HOME:-}" > "${codexHomeFile}"
+printf '%s\n' "$@" > "${argsFile}"
+exit 0
+`,
+			{ mode: 0o755 },
+		);
+		chmodSync(realCodex, 0o755);
+
+		createCodexWrapper();
+
+		execFileSync(wrapperPath, [], {
+			env: {
+				...process.env,
+				CODEX_HOME: explicitCodexHome,
+				PATH: `${TEST_BIN_DIR}:${realBinDir}:${process.env.PATH || ""}`,
+				SUPERSET_WORKSPACE_PATH: workspacePath,
+			},
+			encoding: "utf-8",
+		});
+
+		expect(readFileSync(codexHomeFile, "utf-8")).toBe(`${explicitCodexHome}\n`);
+		expect(readFileSync(argsFile, "utf-8")).toBe(
+			`${[
+				"-c",
+				`projects={"${workspacePath}"={trust_level="trusted"}}`,
+				"--enable",
+				"codex_hooks",
+			].join("\n")}\n`,
+		);
 	});
 
 	it("forwards codex_hooks enablement through the codex wrapper for manual launches", () => {

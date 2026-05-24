@@ -6,6 +6,19 @@
 $ErrorActionPreference = 'Continue'
 
 $WatcherJob = $null
+$CodexArgs = @()
+
+function ConvertTo-TomlBasicStringValue([string]$Value) {
+	return $Value.Replace('\', '\\').Replace('"', '\"')
+}
+
+if ($env:SUPERSET_WORKSPACE_PATH) {
+	$workspaceCodexConfig = Join-Path (Join-Path $env:SUPERSET_WORKSPACE_PATH '.codex') 'config.toml'
+	if (Test-Path -LiteralPath $workspaceCodexConfig) {
+		$workspacePathToml = ConvertTo-TomlBasicStringValue $env:SUPERSET_WORKSPACE_PATH
+		$CodexArgs += @('-c', "projects={`"$workspacePathToml`"={trust_level=`"trusted`"}}")
+	}
+}
 
 if ($env:SUPERSET_TAB_ID -and (Test-Path -LiteralPath '{{NOTIFY_PATH}}')) {
 	$env:CODEX_TUI_RECORD_SESSION = '1'
@@ -89,7 +102,7 @@ if ($env:SUPERSET_TAB_ID -and (Test-Path -LiteralPath '{{NOTIFY_PATH}}')) {
 }
 
 try {
-	& '{{REAL_BIN}}' --enable codex_hooks @args
+	& '{{REAL_BIN}}' @CodexArgs --enable codex_hooks @args
 	$codexStatus = $LASTEXITCODE
 } finally {
 	if ($WatcherJob) {
