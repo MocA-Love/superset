@@ -180,7 +180,11 @@ export interface WorkspaceCreateResult {
 }
 
 export interface WorkspaceDeleteResult {
-	[key: string]: unknown;
+	success: boolean;
+	cloudDeleted?: boolean;
+	worktreeRemoved?: boolean;
+	branchDeleted?: boolean;
+	warnings?: string[];
 }
 
 export declare namespace Workspaces {
