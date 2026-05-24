@@ -3,7 +3,6 @@ import { HiOutlineWifi } from "react-icons/hi2";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { useWorkspaceSidebarStore } from "renderer/stores/workspace-sidebar-state";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { NavigationControls } from "./components/NavigationControls";
 import { OpenInMenuButton } from "./components/OpenInMenuButton";
@@ -15,6 +14,7 @@ import { ServiceStatusIndicators } from "./components/ServiceStatusIndicators";
 import { SidebarToggle } from "./components/SidebarToggle";
 import { V2WorkspaceOpenInButton } from "./components/V2WorkspaceOpenInButton";
 import { V2WorkspaceSearchBarTrigger } from "./components/V2WorkspaceSearchBarTrigger";
+import { V2WorkspaceTitle } from "./components/V2WorkspaceTitle";
 import { WindowControls } from "./components/WindowControls";
 
 export function TopBar() {
@@ -33,8 +33,6 @@ export function TopBar() {
 	);
 	const isOnline = useOnlineStatus();
 	const isV2CloudEnabled = useIsV2CloudEnabled();
-	const isSidebarOpen = useWorkspaceSidebarStore((s) => s.isOpen);
-	const isSidebarCollapsed = useWorkspaceSidebarStore((s) => s.isCollapsed());
 	// Default to Mac layout while loading to avoid overlap with traffic lights
 	const isMac = platform === undefined || platform === "darwin";
 
@@ -52,7 +50,12 @@ export function TopBar() {
 			</div>
 
 			{isV2WorkspaceRoute ? (
-				<V2WorkspaceSearchBarTrigger workspaceId={v2WorkspaceId} />
+				<>
+					<div className="hidden min-w-0 flex-1 items-center justify-start overflow-hidden xl:flex">
+						<V2WorkspaceTitle workspaceId={v2WorkspaceId} />
+					</div>
+					<V2WorkspaceSearchBarTrigger workspaceId={v2WorkspaceId} />
+				</>
 			) : (
 				workspaceId && (
 					<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
