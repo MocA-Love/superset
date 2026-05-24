@@ -2,30 +2,22 @@ import { db, dbWs } from "@superset/db/client";
 import {
 	automationRuns,
 	automations,
-	type SelectSubscription,
 	v2Hosts,
 	v2Projects,
 	v2UsersHosts,
 	v2Workspaces,
 } from "@superset/db/schema";
 import {
-	isActiveSubscriptionStatus,
-	isPaidPlan,
-} from "@superset/shared/billing";
-import {
 	describeSchedule,
 	nextOccurrences,
 	parseRrule,
 } from "@superset/shared/rrule";
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { env } from "../../env";
-import { paidPlanProcedure, protectedProcedure } from "../../trpc";
-import {
-	requireActiveOrgMembership,
-	requireActiveOrgMembershipWithSubscription,
-} from "../utils/active-org";
+import { protectedProcedure } from "../../trpc";
+import { requireActiveOrgMembership } from "../utils/active-org";
 import { dispatchAutomation } from "./dispatch";
 import {
 	getAutomationForUser,
@@ -41,17 +33,8 @@ import {
 } from "./schema";
 import { automationVersionsRouter } from "./versions";
 
-function requirePaidSubscription(subscription: SelectSubscription | null) {
-	if (
-		!subscription ||
-		!isPaidPlan(subscription.plan) ||
-		!isActiveSubscriptionStatus(subscription.status)
-	) {
-		throw new TRPCError({
-			code: "FORBIDDEN",
-			message: "Automations require a Pro plan",
-		});
-	}
+function escapeLikePattern(value: string): string {
+	return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
 async function verifyHostAccess(
@@ -140,9 +123,8 @@ export const automationRouter = {
 
 	/**
 	 * List automations scoped to the caller's active organization.
-	 * FORK: gated behind paidPlanProcedure.
 	 */
-	list: paidPlanProcedure
+	list: protectedProcedure
 		.input(
 			z
 				.object({
@@ -158,20 +140,27 @@ export const automationRouter = {
 		.query(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
 
-		const rows = await db
-			.select()
-			.from(automations)
-			.where(eq(automations.organizationId, organizationId))
-			.orderBy(desc(automations.createdAt));
+			const rows = await db
+				.select()
+				.from(automations)
+				.where(
+					and(
+						eq(automations.organizationId, organizationId),
+						input?.name
+							? ilike(automations.name, `%${escapeLikePattern(input.name)}%`)
+							: undefined,
+					),
+				)
+				.orderBy(desc(automations.createdAt));
 
-		return rows.map((row) => ({
-			...row,
-			scheduleText: safeDescribeRrule(row),
-		}));
-	}),
+			return rows.map((row) => ({
+				...row,
+				scheduleText: safeDescribeRrule(row),
+			}));
+		}),
 
 	/** Get one automation plus the last 10 runs. */
-	get: paidPlanProcedure
+	get: protectedProcedure
 		.input(z.object({ id: z.string().uuid() }))
 		.query(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
@@ -195,12 +184,10 @@ export const automationRouter = {
 			};
 		}),
 
-	create: paidPlanProcedure
+	create: protectedProcedure
 		.input(createAutomationSchema)
 		.mutation(async ({ ctx, input }) => {
-			const { organizationId, subscription } =
-				await requireActiveOrgMembershipWithSubscription(ctx);
-			requirePaidSubscription(subscription);
+			const organizationId = await requireActiveOrgMembership(ctx);
 
 			if (input.targetHostId) {
 				await verifyHostAccess(
@@ -282,7 +269,7 @@ export const automationRouter = {
 			return { ...created, scheduleText: safeDescribeRrule(created) };
 		}),
 
-	update: paidPlanProcedure
+	update: protectedProcedure
 		.input(updateAutomationSchema)
 		.mutation(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
@@ -346,7 +333,7 @@ export const automationRouter = {
 			return { ...updated, scheduleText: safeDescribeRrule(updated) };
 		}),
 
-	getPrompt: paidPlanProcedure
+	getPrompt: protectedProcedure
 		.input(z.object({ id: z.string().uuid() }))
 		.query(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
@@ -358,7 +345,7 @@ export const automationRouter = {
 			return { id: existing.id, prompt: existing.prompt };
 		}),
 
-	setPrompt: paidPlanProcedure
+	setPrompt: protectedProcedure
 		.input(setAutomationPromptSchema)
 		.mutation(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
@@ -399,7 +386,7 @@ export const automationRouter = {
 			return { ...updated, scheduleText: safeDescribeRrule(updated) };
 		}),
 
-	delete: paidPlanProcedure
+	delete: protectedProcedure
 		.input(z.object({ id: z.string().uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
@@ -410,14 +397,10 @@ export const automationRouter = {
 			return { ok: true };
 		}),
 
-	setEnabled: paidPlanProcedure
+	setEnabled: protectedProcedure
 		.input(z.object({ id: z.string().uuid(), enabled: z.boolean() }))
 		.mutation(async ({ ctx, input }) => {
-			const { organizationId, subscription } =
-				await requireActiveOrgMembershipWithSubscription(ctx);
-			if (input.enabled) {
-				requirePaidSubscription(subscription);
-			}
+			const organizationId = await requireActiveOrgMembership(ctx);
 			const existing = await getAutomationForUser(
 				ctx.session.user.id,
 				organizationId,
@@ -447,12 +430,10 @@ export const automationRouter = {
 			return { ...updated, scheduleText: safeDescribeRrule(updated) };
 		}),
 
-	runNow: paidPlanProcedure
+	runNow: protectedProcedure
 		.input(z.object({ id: z.string().uuid() }))
 		.mutation(async ({ ctx, input }) => {
-			const { organizationId, subscription } =
-				await requireActiveOrgMembershipWithSubscription(ctx);
-			requirePaidSubscription(subscription);
+			const organizationId = await requireActiveOrgMembership(ctx);
 			const automation = await getAutomationForUser(
 				ctx.session.user.id,
 				organizationId,
@@ -483,18 +464,11 @@ export const automationRouter = {
 					message: outcome.error,
 				});
 			}
-			if (outcome.status === "skipped_unpaid") {
-				throw new TRPCError({
-					code: "FORBIDDEN",
-					message: outcome.error,
-				});
-			}
-
 			return { automationId: automation.id, runId: outcome.runId };
 		}),
 
 	/** Run history for a given automation (paginated). */
-	listRuns: paidPlanProcedure
+	listRuns: protectedProcedure
 		.input(listRunsSchema)
 		.query(async ({ ctx, input }) => {
 			const organizationId = await requireActiveOrgMembership(ctx);
@@ -513,7 +487,7 @@ export const automationRouter = {
 		}),
 
 	/** Validate an RRule body + preview its next occurrences. */
-	validateRrule: paidPlanProcedure
+	validateRrule: protectedProcedure
 		.input(parseRruleSchema)
 		.mutation(async ({ input }) => {
 			const dtstart = input.dtstart ?? new Date();
