@@ -205,6 +205,12 @@ function AutomationsPage() {
 		if (!next) setInitialTemplate(null);
 	};
 
+	const showAutomationLoading = !automationsReady && visible.length === 0;
+	const showMineEmptyState =
+		automationsReady && visible.length === 0 && scope === "mine";
+	const showTeamEmptyState =
+		automationsReady && visible.length === 0 && scope === "team";
+
 	return (
 		<div className="flex h-full w-full flex-1 flex-col overflow-hidden">
 			<header className="flex items-start justify-between border-b px-8 py-6">
@@ -235,7 +241,7 @@ function AutomationsPage() {
 			</header>
 
 			<div className="flex-1 overflow-y-auto px-8 py-6">
-				{!automationsReady ? null : visible.length === 0 && scope === "mine" ? (
+				{showAutomationLoading ? null : showMineEmptyState ? (
 					<AutomationsEmptyState onSelectTemplate={handleSelectTemplate} />
 				) : (
 					<>
@@ -264,7 +270,7 @@ function AutomationsPage() {
 							</ToggleGroup>
 						</div>
 
-						{visible.length === 0 ? (
+						{showTeamEmptyState ? (
 							<div className="rounded-md border border-dashed px-8 py-12 text-center text-sm text-muted-foreground">
 								Nobody on your team has shared automations yet.
 							</div>

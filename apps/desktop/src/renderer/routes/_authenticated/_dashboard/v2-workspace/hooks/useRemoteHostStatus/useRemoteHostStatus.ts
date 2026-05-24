@@ -34,7 +34,7 @@ export function useRemoteHostStatus(
 		workspace != null && machineId != null && workspace.hostId === machineId;
 	const filterMachineId = !workspace || isLocal ? "" : hostId;
 
-	const { data: hostRows = [] } = useLiveQuery(
+	const { data: hostRows = [], isReady } = useLiveQuery(
 		(q) =>
 			q
 				.from({ hosts: collections.v2Hosts })
@@ -66,6 +66,7 @@ export function useRemoteHostStatus(
 
 	if (!workspace) return { status: "loading" };
 	if (isLocal) return { status: "skip" };
+	if (!isReady && !hostRow) return { status: "loading" };
 
 	if (infoQuery.isSuccess) {
 		const hostVersion = infoQuery.data.version;

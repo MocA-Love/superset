@@ -20,7 +20,7 @@ export function V2ProjectSettings({ projectId }: V2ProjectSettingsProps) {
 	const collections = useCollections();
 	const { activeHostUrl } = useLocalHostService();
 
-	const { data: v2Project } = useLiveQuery(
+	const { data: v2Project, isReady } = useLiveQuery(
 		(q) =>
 			q
 				.from({ projects: collections.v2Projects })
@@ -40,7 +40,14 @@ export function V2ProjectSettings({ projectId }: V2ProjectSettingsProps) {
 	});
 
 	const project = v2Project?.[0];
-	if (!project) return null;
+	if (!project) {
+		if (!isReady) return null;
+		return (
+			<div className="p-6 text-sm text-muted-foreground select-text cursor-text">
+				Project not found.
+			</div>
+		);
+	}
 
 	return (
 		<div className="p-6 max-w-4xl w-full select-text">
