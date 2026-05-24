@@ -6,18 +6,13 @@ import {
 	getDiffsTheme,
 	getDiffViewerStyle,
 } from "renderer/screens/main/components/WorkspaceView/utils/code-theme";
+import { useSettings } from "renderer/stores/settings";
 import { useResolvedTheme, useTerminalTheme } from "renderer/stores/theme";
 import type { DiffCommentThread } from "../useDiffAnnotations";
 
-interface UseDiffCodeViewThemeOptions {
-	diffStyle: "split" | "unified";
-	expandUnchanged: boolean;
-}
-
-export function useDiffCodeViewTheme({
-	diffStyle,
-	expandUnchanged,
-}: UseDiffCodeViewThemeOptions) {
+export function useDiffCodeViewTheme() {
+	const diffStyle = useSettings((s) => s.diffStyle);
+	const expandUnchanged = useSettings((s) => s.expandUnchanged);
 	const activeTheme = useResolvedTheme();
 	const terminalTheme = useTerminalTheme();
 	const { data: fontSettings } = useQuery({
@@ -102,7 +97,8 @@ export function useDiffCodeViewTheme({
 				[data-diffs-header='default'] [data-discard-button] {
 					opacity: 0;
 				}
-				[data-diffs-header='default']:hover [data-discard-button] {
+				[data-diffs-header='default']:hover [data-discard-button],
+				[data-diffs-header='default']:focus-within [data-discard-button] {
 					opacity: 1;
 				}
 				/* Pierre sets --diffs-light-bg/--diffs-dark-bg

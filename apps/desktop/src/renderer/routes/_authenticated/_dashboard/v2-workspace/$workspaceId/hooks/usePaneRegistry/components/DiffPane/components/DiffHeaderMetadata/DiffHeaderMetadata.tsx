@@ -2,7 +2,6 @@ import { Checkbox } from "@superset/ui/checkbox";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { workspaceTrpc } from "@superset/workspace-client";
-import { Eye, EyeOff } from "lucide-react";
 import { useCallback, useId, useMemo, useState } from "react";
 import { LuArrowUpRight, LuCheck, LuCopy, LuUndo2 } from "react-icons/lu";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
@@ -15,8 +14,6 @@ interface DiffHeaderMetadataProps {
 	file: ChangesetFile;
 	workspaceId: string;
 	onSetCollapsed: (path: string, value: boolean) => void;
-	expandUnchanged: boolean;
-	onToggleExpandUnchanged: () => void;
 	viewed: boolean;
 	onSetViewed: (path: string, next: boolean) => void;
 	onOpenFile: (path: string, openInNewTab?: boolean) => void;
@@ -27,8 +24,6 @@ export function DiffHeaderMetadata({
 	file,
 	workspaceId,
 	onSetCollapsed,
-	expandUnchanged,
-	onToggleExpandUnchanged,
 	viewed,
 	onSetViewed,
 	onOpenFile,
@@ -146,27 +141,6 @@ export function DiffHeaderMetadata({
 						Viewed
 					</label>
 				</div>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							onClick={onToggleExpandUnchanged}
-							aria-label={
-								expandUnchanged ? "Hide unchanged regions" : "Show all lines"
-							}
-							className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-muted-foreground"
-						>
-							{expandUnchanged ? (
-								<EyeOff className="size-3.5" />
-							) : (
-								<Eye className="size-3.5" />
-							)}
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom" showArrow={false}>
-						{expandUnchanged ? "Hide unchanged regions" : "Show all lines"}
-					</TooltipContent>
-				</Tooltip>
 				{requestDiscard ? (
 					<Tooltip>
 						<TooltipTrigger asChild>

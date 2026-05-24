@@ -5,8 +5,7 @@ import type {
 } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
 import type { RendererContext } from "@superset/panes";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useSettings } from "renderer/stores/settings";
+import { useCallback, useMemo, useRef } from "react";
 import type { DiffPaneData, PaneViewerData } from "../../../../types";
 import { useChangeset } from "../../../useChangeset";
 import { useOpenInExternalEditor } from "../../../useOpenInExternalEditor";
@@ -33,17 +32,12 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 	const data = context.pane.data as DiffPaneData;
 	const codeViewRef = useRef<CodeViewHandle<DiffCommentThread>>(null);
 
-	const diffStyle = useSettings((s) => s.diffStyle);
 	const ref = useSidebarDiffRef(workspaceId);
 	const { files, isLoading } = useChangeset({ workspaceId, ref });
 	const { viewedSet, setViewed } = useViewedFiles(workspaceId);
 	const openInExternalEditor = useOpenInExternalEditor(workspaceId);
 	const annotationsByPath = useDiffAnnotationsByPath({ workspaceId });
-	const [expandUnchanged, setExpandUnchanged] = useState(false);
-	const { options, style } = useDiffCodeViewTheme({
-		diffStyle,
-		expandUnchanged,
-	});
+	const { options, style } = useDiffCodeViewTheme();
 
 	const collapsedSet = useMemo(
 		() => new Set(data.collapsedFiles ?? []),
@@ -109,10 +103,6 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 					file={file}
 					workspaceId={workspaceId}
 					onSetCollapsed={setCollapsed}
-					expandUnchanged={expandUnchanged}
-					onToggleExpandUnchanged={() =>
-						setExpandUnchanged((current) => !current)
-					}
 					viewed={viewedSet.has(file.path)}
 					onSetViewed={setViewed}
 					onOpenFile={onOpenFile}
@@ -124,7 +114,6 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 			fileByItemId,
 			workspaceId,
 			setCollapsed,
-			expandUnchanged,
 			viewedSet,
 			setViewed,
 			onOpenFile,
@@ -172,7 +161,7 @@ export function DiffPane({ context, workspaceId, onOpenFile }: DiffPaneProps) {
 
 	if (items.length === 0) {
 		return (
-			<div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+			<div className="flex h-full w-full cursor-text select-text items-center justify-center text-sm text-muted-foreground">
 				{hasPendingDiff
 					? "Loading…"
 					: hasDiffError
