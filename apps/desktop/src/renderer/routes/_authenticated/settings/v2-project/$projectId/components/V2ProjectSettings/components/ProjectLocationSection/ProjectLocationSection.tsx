@@ -9,13 +9,13 @@ import {
 	AlertDialogTitle,
 } from "@superset/ui/alert-dialog";
 import { Button } from "@superset/ui/button";
+import { Input } from "@superset/ui/input";
 import { toast } from "@superset/ui/sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
-import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { ClickablePath } from "../../../../../../components/ClickablePath";
 
 interface BackfillConflict {
@@ -27,6 +27,10 @@ interface ProjectLocationSectionProps {
 	projectId: string;
 	currentPath: string | null;
 	repoCloneUrl: string | null;
+	hostId: string | null;
+	hostUrl: string | null;
+	hostName: string;
+	isRemoteTarget: boolean;
 	onChanged?: () => void;
 }
 
@@ -34,9 +38,12 @@ export function ProjectLocationSection({
 	projectId,
 	currentPath,
 	repoCloneUrl,
+	hostId,
+	hostUrl,
+	hostName,
+	isRemoteTarget,
 	onChanged,
 }: ProjectLocationSectionProps) {
-	const { activeHostUrl } = useLocalHostService();
 	const selectDirectory = electronTrpc.window.selectDirectory.useMutation();
 	const navigate = useNavigate();
 	const { ensureProjectInSidebar, ensureWorkspaceInSidebar } =
@@ -45,14 +52,16 @@ export function ProjectLocationSection({
 	const [pendingPath, setPendingPath] = useState<string | null>(null);
 	const [conflict, setConflict] = useState<BackfillConflict | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [remoteImportPath, setRemoteImportPath] = useState("");
+	const [remoteCloneParentDir, setRemoteCloneParentDir] = useState("");
 
 	const runSetup = async (repoPath: string, allowRelocate: boolean) => {
-		if (!activeHostUrl) {
-			toast.error("Host service not available");
+		if (!hostUrl) {
+			toast.error(`Host unavailable: ${hostName}`);
 			return false;
 		}
 		try {
-			const client = getHostServiceClientByUrl(activeHostUrl);
+			const client = getHostServiceClientByUrl(hostUrl);
 			const result = await client.project.setup.mutate({
 				projectId,
 				mode: { kind: "import", repoPath, allowRelocate },
@@ -76,12 +85,12 @@ export function ProjectLocationSection({
 	};
 
 	const runClone = async (parentDir: string) => {
-		if (!activeHostUrl) {
-			toast.error("Host service not available");
+		if (!hostUrl) {
+			toast.error(`Host unavailable: ${hostName}`);
 			return false;
 		}
 		try {
-			const client = getHostServiceClientByUrl(activeHostUrl);
+			const client = getHostServiceClientByUrl(hostUrl);
 			const result = await client.project.setup.mutate({
 				projectId,
 				mode: { kind: "clone", parentDir },
@@ -101,8 +110,8 @@ export function ProjectLocationSection({
 	};
 
 	const pickPath = async (title: string) => {
-		if (!activeHostUrl) {
-			toast.error("Host service not available");
+		if (!hostUrl) {
+			toast.error(`Host unavailable: ${hostName}`);
 			return null;
 		}
 		try {
@@ -119,16 +128,48 @@ export function ProjectLocationSection({
 	};
 
 	const handleImport = async () => {
+		if (isRemoteTarget) {
+			const path = remoteImportPath.trim();
+			if (!path) {
+				toast.error(`Enter a path on ${hostName}`);
+				return;
+			}
+			if (!hostUrl) {
+				toast.error(`Host unavailable: ${hostName}`);
+				return;
+			}
+			setIsSubmitting(true);
+			let keepSubmitting = false;
+			try {
+				const client = getHostServiceClientByUrl(hostUrl);
+				const precheck = await client.project.findBackfillConflict.query({
+					projectId,
+					repoPath: path,
+				});
+				if (precheck.conflict) {
+					setConflict(precheck.conflict);
+					keepSubmitting = true;
+					return;
+				}
+				await runSetup(path, false);
+				setRemoteImportPath("");
+			} catch (err) {
+				toast.error(err instanceof Error ? err.message : String(err));
+			} finally {
+				if (!keepSubmitting) setIsSubmitting(false);
+			}
+			return;
+		}
 		const path = await pickPath("Select project location");
 		if (!path) return;
-		if (!activeHostUrl) {
-			toast.error("Host service not available");
+		if (!hostUrl) {
+			toast.error(`Host unavailable: ${hostName}`);
 			return;
 		}
 		setIsSubmitting(true);
 		let keepSubmitting = false;
 		try {
-			const client = getHostServiceClientByUrl(activeHostUrl);
+			const client = getHostServiceClientByUrl(hostUrl);
 			const precheck = await client.project.findBackfillConflict.query({
 				projectId,
 				repoPath: path,
@@ -147,6 +188,20 @@ export function ProjectLocationSection({
 	};
 
 	const handleClone = async () => {
+		if (isRemoteTarget) {
+			const parentDir = remoteCloneParentDir.trim();
+			if (!parentDir) {
+				toast.error(`Enter a parent directory on ${hostName}`);
+				return;
+			}
+			setIsSubmitting(true);
+			try {
+				await runClone(parentDir);
+			} finally {
+				setIsSubmitting(false);
+			}
+			return;
+		}
 		const parentDir = await pickPath("Select parent directory to clone into");
 		if (!parentDir) return;
 		setIsSubmitting(true);
@@ -164,12 +219,12 @@ export function ProjectLocationSection({
 			toast.info("Project is already at that location");
 			return;
 		}
-		if (!activeHostUrl) {
-			toast.error("Host service not available");
+		if (!hostUrl) {
+			toast.error(`Host unavailable: ${hostName}`);
 			return;
 		}
 		try {
-			const client = getHostServiceClientByUrl(activeHostUrl);
+			const client = getHostServiceClientByUrl(hostUrl);
 			const precheck = await client.project.findBackfillConflict.query({
 				projectId,
 				repoPath: path,
@@ -201,7 +256,7 @@ export function ProjectLocationSection({
 						<ClickablePath path={currentPath} />
 					) : (
 						<span className="text-sm text-muted-foreground">
-							Not set up on this device.
+							Not set up on {hostName}.
 						</span>
 					)}
 				</div>
@@ -217,31 +272,82 @@ export function ProjectLocationSection({
 					</Button>
 				) : (
 					<div className="flex items-center gap-2 shrink-0">
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={handleClone}
-							disabled={
-								!repoCloneUrl || selectDirectory.isPending || isSubmitting
-							}
-							title={
-								repoCloneUrl
-									? undefined
-									: "Link a GitHub repository first to enable cloning"
-							}
-						>
-							Clone here…
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={handleImport}
-							disabled={selectDirectory.isPending || isSubmitting}
-						>
-							Import existing…
-						</Button>
+						{isRemoteTarget ? (
+							<div className="flex flex-col gap-2 min-w-80">
+								<div className="flex items-center gap-2">
+									<Input
+										value={remoteImportPath}
+										onChange={(event) =>
+											setRemoteImportPath(event.currentTarget.value)
+										}
+										placeholder={`Existing repo path on ${hostName}`}
+										className="h-8"
+									/>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={handleImport}
+										disabled={!hostUrl || isSubmitting}
+									>
+										Import
+									</Button>
+								</div>
+								<div className="flex items-center gap-2">
+									<Input
+										value={remoteCloneParentDir}
+										onChange={(event) =>
+											setRemoteCloneParentDir(event.currentTarget.value)
+										}
+										placeholder={`Parent directory on ${hostName}`}
+										className="h-8"
+										disabled={!repoCloneUrl}
+									/>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={handleClone}
+										disabled={!hostUrl || !repoCloneUrl || isSubmitting}
+										title={
+											repoCloneUrl
+												? undefined
+												: "Link a GitHub repository first to enable cloning"
+										}
+									>
+										Clone
+									</Button>
+								</div>
+							</div>
+						) : (
+							<>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={handleClone}
+									disabled={
+										!repoCloneUrl || selectDirectory.isPending || isSubmitting
+									}
+									title={
+										repoCloneUrl
+											? undefined
+											: "Link a GitHub repository first to enable cloning"
+									}
+								>
+									Clone here…
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={handleImport}
+									disabled={selectDirectory.isPending || isSubmitting}
+								>
+									Import existing…
+								</Button>
+							</>
+						)}
 					</div>
 				)}
 			</div>
@@ -261,7 +367,7 @@ export function ProjectLocationSection({
 						<AlertDialogDescription>
 							This repository is already linked to project "
 							{conflict?.name ?? ""}" in this organization. Open that project to
-							set it up on this device.
+							set it up on {hostName}.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -276,6 +382,9 @@ export function ProjectLocationSection({
 								navigate({
 									to: "/settings/projects/$projectId",
 									params: { projectId: target.id },
+									search: {
+										hostId: isRemoteTarget ? (hostId ?? undefined) : undefined,
+									},
 								});
 							}}
 						>
