@@ -19,7 +19,6 @@ import type {
 } from "./types";
 import { gitConfigWrite } from "./utils/config-write";
 import {
-	buildBranch,
 	getChangedFilesForDiff,
 	getDefaultBranchName,
 	resolveBaseComparison,
@@ -68,87 +67,83 @@ export const gitRouter = router({
 			const worktreePath = resolveWorktreePath(ctx, input.workspaceId);
 			const git = await ctx.git(worktreePath);
 
-			const currentBranchName = (
-				await git.revparse(["--abbrev-ref", "HEAD"]).catch(() => "")
-			).trim();
-			const base = await resolveBaseComparison(git);
-			const defaultBranchName = base?.branchName ?? null;
-
 			const sortOrder = input.sortOrder ?? "committerdate";
 			const pinDefault = input.pinDefault ?? true;
-			// `git branch` supports `--sort` directly (falls back to git default
-			// if the flag is rejected by a very old git). committerdate is
-			// descending via a leading `-`; alphabetical uses refname.
+			const defaultBranchName = await getDefaultBranchName(git);
+			// `git for-each-ref` gives us name/head markers for all branches in
+			// one spawn. The selector only needs these cheap fields; richer
+			// per-branch metadata still comes from `git.getStatus.currentBranch`.
 			const sortArg =
 				sortOrder === "committerdate"
 					? "--sort=-committerdate"
 					: "--sort=refname";
 
-			const readRefs = async (
-				extraArgs: string[],
-				stripPrefix?: string,
-			): Promise<string[]> => {
+			type ListedBranch = {
+				name: string;
+				isHead: boolean;
+				isRemote: boolean;
+			};
+
+			const readBranchRefs = async (): Promise<ListedBranch[]> => {
 				try {
 					const raw = await git.raw([
-						"branch",
-						"--list",
+						"for-each-ref",
 						sortArg,
-						"--format=%(refname:short)",
-						...extraArgs,
+						"--format=%(HEAD)%00%(refname:short)",
+						"refs/heads/",
+						"refs/remotes/origin/",
 					]);
 					return raw
-						.trim()
 						.split("\n")
-						.map((line) => line.trim())
 						.filter(Boolean)
-						.filter((line) => !line.includes("->"))
-						.map((line) =>
-							stripPrefix && line.startsWith(stripPrefix)
-								? line.slice(stripPrefix.length)
-								: line,
-						);
+						.flatMap((line): ListedBranch[] => {
+							const [headMarker, refName] = line.split("\0");
+							if (!refName || refName === "origin/HEAD") return [];
+							if (refName.startsWith("origin/")) {
+								const name = refName.slice("origin/".length);
+								if (!name || name === "HEAD") return [];
+								return [{ name, isHead: false, isRemote: true }];
+							}
+							return [
+								{
+									name: refName,
+									isHead: headMarker === "*",
+									isRemote: false,
+								},
+							];
+						});
 				} catch {
 					return [];
 				}
 			};
 
-			const localNames = await readRefs([]);
-			const remoteNames = await readRefs(["-r"], "origin/");
-
-			const localSet = new Set(localNames);
+			const refs = await readBranchRefs();
+			const localBranches = refs.filter((branch) => !branch.isRemote);
+			const localSet = new Set(localBranches.map((branch) => branch.name));
 			// Deduplicate: a remote-only branch is one that has no local
 			// counterpart. Local branches always win.
-			const remoteOnlyNames = remoteNames.filter(
-				(name) => !localSet.has(name) && name !== "HEAD",
+			const remoteOnlyBranches = refs.filter(
+				(branch) => branch.isRemote && !localSet.has(branch.name),
 			);
 
 			// For alphabetical sort we re-sort in JS with case-insensitive
 			// comparison so that `Feat-a` and `feat-b` interleave the way
 			// users expect. committerdate already comes back ordered by git.
-			const sortAlphabetical = (names: string[]): string[] =>
+			const sortAlphabetical = <T extends { name: string }>(
+				branches: T[],
+			): T[] =>
 				sortOrder === "alphabetical"
-					? [...names].sort((a, b) =>
-							a.localeCompare(b, undefined, { sensitivity: "base" }),
+					? [...branches].sort((a, b) =>
+							a.name.localeCompare(b.name, undefined, {
+								sensitivity: "base",
+							}),
 						)
-					: names;
+					: branches;
 
-			const sortedLocal = sortAlphabetical(localNames);
-			const sortedRemoteOnly = sortAlphabetical(remoteOnlyNames);
-
-			const compareRef = base?.baseRef;
-
-			const localBranches = await Promise.all(
-				sortedLocal.map((name) =>
-					buildBranch(git, name, name === currentBranchName, compareRef),
-				),
-			);
-			const remoteBranches = await Promise.all(
-				sortedRemoteOnly.map((name) =>
-					buildBranch(git, name, false, compareRef, true),
-				),
-			);
-
-			let branches = [...localBranches, ...remoteBranches];
+			let branches = [
+				...sortAlphabetical(localBranches),
+				...sortAlphabetical(remoteOnlyBranches),
+			];
 
 			// Optionally pin the default branch (main / master / trunk / etc)
 			// at the top of the list regardless of sort order. Only looks at
