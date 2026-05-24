@@ -11,6 +11,7 @@ import { TRPCError } from "@trpc/server";
 import { del } from "@vercel/blob";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { posthog } from "../../lib/analytics";
 import { fetchAndStoreGitHubAvatar } from "../../lib/github-avatar";
 import { generateImagePathname, uploadImage } from "../../lib/upload";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
@@ -257,6 +258,16 @@ export const v2ProjectRouter = {
 					message: "Failed to create project",
 				});
 			}
+			posthog.capture({
+				distinctId: ctx.userId,
+				event: "project_opened",
+				properties: {
+					project_id: project.id,
+					organization_id: project.organizationId,
+					method: input.repoCloneUrl ? "github" : "empty",
+					surface: "v2",
+				},
+			});
 			return project;
 		}),
 

@@ -2,7 +2,10 @@ import { Button } from "@superset/ui/button";
 import { Label } from "@superset/ui/label";
 import { Switch } from "@superset/ui/switch";
 import { useNavigate } from "@tanstack/react-router";
-import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
+import {
+	useIsV2CloudEnabled,
+	useIsV2OnlyUser,
+} from "renderer/hooks/useIsV2CloudEnabled";
 import { track } from "renderer/lib/analytics";
 import { useOnboardingStore } from "renderer/stores/onboarding";
 import { useV2LocalOverrideStore } from "renderer/stores/v2-local-override";
@@ -35,6 +38,7 @@ export function ExperimentalSettings({
 		visibleItems,
 	);
 	const isV2CloudEnabled = useIsV2CloudEnabled();
+	const isV2OnlyUser = useIsV2OnlyUser();
 	const setOptInV2 = useV2LocalOverrideStore((state) => state.setOptInV2);
 	const resetOnboarding = useOnboardingStore((state) => state.reset);
 	const navigate = useNavigate();
@@ -55,7 +59,7 @@ export function ExperimentalSettings({
 			</div>
 
 			<div className="space-y-6">
-				{showSupersetV2 && (
+				{showSupersetV2 && !isV2OnlyUser && (
 					<div className="flex items-center justify-between gap-6">
 						<div className="min-w-0 flex-1 space-y-0.5">
 							<Label htmlFor="superset-v2" className="text-sm font-medium">
@@ -78,7 +82,6 @@ export function ExperimentalSettings({
 						/>
 					</div>
 				)}
-
 				{showRerunOnboarding && (
 					<div className="flex items-center justify-between gap-6">
 						<div className="min-w-0 flex-1 space-y-0.5">
