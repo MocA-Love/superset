@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { requestPaneClose } from "renderer/stores/editor-state/editorCoordinator";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { SplitPaneOptions } from "renderer/stores/tabs/types";
 import { PLATFORM } from "shared/constants";
@@ -200,6 +201,26 @@ export function usePersistentWebview({
 						url,
 					});
 				}
+			},
+		},
+	);
+
+	electronTrpc.browser.onClosePane.useSubscription(
+		{ paneId },
+		{
+			onData: () => {
+				requestPaneClose(paneId);
+			},
+		},
+	);
+
+	// Look up via the persistent registry, not a captured ref — the registry may
+	// have re-registered the underlying webContents since this hook ran.
+	electronTrpc.browser.onReloadPane.useSubscription(
+		{ paneId },
+		{
+			onData: () => {
+				getPersistentWebview(paneId)?.reload();
 			},
 		},
 	);
