@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback } from "react";
-import { FileIcon } from "renderer/lib/fileIcons";
+import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import type { ChangesetFile } from "../../../../../useChangeset";
 
 interface DiffHeaderPrefixProps {
