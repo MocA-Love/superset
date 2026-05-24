@@ -18,13 +18,11 @@ import { useLocalHostService } from "renderer/routes/_authenticated/providers/Lo
 
 interface DeleteProjectSectionProps {
 	projectId: string;
-	organizationId: string;
 	projectName: string;
 }
 
 export function DeleteProjectSection({
 	projectId,
-	organizationId,
 	projectName,
 }: DeleteProjectSectionProps) {
 	const navigate = useNavigate();
@@ -52,13 +50,9 @@ export function DeleteProjectSection({
 	};
 
 	return (
-		<div className="flex items-center justify-between gap-8">
+		<div className="flex items-center justify-between gap-8 py-2.5">
 			<div className="min-w-0 flex-1">
 				<div className="text-sm font-medium">Delete project</div>
-				<p className="text-xs text-muted-foreground mt-0.5">
-					Removes the project from the organization. Workspaces and local clones
-					on any host are not affected.
-				</p>
 			</div>
 			<AlertDialog open={isOpen} onOpenChange={setIsOpen}>
 				<AlertDialogTrigger asChild>

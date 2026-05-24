@@ -1,7 +1,14 @@
-import { Button } from "@superset/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@superset/ui/dropdown-menu";
 import { toast } from "@superset/ui/sonner";
 import { useCallback, useRef, useState } from "react";
-import { LuGithub, LuImagePlus, LuTrash2 } from "react-icons/lu";
+import { FaGithub } from "react-icons/fa";
+import { LuImagePlus, LuTrash2, LuUpload } from "react-icons/lu";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 
 const ACCEPTED_MIME_TYPES = "image/png,image/jpeg,image/webp";
@@ -104,18 +111,63 @@ export function IconUploadField({
 		}
 	}, [projectId]);
 
-	return (
-		<div className="flex items-center gap-3">
+	const hasSecondaryActions = hasGitHubRepo || Boolean(iconUrl);
+
+	const Thumbnail = (
+		<button
+			type="button"
+			onClick={hasSecondaryActions ? undefined : handleClickUpload}
+			disabled={isPending}
+			aria-label={
+				hasSecondaryActions
+					? "Project icon options"
+					: iconUrl
+						? "Replace icon"
+						: "Upload icon"
+			}
+			className="size-9 rounded-md border overflow-hidden flex items-center justify-center text-muted-foreground transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+		>
 			{iconUrl ? (
 				<img
 					src={iconUrl}
 					alt="Project icon"
-					className="size-10 rounded object-cover border"
+					className="size-full object-cover"
 				/>
 			) : (
-				<div className="size-10 rounded border border-dashed flex items-center justify-center text-muted-foreground">
-					<LuImagePlus className="size-4" />
-				</div>
+				<LuImagePlus className="size-4" />
+			)}
+		</button>
+	);
+
+	return (
+		<>
+			{hasSecondaryActions ? (
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>{Thumbnail}</DropdownMenuTrigger>
+					<DropdownMenuContent align="start" className="w-48">
+						<DropdownMenuItem onSelect={handleClickUpload}>
+							<LuUpload className="size-4" />
+							Upload image…
+						</DropdownMenuItem>
+						{hasGitHubRepo && (
+							<DropdownMenuItem onSelect={handleUseGitHub}>
+								<FaGithub className="size-4" />
+								Use GitHub icon
+							</DropdownMenuItem>
+						)}
+						{iconUrl && (
+							<>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem variant="destructive" onSelect={handleRemove}>
+									<LuTrash2 className="size-4" />
+									Remove icon
+								</DropdownMenuItem>
+							</>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			) : (
+				Thumbnail
 			)}
 			<input
 				ref={fileInputRef}
@@ -124,43 +176,6 @@ export function IconUploadField({
 				className="hidden"
 				onChange={handleFileChange}
 			/>
-			<Button
-				type="button"
-				variant="outline"
-				size="sm"
-				onClick={handleClickUpload}
-				disabled={isPending}
-				className="gap-1.5"
-			>
-				<LuImagePlus className="size-4" />
-				{iconUrl ? "Replace icon" : "Upload icon"}
-			</Button>
-			{hasGitHubRepo && (
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					onClick={handleUseGitHub}
-					disabled={isPending}
-					className="gap-1.5"
-				>
-					<LuGithub className="size-4" />
-					Use GitHub icon
-				</Button>
-			)}
-			{iconUrl && (
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					onClick={handleRemove}
-					disabled={isPending}
-					className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-				>
-					<LuTrash2 className="size-4" />
-					Remove
-				</Button>
-			)}
-		</div>
+		</>
 	);
 }
