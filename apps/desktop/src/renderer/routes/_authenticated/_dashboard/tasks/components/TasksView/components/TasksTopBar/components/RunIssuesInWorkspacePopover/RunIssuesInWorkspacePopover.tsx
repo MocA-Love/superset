@@ -17,8 +17,9 @@ import { HiCheck, HiMiniPlay } from "react-icons/hi2";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { env } from "renderer/env.renderer";
 import { useHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
-import { useV2AgentConfigs } from "renderer/hooks/useV2AgentConfigs";
+import { useV2AgentChoices } from "renderer/hooks/useV2AgentChoices";
 import { authClient } from "renderer/lib/auth-client";
+import { showHostServiceUnavailableToast } from "renderer/lib/host-service-unavailable";
 import { DevicePicker } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker";
 import { useWorkspaceHostOptions } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker/hooks/useWorkspaceHostOptions";
 import { useSelectedHostProjectIds } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceModalContent/hooks/useSelectedHostProjectIds";
@@ -61,7 +62,8 @@ export function RunIssuesInWorkspacePopover({
 	onComplete,
 }: RunIssuesInWorkspacePopoverProps) {
 	const collections = useCollections();
-	const { machineId, activeHostUrl } = useLocalHostService();
+	const hostService = useLocalHostService();
+	const { machineId, activeHostUrl } = hostService;
 	const { data: session } = authClient.useSession();
 	const activeOrganizationId = env.SKIP_ENV_VALIDATION
 		? MOCK_ORG_ID
@@ -118,8 +120,8 @@ export function RunIssuesInWorkspacePopover({
 			return {
 				id: project.id,
 				name: project.name,
-				iconUrl: project.iconUrl ?? null,
 				githubOwner: repo?.owner ?? null,
+				iconUrl: project.iconUrl ?? null,
 				needsSetup:
 					setUpProjectIds === null ? null : !setUpProjectIds.has(project.id),
 			};
@@ -147,16 +149,8 @@ export function RunIssuesInWorkspacePopover({
 		(project) => project.id === selectedProjectId,
 	);
 
-	const v2AgentConfigsQuery = useV2AgentConfigs(launchHostUrl);
-	const v2Agents = useMemo(
-		() =>
-			(v2AgentConfigsQuery.data ?? []).map((config) => ({
-				id: config.id,
-				label: config.label,
-				iconId: config.presetId,
-			})),
-		[v2AgentConfigsQuery.data],
-	);
+	const { agents: v2Agents, isFetched: v2AgentsFetched } =
+		useV2AgentChoices(launchHostUrl);
 	const validAgentIds = useMemo(
 		() => new Set(v2Agents.map((agent) => agent.id)),
 		[v2Agents],
@@ -165,7 +159,7 @@ export function RunIssuesInWorkspacePopover({
 	const [selectedAgent, setSelectedAgentState] =
 		useState<SelectedAgent>(readStoredAgent);
 	useEffect(() => {
-		if (!v2AgentConfigsQuery.isFetched) return;
+		if (!v2AgentsFetched) return;
 		if (selectedAgent !== NONE && validAgentIds.has(selectedAgent)) return;
 		const stored = readStoredAgent();
 		if (stored !== NONE && validAgentIds.has(stored)) {
@@ -173,7 +167,7 @@ export function RunIssuesInWorkspacePopover({
 		} else if (selectedAgent !== NONE) {
 			setSelectedAgentState(NONE);
 		}
-	}, [v2AgentConfigsQuery.isFetched, validAgentIds, selectedAgent]);
+	}, [v2AgentsFetched, validAgentIds, selectedAgent]);
 	const setSelectedAgent = (next: SelectedAgent) => {
 		setSelectedAgentState(next);
 		if (typeof window !== "undefined") {
@@ -193,12 +187,12 @@ export function RunIssuesInWorkspacePopover({
 		} else if (!activeHostUrl) {
 			return "Host service is not running";
 		}
-		if (setUpProjectIds === null) return "Checking host...";
+		if (setUpProjectIds === null) return "Checking host…";
 		if (selectedProject?.needsSetup === true) {
 			return "Project not set up on this host";
 		}
 		if (selectedAgent !== NONE) {
-			if (!v2AgentConfigsQuery.isFetched) return "Checking agents...";
+			if (!v2AgentsFetched) return "Checking agents…";
 			if (!validAgentIds.has(selectedAgent)) {
 				return "Selected agent is not available on this host";
 			}
@@ -209,7 +203,7 @@ export function RunIssuesInWorkspacePopover({
 		selectedProject?.needsSetup,
 		setUpProjectIds,
 		selectedAgent,
-		v2AgentConfigsQuery.isFetched,
+		v2AgentsFetched,
 		validAgentIds,
 		hostId,
 		machineId,
@@ -220,13 +214,19 @@ export function RunIssuesInWorkspacePopover({
 	const handleRun = () => {
 		if (!selectedProjectId || !hostId) return;
 		if (submitBlocker) {
-			toast.error(submitBlocker);
+			if (hostId === machineId && !activeHostUrl) {
+				showHostServiceUnavailableToast(hostService, {
+					action: "run issues in workspaces",
+				});
+			} else {
+				toast.error(submitBlocker);
+			}
 			return;
 		}
 
 		setLastProjectId(selectedProjectId);
 
-		const submissions = issues.map((issue) =>
+		const handles = issues.map((issue) =>
 			submit({
 				hostId,
 				snapshot: {
@@ -250,15 +250,20 @@ export function RunIssuesInWorkspacePopover({
 			}),
 		);
 
-		const promise = Promise.all(submissions).then((results) => {
-			const failed = results.filter((r) => !r.ok).length;
-			if (failed > 0) {
-				throw new Error(
-					`${results.length - failed} of ${results.length} succeeded`,
-				);
-			}
-			return results.length;
-		});
+		const promise = Promise.all(handles.map((handle) => handle.completed)).then(
+			(outcomes) => {
+				const failed = outcomes.filter((outcome) => !outcome.ok).length;
+				if (failed > 0) {
+					const firstFailure = outcomes.find((outcome) => !outcome.ok);
+					const details =
+						firstFailure && !firstFailure.ok ? `: ${firstFailure.error}` : "";
+					throw new Error(
+						`${outcomes.length - failed} of ${outcomes.length} succeeded${details}`,
+					);
+				}
+				return outcomes.length;
+			},
+		);
 
 		toast.promise(promise, {
 			loading: `Creating ${issues.length} workspace${issues.length === 1 ? "" : "s"}...`,
@@ -276,7 +281,7 @@ export function RunIssuesInWorkspacePopover({
 				<Button
 					variant="ghost"
 					size="sm"
-					className="h-7 gap-1.5 bg-muted/50 text-xs"
+					className="h-7 text-xs gap-1.5 bg-muted/50"
 				>
 					<HiMiniPlay className="size-3" />
 					Run in Workspace
@@ -298,14 +303,14 @@ export function RunIssuesInWorkspacePopover({
 							<Button
 								variant="ghost"
 								size="sm"
-								className="h-8 w-full min-w-0 justify-between rounded-md bg-muted/50 font-normal"
+								className="w-full justify-between font-normal h-8 min-w-0 bg-muted/50 rounded-md"
 							>
 								<span className="flex items-center gap-2 truncate">
 									{selectedProject ? (
 										<>
 											<ProjectThumbnail
 												projectName={selectedProject.name}
-												iconUrl={selectedProject.iconUrl ?? null}
+												iconUrl={selectedProject.iconUrl}
 												className="size-4"
 											/>
 											<span className="truncate">{selectedProject.name}</span>
@@ -316,7 +321,7 @@ export function RunIssuesInWorkspacePopover({
 										</span>
 									)}
 								</span>
-								<ChevronDownIcon className="size-4 shrink-0 opacity-50" />
+								<ChevronDownIcon className="size-4 opacity-50 shrink-0" />
 							</Button>
 						</PopoverTrigger>
 						<PopoverContent align="start" className="w-60 p-0">
@@ -337,7 +342,7 @@ export function RunIssuesInWorkspacePopover({
 											>
 												<ProjectThumbnail
 													projectName={project.name}
-													iconUrl={project.iconUrl ?? null}
+													iconUrl={project.iconUrl}
 													className="size-4"
 												/>
 												<span className="flex-1 truncate">{project.name}</span>
@@ -370,10 +375,10 @@ export function RunIssuesInWorkspacePopover({
 					/>
 				</div>
 
-				<div className="border-border border-t p-2">
+				<div className="border-t border-border p-2">
 					<Button
 						size="sm"
-						className="h-8 w-full"
+						className="w-full h-8"
 						disabled={!!submitBlocker}
 						onClick={handleRun}
 					>

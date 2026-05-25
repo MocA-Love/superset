@@ -262,7 +262,8 @@ export const v2WorkspaceRouter = {
 							type: inserted.type,
 						},
 					});
-					return inserted;
+					const txid = await getCurrentTxid(tx);
+					return { workspace: inserted, txid };
 				}
 
 				if (input.id) {
@@ -272,7 +273,7 @@ export const v2WorkspaceRouter = {
 							eq(v2Workspaces.organizationId, project.organizationId),
 						),
 					});
-					if (existing) return existing;
+					if (existing) return { workspace: existing, txid: null };
 					const collision = await tx.query.v2Workspaces.findFirst({
 						columns: { id: true },
 						where: eq(v2Workspaces.id, input.id),
@@ -310,16 +311,18 @@ export const v2WorkspaceRouter = {
 								.set(patch)
 								.where(eq(v2Workspaces.id, existing.id))
 								.returning();
-							return updated ?? existing;
+							if (!updated) return { workspace: existing, txid: null };
+							const txid = await getCurrentTxid(tx);
+							return { workspace: updated, txid };
 						}
-						return existing;
+						return { workspace: existing, txid: null };
 					}
 				}
 
 				return null;
 			});
 
-			if (result) return result;
+			if (result) return { ...result.workspace, txid: result.txid };
 
 			throw new TRPCError({
 				code: "INTERNAL_SERVER_ERROR",

@@ -17,8 +17,9 @@ import { HiCheck, HiMiniPlay } from "react-icons/hi2";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { env } from "renderer/env.renderer";
 import { useHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
-import { useV2AgentConfigs } from "renderer/hooks/useV2AgentConfigs";
+import { useV2AgentChoices } from "renderer/hooks/useV2AgentChoices";
 import { authClient } from "renderer/lib/auth-client";
+import { showHostServiceUnavailableToast } from "renderer/lib/host-service-unavailable";
 import { DevicePicker } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker";
 import { useWorkspaceHostOptions } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker/hooks/useWorkspaceHostOptions";
 import { useSelectedHostProjectIds } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceModalContent/hooks/useSelectedHostProjectIds";
@@ -57,7 +58,8 @@ export function RunInWorkspacePopoverV2({
 	onComplete,
 }: RunInWorkspacePopoverV2Props) {
 	const collections = useCollections();
-	const { machineId, activeHostUrl } = useLocalHostService();
+	const hostService = useLocalHostService();
+	const { machineId, activeHostUrl } = hostService;
 	const { data: session } = authClient.useSession();
 	const activeOrganizationId = env.SKIP_ENV_VALIDATION
 		? MOCK_ORG_ID
@@ -117,8 +119,8 @@ export function RunInWorkspacePopoverV2({
 			return {
 				id: project.id,
 				name: project.name,
-				iconUrl: project.iconUrl ?? null,
 				githubOwner: repo?.owner ?? null,
+				iconUrl: project.iconUrl ?? null,
 				needsSetup:
 					setUpProjectIds === null ? null : !setUpProjectIds.has(project.id),
 			};
@@ -146,16 +148,8 @@ export function RunInWorkspacePopoverV2({
 		(project) => project.id === selectedProjectId,
 	);
 
-	const v2AgentConfigsQuery = useV2AgentConfigs(launchHostUrl);
-	const v2Agents = useMemo(
-		() =>
-			(v2AgentConfigsQuery.data ?? []).map((config) => ({
-				id: config.id,
-				label: config.label,
-				iconId: config.presetId,
-			})),
-		[v2AgentConfigsQuery.data],
-	);
+	const { agents: v2Agents, isFetched: v2AgentsFetched } =
+		useV2AgentChoices(launchHostUrl);
 	const validAgentIds = useMemo(
 		() => new Set(v2Agents.map((agent) => agent.id)),
 		[v2Agents],
@@ -164,7 +158,7 @@ export function RunInWorkspacePopoverV2({
 	const [selectedAgent, setSelectedAgentState] =
 		useState<SelectedAgent>(readStoredAgent);
 	useEffect(() => {
-		if (!v2AgentConfigsQuery.isFetched) return;
+		if (!v2AgentsFetched) return;
 		if (selectedAgent !== NONE && validAgentIds.has(selectedAgent)) return;
 		const stored = readStoredAgent();
 		if (stored !== NONE && validAgentIds.has(stored)) {
@@ -172,7 +166,7 @@ export function RunInWorkspacePopoverV2({
 		} else if (selectedAgent !== NONE) {
 			setSelectedAgentState(NONE);
 		}
-	}, [v2AgentConfigsQuery.isFetched, validAgentIds, selectedAgent]);
+	}, [v2AgentsFetched, validAgentIds, selectedAgent]);
 	const setSelectedAgent = (next: SelectedAgent) => {
 		setSelectedAgentState(next);
 		if (typeof window !== "undefined") {
@@ -201,7 +195,7 @@ export function RunInWorkspacePopoverV2({
 		// Agent UUIDs are host-scoped; block until the host-specific config
 		// query resolves and the selection is verified to exist there.
 		if (selectedAgent !== NONE) {
-			if (!v2AgentConfigsQuery.isFetched) return "Checking agents…";
+			if (!v2AgentsFetched) return "Checking agents…";
 			if (!validAgentIds.has(selectedAgent)) {
 				return "Selected agent is not available on this host";
 			}
@@ -212,7 +206,7 @@ export function RunInWorkspacePopoverV2({
 		selectedProject?.needsSetup,
 		setUpProjectIds,
 		selectedAgent,
-		v2AgentConfigsQuery.isFetched,
+		v2AgentsFetched,
 		validAgentIds,
 		hostId,
 		machineId,
@@ -223,11 +217,17 @@ export function RunInWorkspacePopoverV2({
 	const handleRun = () => {
 		if (!selectedProjectId || !hostId) return;
 		if (submitBlocker) {
-			toast.error(submitBlocker);
+			if (hostId === machineId && !activeHostUrl) {
+				showHostServiceUnavailableToast(hostService, {
+					action: "run tasks in workspaces",
+				});
+			} else {
+				toast.error(submitBlocker);
+			}
 			return;
 		}
 
-		const submissions = tasks.map((task) =>
+		const handles = tasks.map((task) =>
 			submit({
 				hostId,
 				snapshot: {
@@ -249,15 +249,20 @@ export function RunInWorkspacePopoverV2({
 			}),
 		);
 
-		const promise = Promise.all(submissions).then((results) => {
-			const failed = results.filter((r) => !r.ok).length;
-			if (failed > 0) {
-				throw new Error(
-					`${results.length - failed} of ${results.length} succeeded`,
-				);
-			}
-			return results.length;
-		});
+		const promise = Promise.all(handles.map((handle) => handle.completed)).then(
+			(outcomes) => {
+				const failed = outcomes.filter((outcome) => !outcome.ok).length;
+				if (failed > 0) {
+					const firstFailure = outcomes.find((outcome) => !outcome.ok);
+					const details =
+						firstFailure && !firstFailure.ok ? `: ${firstFailure.error}` : "";
+					throw new Error(
+						`${outcomes.length - failed} of ${outcomes.length} succeeded${details}`,
+					);
+				}
+				return outcomes.length;
+			},
+		);
 
 		toast.promise(promise, {
 			loading: `Creating ${tasks.length} workspace${tasks.length === 1 ? "" : "s"}...`,
@@ -304,7 +309,7 @@ export function RunInWorkspacePopoverV2({
 										<>
 											<ProjectThumbnail
 												projectName={selectedProject.name}
-												iconUrl={selectedProject.iconUrl ?? null}
+												iconUrl={selectedProject.iconUrl}
 												className="size-4"
 											/>
 											<span className="truncate">{selectedProject.name}</span>
@@ -336,7 +341,7 @@ export function RunInWorkspacePopoverV2({
 											>
 												<ProjectThumbnail
 													projectName={project.name}
-													iconUrl={project.iconUrl ?? null}
+													iconUrl={project.iconUrl}
 													className="size-4"
 												/>
 												<span className="flex-1 truncate">{project.name}</span>

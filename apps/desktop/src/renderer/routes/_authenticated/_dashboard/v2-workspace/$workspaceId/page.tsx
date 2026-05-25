@@ -6,8 +6,6 @@ import {
 } from "@superset/ui/resizable";
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
-import { eq } from "@tanstack/db";
-import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuickOpenStore } from "renderer/commandPalette/ui/QuickOpen/quickOpenStore";
@@ -25,15 +23,12 @@ import {
 	useCommandPalette,
 } from "renderer/screens/main/components/CommandPalette";
 import { getV2NotificationSourcesForTab } from "renderer/stores/v2-notifications";
-import { useWorkspaceCreatesStore } from "renderer/stores/workspace-creates";
 import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
 import { useStore } from "zustand";
-import { WorkspaceCreateErrorState } from "../components/WorkspaceCreateErrorState";
-import { WorkspaceCreatingState } from "../components/WorkspaceCreatingState";
-import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
+import { useWorkspace } from "../providers/WorkspaceProvider";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { BackgroundTerminalsButton } from "./components/BackgroundTerminalsButton";
 import { V2NotificationStatusIndicator } from "./components/V2NotificationStatusIndicator";
@@ -133,7 +128,7 @@ function getNodeAtPathInLayout(
 }
 
 function V2WorkspacePage() {
-	const { workspaceId } = Route.useParams();
+	const { workspace } = useWorkspace();
 	const {
 		terminalId,
 		chatSessionId,
@@ -142,53 +137,13 @@ function V2WorkspacePage() {
 		openUrlTarget,
 		openUrlRequestId,
 	} = Route.useSearch();
-	const collections = useCollections();
-
-	const { data: workspaces } = useLiveQuery(
-		(q) =>
-			q
-				.from({ v2Workspaces: collections.v2Workspaces })
-				.where(({ v2Workspaces }) => eq(v2Workspaces.id, workspaceId)),
-		[collections, workspaceId],
-	);
-	const workspace = workspaces?.[0] ?? null;
-	const inFlight = useWorkspaceCreatesStore((store) =>
-		store.entries.find((entry) => entry.snapshot.id === workspaceId),
-	);
 	const workspaceStatusQuery = workspaceTrpc.workspace.get.useQuery(
-		{ id: workspaceId },
+		{ id: workspace.id },
 		{
 			refetchOnWindowFocus: true,
 			retry: false,
 		},
 	);
-
-	if (!workspaces) {
-		return <div className="flex h-full w-full" />;
-	}
-
-	if (!workspace) {
-		if (inFlight?.state === "creating") {
-			return (
-				<WorkspaceCreatingState
-					name={inFlight.snapshot.name}
-					branch={inFlight.snapshot.branch}
-					startedAt={inFlight.startedAt}
-				/>
-			);
-		}
-		if (inFlight?.state === "error") {
-			return (
-				<WorkspaceCreateErrorState
-					workspaceId={workspaceId}
-					name={inFlight.snapshot.name}
-					branch={inFlight.snapshot.branch}
-					error={inFlight.error ?? "Unknown error"}
-				/>
-			);
-		}
-		return <WorkspaceNotFoundState workspaceId={workspaceId} />;
-	}
 
 	if (workspaceStatusQuery.data?.worktreeExists === false) {
 		return (

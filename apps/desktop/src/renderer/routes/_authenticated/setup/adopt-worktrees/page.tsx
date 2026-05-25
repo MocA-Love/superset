@@ -220,7 +220,7 @@ function AdoptWorktreesContent({
 				for (const path of paths) {
 					const wt = projectResult.worktrees.find((w) => w.path === path);
 					if (!wt) continue;
-					const result = await submit({
+					const { completed } = submit({
 						hostId: machineId,
 						snapshot: {
 							id: crypto.randomUUID(),
@@ -230,6 +230,7 @@ function AdoptWorktreesContent({
 							worktreePath: wt.path,
 						},
 					});
+					const result = await completed;
 					if (result.ok) {
 						totalImported++;
 						ensureWorkspaceInSidebar(result.workspaceId, v2ProjectId);

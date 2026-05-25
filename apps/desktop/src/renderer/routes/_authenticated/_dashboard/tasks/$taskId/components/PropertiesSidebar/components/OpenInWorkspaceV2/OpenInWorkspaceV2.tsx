@@ -14,8 +14,9 @@ import { HiArrowRight, HiChevronDown } from "react-icons/hi2";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { env } from "renderer/env.renderer";
 import { useHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
-import { useV2AgentConfigs } from "renderer/hooks/useV2AgentConfigs";
+import { useV2AgentChoices } from "renderer/hooks/useV2AgentChoices";
 import { authClient } from "renderer/lib/auth-client";
+import { showHostServiceUnavailableToast } from "renderer/lib/host-service-unavailable";
 import { DevicePicker } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker";
 import { useWorkspaceHostOptions } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker/hooks/useWorkspaceHostOptions";
 import { useSelectedHostProjectIds } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceModalContent/hooks/useSelectedHostProjectIds";
@@ -51,7 +52,8 @@ function readStoredAgent(): SelectedAgent {
 export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 	const navigate = useNavigate();
 	const collections = useCollections();
-	const { machineId, activeHostUrl } = useLocalHostService();
+	const hostService = useLocalHostService();
+	const { machineId, activeHostUrl } = hostService;
 	const { otherHosts } = useWorkspaceHostOptions();
 	const { data: session } = authClient.useSession();
 	const activeOrganizationId = env.SKIP_ENV_VALIDATION
@@ -109,8 +111,8 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 			return {
 				id: project.id,
 				name: project.name,
-				iconUrl: project.iconUrl ?? null,
 				githubOwner: repo?.owner ?? null,
+				iconUrl: project.iconUrl ?? null,
 				needsSetup:
 					setUpProjectIds === null ? null : !setUpProjectIds.has(project.id),
 			};
@@ -118,16 +120,8 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 	}, [v2Projects, githubRepositories, setUpProjectIds]);
 
 	const launchHostUrl = useHostUrl(hostId);
-	const v2AgentConfigsQuery = useV2AgentConfigs(launchHostUrl);
-	const v2Agents = useMemo(
-		() =>
-			(v2AgentConfigsQuery.data ?? []).map((config) => ({
-				id: config.id,
-				label: config.label,
-				iconId: config.presetId,
-			})),
-		[v2AgentConfigsQuery.data],
-	);
+	const { agents: v2Agents, isFetched: v2AgentsFetched } =
+		useV2AgentChoices(launchHostUrl);
 	const validAgentIds = useMemo(
 		() => new Set(v2Agents.map((agent) => agent.id)),
 		[v2Agents],
@@ -154,7 +148,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 	const [selectedAgent, setSelectedAgentState] =
 		useState<SelectedAgent>(readStoredAgent);
 	useEffect(() => {
-		if (!v2AgentConfigsQuery.isFetched) return;
+		if (!v2AgentsFetched) return;
 		if (selectedAgent !== NONE && validAgentIds.has(selectedAgent)) return;
 		const stored = readStoredAgent();
 		if (stored !== NONE && validAgentIds.has(stored)) {
@@ -162,7 +156,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 		} else if (selectedAgent !== NONE) {
 			setSelectedAgentState(NONE);
 		}
-	}, [v2AgentConfigsQuery.isFetched, validAgentIds, selectedAgent]);
+	}, [v2AgentsFetched, validAgentIds, selectedAgent]);
 	const setSelectedAgent = (next: SelectedAgent) => {
 		setSelectedAgentState(next);
 		if (typeof window !== "undefined") {
@@ -200,7 +194,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 		// query resolves and the corrective effect runs — block submission so
 		// we don't send an id this host doesn't recognize.
 		if (selectedAgent !== NONE) {
-			if (!v2AgentConfigsQuery.isFetched) return "Checking agents…";
+			if (!v2AgentsFetched) return "Checking agents…";
 			if (!validAgentIds.has(selectedAgent)) {
 				return "Selected agent is not available on this host";
 			}
@@ -211,7 +205,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 		selectedProject?.needsSetup,
 		setUpProjectIds,
 		selectedAgent,
-		v2AgentConfigsQuery.isFetched,
+		v2AgentsFetched,
 		validAgentIds,
 		hostId,
 		machineId,
@@ -221,7 +215,13 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 
 	const handleOpen = () => {
 		if (submitBlocker) {
-			toast.error(submitBlocker);
+			if (hostId === machineId && !activeHostUrl) {
+				showHostServiceUnavailableToast(hostService, {
+					action: "open the task in a workspace",
+				});
+			} else {
+				toast.error(submitBlocker);
+			}
 			return;
 		}
 		if (!selectedProjectId || !hostId) return;
@@ -247,7 +247,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 			params: { workspaceId: snapshotId },
 		});
 
-		const promise = submit({
+		const { completed } = submit({
 			hostId,
 			snapshot: {
 				id: snapshotId,
@@ -257,34 +257,17 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 				taskId: task.id,
 				agents,
 			},
-		}).then((result) => {
-			if (!result.ok) {
-				// We optimistically navigated to the snapshot URL — bounce back to
-				// the task on failure so the user isn't stranded on a dead route.
-				void navigate({
-					to: "/tasks/$taskId",
-					params: { taskId: task.id },
-					replace: true,
-				});
-				throw new Error(result.error);
-			}
-			if (result.workspaceId !== snapshotId) {
-				void navigate({
-					to: "/v2-workspace/$workspaceId",
-					params: { workspaceId: result.workspaceId },
-					replace: true,
-				});
-			}
-			return result;
 		});
 
-		toast.promise(promise, {
-			loading: "Creating workspace...",
-			success: (result) =>
-				result.alreadyExists
-					? "Opened existing workspace"
-					: "Workspace created",
-			error: (err) => (err instanceof Error ? err.message : String(err)),
+		void completed.then((outcome) => {
+			if (!outcome.ok) return;
+			if (outcome.workspaceId !== snapshotId) {
+				void navigate({
+					to: "/v2-workspace/$workspaceId",
+					params: { workspaceId: outcome.workspaceId },
+					replace: true,
+				});
+			}
 		});
 	};
 
@@ -312,7 +295,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 									<>
 										<ProjectThumbnail
 											projectName={selectedProject.name}
-											iconUrl={selectedProject.iconUrl ?? null}
+											iconUrl={selectedProject.iconUrl}
 											className="size-4"
 										/>
 										<span className="truncate">{selectedProject.name}</span>
@@ -339,7 +322,7 @@ export function OpenInWorkspaceV2({ task }: OpenInWorkspaceV2Props) {
 								>
 									<ProjectThumbnail
 										projectName={project.name}
-										iconUrl={project.iconUrl ?? null}
+										iconUrl={project.iconUrl}
 										className="size-4"
 									/>
 									<span className="flex-1 truncate">{project.name}</span>
