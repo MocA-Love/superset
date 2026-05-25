@@ -32,6 +32,8 @@ interface TunnelState {
 }
 
 export class TunnelManager {
+	static readonly WS_CLOSE_DRAIN = 4001;
+
 	private readonly tunnels = new Map<string, TunnelState>();
 	private readonly requestTimeoutMs: number;
 	private readonly onlineState = new Map<string, boolean>();
@@ -40,12 +42,18 @@ export class TunnelManager {
 		ReturnType<typeof setTimeout>
 	>();
 	private readonly onlineWriteVersions = new Map<string, number>();
+	private draining = false;
 
 	constructor(requestTimeoutMs = 30_000) {
 		this.requestTimeoutMs = requestTimeoutMs;
 	}
 
 	register(hostId: string, token: string, ws: WsSocket): void {
+		if (this.draining) {
+			ws.close(TunnelManager.WS_CLOSE_DRAIN, "Server draining for deploy");
+			return;
+		}
+
 		if (this.tunnels.has(hostId)) {
 			ws.close(1000, "Tunnel already registered");
 			return;
@@ -80,20 +88,61 @@ export class TunnelManager {
 		const tunnel = this.tunnels.get(hostId);
 		if (!tunnel) return;
 
+		this.disposeTunnel(tunnel, "Tunnel disconnected", 1000);
+		console.log(`[relay] tunnel unregistered: ${hostId}`);
+	}
+
+	async drain(reason = "Server draining for deploy"): Promise<void> {
+		this.draining = true;
+		const tunnels = Array.from(this.tunnels.values());
+		console.log(`[relay] draining ${tunnels.length} tunnels`);
+
+		for (const tunnel of tunnels) {
+			try {
+				this.send(tunnel.ws, { type: "drain", reason });
+			} catch {
+				// best-effort; close below still handles the socket.
+			}
+		}
+
+		await new Promise((resolve) => setTimeout(resolve, 500));
+
+		for (const tunnel of tunnels) {
+			this.disposeTunnel(tunnel, reason, TunnelManager.WS_CLOSE_DRAIN);
+		}
+
+		const WS_CLOSED = 3;
+		const deadline = Date.now() + 1_500;
+		while (Date.now() < deadline) {
+			if (tunnels.every((tunnel) => tunnel.ws.readyState === WS_CLOSED)) break;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+	}
+
+	private disposeTunnel(
+		tunnel: TunnelState,
+		reason: string,
+		tunnelCloseCode: number,
+	): void {
 		if (tunnel.pingTimer) clearInterval(tunnel.pingTimer);
 
 		for (const [, pending] of tunnel.pendingRequests) {
 			clearTimeout(pending.timer);
-			pending.reject(new Error("Tunnel disconnected"));
+			pending.reject(new Error(reason));
 		}
 
 		for (const [, clientWs] of tunnel.activeChannels) {
-			clientWs.close(1001, "Tunnel disconnected");
+			clientWs.close(1001, reason);
 		}
 
-		this.scheduleOnlineWrite(hostId, tunnel.token, false);
-		this.tunnels.delete(hostId);
-		console.log(`[relay] tunnel unregistered: ${hostId}`);
+		this.scheduleOnlineWrite(tunnel.hostId, tunnel.token, false);
+		this.tunnels.delete(tunnel.hostId);
+
+		try {
+			tunnel.ws.close(tunnelCloseCode, reason);
+		} catch {
+			// already closed
+		}
 	}
 
 	private scheduleOnlineWrite(

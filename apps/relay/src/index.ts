@@ -21,6 +21,25 @@ const app = new Hono<AppContext>();
 const tunnelManager = new TunnelManager();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
+let server: ReturnType<typeof serve> | null = null;
+let draining = false;
+
+const handleDrain = async (signal: string) => {
+	if (draining) return;
+	draining = true;
+	console.log(`[relay] ${signal} received, draining tunnels`);
+	try {
+		server?.close();
+		await tunnelManager.drain();
+	} catch (err) {
+		console.error("[relay] drain failed", err);
+	}
+	process.exit(0);
+};
+
+process.on("SIGINT", () => void handleDrain("SIGINT"));
+process.on("SIGTERM", () => void handleDrain("SIGTERM"));
+
 app.use("*", logger());
 app.use("*", cors());
 
@@ -72,6 +91,11 @@ app.get(
 
 		return {
 			onOpen: async (_event, ws) => {
+				if (draining) {
+					ws.close(TunnelManager.WS_CLOSE_DRAIN, "Server draining for deploy");
+					return;
+				}
+
 				if (!hostId || !token) {
 					ws.close(1008, "Missing hostId or token");
 					return;
@@ -86,6 +110,11 @@ app.get(
 				const hasAccess = await checkHostAccess(auth, token, hostId);
 				if (!hasAccess) {
 					ws.close(1008, "Forbidden");
+					return;
+				}
+
+				if (draining) {
+					ws.close(TunnelManager.WS_CLOSE_DRAIN, "Server draining for deploy");
 					return;
 				}
 
@@ -175,7 +204,7 @@ app.get(
 
 // ── Start ───────────────────────────────────────────────────────────
 
-const server = serve({ fetch: app.fetch, port: env.RELAY_PORT }, (info) => {
+server = serve({ fetch: app.fetch, port: env.RELAY_PORT }, (info) => {
 	console.log(`[relay] listening on http://localhost:${info.port}`);
 });
 injectWebSocket(server);

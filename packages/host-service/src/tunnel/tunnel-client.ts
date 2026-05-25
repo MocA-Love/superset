@@ -8,7 +8,7 @@ import type {
 } from "./types";
 
 const RECONNECT_BASE_MS = 1_000;
-const RECONNECT_MAX_MS = 30_000;
+const RECONNECT_MAX_MS = 5_000;
 const CONNECT_TIMEOUT_MS = 20_000;
 const INBOUND_SILENCE_TIMEOUT_MS = 75_000;
 const WATCHDOG_INTERVAL_MS = 10_000;
@@ -130,6 +130,12 @@ export class TunnelClient {
 							`[host-service:tunnel] relay rejected connection (code=${event.code}, reason=${event.reason ?? ""}); retrying`,
 						);
 					}
+					if (event.code === 4001) {
+						this.reconnectAttempts = 0;
+						console.log(
+							"[host-service:tunnel] relay draining; reconnecting immediately",
+						);
+					}
 				} catch (err) {
 					console.warn(
 						"[host-service:tunnel] error during onclose cleanup",
@@ -189,6 +195,17 @@ export class TunnelClient {
 		switch (message.type) {
 			case "ping":
 				this.send({ type: "pong" });
+				break;
+			case "drain":
+				console.log(
+					`[host-service:tunnel] relay drain notice received${message.reason ? ` (${message.reason})` : ""}; reconnecting immediately`,
+				);
+				this.reconnectAttempts = 0;
+				try {
+					this.socket?.close();
+				} catch {
+					// onclose schedules the reconnect
+				}
 				break;
 			case "http":
 				await this.handleHttpRequest(message);

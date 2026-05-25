@@ -33,12 +33,20 @@ export interface TunnelPing {
 	type: "ping";
 }
 
+// In-band drain signal. The relay sends this before shutdown so the host can
+// reset reconnect backoff without waiting for the WebSocket close frame.
+export interface TunnelDrain {
+	type: "drain";
+	reason?: string;
+}
+
 export type TunnelRequest =
 	| TunnelHttpRequest
 	| TunnelWsOpen
 	| TunnelWsFrame
 	| TunnelWsClose
-	| TunnelPing;
+	| TunnelPing
+	| TunnelDrain;
 
 // ── Host → Relay ────────────────────────────────────────────────────
 
