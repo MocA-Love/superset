@@ -12,7 +12,6 @@ import {
 	useWorkspaceCreatesStore,
 	useWorkspaceTransactionsStore,
 } from "renderer/stores/workspace-creates";
-import { MOCK_ORG_ID } from "shared/constants";
 import type {
 	DashboardSidebarProject,
 	DashboardSidebarProjectChild,
@@ -256,6 +255,7 @@ export function useDashboardSidebarData() {
 					hostIsOnline: hosts.isOnline,
 					name: workspaces.name,
 					branch: workspaces.branch,
+					taskId: workspaces.taskId,
 					createdAt: workspaces.createdAt,
 					updatedAt: workspaces.updatedAt,
 					tabOrder: sidebarWorkspaces.sidebarState.tabOrder,
@@ -291,6 +291,7 @@ export function useDashboardSidebarData() {
 					hostIsOnline: hosts.isOnline,
 					name: workspaces.name,
 					branch: workspaces.branch,
+					taskId: workspaces.taskId,
 					createdAt: workspaces.createdAt,
 					updatedAt: workspaces.updatedAt,
 					tabOrder: MAIN_WORKSPACE_TAB_ORDER,
@@ -325,6 +326,7 @@ export function useDashboardSidebarData() {
 					hostIsOnline: host?.isOnline ?? false,
 					name: cloudRow.name,
 					branch: cloudRow.branch,
+					taskId: cloudRow.taskId,
 					createdAt: cloudRow.createdAt,
 					updatedAt: cloudRow.updatedAt,
 					tabOrder:
@@ -485,6 +487,7 @@ export function useDashboardSidebarData() {
 				accentColor: null,
 				name: workspace.name,
 				branch: workspace.branch,
+				taskId: workspace.taskId,
 				pullRequest: pullRequestsByWorkspaceId.get(workspace.id) ?? null,
 				repoUrl:
 					project.githubOwner && project.githubRepoName
@@ -537,6 +540,7 @@ export function useDashboardSidebarData() {
 				accentColor: null,
 				name: pw.name,
 				branch: pw.branchName,
+				taskId: null,
 				pullRequest: null,
 				repoUrl:
 					project.githubOwner && project.githubRepoName

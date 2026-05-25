@@ -34,6 +34,7 @@ export interface DashboardSidebarWorkspace {
 	accentColor: string | null;
 	name: string;
 	branch: string;
+	taskId: string | null;
 	pullRequest: DashboardSidebarWorkspacePullRequest | null;
 	repoUrl: string | null;
 	branchExistsOnRemote: boolean;
