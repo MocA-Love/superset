@@ -40,14 +40,16 @@ const VALID_TARGETS: Target[] = ["darwin-arm64", "linux-x64"];
 const NODE_VERSION = "22.13.0";
 
 /**
- * Native addon packages that must be shipped alongside the bundled
- * host-service because they contain .node files that can't be inlined.
+ * Runtime packages that must be shipped alongside the bundled host-service
+ * because they contain native bindings or are loaded through filesystem-based
+ * dynamic resolution that Bun cannot inline.
  */
-const NATIVE_PACKAGES = [
+const RUNTIME_PACKAGES = [
 	"better-sqlite3",
 	"node-pty",
 	"@parcel/watcher",
 	"libsql",
+	"@xterm/headless",
 ] as const;
 
 /**
@@ -240,14 +242,14 @@ function copyPackageWithDeps(
 	}
 }
 
-function copyNativePackages(libDir: string, target: Target): void {
+function copyRuntimePackages(libDir: string, target: Target): void {
 	const repoRoot = resolve(import.meta.dir, "../../..");
 	const destModules = join(libDir, "node_modules");
 	mkdirSync(destModules, { recursive: true });
 	const copied = new Set<string>();
 
 	const hostServiceDir = join(repoRoot, "packages", "host-service");
-	const packages = [...NATIVE_PACKAGES, ...TARGET_NATIVE_PACKAGES[target]];
+	const packages = [...RUNTIME_PACKAGES, ...TARGET_NATIVE_PACKAGES[target]];
 	for (const pkg of packages) {
 		console.log(`[build-dist]   copying ${pkg} (+ deps)`);
 		copyPackageWithDeps(pkg, hostServiceDir, repoRoot, destModules, copied);
@@ -364,8 +366,8 @@ async function main(): Promise<void> {
 	console.log("[build-dist] fetching Node.js");
 	await downloadAndExtractNode(target, join(stagingRoot, "lib"));
 
-	console.log("[build-dist] copying native addon packages");
-	copyNativePackages(join(stagingRoot, "lib"), target);
+	console.log("[build-dist] copying runtime packages");
+	copyRuntimePackages(join(stagingRoot, "lib"), target);
 
 	console.log("[build-dist] fixing native binaries for Node runtime");
 	await fixNativeBinariesForNode(join(stagingRoot, "lib"), target);
