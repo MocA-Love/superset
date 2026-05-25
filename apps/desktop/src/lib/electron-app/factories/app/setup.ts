@@ -86,9 +86,9 @@ app.commandLine.appendSwitch("max-active-webgl-contexts", "256");
 // Always expose CDP on a loopback port so the browser-mcp bridge can
 // hand external browser automation MCPs (chrome-devtools-mcp,
 // browser-use, playwright-mcp, …) a filtered per-pane CDP endpoint.
-// DESKTOP_AUTOMATION_PORT overrides the random-port default for the
-// existing desktop-automation integration. `*` here is safe because
-// the actual gate is at the browser-mcp-bridge proxy level
+// DESKTOP_AUTOMATION_PORT overrides the random-port default for local
+// browser MCP/CDP integrations. `*` here is safe because the actual gate
+// is at the browser-mcp-bridge proxy level
 // (token-authenticated, loopback-only).
 const cdpPort = process.env.DESKTOP_AUTOMATION_PORT ?? "0";
 app.commandLine.appendSwitch("remote-debugging-port", cdpPort);

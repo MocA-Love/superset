@@ -472,7 +472,7 @@ step_write_env() {
     # Offsets: +0 web, +1 api, +2 marketing, +3 admin, +4 docs,
     #          +5 desktop vite, +6 notifications, +7 streams, +8 streams internal, +9 electric,
     #          +10 caddy (HTTP/2 reverse proxy for API electric endpoint), +11 code inspector,
-    #          +12 desktop automation (CDP), +13 wrangler (electric-proxy worker)
+    #          +12 browser MCP/CDP, +13 wrangler (electric-proxy worker)
     local BASE=$SUPERSET_PORT_BASE
 
     # App ports (fixed offsets from base)
