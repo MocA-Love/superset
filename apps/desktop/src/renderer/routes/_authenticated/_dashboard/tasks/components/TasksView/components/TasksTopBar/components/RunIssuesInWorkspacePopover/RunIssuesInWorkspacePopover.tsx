@@ -29,21 +29,24 @@ import { useV2WorkspaceCreateDefaultsStore } from "renderer/stores/v2-workspace-
 import { useWorkspaceCreates } from "renderer/stores/workspace-creates";
 import { MOCK_ORG_ID } from "shared/constants";
 import { deriveBranchName } from "../../../../../../$taskId/utils/deriveBranchName";
-import type { TaskWithStatus } from "../../../../hooks/useTasksTable";
+import type { SelectedIssue } from "../../../GitHubIssuesContent";
 
-const AGENT_STORAGE_KEY = "lastSelectedV2TaskBatchAgent";
+const AGENT_STORAGE_KEY = "lastSelectedV2IssueBatchAgent";
 const NONE = "none" as const;
 type SelectedAgent = string | typeof NONE;
 
-interface RunInWorkspacePopoverV2Props {
-	tasks: TaskWithStatus[];
+interface RunIssuesInWorkspacePopoverProps {
+	issues: SelectedIssue[];
+	projectFilter: string | null;
 	onComplete: () => void;
 }
 
-function synthesizeTaskPrompt(task: TaskWithStatus): string {
-	const header = `${task.slug}: ${task.title}`;
-	const body = task.description?.trim();
-	return body ? `${header}\n\n${body}` : header;
+function synthesizeIssuePrompt(issue: SelectedIssue): string {
+	return `GitHub issue #${issue.issueNumber}: ${issue.title}\n${issue.url}`;
+}
+
+function issueSlug(issue: SelectedIssue): string {
+	return `issue-${issue.issueNumber}`;
 }
 
 function readStoredAgent(): SelectedAgent {
@@ -52,10 +55,11 @@ function readStoredAgent(): SelectedAgent {
 	return stored ? (stored as SelectedAgent) : NONE;
 }
 
-export function RunInWorkspacePopoverV2({
-	tasks,
+export function RunIssuesInWorkspacePopover({
+	issues,
+	projectFilter,
 	onComplete,
-}: RunInWorkspacePopoverV2Props) {
+}: RunIssuesInWorkspacePopoverProps) {
 	const collections = useCollections();
 	const { machineId, activeHostUrl } = useLocalHostService();
 	const { data: session } = authClient.useSession();
@@ -70,9 +74,6 @@ export function RunInWorkspacePopoverV2({
 	);
 	const setLastHostId = useV2WorkspaceCreateDefaultsStore(
 		(state) => state.setLastHostId,
-	);
-	const lastProjectId = useV2WorkspaceCreateDefaultsStore(
-		(state) => state.lastProjectId,
 	);
 	const setLastProjectId = useV2WorkspaceCreateDefaultsStore(
 		(state) => state.setLastProjectId,
@@ -126,9 +127,9 @@ export function RunInWorkspacePopoverV2({
 	}, [v2Projects, githubRepositories, setUpProjectIds]);
 
 	const seededProjectId =
-		lastProjectId &&
-		recentProjects.some((project) => project.id === lastProjectId)
-			? lastProjectId
+		projectFilter &&
+		recentProjects.some((project) => project.id === projectFilter)
+			? projectFilter
 			: (recentProjects[0]?.id ?? null);
 	const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
 		seededProjectId,
@@ -192,16 +193,12 @@ export function RunInWorkspacePopoverV2({
 		} else if (!activeHostUrl) {
 			return "Host service is not running";
 		}
-		// Block while the host's project list is still loading — otherwise users
-		// can submit before we know whether the project is set up there.
-		if (setUpProjectIds === null) return "Checking host…";
+		if (setUpProjectIds === null) return "Checking host...";
 		if (selectedProject?.needsSetup === true) {
 			return "Project not set up on this host";
 		}
-		// Agent UUIDs are host-scoped; block until the host-specific config
-		// query resolves and the selection is verified to exist there.
 		if (selectedAgent !== NONE) {
-			if (!v2AgentConfigsQuery.isFetched) return "Checking agents…";
+			if (!v2AgentConfigsQuery.isFetched) return "Checking agents...";
 			if (!validAgentIds.has(selectedAgent)) {
 				return "Selected agent is not available on this host";
 			}
@@ -227,22 +224,26 @@ export function RunInWorkspacePopoverV2({
 			return;
 		}
 
-		const submissions = tasks.map((task) =>
+		setLastProjectId(selectedProjectId);
+
+		const submissions = issues.map((issue) =>
 			submit({
 				hostId,
 				snapshot: {
 					id: crypto.randomUUID(),
 					projectId: selectedProjectId,
-					name: task.title,
-					branch: deriveBranchName({ slug: task.slug, title: task.title }),
-					taskId: task.id,
+					name: issue.title,
+					branch: deriveBranchName({
+						slug: issueSlug(issue),
+						title: issue.title,
+					}),
 					agents:
 						selectedAgent === NONE
 							? undefined
 							: [
 									{
 										agent: selectedAgent,
-										prompt: synthesizeTaskPrompt(task),
+										prompt: synthesizeIssuePrompt(issue),
 									},
 								],
 				},
@@ -260,7 +261,7 @@ export function RunInWorkspacePopoverV2({
 		});
 
 		toast.promise(promise, {
-			loading: `Creating ${tasks.length} workspace${tasks.length === 1 ? "" : "s"}...`,
+			loading: `Creating ${issues.length} workspace${issues.length === 1 ? "" : "s"}...`,
 			success: (count) => `Created ${count} workspace${count === 1 ? "" : "s"}`,
 			error: (err) => (err instanceof Error ? err.message : String(err)),
 		});
@@ -275,7 +276,7 @@ export function RunInWorkspacePopoverV2({
 				<Button
 					variant="ghost"
 					size="sm"
-					className="h-7 text-xs gap-1.5 bg-muted/50"
+					className="h-7 gap-1.5 bg-muted/50 text-xs"
 				>
 					<HiMiniPlay className="size-3" />
 					Run in Workspace
@@ -297,7 +298,7 @@ export function RunInWorkspacePopoverV2({
 							<Button
 								variant="ghost"
 								size="sm"
-								className="w-full justify-between font-normal h-8 min-w-0 bg-muted/50 rounded-md"
+								className="h-8 w-full min-w-0 justify-between rounded-md bg-muted/50 font-normal"
 							>
 								<span className="flex items-center gap-2 truncate">
 									{selectedProject ? (
@@ -315,7 +316,7 @@ export function RunInWorkspacePopoverV2({
 										</span>
 									)}
 								</span>
-								<ChevronDownIcon className="size-4 opacity-50 shrink-0" />
+								<ChevronDownIcon className="size-4 shrink-0 opacity-50" />
 							</Button>
 						</PopoverTrigger>
 						<PopoverContent align="start" className="w-60 p-0">
@@ -369,14 +370,14 @@ export function RunInWorkspacePopoverV2({
 					/>
 				</div>
 
-				<div className="border-t border-border p-2">
+				<div className="border-border border-t p-2">
 					<Button
 						size="sm"
-						className="w-full h-8"
+						className="h-8 w-full"
 						disabled={!!submitBlocker}
 						onClick={handleRun}
 					>
-						Run {tasks.length} Workspace{tasks.length === 1 ? "" : "s"}
+						Run {issues.length} Workspace{issues.length === 1 ? "" : "s"}
 					</Button>
 				</div>
 			</PopoverContent>
