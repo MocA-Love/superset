@@ -15,7 +15,7 @@
 			"!**/plans",
 			"!apps/mobile/uniwind-types.d.ts",
 			"!mock.html",
-			"!packages/sdk/src/client.ts"
+			"!packages/sdk/src"
 		]
 	},
 	"formatter": {
