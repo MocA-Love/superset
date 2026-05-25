@@ -21,7 +21,58 @@ export interface HostAgentConfig {
 	order: number;
 }
 
+export type ProjectCreateMode =
+	| {
+			kind: "clone";
+			parentDir: string;
+			url: string;
+	  }
+	| {
+			kind: "importLocal";
+			repoPath: string;
+	  };
+
+export interface ProjectCreateInput {
+	name: string;
+	mode: ProjectCreateMode;
+}
+
+export interface ProjectCreateResult {
+	projectId: string;
+	repoPath: string;
+	mainWorkspaceId: string;
+}
+
+export type ProjectSetupMode =
+	| {
+			kind: "clone";
+			parentDir: string;
+	  }
+	| {
+			kind: "import";
+			repoPath: string;
+			allowRelocate: boolean;
+	  };
+
+export interface ProjectSetupInput {
+	projectId: string;
+	mode: ProjectSetupMode;
+}
+
+export interface ProjectSetupResult {
+	repoPath: string;
+	mainWorkspaceId: string | null;
+}
+
 export interface HostServiceClient {
+	project: {
+		create: {
+			mutate: (input: ProjectCreateInput) => Promise<ProjectCreateResult>;
+		};
+		setup: {
+			mutate: (input: ProjectSetupInput) => Promise<ProjectSetupResult>;
+		};
+	};
 	settings: {
 		agentConfigs: {
 			list: {
