@@ -5,10 +5,11 @@ import {
 	type PaneRegistry,
 	type WorkspaceStore,
 } from "@superset/panes";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useHotkey } from "renderer/hotkeys";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { V2TerminalPresetRow } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal";
+import { useRightSidebarToggleIntent } from "renderer/stores/right-sidebar-toggle-intent";
 import type { StoreApi } from "zustand";
 import type {
 	BrowserPaneData,
@@ -46,6 +47,18 @@ export function useWorkspaceHotkeys({
 			draft.rightSidebarOpen = !draft.rightSidebarOpen;
 		});
 	});
+
+	useEffect(
+		() =>
+			useRightSidebarToggleIntent.subscribe((state, prev) => {
+				if (state.tick === prev.tick) return;
+				if (!collections.v2WorkspaceLocalState.get(workspaceId)) return;
+				collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+					draft.rightSidebarOpen = !draft.rightSidebarOpen;
+				});
+			}),
+		[collections, workspaceId],
+	);
 
 	// --- Tab creation ---
 

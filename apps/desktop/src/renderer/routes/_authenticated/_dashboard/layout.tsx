@@ -6,6 +6,7 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { useState } from "react";
+import { CommandPaletteHost } from "renderer/commandPalette";
 import { useBrowserFullscreenHandler } from "renderer/hooks/useBrowserFullscreenHandler";
 import { useBrowserNewWindowHandler } from "renderer/hooks/useBrowserNewWindowHandler";
 import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
@@ -185,6 +186,7 @@ function DashboardLayout() {
 		// adds the <WorkspaceCreatesManager /> mount required to drive
 		// in-flight workspace.create state from the renderer-side store.
 		<div className="flex flex-col h-full w-full bg-tertiary">
+			<CommandPaletteHost />
 			<WorkspaceCreatesManager />
 			{!isTearoff && <TopBar />}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">

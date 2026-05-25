@@ -710,6 +710,16 @@ export const HOTKEYS_REGISTRY = {
 		label: "Show Keyboard Shortcuts",
 		category: "Help",
 	},
+	OPEN_COMMAND_PALETTE: {
+		key: {
+			mac: L("meta+shift+k"),
+			windows: L("ctrl+shift+k"),
+			linux: L("ctrl+shift+k"),
+		},
+		label: "Open Command Palette",
+		category: "Help",
+		description: "Open the global command palette",
+	},
 	// Search (fork-specific)
 	SEARCH_IN_FILES: {
 		key: {

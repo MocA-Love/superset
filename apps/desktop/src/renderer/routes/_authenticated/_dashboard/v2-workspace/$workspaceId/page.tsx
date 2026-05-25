@@ -10,6 +10,7 @@ import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuickOpenStore } from "renderer/commandPalette/ui/QuickOpen/quickOpenStore";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
 import { useHotkey } from "renderer/hotkeys";
@@ -582,10 +583,32 @@ function WorkspaceContent({
 			openFilePane(filePath, undefined, { line, column });
 		},
 	});
+	const quickOpenOpen = useQuickOpenStore(
+		(s) => s.open && s.target?.workspaceId === workspaceId,
+	);
+	const closeQuickOpen = useQuickOpenStore((s) => s.close);
+	const openQuickOpenFor = useQuickOpenStore((s) => s.openFor);
+
+	useEffect(() => {
+		if (quickOpenOpen && !commandPalette.open) {
+			commandPalette.handleOpenChange(true);
+		}
+	}, [quickOpenOpen, commandPalette.open, commandPalette.handleOpenChange]);
+
+	useEffect(() => {
+		if (!commandPalette.open && quickOpenOpen) {
+			closeQuickOpen();
+		}
+	}, [commandPalette.open, quickOpenOpen, closeQuickOpen]);
 
 	const handleQuickOpen = useCallback(() => {
-		commandPalette.toggle();
-	}, [commandPalette]);
+		if (commandPalette.open) {
+			commandPalette.handleOpenChange(false);
+			closeQuickOpen();
+			return;
+		}
+		openQuickOpenFor({ workspaceId });
+	}, [commandPalette, closeQuickOpen, openQuickOpenFor, workspaceId]);
 
 	// FORK NOTE: fork は sidebar 状態を v2UserPreferences ではなく
 	// localWorkspaceState から読む (cycle 09 の portal slot まわりの設計と整合)。
