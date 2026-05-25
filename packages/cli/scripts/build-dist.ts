@@ -310,6 +310,24 @@ async function fixNativeBinariesForNode(
 		);
 		rmSync(nodePtyBuild, { recursive: true, force: true });
 	}
+
+	// node-pty's macOS spawn-helper can be installed as 0644 in the raw
+	// prebuild. The normal install path fixes it during rebuild; the CLI
+	// distribution ships the prebuild directly, so make the helper executable.
+	if (target.startsWith("darwin-")) {
+		const arch = target.slice("darwin-".length);
+		const spawnHelper = join(
+			destModules,
+			"node-pty",
+			"prebuilds",
+			`darwin-${arch}`,
+			"spawn-helper",
+		);
+		if (existsSync(spawnHelper)) {
+			console.log(`[build-dist] chmod +x ${spawnHelper}`);
+			chmodSync(spawnHelper, 0o755);
+		}
+	}
 }
 
 async function buildCli(target: Target, outputPath: string): Promise<void> {
