@@ -52,6 +52,7 @@ async function main(): Promise<void> {
 			cloudApiUrl: env.CLOUD_API_URL,
 			migrationsFolder: env.HOST_MIGRATIONS_FOLDER,
 			allowedOrigins: env.CORS_ORIGINS ?? [],
+			hostServiceSecret: env.HOST_SERVICE_SECRET,
 		},
 		providers: {
 			auth: authProvider,

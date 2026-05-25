@@ -10,11 +10,11 @@ import * as directory from "./directory";
 import { env } from "./env";
 import { TunnelManager } from "./tunnel";
 
-const SENSITIVE_QUERY_RE = /([?&])token=[^&\s]+/g;
+const SENSITIVE_QUERY_RE = /([?&])(remoteControlToken|token)=[^&\s]+/g;
 const redactingLogger = logger((message, ...rest) => {
 	const redacted =
 		typeof message === "string"
-			? message.replace(SENSITIVE_QUERY_RE, "$1token=REDACTED")
+			? message.replace(SENSITIVE_QUERY_RE, "$1$2=REDACTED")
 			: message;
 	console.log(redacted, ...rest);
 });
@@ -197,9 +197,32 @@ app.get("/hosts/:hostId/_whoowns", async (c) => {
 	return c.body(null, 200, replay);
 });
 
-// ── Host proxy (auth required) ──────────────────────────────────────
+// ── Host proxy ──────────────────────────────────────────────────────
 
-app.use("/hosts/:hostId/*", authMiddleware);
+app.use("/hosts/:hostId/*", async (c, next) => {
+	const path = new URL(c.req.url).pathname;
+	const hostId = c.req.param("hostId") ?? "";
+	if (!hostId) return c.json({ error: "Missing hostId" }, 400);
+	const prefix = `/hosts/${hostId}`;
+	const rest = path.slice(prefix.length);
+
+	// Remote-control viewer WebSockets authenticate with a per-session HMAC
+	// that is verified by the host-service, not by the relay. Still keep the
+	// tunnel-presence/replay behavior from authMiddleware so multi-region
+	// Fly deployments route the request to the relay instance that owns the
+	// destination tunnel.
+	if (rest.startsWith("/remote-control/")) {
+		if (!tunnelManager.hasTunnel(hostId)) {
+			const replay = await maybeReplay(hostId);
+			if (replay) return c.body(null, 200, replay);
+			return c.json({ error: "Host not connected" }, 503);
+		}
+		c.set("hostId", hostId);
+		return next();
+	}
+
+	return authMiddleware(c, next);
+});
 
 app.all("/hosts/:hostId/trpc/*", async (c) => {
 	const hostId = c.get("hostId");

@@ -13,6 +13,7 @@ import {
 } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
 import { protectedProcedure, router } from "../../index";
+import { remoteControlRouter } from "./remote-control";
 
 const createSessionInputSchema = z.object({
 	workspaceId: z.string(),
@@ -195,4 +196,5 @@ export const terminalRouter = router({
 		}),
 
 	daemon: daemonRouter,
+	remoteControl: remoteControlRouter,
 });

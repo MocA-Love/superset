@@ -92,4 +92,11 @@ export const FEATURE_FLAGS = {
 	 * defaults for other users.
 	 */
 	RELAY_URL_OVERRIDE: "relay-url-override",
+	/**
+	 * Gates the v2 desktop terminal's "Share remote control" button.
+	 * Evaluated against the sharer's Superset user id. Anyone with the
+	 * resulting share link can still open it, so this only controls who can
+	 * start a session.
+	 */
+	WEB_REMOTE_CONTROL_ACCESS: "web-remote-control-access",
 } as const;
