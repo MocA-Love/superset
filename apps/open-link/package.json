@@ -9,7 +9,7 @@
 		"typecheck": "bunx tsc -p tsconfig.json --noEmit --emitDeclarationOnly false"
 	},
 	"devDependencies": {
-		"typescript": "^5.9.3",
-		"wrangler": "^4.14.4"
+		"typescript": "5.9.3",
+		"wrangler": "4.78.0"
 	}
 }
