@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
 	boolean,
 	index,
@@ -270,11 +271,25 @@ export const apikeys = authSchema.table(
 			.$onUpdate(() => new Date()),
 		permissions: text("permissions"),
 		metadata: text("metadata"),
+		// Derived from metadata so Electric's shape WHERE clause can reference a
+		// real column (`organization_id = $1`) instead of a `LIKE` over JSON text.
+		// Drizzle migration generation must create the corresponding STORED
+		// generated column before the proxy switches to this predicate.
+		organizationId: uuid("organization_id").generatedAlwaysAs(
+			sql`CASE
+				WHEN metadata IS NULL OR metadata = '' THEN NULL
+				WHEN NOT (metadata IS JSON OBJECT) THEN NULL
+				WHEN (metadata::jsonb->>'organizationId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+					THEN (metadata::jsonb->>'organizationId')::uuid
+				ELSE NULL
+			END`,
+		),
 	},
 	(table) => [
 		index("apikeys_configId_idx").on(table.configId),
 		index("apikeys_referenceId_idx").on(table.referenceId),
 		index("apikeys_key_idx").on(table.key),
+		index("apikeys_organization_id_idx").on(table.organizationId),
 	],
 );
 
