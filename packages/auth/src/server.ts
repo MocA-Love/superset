@@ -22,7 +22,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer, customSession, organization } from "better-auth/plugins";
 import { jwt } from "better-auth/plugins/jwt";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { env } from "./env";
 import { acceptInvitationEndpoint } from "./lib/accept-invitation-endpoint";
@@ -275,6 +275,33 @@ export const auth = betterAuth({
 		organization({
 			creatorRole: "owner",
 			invitationExpiresIn: 60 * 60 * 24 * 7,
+			teams: {
+				enabled: true,
+				maximumTeams: 25,
+				allowRemovingAllTeams: false,
+				defaultTeam: {
+					enabled: true,
+					customCreateDefaultTeam: async (organization) => {
+						const [team] = await db
+							.insert(authSchema.teams)
+							.values({
+								name: "Default Team",
+								slug: "DEFAULT",
+								organizationId: organization.id,
+							})
+							.returning();
+						if (!team) throw new Error("Failed to create default team");
+						return { ...team, updatedAt: team.updatedAt ?? undefined };
+					},
+				},
+			},
+			schema: {
+				team: {
+					additionalFields: {
+						slug: { type: "string", input: true, required: true },
+					},
+				},
+			},
 			sendInvitationEmail: async (data) => {
 				const token = await generateMagicTokenForInvite({
 					invitationId: data.id,
@@ -303,7 +330,7 @@ export const auth = betterAuth({
 			},
 			organizationHooks: {
 				beforeCreateInvitation: async (data) => {
-					const { inviterId, organizationId, role } = data.invitation;
+					const { inviterId, organizationId, role, teamId } = data.invitation;
 
 					const { success } = await invitationRateLimit.limit(inviterId);
 					if (!success) {
@@ -331,6 +358,19 @@ export const auth = betterAuth({
 					) {
 						throw new Error("Cannot invite users with this role");
 					}
+
+					if (!teamId) {
+						const oldestTeam = await db.query.teams.findFirst({
+							where: eq(authSchema.teams.organizationId, organizationId),
+							orderBy: asc(authSchema.teams.createdAt),
+							columns: { id: true },
+						});
+						if (oldestTeam) {
+							return {
+								data: { ...data.invitation, teamId: oldestTeam.id },
+							};
+						}
+					}
 				},
 
 				afterCreateOrganization: async ({ organization, user }) => {
@@ -349,6 +389,90 @@ export const auth = betterAuth({
 						.where(eq(authSchema.organizations.id, organization.id));
 
 					await seedDefaultStatuses(organization.id);
+				},
+
+				beforeRemoveMember: async ({ member, organization }) => {
+					await db
+						.delete(authSchema.teamMembers)
+						.where(
+							and(
+								eq(authSchema.teamMembers.userId, member.userId),
+								inArray(
+									authSchema.teamMembers.teamId,
+									db
+										.select({ id: authSchema.teams.id })
+										.from(authSchema.teams)
+										.where(
+											eq(authSchema.teams.organizationId, organization.id),
+										),
+								),
+							),
+						);
+				},
+
+				beforeRemoveTeamMember: async ({ teamMember, organization }) => {
+					const [otherMemberships] = await db
+						.select({ value: count() })
+						.from(authSchema.teamMembers)
+						.where(
+							and(
+								eq(authSchema.teamMembers.userId, teamMember.userId),
+								eq(authSchema.teamMembers.organizationId, organization.id),
+								ne(authSchema.teamMembers.teamId, teamMember.teamId),
+							),
+						);
+					if ((otherMemberships?.value ?? 0) === 0) {
+						throw new Error("You should be a member of at least one team");
+					}
+				},
+
+				beforeDeleteTeam: async ({ team }) => {
+					const teamMemberRows = await db
+						.select({ userId: authSchema.teamMembers.userId })
+						.from(authSchema.teamMembers)
+						.where(eq(authSchema.teamMembers.teamId, team.id));
+
+					if (teamMemberRows.length === 0) return;
+
+					const memberUserIds = teamMemberRows.map((row) => row.userId);
+
+					const safelyInOtherTeam = await db
+						.select({ userId: authSchema.teamMembers.userId })
+						.from(authSchema.teamMembers)
+						.where(
+							and(
+								inArray(authSchema.teamMembers.userId, memberUserIds),
+								eq(authSchema.teamMembers.organizationId, team.organizationId),
+								ne(authSchema.teamMembers.teamId, team.id),
+							),
+						);
+					const safeUserIds = new Set(safelyInOtherTeam.map((r) => r.userId));
+					const orphanUserIds = memberUserIds.filter(
+						(userId) => !safeUserIds.has(userId),
+					);
+
+					if (orphanUserIds.length === 0) return;
+
+					const nextTeam = await db.query.teams.findFirst({
+						where: and(
+							eq(authSchema.teams.organizationId, team.organizationId),
+							ne(authSchema.teams.id, team.id),
+						),
+						orderBy: asc(authSchema.teams.createdAt),
+						columns: { id: true },
+					});
+					if (!nextTeam) return;
+
+					await db
+						.insert(authSchema.teamMembers)
+						.values(
+							orphanUserIds.map((userId) => ({
+								teamId: nextTeam.id,
+								userId,
+								organizationId: team.organizationId,
+							})),
+						)
+						.onConflictDoNothing();
 				},
 
 				beforeDeleteOrganization: async ({ organization }) => {
@@ -412,6 +536,22 @@ export const auth = betterAuth({
 				},
 
 				afterAddMember: async ({ member, user, organization }) => {
+					const defaultTeam = await db.query.teams.findFirst({
+						where: eq(authSchema.teams.organizationId, organization.id),
+						orderBy: asc(authSchema.teams.createdAt),
+						columns: { id: true },
+					});
+					if (defaultTeam) {
+						await db
+							.insert(authSchema.teamMembers)
+							.values({
+								teamId: defaultTeam.id,
+								userId: member.userId,
+								organizationId: organization.id,
+							})
+							.onConflictDoNothing();
+					}
+
 					const subscription = await db.query.subscriptions.findFirst({
 						where: and(
 							eq(subscriptions.referenceId, organization.id),
