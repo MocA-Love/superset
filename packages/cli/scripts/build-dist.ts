@@ -216,28 +216,41 @@ function copyPackageWithDeps(
 	repoRoot: string,
 	destModules: string,
 	copied: Set<string>,
+	optional = false,
 ): void {
 	if (copied.has(packageName)) return;
-	copied.add(packageName);
 
 	const sourcePath = findPackagePath(packageName, startDir, repoRoot);
 	if (!sourcePath) {
+		if (optional) {
+			console.warn(
+				`[build-dist]   skipping peer dep not installed: ${packageName}`,
+			);
+			return;
+		}
 		throw new Error(
 			`Package not found: ${packageName}. Run 'bun install' first.`,
 		);
 	}
+	copied.add(packageName);
 
 	const destPath = join(destModules, packageName);
 	mkdirSync(dirname(destPath), { recursive: true });
 	cpSync(sourcePath, destPath, { recursive: true, dereference: true });
 
-	// Recursively copy runtime dependencies
 	const packageJsonPath = join(sourcePath, "package.json");
 	if (existsSync(packageJsonPath)) {
 		const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-		const deps = Object.keys(pkg.dependencies ?? {});
-		for (const dep of deps) {
+		for (const dep of Object.keys(pkg.dependencies ?? {})) {
 			copyPackageWithDeps(dep, sourcePath, repoRoot, destModules, copied);
+		}
+		// Runtime packages we ship unbundled resolve peer dependencies from
+		// disk at module init. Walk non-optional peers best-effort so missing
+		// optional install artifacts do not fail the tarball build.
+		const peerMeta = pkg.peerDependenciesMeta ?? {};
+		for (const dep of Object.keys(pkg.peerDependencies ?? {})) {
+			if (peerMeta[dep]?.optional) continue;
+			copyPackageWithDeps(dep, sourcePath, repoRoot, destModules, copied, true);
 		}
 	}
 }
