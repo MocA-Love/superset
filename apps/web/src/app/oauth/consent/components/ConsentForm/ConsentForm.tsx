@@ -226,6 +226,7 @@ function getClientDisplayName(clientId: string): string {
 	const knownClients: Record<string, string> = {
 		"claude-code": "Claude Code",
 		"superset-desktop": "Superset Desktop",
+		"superset-cli": "Superset CLI",
 	};
 	if (knownClients[clientId]) {
 		return knownClients[clientId];

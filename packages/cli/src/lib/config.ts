@@ -15,6 +15,7 @@ import { join } from "node:path";
 export type SupersetConfig = {
 	auth?: {
 		accessToken: string;
+		refreshToken?: string;
 		expiresAt: number;
 	};
 	apiKey?: string;

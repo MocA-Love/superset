@@ -1,5 +1,7 @@
 import * as p from "@clack/prompts";
 import { CLIError, string } from "@superset/cli-framework";
+import { render } from "ink";
+import { createElement } from "react";
 import { type ApiClient, createApiClient } from "../../../lib/api-client";
 import { login } from "../../../lib/auth";
 import { command } from "../../../lib/command";
@@ -9,6 +11,8 @@ import {
 	type SupersetConfig,
 	writeConfig,
 } from "../../../lib/config";
+import { copyToClipboard } from "./copyToClipboard";
+import { LoginUI, type LoginUIProps } from "./LoginUI";
 
 type ChosenOrganization = { id: string; name: string };
 
@@ -158,27 +162,106 @@ export default command({
 		}
 
 		const apiUrl = getApiUrl(config);
+		const useInk =
+			process.stdout.isTTY && process.stdin.isTTY && !process.env.CI;
 
-		p.intro("superset auth login");
+		let pasteResolve: ((code: string) => void) | null = null;
+		let pasteReject: ((err: Error) => void) | null = null;
+		const pastePromise = new Promise<string>((resolve, reject) => {
+			pasteResolve = resolve;
+			pasteReject = reject;
+		});
 
-		// Clack's spinner redraws with ANSI cursor moves, which only works over a
-		// real TTY. When stdout is piped (e.g. `bun run dev` → turbo → terminal)
-		// every frame flushes as a new line, spamming the output.
-		const spinner = process.stdout.isTTY ? p.spinner() : null;
-		spinner?.start("Waiting for browser authorization...");
-		if (!spinner) p.log.info("Waiting for browser authorization…");
+		let currentProps: LoginUIProps = {
+			url: null,
+			status: "starting",
+			onSubmit: (code) => pasteResolve?.(code),
+			onCancel: () => pasteReject?.(new CLIError("Login cancelled")),
+			onCopy: async () => false,
+		};
 
-		const result = await login(config, opts.signal);
+		const inkInstance = useInk
+			? render(createElement(LoginUI, currentProps), { exitOnCtrlC: false })
+			: null;
+
+		const update = (patch: Partial<LoginUIProps>) => {
+			currentProps = { ...currentProps, ...patch };
+			inkInstance?.rerender(createElement(LoginUI, currentProps));
+		};
+
+		if (!inkInstance) {
+			p.intro("superset auth login");
+		}
+
+		let result: Awaited<ReturnType<typeof login>> | null = null;
+		let loginCancelled = false;
+		try {
+			result = await login(config, opts.signal, {
+				onAuthorizationUrl: (url) => {
+					if (inkInstance) {
+						update({
+							url,
+							status: "waiting",
+							onCopy: () => copyToClipboard(url),
+						});
+					} else {
+						p.log.message("Browser didn't open? Use the url below to sign in");
+						p.log.message(url);
+					}
+				},
+				promptForPastedCode: async (signal) => {
+					if (!inkInstance) {
+						const pasted = await p.text({
+							message: "Paste code here if prompted",
+							validate: (value) =>
+								value.includes("#") ? undefined : "Paste the entire value",
+						});
+						if (signal.aborted) return "";
+						if (p.isCancel(pasted)) {
+							throw new CLIError("Login cancelled");
+						}
+						return pasted;
+					}
+					const onAbort = () => pasteResolve?.("");
+					signal.addEventListener("abort", onAbort);
+					try {
+						const code = await pastePromise;
+						if (signal.aborted) return "";
+						update({ status: "exchanging" });
+						return code;
+					} finally {
+						signal.removeEventListener("abort", onAbort);
+					}
+				},
+			});
+			if (inkInstance) update({ status: "done" });
+		} catch (err) {
+			if (err instanceof CLIError && err.message === "Login cancelled") {
+				loginCancelled = true;
+			} else {
+				throw err;
+			}
+		} finally {
+			if (inkInstance) {
+				inkInstance.unmount();
+				await inkInstance.waitUntilExit().catch(() => {});
+			}
+		}
+
+		if (loginCancelled || !result) {
+			p.cancel("Login interrupted");
+			return { data: { loggedIn: false, apiUrl } };
+		}
 
 		config.auth = {
 			accessToken: result.accessToken,
+			refreshToken: result.refreshToken,
 			expiresAt: result.expiresAt,
 		};
 		delete config.apiKey;
 		writeConfig(config);
 
-		spinner?.stop("Authorized!");
-		if (!spinner) p.log.success("Authorized!");
+		p.log.success("Authorized!");
 
 		const api = createApiClient(config, { bearer: result.accessToken });
 

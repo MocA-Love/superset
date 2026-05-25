@@ -1,6 +1,7 @@
 import { CLIError } from "@superset/cli-framework";
 import { type ApiClient, createApiClient } from "./api-client";
-import { readConfig, type SupersetConfig } from "./config";
+import { refreshAccessToken } from "./auth";
+import { readConfig, type SupersetConfig, writeConfig } from "./config";
 
 export type AuthSource = "override" | "config" | "oauth";
 
@@ -11,10 +12,12 @@ export type ResolvedAuth = {
 	authSource: AuthSource;
 };
 
+const REFRESH_LEEWAY_MS = 5 * 60 * 1000;
+
 export async function resolveAuth(
 	apiKeyOption: string | undefined,
 ): Promise<ResolvedAuth> {
-	const config = readConfig();
+	let config = readConfig();
 
 	const overrideKey = apiKeyOption?.trim();
 	let bearer: string;
@@ -27,10 +30,29 @@ export async function resolveAuth(
 		bearer = config.apiKey.trim();
 		authSource = "config";
 	} else if (config.auth) {
-		if (config.auth.expiresAt < Date.now()) {
-			throw new CLIError("Session expired", "Run: superset auth login");
+		const auth = config.auth;
+		if (auth.expiresAt - REFRESH_LEEWAY_MS < Date.now()) {
+			if (!auth.refreshToken) {
+				throw new CLIError("Session expired", "Run: superset auth login");
+			}
+			try {
+				const refreshed = await refreshAccessToken(config, auth.refreshToken);
+				config = {
+					...config,
+					auth: {
+						accessToken: refreshed.accessToken,
+						refreshToken: refreshed.refreshToken,
+						expiresAt: refreshed.expiresAt,
+					},
+				};
+				writeConfig(config);
+				bearer = refreshed.accessToken;
+			} catch {
+				throw new CLIError("Session expired", "Run: superset auth login");
+			}
+		} else {
+			bearer = auth.accessToken;
 		}
-		bearer = config.auth.accessToken;
 		authSource = "oauth";
 	} else {
 		throw new CLIError(
