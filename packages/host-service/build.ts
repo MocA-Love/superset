@@ -20,7 +20,17 @@ const result = await Bun.build({
 	define: {
 		"process.env.NODE_ENV": JSON.stringify("production"),
 	},
-	external: ["better-sqlite3", "node-pty", "@parcel/watcher"],
+	external: [
+		"better-sqlite3",
+		"node-pty",
+		"@parcel/watcher",
+		"libsql",
+		"onnxruntime-node",
+		"@anush008/tokenizers",
+		"@anush008/tokenizers-darwin-universal",
+		"@anush008/tokenizers-linux-x64-gnu",
+		"@anush008/tokenizers-win32-x64-msvc",
+	],
 });
 
 if (!result.success) {

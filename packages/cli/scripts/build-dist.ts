@@ -50,6 +50,8 @@ const RUNTIME_PACKAGES = [
 	"@parcel/watcher",
 	"libsql",
 	"@xterm/headless",
+	"onnxruntime-node",
+	"@anush008/tokenizers",
 ] as const;
 
 /**
@@ -59,8 +61,16 @@ const RUNTIME_PACKAGES = [
  * listed explicitly per target.
  */
 const TARGET_NATIVE_PACKAGES: Record<Target, string[]> = {
-	"darwin-arm64": ["@libsql/darwin-arm64", "@parcel/watcher-darwin-arm64"],
-	"linux-x64": ["@libsql/linux-x64-gnu", "@parcel/watcher-linux-x64-glibc"],
+	"darwin-arm64": [
+		"@libsql/darwin-arm64",
+		"@parcel/watcher-darwin-arm64",
+		"@anush008/tokenizers-darwin-universal",
+	],
+	"linux-x64": [
+		"@libsql/linux-x64-gnu",
+		"@parcel/watcher-linux-x64-glibc",
+		"@anush008/tokenizers-linux-x64-gnu",
+	],
 };
 
 /**
