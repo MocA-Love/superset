@@ -18,10 +18,10 @@ export default command({
 				Math.round((ctx.config.auth.expiresAt - Date.now()) / 60_000),
 			);
 			authLine = `Session (expires in ${minutesLeft} min)`;
-		} else if (ctx.authSource === "flag") {
-			authLine = "API key (from --api-key flag)";
+		} else if (ctx.authSource === "override") {
+			authLine = "API key (from --api-key flag or SUPERSET_API_KEY env)";
 		} else {
-			authLine = "API key (from SUPERSET_API_KEY env)";
+			authLine = "API key (stored via auth login --api-key)";
 		}
 
 		return {

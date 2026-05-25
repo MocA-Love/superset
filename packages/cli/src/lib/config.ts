@@ -17,6 +17,7 @@ export type SupersetConfig = {
 		accessToken: string;
 		expiresAt: number;
 	};
+	apiKey?: string;
 	apiUrl?: string;
 	organizationId?: string;
 };

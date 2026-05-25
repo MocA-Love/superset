@@ -2,7 +2,7 @@ import { CLIError } from "@superset/cli-framework";
 import { type ApiClient, createApiClient } from "./api-client";
 import { readConfig, type SupersetConfig } from "./config";
 
-export type AuthSource = "flag" | "env" | "oauth";
+export type AuthSource = "override" | "config" | "oauth";
 
 export type ResolvedAuth = {
 	config: SupersetConfig;
@@ -16,24 +16,27 @@ export async function resolveAuth(
 ): Promise<ResolvedAuth> {
 	const config = readConfig();
 
-	let bearer = apiKeyOption?.trim();
-	let authSource: AuthSource = bearer ? "flag" : "oauth";
+	const overrideKey = apiKeyOption?.trim();
+	let bearer: string;
+	let authSource: AuthSource;
 
-	if (bearer && !process.argv.some((arg) => arg.startsWith("--api-key"))) {
-		authSource = "env";
-	}
-
-	if (!bearer) {
-		if (!config.auth) {
-			throw new CLIError(
-				"Not logged in",
-				"Run: superset auth login (or set SUPERSET_API_KEY)",
-			);
-		}
+	if (overrideKey) {
+		bearer = overrideKey;
+		authSource = "override";
+	} else if (config.apiKey?.trim()) {
+		bearer = config.apiKey.trim();
+		authSource = "config";
+	} else if (config.auth) {
 		if (config.auth.expiresAt < Date.now()) {
 			throw new CLIError("Session expired", "Run: superset auth login");
 		}
 		bearer = config.auth.accessToken;
+		authSource = "oauth";
+	} else {
+		throw new CLIError(
+			"Not logged in",
+			"Run: superset auth login (or set SUPERSET_API_KEY)",
+		);
 	}
 
 	const api = createApiClient(config, {
