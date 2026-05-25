@@ -304,7 +304,7 @@ function AutomationsPage() {
 										return (
 											<TableRow
 												key={automation.id}
-												className="cursor-pointer"
+												className="h-10 cursor-pointer"
 												onClick={() =>
 													navigate({
 														to: "/automations/$automationId",

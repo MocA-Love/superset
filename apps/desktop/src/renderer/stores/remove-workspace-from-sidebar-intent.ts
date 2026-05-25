@@ -14,8 +14,8 @@ interface RemoveFromSidebarIntentState {
 	clear: () => void;
 }
 
-export const useRemoveFromSidebarIntent =
-	create<RemoveFromSidebarIntentState>((set) => ({
+export const useRemoveFromSidebarIntent = create<RemoveFromSidebarIntentState>(
+	(set) => ({
 		target: null,
 		request: (target) =>
 			set((state) => ({
@@ -25,4 +25,5 @@ export const useRemoveFromSidebarIntent =
 				},
 			})),
 		clear: () => set({ target: null }),
-	}));
+	}),
+);
