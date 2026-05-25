@@ -78,6 +78,11 @@ const config: Configuration = {
 			to: "resources/superset-browser-mcp",
 			filter: ["superset-browser-mcp", "superset-browser-mcp.exe"],
 		},
+		{
+			from: "dist/resources/bin",
+			to: "resources/bin",
+			filter: ["**/*"],
+		},
 	],
 
 	files: [

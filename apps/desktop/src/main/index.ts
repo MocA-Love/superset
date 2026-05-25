@@ -32,6 +32,7 @@ import { setupAutoUpdater } from "./lib/auto-updater";
 import { initializeBrowserIdentityManager } from "./lib/browser/browser-identity-manager";
 import { browserSitePermissionManager } from "./lib/browser/browser-site-permission-manager";
 import { initializeBrowserWebviewCompat } from "./lib/browser/browser-webview-compat";
+import { installBundledCliShim } from "./lib/bundled-cli";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
@@ -965,6 +966,11 @@ if (!gotTheLock) {
 			setupAgentHooks();
 		} catch (error) {
 			console.error("[main] Failed to set up agent hooks:", error);
+		}
+		try {
+			installBundledCliShim();
+		} catch (error) {
+			console.error("[main] Failed to install bundled CLI shim:", error);
 		}
 
 		// Discover and adopt host-services that survived a previous quit
