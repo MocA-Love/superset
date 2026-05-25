@@ -1,5 +1,4 @@
 import type { SelectV2Workspace } from "@superset/db/schema";
-import { toast } from "@superset/ui/sonner";
 import { useCallback } from "react";
 import { resolveHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
 import { useRelayUrl } from "renderer/hooks/useRelayUrl";
@@ -140,9 +139,6 @@ export function useWorkspaceCreates(): UseWorkspaceCreatesApi {
 						result.terminals,
 						result.agents,
 					);
-					for (const warning of result.warnings ?? []) {
-						toast.warning(warning);
-					}
 					if (result.workspace.id !== workspaceId) {
 						deleteWorkspaceLocalState(workspaceId);
 					}
