@@ -98,9 +98,9 @@ async function confirmAndQuitCompletely(): Promise<void> {
 			defaultId: 1,
 			cancelId: 1,
 			title: "Quit Superset Completely",
-			message: "Quit Superset and stop all background services?",
+			message: "Quit Superset and stop terminal sessions?",
 			detail:
-				"All open terminal sessions will be killed and any running host-services will be stopped. Use “Close Superset” instead if you want services to keep running for the next launch.",
+				"Host services stop on quit automatically. This also tears down v1 terminal-host sessions instead of leaving them available for the next launch.",
 		});
 		if (response === 0) {
 			requestQuit("stop");
@@ -261,26 +261,17 @@ async function updateTrayMenu(): Promise<void> {
 			},
 		},
 		{ type: "separator" },
-		// FORK NOTE: fork supports two quit modes — release (keep host-services
-		// alive for reattach) vs stop (fully tear them down). Preserved from
-		// pre-#3458 fork tray.
-		...(hasActive
-			? [
-					{
-						label: "Quit (Keep Services Running)",
-						click: () => requestQuit("release"),
-					},
-					{
-						label: "Quit & Stop Services",
-						click: () => requestQuit("stop"),
-					},
-				]
-			: [
-					{
-						label: "Quit",
-						click: () => requestQuit("release"),
-					},
-				]),
+		{
+			label: "Close Superset",
+			click: () => requestQuit("release"),
+		},
+		{ type: "separator" },
+		{
+			label: "Quit Superset Completely",
+			click: () => {
+				void confirmAndQuitCompletely();
+			},
+		},
 	]);
 
 	tray.setContextMenu(menu);

@@ -389,8 +389,8 @@ let pendingQuitMode: QuitMode | null = null;
 let isQuitting = false;
 
 /** Request the app to quit.
- *  - "release": keep services running (re-adoptable on next launch)
- *  - "stop": terminate all services before exit */
+ *  - "release": regular quit; host-services stop, v1 terminal-host may survive
+ *  - "stop": also terminate v1 terminal-host sessions before exit */
 export function requestQuit(mode: QuitMode): void {
 	pendingQuitMode = mode;
 	app.quit();
@@ -403,7 +403,7 @@ export function prepareQuit(mode: QuitMode): void {
 }
 
 /** Exit the process immediately, bypassing before-quit.
- *  Services are left running for adoption on next launch. */
+ *  Host-service children self-exit via the parent watchdog. */
 export function exitImmediately(): void {
 	app.exit(0);
 }
@@ -421,7 +421,7 @@ app.on("before-quit", async (event) => {
 	if (isQuitting) return;
 
 	// Consume the quit mode so it doesn't persist across aborted quits
-	let quitMode = pendingQuitMode;
+	const quitMode = pendingQuitMode;
 	pendingQuitMode = null;
 
 	// FORK NOTE: macOS tray-stay-alive block removed to match upstream (#3205).
@@ -431,42 +431,15 @@ app.on("before-quit", async (event) => {
 		event.preventDefault();
 
 		try {
-			// FORK NOTE: Linux has no tray UI to choose between "release"
-			// (keep host-services running for reattach) vs "stop" (tear them
-			// down). Surface the same choice as dialog buttons when services
-			// are active. macOS already exposes this via the tray menu.
-			const showServiceAwareDialog =
-				process.platform === "linux" &&
-				getHostServiceManager().hasActiveInstances();
-
-			if (showServiceAwareDialog) {
-				const { response } = await dialog.showMessageBox({
-					type: "question",
-					buttons: [
-						"Quit (Keep Services Running)",
-						"Quit & Stop Services",
-						"Cancel",
-					],
-					defaultId: 0,
-					cancelId: 2,
-					title: "Quit Superset",
-					message: "Services are running in the background.",
-					detail:
-						"Keep them running so you can reattach on next launch, or stop them entirely.",
-				});
-				if (response === 2) return;
-				quitMode = response === 1 ? "stop" : "release";
-			} else {
-				const { response } = await dialog.showMessageBox({
-					type: "question",
-					buttons: ["Quit", "Cancel"],
-					defaultId: 0,
-					cancelId: 1,
-					title: "Quit Superset",
-					message: "Are you sure you want to quit?",
-				});
-				if (response === 1) return;
-			}
+			const { response } = await dialog.showMessageBox({
+				type: "question",
+				buttons: ["Quit", "Cancel"],
+				defaultId: 0,
+				cancelId: 1,
+				title: "Quit Superset",
+				message: "Are you sure you want to quit?",
+			});
+			if (response === 1) return;
 		} catch (error) {
 			console.error("[main] Quit confirmation dialog failed:", error);
 		}
@@ -480,17 +453,15 @@ app.on("before-quit", async (event) => {
 	try {
 		const { getTodoScheduler } = await import("./todo-agent/scheduler");
 		getTodoScheduler().stop();
-		if (isDev || quitMode === "stop") {
-			await runFullQuitCleanup();
-		} else {
-			// Prod: leave services running so the next launch re-adopts via manifest.
-			getHostServiceManager().releaseAll();
-		}
-		shutdownTanstackDbPersistence();
-		disposeTray();
 	} catch (error) {
 		console.warn("[main] todo-agent scheduler stop skipped", error);
 	}
+	getHostServiceManager().stopAll();
+	if (isDev || quitMode === "stop") {
+		await teardownTerminalHost();
+	}
+	shutdownTanstackDbPersistence();
+	disposeTray();
 	// Disconnect from the todo-agent daemon but leave it running so
 	// `claude -p` child processes survive the app restart (issue #237).
 	try {
@@ -506,13 +477,6 @@ app.on("before-quit", async (event) => {
 		await mod.shutdownExtensionHost();
 	} catch {}
 	closeLocalDb();
-	const manager = getHostServiceManager();
-	if (quitMode === "stop") {
-		manager.stopAll();
-	} else {
-		manager.releaseAll();
-	}
-	disposeTray();
 
 	// app.exit() bypasses beforeunload in renderer processes, so tearoff windows
 	// never return their tabs via the normal beforeunload path. Collect them here
@@ -556,14 +520,10 @@ app.on("before-quit", async (event) => {
 });
 
 /**
- * Full cleanup — kill host-service + terminal-host children. Used in dev, on
- * update installs via quitMode, and on the tray's "Quit Superset Completely"
- * path in prod.
+ * Tear down the v1 terminal-host client. Skipped on regular quit so v1
+ * PTY sessions can reattach via socket on next launch.
  */
-async function runFullQuitCleanup(): Promise<void> {
-	const coordinator = getHostServiceManager();
-	await coordinator.teardownKnownManifests();
-	coordinator.stopAll();
+async function teardownTerminalHost(): Promise<void> {
 	try {
 		await getTerminalHostClient().shutdownIfRunning({ killSessions: true });
 	} catch (err) {
@@ -597,8 +557,9 @@ if (process.env.NODE_ENV === "development") {
 		if (signalHandled) return;
 		signalHandled = true;
 		console.log(`[main] Received ${signal}, quitting...`);
+		getHostServiceManager().stopAll();
 		void Promise.allSettled([
-			runFullQuitCleanup(),
+			teardownTerminalHost(),
 			stopNetworkLogger(),
 		]).finally(() => app.exit(0));
 	};
@@ -972,10 +933,6 @@ if (!gotTheLock) {
 		} catch (error) {
 			console.error("[main] Failed to install bundled CLI shim:", error);
 		}
-
-		// Discover and adopt host-services that survived a previous quit
-		// before the tray initializes, so it shows accurate status immediately.
-		await getHostServiceManager().discoverAll();
 
 		if (IS_DEV) {
 			getHostServiceManager().enableDevReload(async () => {

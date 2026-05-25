@@ -131,9 +131,8 @@ export function installUpdate(): void {
 		emitStatus(AUTO_UPDATE_STATUS.IDLE);
 		return;
 	}
-	// quitAndInstall internally calls app.quit() — use "stop" mode so
-	// before-quit doesn't prevent exit on macOS with active host services.
-	// "release" would keep services alive and block the quit.
+	// quitAndInstall internally calls app.quit() — use "stop" mode so the
+	// update path tears down v1 terminal-host sessions before replacing the app.
 	prepareQuit("stop");
 	autoUpdater.quitAndInstall(false, true);
 }

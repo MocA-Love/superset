@@ -118,16 +118,11 @@ interface HostServiceCoordinator {
   stop(organizationId: string): void;
   restart(organizationId: string, config: SpawnConfig): Promise<{ port: number; secret: string }>;
   stopAll(): void;
-  releaseAll(): void;
-
-  // Discovery
-  discoverAll(): Promise<void>;              // scan manifests, adopt running services
 
   // Queries
   getConnection(organizationId: string): { port: number; secret: string } | null;
   getProcessStatus(organizationId: string): ProcessStatus;
   getActiveOrganizationIds(): string[];
-  hasActiveInstances(): boolean;
 
   // Events
   on(event: "status-changed", handler: (e: StatusEvent) => void): void;
@@ -152,7 +147,7 @@ interface StatusEvent {
 
 ### Per-instance state
 
-After a service is running (whether spawned or adopted), the coordinator holds:
+After a service is running, the coordinator holds:
 
 ```ts
 {
@@ -162,22 +157,20 @@ After a service is running (whether spawned or adopted), the coordinator holds:
 }
 ```
 
-That's the steady-state. During spawn, the coordinator picks a free port, passes it to the host service as config (env var), then polls `health.check` on that port until the service is up. No Node IPC channel needed — the host service just starts on the port it's told. Once healthy, the coordinator records the pid/port/secret and discards the `ChildProcess` handle (`unref`'d so it survives app quit). From that point, spawned and adopted processes are treated identically: just a PID to check liveness and signal, a port to connect to, and a secret to authenticate.
+That's the steady-state. During spawn, the coordinator picks a free port, passes it to the host service as config (env var), then polls `health.check` on that port until the service is up. No Node IPC channel needed — the host service just starts on the port it's told. Once healthy, the coordinator records the pid/port/secret and keeps host-service coupled to Electron: `before-quit` calls `stopAll()`, and the child also has a parent-pid watchdog so it exits after an Electron crash.
 
 ### Where the complexity lives
 
-The coordinator is ~500 lines. This is irreducible complexity from managing processes that survive app restarts:
+The coordinator is the Electron-side process owner:
 
 | Concern | Why it's unavoidable |
 |---------|---------------------|
 | Spawn + health poll | Must start the child, poll health.check until ready, handle timeout |
-| Adoption from manifests | Must read disk, health-check the process, verify it's reachable |
-| Liveness polling | Adopted processes have no exit event — must poll PID |
 | Restart with backoff | Crashed services need exponential backoff, not immediate retry |
 | Pending start dedup | Concurrent `start()` calls for the same org must coalesce |
-| Release vs stop | Quit flow needs to either detach or kill each service |
+| Parent watchdog | Children need to self-exit if Electron is force-killed |
 
-The current 800-line manager mixes these with org metadata, session config, display formatting, compatibility checks, and version tracking. The coordinator drops all of that — it only manages processes. The ~300 lines saved aren't from removing complexity; they're from removing concerns that don't belong.
+The older manifest-adoption and release-vs-stop paths were removed once PTY survival moved to the detached `pty-daemon`. The coordinator now only manages Electron-owned host-service processes.
 
 ### What the coordinator does NOT hold
 
@@ -224,16 +217,16 @@ From host.info (HTTP to each service, authenticated with PSK):
 
 From coordinator (in-process):
   - status                   → "Running" / "Starting..." / "Degraded"
-  - hasActiveInstances       → controls quit menu options
+  - active org count         → controls host-service submenu label
 ```
 
 ### Actions
 
 ```
-Restart  → coordinator.restart(organizationId, config)
-Stop     → coordinator.stop(organizationId)
-Quit (keep services)   → coordinator.releaseAll() + app.exit()
-Quit (stop services)   → coordinator.stopAll() + app.exit()
+Restart                  → coordinator.restart(organizationId, config)
+Stop                     → coordinator.stop(organizationId)
+Close Superset           → coordinator.stopAll() + app.exit()
+Quit Superset Completely → coordinator.stopAll() + terminal-host teardown + app.exit()
 ```
 
 ### Menu structure
@@ -253,8 +246,9 @@ Host Service (N)
 ├── Settings
 ├── Check for Updates
 ├── ─────────
-├── Quit (Keep Services Running)        ← only if hasActiveInstances
-└── Quit & Stop Services                ← only if hasActiveInstances
+├── Close Superset
+├── ─────────
+└── Quit Superset Completely
 ```
 
 ---
@@ -278,7 +272,7 @@ The provider maintains `Map<organizationId, { port, url, client }>` — just con
 
 ## 5. Manifest (`apps/desktop` — Electron-only concept)
 
-On-disk JSON file per org. Written by the coordinator once the spawned service reports it's ready (pid, port). Read by the coordinator for adoption on next app launch. The host service itself has no knowledge of manifests.
+On-disk JSON file per org. Written by host-service after it starts. Electron no longer reads it for adoption on next app launch; it is kept for CLI discovery and for `coordinator.reset()` to kill a stale pid if recovery is needed.
 
 ```ts
 interface Manifest {
@@ -290,9 +284,9 @@ interface Manifest {
 }
 ```
 
-Minimal — just enough to reconnect. No version or protocol fields; the coordinator queries `host.info` after adoption for metadata if needed.
+Minimal — just enough for local discovery. No version or protocol fields.
 
-Lives at `~/.superset/host/<organizationId>/manifest.json`. The coordinator writes and reads it. Remote deployments don't use manifests.
+Lives at `~/.superset/host/<organizationId>/manifest.json`. Remote deployments don't use manifests.
 
 ---
 
