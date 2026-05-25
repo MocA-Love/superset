@@ -1,5 +1,5 @@
 {
-	"title": "SDK",
+	"title": "TypeScript SDK",
 	"icon": "Package",
-	"pages": ["reference"]
+	"pages": ["getting-started", "reference", "advanced"]
 }
