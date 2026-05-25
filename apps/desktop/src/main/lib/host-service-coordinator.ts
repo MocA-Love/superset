@@ -7,7 +7,6 @@ import { settings } from "@superset/local-db";
 import { getHostId, getHostName } from "@superset/shared/host-info";
 import { app } from "electron";
 import log from "electron-log/main";
-import { env } from "main/env.main";
 import { env as sharedEnv } from "shared/env.shared";
 import { getProcessEnvWithShellPath } from "../../lib/trpc/routers/workspaces/utils/shell-env";
 import { SUPERSET_HOME_DIR } from "./app-environment";
@@ -28,41 +27,8 @@ import {
 	pollHealthCheck,
 } from "./host-service-utils";
 import { localDb } from "./local-db";
+import { getRelayUrl } from "./relay-url";
 import { HOOK_PROTOCOL_VERSION } from "./terminal/env";
-
-/**
- * Minimum host-service version this app can work with. Bumping this forces
- * the coordinator to kill + respawn any adopted service older than this,
- * which is how we prevent the renderer from talking to a stale host-service
- * that's missing newly-added procedures/params.
- *
- * 0.4.0: terminal launch moved from `terminal.ensureSession` to
- * `terminal.launchSession` plus WebSocket attach params.
- * 0.3.0: host-service registers via cloud `host.ensure` (was
- * `device.ensureV2Host`); v2_hosts/v2_users_hosts/v2_workspaces use
- * machineId text instead of uuid surrogates.
- * 0.2.0: `workspaceCreation.adopt` gained optional `worktreePath`.
- *
- * 0.5.0 — pty-daemon supervision migrated into host-service. New
- * `terminal.daemon` tRPC namespace; older 0.4.x host-services don't
- * expose it. Adopting one in place would leave the new desktop
- * talking to old code: Settings → Manage daemon would silently
- * fail, and the v2 PTY survival promise is broken. Bumping the
- * floor forces the coordinator's `tryAdopt` (host-service-coordinator
- * line ~308) to SIGTERM old host-services on first launch and
- * respawn with the new bundle. One-time terminal-session loss for
- * users on upgrade — accepted per release-notes guidance.
- *
- * 0.7.0 — canonical `workspaces.create` flow + `settings.hostAgentConfigs`
- * router (PR1, #3893). Older 0.6.x host-services don't expose either,
- * so adopting one in place would break new-project creation and the
- * agent-config settings UI. Force respawn on first launch.
- *
- * 0.8.0 — v2 terminal creation moved to `terminal.createSession`; the
- * WebSocket route is attach-only by `terminalId`. Older host-services would
- * reject the renderer's creation call and still expect socket-side startup.
- */
-const MIN_HOST_SERVICE_VERSION = "0.8.0";
 
 export type HostServiceStatus = "starting" | "running" | "stopped";
 
@@ -702,9 +668,13 @@ export class HostServiceCoordinator extends EventEmitter {
 
 		// `getProcessEnvWithShellPath` merges in the user's interactive shell env,
 		// which in dev has `RELAY_URL` set. Enforce the toggle *after* that merge
-		// so the child definitely doesn't see a relay URL when disabled.
-		if (exposeViaRelay && env.RELAY_URL) {
-			childEnv.RELAY_URL = env.RELAY_URL;
+		// so the child definitely doesn't see a relay URL when disabled. The
+		// effective URL comes from the PostHog `relay-url-override` flag with
+		// `env.RELAY_URL` as fallback (see main/lib/relay-url) so we can A/B-test
+		// alternate relay deployments per-user.
+		const effectiveRelayUrl = await getRelayUrl();
+		if (exposeViaRelay && effectiveRelayUrl) {
+			childEnv.RELAY_URL = effectiveRelayUrl;
 		} else {
 			delete childEnv.RELAY_URL;
 		}

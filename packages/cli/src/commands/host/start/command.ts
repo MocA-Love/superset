@@ -34,6 +34,7 @@ export default command({
 				sessionToken: ctx.bearer,
 				authConfigPath:
 					ctx.authSource === "oauth" ? SUPERSET_CONFIG_PATH : undefined,
+				api: ctx.api,
 				port: options.port,
 				daemon: options.daemon ?? false,
 			});

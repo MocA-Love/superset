@@ -3,7 +3,7 @@ import { buildHostRoutingKey } from "@superset/shared/host-routing";
 import type { AgentLifecyclePayload } from "@superset/workspace-client";
 import { useLiveQuery } from "@tanstack/react-db";
 import { useEffectEvent, useMemo } from "react";
-import { env } from "renderer/env.renderer";
+import { useRelayUrl } from "renderer/hooks/useRelayUrl";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import type { PaneViewerData } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/types";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
@@ -61,7 +61,7 @@ type ElectronNotificationEvent =
 export function V2NotificationController() {
 	const collections = useCollections();
 	const { machineId, activeHostUrl } = useLocalHostService();
-	const relayUrl = env.RELAY_URL;
+	const relayUrl = useRelayUrl();
 	const { data: workspaceHosts = [] } = useLiveQuery(
 		(q) =>
 			q
