@@ -1,21 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-	type AgentDefinitionId,
-	indexResolvedAgentConfigs,
-	resolveAgentConfigs,
-} from "@superset/shared/agent-settings";
 import { z } from "zod";
 import { createMcpCaller } from "../../caller";
 import { defineTool } from "../../define-tool";
-
-function resolveDefaultAgentConfig(agentId: string) {
-	const presets = indexResolvedAgentConfigs(resolveAgentConfigs({}));
-	const config = presets.get(agentId as AgentDefinitionId);
-	if (!config || !config.enabled) {
-		throw new Error(`Unknown or disabled agent preset: ${agentId}`);
-	}
-	return config;
-}
 
 export function register(server: McpServer): void {
 	defineTool(server, {
@@ -80,11 +66,7 @@ export function register(server: McpServer): void {
 		},
 		handler: async (input, ctx) => {
 			const caller = createMcpCaller(ctx);
-			const { agent, ...rest } = input;
-			return caller.automation.create({
-				...rest,
-				agentConfig: resolveDefaultAgentConfig(agent),
-			});
+			return caller.automation.create(input);
 		},
 	});
 }

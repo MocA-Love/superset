@@ -1179,7 +1179,7 @@ ID          NAME                AGENT     SCHEDULE                  ENABLED  NEX
   "data": [{
     "id": "...",
     "name": "Weekly release notes",
-    "agentConfig": { "id": "claude", "kind": "terminal", "label": "Claude", ... },
+    "agent": "claude",
     "rrule": "FREQ=WEEKLY;BYDAY=FR;BYHOUR=9;BYMINUTE=0",
     "scheduleText": "every Friday at 9:00 AM",
     "timezone": "America/Los_Angeles",
@@ -1192,9 +1192,9 @@ ID          NAME                AGENT     SCHEDULE                  ENABLED  NEX
 }
 ```
 
-`agentConfig` is the full snapshot of the agent preset (id, command, kind, model, etc.)
-taken at create time. `v2WorkspaceId` is `null` when the automation creates a fresh
-workspace per run; otherwise it points at the reused workspace.
+`agent` is a host agent preset id, host-agent config UUID, or `superset` for
+the built-in chat agent. `v2WorkspaceId` is `null` when the automation creates
+a fresh workspace per run; otherwise it points at the reused workspace.
 
 ### `superset automations create`
 ```
@@ -1210,9 +1210,8 @@ Input:
   --device <hostId>            default: owner's online host
   --timezone <IANA>            default: host TZ, else UTC
   --dtstart <iso8601>          default: now (anchors interval rules)
-  --agent <preset-id>          default: "claude"
-  --agent-config-file <path>   optional — path to a JSON ResolvedAgentConfig
-                               snapshot to use verbatim (bypasses --agent)
+  --agent <agent>              host agent preset id, config UUID, or
+                               "superset"; default: "claude"
 ```
 
 **Human output:**
@@ -1229,7 +1228,7 @@ Input:
   --rrule <rrule>
   --timezone <IANA>
   --dtstart <iso8601>
-  --agent <preset-id>
+  --agent <agent>
   --device <hostId>
   --enabled <bool>             pause / resume
 ```

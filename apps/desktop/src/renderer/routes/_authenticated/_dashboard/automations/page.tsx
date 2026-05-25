@@ -379,8 +379,8 @@ function AutomationsPage() {
 												</TableCell>
 												<TableCell className="text-muted-foreground">
 													<AgentCell
-														agentId={automation.agentConfig.id}
-														label={automation.agentConfig.label}
+														agentId={automation.agent}
+														hostId={automation.targetHostId ?? null}
 													/>
 												</TableCell>
 												<TableCell className="text-muted-foreground">

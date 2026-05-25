@@ -1,4 +1,3 @@
-import type { ResolvedAgentConfig } from "@superset/shared/agent-settings";
 import { sql } from "drizzle-orm";
 import {
 	boolean,
@@ -761,15 +760,7 @@ export const automations = pgTable(
 		name: text().notNull(),
 		prompt: text().notNull(),
 
-		/**
-		 * Full resolved agent config snapshotted at create time. Lets the cloud
-		 * dispatcher build the exact same AgentLaunchRequest the user saw —
-		 * including user customizations (overridden command, model, etc.) that
-		 * live only in the desktop's local settings. Treat as frozen at create
-		 * time; updating the user's preset later does not retroactively change
-		 * existing automations. The preset id is `agentConfig.id`.
-		 */
-		agentConfig: jsonb("agent_config").$type<ResolvedAgentConfig>().notNull(),
+		agent: text("agent").notNull(),
 
 		/**
 		 * Target host (v2_hosts.machineId after #3784 consolidation).

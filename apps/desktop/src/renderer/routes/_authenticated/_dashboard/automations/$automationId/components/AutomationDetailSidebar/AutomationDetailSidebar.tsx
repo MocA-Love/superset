@@ -5,7 +5,6 @@ import type {
 import { formatDateTimeInTimezone } from "@superset/shared/rrule";
 import { cn } from "@superset/ui/utils";
 import { useMutation } from "@tanstack/react-query";
-import { useEnabledAgents } from "renderer/hooks/useEnabledAgents";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 import { DevicePicker } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker";
 import { useWorkspaceHostOptions } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/components/DashboardNewWorkspaceForm/components/DevicePicker/hooks/useWorkspaceHostOptions/useWorkspaceHostOptions";
@@ -29,7 +28,6 @@ export function AutomationDetailSidebar({
 	automation,
 	recentRuns,
 }: AutomationDetailSidebarProps) {
-	const { agents: enabledAgents } = useEnabledAgents();
 	const recentProjects = useRecentProjects();
 	const { localHostId } = useWorkspaceHostOptions();
 	const selectedProject = recentProjects.find(
@@ -149,11 +147,9 @@ export function AutomationDetailSidebar({
 						value={
 							<AgentPicker
 								className="-mr-4"
-								value={automation.agentConfig.id}
-								onChange={(id) => {
-									const config = enabledAgents.find((a) => a.id === id);
-									if (config) updateMutation.mutate({ agentConfig: config });
-								}}
+								hostId={hostId}
+								value={automation.agent}
+								onChange={(agent) => updateMutation.mutate({ agent })}
 							/>
 						}
 					/>
