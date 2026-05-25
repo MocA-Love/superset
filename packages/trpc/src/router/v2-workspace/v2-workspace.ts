@@ -398,6 +398,7 @@ export const v2WorkspaceRouter = {
 				name: z.string().min(1).optional(),
 				branch: z.string().min(1).optional(),
 				hostId: z.string().min(1).optional(),
+				taskId: z.string().uuid().nullable().optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -413,11 +414,30 @@ export const v2WorkspaceRouter = {
 			if (input.hostId !== undefined) {
 				await getScopedHost(workspace.organizationId, input.hostId);
 			}
+			if (input.taskId) {
+				const task = await dbWs.query.tasks.findFirst({
+					columns: { id: true, organizationId: true },
+					where: eq(tasks.id, input.taskId),
+				});
+				if (!task) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Task not found",
+					});
+				}
+				if (task.organizationId !== workspace.organizationId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "Task does not belong to the workspace's organization",
+					});
+				}
+			}
 
 			const data = {
 				branch: input.branch,
 				hostId: input.hostId,
 				name: input.name,
+				taskId: input.taskId,
 			};
 			if (
 				Object.keys(data).every(
