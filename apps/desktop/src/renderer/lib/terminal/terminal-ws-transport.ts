@@ -1,9 +1,6 @@
+import { primeRelayAffinity } from "@superset/workspace-client";
 import type { Terminal as XTerm } from "@xterm/xterm";
-import {
-	logTerminalInput,
-	logTerminalWrite,
-	terminalRendererDebug,
-} from "./debug";
+import { logTerminalInput, terminalRendererDebug } from "./debug";
 
 export type ConnectionState = "disconnected" | "connecting" | "open" | "closed";
 
@@ -269,171 +266,218 @@ export function connect(
 	const actualUrl = transport._hasReceivedBytes
 		? appendQueryParam(wsUrl, "replay", "0")
 		: wsUrl;
-	const socket = new WebSocket(actualUrl);
-	// Receive PTY bytes as ArrayBuffer (the default would be Blob, which
-	// forces an async read); we want to feed bytes synchronously into
-	// xterm.write to keep render order strict.
-	socket.binaryType = "arraybuffer";
-	transport.socket = socket;
-
-	socket.addEventListener("open", () => {
-		if (transport.socket !== socket) return;
-		transport._reconnectAttempt = 0;
-		terminalRendererDebug.info(
-			"ws-open",
-			{ terminalId: transport.debugId },
-			{
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "ws-open"],
-			},
-		);
-	});
-
-	socket.addEventListener("message", (event) => {
-		if (transport.socket !== socket) return;
-
-		// Binary frame = PTY output bytes (data + replay collapsed onto one
-		// channel; renderer treats them identically). Pipe straight into
-		// xterm without any decoding step.
-		if (event.data instanceof ArrayBuffer) {
-			// xterm.write's callback only fires once the parser has consumed
-			// these bytes into its buffer. That's the honest "consumed" signal
-			// for byte-level back-pressure — ACKing on WS receipt would lie
-			// about xterm being the bottleneck.
-			const bytes = event.data.byteLength;
-			terminal.write(new Uint8Array(event.data), () => {
-				sendOutputAck(transport, socket, bytes);
-			});
-			transport._hasReceivedBytes = true;
+	const openSocket = () => {
+		if (
+			transport.currentUrl !== wsUrl ||
+			transport.connectionState !== "connecting"
+		) {
 			return;
 		}
 
-		let message: TerminalServerMessage;
+		let socket: WebSocket;
 		try {
-			message = JSON.parse(String(event.data)) as TerminalServerMessage;
-		} catch {
+			socket = new WebSocket(actualUrl);
+		} catch (err) {
 			terminalRendererDebug.error(
-				"ws-invalid-payload",
+				"ws-construction-failed",
+				{
+					terminalId: transport.debugId,
+					errorMessage: err instanceof Error ? err.message : String(err),
+				},
+				{
+					captureMessage: true,
+					fingerprint: ["terminal.renderer", "ws-construction-failed"],
+				},
+			);
+			pushLog(
+				transport,
+				"error",
+				`WebSocket construction failed for ${formatWsEndpoint(actualUrl)}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+			setConnectionState(transport, "closed");
+			scheduleReconnect(transport);
+			return;
+		}
+
+		// Receive PTY bytes as ArrayBuffer (the default would be Blob, which
+		// forces an async read); we want to feed bytes synchronously into
+		// xterm.write to keep render order strict.
+		socket.binaryType = "arraybuffer";
+		transport.socket = socket;
+
+		socket.addEventListener("open", () => {
+			if (transport.socket !== socket) return;
+			transport._reconnectAttempt = 0;
+			terminalRendererDebug.info(
+				"ws-open",
 				{ terminalId: transport.debugId },
 				{
 					captureMessage: true,
-					fingerprint: ["terminal.renderer", "ws-invalid-payload"],
+					fingerprint: ["terminal.renderer", "ws-open"],
 				},
 			);
-			terminal.writeln("\r\n[terminal] invalid server payload");
-			return;
-		}
+		});
 
-		if (message.type === "title") {
-			setTerminalTitle(transport, message.title);
-			return;
-		}
+		socket.addEventListener("message", (event) => {
+			if (transport.socket !== socket) return;
 
-		if (message.type === "attached") {
-			setConnectionState(transport, "open");
-			sendResize(transport, terminal.cols, terminal.rows);
-			return;
-		}
+			// Binary frame = PTY output bytes (data + replay collapsed onto one
+			// channel; renderer treats them identically). Pipe straight into
+			// xterm without any decoding step.
+			if (event.data instanceof ArrayBuffer) {
+				// xterm.write's callback only fires once the parser has consumed
+				// these bytes into its buffer. That's the honest "consumed" signal
+				// for byte-level back-pressure — ACKing on WS receipt would lie
+				// about xterm being the bottleneck.
+				const bytes = event.data.byteLength;
+				terminal.write(new Uint8Array(event.data), () => {
+					sendOutputAck(transport, socket, bytes);
+				});
+				transport._hasReceivedBytes = true;
+				return;
+			}
 
-		if (message.type === "error") {
+			let message: TerminalServerMessage;
+			try {
+				message = JSON.parse(String(event.data)) as TerminalServerMessage;
+			} catch {
+				terminalRendererDebug.error(
+					"ws-invalid-payload",
+					{ terminalId: transport.debugId },
+					{
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "ws-invalid-payload"],
+					},
+				);
+				terminal.writeln("\r\n[terminal] invalid server payload");
+				return;
+			}
+
+			if (message.type === "title") {
+				setTerminalTitle(transport, message.title);
+				return;
+			}
+
+			if (message.type === "attached") {
+				setConnectionState(transport, "open");
+				sendResize(transport, terminal.cols, terminal.rows);
+				return;
+			}
+
+			if (message.type === "error") {
+				terminalRendererDebug.warn(
+					"ws-server-error",
+					{
+						terminalId: transport.debugId,
+						errorMessage: message.message,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "ws-server-error"],
+					},
+				);
+				pushLog(transport, "error", message.message);
+				// Server closes after this; reconnecting would just hit the same error.
+				transport._terminated = true;
+				cancelReconnect(transport);
+				return;
+			}
+
+			if (message.type === "exit") {
+				transport._terminated = true;
+				cancelReconnect(transport);
+				terminalRendererDebug.info(
+					"ws-exit",
+					{
+						terminalId: transport.debugId,
+						exitCode: message.exitCode,
+						signal: message.signal,
+					},
+					{
+						captureMessage: true,
+						fingerprint: ["terminal.renderer", "ws-exit"],
+					},
+				);
+				terminal.writeln(
+					`\r\n[terminal] exited with code ${message.exitCode} (signal ${message.signal})`,
+				);
+			}
+		});
+
+		socket.addEventListener("close", (event) => {
+			if (transport.socket !== socket) return;
 			terminalRendererDebug.warn(
-				"ws-server-error",
+				"ws-close",
 				{
 					terminalId: transport.debugId,
-					errorMessage: message.message,
+					terminated: transport._terminated,
+					reconnectAttempt: transport._reconnectAttempt,
 				},
 				{
 					captureMessage: true,
-					fingerprint: ["terminal.renderer", "ws-server-error"],
+					fingerprint: ["terminal.renderer", "ws-close"],
 				},
 			);
-			pushLog(transport, "error", message.message);
-			// Server closes after this; reconnecting would just hit the same error.
-			transport._terminated = true;
-			cancelReconnect(transport);
-			return;
-		}
+			setConnectionState(transport, "closed");
+			transport.socket = null;
+			if (!transport._terminated && event.code !== 1000) {
+				const willReconnect =
+					!transport._reconnectTimer &&
+					Boolean(transport.currentUrl && transport._terminal) &&
+					transport._reconnectAttempt < MAX_RECONNECT_ATTEMPTS;
+				pushLog(
+					transport,
+					willReconnect ? "warn" : "error",
+					`WebSocket closed while connected to ${formatWsEndpoint(transport.currentUrl)} (${formatCloseDetails(event)}). ${willReconnect ? "Reconnecting..." : "Max reconnect attempts reached."}`,
+				);
+			}
+			// Auto-reconnect on unexpected close (host-service restart, network blip)
+			scheduleReconnect(transport);
+		});
 
-		if (message.type === "exit") {
-			transport._terminated = true;
-			cancelReconnect(transport);
-			terminalRendererDebug.info(
-				"ws-exit",
-				{
-					terminalId: transport.debugId,
-					exitCode: message.exitCode,
-					signal: message.signal,
-				},
+		socket.addEventListener("error", () => {
+			if (transport.socket !== socket) return;
+			// FORK NOTE: keep Sentry debug capture (terminalRendererDebug.error)
+			// alongside upstream's pane-side log via pushLog.
+			terminalRendererDebug.error(
+				"ws-error",
+				{ terminalId: transport.debugId },
 				{
 					captureMessage: true,
-					fingerprint: ["terminal.renderer", "ws-exit"],
+					fingerprint: ["terminal.renderer", "ws-error"],
 				},
 			);
-			terminal.writeln(
-				`\r\n[terminal] exited with code ${message.exitCode} (signal ${message.signal})`,
-			);
-		}
-	});
-
-	socket.addEventListener("close", (event) => {
-		if (transport.socket !== socket) return;
-		terminalRendererDebug.warn(
-			"ws-close",
-			{
-				terminalId: transport.debugId,
-				terminated: transport._terminated,
-				reconnectAttempt: transport._reconnectAttempt,
-			},
-			{
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "ws-close"],
-			},
-		);
-		setConnectionState(transport, "closed");
-		transport.socket = null;
-		if (!transport._terminated && event.code !== 1000) {
-			const willReconnect =
-				!transport._reconnectTimer &&
-				Boolean(transport.currentUrl && transport._terminal) &&
-				transport._reconnectAttempt < MAX_RECONNECT_ATTEMPTS;
 			pushLog(
 				transport,
-				willReconnect ? "warn" : "error",
-				`WebSocket closed while connected to ${formatWsEndpoint(transport.currentUrl)} (${formatCloseDetails(event)}). ${willReconnect ? "Reconnecting..." : "Max reconnect attempts reached."}`,
+				"error",
+				`WebSocket error while connecting to ${formatWsEndpoint(transport.currentUrl)}. Check host-service or relay connectivity.`,
 			);
-		}
-		// Auto-reconnect on unexpected close (host-service restart, network blip)
-		scheduleReconnect(transport);
-	});
-
-	socket.addEventListener("error", () => {
-		if (transport.socket !== socket) return;
-		// FORK NOTE: keep Sentry debug capture (terminalRendererDebug.error)
-		// alongside upstream's pane-side log via pushLog.
-		terminalRendererDebug.error(
-			"ws-error",
-			{ terminalId: transport.debugId },
-			{
-				captureMessage: true,
-				fingerprint: ["terminal.renderer", "ws-error"],
-			},
-		);
-		pushLog(
-			transport,
-			"error",
-			`WebSocket error while connecting to ${formatWsEndpoint(transport.currentUrl)}. Check host-service or relay connectivity.`,
-		);
-	});
-
-	transport.onDataDisposable?.dispose();
-	transport.onDataDisposable = terminal.onData((data) => {
-		if (socket.readyState !== WebSocket.OPEN) return;
-		if (transport.connectionState !== "open") return;
-		logTerminalInput("ws-input", data.length, {
-			terminalId: transport.debugId,
 		});
-		socket.send(JSON.stringify({ type: "input", data }));
-	});
+
+		transport.onDataDisposable?.dispose();
+		transport.onDataDisposable = terminal.onData((data) => {
+			if (socket.readyState !== WebSocket.OPEN) return;
+			if (transport.connectionState !== "open") return;
+			logTerminalInput("ws-input", data.length, {
+				terminalId: transport.debugId,
+			});
+			socket.send(JSON.stringify({ type: "input", data }));
+		});
+	};
+
+	let needsPreFlight = false;
+	try {
+		needsPreFlight = new URL(actualUrl).pathname.startsWith("/hosts/");
+	} catch {
+		needsPreFlight = false;
+	}
+	if (needsPreFlight) {
+		void primeRelayAffinity(actualUrl).then(openSocket);
+	} else {
+		openSocket();
+	}
 }
 
 function sendOutputAck(

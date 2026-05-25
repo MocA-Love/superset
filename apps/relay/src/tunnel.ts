@@ -1,4 +1,6 @@
 import { createApiClient } from "./api-client";
+import * as directory from "./directory";
+import { env } from "./env";
 import type { TunnelHttpResponse, TunnelRequest } from "./types";
 
 type WsSocket = {
@@ -31,6 +33,11 @@ interface TunnelState {
 	missedPings: number;
 }
 
+interface DrainOptions {
+	reason?: string;
+	clearDirectory: () => Promise<number>;
+}
+
 export class TunnelManager {
 	static readonly WS_CLOSE_DRAIN = 4001;
 
@@ -48,15 +55,46 @@ export class TunnelManager {
 		this.requestTimeoutMs = requestTimeoutMs;
 	}
 
-	register(hostId: string, token: string, ws: WsSocket): void {
+	async register(hostId: string, token: string, ws: WsSocket): Promise<void> {
 		if (this.draining) {
 			ws.close(TunnelManager.WS_CLOSE_DRAIN, "Server draining for deploy");
 			return;
 		}
 
-		if (this.tunnels.has(hostId)) {
-			ws.close(1000, "Tunnel already registered");
+		const existing = this.tunnels.get(hostId);
+		if (existing) {
+			console.log(
+				`[relay] tunnel re-register: closing old socket for ${hostId}`,
+			);
+			this.disposeTunnel(existing, "Replaced by new tunnel", 1000);
+			this.tunnels.delete(hostId);
+		}
+
+		const directoryWritten = await this.registerDirectoryWithRetry(hostId);
+		if (!directoryWritten) {
+			ws.close(1011, "Directory write failed");
 			return;
+		}
+
+		if (ws.readyState !== 1 || this.draining) {
+			await directory
+				.unregister(hostId, env.FLY_REGION, env.FLY_MACHINE_ID)
+				.catch((err) => {
+					console.error("[relay] directory.unregister rollback failed", err);
+				});
+			if (this.draining) {
+				ws.close(TunnelManager.WS_CLOSE_DRAIN, "Server draining for deploy");
+			}
+			return;
+		}
+
+		const raced = this.tunnels.get(hostId);
+		if (raced) {
+			console.log(
+				`[relay] concurrent re-register: closing raced socket for ${hostId}`,
+			);
+			this.disposeTunnel(raced, "Replaced by new tunnel", 1000);
+			this.tunnels.delete(hostId);
 		}
 
 		const tunnel: TunnelState = {
@@ -84,16 +122,46 @@ export class TunnelManager {
 		console.log(`[relay] tunnel registered: ${hostId}`);
 	}
 
-	unregister(hostId: string): void {
+	private async registerDirectoryWithRetry(hostId: string): Promise<boolean> {
+		const attempts = 3;
+		for (let i = 0; i < attempts; i++) {
+			try {
+				await directory.register(hostId, env.FLY_REGION, env.FLY_MACHINE_ID);
+				return true;
+			} catch (err) {
+				if (i === attempts - 1) {
+					console.error(
+						`[relay] directory.register failed after ${attempts} attempts`,
+						err,
+					);
+					return false;
+				}
+				await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** i));
+			}
+		}
+		return false;
+	}
+
+	unregister(hostId: string, ws?: WsSocket): void {
 		const tunnel = this.tunnels.get(hostId);
 		if (!tunnel) return;
+		if (ws && tunnel.ws !== ws) return;
 
 		this.disposeTunnel(tunnel, "Tunnel disconnected", 1000);
+		this.tunnels.delete(hostId);
+
+		void directory
+			.unregister(hostId, env.FLY_REGION, env.FLY_MACHINE_ID)
+			.catch((err) => {
+				console.error("[relay] directory.unregister failed", err);
+			});
+		this.scheduleOnlineWrite(hostId, tunnel.token, false);
 		console.log(`[relay] tunnel unregistered: ${hostId}`);
 	}
 
-	async drain(reason = "Server draining for deploy"): Promise<void> {
+	async drain(options: DrainOptions): Promise<number> {
 		this.draining = true;
+		const reason = options.reason ?? "Server draining for deploy";
 		const tunnels = Array.from(this.tunnels.values());
 		console.log(`[relay] draining ${tunnels.length} tunnels`);
 
@@ -107,8 +175,17 @@ export class TunnelManager {
 
 		await new Promise((resolve) => setTimeout(resolve, 500));
 
+		let cleared = 0;
+		let clearError: unknown;
+		try {
+			cleared = await options.clearDirectory();
+		} catch (err) {
+			clearError = err;
+		}
+
 		for (const tunnel of tunnels) {
 			this.disposeTunnel(tunnel, reason, TunnelManager.WS_CLOSE_DRAIN);
+			this.tunnels.delete(tunnel.hostId);
 		}
 
 		const WS_CLOSED = 3;
@@ -117,6 +194,8 @@ export class TunnelManager {
 			if (tunnels.every((tunnel) => tunnel.ws.readyState === WS_CLOSED)) break;
 			await new Promise((resolve) => setTimeout(resolve, 50));
 		}
+		if (clearError) throw clearError;
+		return cleared;
 	}
 
 	private disposeTunnel(
@@ -134,9 +213,6 @@ export class TunnelManager {
 		for (const [, clientWs] of tunnel.activeChannels) {
 			clientWs.close(1001, reason);
 		}
-
-		this.scheduleOnlineWrite(tunnel.hostId, tunnel.token, false);
-		this.tunnels.delete(tunnel.hostId);
 
 		try {
 			tunnel.ws.close(tunnelCloseCode, reason);
@@ -298,6 +374,7 @@ export class TunnelManager {
 
 		if (msg.type === "pong") {
 			tunnel.missedPings = 0;
+			void directory.heartbeat(hostId).catch(() => {});
 		} else if (msg.type === "http:response") {
 			const pending = tunnel.pendingRequests.get(msg.id as string);
 			if (pending) {

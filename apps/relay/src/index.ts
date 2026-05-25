@@ -6,8 +6,18 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { checkHostAccess } from "./access";
 import { type AuthContext, verifyJWT } from "./auth";
+import * as directory from "./directory";
 import { env } from "./env";
 import { TunnelManager } from "./tunnel";
+
+const SENSITIVE_QUERY_RE = /([?&])token=[^&\s]+/g;
+const redactingLogger = logger((message, ...rest) => {
+	const redacted =
+		typeof message === "string"
+			? message.replace(SENSITIVE_QUERY_RE, "$1token=REDACTED")
+			: message;
+	console.log(redacted, ...rest);
+});
 
 type AppContext = {
 	Variables: {
@@ -30,7 +40,16 @@ const handleDrain = async (signal: string) => {
 	console.log(`[relay] ${signal} received, draining tunnels`);
 	try {
 		server?.close();
-		await tunnelManager.drain();
+		const cleared = await tunnelManager.drain({
+			clearDirectory: () =>
+				directory.clearStaleEntriesForMachine(
+					env.FLY_REGION,
+					env.FLY_MACHINE_ID,
+				),
+		});
+		if (cleared > 0) {
+			console.log(`[relay] cleared ${cleared} directory entries during drain`);
+		}
 	} catch (err) {
 		console.error("[relay] drain failed", err);
 	}
@@ -40,10 +59,10 @@ const handleDrain = async (signal: string) => {
 process.on("SIGINT", () => void handleDrain("SIGINT"));
 process.on("SIGTERM", () => void handleDrain("SIGTERM"));
 
-app.use("*", logger());
+app.use("*", redactingLogger);
 app.use("*", cors());
 
-app.get("/health", (c) => c.json({ ok: true }));
+app.get("/health", (c) => c.json({ ok: true, region: env.FLY_REGION }));
 
 // ── Auth ────────────────────────────────────────────────────────────
 
@@ -58,6 +77,27 @@ function extractToken(c: {
 	return c.req.query("token") ?? null;
 }
 
+async function maybeReplay(
+	hostId: string,
+): Promise<Record<string, string> | null> {
+	if (tunnelManager.hasTunnel(hostId)) return null;
+	const owner = await directory.lookup(hostId).catch((err) => {
+		console.error("[relay] directory.lookup failed", err);
+		return null;
+	});
+	if (!owner) return null;
+	if (
+		owner.region === env.FLY_REGION &&
+		owner.machineId === env.FLY_MACHINE_ID
+	) {
+		return null;
+	}
+	if (owner.region === env.FLY_REGION) {
+		return { "fly-replay": `instance=${owner.machineId}` };
+	}
+	return { "fly-replay": `region=${owner.region}` };
+}
+
 const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
 	const token = extractToken(c);
 	if (!token) return c.json({ error: "Unauthorized" }, 401);
@@ -68,11 +108,14 @@ const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
 	const hostId = c.req.param("hostId");
 	if (!hostId) return c.json({ error: "Missing hostId" }, 400);
 
+	if (!tunnelManager.hasTunnel(hostId)) {
+		const replay = await maybeReplay(hostId);
+		if (replay) return c.body(null, 200, replay);
+		return c.json({ error: "Host not connected" }, 503);
+	}
+
 	const hasAccess = await checkHostAccess(auth, token, hostId);
 	if (!hasAccess) return c.json({ error: "Forbidden" }, 403);
-
-	if (!tunnelManager.hasTunnel(hostId))
-		return c.json({ error: "Host not connected" }, 503);
 
 	c.set("auth", auth);
 	c.set("token", token);
@@ -87,7 +130,8 @@ app.get(
 	upgradeWebSocket((c) => {
 		const hostId = c.req.query("hostId");
 		const token = extractToken(c);
-		let authorized = false;
+		let registeredWs: Parameters<typeof tunnelManager.register>[2] | null =
+			null;
 
 		return {
 			onOpen: async (_event, ws) => {
@@ -118,22 +162,40 @@ app.get(
 					return;
 				}
 
-				tunnelManager.register(hostId, token, ws);
-				authorized = true;
+				await tunnelManager.register(hostId, token, ws);
+				if (ws.readyState === 1) registeredWs = ws;
 			},
 			onMessage: (event) => {
-				if (authorized && hostId)
+				if (registeredWs && hostId)
 					tunnelManager.handleMessage(hostId, event.data);
 			},
 			onClose: () => {
-				if (authorized && hostId) tunnelManager.unregister(hostId);
+				if (registeredWs && hostId)
+					tunnelManager.unregister(hostId, registeredWs);
 			},
 			onError: () => {
-				if (authorized && hostId) tunnelManager.unregister(hostId);
+				if (registeredWs && hostId)
+					tunnelManager.unregister(hostId, registeredWs);
 			},
 		};
 	}),
 );
+
+app.get("/hosts/:hostId/_whoowns", async (c) => {
+	const token = extractToken(c);
+	if (!token) return c.json({ error: "Unauthorized" }, 401);
+	const auth = await verifyJWT(token, env.NEXT_PUBLIC_API_URL);
+	if (!auth) return c.json({ error: "Unauthorized" }, 401);
+
+	const hostId = c.req.param("hostId");
+	const replay = await maybeReplay(hostId);
+	if (!replay) {
+		return tunnelManager.hasTunnel(hostId)
+			? c.json({ ok: true, region: env.FLY_REGION })
+			: c.json({ error: "Host not connected" }, 503);
+	}
+	return c.body(null, 200, replay);
+});
 
 // ── Host proxy (auth required) ──────────────────────────────────────
 
@@ -202,9 +264,31 @@ app.get(
 	}),
 );
 
+setInterval(() => {
+	void directory.sweepStale().catch((err) => {
+		console.error("[relay] directory.sweepStale failed", err);
+	});
+}, 30_000);
+
 // ── Start ───────────────────────────────────────────────────────────
 
+try {
+	const cleared = await directory.clearStaleEntriesForMachine(
+		env.FLY_REGION,
+		env.FLY_MACHINE_ID,
+	);
+	if (cleared > 0) {
+		console.log(
+			`[relay] cleared ${cleared} stale directory entries on startup`,
+		);
+	}
+} catch (err) {
+	console.error("[relay] startup cleanup failed", err);
+}
+
 server = serve({ fetch: app.fetch, port: env.RELAY_PORT }, (info) => {
-	console.log(`[relay] listening on http://localhost:${info.port}`);
+	console.log(
+		`[relay] listening on http://localhost:${info.port} (region=${env.FLY_REGION} machine=${env.FLY_MACHINE_ID})`,
+	);
 });
 injectWebSocket(server);
