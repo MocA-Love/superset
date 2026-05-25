@@ -192,12 +192,6 @@ export async function getProcessEnvWithShellPath(
 		}
 	}
 
-	// Git 2.50+ rejects inherited PAGER/GIT_PAGER in non-interactive callers.
-	// Programmatic git invocations pipe stdout, so paging is skipped without a
-	// replacement value. User-facing terminals still get their own shell env.
-	delete env.PAGER;
-	delete env.GIT_PAGER;
-
 	return env;
 }
 

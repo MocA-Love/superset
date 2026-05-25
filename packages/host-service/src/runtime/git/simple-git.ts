@@ -1,8 +1,8 @@
+import { USER_GIT_ENV_SIMPLE_GIT_OPTIONS } from "@superset/shared/simple-git-options";
 import {
 	buildSimpleGitUnsafeOptions,
 	type SimpleGitUnsafeOptions,
 } from "@superset/shared/simple-git-unsafe";
-import { USER_GIT_ENV_SIMPLE_GIT_OPTIONS } from "@superset/shared/simple-git-options";
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from "simple-git";
 
 interface CreateSimpleGitWithEnvOptions {
