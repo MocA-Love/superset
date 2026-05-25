@@ -13,6 +13,8 @@ export const SETTING_ITEM_ID = {
 	ORGANIZATION_MEMBERS_PENDING_INVITATIONS:
 		"organization-members-pending-invitations",
 
+	TEAMS_LIST: "teams-list",
+
 	APPEARANCE_THEME: "appearance-theme",
 	APPEARANCE_MARKDOWN: "appearance-markdown",
 	APPEARANCE_CUSTOM_THEMES: "appearance-custom-themes",
@@ -85,7 +87,8 @@ export const SETTING_ITEM_ID = {
 	// Fork-specific settings (vibrancy, diagnostics, aivis, vscode-shim, git extensions)
 	APPEARANCE_VIBRANCY: "appearance-vibrancy",
 	BEHAVIOR_LANGUAGE_DIAGNOSTICS: "behavior-language-diagnostics",
-	BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH: "behavior-right-sidebar-open-view-width",
+	BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH:
+		"behavior-right-sidebar-open-view-width",
 	GIT_SMART_COMMIT: "git-smart-commit",
 	GIT_AUTO_STASH: "git-auto-stash",
 	GIT_BRANCH_SORT_ORDER: "git-branch-sort-order",
@@ -139,6 +142,8 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.ORGANIZATION_MEMBERS_LIST]: "shared",
 	[SETTING_ITEM_ID.ORGANIZATION_MEMBERS_INVITE]: "shared",
 	[SETTING_ITEM_ID.ORGANIZATION_MEMBERS_PENDING_INVITATIONS]: "shared",
+
+	[SETTING_ITEM_ID.TEAMS_LIST]: "shared",
 
 	[SETTING_ITEM_ID.APPEARANCE_THEME]: "shared",
 	[SETTING_ITEM_ID.APPEARANCE_MARKDOWN]: "shared",
@@ -387,6 +392,21 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"cancel",
 			"resend",
 			"email",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.TEAMS_LIST,
+		section: "teams",
+		title: "Teams",
+		description: "View and manage organization teams",
+		keywords: [
+			"teams",
+			"team",
+			"organization",
+			"members",
+			"groups",
+			"departments",
+			"collaboration",
 		],
 	},
 	{

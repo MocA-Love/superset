@@ -35,6 +35,7 @@ const SECTION_ORDER: SettingsSection[] = [
 	"links",
 	"models",
 	"organization",
+	"teams",
 	"integrations",
 	"billing",
 	"apikeys",
@@ -46,6 +47,7 @@ const SECTION_ORDER: SettingsSection[] = [
 function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/account")) return "account";
 	if (pathname.includes("/settings/organization")) return "organization";
+	if (pathname.includes("/settings/teams")) return "teams";
 	if (pathname.includes("/settings/appearance")) return "appearance";
 	if (pathname.includes("/settings/ringtones")) return "ringtones";
 	if (pathname.includes("/settings/keyboard")) return "keyboard";
@@ -68,6 +70,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/account";
 		case "organization":
 			return "/settings/organization";
+		case "teams":
+			return "/settings/teams";
 		case "appearance":
 			return "/settings/appearance";
 		case "ringtones":
