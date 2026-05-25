@@ -16,6 +16,12 @@ import { getRelativeTime } from "renderer/screens/main/components/WorkspacesList
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
 import type { PaneViewerData, TerminalPaneData } from "../../types";
+import {
+	BACKGROUND_TERMINAL_COUNT_REFETCH_INTERVAL_MS,
+	BACKGROUND_TERMINAL_LIST_REFETCH_INTERVAL_MS,
+	getAttachedTerminalIds,
+	getBackgroundTerminalSessions,
+} from "./BackgroundTerminalsButton.utils";
 
 interface BackgroundTerminalsButtonProps {
 	workspaceId: string;
@@ -33,34 +39,52 @@ export function BackgroundTerminalsButton({
 	const tabs = useStore(store, (s) => s.tabs);
 	const utils = workspaceTrpc.useUtils();
 	const killSession = workspaceTrpc.terminal.killSession.useMutation();
+	const attachedTerminalIds = useMemo(
+		() => getAttachedTerminalIds(tabs),
+		[tabs],
+	);
+	const backgroundCountInput = useMemo(
+		() => ({ workspaceId, attachedTerminalIds }),
+		[workspaceId, attachedTerminalIds],
+	);
+	const backgroundCountQuery =
+		workspaceTrpc.terminal.countBackgroundSessions.useQuery(
+			backgroundCountInput,
+			{
+				enabled: !isOpen,
+				notifyOnChangeProps: ["data"],
+				refetchInterval: isOpen
+					? false
+					: BACKGROUND_TERMINAL_COUNT_REFETCH_INTERVAL_MS,
+				refetchOnWindowFocus: false,
+			},
+		);
 	const sessionsQuery = workspaceTrpc.terminal.listSessions.useQuery(
 		{ workspaceId },
-		{ refetchInterval: isOpen ? 2_000 : 5_000, refetchOnWindowFocus: true },
+		{
+			enabled: isOpen,
+			refetchInterval: isOpen
+				? BACKGROUND_TERMINAL_LIST_REFETCH_INTERVAL_MS
+				: false,
+			refetchOnWindowFocus: false,
+		},
 	);
-
-	const attachedTerminalIds = useMemo(() => {
-		const ids = new Set<string>();
-		for (const tab of tabs) {
-			for (const pane of Object.values(tab.panes)) {
-				if (pane.kind !== "terminal") continue;
-				const data = pane.data as Partial<TerminalPaneData>;
-				if (data.terminalId) ids.add(data.terminalId);
-			}
-		}
-		return ids;
-	}, [tabs]);
 
 	const backgroundSessions = useMemo(() => {
 		const sessions = sessionsQuery.data?.sessions ?? [];
-		return sessions
-			.filter((session) => !attachedTerminalIds.has(session.terminalId))
-			.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+		return getBackgroundTerminalSessions(sessions, attachedTerminalIds);
 	}, [sessionsQuery.data?.sessions, attachedTerminalIds]);
+	const closedBackgroundSessionCount = backgroundCountQuery.data?.count ?? 0;
+	const backgroundSessionCount = isOpen
+		? sessionsQuery.data
+			? backgroundSessions.length
+			: closedBackgroundSessionCount
+		: closedBackgroundSessionCount;
 
-	if (backgroundSessions.length === 0) return null;
+	if (backgroundSessionCount === 0) return null;
 
-	const label = `${backgroundSessions.length} background terminal session${
-		backgroundSessions.length === 1 ? "" : "s"
+	const label = `${backgroundSessionCount} background terminal session${
+		backgroundSessionCount === 1 ? "" : "s"
 	}`;
 
 	const handleAdopt = (terminalId: string) => {
@@ -73,6 +97,7 @@ export function BackgroundTerminalsButton({
 			],
 		});
 		void utils.terminal.listSessions.invalidate({ workspaceId });
+		void utils.terminal.countBackgroundSessions.invalidate();
 		setIsOpen(false);
 	};
 
@@ -89,6 +114,7 @@ export function BackgroundTerminalsButton({
 		} finally {
 			setPendingKillTerminalId(null);
 			void utils.terminal.listSessions.invalidate({ workspaceId });
+			void utils.terminal.countBackgroundSessions.invalidate();
 		}
 	};
 
@@ -112,6 +138,11 @@ export function BackgroundTerminalsButton({
 				</DropdownMenuLabel>
 				<DropdownMenuSeparator />
 				<div className="max-h-80 overflow-y-auto">
+					{sessionsQuery.isFetching && backgroundSessions.length === 0 && (
+						<DropdownMenuItem disabled className="text-xs">
+							Loading terminal sessions...
+						</DropdownMenuItem>
+					)}
 					{backgroundSessions.map((session) => (
 						<DropdownMenuItem
 							key={session.terminalId}

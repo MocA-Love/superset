@@ -23,6 +23,11 @@ import type {
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { getRelativeTime } from "renderer/screens/main/components/WorkspacesListView/utils";
 import { TerminalPaneIcon } from "../TerminalPaneIcon";
+import {
+	getTerminalSessionListRefetchInterval,
+	shouldQueryTerminalSessionList,
+	TERMINAL_SESSION_LIST_STALE_MS,
+} from "./TerminalSessionDropdown.utils";
 
 interface TerminalSessionDropdownProps {
 	context: RendererContext<PaneViewerData>;
@@ -88,11 +93,15 @@ export function TerminalSessionDropdown({
 	const terminalInstanceId = context.pane.id;
 	const utils = workspaceTrpc.useUtils();
 	const killTerminalSession = workspaceTrpc.terminal.killSession.useMutation();
+	const sessionsInput = useMemo(() => ({ workspaceId }), [workspaceId]);
 	const sessionsQuery = workspaceTrpc.terminal.listSessions.useQuery(
-		{ workspaceId },
+		sessionsInput,
 		{
-			refetchInterval: isOpen ? 2_000 : false,
-			refetchOnWindowFocus: true,
+			enabled: shouldQueryTerminalSessionList(isOpen),
+			notifyOnChangeProps: ["data", "isFetching"],
+			refetchInterval: getTerminalSessionListRefetchInterval(isOpen),
+			refetchOnWindowFocus: false,
+			staleTime: TERMINAL_SESSION_LIST_STALE_MS,
 		},
 	);
 	const { data: localWorkspaceRows = [] } = useLiveQuery(

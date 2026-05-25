@@ -179,7 +179,7 @@ export function ResourceConsumption({
 		[collections],
 	);
 
-	const shouldQueryMetrics = enabled === true;
+	const shouldQueryMetrics = enabled === true && open;
 
 	const {
 		data: snapshot,
@@ -193,7 +193,8 @@ export function ResourceConsumption({
 		},
 		{
 			enabled: shouldQueryMetrics,
-			refetchInterval: open ? 2000 : 15000,
+			refetchInterval: open ? 2000 : false,
+			refetchOnWindowFocus: open,
 		},
 	);
 
