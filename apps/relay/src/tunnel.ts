@@ -9,6 +9,11 @@ type WsSocket = {
 
 const PING_INTERVAL_MS = 30_000;
 const PING_TIMEOUT_MISSED = 3;
+const ONLINE_DEBOUNCE_MS = 250;
+const SET_ONLINE_RETRY_BASE_MS = 500;
+const SET_ONLINE_RETRY_MAX_MS = 8_000;
+const SET_ONLINE_MAX_ATTEMPTS = 3;
+const MAX_PENDING_REQUESTS_PER_TUNNEL = 1_000;
 
 interface PendingRequest {
 	resolve: (response: TunnelHttpResponse) => void;
@@ -29,6 +34,12 @@ interface TunnelState {
 export class TunnelManager {
 	private readonly tunnels = new Map<string, TunnelState>();
 	private readonly requestTimeoutMs: number;
+	private readonly onlineState = new Map<string, boolean>();
+	private readonly onlineDebounce = new Map<
+		string,
+		ReturnType<typeof setTimeout>
+	>();
+	private readonly onlineWriteVersions = new Map<string, number>();
 
 	constructor(requestTimeoutMs = 30_000) {
 		this.requestTimeoutMs = requestTimeoutMs;
@@ -61,9 +72,7 @@ export class TunnelManager {
 			this.send(ws, { type: "ping" });
 		}, PING_INTERVAL_MS);
 
-		void createApiClient(token)
-			.host.setOnline.mutate({ hostId, isOnline: true })
-			.catch(() => {});
+		this.scheduleOnlineWrite(hostId, token, true);
 		console.log(`[relay] tunnel registered: ${hostId}`);
 	}
 
@@ -82,11 +91,83 @@ export class TunnelManager {
 			clientWs.close(1001, "Tunnel disconnected");
 		}
 
-		void createApiClient(tunnel.token)
-			.host.setOnline.mutate({ hostId, isOnline: false })
-			.catch(() => {});
+		this.scheduleOnlineWrite(hostId, tunnel.token, false);
 		this.tunnels.delete(hostId);
 		console.log(`[relay] tunnel unregistered: ${hostId}`);
+	}
+
+	private scheduleOnlineWrite(
+		hostId: string,
+		token: string,
+		isOnline: boolean,
+	): void {
+		// Debounce + drop redundant writes so flapping reconnects don't spam the API.
+		if (this.onlineState.get(hostId) === isOnline) {
+			const pending = this.onlineDebounce.get(hostId);
+			if (pending) {
+				clearTimeout(pending);
+				this.onlineDebounce.delete(hostId);
+			}
+			this.onlineWriteVersions.set(
+				hostId,
+				(this.onlineWriteVersions.get(hostId) ?? 0) + 1,
+			);
+			return;
+		}
+		const pending = this.onlineDebounce.get(hostId);
+		if (pending) clearTimeout(pending);
+		const version = (this.onlineWriteVersions.get(hostId) ?? 0) + 1;
+		this.onlineWriteVersions.set(hostId, version);
+		const timer = setTimeout(() => {
+			this.onlineDebounce.delete(hostId);
+			void this.attemptOnlineWrite(hostId, token, isOnline, version);
+		}, ONLINE_DEBOUNCE_MS);
+		this.onlineDebounce.set(hostId, timer);
+	}
+
+	private async attemptOnlineWrite(
+		hostId: string,
+		token: string,
+		isOnline: boolean,
+		version: number,
+	): Promise<void> {
+		for (let attempt = 0; attempt < SET_ONLINE_MAX_ATTEMPTS; attempt++) {
+			if (this.onlineWriteVersions.get(hostId) !== version) return;
+			try {
+				await createApiClient(token).host.setOnline.mutate({
+					hostId,
+					isOnline,
+				});
+				if (this.onlineWriteVersions.get(hostId) !== version) return;
+				if (isOnline) {
+					this.onlineState.set(hostId, true);
+				} else {
+					this.onlineState.delete(hostId);
+				}
+				if (this.onlineWriteVersions.get(hostId) === version) {
+					this.onlineWriteVersions.delete(hostId);
+				}
+				return;
+			} catch (err) {
+				if (this.onlineWriteVersions.get(hostId) !== version) return;
+				if (attempt === SET_ONLINE_MAX_ATTEMPTS - 1) {
+					console.error(
+						`[relay] setOnline(${isOnline}) failed for ${hostId} after ${SET_ONLINE_MAX_ATTEMPTS} attempts`,
+						err,
+					);
+					this.onlineState.delete(hostId);
+					if (this.onlineWriteVersions.get(hostId) === version) {
+						this.onlineWriteVersions.delete(hostId);
+					}
+					return;
+				}
+				const delay = Math.min(
+					SET_ONLINE_RETRY_BASE_MS * 2 ** attempt,
+					SET_ONLINE_RETRY_MAX_MS,
+				);
+				await new Promise((resolve) => setTimeout(resolve, delay));
+			}
+		}
 	}
 
 	hasTunnel(hostId: string): boolean {
@@ -104,6 +185,9 @@ export class TunnelManager {
 	): Promise<TunnelHttpResponse> {
 		const tunnel = this.tunnels.get(hostId);
 		if (!tunnel) throw new Error("Host not connected");
+		if (tunnel.pendingRequests.size >= MAX_PENDING_REQUESTS_PER_TUNNEL) {
+			throw new Error("Host overloaded (pending request queue full)");
+		}
 
 		const id = crypto.randomUUID();
 
