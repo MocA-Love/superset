@@ -10,11 +10,6 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { ProjectThumbnail } from "renderer/routes/_authenticated/components/ProjectThumbnail";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { MOCK_ORG_ID } from "shared/constants";
-import {
-	type SettingsListGroup,
-	SettingsListSidebar,
-	settingsListItemClass,
-} from "../../../components/SettingsListSidebar";
 
 interface ProjectRow {
 	kind: "v1" | "v2";

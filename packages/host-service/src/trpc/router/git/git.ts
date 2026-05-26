@@ -89,7 +89,7 @@ export const gitRouter = router({
 					const raw = await git.raw([
 						"for-each-ref",
 						sortArg,
-						"--format=%(HEAD)%00%(refname:short)",
+						"--format=%(HEAD)%00%(refname)",
 						"refs/heads/",
 						"refs/remotes/origin/",
 					]);
@@ -98,15 +98,16 @@ export const gitRouter = router({
 						.filter(Boolean)
 						.flatMap((line): ListedBranch[] => {
 							const [headMarker, refName] = line.split("\0");
-							if (!refName || refName === "origin/HEAD") return [];
-							if (refName.startsWith("origin/")) {
-								const name = refName.slice("origin/".length);
+							if (!refName || refName === "refs/remotes/origin/HEAD") return [];
+							if (refName.startsWith("refs/remotes/origin/")) {
+								const name = refName.slice("refs/remotes/origin/".length);
 								if (!name || name === "HEAD") return [];
 								return [{ name, isHead: false, isRemote: true }];
 							}
+							if (!refName.startsWith("refs/heads/")) return [];
 							return [
 								{
-									name: refName,
+									name: refName.slice("refs/heads/".length),
 									isHead: headMarker === "*",
 									isRemote: false,
 								},

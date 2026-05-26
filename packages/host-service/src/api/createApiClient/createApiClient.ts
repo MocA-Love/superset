@@ -9,9 +9,7 @@ import type { ApiClient } from "../../types";
 function isUnauthorizedError(err: unknown): boolean {
 	if (!err || typeof err !== "object") return false;
 	const error = err as { data?: { code?: string; httpStatus?: number } };
-	return (
-		error.data?.code === "UNAUTHORIZED" || error.data?.httpStatus === 401
-	);
+	return error.data?.code === "UNAUTHORIZED" || error.data?.httpStatus === 401;
 }
 
 function retryOnUnauthorizedLink(

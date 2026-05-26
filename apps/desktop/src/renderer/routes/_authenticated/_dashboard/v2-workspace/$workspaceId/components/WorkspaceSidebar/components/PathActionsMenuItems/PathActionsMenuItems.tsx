@@ -50,7 +50,9 @@ export function PathActionsMenuItems({
 					Reveal in Finder
 				</DropdownMenuItem>
 				<DropdownMenuSeparator />
-				<DropdownMenuItem onSelect={() => handleCopy(absolutePath, "Path copied")}>
+				<DropdownMenuItem
+					onSelect={() => handleCopy(absolutePath, "Path copied")}
+				>
 					<Clipboard />
 					Copy Path
 				</DropdownMenuItem>

@@ -186,7 +186,7 @@ describe("agent-wrappers copilot", () => {
 		const wrapper = readFileSync(wrapperPath, "utf-8");
 
 		expect(wrapper).toContain(
-			'export CODEX_TUI_RECORD_SESSION="${CODEX_TUI_RECORD_SESSION:-1}"',
+			`export CODEX_TUI_RECORD_SESSION="\${CODEX_TUI_RECORD_SESSION:-1}"`,
 		);
 		expect(wrapper).toContain('"msg":{"type":"task_started"');
 		expect(wrapper).toContain('_superset_last_turn_id=""');

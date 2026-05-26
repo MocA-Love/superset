@@ -1,10 +1,10 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { resolveHotkeyFromEvent } from "renderer/hotkeys";
-import { translateLineEditChord } from "renderer/lib/terminal/line-edit-translations";
 import {
 	shouldBubbleClipboardShortcut,
 	shouldSelectAllShortcut,
 } from "renderer/lib/terminal/clipboard-shortcuts";
+import { translateLineEditChord } from "renderer/lib/terminal/line-edit-translations";
 
 // FORK NOTE: ActiveSuggestionHandle and suggestion-related options were
 // originally defined in helpers.ts and are now co-located here alongside

@@ -18,9 +18,8 @@ export function InspectCodeBlock({ code, language }: InspectCodeBlockProps) {
 		() => (activeTheme ? createShikiTheme(activeTheme) : undefined),
 		[activeTheme],
 	);
-	const [highlightedCode, setHighlightedCode] = useState<HighlightedCode | null>(
-		null,
-	);
+	const [highlightedCode, setHighlightedCode] =
+		useState<HighlightedCode | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;

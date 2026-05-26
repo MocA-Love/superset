@@ -10,7 +10,6 @@ import {
 } from "./appearance";
 import { logTerminalWrite, terminalRendererDebug } from "./debug";
 import { scheduleFontSettleRefit } from "./font-settle";
-import { translateLineEditChord } from "./line-edit-translations";
 import { loadAddons } from "./terminal-addons";
 import { installImagePasteFallback } from "./terminal-image-paste-fallback";
 import { installTerminalKeyEventHandler } from "./terminal-key-event-handler";

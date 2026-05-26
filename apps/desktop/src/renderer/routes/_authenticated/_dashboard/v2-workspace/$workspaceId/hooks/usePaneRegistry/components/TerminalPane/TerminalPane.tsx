@@ -81,9 +81,8 @@ export function TerminalPane({
 	const themeType = resolveTerminalThemeType({
 		activeThemeType: activeTheme?.type,
 	});
-	const initialThemeTypeRef = useRef<
-		ReturnType<typeof resolveTerminalThemeType>
-	>(themeType);
+	const initialThemeTypeRef =
+		useRef<ReturnType<typeof resolveTerminalThemeType>>(themeType);
 	const { trpcClient } = useWorkspaceClient();
 	const trpcClientRef = useRef(trpcClient);
 	trpcClientRef.current = trpcClient;

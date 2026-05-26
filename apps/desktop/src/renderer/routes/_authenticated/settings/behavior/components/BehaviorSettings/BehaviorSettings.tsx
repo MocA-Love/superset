@@ -9,7 +9,13 @@ import {
 	SelectValue,
 } from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
-import { type FocusEvent, useCallback, useEffect, useState } from "react";
+import {
+	type FocusEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	clampRightSidebarOpenViewWidth,
@@ -163,8 +169,17 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		});
 	const [rightSidebarOpenViewWidthDraft, setRightSidebarOpenViewWidthDraft] =
 		useState<string | null>(null);
+	const previousRightSidebarOpenViewWidthRef = useRef(
+		rightSidebarOpenViewWidth,
+	);
 
 	useEffect(() => {
+		if (
+			previousRightSidebarOpenViewWidthRef.current === rightSidebarOpenViewWidth
+		) {
+			return;
+		}
+		previousRightSidebarOpenViewWidthRef.current = rightSidebarOpenViewWidth;
 		setRightSidebarOpenViewWidthDraft(null);
 	}, [rightSidebarOpenViewWidth]);
 

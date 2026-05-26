@@ -1,7 +1,7 @@
 import {
 	projects,
-	settings,
 	type SelectProject,
+	settings,
 	workspaceSections,
 	workspaces,
 	worktrees,
