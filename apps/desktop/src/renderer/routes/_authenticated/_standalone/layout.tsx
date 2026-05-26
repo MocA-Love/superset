@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
-export const Route = createFileRoute("/_authenticated/_onboarding")({
+export const Route = createFileRoute("/_authenticated/_standalone")({
 	component: OnboardingLayout,
 });
 

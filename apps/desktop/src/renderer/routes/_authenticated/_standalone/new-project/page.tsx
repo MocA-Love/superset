@@ -17,7 +17,7 @@ import { TemplateTab } from "./components/TemplateTab";
 import type { NewProjectMode } from "./constants";
 
 export const Route = createFileRoute(
-	"/_authenticated/_onboarding/new-project/",
+	"/_authenticated/_standalone/new-project/",
 )({
 	component: NewProjectPage,
 });
