@@ -13,20 +13,26 @@ import {
 
 export const authSchema = pgSchema("auth");
 
-export const users = authSchema.table("users", {
-	id: uuid("id").primaryKey().defaultRandom(),
-	name: text("name").notNull(),
-	email: text("email").notNull().unique(),
-	emailVerified: boolean("email_verified").default(false).notNull(),
-	image: text("image"),
-	organizationIds: uuid("organization_ids").array().default([]).notNull(),
-	onboardedAt: timestamp("onboarded_at"),
-	createdAt: timestamp("created_at").defaultNow().notNull(),
-	updatedAt: timestamp("updated_at")
-		.defaultNow()
-		.$onUpdate(() => new Date())
-		.notNull(),
-});
+export const users = authSchema.table(
+	"users",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		name: text("name").notNull(),
+		email: text("email").notNull().unique(),
+		emailVerified: boolean("email_verified").default(false).notNull(),
+		image: text("image"),
+		organizationIds: uuid("organization_ids").array().default([]).notNull(),
+		onboardedAt: timestamp("onboarded_at"),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("users_organization_ids_idx").using("gin", table.organizationIds),
+	],
+);
 
 export type SelectUser = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -244,6 +250,8 @@ export const oauthClients = authSchema.table("oauth_clients", {
 	responseTypes: text("response_types").array(),
 	public: boolean("public"),
 	type: text("type"),
+	requirePKCE: boolean("require_pkce"),
+	subjectType: text("subject_type"),
 	referenceId: text("reference_id"),
 	metadata: jsonb("metadata"),
 });
@@ -346,6 +354,10 @@ export const apikeys = authSchema.table(
 		index("apikeys_referenceId_idx").on(table.referenceId),
 		index("apikeys_key_idx").on(table.key),
 		index("apikeys_organization_id_idx").on(table.organizationId),
+		index("apikeys_metadata_trgm_idx").using(
+			"gin",
+			sql`${table.metadata} gin_trgm_ops`,
+		),
 	],
 );
 

@@ -252,6 +252,8 @@ export const subscriptions = pgTable(
 		canceledAt: timestamp("canceled_at"),
 		endedAt: timestamp("ended_at"),
 		seats: integer(),
+		billingInterval: text("billing_interval"),
+		stripeScheduleId: text("stripe_schedule_id"),
 		createdAt: timestamp("created_at").notNull().defaultNow(),
 		updatedAt: timestamp("updated_at")
 			.notNull()
@@ -846,7 +848,7 @@ export const automationRuns = pgTable(
 		}),
 		terminalSessionId: text("terminal_session_id"),
 
-		status: automationRunStatus().notNull().default("pending"),
+		status: automationRunStatus().notNull(),
 		error: text(),
 		dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
 
