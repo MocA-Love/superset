@@ -23,6 +23,7 @@ export default command({
 			"v2 project id — required for new-workspace-per-run mode",
 		),
 		workspace: string().desc("existing v2 workspace id — reuses it every run"),
+		host: string().desc("Target host id (default: owner's online host)"),
 		device: string().desc("Target host id (default: owner's online host)"),
 		agent: string()
 			.default("claude")
@@ -43,12 +44,16 @@ export default command({
 		if (!options.project && !options.workspace) {
 			throw new Error("Provide --project or --workspace");
 		}
+		if (options.host && options.device && options.host !== options.device) {
+			throw new Error("Use either --host or --device, not both");
+		}
+		const targetHostId = options.host ?? options.device ?? null;
 
 		const result = await ctx.api.automation.create.mutate({
 			name: options.name,
 			prompt,
 			agent: options.agent,
-			targetHostId: options.device ?? null,
+			targetHostId,
 			v2ProjectId: options.project ?? undefined,
 			v2WorkspaceId: options.workspace ?? undefined,
 			rrule: options.rrule,

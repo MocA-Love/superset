@@ -15,6 +15,7 @@ export default command({
 		agent: string().desc(
 			"New host agent instance id or presetId (e.g. claude, codex, superset).",
 		),
+		host: string().desc("New target host id"),
 		device: string().desc("New target host id"),
 		project: string().desc("New v2 project id"),
 		workspace: string().desc("New v2 workspace id"),
@@ -27,6 +28,10 @@ export default command({
 			? readFileSync(options.promptFile, "utf-8").trim()
 			: undefined;
 		const prompt = options.prompt ?? promptFromFile;
+		if (options.host && options.device && options.host !== options.device) {
+			throw new Error("Use either --host or --device, not both");
+		}
+		const targetHostId = options.host ?? options.device;
 
 		if (options.enabled !== undefined) {
 			await ctx.api.automation.setEnabled.mutate({
@@ -46,12 +51,11 @@ export default command({
 		const result = await ctx.api.automation.update.mutate({
 			id,
 			name: options.name,
-			prompt,
 			rrule: options.rrule,
 			timezone: options.timezone,
 			dtstart: options.dtstart ? new Date(options.dtstart) : undefined,
 			agent: options.agent,
-			targetHostId: options.device,
+			targetHostId,
 			...(options.project !== undefined
 				? { v2ProjectId: options.project }
 				: {}),
@@ -60,10 +64,14 @@ export default command({
 				: {}),
 			...(mcpScope !== undefined ? { mcpScope } : {}),
 		});
+		const finalResult =
+			prompt !== undefined
+				? await ctx.api.automation.setPrompt.mutate({ id, prompt })
+				: result;
 
 		return {
-			data: result,
-			message: `Updated automation "${result.name}"`,
+			data: finalResult,
+			message: `Updated automation "${finalResult.name}"`,
 		};
 	},
 });

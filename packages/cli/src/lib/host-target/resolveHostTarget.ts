@@ -43,6 +43,14 @@ export interface ProjectCreateResult {
 	mainWorkspaceId: string;
 }
 
+export interface HostProject {
+	id: string;
+	repoPath: string;
+	repoOwner?: string | null;
+	repoName?: string | null;
+	repoUrl?: string | null;
+}
+
 export type ProjectSetupMode =
 	| {
 			kind: "clone";
@@ -64,8 +72,65 @@ export interface ProjectSetupResult {
 	mainWorkspaceId: string | null;
 }
 
+export type AgentRunResult =
+	| { kind: "terminal"; sessionId: string; label: string }
+	| { kind: "chat"; sessionId: string; label: string };
+
+export interface WorkspaceCreateAgentInput {
+	agent: string;
+	prompt: string;
+	attachmentIds?: string[];
+}
+
+export interface WorkspaceCreateResult {
+	workspace: {
+		id: string;
+		name: string;
+		branch?: string | null;
+	} & Record<string, unknown>;
+	terminals: Array<{ terminalId: string; label?: string }>;
+	agents: unknown[];
+	alreadyExists: boolean;
+	txid?: string | null;
+}
+
+export interface WorkspaceDeleteResult {
+	success: boolean;
+	cloudDeleted: boolean;
+	worktreeRemoved: boolean;
+	branchDeleted: boolean;
+	warnings: string[];
+}
+
 export interface HostServiceClient {
+	agents: {
+		run: {
+			mutate: (input: {
+				workspaceId: string;
+				agent: string;
+				prompt: string;
+				attachmentIds?: string[];
+			}) => Promise<AgentRunResult>;
+		};
+	};
+	attachments: {
+		upload: {
+			mutate: (input: {
+				data: { kind: "base64"; data: string };
+				mediaType: string;
+				originalFilename?: string;
+			}) => Promise<{
+				attachmentId: string;
+				originalFilename?: string;
+				mediaType: string;
+				sizeBytes: number;
+			}>;
+		};
+	};
 	project: {
+		list: {
+			query: () => Promise<HostProject[]>;
+		};
 		create: {
 			mutate: (input: ProjectCreateInput) => Promise<ProjectCreateResult>;
 		};
@@ -78,6 +143,23 @@ export interface HostServiceClient {
 			list: {
 				query: () => Promise<HostAgentConfig[]>;
 			};
+		};
+	};
+	workspace: {
+		delete: {
+			mutate: (input: { id: string }) => Promise<WorkspaceDeleteResult>;
+		};
+	};
+	workspaces: {
+		create: {
+			mutate: (input: {
+				projectId: string;
+				name?: string;
+				branch?: string;
+				pr?: number;
+				baseBranch?: string;
+				agents?: WorkspaceCreateAgentInput[];
+			}) => Promise<WorkspaceCreateResult>;
 		};
 	};
 }

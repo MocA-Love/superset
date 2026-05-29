@@ -1,4 +1,5 @@
 import { CLIError, number, positional, string } from "@superset/cli-framework";
+import { isValid, parseISO } from "date-fns";
 import { command } from "../../../lib/command";
 
 export default command({
@@ -11,7 +12,6 @@ export default command({
 			.enum("urgent", "high", "medium", "low", "none")
 			.desc("Priority"),
 		assignee: string().desc("Assignee user ID"),
-		branch: string().desc("Git branch"),
 		statusId: string().desc("Status ID"),
 		prUrl: string().desc("Linked PR URL"),
 		estimate: number().int().min(1).desc("Story-point estimate"),
@@ -25,8 +25,8 @@ export default command({
 
 		let dueDate: Date | undefined;
 		if (options.dueDate !== undefined) {
-			const parsed = new Date(options.dueDate);
-			if (Number.isNaN(parsed.getTime())) {
+			const parsed = parseISO(options.dueDate);
+			if (!isValid(parsed)) {
 				throw new CLIError(
 					`--due-date: invalid ISO 8601 date "${options.dueDate}"`,
 				);
@@ -48,7 +48,6 @@ export default command({
 			description: options.description ?? undefined,
 			priority: options.priority ?? undefined,
 			assigneeId: options.assignee ?? undefined,
-			branch: options.branch ?? undefined,
 			statusId: options.statusId ?? undefined,
 			prUrl: options.prUrl ?? undefined,
 			estimate: options.estimate ?? undefined,

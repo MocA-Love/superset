@@ -1,13 +1,14 @@
 import { CLIError, number, string } from "@superset/cli-framework";
+import { isValid, parseISO } from "date-fns";
 import { command } from "../../../lib/command";
 
 function parseDueDate(value: string | undefined): Date | undefined {
 	if (!value) return undefined;
-	const timestamp = Date.parse(value);
-	if (Number.isNaN(timestamp)) {
+	const parsed = parseISO(value);
+	if (!isValid(parsed)) {
 		throw new CLIError(`--due-date: invalid ISO 8601 date "${value}"`);
 	}
-	return new Date(timestamp);
+	return parsed;
 }
 
 export default command({
@@ -23,7 +24,6 @@ export default command({
 		estimate: number().int().min(1).desc("Story-point estimate"),
 		dueDate: string().desc("Due date (ISO 8601)"),
 		labels: string().desc("Comma-separated labels"),
-		branch: string().desc("Git branch"),
 	},
 	run: async ({ ctx, options }) => {
 		const labels = options.labels
@@ -32,7 +32,7 @@ export default command({
 					.map((label) => label.trim())
 					.filter(Boolean)
 			: undefined;
-		const result = await ctx.api.task.createFromUi.mutate({
+		const result = await ctx.api.task.create.mutate({
 			title: options.title,
 			description: options.description ?? undefined,
 			priority: options.priority,

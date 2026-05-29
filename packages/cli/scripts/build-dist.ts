@@ -17,6 +17,7 @@
  *   bun run scripts/build-dist.ts --target=darwin-arm64
  *   bun run scripts/build-dist.ts --target=darwin-x64
  *   bun run scripts/build-dist.ts --target=linux-x64
+ *   bun run scripts/build-dist.ts --target=linux-arm64
  */
 import { spawn } from "node:child_process";
 import {
@@ -34,9 +35,14 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-type Target = "darwin-arm64" | "linux-x64";
+type Target = "darwin-arm64" | "darwin-x64" | "linux-x64" | "linux-arm64";
 
-const VALID_TARGETS: Target[] = ["darwin-arm64", "linux-x64"];
+const VALID_TARGETS: Target[] = [
+	"darwin-arm64",
+	"darwin-x64",
+	"linux-x64",
+	"linux-arm64",
+];
 const NODE_VERSION = "22.13.0";
 
 /**
@@ -49,27 +55,45 @@ const RUNTIME_PACKAGES = [
 	"node-pty",
 	"@parcel/watcher",
 	"libsql",
-	"@xterm/headless",
 	"onnxruntime-node",
 	"@anush008/tokenizers",
+	"@mastra/duckdb",
+	"@duckdb/node-api",
+	"@duckdb/node-bindings",
+	"@xterm/headless",
 ] as const;
 
 /**
  * Platform-specific native bindings that live in optional dependencies
  * of their parent package and are only installed for the matching host.
  * `copyPackageWithDeps` only walks `dependencies`, so these need to be
- * listed explicitly per target.
+ * listed explicitly per target. Linux variants pin glibc (gnu) — we don't
+ * ship musl builds.
  */
 const TARGET_NATIVE_PACKAGES: Record<Target, string[]> = {
 	"darwin-arm64": [
 		"@libsql/darwin-arm64",
 		"@parcel/watcher-darwin-arm64",
 		"@anush008/tokenizers-darwin-universal",
+		"@duckdb/node-bindings-darwin-arm64",
+	],
+	"darwin-x64": [
+		"@libsql/darwin-x64",
+		"@parcel/watcher-darwin-x64",
+		"@anush008/tokenizers-darwin-universal",
+		"@duckdb/node-bindings-darwin-x64",
 	],
 	"linux-x64": [
 		"@libsql/linux-x64-gnu",
 		"@parcel/watcher-linux-x64-glibc",
 		"@anush008/tokenizers-linux-x64-gnu",
+		"@duckdb/node-bindings-linux-x64",
+	],
+	"linux-arm64": [
+		"@libsql/linux-arm64-gnu",
+		"@parcel/watcher-linux-arm64-glibc",
+		"@anush008/tokenizers-linux-arm64-gnu",
+		"@duckdb/node-bindings-linux-arm64",
 	],
 };
 
@@ -96,9 +120,13 @@ function parseArgs(): { target: Target } {
 	return { target };
 }
 
+function targetParts(target: Target): { platform: string; arch: string } {
+	const [platform, arch] = target.split("-") as [string, string];
+	return { platform, arch };
+}
+
 function nodeArchiveName(target: Target): string {
-	const arch = target === "darwin-arm64" ? "arm64" : "x64";
-	const platform = target === "darwin-arm64" ? "darwin" : "linux";
+	const { platform, arch } = targetParts(target);
 	return `node-v${NODE_VERSION}-${platform}-${arch}`;
 }
 
@@ -254,9 +282,10 @@ function copyPackageWithDeps(
 		for (const dep of Object.keys(pkg.dependencies ?? {})) {
 			copyPackageWithDeps(dep, sourcePath, repoRoot, destModules, copied);
 		}
-		// Runtime packages we ship unbundled resolve peer dependencies from
-		// disk at module init. Walk non-optional peers best-effort so missing
-		// optional install artifacts do not fail the tarball build.
+		// Packages we ship unbundled (e.g. @mastra/duckdb) load their peer
+		// deps from disk at module init; a bundled consumer's inlined copy
+		// is invisible to them. Walk non-optional peers best-effort: one the
+		// installer didn't materialize is skipped rather than failing the build.
 		const peerMeta = pkg.peerDependenciesMeta ?? {};
 		for (const dep of Object.keys(pkg.peerDependencies ?? {})) {
 			if (peerMeta[dep]?.optional) continue;
@@ -280,15 +309,19 @@ function copyRuntimePackages(libDir: string, target: Target): void {
 }
 
 /**
- * Desktop's `install:deps` step runs electron-rebuild on every root
- * `bun install`, clobbering the hoisted `build/Release/*.node` binaries
- * of better-sqlite3 and node-pty with Electron-ABI builds. The shipped
- * Node.js runtime cannot load those. Fix up the staged copies:
+ * Native addons need to be built against the bundled Node runtime's ABI,
+ * not Electron's. Two cases:
  *
- * 1. `better-sqlite3`: download the Node-ABI prebuild from GitHub and
- *    overwrite `build/Release/better_sqlite3.node`.
- * 2. `node-pty`: delete `build/Release/` so the `bindings` loader falls
- *    through to the N-API prebuild in `prebuilds/<target>/pty.node`.
+ * - On macOS, desktop's `install:deps` runs electron-rebuild during root
+ *   `bun install` and clobbers the hoisted `build/Release/*.node` files
+ *   with Electron-ABI builds. So we always overwrite better-sqlite3's
+ *   binary with a fetched Node-ABI prebuild, and for node-pty we delete
+ *   `build/Release/` so the `bindings` loader falls through to its
+ *   bundled `prebuilds/<target>/pty.node`.
+ * - On Linux, node-pty ships no prebuilds, so we ALWAYS need a freshly
+ *   compiled `build/Release/pty.node` against the bundled Node runtime
+ *   (CI does this via `npm rebuild` after `bun install --ignore-scripts`).
+ *   Keep `build/Release/`.
  */
 async function fixNativeBinariesForNode(
 	libDir: string,
@@ -326,19 +359,23 @@ async function fixNativeBinariesForNode(
 		join(bsqDest, "better_sqlite3.node"),
 	);
 
+	const { platform } = targetParts(target);
 	const nodePtyBuild = join(destModules, "node-pty", "build");
-	if (existsSync(nodePtyBuild)) {
+	if (platform === "darwin" && existsSync(nodePtyBuild)) {
 		console.log(
 			"[build-dist] removing node-pty build/ so bindings falls back to prebuilds/",
 		);
 		rmSync(nodePtyBuild, { recursive: true, force: true });
 	}
 
-	// node-pty's macOS spawn-helper can be installed as 0644 in the raw
-	// prebuild. The normal install path fixes it during rebuild; the CLI
-	// distribution ships the prebuild directly, so make the helper executable.
-	if (target.startsWith("darwin-")) {
-		const arch = target.slice("darwin-".length);
+	// node-pty's `prebuilds/darwin-{arch}/spawn-helper` ships from npm with
+	// mode 0644. node-pty posix_spawnp's it as the actual fork helper at
+	// terminal-open time — without +x the kernel returns EACCES and the
+	// failure surfaces only as the cryptic "posix_spawnp failed" with no
+	// errno. The normal install path runs `npm rebuild` which fixes the
+	// mode; we ship raw prebuilds so we have to fix it ourselves.
+	if (platform === "darwin") {
+		const { arch } = targetParts(target);
 		const spawnHelper = join(
 			destModules,
 			"node-pty",
@@ -373,6 +410,12 @@ async function buildHostService(): Promise<string> {
 	return join(hostServiceDir, "dist", "host-service.js");
 }
 
+async function buildPtyDaemon(): Promise<string> {
+	const ptyDaemonDir = resolve(import.meta.dir, "../../pty-daemon");
+	await exec("bun", ["run", "build:daemon"], ptyDaemonDir);
+	return join(ptyDaemonDir, "dist", "pty-daemon.js");
+}
+
 function writeHostWrapper(binDir: string): void {
 	const wrapper = `#!/bin/sh
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -403,6 +446,14 @@ async function main(): Promise<void> {
 	console.log("[build-dist] building host-service bundle");
 	const hostServiceBundle = await buildHostService();
 	cpSync(hostServiceBundle, join(stagingRoot, "lib", "host-service.js"));
+
+	// pty-daemon ships side-by-side with host-service.js. The host-service
+	// resolves the script path via `resolveSupervisorScriptPath()` which
+	// looks for `pty-daemon.js` next to itself first; without this copy the
+	// supervisor falls back to the workspace path and bricks at spawn time.
+	console.log("[build-dist] building pty-daemon bundle");
+	const ptyDaemonBundle = await buildPtyDaemon();
+	cpSync(ptyDaemonBundle, join(stagingRoot, "lib", "pty-daemon.js"));
 
 	console.log("[build-dist] fetching Node.js");
 	await downloadAndExtractNode(target, join(stagingRoot, "lib"));

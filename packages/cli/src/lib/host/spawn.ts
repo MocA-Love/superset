@@ -114,6 +114,7 @@ export async function spawnHostService(
 			...(options.authConfigPath
 				? { SUPERSET_AUTH_CONFIG_PATH: options.authConfigPath }
 				: {}),
+			SUPERSET_API_URL: env.SUPERSET_API_URL,
 			CLOUD_API_URL: env.CLOUD_API_URL,
 			RELAY_URL: relayUrl,
 			PORT: String(port),

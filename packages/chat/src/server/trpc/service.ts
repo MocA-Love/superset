@@ -1,3 +1,4 @@
+import { Memory } from "@mastra/memory";
 import type { AppRouter } from "@superset/trpc";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import { initTRPC } from "@trpc/server";
@@ -18,7 +19,6 @@ import {
 	runSessionStartHook,
 	subscribeToSessionEvents,
 	syncRuntimeHookSessionId,
-	syncSubagentModelToCurrentSelection,
 } from "./utils/runtime";
 import { getSupersetMcpTools } from "./utils/runtime/superset-mcp";
 import {
@@ -148,6 +148,7 @@ export class ChatRuntimeService {
 					cwd: runtimeCwd,
 					extraTools,
 					disableMcp: !ENABLE_MASTRA_MCP_SERVERS,
+					memory: new Memory({ options: { observationalMemory: false } }),
 				});
 				runtime.hookManager?.setSessionId(sessionId);
 				await runtime.harness.init();
@@ -304,7 +305,6 @@ export class ChatRuntimeService {
 								modelId: selectedModel,
 								scope: "thread",
 							});
-							await syncSubagentModelToCurrentSelection(runtime, selectedModel);
 						}
 						const thinkingLevel = input.metadata?.thinkingLevel;
 						if (thinkingLevel) {

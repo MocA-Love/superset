@@ -5,8 +5,6 @@ import { generateTitleFromMessage } from "../../../desktop";
 import { getSmallModel } from "../../../shared/small-model";
 import type { ThinkingLevel } from "../../zod";
 
-const SUBAGENT_AGENT_TYPES = ["explore", "plan", "execute"] as const;
-
 export type RuntimeHarness = Awaited<
 	ReturnType<typeof createMastraCode>
 >["harness"];
@@ -114,23 +112,6 @@ interface HarnessWithConfig {
 	};
 }
 
-export async function syncSubagentModelToCurrentSelection(
-	runtime: RuntimeSession,
-	modelId?: string,
-): Promise<void> {
-	const nextModelId = modelId?.trim();
-	if (!nextModelId) return;
-
-	await Promise.all(
-		SUBAGENT_AGENT_TYPES.map(async (agentType) => {
-			await runtime.harness.setSubagentModelId({
-				modelId: nextModelId,
-				agentType,
-			});
-		}),
-	);
-}
-
 async function getRuntimeMemoryStore(
 	runtime: RuntimeSession,
 ): Promise<RuntimeMemoryStore> {
@@ -200,7 +181,7 @@ export async function destroyRuntime(runtime: RuntimeSession): Promise<void> {
 
 export interface LifecycleEvent {
 	sessionId: string;
-	eventType: "Start" | "Stop" | "PermissionRequest";
+	eventType: "Start" | "Stop" | "PermissionRequest" | "PendingQuestion";
 }
 
 /**
@@ -225,6 +206,13 @@ export function subscribeToSessionEvents(
 		}
 		if (isHarnessErrorEvent(event) || isHarnessWorkspaceErrorEvent(event)) {
 			runtime.lastErrorMessage = toRuntimeErrorMessage(event.error);
+			return;
+		}
+		if (isHarnessAskQuestionEvent(event)) {
+			onLifecycleEvent?.({
+				sessionId: runtime.sessionId,
+				eventType: "PendingQuestion",
+			});
 			return;
 		}
 		if (isHarnessSandboxAccessRequestEvent(event)) {
@@ -312,6 +300,14 @@ function isHarnessSandboxAccessRequestEvent(event: unknown): event is {
 		typeof event.path === "string" &&
 		typeof event.reason === "string"
 	);
+}
+
+function isHarnessAskQuestionEvent(event: unknown): event is {
+	type: "ask_question";
+	questionId: string;
+} {
+	if (!isObjectRecord(event)) return false;
+	return event.type === "ask_question" && typeof event.questionId === "string";
 }
 
 function isHarnessThreadChangedEvent(
@@ -445,7 +441,6 @@ export async function restartRuntimeFromUserMessage(
 			modelId: selectedModel,
 			scope: "thread",
 		});
-		await syncSubagentModelToCurrentSelection(runtime, selectedModel);
 	}
 
 	const thinkingLevel = input.metadata?.thinkingLevel;

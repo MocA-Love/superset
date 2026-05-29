@@ -8,7 +8,10 @@ import { env } from "@/env";
 
 export const dynamic = "force-dynamic";
 
-const qstash = new Client({ token: env.QSTASH_TOKEN });
+const qstash = new Client({
+	token: env.QSTASH_TOKEN,
+	...(env.QSTASH_URL ? { baseUrl: env.QSTASH_URL } : {}),
+});
 const receiver = new Receiver({
 	currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY,
 	nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY,
@@ -59,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
 					automationId: automation.id,
 					scheduledFor: scheduledFor.toISOString(),
 				},
-				deduplicationId: `${automation.id}:${scheduledFor.toISOString()}`,
+				deduplicationId: `${automation.id}_${scheduledFor.getTime()}`,
 				retries: 2,
 				failureCallback: `${env.NEXT_PUBLIC_API_URL}/api/automations/run-failed`,
 			};

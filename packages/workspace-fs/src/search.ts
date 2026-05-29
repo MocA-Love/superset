@@ -725,7 +725,7 @@ async function buildSearchIndex({
 	return createFileSearchIndex(items);
 }
 
-async function getSearchIndex(
+export async function getSearchIndex(
 	options: BuildSearchIndexOptions,
 ): Promise<FileSearchIndex> {
 	const cacheKey = getSearchCacheKey(options);

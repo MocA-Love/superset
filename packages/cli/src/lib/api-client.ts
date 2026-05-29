@@ -7,6 +7,10 @@ import { getApiUrl, type SupersetConfig } from "./config";
 
 export type ApiClient = TRPCClient<AppRouter>;
 
+function isBetterAuthApiKey(token: string): boolean {
+	return token.startsWith("sk_live_") || token.startsWith("sk_test_");
+}
+
 export function createApiClient(
 	config: SupersetConfig,
 	opts: { bearer: string; organizationId?: string },
@@ -17,9 +21,11 @@ export function createApiClient(
 				url: `${getApiUrl(config)}/api/trpc`,
 				transformer: SuperJSON,
 				headers() {
-					const headers: Record<string, string> = {
-						Authorization: `Bearer ${opts.bearer}`,
-					};
+					const headers: Record<string, string> = isBetterAuthApiKey(
+						opts.bearer,
+					)
+						? { "x-api-key": opts.bearer }
+						: { Authorization: `Bearer ${opts.bearer}` };
 					if (opts.organizationId) {
 						headers[ORGANIZATION_HEADER] = opts.organizationId;
 					}

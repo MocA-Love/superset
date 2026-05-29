@@ -144,26 +144,26 @@ jobs:
 curl -fsSL https://get.superset.sh | sh
 ```
 
-Detects platform/arch, downloads tarball from GitHub Releases, extracts to `~/.superset/bin/`, prints PATH instructions.
+Detects platform/arch, downloads the tarball from the fork's `cli-latest` GitHub Release, extracts to `~/superset/`, and prints PATH instructions.
 
 ### Manual
 
 ```bash
 # Download
-curl -LO https://github.com/user/superset/releases/latest/download/superset-darwin-arm64.tar.gz
+curl -LO https://github.com/MocA-Love/superset/releases/download/cli-latest/superset-darwin-arm64.tar.gz
 
 # Extract
-mkdir -p ~/.superset/bin
-tar -xzf superset-darwin-arm64.tar.gz -C ~/.superset/bin
+mkdir -p ~/superset
+tar -xzf superset-darwin-arm64.tar.gz -C ~/superset
 
 # Add to PATH
-export PATH="$HOME/.superset/bin/bin:$PATH"
+export PATH="$HOME/superset/bin:$PATH"
 
 # Login
 superset auth login
 
 # Start host service
-superset host start --daemon
+superset start --daemon
 ```
 
 ### apt-get (stretch goal)

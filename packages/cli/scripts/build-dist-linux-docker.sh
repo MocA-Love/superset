@@ -8,8 +8,7 @@
 #   packages/cli/scripts/build-dist-linux-docker.sh [linux-x64|linux-arm64]
 #
 # Outputs the tarball at packages/cli/dist/superset-<target>.tar.gz inside
-# the container's copy of the repo and runs the same require() smoke test
-# the CI workflow runs.
+# the container's copy of the repo and runs the same smoke test used by CI.
 set -euo pipefail
 
 TARGET="${1:-linux-x64}"
@@ -63,14 +62,6 @@ docker run --rm --platform "$PLATFORM" \
     bun run build:dist --target="$TARGET"
 
     DIST="./dist/superset-${TARGET}"
-    "$DIST/bin/superset" --version
-    "$DIST/bin/superset" --help | head -5
-    "$DIST/lib/node" --version
-    NODE_PATH="$DIST/lib/node_modules" "$DIST/lib/node" -e "
-      for (const m of [\"better-sqlite3\", \"node-pty\", \"@parcel/watcher\", \"libsql\"]) {
-        require(m);
-        console.log(m, \"OK\");
-      }
-    "
+    ./scripts/smoke-test.sh "$DIST" "$TARGET"
     echo "[docker-build] tarball: $(ls -la dist/superset-${TARGET}.tar.gz)"
   '

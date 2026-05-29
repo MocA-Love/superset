@@ -1,7 +1,9 @@
 import { boolean, CLIError, string, table } from "@superset/cli-framework";
 import { command } from "../../../lib/command";
+import { resolveHostFilter } from "../../../lib/host-target";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default command({
 	description: "List workspaces accessible to you in the active organization",
@@ -26,17 +28,10 @@ export default command({
 			throw new CLIError("No active organization", "Run: superset auth login");
 		}
 
-		if (options.host && options.local) {
-			throw new CLIError(
-				"Use either --host or --local",
-				"Remove one host filter and try again",
-			);
-		}
-		if (options.local && !ctx.deviceId) {
-			throw new CLIError("No local device found", "Run: superset devices list");
-		}
-
-		const hostId = options.host ?? (options.local ? ctx.deviceId : undefined);
+		const hostId = resolveHostFilter({
+			host: options.host ?? undefined,
+			local: options.local ?? undefined,
+		});
 		const projectInput = options.project ?? undefined;
 		const projectId =
 			projectInput && UUID_RE.test(projectInput) ? projectInput : undefined;

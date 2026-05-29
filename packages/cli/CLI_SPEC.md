@@ -239,8 +239,8 @@ Input:  --device <deviceId>    optional, auto-detected
 **Human output:**
 ```
 NAME              SLUG              REPO
-superset          superset          superset-sh/superset
-marketing         marketing         superset-sh/marketing
+superset          superset          MocA-Love/superset
+marketing         marketing         MocA-Love/marketing
 ```
 
 **`--json`:**
@@ -1207,7 +1207,8 @@ Input:
                                per run inside --project.
   --prompt <text> |            one of --prompt / --prompt-file required
     --prompt-file <path>
-  --device <hostId>            default: owner's online host
+  --host <hostId> |            default: owner's online host
+    --device <hostId>          --device remains as a compatibility alias
   --timezone <IANA>            default: host TZ, else UTC
   --dtstart <iso8601>          default: now (anchors interval rules)
   --agent <agent>              host agent preset id, config UUID, or
@@ -1229,9 +1230,12 @@ Input:
   --timezone <IANA>
   --dtstart <iso8601>
   --agent <agent>
-  --device <hostId>
+  --host <hostId> | --device <hostId>
   --enabled <bool>             pause / resume
 ```
+
+`--prompt` / `--prompt-file` are accepted for compatibility and internally use
+the same versioned prompt update path as `superset automations prompt set`.
 
 ### `superset automations delete <id>`
 

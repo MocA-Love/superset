@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import { boolean, CLIError, number } from "@superset/cli-framework";
 import { command } from "../../../lib/command";
-import { SUPERSET_CONFIG_PATH } from "../../../lib/config";
+import { getAuthConfigPath } from "../../../lib/config";
 import { isProcessAlive, readManifest } from "../../../lib/host/manifest";
 import { spawnHostService } from "../../../lib/host/spawn";
 
@@ -33,7 +33,7 @@ export default command({
 				organizationId: organization.id,
 				sessionToken: ctx.bearer,
 				authConfigPath:
-					ctx.authSource === "oauth" ? SUPERSET_CONFIG_PATH : undefined,
+					ctx.authSource === "oauth" ? getAuthConfigPath() : undefined,
 				api: ctx.api,
 				port: options.port,
 				daemon: options.daemon ?? false,

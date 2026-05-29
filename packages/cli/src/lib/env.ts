@@ -6,5 +6,16 @@
 
 export const env = {
 	RELAY_URL: process.env.RELAY_URL || "https://relay.superset.sh",
-	CLOUD_API_URL: process.env.CLOUD_API_URL || "https://api.superset.sh",
+	SUPERSET_API_URL:
+		process.env.SUPERSET_API_URL ||
+		process.env.CLOUD_API_URL ||
+		"https://api.superset.sh",
+	CLOUD_API_URL:
+		process.env.CLOUD_API_URL ||
+		process.env.SUPERSET_API_URL ||
+		"https://api.superset.sh",
+	SUPERSET_WEB_URL: process.env.SUPERSET_WEB_URL || "https://app.superset.sh",
+	CLI_RELEASE_REPO:
+		process.env.SUPERSET_CLI_RELEASE_REPO || "MocA-Love/superset",
+	VERSION: process.env.SUPERSET_VERSION || "0.0.0-dev",
 };

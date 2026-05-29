@@ -7,7 +7,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { SUPERSET_HOME_DIR } from "../config";
+import { LEGACY_SUPERSET_HOME_DIR, SUPERSET_HOME_DIR } from "../config";
 
 /**
  * Manifest format matches the desktop app's HostServiceManifest
@@ -22,12 +22,37 @@ export interface HostServiceManifest {
 	organizationId: string;
 }
 
+function canReadLegacyHome(): boolean {
+	return (
+		!process.env.SUPERSET_HOME_DIR &&
+		LEGACY_SUPERSET_HOME_DIR !== SUPERSET_HOME_DIR
+	);
+}
+
+function manifestDirIn(homeDir: string, organizationId: string): string {
+	return join(homeDir, "host", organizationId);
+}
+
 function manifestDir(organizationId: string): string {
-	return join(SUPERSET_HOME_DIR, "host", organizationId);
+	return manifestDirIn(SUPERSET_HOME_DIR, organizationId);
+}
+
+function manifestPathIn(homeDir: string, organizationId: string): string {
+	return join(manifestDirIn(homeDir, organizationId), "manifest.json");
 }
 
 function manifestPath(organizationId: string): string {
-	return join(manifestDir(organizationId), "manifest.json");
+	return manifestPathIn(SUPERSET_HOME_DIR, organizationId);
+}
+
+function readableManifestPath(organizationId: string): string | null {
+	const path = manifestPath(organizationId);
+	if (existsSync(path)) return path;
+	if (canReadLegacyHome()) {
+		const legacyPath = manifestPathIn(LEGACY_SUPERSET_HOME_DIR, organizationId);
+		if (existsSync(legacyPath)) return legacyPath;
+	}
+	return null;
 }
 
 export function ensureManifestDir(organizationId: string): string {
@@ -48,8 +73,8 @@ export function writeManifest(manifest: HostServiceManifest): void {
 export function readManifest(
 	organizationId: string,
 ): HostServiceManifest | null {
-	const path = manifestPath(organizationId);
-	if (!existsSync(path)) return null;
+	const path = readableManifestPath(organizationId);
+	if (!path) return null;
 	try {
 		return JSON.parse(readFileSync(path, "utf-8")) as HostServiceManifest;
 	} catch {
@@ -58,8 +83,13 @@ export function readManifest(
 }
 
 export function removeManifest(organizationId: string): void {
-	const path = manifestPath(organizationId);
-	if (existsSync(path)) rmSync(path);
+	const paths = [manifestPath(organizationId)];
+	if (canReadLegacyHome()) {
+		paths.push(manifestPathIn(LEGACY_SUPERSET_HOME_DIR, organizationId));
+	}
+	for (const path of paths) {
+		if (existsSync(path)) rmSync(path);
+	}
 }
 
 export function isProcessAlive(pid: number): boolean {

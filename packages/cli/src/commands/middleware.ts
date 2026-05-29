@@ -1,4 +1,5 @@
 import { middleware } from "@superset/cli-framework";
+import { trackCommandInvoked } from "../lib/analytics";
 import { readDeviceConfig } from "../lib/config";
 import { resolveAuth } from "../lib/resolve-auth";
 
@@ -9,6 +10,15 @@ export default middleware(async (opts) => {
 	};
 	const { config, api, bearer, authSource } = await resolveAuth(options.apiKey);
 	const deviceId = options.device ?? readDeviceConfig()?.deviceId;
+
+	trackCommandInvoked({
+		api,
+		commandPath: opts.commandPath,
+		flags: Object.keys(opts.options).filter(
+			(key) => opts.options[key] !== undefined,
+		),
+	});
+
 	return opts.next({
 		ctx: { api, config, deviceId, bearer, authSource },
 	});
