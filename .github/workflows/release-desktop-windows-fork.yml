@@ -68,13 +68,21 @@ jobs:
       - name: Install workspace dependencies
         run: bun install --frozen --ignore-scripts
 
+      - name: Patch native-keymap Electron 40 Windows build
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const path = "node_modules/.bun/native-keymap@3.3.9/node_modules/native-keymap/binding.gyp";
+          const marker = "'/wd4996'";
+          let text = fs.readFileSync(path, "utf8");
+          if (!text.includes(marker)) {
+            text = text.replace("'/ZH:SHA_256'", "'/ZH:SHA_256',\n            '/wd4996'");
+            fs.writeFileSync(path, text);
+          }
+          NODE
+
       - name: Install desktop native dependencies
         working-directory: apps/desktop
-        env:
-          # native-keymap 3.3.9 triggers V8 C4996 warnings with Electron 40 headers.
-          # MSVC treats them as errors in this build, so suppress this deprecation warning.
-          # Use dash form to avoid Git Bash/MSYS path-converting /wd4996.
-          CL: -wd4996
         run: bun run install:deps
 
       - name: Generate file icons
