@@ -16131,7 +16131,7 @@
 						<li>
 							<span class="status-ok">behind は 0。</span>
 							merge 後の <code>git rev-list --left-right --count HEAD...upstream/main</code> は
-							<code>2181 0</code>。GitHub 上の behind 表示を消すには、この local merge commit 以降を
+							<code>2182 0</code>。GitHub 上の behind 表示を消すには、この local merge commit 以降を
 							push する必要がある。
 						</li>
 						<li>
@@ -16139,6 +16139,36 @@
 							<code>be292011a [codex] merge upstream main through #4995</code>。
 							tree は current fork 側を保持しており、worktree の残りは local-only
 							<code>.agents/skills/source-command-pr-create-pr/</code> だけ。
+						</li>
+					</ul>
+				</section>
+
+				<section>
+					<h2>cycle 447: post-merge DMG and user smoke checkpoint</h2>
+					<ul>
+						<li>
+							<span class="status-ok">post-merge verification OK。</span>
+							2026-05-30 JST に <code>git fetch upstream</code> を再実行し、
+							<code>upstream/main</code> が引き続き
+							<code>7f3e5b342 fix(billing): keep invoice access after downgrade (#4995)</code>
+							であることを確認した。<code>git rev-list --left-right --count HEAD...upstream/main</code>
+							は <code>2182 0</code>、<code>upstream/main</code> は <code>HEAD</code> の祖先。
+						</li>
+						<li>
+							<span class="status-ok">DMG build / mount verification OK。</span>
+							フルクリーン後に <code>bun install</code>、<code>compile:app</code>、
+							<code>copy:native-modules</code>、<code>validate:native-runtime</code>、
+							<code>build:browser-mcp</code>、<code>bun run build</code> を実行した。
+							生成物は <code>apps/desktop/release/Superset-1.12.1-arm64.dmg</code>。
+							mount 検証では Electron Framework、Applications symlink、<code>.DS_Store</code>、
+							<code>.background.tiff</code>、<code>resources/superset-browser-mcp/superset-browser-mcp</code>
+							が揃っていることを確認した。
+						</li>
+						<li>
+							<span class="status-ok">user smoke OK。</span>
+							同 DMG でユーザーのローカル動作確認が完了し、問題なしと確認済み。
+							ローカル worktree の未追跡は引き続き local-only
+							<code>.agents/skills/source-command-pr-create-pr/</code> のみ。
 						</li>
 					</ul>
 				</section>
