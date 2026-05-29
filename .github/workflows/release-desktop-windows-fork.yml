@@ -70,6 +70,10 @@ jobs:
 
       - name: Install desktop native dependencies
         working-directory: apps/desktop
+        env:
+          # native-keymap 3.3.9 triggers V8 C4996 warnings with Electron 40 headers.
+          # MSVC treats them as errors in this build, so suppress this deprecation warning.
+          CL: /wd4996
         run: bun run install:deps
 
       - name: Generate file icons
