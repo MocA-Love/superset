@@ -8,6 +8,8 @@ import { checkHostAccess } from "./access";
 import { type AuthContext, verifyJWT } from "./auth";
 import * as directory from "./directory";
 import { env } from "./env";
+import { captureSentryException, initSentry } from "./sentry";
+import { startSyntheticCheck } from "./synthetic";
 import { TunnelManager } from "./tunnel";
 
 const SENSITIVE_QUERY_RE = /([?&])(remoteControlToken|token)=[^&\s]+/g;
@@ -17,6 +19,15 @@ const redactingLogger = logger((message, ...rest) => {
 			? message.replace(SENSITIVE_QUERY_RE, "$1$2=REDACTED")
 			: message;
 	console.log(redacted, ...rest);
+});
+
+initSentry();
+
+process.on("uncaughtException", (err) => {
+	console.error("[relay] uncaughtException (suppressed)", err);
+});
+process.on("unhandledRejection", (reason) => {
+	console.error("[relay] unhandledRejection (suppressed)", reason);
 });
 
 type AppContext = {
@@ -62,6 +73,14 @@ process.on("SIGTERM", () => void handleDrain("SIGTERM"));
 app.use("*", redactingLogger);
 app.use("*", cors());
 
+app.onError((err, c) => {
+	captureSentryException(err, {
+		op: "hono.onError",
+		path: new URL(c.req.url).pathname,
+	});
+	return c.json({ error: "Internal server error" }, 500);
+});
+
 app.get("/health", (c) => c.json({ ok: true, region: env.FLY_REGION }));
 
 // ── Auth ────────────────────────────────────────────────────────────
@@ -82,7 +101,7 @@ async function maybeReplay(
 ): Promise<Record<string, string> | null> {
 	if (tunnelManager.hasTunnel(hostId)) return null;
 	const owner = await directory.lookup(hostId).catch((err) => {
-		console.error("[relay] directory.lookup failed", err);
+		captureSentryException(err, { op: "directory.lookup", hostId });
 		return null;
 	});
 	if (!owner) return null;
@@ -248,6 +267,7 @@ app.all("/hosts/:hostId/trpc/*", async (c) => {
 			headers: res.headers,
 		});
 	} catch (error) {
+		captureSentryException(error, { hostId, path });
 		return c.json(
 			{ error: error instanceof Error ? error.message : "Proxy error" },
 			502,
@@ -289,9 +309,20 @@ app.get(
 
 setInterval(() => {
 	void directory.sweepStale().catch((err) => {
-		console.error("[relay] directory.sweepStale failed", err);
+		captureSentryException(err, { op: "directory.sweepStale" });
 	});
 }, 30_000);
+
+// ── Synthetic check ─────────────────────────────────────────────────
+
+if (env.RELAY_SYNTHETIC_JWT) {
+	startSyntheticCheck({
+		relayUrl: env.RELAY_PUBLIC_URL,
+		jwt: env.RELAY_SYNTHETIC_JWT,
+		region: env.FLY_REGION,
+		machineId: env.FLY_MACHINE_ID,
+	});
+}
 
 // ── Start ───────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@
 
 set -eu
 
-REPO="superset-sh/superset"
+REPO="${SUPERSET_CLI_RELEASE_REPO:-MocA-Love/superset}"
 INSTALL_DIR="${SUPERSET_HOME:-$HOME/superset}"
 TAG="${SUPERSET_VERSION:-latest}"
 
@@ -51,11 +51,14 @@ download_tarball() {
     target="$1"
     tarball="superset-${target}.tar.gz"
 
-    if [ "$TAG" = "latest" ]; then
-        url="https://github.com/${REPO}/releases/latest/download/${tarball}"
+    if [ "$TAG" = "latest" ] || [ "$TAG" = "cli-latest" ]; then
+        release_tag="cli-latest"
+    elif echo "$TAG" | grep -q '^cli-v'; then
+        release_tag="$TAG"
     else
-        url="https://github.com/${REPO}/releases/download/${TAG}/${tarball}"
+        release_tag="cli-v${TAG}"
     fi
+    url="https://github.com/${REPO}/releases/download/${release_tag}/${tarball}"
 
     info "Downloading $url"
     tmp="$(mktemp -t superset-install.XXXXXX)"
@@ -146,8 +149,8 @@ main() {
     update_path
 
     printf "\n${GREEN}${BOLD}Installed!${RESET}\n"
-    printf "Run ${BOLD}superset auth login${RESET} to get started.\n"
-    printf "You may need to restart your shell (or run \`source <your-profile>\`) for the PATH to take effect.\n"
+    printf "Run ${BOLD}exec \$SHELL${RESET} (or open a new terminal) to load the updated PATH.\n"
+    printf "Then run ${BOLD}superset auth login${RESET} to get started.\n"
 }
 
 main "$@"
