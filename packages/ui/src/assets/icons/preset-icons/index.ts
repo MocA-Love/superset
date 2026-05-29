@@ -5,6 +5,8 @@ import codexWhiteIcon from "./codex-white.svg";
 import copilotIcon from "./copilot.svg";
 import copilotWhiteIcon from "./copilot-white.svg";
 import cursorAgentIcon from "./cursor.svg";
+import droidIcon from "./droid.svg";
+import droidWhiteIcon from "./droid-white.svg";
 import geminiIcon from "./gemini.svg";
 import kimiIcon from "./kimi.svg";
 import mastracodeIcon from "./mastracode.svg";
@@ -30,6 +32,7 @@ export const PRESET_ICONS: Record<string, PresetIconSet> = {
 	pi: { light: piIcon, dark: piWhiteIcon },
 	superset: { light: supersetIcon, dark: supersetIcon },
 	"cursor-agent": { light: cursorAgentIcon, dark: cursorAgentIcon },
+	droid: { light: droidIcon, dark: droidWhiteIcon },
 	mastracode: { light: mastracodeIcon, dark: mastracodeWhiteIcon },
 	opencode: { light: opencodeIcon, dark: opencodeWhiteIcon },
 };
@@ -52,6 +55,8 @@ export {
 	copilotIcon,
 	copilotWhiteIcon,
 	cursorAgentIcon,
+	droidIcon,
+	droidWhiteIcon,
 	geminiIcon,
 	kimiIcon,
 	mastracodeIcon,

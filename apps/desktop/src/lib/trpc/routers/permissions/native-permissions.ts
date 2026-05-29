@@ -2,7 +2,10 @@ import type {
 	shell as electronShell,
 	systemPreferences as electronSystemPreferences,
 } from "electron";
-import { requestMediaAccess } from "lib/electron/request-media-access";
+import {
+	MEDIA_ACCESS_SETTINGS_URLS,
+	requestMediaAccess,
+} from "lib/electron/request-media-access";
 import { checkFullDiskAccess } from "./full-disk-access";
 
 export const PERMISSION_SETTINGS_URLS = {
@@ -10,6 +13,8 @@ export const PERMISSION_SETTINGS_URLS = {
 		"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
 	accessibility:
 		"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+	microphone: MEDIA_ACCESS_SETTINGS_URLS.microphone,
+	camera: MEDIA_ACCESS_SETTINGS_URLS.camera,
 	appleEvents:
 		"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Automation",
 	localNetwork:
@@ -19,7 +24,7 @@ export const PERMISSION_SETTINGS_URLS = {
 type ShellApi = Pick<typeof electronShell, "openExternal">;
 type SystemPreferencesApi = Pick<
 	typeof electronSystemPreferences,
-	"getMediaAccessStatus" | "isTrustedAccessibilityClient"
+	"askForMediaAccess" | "getMediaAccessStatus" | "isTrustedAccessibilityClient"
 >;
 
 function getElectronShell(): ShellApi {
@@ -95,12 +100,24 @@ export async function requestAccessibility({
 	await shellApi.openExternal(PERMISSION_SETTINGS_URLS.accessibility);
 }
 
-export async function requestMicrophone() {
-	return requestMediaAccess("microphone");
+type RequestMediaPermissionOptions = {
+	shellApi?: ShellApi;
+	systemPreferencesApi?: Pick<
+		SystemPreferencesApi,
+		"askForMediaAccess" | "getMediaAccessStatus"
+	>;
+};
+
+export async function requestMicrophone(
+	options: RequestMediaPermissionOptions = {},
+) {
+	return requestMediaAccess("microphone", options);
 }
 
-export async function requestCamera() {
-	return requestMediaAccess("camera");
+export async function requestCamera(
+	options: RequestMediaPermissionOptions = {},
+) {
+	return requestMediaAccess("camera", options);
 }
 
 export async function requestAppleEvents({

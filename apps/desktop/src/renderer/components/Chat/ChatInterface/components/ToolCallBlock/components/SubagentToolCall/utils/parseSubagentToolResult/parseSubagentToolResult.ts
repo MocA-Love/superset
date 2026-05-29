@@ -1,6 +1,8 @@
 interface SubagentToolExecution {
 	name: string;
 	isError: boolean;
+	args: Record<string, unknown> | null;
+	result: string | null;
 }
 
 export interface SubagentToolResultSummary {
@@ -26,6 +28,45 @@ function firstString(...values: unknown[]): string | null {
 	return null;
 }
 
+function parseDetailedToolCalls(
+	content: string,
+): { tools: SubagentToolExecution[]; stripped: string } | null {
+	const match = content.match(
+		/\n<subagent-tool-calls>([\s\S]*?)<\/subagent-tool-calls>/,
+	);
+	if (!match) return null;
+
+	try {
+		const parsed = JSON.parse(match[1]);
+		if (!Array.isArray(parsed)) return null;
+		const tools = parsed
+			.filter(
+				(item): item is Record<string, unknown> =>
+					typeof item === "object" && item !== null,
+			)
+			.map((item) => ({
+				name: typeof item.name === "string" ? item.name : "tool",
+				isError: item.isError === true,
+				args:
+					typeof item.args === "object" && item.args !== null
+						? (item.args as Record<string, unknown>)
+						: null,
+				result:
+					typeof item.result === "string"
+						? item.result
+						: item.result !== null && item.result !== undefined
+							? String(item.result)
+							: null,
+			}));
+		const stripped =
+			content.slice(0, match.index) +
+			content.slice((match.index ?? 0) + match[0].length);
+		return { tools, stripped };
+	} catch {
+		return null;
+	}
+}
+
 function parseTools(value: string | undefined): SubagentToolExecution[] {
 	if (!value) return [];
 	return value
@@ -38,7 +79,9 @@ function parseTools(value: string | undefined): SubagentToolExecution[] {
 			const status = statusPart?.trim().toLowerCase() || "ok";
 			return {
 				name,
-				isError: status === "error" || status === "failed",
+				isError: status === "error" || status === "failed" || status === "err",
+				args: null,
+				result: null,
 			};
 		});
 }
@@ -49,12 +92,15 @@ export function parseSubagentToolResult(
 	const record = asRecord(value);
 	const textContent =
 		firstString(record?.content, record?.result, record?.text) ?? "";
-	const metaTagRegex = /<subagent-meta\s+([^>]+?)\s*\/>/i;
-	const match = textContent.match(metaTagRegex);
+	const detailed = parseDetailedToolCalls(textContent);
+	const workingContent = detailed ? detailed.stripped : textContent;
+
+	const metaTagRegex = /\n?<subagent-meta\s+([^>]+?)\s*\/>/i;
+	const match = workingContent.match(metaTagRegex);
 	if (!match) {
 		return {
-			text: textContent,
-			tools: [],
+			text: workingContent.trim(),
+			tools: detailed?.tools ?? [],
 		};
 	}
 
@@ -67,10 +113,10 @@ export function parseSubagentToolResult(
 	const durationRaw = attrs.get("durationMs");
 	const durationMs = durationRaw ? Number(durationRaw) : Number.NaN;
 	return {
-		text: textContent.replace(metaTagRegex, "").trim(),
+		text: workingContent.replace(metaTagRegex, "").trim(),
 		modelId: attrs.get("modelId"),
 		durationMs:
 			Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : undefined,
-		tools: parseTools(attrs.get("tools")),
+		tools: detailed?.tools ?? parseTools(attrs.get("tools")),
 	};
 }

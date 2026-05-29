@@ -166,32 +166,46 @@ interface ResolvedGitHubStatusContext {
 
 async function resolveGitHubStatusContext(
 	worktreePath: string,
+	branchOverride?: string | null,
 ): Promise<ResolvedGitHubStatusContext | null> {
 	const repoContext = await getRepoContext(worktreePath);
 	if (!repoContext) {
 		return null;
 	}
 
-	const branchName = await getCurrentBranch(worktreePath);
+	const branchName =
+		branchOverride?.trim() || (await getCurrentBranch(worktreePath));
 	if (!branchName) {
 		return null;
 	}
 
+	const revParseTarget = branchOverride ? `refs/heads/${branchName}` : "HEAD";
+	const upstreamTarget = branchOverride
+		? `${branchName}@{upstream}`
+		: "@{upstream}";
+
 	const [shaResult, upstreamResult] = await Promise.all([
-		execGitWithShellPath(["rev-parse", "HEAD"], {
+		execGitWithShellPath(["rev-parse", revParseTarget], {
 			cwd: worktreePath,
 		}).catch((error) => {
 			if (isUnbornHeadError(error)) {
 				return { stdout: "", stderr: "" };
 			}
+			if (branchOverride) {
+				return { stdout: "", stderr: "" };
+			}
 			throw error;
 		}),
-		execGitWithShellPath(["rev-parse", "--abbrev-ref", "@{upstream}"], {
+		execGitWithShellPath(["rev-parse", "--abbrev-ref", upstreamTarget], {
 			cwd: worktreePath,
 		}).catch(() => ({ stdout: "", stderr: "" })),
 	]);
 
 	const headSha = shaResult.stdout.trim() || undefined;
+	if (branchOverride && !headSha) {
+		return null;
+	}
+
 	const parsedUpstreamRef = parseUpstreamRef(upstreamResult.stdout.trim());
 
 	return {
@@ -209,9 +223,13 @@ async function resolveGitHubStatusContext(
 
 async function refreshGitHubPRStatus(
 	worktreePath: string,
+	branchOverride?: string | null,
 ): Promise<GitHubStatus | null> {
 	try {
-		const context = await resolveGitHubStatusContext(worktreePath);
+		const context = await resolveGitHubStatusContext(
+			worktreePath,
+			branchOverride,
+		);
 		if (!context) {
 			return null;
 		}
@@ -269,14 +287,9 @@ async function refreshGitHubPRComments({
  * Fetches GitHub PR status for a worktree or branch workspace using the `gh` CLI.
  * Returns null if `gh` is not installed, not authenticated, or on error.
  *
- * @param branchName - Optional branch name override. Used **only** to scope the
- *   cache key so multiple branch workspaces sharing a main-repo path do not
- *   cross-contaminate each other's PR status. The inner `refreshGitHubPRStatus`
- *   call still resolves SHA/upstream from the repo's currently checked-out
- *   branch — fully propagating the override inside the refresh path is out of
- *   scope for this PR because the fork's PR attachment / resolution helpers
- *   (`resolveGitHubStatusContext`, `resolveAttachedPullRequest`) differ from
- *   upstream and need a separate rework. Tracked as follow-up work.
+ * @param branchName - Optional branch name override. When provided for branch
+ *   workspaces, resolves SHA and upstream from that branch rather than from
+ *   the repo's currently checked-out branch. Also scopes the cache key.
  */
 export async function fetchGitHubPRStatus(
 	worktreePath: string,
@@ -307,7 +320,9 @@ export async function fetchGitHubPRStatus(
 		worktreePath,
 		fn: () =>
 			readCachedGitHubStatus(cacheKey, () =>
-				rateLimitedRefresh(() => refreshGitHubPRStatus(worktreePath)),
+				rateLimitedRefresh(() =>
+					refreshGitHubPRStatus(worktreePath, branchName),
+				),
 			),
 	});
 }
@@ -401,13 +416,15 @@ export async function fetchGitHubPRComments({
 export async function fetchGitHubPreviewUrl({
 	worktreePath,
 	githubStatus,
+	branchName,
 	forceFresh = false,
 }: {
 	worktreePath: string;
 	githubStatus?: GitHubStatus | null;
+	branchName?: string | null;
 	forceFresh?: boolean;
 }): Promise<string | null> {
-	const context = await resolveGitHubStatusContext(worktreePath);
+	const context = await resolveGitHubStatusContext(worktreePath, branchName);
 	if (!context) {
 		return null;
 	}

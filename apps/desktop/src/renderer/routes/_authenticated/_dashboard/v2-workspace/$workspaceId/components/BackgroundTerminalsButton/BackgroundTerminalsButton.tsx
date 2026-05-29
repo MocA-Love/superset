@@ -11,16 +11,37 @@ import {
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { Archive, ChevronDown, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import { useDebouncedValue } from "renderer/hooks/useDebouncedValue";
+import {
+	logStressEvent,
+	useRenderStressInstrumentation,
+} from "renderer/lib/performance/stress-instrumentation";
+import {
+	clearTerminalBackgroundMarker,
+	getTerminalBackgroundMarkerIdsKey,
+	subscribeTerminalBackgroundMarkers,
+} from "renderer/lib/terminal/terminal-background-intents";
 import { getRelativeTime } from "renderer/screens/main/components/WorkspacesListView/utils";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
-import type { PaneViewerData, TerminalPaneData } from "../../types";
+import type { PaneViewerData } from "../../types";
+import { focusOrAddTerminalPane } from "../../utils/focusTerminalPane";
 import {
-	BACKGROUND_TERMINAL_COUNT_REFETCH_INTERVAL_MS,
-	BACKGROUND_TERMINAL_LIST_REFETCH_INTERVAL_MS,
-	getAttachedTerminalIds,
+	BACKGROUND_TERMINAL_ATTACHMENT_DEBOUNCE_MS,
+	getAttachedTerminalIdsKey,
+	getBackgroundTerminalCountRefetchInterval,
+	getBackgroundTerminalListRefetchInterval,
 	getBackgroundTerminalSessions,
+	getUnattachedTerminalIds,
+	parseAttachedTerminalIdsKey,
 } from "./BackgroundTerminalsButton.utils";
 
 interface BackgroundTerminalsButtonProps {
@@ -36,68 +57,147 @@ export function BackgroundTerminalsButton({
 	const [pendingKillTerminalId, setPendingKillTerminalId] = useState<
 		string | null
 	>(null);
-	const tabs = useStore(store, (s) => s.tabs);
+	const attachedTerminalIdsKey = useStore(store, (s) =>
+		getAttachedTerminalIdsKey(s.tabs),
+	);
+	const debouncedAttachedTerminalIdsKey = useDebouncedValue(
+		attachedTerminalIdsKey,
+		BACKGROUND_TERMINAL_ATTACHMENT_DEBOUNCE_MS,
+	);
+	const attachedTerminalIds = useMemo(
+		() => parseAttachedTerminalIdsKey(attachedTerminalIdsKey),
+		[attachedTerminalIdsKey],
+	);
+	const getBackgroundMarkerSnapshot = useCallback(
+		() => getTerminalBackgroundMarkerIdsKey(workspaceId),
+		[workspaceId],
+	);
+	const backgroundMarkerIdsKey = useSyncExternalStore(
+		subscribeTerminalBackgroundMarkers,
+		getBackgroundMarkerSnapshot,
+		() => "[]",
+	);
+	const backgroundMarkerIds = useMemo(
+		() => parseAttachedTerminalIdsKey(backgroundMarkerIdsKey),
+		[backgroundMarkerIdsKey],
+	);
+	const debouncedAttachedTerminalIds = useMemo(
+		() => parseAttachedTerminalIdsKey(debouncedAttachedTerminalIdsKey),
+		[debouncedAttachedTerminalIdsKey],
+	);
+	const optimisticBackgroundTerminalIds = useMemo(
+		() => getUnattachedTerminalIds(backgroundMarkerIds, attachedTerminalIds),
+		[backgroundMarkerIds, attachedTerminalIds],
+	);
+	const optimisticBackgroundCount = optimisticBackgroundTerminalIds.length;
 	const utils = workspaceTrpc.useUtils();
 	const killSession = workspaceTrpc.terminal.killSession.useMutation();
-	const attachedTerminalIds = useMemo(
-		() => getAttachedTerminalIds(tabs),
-		[tabs],
-	);
 	const backgroundCountInput = useMemo(
-		() => ({ workspaceId, attachedTerminalIds }),
-		[workspaceId, attachedTerminalIds],
+		() => ({ workspaceId, attachedTerminalIds: debouncedAttachedTerminalIds }),
+		[workspaceId, debouncedAttachedTerminalIds],
 	);
+	const sessionsInput = useMemo(() => ({ workspaceId }), [workspaceId]);
 	const backgroundCountQuery =
 		workspaceTrpc.terminal.countBackgroundSessions.useQuery(
 			backgroundCountInput,
 			{
 				enabled: !isOpen,
-				notifyOnChangeProps: ["data"],
-				refetchInterval: isOpen
-					? false
-					: BACKGROUND_TERMINAL_COUNT_REFETCH_INTERVAL_MS,
+				notifyOnChangeProps: ["data", "dataUpdatedAt"],
+				refetchInterval: getBackgroundTerminalCountRefetchInterval(isOpen),
 				refetchOnWindowFocus: false,
+				staleTime: 5_000,
 			},
 		);
 	const sessionsQuery = workspaceTrpc.terminal.listSessions.useQuery(
-		{ workspaceId },
+		sessionsInput,
 		{
 			enabled: isOpen,
-			refetchInterval: isOpen
-				? BACKGROUND_TERMINAL_LIST_REFETCH_INTERVAL_MS
-				: false,
-			refetchOnWindowFocus: false,
+			notifyOnChangeProps: ["data", "isFetching"],
+			refetchInterval: getBackgroundTerminalListRefetchInterval(isOpen),
+			refetchOnWindowFocus: isOpen,
+			staleTime: 1_000,
 		},
 	);
+
+	useRenderStressInstrumentation("BackgroundTerminalsButton", {
+		warnAt: 35,
+		getDetails: () => ({
+			isOpen,
+			attachedTerminalCount: attachedTerminalIds.length,
+			optimisticBackgroundCount,
+			closedCount: backgroundCountQuery.data?.count ?? null,
+		}),
+	});
 
 	const backgroundSessions = useMemo(() => {
 		const sessions = sessionsQuery.data?.sessions ?? [];
 		return getBackgroundTerminalSessions(sessions, attachedTerminalIds);
 	}, [sessionsQuery.data?.sessions, attachedTerminalIds]);
-	const closedBackgroundSessionCount = backgroundCountQuery.data?.count ?? 0;
-	const backgroundSessionCount = isOpen
-		? sessionsQuery.data
-			? backgroundSessions.length
-			: closedBackgroundSessionCount
-		: closedBackgroundSessionCount;
 
-	if (backgroundSessionCount === 0) return null;
+	const markerObservedAtRef = useRef(0);
+	useEffect(() => {
+		markerObservedAtRef.current =
+			backgroundMarkerIdsKey === "[]" ? 0 : Date.now();
+	}, [backgroundMarkerIdsKey]);
+
+	useEffect(() => {
+		if (!sessionsQuery.data) return;
+
+		const actualBackgroundTerminalIds = new Set(
+			backgroundSessions.map((session) => session.terminalId),
+		);
+		for (const terminalId of backgroundMarkerIds) {
+			if (actualBackgroundTerminalIds.has(terminalId)) continue;
+			clearTerminalBackgroundMarker(workspaceId, terminalId);
+		}
+	}, [
+		backgroundMarkerIds,
+		backgroundSessions,
+		sessionsQuery.data,
+		workspaceId,
+	]);
+
+	useEffect(() => {
+		if (isOpen || optimisticBackgroundTerminalIds.length === 0) return;
+		if (debouncedAttachedTerminalIdsKey !== attachedTerminalIdsKey) return;
+		if (backgroundCountQuery.data?.count !== 0) return;
+		if (backgroundCountQuery.dataUpdatedAt <= markerObservedAtRef.current) {
+			return;
+		}
+
+		for (const terminalId of optimisticBackgroundTerminalIds) {
+			clearTerminalBackgroundMarker(workspaceId, terminalId);
+		}
+	}, [
+		attachedTerminalIdsKey,
+		backgroundCountQuery.data?.count,
+		backgroundCountQuery.dataUpdatedAt,
+		debouncedAttachedTerminalIdsKey,
+		isOpen,
+		optimisticBackgroundTerminalIds,
+		workspaceId,
+	]);
+
+	const backgroundSessionCount =
+		isOpen && sessionsQuery.data
+			? backgroundSessions.length
+			: Math.max(
+					backgroundCountQuery.data?.count ?? 0,
+					optimisticBackgroundCount,
+				);
+
+	if (!isOpen && backgroundSessionCount === 0) return null;
 
 	const label = `${backgroundSessionCount} background terminal session${
 		backgroundSessionCount === 1 ? "" : "s"
 	}`;
 
 	const handleAdopt = (terminalId: string) => {
-		store.getState().addTab({
-			panes: [
-				{
-					kind: "terminal",
-					data: { terminalId, workspaceId } as TerminalPaneData,
-				},
-			],
-		});
+		clearTerminalBackgroundMarker(workspaceId, terminalId);
+		const result = focusOrAddTerminalPane(store, terminalId);
 		void utils.terminal.listSessions.invalidate({ workspaceId });
-		void utils.terminal.countBackgroundSessions.invalidate();
+		void utils.terminal.countBackgroundSessions.invalidate({ workspaceId });
+		logStressEvent("background-terminals.adopt", { result, workspaceId });
 		setIsOpen(false);
 	};
 
@@ -105,6 +205,7 @@ export function BackgroundTerminalsButton({
 		setPendingKillTerminalId(terminalId);
 		try {
 			await killSession.mutateAsync({ terminalId, workspaceId });
+			clearTerminalBackgroundMarker(workspaceId, terminalId);
 		} catch (error) {
 			console.error(
 				"[BackgroundTerminalsButton] Failed to kill session:",
@@ -114,7 +215,7 @@ export function BackgroundTerminalsButton({
 		} finally {
 			setPendingKillTerminalId(null);
 			void utils.terminal.listSessions.invalidate({ workspaceId });
-			void utils.terminal.countBackgroundSessions.invalidate();
+			void utils.terminal.countBackgroundSessions.invalidate({ workspaceId });
 		}
 	};
 

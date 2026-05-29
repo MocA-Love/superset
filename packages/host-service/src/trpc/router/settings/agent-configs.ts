@@ -23,6 +23,18 @@ const presetIdSchema = z
 
 const argvSchema = z.array(z.string());
 const envSchema = z.record(z.string(), z.string());
+const addInputSchema = z.union([
+	z.object({ presetId: presetIdSchema }),
+	z.object({
+		label: z.string().trim().min(1),
+		command: z.string().trim().min(1),
+		args: argvSchema,
+		promptTransport: promptTransportSchema,
+		promptArgs: argvSchema,
+		env: envSchema,
+		presetId: z.string().trim().min(1).optional(),
+	}),
+]);
 
 interface HostAgentConfigOutput {
 	id: string;
@@ -113,6 +125,34 @@ function rowFromPreset(
 	};
 }
 
+function rowFromAddInput(
+	input: z.infer<typeof addInputSchema>,
+	displayOrder: number,
+): typeof hostAgentConfigs.$inferInsert {
+	if ("label" in input) {
+		return {
+			id: randomUUID(),
+			presetId: input.presetId ?? "custom",
+			label: input.label,
+			command: input.command,
+			argsJson: JSON.stringify(input.args),
+			promptTransport: input.promptTransport,
+			promptArgsJson: JSON.stringify(input.promptArgs),
+			envJson: JSON.stringify(input.env),
+			displayOrder,
+		};
+	}
+
+	const preset = getPresetById(input.presetId);
+	if (!preset) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: `Unknown presetId: ${input.presetId}`,
+		});
+	}
+	return rowFromPreset(preset, displayOrder);
+}
+
 function listOrdered(db: HostDb): HostAgentConfigRow[] {
 	return db
 		.select()
@@ -176,39 +216,30 @@ export const agentConfigsRouter = router({
 	),
 
 	/**
-	 * Create a new host agent config from a hardcoded preset. Allows
-	 * duplicate `presetId` entries — each gets a fresh `id`.
+	 * Create a host agent config. Supports the existing presetId-only contract
+	 * and the upstream full launch shape for custom add callers.
 	 */
-	add: protectedProcedure
-		.input(z.object({ presetId: presetIdSchema }))
-		.mutation(({ ctx, input }) => {
-			const preset = getPresetById(input.presetId);
-			if (!preset) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: `Unknown presetId: ${input.presetId}`,
-				});
-			}
-			const existing = listOrdered(ctx.db);
-			const nextOrder =
-				existing.length === 0
-					? 0
-					: Math.max(...existing.map((row) => row.displayOrder)) + 1;
-			const insert = rowFromPreset(preset, nextOrder);
-			ctx.db.insert(hostAgentConfigs).values(insert).run();
-			const created = ctx.db
-				.select()
-				.from(hostAgentConfigs)
-				.where(eq(hostAgentConfigs.id, insert.id))
-				.get();
-			if (!created) {
-				throw new TRPCError({
-					code: "INTERNAL_SERVER_ERROR",
-					message: "Failed to read back inserted host agent config",
-				});
-			}
-			return toOutput(created);
-		}),
+	add: protectedProcedure.input(addInputSchema).mutation(({ ctx, input }) => {
+		const existing = listOrdered(ctx.db);
+		const nextOrder =
+			existing.length === 0
+				? 0
+				: Math.max(...existing.map((row) => row.displayOrder)) + 1;
+		const insert = rowFromAddInput(input, nextOrder);
+		ctx.db.insert(hostAgentConfigs).values(insert).run();
+		const created = ctx.db
+			.select()
+			.from(hostAgentConfigs)
+			.where(eq(hostAgentConfigs.id, insert.id))
+			.get();
+		if (!created) {
+			throw new TRPCError({
+				code: "INTERNAL_SERVER_ERROR",
+				message: "Failed to read back inserted host agent config",
+			});
+		}
+		return toOutput(created);
+	}),
 
 	/**
 	 * Update editable fields on an existing config. `presetId` and `order`

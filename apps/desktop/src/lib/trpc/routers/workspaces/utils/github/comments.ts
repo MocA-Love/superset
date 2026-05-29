@@ -279,10 +279,10 @@ function parseReviewThreadCommentNode({
 		createdAt: parseTimestamp(comment.createdAt),
 		url: comment.url,
 		kind: "review" as const,
-		threadId,
 		path: comment.path,
 		line: comment.line ?? comment.originalLine ?? undefined,
 		isResolved,
+		...(threadId ? { threadId } : {}),
 	};
 }
 

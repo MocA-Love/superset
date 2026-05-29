@@ -267,6 +267,9 @@ export function ChatPaneInterface({
 	const [approvalResponsePending, setApprovalResponsePending] = useState(false);
 	const [planResponsePending, setPlanResponsePending] = useState(false);
 	const [questionResponsePending, setQuestionResponsePending] = useState(false);
+	const [answeredQuestionId, setAnsweredQuestionId] = useState<string | null>(
+		null,
+	);
 	const [editingUserMessageId, setEditingUserMessageId] = useState<
 		string | null
 	>(null);
@@ -491,6 +494,7 @@ export function ChatPaneInterface({
 		setSubmitStatus(undefined);
 		setRuntimeError(null);
 		setInterruptedMessage(null);
+		setAnsweredQuestionId(null);
 		setPendingUserTurn(null);
 		setEditingUserMessageId(null);
 		resetMcpUi();
@@ -498,6 +502,15 @@ export function ChatPaneInterface({
 			void refreshMcpOverview();
 		}
 	}, [cwd, refreshMcpOverview, resetMcpUi, sessionId]);
+
+	useEffect(() => {
+		if (
+			answeredQuestionId &&
+			pendingQuestion?.questionId !== answeredQuestionId
+		) {
+			setAnsweredQuestionId(null);
+		}
+	}, [answeredQuestionId, pendingQuestion?.questionId]);
 
 	const clearDraftInStore = useCallback(() => {
 		const { panes, setChatLaunchConfig } = useTabsStore.getState();
@@ -1019,6 +1032,7 @@ export function ChatPaneInterface({
 			const trimmedAnswer = answer.trim();
 			if (!trimmedQuestionId || !trimmedAnswer) return;
 			clearRuntimeError();
+			setAnsweredQuestionId(trimmedQuestionId);
 			setQuestionResponsePending(true);
 			try {
 				await commands.respondToQuestion({
@@ -1027,6 +1041,9 @@ export function ChatPaneInterface({
 						answer: trimmedAnswer,
 					},
 				});
+			} catch (error) {
+				setAnsweredQuestionId(null);
+				throw error;
 			} finally {
 				setQuestionResponsePending(false);
 			}
@@ -1067,6 +1084,7 @@ export function ChatPaneInterface({
 					isPlanSubmitting={planResponsePending}
 					onPlanRespond={handlePlanResponse}
 					pendingQuestion={pendingQuestion}
+					answeredQuestionId={answeredQuestionId}
 					isQuestionSubmitting={questionResponsePending}
 					onQuestionRespond={handleQuestionResponse}
 					editingUserMessageId={editingUserMessageId}

@@ -245,6 +245,7 @@ export const createGitStatusProcedures = () => {
 				const previewUrl = await fetchGitHubPreviewUrl({
 					worktreePath: repoPath,
 					githubStatus: freshStatus,
+					branchName: branchOverride,
 					forceFresh: input.forceFresh,
 				});
 

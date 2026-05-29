@@ -839,6 +839,7 @@ export SUPERSET_WORKSPACE_PATH="/wrong/path"
 			expect(args[0]).toBe("-l");
 			expect(args[1]).toBe("--init-command");
 			expect(args[2]).toContain(`set -l _superset_bin "${TEST_BIN_DIR}"`);
+			expect(args[2]).toContain("\\033]777;superset-shell-ready\\007");
 			expect(args[2]).toContain("\\033]133;A\\007");
 		});
 
@@ -854,6 +855,7 @@ export SUPERSET_WORKSPACE_PATH="/wrong/path"
 			expect(args[2]).toContain(
 				'set -l _superset_bin "/tmp/with space/quote\\"buck\\$slash\\\\bin"',
 			);
+			expect(args[2]).toContain("superset-shell-ready");
 			expect(args[2]).toContain("133;A");
 		});
 	});

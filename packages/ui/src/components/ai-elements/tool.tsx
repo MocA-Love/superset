@@ -85,6 +85,7 @@ export const ToolHeader = ({
 			"group flex h-7 w-full items-center justify-between gap-3 px-2.5 transition-colors hover:bg-muted/50",
 			className,
 		)}
+		data-tool-trigger
 		{...props}
 	>
 		<div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -145,12 +146,14 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => {
 export type ToolOutputProps = ComponentProps<"div"> & {
 	output?: unknown;
 	errorText?: string;
+	label?: string;
 };
 
 export const ToolOutput = ({
 	className,
 	output,
 	errorText,
+	label,
 	...props
 }: ToolOutputProps) => {
 	if (!(output || errorText)) {
@@ -170,7 +173,7 @@ export const ToolOutput = ({
 	return (
 		<div className={cn("space-y-2 p-4", className)} {...props}>
 			<h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-				{errorText ? "Error" : "Result"}
+				{errorText ? "Error" : (label ?? "Result")}
 			</h4>
 			<div
 				className={cn(

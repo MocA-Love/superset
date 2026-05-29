@@ -32,7 +32,7 @@ async function main(): Promise<void> {
 	const configTokenSource = env.SUPERSET_AUTH_CONFIG_PATH
 		? new ConfigFileSessionTokenSource({
 				configPath: env.SUPERSET_AUTH_CONFIG_PATH,
-				apiUrl: env.CLOUD_API_URL,
+				apiUrl: env.SUPERSET_API_URL,
 			})
 		: null;
 	const authProvider = new JwtApiAuthProvider({
@@ -42,14 +42,14 @@ async function main(): Promise<void> {
 		onInvalidateCache: configTokenSource
 			? () => configTokenSource.invalidateCache()
 			: undefined,
-		apiUrl: env.CLOUD_API_URL,
+		apiUrl: env.SUPERSET_API_URL,
 	});
 
 	const { app, injectWebSocket, api } = createApp({
 		config: {
 			organizationId: env.ORGANIZATION_ID,
 			dbPath: env.HOST_DB_PATH,
-			cloudApiUrl: env.CLOUD_API_URL,
+			cloudApiUrl: env.SUPERSET_API_URL,
 			migrationsFolder: env.HOST_MIGRATIONS_FOLDER,
 			allowedOrigins: env.CORS_ORIGINS ?? [],
 			hostServiceSecret: env.HOST_SERVICE_SECRET,

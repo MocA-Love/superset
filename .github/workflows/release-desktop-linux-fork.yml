@@ -87,10 +87,13 @@ jobs:
           # フォーク固有: 未指定だと bundle に "default" が焼き込まれて
           # ワークスペースが空の初期状態を見に行ってしまう (AGENTS.md 参照)。
           SUPERSET_WORKSPACE_NAME: superset
+          TARGET_ARCH: x64
         run: bun run compile:app
 
       - name: Copy native modules and validate runtime
         working-directory: apps/desktop
+        env:
+          TARGET_ARCH: x64
         run: |
           bun run copy:native-modules
           bun run validate:native-runtime
@@ -112,6 +115,7 @@ jobs:
         # 過去リリースにも Linux パッケージを後乗せできる。
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          TARGET_ARCH: x64
         run: bunx electron-builder --linux AppImage deb rpm --publish never
 
       - name: Verify Linux artifacts exist
@@ -125,6 +129,12 @@ jobs:
               exit 1
             fi
           done
+          CLI_BIN=$(find release -path "*/resources/resources/bin/superset" -type f -perm -111 | head -1)
+          if [ -z "$CLI_BIN" ]; then
+            echo "::error::Bundled Superset CLI missing or not executable in packaged Linux output"
+            exit 1
+          fi
+          "$CLI_BIN" --version
 
       - name: Resolve target tag
         id: resolve_tag

@@ -1,3 +1,7 @@
+import {
+	hasAnsweredQuestionToolCall,
+	hasPendingQuestionToolCall,
+} from "renderer/components/Chat/ChatInterface/utils/messageHelpers";
 import type { ToolPart } from "renderer/components/Chat/ChatInterface/utils/tool-helpers";
 import { normalizeToolName } from "renderer/components/Chat/ChatInterface/utils/tool-helpers";
 import type {
@@ -100,7 +104,12 @@ export function getVisibleMessages({
 	const previousTurns = messages.slice(0, turnStartIndex);
 	const activeTurnNonAssistant = messages
 		.slice(turnStartIndex)
-		.filter((message) => message.role !== "assistant");
+		.filter(
+			(message) =>
+				message.role !== "assistant" ||
+				hasAnsweredQuestionToolCall(message) ||
+				hasPendingQuestionToolCall(message),
+		);
 
 	return [...previousTurns, ...activeTurnNonAssistant];
 }
@@ -136,9 +145,23 @@ export function removeInterruptedSourceMessage({
 	interruptedMessage: InterruptedMessagePreview | null;
 }): ChatMessage[] {
 	if (!interruptedMessage) return messages;
-	return messages.filter(
+
+	const filtered = messages.filter(
 		(message) => message.id !== interruptedMessage.sourceMessageId,
 	);
+	if (filtered.length < messages.length) return filtered;
+
+	const turnStartIndex = findLastUserMessageIndex(messages) + 1;
+	const previousTurns = messages.slice(0, turnStartIndex);
+	const activeTurnFiltered = messages
+		.slice(turnStartIndex)
+		.filter(
+			(message) =>
+				message.role !== "assistant" ||
+				hasAnsweredQuestionToolCall(message) ||
+				hasPendingQuestionToolCall(message),
+		);
+	return [...previousTurns, ...activeTurnFiltered];
 }
 
 export function getStreamingPreviewToolParts({

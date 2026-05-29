@@ -4,6 +4,10 @@ Guidelines for agents and developers working in this repository.
 
 You're running inside a Superset workspace: an isolated git-worktree copy of this repo. "Workspace" in any user message refers to this, not VS Code/editor workspaces.
 
+## Question Tool
+
+When running inside a Superset agent runtime where the `ask_user` tool is available, use `ask_user` for user questions, including yes/no confirmations and clarifications. The Superset UI renders those tool calls as an interactive overlay with clickable options; plain-text questions may not surface to the user in the same way.
+
 ## Structure
 
 Bun + Turbo monorepo with:

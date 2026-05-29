@@ -4,6 +4,7 @@ import { useIsV2CloudEnabled } from "renderer/hooks/useIsV2CloudEnabled";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
+import { useWorkspaceSidebarStore } from "renderer/stores/workspace-sidebar-state";
 import { NavigationControls } from "./components/NavigationControls";
 import { OpenInMenuButton } from "./components/OpenInMenuButton";
 import { OrganizationDropdown } from "./components/OrganizationDropdown";
@@ -33,20 +34,32 @@ export function TopBar() {
 	);
 	const isOnline = useOnlineStatus();
 	const isV2CloudEnabled = useIsV2CloudEnabled();
+	const isWorkspaceSidebarOpen = useWorkspaceSidebarStore((s) => s.isOpen);
+	const isWorkspaceSidebarCollapsed = useWorkspaceSidebarStore((s) =>
+		s.isCollapsed(),
+	);
 	// Default to Mac layout while loading to avoid overlap with traffic lights
 	const isMac = platform === undefined || platform === "darwin";
+	// In v2, the expanded dashboard sidebar lives outside the TopBar column.
+	// Let that sidebar header host the traffic-light pad and left chrome.
+	const sidebarHostsChrome =
+		isV2CloudEnabled && isWorkspaceSidebarOpen && !isWorkspaceSidebarCollapsed;
 
 	return (
 		<div className="drag gap-2 h-12 w-full flex items-center justify-between bg-muted/45 border-b border-border relative dark:bg-muted/35">
 			<div
 				className="flex items-center gap-1.5 h-full"
 				style={{
-					paddingLeft: isMac ? "88px" : "16px",
+					paddingLeft: isMac && !sidebarHostsChrome ? "80px" : "16px",
 				}}
 			>
-				<SidebarToggle />
-				<NavigationControls />
-				<ResourceConsumption surface={isV2CloudEnabled ? "v2" : "v1"} />
+				{!sidebarHostsChrome && (
+					<>
+						<SidebarToggle />
+						<NavigationControls />
+						<ResourceConsumption surface={isV2CloudEnabled ? "v2" : "v1"} />
+					</>
+				)}
 			</div>
 
 			{isV2WorkspaceRoute ? (

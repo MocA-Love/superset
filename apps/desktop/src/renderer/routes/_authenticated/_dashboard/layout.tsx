@@ -182,44 +182,46 @@ function DashboardLayout() {
 	return (
 		// FORK NOTE: keep custom outer wrapper, isTearoff / isScratchRoute
 		// conditional rendering and <KeepAliveWorkspaces />.
-		<div className="flex flex-col h-full w-full bg-tertiary">
+		<div className="flex h-full w-full overflow-hidden bg-tertiary">
 			<CommandPaletteHost />
-			{!isTearoff && <TopBar />}
-			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-				{!isTearoff && !isScratchRoute && isWorkspaceSidebarOpen && (
-					<ResizablePanel
-						width={workspaceSidebarWidth}
-						onWidthChange={setWorkspaceSidebarWidth}
-						isResizing={isWorkspaceSidebarResizing}
-						onResizingChange={setWorkspaceSidebarIsResizing}
-						minWidth={COLLAPSED_WORKSPACE_SIDEBAR_WIDTH}
-						maxWidth={MAX_WORKSPACE_SIDEBAR_WIDTH}
-						handleSide="right"
-						clampWidth={false}
-						onDoubleClickHandle={() =>
-							setWorkspaceSidebarWidth(DEFAULT_WORKSPACE_SIDEBAR_WIDTH)
-						}
-					>
-						{isV2CloudEnabled ? (
-							<DashboardSidebar isCollapsed={isWorkspaceSidebarCollapsed()} />
-						) : (
-							<WorkspaceSidebar
-								isCollapsed={isWorkspaceSidebarCollapsed()}
-								activeProjectId={currentWorkspace?.projectId ?? null}
-								activeProjectName={currentWorkspace?.project?.name ?? null}
-							/>
-						)}
-					</ResizablePanel>
-				)}
-				<div className="flex flex-1 min-h-0 min-w-0">
-					{versionMismatch ? (
-						<CrossVersionMismatchState />
-					) : (
-						<KeepAliveWorkspaces />
+			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+				{!isTearoff && <TopBar />}
+				<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+					{!isTearoff && !isScratchRoute && isWorkspaceSidebarOpen && (
+						<ResizablePanel
+							width={workspaceSidebarWidth}
+							onWidthChange={setWorkspaceSidebarWidth}
+							isResizing={isWorkspaceSidebarResizing}
+							onResizingChange={setWorkspaceSidebarIsResizing}
+							minWidth={COLLAPSED_WORKSPACE_SIDEBAR_WIDTH}
+							maxWidth={MAX_WORKSPACE_SIDEBAR_WIDTH}
+							handleSide="right"
+							clampWidth={false}
+							onDoubleClickHandle={() =>
+								setWorkspaceSidebarWidth(DEFAULT_WORKSPACE_SIDEBAR_WIDTH)
+							}
+						>
+							{isV2CloudEnabled ? (
+								<DashboardSidebar isCollapsed={isWorkspaceSidebarCollapsed()} />
+							) : (
+								<WorkspaceSidebar
+									isCollapsed={isWorkspaceSidebarCollapsed()}
+									activeProjectId={currentWorkspace?.projectId ?? null}
+									activeProjectName={currentWorkspace?.project?.name ?? null}
+								/>
+							)}
+						</ResizablePanel>
 					)}
+					<div className="flex flex-1 min-h-0 min-w-0">
+						{versionMismatch ? (
+							<CrossVersionMismatchState />
+						) : (
+							<KeepAliveWorkspaces />
+						)}
+					</div>
 				</div>
 			</div>
-			<div id="workspace-right-sidebar-slot" className="contents" />
+			<div id="workspace-right-sidebar-slot" className="flex h-full shrink-0" />
 			<AddRepositoryModals />
 			<RemoveFromSidebarDialog />
 			{deleteTarget?.version === "v1" && (

@@ -34,18 +34,8 @@ export const DEV_CHAT_MODELS: ModelOption[] = [
 		provider: "OpenAI",
 	},
 	{
-		id: "openai/gpt-5.4-mini",
-		name: "GPT-5.4-Mini",
-		provider: "OpenAI",
-	},
-	{
 		id: "openai/gpt-5.3-codex",
 		name: "GPT-5.3 Codex",
-		provider: "OpenAI",
-	},
-	{
-		id: "openai/gpt-5.2",
-		name: "GPT-5.2",
 		provider: "OpenAI",
 	},
 ];

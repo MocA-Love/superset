@@ -78,11 +78,13 @@ export class NotificationManager {
 		const title = this.deps.getNotificationTitle(event);
 
 		const isPermissionRequest = event.eventType === "PermissionRequest";
+		const isPendingQuestion = event.eventType === "PendingQuestion";
+		const isAwaitingResponse = isPermissionRequest || isPendingQuestion;
 		const notification = this.deps.createNotification({
-			title: isPermissionRequest
+			title: isAwaitingResponse
 				? `Awaiting Response — ${workspaceName}`
 				: `Agent Complete — ${workspaceName}`,
-			body: isPermissionRequest
+			body: isAwaitingResponse
 				? `"${title}" is waiting for your reply`
 				: `"${title}" has finished its task`,
 			silent: true,
@@ -98,7 +100,7 @@ export class NotificationManager {
 		this.deps.playRingtone();
 		const runner = this.deps.buildAivisRunner?.(event);
 		if (runner) {
-			this.deps.enqueueAivis?.(runner, isPermissionRequest ? "high" : "normal");
+			this.deps.enqueueAivis?.(runner, isAwaitingResponse ? "high" : "normal");
 		}
 
 		notification.on("click", () => {

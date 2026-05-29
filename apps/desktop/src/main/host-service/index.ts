@@ -72,14 +72,14 @@ async function main(): Promise<void> {
 			const { token } = await loadToken();
 			return token ?? env.AUTH_TOKEN;
 		},
-		apiUrl: env.CLOUD_API_URL,
+		apiUrl: env.SUPERSET_API_URL,
 	});
 
 	const { app, injectWebSocket, api } = createApp({
 		config: {
 			organizationId: env.ORGANIZATION_ID,
 			dbPath: env.HOST_DB_PATH,
-			cloudApiUrl: env.CLOUD_API_URL,
+			cloudApiUrl: env.SUPERSET_API_URL,
 			migrationsFolder: env.HOST_MIGRATIONS_FOLDER,
 			allowedOrigins: [
 				`http://localhost:${env.DESKTOP_VITE_PORT}`,

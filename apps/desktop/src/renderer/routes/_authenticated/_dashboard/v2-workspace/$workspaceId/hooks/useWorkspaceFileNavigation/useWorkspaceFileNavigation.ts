@@ -30,6 +30,7 @@ export function useWorkspaceFileNavigation({
 	setRightSidebarTab: V2UserPreferencesApi["setRightSidebarTab"];
 }): {
 	openFilePane: (filePath: string, openInNewTab?: boolean) => void;
+	openFilePaneFromTreeClick: (filePath: string, openInNewTab?: boolean) => void;
 	revealPath: (
 		path: string,
 		options?: {
@@ -119,13 +120,19 @@ export function useWorkspaceFileNavigation({
 				});
 				return;
 			}
-			const active = state.getActivePane();
-			if (
-				active?.pane.kind === "file" &&
-				(active.pane.data as FilePaneData).filePath === absoluteFilePath
-			) {
-				state.setPanePinned({ paneId: active.pane.id, pinned: true });
-				return;
+			// Re-picking a file should focus the existing pane without pinning it.
+			// Tree clicks add the explicit active-row click-to-pin behavior below.
+			for (const tab of state.tabs) {
+				for (const pane of Object.values(tab.panes)) {
+					if (
+						pane.kind === "file" &&
+						(pane.data as FilePaneData).filePath === absoluteFilePath
+					) {
+						state.setActiveTab(tab.id);
+						state.setActivePane({ tabId: tab.id, paneId: pane.id });
+						return;
+					}
+				}
 			}
 			state.openPane({
 				pane: {
@@ -140,6 +147,29 @@ export function useWorkspaceFileNavigation({
 		[store, worktreePath, recordView],
 	);
 
+	const openFilePaneFromTreeClick = useCallback(
+		(filePath: string, openInNewTab?: boolean) => {
+			if (openInNewTab) {
+				openFilePane(filePath, true);
+				return;
+			}
+			const absoluteFilePath = worktreePath
+				? toAbsoluteWorkspacePath(worktreePath, filePath)
+				: filePath;
+			const state = store.getState();
+			const active = state.getActivePane();
+			if (
+				active?.pane.kind === "file" &&
+				(active.pane.data as FilePaneData).filePath === absoluteFilePath
+			) {
+				state.setPanePinned({ paneId: active.pane.id, pinned: true });
+				return;
+			}
+			openFilePane(filePath);
+		},
+		[openFilePane, store, worktreePath],
+	);
+
 	const revealPath = useCallback(
 		(path: string, options?: { isDirectory?: boolean }) => {
 			setRightSidebarOpen(true);
@@ -152,6 +182,7 @@ export function useWorkspaceFileNavigation({
 
 	return {
 		openFilePane,
+		openFilePaneFromTreeClick,
 		revealPath,
 		selectedFilePath,
 		pendingReveal,

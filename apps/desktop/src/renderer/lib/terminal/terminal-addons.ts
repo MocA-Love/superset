@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { Utf8Base64 } from "./clipboard-base64";
 import { installRectangleRendererAlphaPatch } from "./webgl-vibrancy-patch";
 
 export interface LoadAddonsResult {
@@ -34,7 +35,7 @@ export function loadAddons(
 	let disposed = false;
 	let webglAddon: WebglAddon | null = null;
 
-	terminal.loadAddon(new ClipboardAddon());
+	terminal.loadAddon(new ClipboardAddon(new Utf8Base64()));
 
 	const unicode11 = new Unicode11Addon();
 	terminal.loadAddon(unicode11);

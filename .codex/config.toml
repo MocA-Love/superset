@@ -1,29 +1,34 @@
-[mcp_servers.superset]
-type = "sse"
-url = "https://api.superset.sh/api/v2/agent/mcp"
+[mcp_servers.desktop-automation]
+args = [
+    "run",
+    "packages/desktop-mcp/src/bin.ts",
+]
+command = "bun"
 
 [mcp_servers.expo-mcp]
+enabled = false
 type = "sse"
 url = "https://mcp.expo.dev/mcp"
-enabled = false
-
-[mcp_servers.maestro]
-command = "maestro"
-args = ["mcp"]
-
-[mcp_servers.neon]
-type = "sse"
-url = "https://mcp.neon.tech/mcp"
 
 [mcp_servers.linear]
 type = "sse"
 url = "https://mcp.linear.app/mcp"
 
+[mcp_servers.maestro]
+args = ["mcp"]
+command = "maestro"
+
+[mcp_servers.neon]
+type = "sse"
+url = "https://mcp.neon.tech/mcp"
+
+[mcp_servers.posthog]
+url = "https://mcp.posthog.com/mcp"
+
 [mcp_servers.sentry]
 type = "sse"
 url = "https://mcp.sentry.dev/mcp"
 
-
-[mcp_servers.desktop-automation]
-command = "bun"
-args = ["run", "packages/desktop-mcp/src/bin.ts"]
+[mcp_servers.superset]
+type = "sse"
+url = "https://api.superset.sh/api/v2/agent/mcp"

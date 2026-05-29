@@ -25,6 +25,7 @@ import {
 	stopRemoteControlExpirySweep,
 } from "./terminal/remote-control/session-manager";
 import { registerWorkspaceTerminalRoute } from "./terminal/terminal";
+import { TerminalAgentStore } from "./terminal-agents";
 import { appRouter } from "./trpc/router";
 import {
 	execGh as defaultExecGh,
@@ -106,7 +107,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 	// Provider auth (Anthropic / OpenAI OAuth + API keys) is per-machine, not
 	// per-workspace. ChatService is a long-lived singleton wrapping mastra's
 	// auth storage; the `host.auth.*` router proxies to it.
-	const chatService = new ChatService();
+	const chatService = options.chatService ?? new ChatService();
 
 	const runtime = {
 		auth: chatService,
@@ -127,6 +128,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 
 	const eventBus = new EventBus({ db, filesystem, gitWatcher });
 	eventBus.start();
+	const terminalAgentStore = new TerminalAgentStore();
 
 	// Backfill `kind='main'` v2 workspaces for projects already set up before
 	// this column shipped. Idempotent; runs in the background so it doesn't
@@ -178,6 +180,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 					db,
 					runtime,
 					eventBus,
+					terminalAgentStore,
 					organizationId: config.organizationId,
 					isAuthenticated,
 				} as Record<string, unknown>;

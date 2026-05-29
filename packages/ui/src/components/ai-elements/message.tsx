@@ -352,9 +352,10 @@ export const MessageResponse = memo(
 			<Streamdown
 				animated={animated ?? defaultMessageAnimation}
 				className={cn(
-					"text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ol]:list-outside [&_ol]:pl-6 [&_ul]:list-outside [&_ul]:pl-6 [&_li]:break-words [&_li]:whitespace-pre-wrap [&_p]:break-words [&_p]:whitespace-pre-wrap [&_table]:min-w-full [&_table]:w-max [&_:not(pre)>code]:break-all",
+					"text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ol]:list-outside [&_ol]:pl-6 [&_ul]:list-outside [&_ul]:pl-6 [&_li]:break-words [&_li]:whitespace-pre-wrap [&_p]:break-words [&_p]:whitespace-pre-wrap [&_:not(pre)>code]:break-all [&_[data-streamdown=table-wrapper]]:gap-0 [&_[data-streamdown=table-wrapper]]:overflow-hidden [&_[data-streamdown=table-wrapper]]:bg-transparent [&_[data-streamdown=table-wrapper]]:p-0 [&_[data-streamdown=table-wrapper]>div]:rounded-none [&_[data-streamdown=table-wrapper]>div]:border-0 [&_[data-streamdown=table-wrapper]>div]:bg-transparent [&_thead]:bg-muted/50",
 					className,
 				)}
+				controls={{ table: false }}
 				isAnimating={isAnimating}
 				linkSafety={{ enabled: false }}
 				mode="streaming"

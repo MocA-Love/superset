@@ -96,6 +96,7 @@ jobs:
           # フォーク固有: 未指定だと bundle に "default" が焼き込まれて
           # ワークスペースが空の初期状態を見に行ってしまう (AGENTS.md 参照)。
           SUPERSET_WORKSPACE_NAME: superset
+          TARGET_ARCH: x64
         run: bun run compile:app
 
       - name: Copy native modules and validate runtime
@@ -103,6 +104,8 @@ jobs:
         # install:deps + copy:native-modules でバイナリ実体を materialize する
         # 必要がある。validate:native-runtime はその確認。
         working-directory: apps/desktop
+        env:
+          TARGET_ARCH: x64
         run: |
           bun run copy:native-modules
           bun run validate:native-runtime
@@ -125,6 +128,7 @@ jobs:
         env:
           # フォーク配布は Windows コード署名証明書を持たないので auto-discovery を切る。
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          TARGET_ARCH: x64
         run: bunx electron-builder --win --x64 --publish never
 
       - name: Verify Windows artifacts exist
@@ -139,6 +143,12 @@ jobs:
             echo "::error::latest.yml (auto-update manifest) missing"
             exit 1
           }
+          CLI_BIN=$(find release -path "*/resources/resources/bin/superset.exe" -type f | head -1)
+          if [ -z "$CLI_BIN" ]; then
+            echo "::error::Bundled Superset CLI missing in packaged Windows output"
+            exit 1
+          fi
+          "$CLI_BIN" --version
 
       - name: Resolve target tag
         id: resolve_tag

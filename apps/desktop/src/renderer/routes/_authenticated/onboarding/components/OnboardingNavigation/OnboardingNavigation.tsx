@@ -10,6 +10,8 @@ interface OnboardingNavigationProps {
 	totalSteps: number;
 	onBack: (() => void) | null;
 	onContinue: (() => void) | null;
+	onSkip: (() => void) | null;
+	skipDisabled?: boolean;
 	continueDisabled?: boolean;
 	continueLabel: string;
 }
@@ -19,6 +21,8 @@ export function OnboardingNavigation({
 	totalSteps,
 	onBack,
 	onContinue,
+	onSkip,
+	skipDisabled,
 	continueDisabled,
 	continueLabel,
 }: OnboardingNavigationProps) {
@@ -53,6 +57,17 @@ export function OnboardingNavigation({
 					<LuCircleHelp />
 					Get support
 				</Button>
+				{onSkip && (
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={onSkip}
+						disabled={skipDisabled}
+						className="text-muted-foreground"
+					>
+						Skip for now
+					</Button>
+				)}
 				{onContinue && (
 					<Button
 						size="sm"

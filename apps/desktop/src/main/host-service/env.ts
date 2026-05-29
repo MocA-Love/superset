@@ -1,10 +1,15 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
+const runtimeEnv = {
+	...process.env,
+	SUPERSET_API_URL: process.env.SUPERSET_API_URL ?? process.env.CLOUD_API_URL,
+};
+
 export const env = createEnv({
 	server: {
 		AUTH_TOKEN: z.string().min(1),
-		CLOUD_API_URL: z.string().url(),
+		SUPERSET_API_URL: z.string().url(),
 		HOST_DB_PATH: z.string().min(1),
 		HOST_MIGRATIONS_FOLDER: z.string().min(1),
 		HOST_SERVICE_SECRET: z.string().min(1),
@@ -13,6 +18,6 @@ export const env = createEnv({
 		DESKTOP_VITE_PORT: z.coerce.number().int().positive(),
 		RELAY_URL: z.string().url().optional(),
 	},
-	runtimeEnv: process.env,
+	runtimeEnv,
 	emptyStringAsUndefined: true,
 });

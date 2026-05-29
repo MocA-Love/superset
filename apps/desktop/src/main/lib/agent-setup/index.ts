@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import { PLATFORM } from "shared/constants";
-import { setupDesktopAgentCapabilities } from "./desktop-agent-setup";
+import {
+	setupDesktopAgentCapabilities,
+	setupSingleAgent,
+} from "./desktop-agent-setup";
 import {
 	BASH_DIR,
 	BIN_DIR,
@@ -46,5 +49,7 @@ export function setupAgentHooks(): void {
 export function getSupersetBinDir(): string {
 	return BIN_DIR;
 }
+
+export { setupSingleAgent };
 
 export { getCommandShellArgs, getShellArgs, getShellEnv };

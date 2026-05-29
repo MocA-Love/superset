@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
 	getSlashCommands as getSlashCommandsFromCwd,
 	resolveSlashCommand as resolveSlashCommandFromCwd,
@@ -438,6 +441,34 @@ export class ChatRuntimeManager {
 		});
 	}
 
+	/**
+	 * Ensures ~/.mastracode/AGENTS.md exists with Superset-specific instructions.
+	 * Only writes when absent or when previously written by Superset.
+	 */
+	private ensureGlobalAgentInstructions(): void {
+		const managedMarker = "<!-- managed-by: superset -->";
+		const instructions = `${managedMarker}
+## Question Tool
+
+When you need to ask the user ANY question — including simple yes/no, confirmations, and clarifications — ALWAYS use the \`ask_user\` tool. Never ask questions in plain text. The Superset UI renders \`ask_user\` calls as an interactive overlay with clickable option buttons; plain-text questions will not be surfaced to the user in the same way.
+`;
+
+		try {
+			const dir = join(homedir(), ".mastracode");
+			const filePath = join(dir, "AGENTS.md");
+			if (existsSync(filePath)) {
+				const existing = readFileSync(filePath, "utf-8");
+				if (!existing.includes(managedMarker)) {
+					return;
+				}
+			}
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(filePath, instructions, "utf-8");
+		} catch {
+			// Best-effort only; chat runtime creation should not fail on this.
+		}
+	}
+
 	private async createRuntime(
 		sessionId: string,
 		workspaceId: string,
@@ -456,6 +487,7 @@ export class ChatRuntimeManager {
 
 		const cwd = workspace.worktreePath;
 
+		this.ensureGlobalAgentInstructions();
 		await this.runtimeResolver.prepareRuntimeEnv();
 
 		const omModel = resolveOmModelFromAuth();

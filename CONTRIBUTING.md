@@ -1,10 +1,21 @@
-When contributing to this repository, please first discuss the change you wish to make via [issues](https://github.com/superset-sh/superset/issues) before making a change. 
+When contributing to this repository, please first discuss the change you wish to make via [issues](https://github.com/superset-sh/superset/issues) before making a change.
 
 Please note we have a [code of conduct](./CODE_OF_CONDUCT.md), please follow it in all your interactions with the project.
 
+## Local Development Setup
+
+See [**DEVELOPMENT.md**](./DEVELOPMENT.md) for the full guide. TL;DR:
+
+```bash
+./.superset/setup.local.sh
+bun run dev
+```
+
+No Neon or third-party credentials are required for local development.
+
 ## Pull Request Process
 
-1. To create a Pull Request (PR), [create a fork](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo) of the project. 
+1. To create a Pull Request (PR), [create a fork](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo) of the project.
 
 ![fork](https://github.com/user-attachments/assets/d1c3b3a3-a170-4507-8ccc-e10d5afcfb69)
 
@@ -19,10 +30,10 @@ Please note we have a [code of conduct](./CODE_OF_CONDUCT.md), please follow it 
 <img width="1327" alt="Screenshot_2024-10-22_at_11 31 50_PM" src="https://github.com/user-attachments/assets/5434ad69-bf5e-4136-be47-81aa8328f9ab">
 
 
-5. Request a review of one of the maintainers. Once accepted, they will be able to merge your PR. 
+5. Request a review of one of the maintainers. Once accepted, they will be able to merge your PR.
 
 ## Style guide
 
 We try to follow guidelines from [Clean Code](https://gist.github.com/wojteklu/73c6914cc446146b8b533c0988cf8d29) and the boy scoute rule:
 
-"Leave the code cleaner, not messier, than how you found it". 
+"Leave the code cleaner, not messier, than how you found it".

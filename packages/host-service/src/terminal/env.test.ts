@@ -91,6 +91,7 @@ describe("stripTerminalRuntimeEnv", () => {
 		HOST_SERVICE_VERSION: "1.2.3",
 		KEEP_ALIVE_AFTER_PARENT: "1",
 		CLOUD_API_URL: "https://api.example.com",
+		SUPERSET_API_URL: "https://api.example.com",
 		SUPERSET_AUTH_CONFIG_PATH: "/tmp/superset/config.json",
 		OAUTH_REFRESH_TOKEN: "oauth-refresh-secret",
 		SUPERSET_REFRESH_TOKEN: "superset-refresh-secret",
@@ -133,6 +134,7 @@ describe("stripTerminalRuntimeEnv", () => {
 		expect(result.ELECTRON_RUN_AS_NODE).toBeUndefined();
 		expect(result.HOST_DB_PATH).toBeUndefined();
 		expect(result.CLOUD_API_URL).toBeUndefined();
+		expect(result.SUPERSET_API_URL).toBeUndefined();
 		expect(result.SUPERSET_AUTH_CONFIG_PATH).toBeUndefined();
 		expect(result.OAUTH_REFRESH_TOKEN).toBeUndefined();
 		expect(result.SUPERSET_REFRESH_TOKEN).toBeUndefined();

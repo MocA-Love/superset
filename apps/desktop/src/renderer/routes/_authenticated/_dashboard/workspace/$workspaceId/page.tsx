@@ -64,6 +64,7 @@ import {
 	resolveActiveTabIdForWorkspace,
 } from "renderer/stores/tabs/utils";
 import {
+	useHasCompletedInitThisSession,
 	useHasWorkspaceFailed,
 	useIsWorkspaceInitializing,
 } from "renderer/stores/workspace-init";
@@ -327,12 +328,14 @@ export function WorkspacePage({
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
 	const hasFailed = useHasWorkspaceFailed(workspaceId);
+	const completedThisSession = useHasCompletedInitThisSession(workspaceId);
 
 	// Check for incomplete init after app restart
 	const gitStatus = workspace?.worktree?.gitStatus;
 	const hasIncompleteInit =
+		!completedThisSession &&
 		workspace?.type === "worktree" &&
-		(gitStatus === null || gitStatus === undefined);
+		gitStatus === null;
 
 	// Show full-screen initialization view for:
 	// - Actively initializing workspaces (shows progress)

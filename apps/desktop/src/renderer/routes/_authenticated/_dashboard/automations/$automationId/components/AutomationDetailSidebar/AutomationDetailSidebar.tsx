@@ -149,7 +149,15 @@ export function AutomationDetailSidebar({
 								className="-mr-4"
 								hostId={hostId}
 								value={automation.agent}
-								onChange={(agent) => updateMutation.mutate({ agent })}
+								onChange={(id) => {
+									const patch: { agent: string; targetHostId?: string } = {
+										agent: id,
+									};
+									if (!automation.targetHostId && hostId) {
+										patch.targetHostId = hostId;
+									}
+									updateMutation.mutate(patch);
+								}}
 							/>
 						}
 					/>

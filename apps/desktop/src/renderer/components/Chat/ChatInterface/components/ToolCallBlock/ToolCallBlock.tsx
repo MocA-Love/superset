@@ -35,11 +35,14 @@ import { ListProjectsToolCall } from "./components/ListProjectsToolCall";
 import { ListTaskStatusesToolCall } from "./components/ListTaskStatusesToolCall";
 import { ListTasksToolCall } from "./components/ListTasksToolCall";
 import { ListWorkspacesToolCall } from "./components/ListWorkspacesToolCall";
+import { LspInspectToolCall } from "./components/LspInspectToolCall";
 import { RequestSandboxAccessToolCall } from "./components/RequestSandboxAccessToolCall";
+import { SkillToolCall } from "./components/SkillToolCall";
 import { StartAgentSessionToolCall } from "./components/StartAgentSessionToolCall";
 import { SubagentToolCall } from "./components/SubagentToolCall";
 import { SupersetToolCall } from "./components/SupersetToolCall";
 import { SwitchWorkspaceToolCall } from "./components/SwitchWorkspaceToolCall";
+import { TaskWriteToolCall } from "./components/TaskWriteToolCall";
 import { UpdateTaskToolCall } from "./components/UpdateTaskToolCall";
 import { UpdateWorkspaceToolCall } from "./components/UpdateWorkspaceToolCall";
 import { getExecuteCommandViewModel } from "./utils/getExecuteCommandViewModel";
@@ -51,6 +54,7 @@ interface ToolCallBlockProps {
 	workspaceCwd?: string;
 	sessionId?: string | null;
 	organizationId?: string | null;
+	isStreaming?: boolean;
 	isInterrupted?: boolean;
 	onAnswer?: (
 		toolCallId: string,
@@ -70,6 +74,7 @@ export function ToolCallBlock({
 	workspaceCwd,
 	sessionId,
 	organizationId,
+	isStreaming,
 	isInterrupted,
 	onAnswer,
 }: ToolCallBlockProps) {
@@ -453,7 +458,7 @@ export function ToolCallBlock({
 	}
 
 	// --- Web search → WebSearchTool ---
-	if (toolName === "web_search") {
+	if (toolName === "web_search" || toolName.includes("web_search")) {
 		const { query, results } = getWebSearchViewModel({ args, result });
 		return <WebSearchTool query={query} results={results} state={state} />;
 	}
@@ -490,6 +495,8 @@ export function ToolCallBlock({
 				result={result}
 				outputObject={outputObject}
 				nestedResultObject={nestedResultObject}
+				isStreaming={isStreaming}
+				isInterrupted={isInterrupted}
 				onAnswer={onAnswer}
 			/>
 		);
@@ -575,7 +582,14 @@ export function ToolCallBlock({
 
 	// --- Read-only exploration tools ---
 	if (READ_ONLY_TOOLS.has(toolName)) {
-		return <ReadOnlyToolCall part={part} onOpenFileInPane={openFileInPane} />;
+		return (
+			<ReadOnlyToolCall
+				part={part}
+				workspaceId={workspaceId}
+				workspaceCwd={workspaceCwd}
+				onOpenFileInPane={openFileInPane}
+			/>
+		);
 	}
 
 	// --- Destructive workspace tools ---
@@ -607,7 +621,7 @@ export function ToolCallBlock({
 	}
 
 	if (toolName === "task_write") {
-		return <SupersetToolCall part={part} toolName="Write task list" />;
+		return <TaskWriteToolCall part={part} />;
 	}
 
 	if (toolName === "task_check") {
@@ -619,7 +633,29 @@ export function ToolCallBlock({
 	}
 
 	if (toolName === "subagent") {
-		return <SubagentToolCall part={part} args={args} result={result} />;
+		return (
+			<SubagentToolCall
+				part={part}
+				args={args}
+				result={result}
+				workspaceCwd={workspaceCwd}
+				onOpenFileInPane={openFileInPane}
+			/>
+		);
+	}
+
+	if (toolName === "lsp_inspect") {
+		return <LspInspectToolCall part={part} />;
+	}
+
+	if (toolName === "skill" || toolName === "load_skill") {
+		const skillName =
+			typeof args.name === "string"
+				? args.name
+				: typeof args.command === "string"
+					? args.command
+					: toolDisplayName;
+		return <SkillToolCall part={part} skillName={skillName} />;
 	}
 
 	// --- Fallback: generic tool UI ---

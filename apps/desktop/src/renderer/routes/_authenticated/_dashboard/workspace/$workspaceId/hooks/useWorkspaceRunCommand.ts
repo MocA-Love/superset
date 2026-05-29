@@ -134,8 +134,40 @@ export function useWorkspaceRunCommand({
 			const fallbackCwd = worktreePath?.trim() ? worktreePath : undefined;
 			const initialCwd = runDefinition?.cwd ?? fallbackCwd;
 
-			// Always start in a fresh tab. Old run panes stay inspectable instead
-			// of having their terminal session swapped under the user.
+			const tabsState = useTabsStore.getState();
+			const livePane = runPane ? tabsState.panes[runPane.id] : undefined;
+			const liveTab = livePane
+				? tabsState.tabs.find((tab) => tab.id === livePane.tabId)
+				: undefined;
+			if (livePane && liveTab) {
+				setActiveTab(workspaceId, liveTab.id);
+				setFocusedPane(liveTab.id, livePane.id);
+				setPaneName(livePane.id, "Workspace Run");
+				setPaneWorkspaceRun(
+					livePane.id,
+					createWorkspaceRun({
+						workspaceId,
+						state: "running",
+						command,
+					}),
+				);
+				try {
+					await launchWorkspaceRunInPane({
+						paneId: livePane.id,
+						tabId: livePane.tabId,
+						command,
+						cwd: initialCwd,
+					});
+				} catch (error) {
+					setPaneWorkspaceRunState(livePane.id, "stopped-by-exit");
+					toast.error("Failed to run workspace command", {
+						description:
+							error instanceof Error ? error.message : "Unknown error",
+					});
+				}
+				return;
+			}
+
 			const result = addTab(workspaceId, { initialCwd });
 			const { tabId, paneId } = result;
 

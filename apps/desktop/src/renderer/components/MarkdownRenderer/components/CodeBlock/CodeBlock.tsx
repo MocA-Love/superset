@@ -1,11 +1,8 @@
 import { mermaid } from "@streamdown/mermaid";
+import { ShowCode } from "@superset/ui/ai-elements/show-code";
 import type { ReactNode } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import {
-	oneDark,
-	oneLight,
-} from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "renderer/stores";
+import type { BundledLanguage } from "shiki";
 import { Streamdown } from "streamdown";
 
 const mermaidPlugins = { mermaid };
@@ -26,7 +23,6 @@ interface CodeBlockProps {
 export function CodeBlock({ children, className, node }: CodeBlockProps) {
 	const theme = useTheme();
 	const isDark = theme?.type !== "light";
-	const syntaxStyle = isDark ? oneDark : oneLight;
 
 	const match = /language-(\w+)/.exec(className || "");
 	const language = match ? match[1] : undefined;
@@ -56,13 +52,11 @@ export function CodeBlock({ children, className, node }: CodeBlockProps) {
 	}
 
 	return (
-		<SyntaxHighlighter
-			style={syntaxStyle as Record<string, React.CSSProperties>}
-			language={language ?? "text"}
-			PreTag="div"
-			className="rounded-md text-sm"
-		>
-			{codeString}
-		</SyntaxHighlighter>
+		<ShowCode
+			className="my-4"
+			code={codeString}
+			language={(language ?? "text") as BundledLanguage}
+			showLineNumbers
+		/>
 	);
 }

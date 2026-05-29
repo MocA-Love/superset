@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDownIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, MouseEvent } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { cn } from "../../lib/utils";
@@ -27,12 +27,27 @@ export type ConversationContentProps = ComponentProps<
 export const ConversationContent = ({
 	className,
 	...props
-}: ConversationContentProps) => (
-	<StickToBottom.Content
-		className={cn("flex flex-col gap-8 p-4 select-text", className)}
-		{...props}
-	/>
-);
+}: ConversationContentProps) => {
+	const { stopScroll } = useStickToBottomContext();
+
+	const handleMouseDown = useCallback(
+		(e: MouseEvent) => {
+			if ((e.target as Element).closest("[data-tool-trigger]")) {
+				stopScroll();
+			}
+		},
+		[stopScroll],
+	);
+
+	return (
+		<StickToBottom.Content
+			className={cn("flex flex-col gap-8 p-4 select-text", className)}
+			scrollClassName="[overflow-anchor:none]"
+			onMouseDown={handleMouseDown}
+			{...props}
+		/>
+	);
+};
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
 	title?: string;

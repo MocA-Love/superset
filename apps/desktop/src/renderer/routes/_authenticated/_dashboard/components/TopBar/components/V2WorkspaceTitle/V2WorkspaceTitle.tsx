@@ -30,7 +30,7 @@ export function V2WorkspaceTitle({ workspaceId }: V2WorkspaceTitleProps) {
 	}
 
 	return (
-		<div className="flex min-w-0 max-w-[240px] items-center gap-1.5 text-[13px] tracking-tight 2xl:max-w-[380px]">
+		<div className="flex min-w-0 max-w-full items-center gap-1.5 text-[13px] tracking-tight">
 			{name && (
 				<OverflowFadeText className="font-medium text-foreground" title={name}>
 					{name}

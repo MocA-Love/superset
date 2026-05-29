@@ -366,11 +366,21 @@ export const v2WorkspaceRouter = {
 					});
 				}
 			}
-			await dbWs
-				.update(v2Workspaces)
-				.set({ taskId: input.taskId })
-				.where(eq(v2Workspaces.id, input.workspaceId));
-			return { success: true as const };
+			const txid = await dbWs.transaction(async (tx) => {
+				const [updated] = await tx
+					.update(v2Workspaces)
+					.set({ taskId: input.taskId })
+					.where(eq(v2Workspaces.id, input.workspaceId))
+					.returning({ id: v2Workspaces.id });
+				if (!updated) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Workspace not found",
+					});
+				}
+				return getCurrentTxid(tx);
+			});
+			return { success: true as const, txid };
 		}),
 
 	getFromHost: jwtProcedure
@@ -535,12 +545,17 @@ export const v2WorkspaceRouter = {
 			if (input.expectedCurrentName !== undefined) {
 				conditions.push(eq(v2Workspaces.name, input.expectedCurrentName));
 			}
-			const [updated] = await dbWs
-				.update(v2Workspaces)
-				.set(data)
-				.where(and(...conditions))
-				.returning();
-			if (!updated) {
+			const result = await dbWs.transaction(async (tx) => {
+				const [updated] = await tx
+					.update(v2Workspaces)
+					.set(data)
+					.where(and(...conditions))
+					.returning();
+				if (!updated) return { updated, txid: null };
+				const txid = await getCurrentTxid(tx);
+				return { updated, txid };
+			});
+			if (!result.updated) {
 				// WHERE guard matched zero rows: the row still exists (we just
 				// fetched it above) but the user's rename raced ahead of ours.
 				// Return the pre-update `workspace` row (NOT a fresh read) —
@@ -549,7 +564,7 @@ export const v2WorkspaceRouter = {
 				// the git rename.
 				return workspace;
 			}
-			return updated;
+			return { ...result.updated, txid: result.txid };
 		}),
 
 	// JWT-authed so host-service can orchestrate the full delete saga
@@ -586,7 +601,17 @@ export const v2WorkspaceRouter = {
 					message: MAIN_WORKSPACE_DELETE_MESSAGE,
 				});
 			}
-			await dbWs.delete(v2Workspaces).where(eq(v2Workspaces.id, workspace.id));
+			const txid = await dbWs.transaction(async (tx) => {
+				const [deleted] = await tx
+					.delete(v2Workspaces)
+					.where(eq(v2Workspaces.id, workspace.id))
+					.returning({ id: v2Workspaces.id });
+				if (!deleted) return null;
+				return getCurrentTxid(tx);
+			});
+			if (txid === null) {
+				return { success: true, alreadyGone: true as const, txid };
+			}
 
 			posthog.capture({
 				distinctId: ctx.userId,
@@ -601,7 +626,7 @@ export const v2WorkspaceRouter = {
 				},
 			});
 
-			return { success: true, alreadyGone: false as const };
+			return { success: true, alreadyGone: false as const, txid };
 		}),
 
 	// Main workspaces are not normal delete targets. This endpoint is reserved
@@ -640,7 +665,17 @@ export const v2WorkspaceRouter = {
 					message: "Workspace is not a main workspace",
 				});
 			}
-			await dbWs.delete(v2Workspaces).where(eq(v2Workspaces.id, workspace.id));
-			return { success: true, alreadyGone: false as const };
+			const txid = await dbWs.transaction(async (tx) => {
+				const [deleted] = await tx
+					.delete(v2Workspaces)
+					.where(eq(v2Workspaces.id, workspace.id))
+					.returning({ id: v2Workspaces.id });
+				if (!deleted) return null;
+				return getCurrentTxid(tx);
+			});
+			if (txid === null) {
+				return { success: true, alreadyGone: true as const, txid };
+			}
+			return { success: true, alreadyGone: false as const, txid };
 		}),
 } satisfies TRPCRouterRecord;

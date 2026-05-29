@@ -67,3 +67,25 @@ export function setupDesktopAgentCapabilities(): void {
 		}
 	}
 }
+
+/**
+ * Re-run setupActions for one agent. Bootstrap actions run first because
+ * per-agent hooks reference the shared notify script. Returns false for
+ * unknown ids.
+ */
+export function setupSingleAgent(agentId: string): boolean {
+	const target = DESKTOP_AGENT_SETUP_TARGETS.find(
+		(item) => item.id === agentId,
+	);
+	if (!target) return false;
+
+	for (const action of DESKTOP_AGENT_SETUP_BOOTSTRAP_ACTIONS) {
+		DESKTOP_AGENT_SETUP_RUNNERS[action]();
+	}
+
+	for (const action of target.setupActions) {
+		DESKTOP_AGENT_SETUP_RUNNERS[action]();
+	}
+
+	return true;
+}

@@ -192,6 +192,7 @@ export const v2ProjectRouter = {
 
 			let canonicalUrl: string | null = null;
 			let linkedRepoId: string | null = null;
+			let githubOwner: string | null = null;
 			if (input.repoCloneUrl) {
 				const parsed = parseGitHubRemote(input.repoCloneUrl);
 				if (!parsed) {
@@ -201,6 +202,7 @@ export const v2ProjectRouter = {
 					});
 				}
 				canonicalUrl = parsed.url;
+				githubOwner = parsed.owner;
 				const fullNameLower = `${parsed.owner}/${parsed.name}`.toLowerCase();
 				const repo = await dbWs.query.githubRepositories.findFirst({
 					columns: { id: true },
@@ -213,18 +215,30 @@ export const v2ProjectRouter = {
 			}
 
 			let project: typeof v2Projects.$inferSelect | undefined;
+			let txid: number | null = null;
 			try {
-				[project] = await dbWs
-					.insert(v2Projects)
-					.values({
-						...(input.id ? { id: input.id } : {}),
-						organizationId: input.organizationId,
-						name: input.name,
-						slug: input.slug,
-						repoCloneUrl: canonicalUrl,
-						githubRepositoryId: linkedRepoId,
-					})
-					.returning();
+				const result = await dbWs.transaction(async (tx) => {
+					const [inserted] = await tx
+						.insert(v2Projects)
+						.values({
+							...(input.id ? { id: input.id } : {}),
+							organizationId: input.organizationId,
+							name: input.name,
+							slug: input.slug,
+							repoCloneUrl: canonicalUrl,
+							githubRepositoryId: linkedRepoId,
+						})
+						.returning();
+
+					if (!inserted) {
+						return { project: undefined, txid: null };
+					}
+
+					const currentTxid = await getCurrentTxid(tx);
+					return { project: inserted, txid: currentTxid };
+				});
+				project = result.project;
+				txid = result.txid;
 			} catch (err) {
 				// Drizzle wraps pg errors in a "Failed query:" envelope; the
 				// real constraint name lives on the underlying cause. Walk
@@ -268,7 +282,36 @@ export const v2ProjectRouter = {
 					surface: "v2",
 				},
 			});
-			return project;
+
+			if (githubOwner) {
+				const owner = githubOwner;
+				const projectId = project.id;
+				const organizationId = input.organizationId;
+				void (async () => {
+					try {
+						const iconUrl = await fetchAndStoreGitHubAvatar({
+							owner,
+							pathnamePrefix: `organizations/${organizationId}/projects/${projectId}/icon`,
+							existingUrl: null,
+						});
+						if (!iconUrl) return;
+						await dbWs
+							.update(v2Projects)
+							.set({ iconUrl })
+							.where(
+								and(eq(v2Projects.id, projectId), isNull(v2Projects.iconUrl)),
+							);
+					} catch (error) {
+						console.warn("Failed to hydrate v2 project icon from GitHub", {
+							projectId,
+							organizationId,
+							error,
+						});
+					}
+				})();
+			}
+
+			return { ...project, txid };
 		}),
 
 	linkRepoCloneUrl: jwtProcedure
@@ -336,6 +379,34 @@ export const v2ProjectRouter = {
 					message: "Project already has a linked repository",
 				});
 			}
+
+			if (updated.iconUrl == null) {
+				const owner = parsed.owner;
+				const projectId = updated.id;
+				const organizationId = input.organizationId;
+				void (async () => {
+					try {
+						const iconUrl = await fetchAndStoreGitHubAvatar({
+							owner,
+							pathnamePrefix: `organizations/${organizationId}/projects/${projectId}/icon`,
+							existingUrl: null,
+						});
+						if (!iconUrl) return;
+						await dbWs
+							.update(v2Projects)
+							.set({ iconUrl })
+							.where(
+								and(eq(v2Projects.id, projectId), isNull(v2Projects.iconUrl)),
+							);
+					} catch (error) {
+						console.warn(
+							"Failed to hydrate v2 project icon from GitHub on link",
+							{ projectId, organizationId, error },
+						);
+					}
+				})();
+			}
+
 			return updated;
 		}),
 
@@ -442,7 +513,7 @@ export const v2ProjectRouter = {
 				});
 			}
 			const project = await dbWs.query.v2Projects.findFirst({
-				columns: { id: true, organizationId: true },
+				columns: { id: true, organizationId: true, iconUrl: true },
 				where: eq(v2Projects.id, input.id),
 			});
 			// Idempotent on missing: if it's already gone (or scoped to a
@@ -452,6 +523,17 @@ export const v2ProjectRouter = {
 				return { success: true };
 			}
 			await dbWs.delete(v2Projects).where(eq(v2Projects.id, project.id));
+			if (project.iconUrl) {
+				try {
+					await del(project.iconUrl);
+				} catch (error) {
+					console.warn("Failed to delete project icon from blob storage", {
+						projectId: project.id,
+						iconUrl: project.iconUrl,
+						error,
+					});
+				}
+			}
 			return { success: true };
 		}),
 

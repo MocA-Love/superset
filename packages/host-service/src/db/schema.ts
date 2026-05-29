@@ -1,3 +1,4 @@
+import type { BranchPrefixMode } from "@superset/shared/workspace-launch";
 import {
 	index,
 	integer,
@@ -39,12 +40,22 @@ export const projects = sqliteTable(
 		repoName: text("repo_name"),
 		repoUrl: text("repo_url"),
 		remoteName: text("remote_name"),
+		worktreeBaseDir: text("worktree_base_dir"),
+		branchPrefixMode: text("branch_prefix_mode").$type<BranchPrefixMode>(),
+		branchPrefixCustom: text("branch_prefix_custom"),
 		createdAt: integer("created_at")
 			.notNull()
 			.$defaultFn(() => Date.now()),
 	},
 	(table) => [index("projects_repo_path_idx").on(table.repoPath)],
 );
+
+export const hostSettings = sqliteTable("host_settings", {
+	id: integer().primaryKey().default(1),
+	worktreeBaseDir: text("worktree_base_dir"),
+	branchPrefixMode: text("branch_prefix_mode").$type<BranchPrefixMode>(),
+	branchPrefixCustom: text("branch_prefix_custom"),
+});
 
 export const pullRequests = sqliteTable(
 	"pull_requests",

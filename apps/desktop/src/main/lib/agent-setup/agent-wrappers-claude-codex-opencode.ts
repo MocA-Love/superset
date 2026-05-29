@@ -453,15 +453,14 @@ export function getCodexGlobalHooksJsonContent(
 
 /**
  * Writes Superset hook definitions directly into ~/.codex/hooks.json.
- * This is the primary lifecycle notification path for Codex and also works
- * when the binary wrapper is not in PATH (e.g. user runs codex from outside
+ * This provides a fallback notification path that works even when the
+ * binary wrapper is not in PATH (e.g. user runs codex from outside
  * a Superset terminal).
  *
- * The wrapper only enables Codex hooks and keeps the session-log watcher as a
- * best-effort bridge for prompt/permission events inside Superset terminals.
- * Completion notifications are handled exclusively via hooks.json to avoid
- * the duplicate `/hook/complete` POSTs that occurred when the wrapper also
- * injected `--notify=[...]`.
+ * The wrapper still injects Codex's native notify callback and keeps the
+ * session-log watcher as a best-effort bridge for older releases, but the
+ * native hooks.json registration is now the primary source for prompt/tool
+ * lifecycle events.
  */
 export function createCodexHooksJson(): void {
 	const notifyScriptPath = getNotifyScriptPath();

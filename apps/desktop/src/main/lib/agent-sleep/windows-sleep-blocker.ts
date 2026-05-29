@@ -13,9 +13,9 @@ import type { AgentLifecycleEvent } from "shared/notification-types";
  * is a follow-up), so we centralise inhibit tracking in the main process via
  * Electron's `powerSaveBlocker`.
  *
- * An entry is added to `active` when an agent transitions into Start or
- * PermissionRequest, and removed on Stop or on terminal exit. While at least
- * one entry is present, a single `prevent-app-suspension` blocker is held;
+ * An entry is added to `active` when an agent transitions into Start,
+ * PermissionRequest, or PendingQuestion, and removed on Stop or terminal exit.
+ * While at least one entry is present, a single `prevent-app-suspension` blocker is held;
  * `prevent-display-sleep` is intentionally avoided — it keeps the monitor on,
  * which is a user-hostile default for "don't sleep while agents are running."
  */
@@ -80,6 +80,7 @@ export function handleAgentLifecycleForWindowsSleep(
 	switch (event.eventType) {
 		case "Start":
 		case "PermissionRequest":
+		case "PendingQuestion":
 			active.add(key);
 			ensureBlocker();
 			break;

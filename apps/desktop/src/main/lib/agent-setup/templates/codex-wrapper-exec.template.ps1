@@ -102,7 +102,7 @@ if ($env:SUPERSET_TAB_ID -and (Test-Path -LiteralPath '{{NOTIFY_PATH}}')) {
 }
 
 try {
-	& '{{REAL_BIN}}' @CodexArgs --enable codex_hooks @args
+	& '{{REAL_BIN}}' @CodexArgs --enable hooks -c 'notify=["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File","{{NOTIFY_PATH}}"]' @args
 	$codexStatus = $LASTEXITCODE
 } finally {
 	if ($WatcherJob) {

@@ -40,18 +40,8 @@ const AVAILABLE_MODELS = [
 		provider: "OpenAI",
 	},
 	{
-		id: "openai/gpt-5.4-mini",
-		name: "GPT-5.4-Mini",
-		provider: "OpenAI",
-	},
-	{
 		id: "openai/gpt-5.3-codex",
 		name: "GPT-5.3 Codex",
-		provider: "OpenAI",
-	},
-	{
-		id: "openai/gpt-5.2",
-		name: "GPT-5.2",
 		provider: "OpenAI",
 	},
 ];
@@ -78,18 +68,29 @@ export const chatRouter = {
 				});
 			}
 
-			await db
-				.insert(chatSessions)
-				.values({
-					id: input.sessionId,
-					organizationId,
-					createdBy: ctx.session.user.id,
-					v2WorkspaceId: input.v2WorkspaceId,
-				})
-				.onConflictDoNothing();
+			const result = await dbWs.transaction(async (tx) => {
+				const [inserted] = await tx
+					.insert(chatSessions)
+					.values({
+						id: input.sessionId,
+						organizationId,
+						createdBy: ctx.session.user.id,
+						v2WorkspaceId: input.v2WorkspaceId,
+					})
+					.onConflictDoNothing()
+					.returning({ id: chatSessions.id });
+
+				if (!inserted) {
+					return { txid: null };
+				}
+
+				const txid = await getCurrentTxid(tx);
+				return { txid };
+			});
 
 			return {
 				sessionId: input.sessionId,
+				txid: result.txid,
 			};
 		}),
 
@@ -162,6 +163,7 @@ export const chatRouter = {
 					)
 					.returning({ id: chatSessions.id });
 
+				if (!deleted) return { deleted, txid: null };
 				const txid = await getCurrentTxid(tx);
 
 				return { deleted, txid };

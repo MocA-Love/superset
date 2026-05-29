@@ -30,6 +30,7 @@ interface MessagePartsRendererProps {
 	parts: UIMessage["parts"];
 	isLastAssistant: boolean;
 	isStreaming: boolean;
+	isInterrupted?: boolean;
 	workspaceId?: string;
 	workspaceCwd?: string;
 	onAnswer?: (
@@ -42,6 +43,7 @@ export function MessagePartsRenderer({
 	parts,
 	isLastAssistant,
 	isStreaming,
+	isInterrupted,
 	workspaceId,
 	workspaceCwd,
 	onAnswer,
@@ -175,6 +177,8 @@ export function MessagePartsRenderer({
 							<ReadOnlyToolCall
 								key={part.toolCallId}
 								part={part as ToolPart}
+								workspaceId={workspaceId}
+								workspaceCwd={workspaceCwd}
 								onOpenFileInPane={openFileInPane}
 							/>,
 						);
@@ -203,6 +207,8 @@ export function MessagePartsRenderer({
 							<ReadOnlyToolCall
 								key={groupParts[0].toolCallId}
 								part={groupParts[0]}
+								workspaceId={workspaceId}
+								workspaceCwd={workspaceCwd}
 								onOpenFileInPane={openFileInPane}
 							/>,
 						);
@@ -321,6 +327,7 @@ export function MessagePartsRenderer({
 					<ToolCallBlock
 						key={part.toolCallId}
 						part={part as ToolPart}
+						isInterrupted={isInterrupted}
 						workspaceId={workspaceId}
 						workspaceCwd={workspaceCwd}
 						onAnswer={onAnswer}

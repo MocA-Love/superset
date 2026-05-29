@@ -26,7 +26,7 @@ const rruleBody = z
 export const createAutomationSchema = z
 	.object({
 		name: z.string().min(1).max(200),
-		prompt: z.string().min(1).max(20_000),
+		prompt: z.string().min(1).max(100_000),
 		agent: agentSchema,
 		targetHostId: z.string().min(1).nullish(),
 		v2ProjectId: z.string().uuid().optional(),
@@ -44,7 +44,6 @@ export const createAutomationSchema = z
 export const updateAutomationSchema = z.object({
 	id: z.string().uuid(),
 	name: z.string().min(1).max(200).optional(),
-	prompt: z.string().min(1).max(20_000).optional(),
 	agent: agentSchema.optional(),
 	targetHostId: z.string().min(1).nullish(),
 	v2ProjectId: z.string().uuid().optional(),

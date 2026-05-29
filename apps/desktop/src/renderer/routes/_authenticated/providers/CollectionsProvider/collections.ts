@@ -1,4 +1,8 @@
-import { snakeCamelMapper } from "@electric-sql/client";
+import {
+	FetchError,
+	type ShapeStreamOptions,
+	snakeCamelMapper,
+} from "@electric-sql/client";
 import type {
 	SelectAgentCommand,
 	SelectAutomation,
@@ -43,7 +47,12 @@ import {
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { inferRouterOutputs } from "@trpc/server";
 import { env } from "renderer/env.renderer";
-import { getAuthToken, getJwt } from "renderer/lib/auth-client";
+import {
+	authClient,
+	getAuthToken,
+	getJwt,
+	setJwt,
+} from "renderer/lib/auth-client";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import superjson from "superjson";
 import { z } from "zod";
@@ -95,16 +104,42 @@ const indexDefaults = {
 	autoIndex: "eager",
 	defaultIndexType: BasicIndex,
 } as const;
+const basicIndexConfig = { indexType: BasicIndex } as const;
 
 const createIndexedCollection = ((
 	config: Parameters<typeof createCollection>[0],
 ) =>
 	createCollection({ ...config, ...indexDefaults })) as typeof createCollection;
 
+type ElectricSyncErrorHandler = NonNullable<ShapeStreamOptions["onError"]>;
+
+const handleElectricSyncError: ElectricSyncErrorHandler = async (error) => {
+	if (error instanceof FetchError && error.status === 401) {
+		try {
+			const result = await authClient.token();
+			if (result.data?.token) {
+				setJwt(result.data.token);
+			}
+		} catch (refreshError) {
+			console.error("[collections] JWT refresh after 401 failed", refreshError);
+		}
+	} else {
+		console.error("[collections] Electric sync error", error);
+	}
+	return {};
+};
+
 type ElectricSyncConfig = ReturnType<typeof electricCollectionOptions>;
 const createPersistedElectricCollection = ((config: ElectricSyncConfig) => {
+	const syncConfig = config as ElectricSyncConfig & {
+		shapeOptions?: ShapeStreamOptions;
+	};
 	const persisted = persistedCollectionOptions({
 		...config,
+		shapeOptions: {
+			...syncConfig.shapeOptions,
+			onError: syncConfig.shapeOptions?.onError ?? handleElectricSyncError,
+		},
 		persistence,
 		schemaVersion: 1,
 		// biome-ignore lint/suspicious/noExplicitAny: forces sync-wrapped overload
@@ -333,6 +368,10 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			},
 		}),
 	);
+	v2Projects.createIndex(
+		(project) => project.githubRepositoryId,
+		basicIndexConfig,
+	);
 
 	const v2Hosts = createPersistedElectricCollection(
 		electricCollectionOptions<SelectV2Host>({
@@ -362,6 +401,7 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			},
 		}),
 	);
+	v2Hosts.createIndex((host) => host.machineId, basicIndexConfig);
 
 	const v2Clients = createPersistedElectricCollection(
 		electricCollectionOptions<SelectV2Client>({
@@ -425,6 +465,8 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			},
 		}),
 	);
+	v2UsersHosts.createIndex((userHost) => userHost.hostId, basicIndexConfig);
+	v2UsersHosts.createIndex((userHost) => userHost.userId, basicIndexConfig);
 
 	const v2Workspaces = createPersistedElectricCollection(
 		electricCollectionOptions<SelectV2Workspace>({
@@ -461,6 +503,12 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			},
 		}),
 	);
+	v2Workspaces.createIndex((workspace) => workspace.hostId, basicIndexConfig);
+	v2Workspaces.createIndex(
+		(workspace) => workspace.projectId,
+		basicIndexConfig,
+	);
+	v2Workspaces.createIndex((workspace) => workspace.type, basicIndexConfig);
 
 	const workspaces = createPersistedElectricCollection(
 		electricCollectionOptions<SelectWorkspace>({
@@ -728,6 +776,10 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			getKey: (item) => item.projectId,
 		}),
 	);
+	v2SidebarProjects.createIndex(
+		(sidebarProject) => sidebarProject.tabOrder,
+		basicIndexConfig,
+	);
 
 	const v2WorkspaceLocalState = createIndexedCollection(
 		localStorageCollectionOptions(
@@ -744,6 +796,18 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			),
 		),
 	);
+	v2WorkspaceLocalState.createIndex(
+		(localState) => localState.sidebarState.projectId,
+		basicIndexConfig,
+	);
+	v2WorkspaceLocalState.createIndex(
+		(localState) => localState.sidebarState.sectionId,
+		basicIndexConfig,
+	);
+	v2WorkspaceLocalState.createIndex(
+		(localState) => localState.sidebarState.tabOrder,
+		basicIndexConfig,
+	);
 
 	const v2SidebarSections = createIndexedCollection(
 		localStorageCollectionOptions({
@@ -752,6 +816,14 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			schema: dashboardSidebarSectionSchema,
 			getKey: (item) => item.sectionId,
 		}),
+	);
+	v2SidebarSections.createIndex(
+		(section) => section.projectId,
+		basicIndexConfig,
+	);
+	v2SidebarSections.createIndex(
+		(section) => section.tabOrder,
+		basicIndexConfig,
 	);
 
 	const v2TerminalPresets = createIndexedCollection(

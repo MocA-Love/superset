@@ -82,6 +82,21 @@ describe("resolveAgentConfigs", () => {
 		});
 	});
 
+	test("includes droid as a built-in terminal config", () => {
+		const droid = resolveAgentConfigs({}).find(
+			(preset) => preset.id === "droid",
+		);
+
+		expect(droid).toMatchObject({
+			id: "droid",
+			kind: "terminal",
+			label: "Droid",
+			command: "droid",
+			promptCommand: "droid",
+			enabled: true,
+		});
+	});
+
 	test("uses amp as the built-in prompt command for Amp", () => {
 		const amp = resolveAgentConfigs({}).find((preset) => preset.id === "amp");
 

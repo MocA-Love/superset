@@ -189,7 +189,10 @@ export async function createFromClone(
 		name: args.name,
 		resolved,
 		cleanupRepoPathOnFailure: true,
-		repoCloneUrlForCloud: args.url,
+		// Only forward to cloud if the cloned repo actually has a parseable
+		// GitHub remote. Non-GitHub URLs and local paths become local-only
+		// projects with no cloud repoCloneUrl.
+		repoCloneUrlForCloud: resolved.parsed?.url,
 	});
 }
 

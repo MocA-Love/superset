@@ -13,6 +13,7 @@ import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { Check, ChevronDown, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useRenderStressInstrumentation } from "renderer/lib/performance/stress-instrumentation";
 import { markTerminalForBackground } from "renderer/lib/terminal/terminal-background-intents";
 import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-registry";
 import type { TerminalLauncher } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useV2TerminalLauncher";
@@ -24,6 +25,7 @@ import { useCollections } from "renderer/routes/_authenticated/providers/Collect
 import { getRelativeTime } from "renderer/screens/main/components/WorkspacesListView/utils";
 import { TerminalPaneIcon } from "../TerminalPaneIcon";
 import {
+	getTerminalDisplayTitle,
 	getTerminalSessionListRefetchInterval,
 	shouldQueryTerminalSessionList,
 	TERMINAL_SESSION_LIST_STALE_MS,
@@ -104,6 +106,15 @@ export function TerminalSessionDropdown({
 			staleTime: TERMINAL_SESSION_LIST_STALE_MS,
 		},
 	);
+	useRenderStressInstrumentation("TerminalSessionDropdown", {
+		warnAt: 30,
+		getDetails: () => ({
+			workspaceId,
+			terminalId,
+			isOpen,
+			hasSessionData: Boolean(sessionsQuery.data),
+		}),
+	});
 	const { data: localWorkspaceRows = [] } = useLiveQuery(
 		(query) =>
 			query
@@ -181,7 +192,7 @@ export function TerminalSessionDropdown({
 		}
 
 		if ((terminalPaneLocations.get(terminalId)?.length ?? 0) === 0) {
-			markTerminalForBackground(terminalId);
+			markTerminalForBackground(terminalId, workspaceId);
 		}
 
 		state.setPaneData({
@@ -240,7 +251,7 @@ export function TerminalSessionDropdown({
 			const state = context.store.getState();
 			const terminalPaneLocations = getTerminalPaneLocations(context);
 			if ((terminalPaneLocations.get(terminalId)?.length ?? 0) === 0) {
-				markTerminalForBackground(terminalId);
+				markTerminalForBackground(terminalId, workspaceId);
 			}
 			state.setPaneData({
 				paneId: context.pane.id,
@@ -267,7 +278,10 @@ export function TerminalSessionDropdown({
 	const hostTitle =
 		runtimeTitle !== undefined ? runtimeTitle : currentSession?.title;
 	const titleOverride = context.pane.titleOverride;
-	const triggerTitle = hostTitle ?? titleOverride ?? "Terminal";
+	const triggerTitle = getTerminalDisplayTitle({
+		titleOverride,
+		runtimeTitle: hostTitle,
+	});
 
 	return (
 		<DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -280,7 +294,7 @@ export function TerminalSessionDropdown({
 					onMouseDown={(event) => event.stopPropagation()}
 					onClick={(event) => event.stopPropagation()}
 				>
-					<TerminalPaneIcon terminalId={terminalId} />
+					<TerminalPaneIcon workspaceId={workspaceId} terminalId={terminalId} />
 					{workspaceRunState && (
 						<span
 							className={
@@ -345,7 +359,10 @@ export function TerminalSessionDropdown({
 											: "Detached";
 							const title = isCurrent
 								? triggerTitle
-								: (session.title ?? location?.titleOverride ?? "Terminal");
+								: getTerminalDisplayTitle({
+										titleOverride: location?.titleOverride,
+										sessionTitle: session.title,
+									});
 
 							return (
 								<DropdownMenuItem

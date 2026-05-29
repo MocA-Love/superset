@@ -15,7 +15,7 @@ import { resolveNotificationTarget } from "./utils/resolve-notification-target";
  * STATUS MAPPING:
  * - Start → "working" (amber pulsing indicator)
  * - Stop → "review" (green static) if pane's tab not active, "idle" if tab is active
- * - PermissionRequest → "permission" (red pulsing indicator)
+ * - PermissionRequest / PendingQuestion → "permission" (red pulsing indicator)
  * - Terminal Exit → "idle" (handled in Terminal.tsx when mounted; also forwarded via notifications for unmounted panes)
  *
  * KNOWN LIMITATIONS (External - Claude Code / OpenCode hook systems):
@@ -68,7 +68,10 @@ export function useAgentHookListener() {
 
 				if (eventType === "Start") {
 					state.setPaneStatus(paneId, "working");
-				} else if (eventType === "PermissionRequest") {
+				} else if (
+					eventType === "PermissionRequest" ||
+					eventType === "PendingQuestion"
+				) {
 					state.setPaneStatus(paneId, "permission");
 				} else if (eventType === "Stop") {
 					const activeTabId = state.activeTabIds[workspaceId];
@@ -85,7 +88,14 @@ export function useAgentHookListener() {
 						willSetTo: isInActiveTab ? "idle" : "review",
 					});
 
-					state.setPaneStatus(paneId, isInActiveTab ? "idle" : "review");
+					state.setPaneStatus(
+						paneId,
+						pane?.status === "permission"
+							? "idle"
+							: isInActiveTab
+								? "idle"
+								: "review",
+					);
 				}
 			} else if (event.type === NOTIFICATION_EVENTS.TERMINAL_EXIT) {
 				// Clear transient status for unmounted panes (mounted panes handle this via stream subscription)

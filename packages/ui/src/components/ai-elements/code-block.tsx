@@ -27,6 +27,8 @@ type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
 	code: string;
 	language: BundledLanguage;
 	showLineNumbers?: boolean;
+	startLine?: number;
+	colorize?: boolean;
 	lightTheme?: CodeBlockTheme;
 	darkTheme?: CodeBlockTheme;
 };
@@ -41,27 +43,29 @@ const CodeBlockContext = createContext<CodeBlockContextType>({
 
 export type HighlightedCode = Awaited<ReturnType<typeof codeToHast>>;
 
-const lineNumberTransformer: ShikiTransformer = {
-	name: "line-numbers",
-	line(node, line) {
-		node.children.unshift({
-			type: "element",
-			tagName: "span",
-			properties: {
-				className: [
-					"shiki-line-number",
-					"inline-block",
-					"min-w-10",
-					"mr-4",
-					"text-right",
-					"select-none",
-					"text-muted-foreground",
-				],
-			},
-			children: [{ type: "text", value: String(line) }],
-		});
-	},
-};
+function createLineNumberTransformer(startLine = 1): ShikiTransformer {
+	return {
+		name: "line-numbers",
+		line(node, line) {
+			node.children.unshift({
+				type: "element",
+				tagName: "span",
+				properties: {
+					className: [
+						"shiki-line-number",
+						"inline-block",
+						"min-w-10",
+						"mr-4",
+						"text-right",
+						"select-none",
+						"text-muted-foreground",
+					],
+				},
+				children: [{ type: "text", value: String(line + startLine - 1) }],
+			});
+		},
+	};
+}
 
 function plainTextToHast(code: string) {
 	return {
@@ -91,10 +95,11 @@ export async function highlightCode(
 	options?: {
 		lightTheme?: CodeBlockTheme;
 		darkTheme?: CodeBlockTheme;
+		startLine?: number;
 	},
 ): Promise<[HighlightedCode, HighlightedCode]> {
 	const transformers: ShikiTransformer[] = showLineNumbers
-		? [lineNumberTransformer]
+		? [createLineNumberTransformer(options?.startLine)]
 		: [];
 
 	try {
@@ -119,6 +124,7 @@ export async function highlightCode(
 		return highlightCode(code, "text" as BundledLanguage, showLineNumbers, {
 			lightTheme: options?.lightTheme,
 			darkTheme: options?.darkTheme,
+			startLine: options?.startLine,
 		});
 	}
 }
@@ -136,6 +142,8 @@ export const CodeBlock = ({
 	code,
 	language,
 	showLineNumbers = false,
+	startLine = 1,
+	colorize = true,
 	lightTheme,
 	darkTheme,
 	className,
@@ -152,6 +160,7 @@ export const CodeBlock = ({
 		highlightCode(code, language, showLineNumbers, {
 			lightTheme,
 			darkTheme,
+			startLine,
 		}).then(([light, dark]) => {
 			if (!cancelled) {
 				setHighlightedCode(light);
@@ -161,7 +170,7 @@ export const CodeBlock = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [code, language, showLineNumbers, lightTheme, darkTheme]);
+	}, [code, language, showLineNumbers, startLine, lightTheme, darkTheme]);
 
 	return (
 		<CodeBlockContext.Provider value={{ code }}>
@@ -173,10 +182,22 @@ export const CodeBlock = ({
 				{...props}
 			>
 				<div className="relative">
-					<div className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm">
+					<div
+						className={cn(
+							"overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm",
+							!colorize &&
+								"[&_span[style]]:!text-foreground [&_.line>.shiki-line-number]:!opacity-50",
+						)}
+					>
 						{highlightedCode ? renderHighlightedCode(highlightedCode) : null}
 					</div>
-					<div className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm">
+					<div
+						className={cn(
+							"hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm",
+							!colorize &&
+								"[&_span[style]]:!text-foreground [&_.line>.shiki-line-number]:!opacity-50",
+						)}
+					>
 						{darkHighlightedCode
 							? renderHighlightedCode(darkHighlightedCode)
 							: null}

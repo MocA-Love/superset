@@ -25,6 +25,7 @@ export function useWorkspaceHotkeys({
 	workspaceId,
 	matchedPresets,
 	executePreset,
+	addTerminalTab,
 	paneRegistry,
 	launcher,
 }: {
@@ -32,6 +33,7 @@ export function useWorkspaceHotkeys({
 	workspaceId: string;
 	matchedPresets: V2TerminalPresetRow[];
 	executePreset: (preset: V2TerminalPresetRow) => void | Promise<void>;
+	addTerminalTab: () => Promise<void>;
 	paneRegistry: PaneRegistry<PaneViewerData>;
 	launcher: TerminalLauncher;
 }) {
@@ -63,15 +65,7 @@ export function useWorkspaceHotkeys({
 	// --- Tab creation ---
 
 	useHotkey("NEW_GROUP", async () => {
-		const terminalId = await launcher.create();
-		store.getState().addTab({
-			panes: [
-				{
-					kind: "terminal",
-					data: { terminalId } as TerminalPaneData,
-				},
-			],
-		});
+		await addTerminalTab();
 	});
 
 	useHotkey("NEW_CHAT", () => {

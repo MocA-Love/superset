@@ -7,7 +7,7 @@ import {
 	useIsV2OnlyUser,
 } from "renderer/hooks/useIsV2CloudEnabled";
 import { track } from "renderer/lib/analytics";
-import { useOnboardingStore } from "renderer/stores/onboarding";
+import { useOpenV1ImportModal } from "renderer/stores/v1-import-modal";
 import { useV2LocalOverrideStore } from "renderer/stores/v2-local-override";
 import {
 	isItemVisible,
@@ -19,18 +19,15 @@ interface ExperimentalSettingsProps {
 	visibleItems?: SettingItemId[] | null;
 }
 
-// FORK NOTE: v1 -> v2 migration UI was removed in the fork because the
-// underlying trpc procedures (readV1WorkspaceSections / listState /
-// upsertState) are not part of the fork's trpc surface. cycle 38 keeps the
-// SETTING_ITEM_ID.EXPERIMENTAL_V1_MIGRATION constant for settings search
-// keyword stability, but the "Run again" button + last-run badge are not
-// rendered. Restore (and re-wire the missing trpc procedures) when v1->v2
-// migration is intentionally re-introduced.
 export function ExperimentalSettings({
 	visibleItems,
 }: ExperimentalSettingsProps) {
 	const showSupersetV2 = isItemVisible(
 		SETTING_ITEM_ID.EXPERIMENTAL_SUPERSET_V2,
+		visibleItems,
+	);
+	const showV1Migration = isItemVisible(
+		SETTING_ITEM_ID.EXPERIMENTAL_V1_MIGRATION,
 		visibleItems,
 	);
 	const showRerunOnboarding = isItemVisible(
@@ -40,13 +37,12 @@ export function ExperimentalSettings({
 	const isV2CloudEnabled = useIsV2CloudEnabled();
 	const isV2OnlyUser = useIsV2OnlyUser();
 	const setOptInV2 = useV2LocalOverrideStore((state) => state.setOptInV2);
-	const resetOnboarding = useOnboardingStore((state) => state.reset);
+	const openV1ImportModal = useOpenV1ImportModal();
 	const navigate = useNavigate();
 
 	const handleRerunOnboarding = () => {
 		track("onboarding_rerun_opened");
-		resetOnboarding();
-		void navigate({ to: "/setup/providers" });
+		void navigate({ to: "/onboarding", search: { rerun: true } });
 	};
 
 	return (
@@ -80,6 +76,32 @@ export function ExperimentalSettings({
 								setOptInV2(enabled);
 							}}
 						/>
+					</div>
+				)}
+				{showV1Migration && !isV2OnlyUser && (
+					<div className="flex items-center justify-between gap-6">
+						<div className="min-w-0 flex-1 space-y-0.5">
+							<Label className="text-sm font-medium">Import from v1</Label>
+							<p className="text-xs text-muted-foreground">
+								Bring v1 projects, workspaces, and terminal presets over to v2.
+								Each item is imported individually and can be retried.
+							</p>
+							{!isV2CloudEnabled && (
+								<p className="text-xs text-muted-foreground">
+									Available when v2 is enabled.
+								</p>
+							)}
+						</div>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => openV1ImportModal()}
+							disabled={!isV2CloudEnabled}
+							className="shrink-0"
+						>
+							Open importer
+						</Button>
 					</div>
 				)}
 				{showRerunOnboarding && (

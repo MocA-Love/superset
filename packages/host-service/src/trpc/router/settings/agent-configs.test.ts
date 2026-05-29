@@ -104,6 +104,24 @@ describe("agentConfigsRouter", () => {
 				AGENT_PRESETS.map((preset) => preset.presetId),
 			);
 		});
+
+		it("includes non-default built-in agents in the install catalog", async () => {
+			const caller = createCaller();
+			const presets = await caller.listPresets();
+			const droid = presets.find((preset) => preset.presetId === "droid");
+			const kimi = presets.find((preset) => preset.presetId === "kimi");
+
+			expect(droid).toMatchObject({
+				command: "droid",
+				args: [],
+				promptArgs: [],
+			});
+			expect(kimi).toMatchObject({
+				command: "kimi",
+				args: ["--yolo"],
+				promptArgs: ["--prompt"],
+			});
+		});
 	});
 
 	describe("add()", () => {
@@ -141,6 +159,43 @@ describe("agentConfigsRouter", () => {
 			await expect(
 				caller.add({ presetId: "nonexistent-preset" }),
 			).rejects.toThrow();
+		});
+
+		it("accepts a fully custom row and defaults presetId to custom", async () => {
+			const caller = createCaller();
+			await caller.list();
+
+			const created = await caller.add({
+				label: "My Agent",
+				command: "my-agent",
+				args: ["--flag"],
+				promptTransport: "argv",
+				promptArgs: [],
+				env: { FOO: "bar" },
+			});
+
+			expect(created.presetId).toBe("custom");
+			expect(created.label).toBe("My Agent");
+			expect(created.command).toBe("my-agent");
+			expect(created.args).toEqual(["--flag"]);
+			expect(created.env).toEqual({ FOO: "bar" });
+		});
+
+		it("preserves an arbitrary presetId tag for full-shape add", async () => {
+			const caller = createCaller();
+			await caller.list();
+
+			const created = await caller.add({
+				label: "Bespoke",
+				command: "bespoke",
+				args: [],
+				promptTransport: "argv",
+				promptArgs: [],
+				env: {},
+				presetId: "my-bespoke-tag",
+			});
+
+			expect(created.presetId).toBe("my-bespoke-tag");
 		});
 	});
 

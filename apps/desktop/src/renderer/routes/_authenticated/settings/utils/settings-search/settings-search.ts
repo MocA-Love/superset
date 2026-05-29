@@ -84,6 +84,7 @@ export const SETTING_ITEM_ID = {
 	HOST_MEMBERS: "host-members",
 	HOST_INVITE_MEMBER: "host-invite-member",
 	HOST_MEMBER_ROLE: "host-member-role",
+	HOST_WORKTREE_LOCATION: "host-worktree-location",
 	// Fork-specific settings (vibrancy, diagnostics, aivis, vscode-shim, git extensions)
 	APPEARANCE_VIBRANCY: "appearance-vibrancy",
 	BEHAVIOR_LANGUAGE_DIAGNOSTICS: "behavior-language-diagnostics",
@@ -160,9 +161,9 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.BEHAVIOR_RESOURCE_MONITOR]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP]: "v1",
 
-	[SETTING_ITEM_ID.GIT_BRANCH_PREFIX]: "v1",
+	[SETTING_ITEM_ID.GIT_BRANCH_PREFIX]: "shared",
 	[SETTING_ITEM_ID.GIT_DELETE_LOCAL_BRANCH]: "v1",
-	[SETTING_ITEM_ID.GIT_WORKTREE_LOCATION]: "v1",
+	[SETTING_ITEM_ID.GIT_WORKTREE_LOCATION]: "shared",
 
 	[SETTING_ITEM_ID.AGENTS_ENABLED]: "shared",
 	[SETTING_ITEM_ID.AGENTS_COMMANDS]: "shared",
@@ -196,7 +197,7 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.PROJECT_PATH]: "shared",
 	[SETTING_ITEM_ID.PROJECT_SCRIPTS]: "v1",
 	[SETTING_ITEM_ID.PROJECT_BRANCH_PREFIX]: "v1",
-	[SETTING_ITEM_ID.PROJECT_WORKTREE_LOCATION]: "v1",
+	[SETTING_ITEM_ID.PROJECT_WORKTREE_LOCATION]: "shared",
 	[SETTING_ITEM_ID.PROJECT_IMPORT_WORKTREES]: "v1",
 	[SETTING_ITEM_ID.PROJECT_ENV_VARS]: "v2",
 
@@ -214,6 +215,7 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.HOST_MEMBERS]: "shared",
 	[SETTING_ITEM_ID.HOST_INVITE_MEMBER]: "shared",
 	[SETTING_ITEM_ID.HOST_MEMBER_ROLE]: "shared",
+	[SETTING_ITEM_ID.HOST_WORKTREE_LOCATION]: "v2",
 	[SETTING_ITEM_ID.APPEARANCE_VIBRANCY]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH]: "shared",
@@ -1383,6 +1385,23 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"member",
 			"permission",
 			"admin",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.HOST_WORKTREE_LOCATION,
+		section: "hosts",
+		title: "Host worktree location",
+		description: "Set the default worktree directory for a host",
+		keywords: [
+			"host",
+			"hosts",
+			"worktree",
+			"location",
+			"directory",
+			"path",
+			"folder",
+			"storage",
+			"default",
 		],
 	},
 ];

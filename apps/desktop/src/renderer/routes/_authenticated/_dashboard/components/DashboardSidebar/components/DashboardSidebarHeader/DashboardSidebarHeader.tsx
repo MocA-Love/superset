@@ -18,8 +18,12 @@ import {
 } from "react-icons/lu";
 import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
 import { useHotkeyDisplay } from "renderer/hotkeys";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useFolderFirstImport } from "renderer/routes/_authenticated/_dashboard/components/AddRepositoryModals/hooks/useFolderFirstImport";
+import { NavigationControls } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/NavigationControls";
 import { OrganizationDropdown } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/OrganizationDropdown";
+import { ResourceConsumption } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/ResourceConsumption";
+import { SidebarToggle } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/SidebarToggle";
 import {
 	tasksSearchFromFilters,
 	useTasksFilterStore,
@@ -61,6 +65,7 @@ export function DashboardSidebarHeader({
 	};
 
 	const shortcutText = useHotkeyDisplay("NEW_WORKSPACE").text;
+	const { data: platform } = electronTrpc.window.getPlatform.useQuery();
 	const matchRoute = useMatchRoute();
 	const { gateFeature } = usePaywall();
 	const isWorkspacesListOpen = !!matchRoute({ to: "/v2-workspaces" });
@@ -74,6 +79,8 @@ export function DashboardSidebarHeader({
 		typeTab: lastTypeTab,
 		projectFilter: lastProjectFilter,
 	} = useTasksFilterStore();
+	// Default to Mac while loading so we do not briefly cover the traffic lights.
+	const isMac = platform === undefined || platform === "darwin";
 
 	const handleWorkspacesClick = () => {
 		navigate({ to: "/v2-workspaces" });
@@ -207,6 +214,14 @@ export function DashboardSidebarHeader({
 
 	return (
 		<div className="flex flex-col gap-1 border-b border-border px-2 pt-2 pb-2">
+			<div
+				className="drag -mx-2 flex h-8 items-center gap-1.5 pr-2"
+				style={{ paddingLeft: isMac ? "80px" : "8px" }}
+			>
+				<SidebarToggle />
+				<NavigationControls />
+				<ResourceConsumption surface="v2" className="ml-auto" />
+			</div>
 			<OrganizationDropdown variant="expanded" />
 
 			<button

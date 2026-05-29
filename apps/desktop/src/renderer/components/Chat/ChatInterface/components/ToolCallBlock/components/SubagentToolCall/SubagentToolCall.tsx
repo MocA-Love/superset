@@ -4,10 +4,10 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@superset/ui/collapsible";
-import { cn } from "@superset/ui/lib/utils";
 import { BotIcon, CheckIcon, Loader2Icon, XIcon } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { MarkdownToggleContent } from "renderer/components/Chat/components/MarkdownToggleContent";
+import { SubagentInnerToolCall } from "renderer/components/Chat/components/SubagentInnerToolCall";
 import type { ToolPart } from "../../../../utils/tool-helpers";
 import { parseSubagentToolResult } from "./utils/parseSubagentToolResult";
 
@@ -15,6 +15,8 @@ interface SubagentToolCallProps {
 	part: ToolPart;
 	args: Record<string, unknown>;
 	result: Record<string, unknown>;
+	workspaceCwd?: string;
+	onOpenFileInPane?: (filePath: string) => void;
 }
 
 function asString(value: unknown): string | null {
@@ -27,6 +29,8 @@ export function SubagentToolCall({
 	part,
 	args,
 	result,
+	workspaceCwd,
+	onOpenFileInPane,
 }: SubagentToolCallProps) {
 	const [isOpen, setIsOpen] = useState(false);
 	const [renderMarkdown, setRenderMarkdown] = useState(true);
@@ -96,19 +100,18 @@ export function SubagentToolCall({
 								: ""}
 						</div>
 						{parsed.tools.length > 0 ? (
-							<div className="flex flex-wrap gap-1.5">
+							<div className="space-y-1">
 								{parsed.tools.map((tool, index) => (
-									<span
+									<SubagentInnerToolCall
 										key={`${tool.name}-${index}`}
-										className={cn(
-											"rounded-full border px-2 py-0.5",
-											tool.isError
-												? "border-destructive/40 bg-destructive/10 text-destructive"
-												: "border-muted-foreground/30 bg-background/80 text-muted-foreground",
-										)}
-									>
-										{tool.name}
-									</span>
+										name={tool.name}
+										isError={tool.isError}
+										isPending={isPending && index === parsed.tools.length - 1}
+										args={tool.args}
+										result={tool.result}
+										workspaceCwd={workspaceCwd}
+										onOpenFileInPane={onOpenFileInPane}
+									/>
 								))}
 							</div>
 						) : null}

@@ -16,6 +16,8 @@ jobs:
             target: darwin-arm64
           - os: ubuntu-latest
             target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -40,7 +42,14 @@ jobs:
         env:
           RELAY_URL: https://relay.superset.sh
           CLOUD_API_URL: https://api.superset.sh
+          SUPERSET_API_URL: https://api.superset.sh
+          SUPERSET_CLI_RELEASE_REPO: MocA-Love/superset
         run: bun run build:dist --target=${{ matrix.target }}
+
+      - name: Smoke test binary
+        run: |
+          DIST="$(pwd)/packages/cli/dist/superset-${{ matrix.target }}"
+          bash packages/cli/scripts/smoke-test.sh "$DIST" "${{ matrix.target }}"
 
       - name: Upload tarball
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -76,4 +85,25 @@ jobs:
             release-artifacts/*.tar.gz \
             --title "Superset CLI ${{ github.ref_name }}" \
             --generate-notes \
-            --draft
+            --prerelease
+
+      - name: Publish version manifest
+        env:
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          echo "${VERSION_TAG#cli-v}" > release-artifacts/version.txt
+
+      - name: Update rolling cli-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release delete cli-latest --yes --cleanup-tag || true
+          gh release create cli-latest \
+            release-artifacts/*.tar.gz \
+            release-artifacts/version.txt \
+            --title "Latest Superset CLI" \
+            --notes "Rolling pointer to the latest published CLI release. See [${VERSION_TAG}](https://github.com/${{ github.repository }}/releases/tag/${VERSION_TAG}) for changelog." \
+            --target "${{ github.sha }}" \
+            --prerelease

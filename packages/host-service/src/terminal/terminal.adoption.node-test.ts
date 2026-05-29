@@ -32,10 +32,10 @@ import { initTerminalBaseEnv } from "./env.ts";
 import {
 	__resetSessionsForTesting,
 	createTerminalSessionInternal,
-	disposeSession,
 	disposeSessionAndWait,
 	listTerminalSessions,
 } from "./terminal.ts";
+import { __setAccountShellForTesting } from "./user-shell.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_HOME = path.join(os.tmpdir(), `host-svc-adopt-${process.pid}`);
@@ -134,7 +134,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 		assert.equal(daemonSession.cols, 101);
 		assert.equal(daemonSession.rows, 27);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("existing session accepts a not-yet-queued initialCommand", async () => {
@@ -163,7 +163,43 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 		assert.equal(second.initialCommandQueued, true);
 		await waitFor(() => fs.existsSync(sentinelFile), 5000);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
+	});
+
+	test("initialCommand runs promptly even when OSC 133;A never fires", async () => {
+		// Regression guard against reintroducing the SHELL_READY_TIMEOUT_MS
+		// stall: bash with no Superset wrapper on disk never emits OSC 133;A,
+		// but the preset command should still run as soon as the shell reads.
+		__setAccountShellForTesting("/bin/bash");
+		try {
+			const terminalId = `e2e-no-marker-${randomUUID().slice(0, 8)}`;
+			const sentinelFile = path.join(TEST_HOME, `no-marker-${terminalId}`);
+
+			const start = Date.now();
+			const result = await createTerminalSessionInternal({
+				terminalId,
+				workspaceId,
+				db,
+				listed: true,
+				initialCommand: `echo ok > ${sentinelFile}`,
+			});
+			assert.ok(!("error" in result));
+			if ("error" in result) return;
+
+			await waitFor(() => fs.existsSync(sentinelFile), 10_000);
+			const elapsed = Date.now() - start;
+			console.log(`[repro] initialCommand executed in ${elapsed}ms`);
+			// Pre-fix: SHELL_READY_TIMEOUT_MS forced this to 15 s. 5 s leaves
+			// generous headroom for CI overhead while still catching regression.
+			assert.ok(
+				elapsed < 5000,
+				`expected initialCommand to run promptly, took ${elapsed}ms`,
+			);
+
+			await disposeSessionAndWait(terminalId, db);
+		} finally {
+			__setAccountShellForTesting("/bin/sh");
+		}
 	});
 
 	test("rejects reusing a live terminal id from another workspace", async () => {
@@ -200,7 +236,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 			false,
 		);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("adoptOnly refuses to spawn when daemon does not own the session", async () => {
@@ -257,7 +293,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 			"new session should be in listTerminalSessions",
 		);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("adopts existing daemon session after host-service restart simulation", async () => {
@@ -304,7 +340,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 		await waitFor(() => buf.includes("after-host-restart"), 3000);
 		disposer.dispose();
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("adopted session keeps listed/exited bookkeeping", async () => {
@@ -337,7 +373,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 			),
 		);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("rejects adopting a daemon session from another workspace after host-service restart simulation", async () => {
@@ -428,7 +464,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 			"initialCommand re-fired on adopted session — would re-run setup.sh on every host-service restart",
 		);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("adoption when the original workspace row is gone returns a clear error", async () => {
@@ -482,13 +518,84 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 			"adoption with missing workspace must return error, not throw or loop",
 		);
 		if ("error" in second) {
-			assert.match(second.error, /Workspace worktree not found/);
+			assert.match(second.error, /Workspace (not found|worktree)/);
 		}
 
 		// Daemon still has the orphan session — clean it up directly so the
 		// test suite leaves nothing behind. Production needs a periodic
 		// "orphan session sweep" but that's a separate cleanup concern.
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
+	});
+
+	test("replayOnAdoption: false suppresses ring-buffer replay on reconnect", async () => {
+		// Regression for the duplicated-output-on-daemon-swap bug: when the
+		// renderer's xterm scrollback survives the WS reconnect (which it
+		// does), replaying the daemon's ring buffer rewrites bytes the user
+		// has already seen and the conversation appears doubled. This test
+		// drives the createTerminalSessionInternal layer that the WS upgrade
+		// handler maps to.
+		const terminalId = `e2e-noreplay-${randomUUID().slice(0, 8)}`;
+
+		const first = await createTerminalSessionInternal({
+			terminalId,
+			workspaceId,
+			db,
+			listed: true,
+		});
+		assert.ok(!("error" in first));
+		if ("error" in first) return;
+
+		// Seed the daemon's ring buffer with a sentinel — that's what would
+		// be replayed on a normal adoption.
+		const SENTINEL = `noreplay-sentinel-${randomUUID().slice(0, 6)}`;
+		first.pty.write(`echo ${SENTINEL}\n`);
+		await waitForOutput(first.pty, SENTINEL, 3000);
+
+		// Simulate onDaemonDisconnect: host-service drops its in-memory
+		// sessions; the daemon (and its ring buffer) survives.
+		__resetSessionsForTesting();
+		await disposeDaemonClient();
+
+		const second = await createTerminalSessionInternal({
+			terminalId,
+			workspaceId,
+			db,
+			listed: true,
+			replayOnAdoption: false,
+		});
+		assert.ok(!("error" in second));
+		if ("error" in second) return;
+		assert.equal(
+			second.pty.pid,
+			first.pty.pid,
+			"adopted session should have same shell pid",
+		);
+
+		// The shell may still produce live prompt bytes after reconnect, but
+		// the daemon ring-buffer sentinel from the previous host lifetime must
+		// not be replayed when replayOnAdoption=false.
+		await new Promise((r) => setTimeout(r, 500));
+
+		const bufferedAfterAdoption = Buffer.concat(
+			second.buffer.map((b) => Buffer.from(b)),
+		).toString("utf8");
+		assert.equal(
+			bufferedAfterAdoption.includes(SENTINEL),
+			false,
+			`adopted session replayed prior output despite replayOnAdoption=false: ${JSON.stringify(bufferedAfterAdoption.slice(0, 200))}`,
+		);
+
+		// Sanity check: live output still flows post-reattach.
+		const LIVE_SENTINEL = `live-after-reattach-${randomUUID().slice(0, 6)}`;
+		second.pty.write(`echo ${LIVE_SENTINEL}\n`);
+		await waitFor(() => {
+			const text = Buffer.concat(
+				second.buffer.map((b) => Buffer.from(b)),
+			).toString("utf8");
+			return text.includes(LIVE_SENTINEL);
+		}, 3000);
+
+		await disposeSessionAndWait(terminalId, db);
 	});
 
 	test("dispose then re-create with the same id works (no zombie state)", async () => {
@@ -507,7 +614,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 		assert.ok(!("error" in first));
 		const firstPid = "error" in first ? -1 : first.pty.pid;
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 
 		// Wait for the daemon's onExit handler to mark the session exited
 		// (SIGTERM → shell exits → wireSession.onExit fires → session.exited
@@ -533,7 +640,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 			"re-create after dispose should be a fresh spawn, not adoption of the dead session",
 		);
 
-		disposeSession(terminalId, db);
+		await disposeSessionAndWait(terminalId, db);
 	});
 });
 

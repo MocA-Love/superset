@@ -161,7 +161,9 @@ else
   _superset_debug "session watcher disabled hasSupersetContext=$_superset_has_superset_context terminalId=$SUPERSET_TERMINAL_ID tabId=$SUPERSET_TAB_ID paneId=$SUPERSET_PANE_ID notifyExists=$_superset_notify_exists notify=$_superset_notify_path"
 fi
 
-"$REAL_BIN" "${_superset_codex_args[@]}" --enable codex_hooks "$@"
+# `hooks` (formerly `codex_hooks`) is stable and default-enabled in codex
+# >=0.129; the legacy `notify=...` callback remains the completion source.
+"$REAL_BIN" "${_superset_codex_args[@]}" --enable hooks -c 'notify=["bash","{{NOTIFY_PATH}}"]' "$@"
 SUPERSET_CODEX_STATUS=$?
 _superset_debug "codex exited status=$SUPERSET_CODEX_STATUS"
 

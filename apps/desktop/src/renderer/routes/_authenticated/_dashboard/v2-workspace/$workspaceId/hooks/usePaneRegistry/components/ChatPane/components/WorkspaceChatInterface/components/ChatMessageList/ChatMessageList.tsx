@@ -4,8 +4,9 @@ import {
 	ConversationEmptyState,
 	ConversationLoadingState,
 	ConversationScrollButton,
+	useConversationContext,
 } from "@superset/ui/ai-elements/conversation";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { HiMiniChatBubbleLeftRight } from "react-icons/hi2";
 import { getThinkingIndicatorLabel } from "renderer/components/Chat/ChatInterface/utils/thinking-levels";
 import type {
@@ -32,6 +33,36 @@ import {
 	removeInterruptedSourceMessage,
 	resolvePendingPlanToolCallId,
 } from "./utils/messageListHelpers";
+
+function ScrollAnchor({
+	questionId,
+	answeredQuestionId,
+	isAwaitingAssistant,
+}: {
+	questionId: string | null | undefined;
+	answeredQuestionId: string | null;
+	isAwaitingAssistant: boolean;
+}) {
+	const { scrollToBottom } = useConversationContext();
+
+	useEffect(() => {
+		if (!isAwaitingAssistant) return;
+		void scrollToBottom("instant");
+	}, [isAwaitingAssistant, scrollToBottom]);
+
+	useEffect(() => {
+		if (!questionId) return;
+		void scrollToBottom("instant");
+	}, [questionId, scrollToBottom]);
+
+	useEffect(() => {
+		if (!answeredQuestionId) return;
+		const timeoutId = setTimeout(() => void scrollToBottom("instant"), 10);
+		return () => clearTimeout(timeoutId);
+	}, [answeredQuestionId, scrollToBottom]);
+
+	return null;
+}
 
 function isCompactAssistantMessage(message: ChatMessage): boolean {
 	if (message.role !== "assistant" || message.content.length === 0) {
@@ -69,6 +100,7 @@ export function ChatMessageList({
 	isPlanSubmitting,
 	onPlanRespond,
 	pendingQuestion,
+	answeredQuestionId = null,
 	isQuestionSubmitting,
 	onQuestionRespond,
 	editingUserMessageId,
@@ -434,6 +466,11 @@ export function ChatMessageList({
 			/>
 			<MessageScrollbackRail messages={renderedMessages} />
 			<ConversationScrollButton />
+			<ScrollAnchor
+				questionId={pendingQuestion?.questionId}
+				answeredQuestionId={answeredQuestionId}
+				isAwaitingAssistant={isAwaitingAssistant}
+			/>
 		</Conversation>
 	);
 }

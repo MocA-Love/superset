@@ -32,6 +32,7 @@ If `$SUPERSET_WORKSPACE_ID` is unset, you're not inside a Superset workspace —
 superset workspaces create --project <id> --host <id> --name "..." --branch <branch>
 superset workspaces create --project <id> --local --name "..." --pr <number>
 superset workspaces list [--host <id> | --local]
+superset workspaces update <id> --name "..."
 superset workspaces delete <id> [<id>...]
 ```
 
@@ -42,7 +43,6 @@ Provide exactly one of `--branch` or `--pr`. With `--pr`, the host checks out th
 ```bash
 superset agents list --host <id>                 # Configured agents on a host (LABEL, PRESET, COMMAND, ID)
 superset agents list --local                     # Same, for this machine
-superset agents list --local --presets           # Available presets you could add
 superset agents run --workspace <id> --agent claude --prompt "..."
 ```
 

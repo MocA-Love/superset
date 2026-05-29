@@ -10,6 +10,7 @@ import {
 	DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { ShimmerLabel } from "./shimmer-label";
+import { ToolCallRow } from "./tool-call-row";
 
 type FileDiffToolState =
 	| "input-streaming"
@@ -43,12 +44,10 @@ type FileDiffToolProps = {
 	className?: string;
 };
 
-/** Extract the filename from a full path. */
 function extractFilename(filePath: string): string {
 	return filePath.split("/").pop() ?? filePath;
 }
 
-/** Parse structured patch hunks into typed diff lines. */
 function getDiffLines(hunks: Array<{ lines: string[] }>): DiffLine[] {
 	const result: DiffLine[] = [];
 	for (const hunk of hunks) {
@@ -58,7 +57,6 @@ function getDiffLines(hunks: Array<{ lines: string[] }>): DiffLine[] {
 			} else if (line.startsWith("-")) {
 				result.push({ type: "removed", content: line.slice(1) });
 			} else {
-				// Context line (starts with space or is unchanged)
 				result.push({
 					type: "context",
 					content: line.startsWith(" ") ? line.slice(1) : line,
@@ -69,7 +67,6 @@ function getDiffLines(hunks: Array<{ lines: string[] }>): DiffLine[] {
 	return result;
 }
 
-/** Build diff lines from old/new strings using a simple line-based comparison. */
 function buildSimpleDiff({
 	oldString,
 	newString,
@@ -90,7 +87,6 @@ function buildSimpleDiff({
 	return result;
 }
 
-/** Count additions and removals from diff lines. */
 function calculateDiffStats(lines: DiffLine[]): {
 	additions: number;
 	removals: number;
@@ -120,12 +116,10 @@ export const FileDiffTool = ({
 	className,
 }: FileDiffToolProps) => {
 	const hasExpandedRenderer = Boolean(renderExpandedContent);
-	const [expanded, setExpanded] = useState(hasExpandedRenderer);
 	const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
 
 	useEffect(() => {
 		if (!hasAutoExpanded && hasExpandedRenderer) {
-			setExpanded(true);
 			setHasAutoExpanded(true);
 		}
 	}, [hasAutoExpanded, hasExpandedRenderer]);
@@ -133,17 +127,14 @@ export const FileDiffTool = ({
 	const isStreaming = state === "input-streaming";
 
 	const diffLines = useMemo(() => {
-		// Use structured patch if available
 		if (structuredPatch?.length) {
 			return getDiffLines(structuredPatch);
 		}
-		// Write mode: all lines are additions
 		if (isWriteMode && content) {
 			return content
 				.split("\n")
 				.map((line): DiffLine => ({ type: "added", content: line }));
 		}
-		// Edit mode: build diff from old/new
 		if (oldString !== undefined && newString !== undefined) {
 			return buildSimpleDiff({ oldString, newString });
 		}
@@ -166,121 +157,101 @@ export const FileDiffTool = ({
 		[filePath, oldString, newString, content, isWriteMode],
 	);
 
-	return (
-		<div className={cn("overflow-hidden rounded-md", className)}>
-			{/* Header - fixed height */}
-			{/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: interactive tool header */}
-			<div
-				className={cn(
-					"flex h-7 items-center justify-between px-2.5",
-					hasDiff &&
-						"cursor-pointer transition-colors duration-150 hover:bg-muted/30",
+	const titleNode =
+		isStreaming && !filePath ? (
+			<ShimmerLabel className="text-foreground text-xs" isShimmering>
+				{isWriteMode ? "Writing file..." : "Editing file..."}
+			</ShimmerLabel>
+		) : (
+			<span className="min-w-0 truncate text-muted-foreground">
+				<span className="text-foreground">
+					{isWriteMode ? "Wrote" : "Edited"}
+				</span>{" "}
+				{canOpenFile && filePath ? (
+					<button
+						type="button"
+						className="inline cursor-pointer truncate text-foreground transition-colors hover:text-muted-foreground"
+						onClick={(event) => {
+							event.stopPropagation();
+							onFilePathClick?.(filePath);
+						}}
+					>
+						{extractFilename(filePath)}
+					</button>
+				) : (
+					<span className="text-foreground">
+						{filePath ? extractFilename(filePath) : "file"}
+					</span>
 				)}
-				onClick={() => hasDiff && setExpanded((prev) => !prev)}
+			</span>
+		);
+
+	const statusNode =
+		stats.additions > 0 || stats.removals > 0 ? (
+			<span className="flex items-center gap-1.5 text-xs">
+				{stats.additions > 0 ? (
+					<span className="text-green-500">+{stats.additions}</span>
+				) : null}
+				{stats.removals > 0 ? (
+					<span className="text-red-500">-{stats.removals}</span>
+				) : null}
+			</span>
+		) : null;
+
+	const headerExtra =
+		hasOpenMenu && filePath ? (
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<button
+						type="button"
+						aria-label={`Open ${filePath}`}
+						className="mr-1 flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+					>
+						<ExternalLinkIcon className="h-3 w-3" />
+						Open
+						<ChevronDownIcon className="h-3 w-3" />
+					</button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuItem onClick={() => onFilePathClick?.(filePath)}>
+						Open in File pane
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => onDiffPathClick?.(filePath)}>
+						Open in Changes pane
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		) : canOpenFile && filePath ? (
+			<button
+				type="button"
+				aria-label={`Open ${filePath}`}
+				className="mr-1 flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+				onClick={() => onFilePathClick?.(filePath)}
 			>
-				<div className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
-					<FileCode2Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
-					{isStreaming && !filePath ? (
-						<ShimmerLabel className="text-xs text-muted-foreground">
-							{isWriteMode ? "Writing file..." : "Editing file..."}
-						</ShimmerLabel>
-					) : (
-						<span className="min-w-0 truncate text-muted-foreground">
-							{isWriteMode ? "Wrote" : "Edited"}{" "}
-							{canOpenFile && filePath ? (
-								<button
-									type="button"
-									className="inline cursor-pointer truncate text-foreground transition-colors hover:text-muted-foreground"
-									onClick={(event) => {
-										event.stopPropagation();
-										onFilePathClick?.(filePath);
-									}}
-								>
-									{extractFilename(filePath)}
-								</button>
-							) : (
-								<span className="text-foreground">
-									{filePath ? extractFilename(filePath) : "file"}
-								</span>
-							)}
-						</span>
-					)}
-				</div>
+				<ExternalLinkIcon className="h-3 w-3" />
+				Open
+			</button>
+		) : undefined;
 
-				<div className="ml-2 flex shrink-0 items-center gap-1.5 text-xs">
-					{hasOpenMenu && filePath ? (
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<button
-									type="button"
-									aria-label={`Open ${filePath}`}
-									className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
-									onClick={(event) => {
-										event.stopPropagation();
-									}}
-								>
-									<ExternalLinkIcon className="h-3 w-3" />
-									Open
-									<ChevronDownIcon className="h-3 w-3" />
-								</button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent
-								align="end"
-								onClick={(event) => {
-									event.stopPropagation();
-								}}
-							>
-								<DropdownMenuItem onClick={() => onFilePathClick?.(filePath)}>
-									Open in File pane
-								</DropdownMenuItem>
-								<DropdownMenuItem onClick={() => onDiffPathClick?.(filePath)}>
-									Open in Changes pane
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					) : (
-						canOpenFile &&
-						filePath && (
-							<button
-								type="button"
-								aria-label={`Open ${filePath}`}
-								className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
-								onClick={(event) => {
-									event.stopPropagation();
-									onFilePathClick?.(filePath);
-								}}
-							>
-								<ExternalLinkIcon className="h-3 w-3" />
-								Open
-							</button>
-						)
-					)}
-
-					{/* Diff stats */}
-					{(stats.additions > 0 || stats.removals > 0) && (
-						<span className="flex items-center gap-1.5">
-							{stats.additions > 0 && (
-								<span className="text-green-500">+{stats.additions}</span>
-							)}
-							{stats.removals > 0 && (
-								<span className="text-red-500">-{stats.removals}</span>
-							)}
-						</span>
-					)}
-				</div>
-			</div>
-
-			{/* Diff body */}
-			{hasDiff && expanded && (
+	return (
+		<ToolCallRow
+			className={className}
+			headerExtra={headerExtra}
+			icon={FileCode2Icon}
+			isPending={isStreaming}
+			statusNode={statusNode}
+			title={titleNode}
+		>
+			{hasDiff ? (
 				<div
-					className="mt-0.5 overflow-y-auto"
+					className="overflow-y-auto"
 					style={{ maxHeight: EXPANDED_MAX_HEIGHT }}
 				>
 					{renderExpandedContent ? (
 						renderExpandedContent(expandedContentProps)
 					) : (
 						<div className="font-mono text-xs">
-							{diffLines.map((line, i) => (
+							{diffLines.map((line, index) => (
 								<div
 									className={cn(
 										"flex border-l-2 px-2.5 py-0.5",
@@ -291,7 +262,7 @@ export const FileDiffTool = ({
 										line.type === "context" &&
 											"border-l-transparent text-muted-foreground",
 									)}
-									key={`${i}-${line.type}`}
+									key={`${index}-${line.type}`}
 								>
 									<span className="mr-2 select-none">
 										{line.type === "added"
@@ -308,16 +279,13 @@ export const FileDiffTool = ({
 						</div>
 					)}
 				</div>
-			)}
-
-			{/* Streaming indicator */}
-			{isStreaming && !hasDiff && (
-				<div className="mt-0.5 px-2.5 py-1.5">
+			) : isStreaming ? (
+				<div className="px-2.5 py-1.5">
 					<span className="animate-pulse font-mono text-muted-foreground/50 text-xs">
 						...
 					</span>
 				</div>
-			)}
-		</div>
+			) : undefined}
+		</ToolCallRow>
 	);
 };

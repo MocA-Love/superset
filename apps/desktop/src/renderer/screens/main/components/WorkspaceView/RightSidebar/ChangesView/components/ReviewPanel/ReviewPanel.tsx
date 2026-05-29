@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	LuArrowUpRight,
 	LuCheck,
+	LuCheckCheck,
 	LuChevronDown,
 	LuCode,
 	LuCopy,
@@ -132,6 +133,7 @@ export function ReviewPanel({
 	const [reviewerSearch, setReviewerSearch] = useState("");
 	const [assigneeSearch, setAssigneeSearch] = useState("");
 	const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
+	const [isResolvingAll, setIsResolvingAll] = useState(false);
 	const [isDraftTogglePending, setIsDraftTogglePending] = useState(false);
 	const [replyTargetComment, setReplyTargetComment] =
 		useState<PullRequestComment | null>(null);
@@ -598,6 +600,13 @@ export function ReviewPanel({
 	);
 	const { active: activeComments, resolved: resolvedComments } =
 		splitPullRequestComments(comments);
+	const uniqueResolvableThreadIds = Array.from(
+		new Set(
+			activeComments
+				.map((comment) => comment.threadId)
+				.filter((threadId): threadId is string => Boolean(threadId)),
+		),
+	);
 	const commentsCountLabel = isCommentsLoading ? "..." : comments.length;
 	const copyAllCommentsLabel =
 		copiedActionKey === ALL_COMMENTS_COPY_ACTION_KEY ? "Copied" : "Copy all";
@@ -608,6 +617,38 @@ export function ReviewPanel({
 			actionKey: ALL_COMMENTS_COPY_ACTION_KEY,
 			errorLabel: "Failed to copy comments",
 		});
+	};
+
+	const handleResolveAll = async () => {
+		if (!resolvedWorkspaceId || uniqueResolvableThreadIds.length === 0) {
+			return;
+		}
+
+		setIsResolvingAll(true);
+		try {
+			const results = await Promise.allSettled(
+				uniqueResolvableThreadIds.map((threadId) =>
+					setPullRequestThreadResolutionMutation.mutateAsync({
+						workspaceId: resolvedWorkspaceId,
+						threadId,
+						isResolved: true,
+					}),
+				),
+			);
+			const failed = results.filter((result) => result.status === "rejected");
+			if (failed.length > 0) {
+				toast.error(
+					`Failed to mark ${failed.length} thread${failed.length === 1 ? "" : "s"} as done`,
+				);
+			} else {
+				toast.success(
+					`Marked ${uniqueResolvableThreadIds.length} thread${uniqueResolvableThreadIds.length === 1 ? "" : "s"} as done`,
+				);
+			}
+			await refreshReview("full");
+		} finally {
+			setIsResolvingAll(false);
+		}
 	};
 
 	const runRerunChecks = async (mode: "all" | "failed") => {
@@ -1416,18 +1457,35 @@ export function ReviewPanel({
 						</Tooltip>
 					)}
 					{activeComments.length > 0 && (
-						<button
-							type="button"
-							className="mr-1.5 shrink-0 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
-							onClick={handleCopyCommentsList}
-						>
-							{copiedActionKey === ALL_COMMENTS_COPY_ACTION_KEY ? (
-								<LuCheck className="size-3" />
-							) : (
-								<LuCopy className="size-3" />
+						<div className="mr-1.5 flex items-center gap-1">
+							{uniqueResolvableThreadIds.length > 0 && resolvedWorkspaceId && (
+								<button
+									type="button"
+									className="shrink-0 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-50"
+									onClick={() => void handleResolveAll()}
+									disabled={isResolvingAll}
+								>
+									{isResolvingAll ? (
+										<LuLoaderCircle className="size-3 animate-spin" />
+									) : (
+										<LuCheckCheck className="size-3" />
+									)}
+									<span>Mark all done</span>
+								</button>
 							)}
-							<span>{copyAllCommentsLabel}</span>
-						</button>
+							<button
+								type="button"
+								className="shrink-0 flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+								onClick={handleCopyCommentsList}
+							>
+								{copiedActionKey === ALL_COMMENTS_COPY_ACTION_KEY ? (
+									<LuCheck className="size-3" />
+								) : (
+									<LuCopy className="size-3" />
+								)}
+								<span>{copyAllCommentsLabel}</span>
+							</button>
+						</div>
 					)}
 				</div>
 				<CollapsibleContent className="px-0.5 pb-1 min-w-0 overflow-hidden">

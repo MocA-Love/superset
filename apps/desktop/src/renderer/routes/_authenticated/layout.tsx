@@ -44,6 +44,7 @@ import { FileMenuListener } from "./components/FileMenuListener";
 import { GlobalBrowserLifecycle } from "./components/GlobalBrowserLifecycle";
 import { MainWindowEffects } from "./components/MainWindowEffects";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
+import { V1ImportModal } from "./components/V1ImportModal";
 import { V2NotificationController } from "./components/V2NotificationController";
 import { WorktreeAutoSyncManager } from "./components/WorktreeAutoSyncManager";
 import { createPierreWorker } from "./lib/pierreWorker";
@@ -242,6 +243,7 @@ function AuthenticatedLayout() {
 							{/* FORK NOTE: GitOperationDialog kept for PR/Changes sidebar prompts */}
 							<GitOperationDialog />
 							<TeardownLogsDialog />
+							<V1ImportModal />
 							<Paywall />
 						</WorkerPoolContextProvider>
 					</DeletingWorkspacesProvider>

@@ -39,7 +39,7 @@ export function useDiffStats(workspaceId: string): DiffStats | null {
 		"git:changed",
 		workspaceId,
 		invalidate,
-		Boolean(workspaceId),
+		Boolean(workspaceId) && Boolean(hostUrl),
 	);
 
 	return useMemo<DiffStats | null>(() => {

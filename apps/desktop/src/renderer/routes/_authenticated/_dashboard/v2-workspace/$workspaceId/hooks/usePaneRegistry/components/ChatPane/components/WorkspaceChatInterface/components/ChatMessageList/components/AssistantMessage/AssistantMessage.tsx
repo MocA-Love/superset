@@ -315,6 +315,7 @@ export function AssistantMessage({
 					sessionId={sessionId}
 					organizationId={organizationId}
 					workspaceCwd={workspaceCwd}
+					isStreaming={isStreaming}
 				/>,
 			);
 			nodes.push(...getInlineToolStateNodes(part.id));

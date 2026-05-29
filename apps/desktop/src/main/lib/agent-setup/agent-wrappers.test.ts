@@ -207,7 +207,7 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
 		expect(wrapper).toContain(
-			`"$REAL_BIN" "\${_superset_codex_args[@]}" --enable codex_hooks "$@"`,
+			`"$REAL_BIN" "\${_superset_codex_args[@]}" --enable hooks -c 'notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]' "$@"`,
 		);
 		expect(wrapper).toContain('export SUPERSET_AGENT_ID="codex"');
 
@@ -290,12 +290,14 @@ exit 0
 				"-c",
 				`projects={"${workspacePath}"={trust_level="trusted"}}`,
 				"--enable",
-				"codex_hooks",
+				"hooks",
+				"-c",
+				`notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]`,
 			].join("\n")}\n`,
 		);
 	});
 
-	it("forwards codex_hooks enablement through the codex wrapper for manual launches", () => {
+	it("forwards hooks enablement through the codex wrapper for manual launches", () => {
 		const realBinDir = path.join(TEST_ROOT, "real-bin");
 		const realCodex = path.join(realBinDir, "codex");
 		const wrapperPath = path.join(TEST_BIN_DIR, "codex");
@@ -324,9 +326,14 @@ exit 0
 		});
 
 		expect(readFileSync(argsFile, "utf-8")).toBe(
-			`${["--enable", "codex_hooks", "exec", "Reply with exactly OK."].join(
-				"\n",
-			)}\n`,
+			`${[
+				"--enable",
+				"hooks",
+				"-c",
+				`notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]`,
+				"exec",
+				"Reply with exactly OK.",
+			].join("\n")}\n`,
 		);
 	});
 
