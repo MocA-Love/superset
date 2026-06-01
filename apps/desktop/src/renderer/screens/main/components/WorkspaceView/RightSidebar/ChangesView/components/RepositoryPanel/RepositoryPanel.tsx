@@ -29,6 +29,7 @@ import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
+import { workspaceTrpc } from "@superset/workspace-client";
 import type { ClipboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -73,6 +74,8 @@ interface RepositoryPanelProps {
 	isActive?: boolean;
 	onOpenUrl?: (url: string) => void;
 	onOpenActionLogs?: (jobs: ActionLogsJob[], initialJobIndex?: number) => void;
+	backend?: "classic" | "workspace";
+	workspaceId?: string;
 }
 
 interface UploadedIssueAsset {
@@ -98,6 +101,79 @@ interface WorkflowRunSummary {
 	runStartedAt?: string | null;
 	runNumber?: number | null;
 	url?: string | null;
+}
+
+interface RepositoryOverview {
+	repositoryNameWithOwner: string;
+	repositoryUrl: string;
+	upstreamUrl: string;
+	upstreamNameWithOwner: string;
+	isFork: boolean;
+	branchExistsOnRemote: boolean;
+	currentBranch: string;
+	defaultBranch: string;
+	issueAssignees: Array<{ login: string; avatarUrl: string | null }>;
+	issueLabels: Array<{ name: string; color: string; description: string }>;
+	pullsUrl: string;
+	issuesUrl: string;
+	actionsUrl: string;
+	newIssueUrl: string;
+	pullRequests: Array<{
+		number: number;
+		title: string;
+		url: string;
+		state: string;
+		headRefName: string;
+		updatedAt: string | null;
+		authorLogin: string | null;
+	}>;
+	workflows: Array<{
+		id: number;
+		name: string;
+		path: string;
+		state: string;
+		supportsDispatch: boolean;
+		inputs: Array<{
+			name: string;
+			description: string;
+			required: boolean;
+			default: string;
+			type: "string" | "choice" | "boolean" | "number" | "environment";
+			options: string[];
+		}>;
+	}>;
+}
+
+interface RepositoryRuntime {
+	workspaceId: string | undefined;
+	repositoryOverview: RepositoryOverview | undefined;
+	isLoading: boolean;
+	error: unknown;
+	isCreateIssuePending: boolean;
+	invalidateOverview: () => Promise<void>;
+	createIssue: (input: {
+		workspaceId: string;
+		title: string;
+		body?: string;
+		assignees?: string[];
+		labels?: string[];
+	}) => Promise<{ url: string }>;
+	uploadIssueAsset: (input: {
+		workspaceId: string;
+		filename: string;
+		contentBase64: string;
+		mimeType?: string;
+	}) => Promise<{ name: string; url: string; markdown: string }>;
+	dispatchWorkflow: (input: {
+		workspaceId: string;
+		workflowId: number;
+		ref?: string;
+		inputs?: Record<string, string>;
+	}) => Promise<{ success: true; ref: string; dispatchedAt: string }>;
+	getWorkflowRunJobs: (input: {
+		workspaceId: string;
+		runId: number;
+	}) => Promise<ActionLogsJob[]>;
 }
 
 function buildSelectionSummary(items: string[], emptyLabel: string): string {
@@ -207,19 +283,30 @@ function findTrackedWorkflowRun(
 	});
 }
 
-function WorkflowRunCard({
-	workspaceId,
-	tracked,
-	onOpenUrl,
-	onRemove,
-	onViewLogs,
-}: {
+interface WorkflowRunCardProps {
+	backend: "classic" | "workspace";
 	workspaceId: string;
 	tracked: TrackedWorkflowRun;
 	onOpenUrl: (url: string) => void;
 	onRemove: (workflowId: number) => void;
 	onViewLogs: (runId: number) => void;
-}) {
+}
+
+function WorkflowRunCard(props: WorkflowRunCardProps) {
+	if (props.backend === "workspace") {
+		return <WorkspaceWorkflowRunCard {...props} />;
+	}
+
+	return <ClassicWorkflowRunCard {...props} />;
+}
+
+function ClassicWorkflowRunCard({
+	workspaceId,
+	tracked,
+	onOpenUrl,
+	onRemove,
+	onViewLogs,
+}: WorkflowRunCardProps) {
 	const { data: runs = [], isFetching } =
 		electronTrpc.workspaces.githubExtended.getGitHubWorkflowRuns.useQuery(
 			{
@@ -239,6 +326,71 @@ function WorkflowRunCard({
 			},
 		);
 
+	return (
+		<WorkflowRunCardContent
+			tracked={tracked}
+			runs={runs}
+			isFetching={isFetching}
+			onOpenUrl={onOpenUrl}
+			onRemove={onRemove}
+			onViewLogs={onViewLogs}
+		/>
+	);
+}
+
+function WorkspaceWorkflowRunCard({
+	workspaceId,
+	tracked,
+	onOpenUrl,
+	onRemove,
+	onViewLogs,
+}: WorkflowRunCardProps) {
+	const { data: runs = [], isFetching } =
+		workspaceTrpc.github.getWorkflowRuns.useQuery(
+			{
+				workspaceId,
+				workflowId: tracked.workflowId,
+			},
+			{
+				refetchInterval: (query) => {
+					const matched = findTrackedWorkflowRun(
+						query.state.data ?? [],
+						tracked,
+					);
+					return matched?.status === "completed" ? false : 3_000;
+				},
+				refetchIntervalInBackground: true,
+				staleTime: 0,
+			},
+		);
+
+	return (
+		<WorkflowRunCardContent
+			tracked={tracked}
+			runs={runs}
+			isFetching={isFetching}
+			onOpenUrl={onOpenUrl}
+			onRemove={onRemove}
+			onViewLogs={onViewLogs}
+		/>
+	);
+}
+
+function WorkflowRunCardContent({
+	tracked,
+	runs,
+	isFetching,
+	onOpenUrl,
+	onRemove,
+	onViewLogs,
+}: {
+	tracked: TrackedWorkflowRun;
+	runs: WorkflowRunSummary[];
+	isFetching: boolean;
+	onOpenUrl: (url: string) => void;
+	onRemove: (workflowId: number) => void;
+	onViewLogs: (runId: number) => void;
+}) {
 	const matchedRun = findTrackedWorkflowRun(runs, tracked);
 	const statusLabel = getWorkflowRunStatusLabel(matchedRun);
 	const statusClassName = getWorkflowRunStatusClassName(matchedRun);
@@ -336,13 +488,131 @@ function WorkflowRunCard({
 	);
 }
 
-export function RepositoryPanel({
-	isActive = true,
-	onOpenUrl,
-	onOpenActionLogs,
-}: RepositoryPanelProps) {
+function useClassicRepositoryRuntime(isActive: boolean): RepositoryRuntime {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
+	const {
+		data: repositoryOverview,
+		isLoading,
+		error,
+	} = electronTrpc.workspaces.githubExtended.getGitHubRepositoryOverview.useQuery(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: !!workspaceId && isActive,
+			staleTime: 300_000,
+			refetchOnWindowFocus: isActive,
+		},
+	);
+	const createIssueMutation =
+		electronTrpc.workspaces.githubExtended.createGitHubIssue.useMutation();
+	const uploadIssueAssetMutation =
+		electronTrpc.workspaces.githubExtended.uploadGitHubIssueAsset.useMutation();
+	const dispatchWorkflowMutation =
+		electronTrpc.workspaces.githubExtended.dispatchGitHubWorkflow.useMutation();
+
+	return {
+		workspaceId,
+		repositoryOverview,
+		isLoading,
+		error,
+		isCreateIssuePending: createIssueMutation.isPending,
+		invalidateOverview: async () => {
+			if (!workspaceId) return;
+			await trpcUtils.workspaces.githubExtended.getGitHubRepositoryOverview.invalidate(
+				{ workspaceId },
+			);
+		},
+		createIssue: (input) => createIssueMutation.mutateAsync(input),
+		uploadIssueAsset: (input) => uploadIssueAssetMutation.mutateAsync(input),
+		dispatchWorkflow: (input) => dispatchWorkflowMutation.mutateAsync(input),
+		getWorkflowRunJobs: (input) =>
+			trpcUtils.workspaces.githubExtended.getWorkflowRunJobs.fetch(input),
+	};
+}
+
+function useWorkspaceRepositoryRuntime({
+	workspaceId,
+	isActive,
+}: {
+	workspaceId: string | undefined;
+	isActive: boolean;
+}): RepositoryRuntime {
+	const trpcUtils = workspaceTrpc.useUtils();
+	const {
+		data: repositoryOverview,
+		isLoading,
+		error,
+	} = workspaceTrpc.github.getRepositoryOverview.useQuery(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: !!workspaceId && isActive,
+			staleTime: 300_000,
+			refetchOnWindowFocus: isActive,
+		},
+	);
+	const createIssueMutation = workspaceTrpc.github.createIssue.useMutation();
+	const uploadIssueAssetMutation =
+		workspaceTrpc.github.uploadIssueAsset.useMutation();
+	const dispatchWorkflowMutation =
+		workspaceTrpc.github.dispatchWorkflow.useMutation();
+
+	return {
+		workspaceId,
+		repositoryOverview,
+		isLoading,
+		error,
+		isCreateIssuePending: createIssueMutation.isPending,
+		invalidateOverview: async () => {
+			if (!workspaceId) return;
+			await trpcUtils.github.getRepositoryOverview.invalidate({ workspaceId });
+		},
+		createIssue: (input) => createIssueMutation.mutateAsync(input),
+		uploadIssueAsset: (input) => uploadIssueAssetMutation.mutateAsync(input),
+		dispatchWorkflow: (input) => dispatchWorkflowMutation.mutateAsync(input),
+		getWorkflowRunJobs: (input) =>
+			trpcUtils.github.getWorkflowRunJobs.fetch(input),
+	};
+}
+
+export function RepositoryPanel(props: RepositoryPanelProps) {
+	if (props.backend === "workspace") {
+		return <WorkspaceRepositoryPanel {...props} />;
+	}
+
+	return <ClassicRepositoryPanel {...props} />;
+}
+
+function ClassicRepositoryPanel(props: RepositoryPanelProps) {
+	const runtime = useClassicRepositoryRuntime(props.isActive ?? true);
+	return <RepositoryPanelContent {...props} runtime={runtime} />;
+}
+
+function WorkspaceRepositoryPanel(props: RepositoryPanelProps) {
+	const runtime = useWorkspaceRepositoryRuntime({
+		workspaceId: props.workspaceId,
+		isActive: props.isActive ?? true,
+	});
+	return <RepositoryPanelContent {...props} runtime={runtime} />;
+}
+
+function RepositoryPanelContent({
+	onOpenUrl,
+	onOpenActionLogs,
+	backend = "classic",
+	runtime,
+}: RepositoryPanelProps & { runtime: RepositoryRuntime }) {
+	const {
+		workspaceId,
+		repositoryOverview,
+		isLoading,
+		error,
+		isCreateIssuePending,
+		invalidateOverview,
+		createIssue,
+		uploadIssueAsset,
+		dispatchWorkflow,
+		getWorkflowRunJobs,
+	} = runtime;
 	const addBrowserTab = useTabsStore((state) => state.addBrowserTab);
 	const addActionLogsTab = useTabsStore((state) => state.addActionLogsTab);
 	const [open, setOpen] = useState(false);
@@ -375,25 +645,6 @@ export function RepositoryPanel({
 	const [trackedWorkflowRuns, setTrackedWorkflowRuns] = useState<
 		TrackedWorkflowRun[]
 	>([]);
-	const {
-		data: repositoryOverview,
-		isLoading,
-		error,
-	} = electronTrpc.workspaces.githubExtended.getGitHubRepositoryOverview.useQuery(
-		{ workspaceId: workspaceId ?? "" },
-		{
-			enabled: !!workspaceId && isActive,
-			staleTime: 300_000,
-			refetchOnWindowFocus: isActive,
-		},
-	);
-	const createIssueMutation =
-		electronTrpc.workspaces.githubExtended.createGitHubIssue.useMutation();
-	const uploadIssueAssetMutation =
-		electronTrpc.workspaces.githubExtended.uploadGitHubIssueAsset.useMutation();
-	const dispatchWorkflowMutation =
-		electronTrpc.workspaces.githubExtended.dispatchGitHubWorkflow.useMutation();
-
 	const availableAssignees = repositoryOverview?.issueAssignees ?? [];
 	const availableAssigneesByLogin = useMemo(
 		() =>
@@ -477,25 +728,13 @@ export function RepositoryPanel({
 		addBrowserTab(workspaceId, url);
 	};
 
-	const invalidateOverview = async () => {
-		if (!workspaceId) {
-			return;
-		}
-
-		await trpcUtils.workspaces.githubExtended.getGitHubRepositoryOverview.invalidate(
-			{
-				workspaceId,
-			},
-		);
-	};
-
 	const handleCreateIssue = async () => {
 		if (!workspaceId || !issueTitle.trim()) {
 			return;
 		}
 
 		try {
-			const result = await createIssueMutation.mutateAsync({
+			const result = await createIssue({
 				workspaceId,
 				title: issueTitle.trim(),
 				body: issueBody.trim() || undefined,
@@ -541,7 +780,7 @@ export function RepositoryPanel({
 			const uploaded: UploadedIssueAsset[] = [];
 			for (const file of files) {
 				const contentBase64 = await readFileAsBase64(file);
-				const result = await uploadIssueAssetMutation.mutateAsync({
+				const result = await uploadIssueAsset({
 					workspaceId,
 					filename: file.name || `pasted-image-${Date.now()}.png`,
 					contentBase64,
@@ -628,7 +867,7 @@ export function RepositoryPanel({
 		const runDispatch = async () => {
 			setPendingWorkflowId(workflowId);
 			try {
-				const result = await dispatchWorkflowMutation.mutateAsync({
+				const result = await dispatchWorkflow({
 					workspaceId,
 					workflowId,
 					ref: workflowRef.trim() || undefined,
@@ -677,11 +916,10 @@ export function RepositoryPanel({
 			return;
 		}
 		try {
-			const jobs =
-				await trpcUtils.workspaces.githubExtended.getWorkflowRunJobs.fetch({
-					workspaceId,
-					runId,
-				});
+			const jobs = await getWorkflowRunJobs({
+				workspaceId,
+				runId,
+			});
 			const failedIdx = jobs.findIndex((j) => j.status === "failure");
 			if (onOpenActionLogs) {
 				onOpenActionLogs(jobs, failedIdx >= 0 ? failedIdx : undefined);
@@ -1115,12 +1353,12 @@ export function RepositoryPanel({
 													void handleCreateIssue();
 												}}
 												disabled={
-													createIssueMutation.isPending ||
+													isCreateIssuePending ||
 													isUploadingAsset ||
 													!issueTitle.trim()
 												}
 											>
-												{createIssueMutation.isPending ? (
+												{isCreateIssuePending ? (
 													<LuLoaderCircle className="mr-1 size-3 animate-spin" />
 												) : null}
 												Create Issue
@@ -1216,6 +1454,7 @@ export function RepositoryPanel({
 											{trackedWorkflowRuns.map((tracked) => (
 												<WorkflowRunCard
 													key={`${tracked.workflowId}-${tracked.dispatchedAt}`}
+													backend={backend}
 													workspaceId={workspaceId}
 													tracked={tracked}
 													onOpenUrl={openUrl}

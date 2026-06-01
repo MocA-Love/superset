@@ -843,6 +843,7 @@
         "better-sqlite3": "12.6.2",
         "drizzle-orm": "0.45.2",
         "hono": "4.12.22",
+        "js-yaml": "4.1.1",
         "mastracode": "0.18.1",
         "mime-types": "3.0.2",
         "node-pty": "1.1.0",
@@ -855,6 +856,7 @@
       "devDependencies": {
         "@superset/typescript": "workspace:*",
         "@types/better-sqlite3": "7.6.13",
+        "@types/js-yaml": "4.0.9",
         "@types/mime-types": "3.0.1",
         "@types/node": "24.12.0",
         "@types/semver": "7.7.1",

@@ -300,6 +300,10 @@ export function WorkspaceSidebar({
 		icon: LuSearch,
 		content: (
 			<SearchView
+				backend="workspace"
+				workspaceId={workspaceId}
+				projectId={projectId}
+				branch={workspaceBranch}
 				isActive={activeTab === "search"}
 				onOpenFileAtLine={handleOpenFileAtLine}
 			/>
@@ -351,6 +355,7 @@ export function WorkspaceSidebar({
 		content: (
 			<DatabasesView
 				workspaceId={workspaceId}
+				worktreePathOverride={worktreePath}
 				onOpenExplorer={onOpenDatabaseExplorer}
 			/>
 		),

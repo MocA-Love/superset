@@ -3,12 +3,16 @@ import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
+import { workspaceTrpc } from "@superset/workspace-client";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronsDownUp, LuRefreshCw, LuX } from "react-icons/lu";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { buildSupersetOpenLink } from "renderer/lib/superset-open-links";
+import {
+	buildSupersetOpenLink,
+	type SupersetLinkProject,
+} from "renderer/lib/superset-open-links";
 import { useWorkspaceFileEvents } from "renderer/screens/main/components/WorkspaceView/hooks/useWorkspaceFileEvents";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useSearchDialogStore } from "renderer/stores/search-dialog-state";
@@ -16,6 +20,7 @@ import { SearchFileGroup } from "./components/SearchFileGroup";
 import { SearchToolbar } from "./components/SearchToolbar";
 import { SearchTreeNode } from "./components/SearchTreeNode";
 import { useContentSearch } from "./hooks/useContentSearch";
+import { useWorkspaceContentSearch } from "./hooks/useWorkspaceContentSearch";
 import type {
 	SearchContentResult,
 	SearchLineResult,
@@ -195,46 +200,144 @@ function collectFolderPaths(nodes: SearchTreeNodeType[]): string[] {
 	return paths;
 }
 
-export function SearchView({
-	isActive,
-	onOpenFileAtLine,
-}: {
+type SearchViewBackend = "classic" | "workspace";
+
+interface SearchViewProps {
 	isActive: boolean;
 	onOpenFileAtLine: (path: string, line?: number, column?: number) => void;
-}) {
+	backend?: SearchViewBackend;
+	workspaceId?: string;
+	projectId?: string;
+	branch?: string | null;
+}
+
+interface SearchRuntimeParams {
+	workspaceId?: string;
+	projectId?: string;
+	branch?: string | null;
+	query: string;
+	includePattern: string;
+	excludePattern: string;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
+	enabled: boolean;
+}
+
+interface SearchReplaceContentInput {
+	workspaceId: string;
+	query: string;
+	replacement: string;
+	includeHidden: boolean;
+	includePattern?: string;
+	excludePattern?: string;
+	isRegex: boolean;
+	caseSensitive: boolean;
+	wholeWord: boolean;
+	multiline: boolean;
+	paths?: string[];
+}
+
+interface SearchReplaceContentResult {
+	replacements: number;
+	filesUpdated: number;
+	conflicts: readonly unknown[];
+	failed: readonly unknown[];
+}
+
+interface SearchReadFileInput {
+	workspaceId: string;
+	absolutePath: string;
+	encoding: string;
+}
+
+type SearchReadFileResult =
+	| {
+			kind: "text";
+			content: string;
+			revision: string;
+	  }
+	| {
+			kind: string;
+			content?: unknown;
+			revision?: string;
+	  };
+
+interface SearchWriteFileInput {
+	workspaceId: string;
+	absolutePath: string;
+	content: string;
+	encoding: string;
+	precondition: { ifMatch: string };
+}
+
+type SearchWriteFileResult =
+	| {
+			ok: true;
+			revision?: string;
+	  }
+	| {
+			ok: false;
+			reason?: string;
+	  };
+
+interface SearchRuntime {
+	workspaceId: string | undefined;
+	branch: string | null | undefined;
+	supersetLinkProject: SupersetLinkProject | null;
+	searchResults: SearchContentResult[];
+	isFetching: boolean;
+	hasQuery: boolean;
+	validationError: string | null;
+	refresh: () => void;
+	isReplacePending: boolean;
+	isWritePending: boolean;
+	usesClassicFileEvents: boolean;
+	replaceContent: (
+		input: SearchReplaceContentInput,
+	) => Promise<SearchReplaceContentResult>;
+	readFile: (input: SearchReadFileInput) => Promise<SearchReadFileResult>;
+	writeFile: (input: SearchWriteFileInput) => Promise<SearchWriteFileResult>;
+	invalidateSearch: () => void;
+	invalidateReadFile: (input: {
+		workspaceId: string;
+		absolutePath: string;
+	}) => void;
+}
+
+type UseSearchRuntime = (params: SearchRuntimeParams) => SearchRuntime;
+
+export function SearchView(props: SearchViewProps) {
+	if (props.backend === "workspace") {
+		return <WorkspaceSearchView {...props} />;
+	}
+
+	return <ClassicSearchView {...props} />;
+}
+
+function ClassicSearchView(props: SearchViewProps) {
+	return <SearchViewContent {...props} useRuntime={useClassicSearchRuntime} />;
+}
+
+function WorkspaceSearchView(props: SearchViewProps) {
+	return (
+		<SearchViewContent {...props} useRuntime={useWorkspaceSearchRuntime} />
+	);
+}
+
+function useClassicSearchRuntime({
+	query,
+	includePattern,
+	excludePattern,
+	isRegex,
+	caseSensitive,
+	wholeWord,
+	multiline,
+	enabled,
+}: SearchRuntimeParams): SearchRuntime {
 	const workspaceId = useWorkspaceId();
 	const utils = electronTrpc.useUtils();
-	const { copyToClipboard } = useCopyToClipboard();
-	const searchInputRef = useRef<HTMLInputElement>(null);
-	const scrollContainerRef = useRef<HTMLDivElement>(null);
-	const [query, setQuery] = useState("");
-	const [replacement, setReplacement] = useState("");
-	const [replaceOpen, setReplaceOpen] = useState(false);
-	const [isRegex, setIsRegex] = useState(false);
-	const [caseSensitive, setCaseSensitive] = useState(false);
-	const [wholeWord, setWholeWord] = useState(false);
-	const [multiline, setMultiline] = useState(false);
-	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-	const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
-	const [ignoredMatchIds, setIgnoredMatchIds] = useState<Record<string, true>>(
-		{},
-	);
-	const resultViewMode = useSearchDialogStore((state) => state.resultViewMode);
-	const setResultViewMode = useSearchDialogStore(
-		(state) => state.setResultViewMode,
-	);
-	const includePattern = useSearchDialogStore(
-		(state) => state.byMode.keywordSearch.includePattern,
-	);
-	const excludePattern = useSearchDialogStore(
-		(state) => state.byMode.keywordSearch.excludePattern,
-	);
-	const setIncludePatternByMode = useSearchDialogStore(
-		(state) => state.setIncludePattern,
-	);
-	const setExcludePatternByMode = useSearchDialogStore(
-		(state) => state.setExcludePattern,
-	);
 	const replaceMutation = electronTrpc.filesystem.replaceContent.useMutation();
 	const writeFileMutation = electronTrpc.filesystem.writeFile.useMutation();
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
@@ -272,8 +375,170 @@ export function SearchView({
 			// lets the regex toggle control visibility and avoids wasted
 			// ripgrep calls with `--multiline` on fixed strings.
 			multiline: isRegex && multiline,
-			enabled: isActive,
+			enabled,
 		});
+
+	return {
+		workspaceId,
+		branch: workspace?.branch,
+		supersetLinkProject,
+		searchResults,
+		isFetching,
+		hasQuery,
+		validationError,
+		refresh,
+		isReplacePending: replaceMutation.isPending,
+		isWritePending: writeFileMutation.isPending,
+		usesClassicFileEvents: true,
+		replaceContent: (input) => replaceMutation.mutateAsync(input),
+		readFile: (input) => utils.filesystem.readFile.fetch(input),
+		writeFile: (input) => writeFileMutation.mutateAsync(input),
+		invalidateSearch: () => {
+			void utils.filesystem.searchContent.invalidate();
+		},
+		invalidateReadFile: (input) => {
+			void utils.filesystem.readFile.invalidate(input);
+		},
+	};
+}
+
+function useWorkspaceSearchRuntime({
+	workspaceId,
+	projectId,
+	branch,
+	query,
+	includePattern,
+	excludePattern,
+	isRegex,
+	caseSensitive,
+	wholeWord,
+	multiline,
+	enabled,
+}: SearchRuntimeParams): SearchRuntime {
+	const utils = workspaceTrpc.useUtils();
+	const replaceMutation = workspaceTrpc.filesystem.replaceContent.useMutation();
+	const writeFileMutation = workspaceTrpc.filesystem.writeFile.useMutation();
+	const { data: project } = workspaceTrpc.project.get.useQuery(
+		{ projectId: projectId ?? "" },
+		{ enabled: Boolean(projectId) },
+	);
+	const supersetLinkProject = useMemo(
+		() =>
+			project
+				? {
+						githubOwner: project.repoOwner ?? null,
+						githubRepoName: project.repoName ?? null,
+						mainRepoPath: project.repoPath,
+					}
+				: null,
+		[project],
+	);
+	const { searchResults, isFetching, hasQuery, validationError, refresh } =
+		useWorkspaceContentSearch({
+			workspaceId,
+			query,
+			includePattern,
+			excludePattern,
+			isRegex,
+			caseSensitive,
+			wholeWord,
+			multiline: isRegex && multiline,
+			enabled,
+		});
+
+	return {
+		workspaceId,
+		branch,
+		supersetLinkProject,
+		searchResults,
+		isFetching,
+		hasQuery,
+		validationError,
+		refresh,
+		isReplacePending: replaceMutation.isPending,
+		isWritePending: writeFileMutation.isPending,
+		usesClassicFileEvents: false,
+		replaceContent: (input) => replaceMutation.mutateAsync(input),
+		readFile: (input) => utils.filesystem.readFile.fetch(input),
+		writeFile: (input) => writeFileMutation.mutateAsync(input),
+		invalidateSearch: () => {
+			void utils.filesystem.searchContent.invalidate();
+		},
+		invalidateReadFile: (input) => {
+			void utils.filesystem.readFile.invalidate(input);
+		},
+	};
+}
+
+function SearchViewContent({
+	isActive,
+	onOpenFileAtLine,
+	workspaceId: workspaceIdProp,
+	projectId,
+	branch,
+	useRuntime,
+}: SearchViewProps & { useRuntime: UseSearchRuntime }) {
+	const { copyToClipboard } = useCopyToClipboard();
+	const searchInputRef = useRef<HTMLInputElement>(null);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const [query, setQuery] = useState("");
+	const [replacement, setReplacement] = useState("");
+	const [replaceOpen, setReplaceOpen] = useState(false);
+	const [isRegex, setIsRegex] = useState(false);
+	const [caseSensitive, setCaseSensitive] = useState(false);
+	const [wholeWord, setWholeWord] = useState(false);
+	const [multiline, setMultiline] = useState(false);
+	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+	const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+	const [ignoredMatchIds, setIgnoredMatchIds] = useState<Record<string, true>>(
+		{},
+	);
+	const resultViewMode = useSearchDialogStore((state) => state.resultViewMode);
+	const setResultViewMode = useSearchDialogStore(
+		(state) => state.setResultViewMode,
+	);
+	const includePattern = useSearchDialogStore(
+		(state) => state.byMode.keywordSearch.includePattern,
+	);
+	const excludePattern = useSearchDialogStore(
+		(state) => state.byMode.keywordSearch.excludePattern,
+	);
+	const setIncludePatternByMode = useSearchDialogStore(
+		(state) => state.setIncludePattern,
+	);
+	const setExcludePatternByMode = useSearchDialogStore(
+		(state) => state.setExcludePattern,
+	);
+	const {
+		workspaceId,
+		branch: workspaceBranch,
+		supersetLinkProject,
+		searchResults,
+		isFetching,
+		hasQuery,
+		validationError,
+		refresh,
+		isReplacePending,
+		isWritePending,
+		usesClassicFileEvents,
+		replaceContent,
+		readFile,
+		writeFile,
+		invalidateSearch,
+		invalidateReadFile,
+	} = useRuntime({
+		workspaceId: workspaceIdProp,
+		projectId,
+		branch,
+		query,
+		includePattern,
+		excludePattern,
+		isRegex,
+		caseSensitive,
+		wholeWord,
+		multiline,
+		enabled: isActive,
+	});
 
 	const visibleResults = useMemo(
 		() => searchResults.filter((result) => !ignoredMatchIds[result.id]),
@@ -312,7 +577,7 @@ export function SearchView({
 
 			const link = buildSupersetOpenLink({
 				project: supersetLinkProject,
-				branch: workspace?.branch,
+				branch: workspaceBranch,
 				filePath,
 				line,
 				column,
@@ -332,7 +597,7 @@ export function SearchView({
 				});
 			});
 		},
-		[copyToClipboard, supersetLinkProject, workspace?.branch],
+		[copyToClipboard, supersetLinkProject, workspaceBranch],
 	);
 	const handleCopyFileLink = useCallback(
 		(group: SearchResultGroup) => {
@@ -407,9 +672,9 @@ export function SearchView({
 			if (!query.trim()) {
 				return;
 			}
-			void utils.filesystem.searchContent.invalidate();
+			invalidateSearch();
 		},
-		Boolean(workspaceId && query.trim().length > 0),
+		Boolean(usesClassicFileEvents && workspaceId && query.trim().length > 0),
 	);
 
 	const totalMatches = visibleResults.length;
@@ -419,8 +684,8 @@ export function SearchView({
 		replaceOpen &&
 		hasQuery &&
 		validationError === null &&
-		!replaceMutation.isPending &&
-		!writeFileMutation.isPending;
+		!isReplacePending &&
+		!isWritePending;
 	// The per-match inline replace applies the regex line by line, so a
 	// multiline pattern (e.g. `foo\nbar`) that matched across newlines can
 	// never be applied by that code path — it would simply report the hit
@@ -437,7 +702,7 @@ export function SearchView({
 			}
 
 			try {
-				const result = await replaceMutation.mutateAsync({
+				const result = await replaceContent({
 					workspaceId,
 					query,
 					replacement,
@@ -470,7 +735,7 @@ export function SearchView({
 					toast.warning("No matches were replaced.");
 				}
 
-				void utils.filesystem.searchContent.invalidate();
+				invalidateSearch();
 				refresh();
 			} catch (error) {
 				toast.error(
@@ -487,8 +752,8 @@ export function SearchView({
 			query,
 			refresh,
 			replacement,
-			replaceMutation,
-			utils.filesystem.searchContent,
+			replaceContent,
+			invalidateSearch,
 			validationError,
 			wholeWord,
 			workspaceId,
@@ -496,23 +761,22 @@ export function SearchView({
 	);
 	const replaceLineMatch = useCallback(
 		async (lineMatch: SearchLineResult) => {
-			if (
-				!workspaceId ||
-				!query.trim() ||
-				validationError ||
-				writeFileMutation.isPending
-			) {
+			if (!workspaceId || !query.trim() || validationError || isWritePending) {
 				return;
 			}
 
 			try {
-				const currentFile = await utils.filesystem.readFile.fetch({
+				const currentFile = await readFile({
 					workspaceId,
 					absolutePath: lineMatch.absolutePath,
 					encoding: "utf-8",
 				});
 
-				if (currentFile.kind !== "text") {
+				if (
+					currentFile.kind !== "text" ||
+					typeof currentFile.content !== "string" ||
+					typeof currentFile.revision !== "string"
+				) {
 					toast.error("Only text files can be updated from search results.");
 					return;
 				}
@@ -537,7 +801,7 @@ export function SearchView({
 					return;
 				}
 
-				const writeResult = await writeFileMutation.mutateAsync({
+				const writeResult = await writeFile({
 					workspaceId,
 					absolutePath: lineMatch.absolutePath,
 					content: nextContent,
@@ -557,11 +821,11 @@ export function SearchView({
 					return;
 				}
 
-				void utils.filesystem.readFile.invalidate({
+				invalidateReadFile({
 					workspaceId,
 					absolutePath: lineMatch.absolutePath,
 				});
-				void utils.filesystem.searchContent.invalidate();
+				invalidateSearch();
 				refresh();
 				toast.success(
 					`Replaced ${lineMatch.matches.length} match${lineMatch.matches.length === 1 ? "" : "es"} on line ${lineMatch.line}.`,
@@ -579,13 +843,16 @@ export function SearchView({
 			isRegex,
 			multiline,
 			query,
+			readFile,
 			refresh,
 			replacement,
-			utils,
+			invalidateReadFile,
+			invalidateSearch,
 			validationError,
 			wholeWord,
 			workspaceId,
-			writeFileMutation,
+			writeFile,
+			isWritePending,
 		],
 	);
 
@@ -660,7 +927,7 @@ export function SearchView({
 				wholeWord={wholeWord}
 				multiline={multiline}
 				canReplaceAll={canReplaceAll && totalMatches > 0}
-				isReplacing={replaceMutation.isPending || writeFileMutation.isPending}
+				isReplacing={isReplacePending || isWritePending}
 				onQueryChange={setQuery}
 				onReplacementChange={setReplacement}
 				onIncludePatternChange={(value) =>
@@ -767,7 +1034,7 @@ export function SearchView({
 								className="size-7 shrink-0"
 								disabled={!hasQuery || validationError !== null || isFetching}
 								onClick={() => {
-									void utils.filesystem.searchContent.invalidate();
+									invalidateSearch();
 								}}
 							>
 								<LuRefreshCw
@@ -835,10 +1102,7 @@ export function SearchView({
 												wholeWord={wholeWord}
 												multiline={isRegex && multiline}
 												replacement={replaceOpen ? replacement : undefined}
-												isReplacing={
-													replaceMutation.isPending ||
-													writeFileMutation.isPending
-												}
+												isReplacing={isReplacePending || isWritePending}
 												showReplaceAction={canInlineReplace}
 												openGroups={openGroups}
 												openFolders={openFolders}
@@ -870,10 +1134,7 @@ export function SearchView({
 												wholeWord={wholeWord}
 												multiline={isRegex && multiline}
 												replacement={replaceOpen ? replacement : undefined}
-												isReplacing={
-													replaceMutation.isPending ||
-													writeFileMutation.isPending
-												}
+												isReplacing={isReplacePending || isWritePending}
 												showReplaceAction={canInlineReplace}
 												showParentPath
 												variant="list"
