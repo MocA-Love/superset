@@ -836,16 +836,23 @@ function RepositoryPanelContent({
 		workflowInputDefs?: Array<{
 			name: string;
 			required: boolean;
+			default?: string;
 		}>,
 	) => {
 		if (!workspaceId) {
 			return;
 		}
 
-		const rawInputs = workflowInputValues[workflowId];
+		const defaultInputs = Object.fromEntries(
+			(workflowInputDefs ?? []).map((def) => [def.name, def.default ?? ""]),
+		);
+		const rawInputs = {
+			...defaultInputs,
+			...(workflowInputValues[workflowId] ?? {}),
+		};
 
 		// Validate required inputs
-		if (workflowInputDefs && rawInputs) {
+		if (workflowInputDefs) {
 			const missing = workflowInputDefs.filter(
 				(def) => def.required && !rawInputs[def.name]?.trim(),
 			);
@@ -857,12 +864,10 @@ function RepositoryPanelContent({
 
 		// Strip empty values
 		let filteredInputs: Record<string, string> | undefined;
-		if (rawInputs) {
-			const cleaned = Object.fromEntries(
-				Object.entries(rawInputs).filter(([, v]) => v !== ""),
-			);
-			filteredInputs = Object.keys(cleaned).length > 0 ? cleaned : undefined;
-		}
+		const cleaned = Object.fromEntries(
+			Object.entries(rawInputs).filter(([, v]) => v !== ""),
+		);
+		filteredInputs = Object.keys(cleaned).length > 0 ? cleaned : undefined;
 
 		const runDispatch = async () => {
 			setPendingWorkflowId(workflowId);

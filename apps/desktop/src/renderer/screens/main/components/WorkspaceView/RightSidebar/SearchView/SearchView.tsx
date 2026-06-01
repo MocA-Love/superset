@@ -394,7 +394,7 @@ function useClassicSearchRuntime({
 		readFile: (input) => utils.filesystem.readFile.fetch(input),
 		writeFile: (input) => writeFileMutation.mutateAsync(input),
 		invalidateSearch: () => {
-			void utils.filesystem.searchContent.invalidate();
+			refresh();
 		},
 		invalidateReadFile: (input) => {
 			void utils.filesystem.readFile.invalidate(input);
@@ -463,6 +463,7 @@ function useWorkspaceSearchRuntime({
 		writeFile: (input) => writeFileMutation.mutateAsync(input),
 		invalidateSearch: () => {
 			void utils.filesystem.searchContent.invalidate();
+			refresh();
 		},
 		invalidateReadFile: (input) => {
 			void utils.filesystem.readFile.invalidate(input);
@@ -517,7 +518,6 @@ function SearchViewContent({
 		isFetching,
 		hasQuery,
 		validationError,
-		refresh,
 		isReplacePending,
 		isWritePending,
 		usesClassicFileEvents,
@@ -736,7 +736,6 @@ function SearchViewContent({
 				}
 
 				invalidateSearch();
-				refresh();
 			} catch (error) {
 				toast.error(
 					error instanceof Error ? error.message : "Failed to replace matches.",
@@ -750,7 +749,6 @@ function SearchViewContent({
 			isRegex,
 			multiline,
 			query,
-			refresh,
 			replacement,
 			replaceContent,
 			invalidateSearch,
@@ -826,7 +824,6 @@ function SearchViewContent({
 					absolutePath: lineMatch.absolutePath,
 				});
 				invalidateSearch();
-				refresh();
 				toast.success(
 					`Replaced ${lineMatch.matches.length} match${lineMatch.matches.length === 1 ? "" : "es"} on line ${lineMatch.line}.`,
 				);
@@ -844,7 +841,6 @@ function SearchViewContent({
 			multiline,
 			query,
 			readFile,
-			refresh,
 			replacement,
 			invalidateReadFile,
 			invalidateSearch,

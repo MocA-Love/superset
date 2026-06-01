@@ -171,24 +171,29 @@ function parseWorkflowDispatchInfo({
 		return noDispatch;
 	}
 
-	const hasDispatch =
-		/^\s*workflow_dispatch\s*:/m.test(content) ||
-		/^\s*on\s*:\s*workflow_dispatch\s*$/m.test(content) ||
-		/^\s*on\s*:\s*\[[^\]]*\bworkflow_dispatch\b[^\]]*\]/m.test(content);
-
-	if (!hasDispatch) {
-		return noDispatch;
-	}
-
 	try {
 		const parsed = yaml.load(content) as Record<string, unknown> | null;
 		if (!parsed || typeof parsed !== "object") {
-			return { supportsDispatch: true, inputs: [] };
+			return noDispatch;
 		}
 
 		const onBlock = parsed.on ?? parsed.true;
-		if (!onBlock || typeof onBlock !== "object") {
+		if (onBlock === "workflow_dispatch") {
 			return { supportsDispatch: true, inputs: [] };
+		}
+
+		if (Array.isArray(onBlock)) {
+			return onBlock.map(String).includes("workflow_dispatch")
+				? { supportsDispatch: true, inputs: [] }
+				: noDispatch;
+		}
+
+		if (!onBlock || typeof onBlock !== "object") {
+			return noDispatch;
+		}
+
+		if (!Object.hasOwn(onBlock, "workflow_dispatch")) {
+			return noDispatch;
 		}
 
 		const dispatchBlock = (onBlock as Record<string, unknown>)
@@ -227,7 +232,7 @@ function parseWorkflowDispatchInfo({
 
 		return { supportsDispatch: true, inputs };
 	} catch {
-		return { supportsDispatch: true, inputs: [] };
+		return noDispatch;
 	}
 }
 

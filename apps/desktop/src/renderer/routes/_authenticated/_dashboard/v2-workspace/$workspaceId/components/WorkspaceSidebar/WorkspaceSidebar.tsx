@@ -145,10 +145,9 @@ export function WorkspaceSidebar({
 		[collections, workspaceId],
 	);
 	const localState = localStateRows[0];
+	const rawActiveTab = localState?.sidebarState.activeTab;
 	const activeTab: SidebarTabId =
-		localState && isSidebarTabId(localState.sidebarState.activeTab)
-			? localState.sidebarState.activeTab
-			: "changes";
+		rawActiveTab && isSidebarTabId(rawActiveTab) ? rawActiveTab : "changes";
 
 	const setActiveTab = useCallback(
 		(tab: string) => {
@@ -160,6 +159,11 @@ export function WorkspaceSidebar({
 		},
 		[collections, workspaceId],
 	);
+	useEffect(() => {
+		if (rawActiveTab === "review") {
+			setActiveTab("changes");
+		}
+	}, [rawActiveTab, setActiveTab]);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [compact, setCompact] = useState(false);

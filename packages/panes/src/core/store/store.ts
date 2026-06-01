@@ -52,6 +52,25 @@ function buildBalancedTree(
 	};
 }
 
+function normalizeTabColor(color: string | null | undefined): string | null {
+	if (!color) return null;
+	const hex = color.trim().replace(/^#/, "").toLowerCase();
+	if (/^[0-9a-f]{3}$/.test(hex)) {
+		return `#${hex
+			.split("")
+			.map((char) => `${char}${char}`)
+			.join("")}`;
+	}
+	if (/^[0-9a-f]{6}$/.test(hex)) {
+		return `#${hex}`;
+	}
+	return null;
+}
+
+function normalizeTab<TData>(tab: Tab<TData>): Tab<TData> {
+	return { ...tab, color: normalizeTabColor(tab.color) };
+}
+
 function buildTab<TData>(args: {
 	id?: string;
 	titleOverride?: string;
@@ -70,7 +89,7 @@ function buildTab<TData>(args: {
 	return {
 		id: args.id ?? generateId("tab"),
 		titleOverride: args.titleOverride,
-		color: args.color,
+		color: normalizeTabColor(args.color),
 		createdAt: Date.now(),
 		activePaneId: args.activePaneId ?? args.panes[0].id,
 		layout: buildBalancedTree(leaves),
@@ -197,7 +216,7 @@ export function createWorkspaceStore<TData>(
 ): StoreApi<WorkspaceStore<TData>> {
 	return createStore<WorkspaceStore<TData>>((set, get) => ({
 		version: 1,
-		tabs: options?.initialState?.tabs ?? [],
+		tabs: (options?.initialState?.tabs ?? []).map(normalizeTab),
 		activeTabId: options?.initialState?.activeTabId ?? null,
 
 		addTab: (args) => {
@@ -244,7 +263,9 @@ export function createWorkspaceStore<TData>(
 		setTabColor: (args) => {
 			set((s) => ({
 				tabs: s.tabs.map((t) =>
-					t.id === args.tabId ? { ...t, color: args.color } : t,
+					t.id === args.tabId
+						? { ...t, color: normalizeTabColor(args.color) }
+						: t,
 				),
 			}));
 		},
@@ -763,6 +784,10 @@ export function createWorkspaceStore<TData>(
 				);
 				const activePaneId =
 					sourceTab.activePaneId ?? findFirstPaneId(sourceTab.layout);
+				const hasPaneIdCollision = Object.keys(sourceTab.panes).some(
+					(paneId) => paneId in targetTab.panes,
+				);
+				if (hasPaneIdCollision) return s;
 
 				const nextTabs = s.tabs
 					.map((t) => {
@@ -936,7 +961,7 @@ export function createWorkspaceStore<TData>(
 						: next;
 				return {
 					version: resolved.version,
-					tabs: resolved.tabs,
+					tabs: resolved.tabs.map(normalizeTab),
 					activeTabId: resolved.activeTabId,
 				};
 			});

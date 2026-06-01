@@ -618,16 +618,24 @@ function WorkspaceContent({
 			cwd?: string;
 			title: string;
 		}) => {
-			const terminalId = await launcher.create({ command, cwd });
-			store.getState().addTab({
-				titleOverride: title,
-				panes: [
-					{
-						kind: "terminal",
-						data: { terminalId } as TerminalPaneData,
-					},
-				],
-			});
+			try {
+				const terminalId = await launcher.create({ command, cwd });
+				store.getState().addTab({
+					titleOverride: title,
+					panes: [
+						{
+							kind: "terminal",
+							data: { terminalId } as TerminalPaneData,
+						},
+					],
+				});
+			} catch (error) {
+				toast.error(
+					`Failed to open command in terminal: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			}
 		},
 		[launcher, store],
 	);
