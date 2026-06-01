@@ -16,6 +16,7 @@ import {
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceGitStatus } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/providers/WorkspaceGitStatusProvider";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import { ScrollProvider } from "renderer/screens/main/components/WorkspaceView/ChangesContent";
 import { ChangesView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView";
 import { DatabasesView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/DatabasesView";
 import { DockerView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/DockerView";
@@ -257,21 +258,23 @@ export function WorkspaceSidebar({
 		icon: LuGitCompareArrows,
 		badge: totalChanges > 0 ? totalChanges : undefined,
 		content: (
-			<ChangesView
-				onFileOpen={handleChangeFileOpen}
-				onOpenFileAtLine={handleOpenFileAtLine}
-				onOpenComment={handleOpenReviewComment}
-				onOpenUrl={onOpenUrl}
-				onOpenActionLogs={onOpenActionLogs}
-				isGitGraphOpen={isGitGraphOpen}
-				onToggleGitGraph={onOpenGitGraph}
-				workspaceOverride={{
-					worktreePath,
-					projectId,
-					branch: workspaceBranch,
-				}}
-				isActive={activeTab === "changes"}
-			/>
+			<ScrollProvider>
+				<ChangesView
+					onFileOpen={handleChangeFileOpen}
+					onOpenFileAtLine={handleOpenFileAtLine}
+					onOpenComment={handleOpenReviewComment}
+					onOpenUrl={onOpenUrl}
+					onOpenActionLogs={onOpenActionLogs}
+					isGitGraphOpen={isGitGraphOpen}
+					onToggleGitGraph={onOpenGitGraph}
+					workspaceOverride={{
+						worktreePath,
+						projectId,
+						branch: workspaceBranch,
+					}}
+					isActive={activeTab === "changes"}
+				/>
+			</ScrollProvider>
 		),
 	};
 
