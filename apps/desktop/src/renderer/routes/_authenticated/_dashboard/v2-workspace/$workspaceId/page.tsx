@@ -882,6 +882,9 @@ function WorkspaceContent({
 						>
 							<WorkspaceSidebar
 								workspaceId={workspaceId}
+								worktreePath={worktreePath}
+								projectId={projectId}
+								workspaceBranch={workspaceQuery.data?.branch}
 								onSelectFile={openSidebarFilePane}
 								onSelectDiffFile={openDiffPane}
 								onOpenComment={openCommentPane}

@@ -69,6 +69,11 @@ interface ChangesViewProps {
 	onOpenActionLogs?: (jobs: ActionLogsJob[], initialJobIndex?: number) => void;
 	isGitGraphOpen?: boolean;
 	onToggleGitGraph?: () => void;
+	workspaceOverride?: {
+		worktreePath: string | null;
+		projectId?: string | null;
+		branch?: string | null;
+	};
 	isExpandedView?: boolean;
 	isActive?: boolean;
 }
@@ -156,17 +161,20 @@ export function ChangesView({
 	onOpenActionLogs,
 	isGitGraphOpen: isGitGraphOpenOverride,
 	onToggleGitGraph,
+	workspaceOverride,
 	isExpandedView,
 	isActive = true,
 }: ChangesViewProps) {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
-	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+	const { data: workspaceFromElectron } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },
-		{ enabled: !!workspaceId },
+		{ enabled: !!workspaceId && !workspaceOverride },
 	);
-	const worktreePath = workspace?.worktreePath;
-	const projectId = workspace?.projectId;
+	const workspace = workspaceOverride ?? workspaceFromElectron;
+	const worktreePath = workspace?.worktreePath ?? undefined;
+	const projectId = workspace?.projectId ?? undefined;
+	const workspaceBranch = workspace?.branch ?? undefined;
 	const addGitGraphTab = useTabsStore((s) => s.addGitGraphTab);
 	const isGitGraphOpenFromV1Store = useTabsStore((s) =>
 		worktreePath
@@ -410,7 +418,7 @@ export function ChangesView({
 
 	useBranchSyncInvalidation({
 		gitBranch: status?.branch ?? branchData?.currentBranch ?? undefined,
-		workspaceBranch: workspace?.branch,
+		workspaceBranch,
 		workspaceId: workspaceId ?? "",
 	});
 

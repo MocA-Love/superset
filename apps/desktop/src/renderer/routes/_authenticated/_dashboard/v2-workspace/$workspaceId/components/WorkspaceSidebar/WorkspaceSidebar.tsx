@@ -80,6 +80,9 @@ interface WorkspaceSidebarProps {
 	selectedFilePath?: string;
 	pendingReveal?: PendingReveal | null;
 	workspaceId: string;
+	worktreePath: string;
+	projectId: string;
+	workspaceBranch?: string | null;
 }
 
 function IconButton({
@@ -123,6 +126,9 @@ export function WorkspaceSidebar({
 	selectedFilePath,
 	pendingReveal,
 	workspaceId,
+	worktreePath,
+	projectId,
+	workspaceBranch,
 }: WorkspaceSidebarProps) {
 	const gitStatus = useWorkspaceGitStatus();
 	const collections = useCollections();
@@ -185,14 +191,6 @@ export function WorkspaceSidebar({
 			staleTime: 10000,
 		},
 	);
-	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
-		{ id: workspaceId },
-		{
-			enabled: Boolean(workspaceId),
-		},
-	);
-	const worktreePath = workspace?.worktreePath;
-
 	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
 		{ workspaceId },
 		{
@@ -267,6 +265,11 @@ export function WorkspaceSidebar({
 				onOpenActionLogs={onOpenActionLogs}
 				isGitGraphOpen={isGitGraphOpen}
 				onToggleGitGraph={onOpenGitGraph}
+				workspaceOverride={{
+					worktreePath,
+					projectId,
+					branch: workspaceBranch,
+				}}
 				isActive={activeTab === "changes"}
 			/>
 		),
