@@ -17,6 +17,7 @@ import {
 	positionToDirection,
 	removePaneFromLayout,
 	replacePaneIdInLayout,
+	splitNodeInLayout,
 	splitPaneInLayout,
 	updateAtPath,
 } from "./utils";
@@ -54,6 +55,7 @@ function buildBalancedTree(
 function buildTab<TData>(args: {
 	id?: string;
 	titleOverride?: string;
+	color?: string | null;
 	panes: [Pane<TData>, ...Pane<TData>[]];
 	activePaneId?: string;
 }): Tab<TData> {
@@ -68,6 +70,7 @@ function buildTab<TData>(args: {
 	return {
 		id: args.id ?? generateId("tab"),
 		titleOverride: args.titleOverride,
+		color: args.color,
 		createdAt: Date.now(),
 		activePaneId: args.activePaneId ?? args.panes[0].id,
 		layout: buildBalancedTree(leaves),
@@ -103,6 +106,7 @@ export type CreatePaneInput<TData> = {
 export type CreateTabInput<TData> = {
 	id?: string;
 	titleOverride?: string;
+	color?: string | null;
 	panes: [CreatePaneInput<TData>, ...CreatePaneInput<TData>[]];
 	activePaneId?: string;
 };
@@ -115,6 +119,7 @@ export interface WorkspaceStore<TData> extends WorkspaceState<TData> {
 		tabId: string;
 		titleOverride?: string;
 	}) => void;
+	setTabColor: (args: { tabId: string; color: string | null }) => void;
 	getTab: (tabId: string) => Tab<TData> | null;
 	getActiveTab: () => Tab<TData> | null;
 
@@ -162,6 +167,11 @@ export interface WorkspaceStore<TData> extends WorkspaceState<TData> {
 
 	movePaneToSplit: (args: {
 		sourcePaneId: string;
+		targetPaneId: string;
+		position: SplitPosition;
+	}) => void;
+	moveTabToSplit: (args: {
+		sourceTabId: string;
 		targetPaneId: string;
 		position: SplitPosition;
 	}) => void;
@@ -227,6 +237,14 @@ export function createWorkspaceStore<TData>(
 			set((s) => ({
 				tabs: s.tabs.map((t) =>
 					t.id === args.tabId ? { ...t, titleOverride: args.titleOverride } : t,
+				),
+			}));
+		},
+
+		setTabColor: (args) => {
+			set((s) => ({
+				tabs: s.tabs.map((t) =>
+					t.id === args.tabId ? { ...t, color: args.color } : t,
 				),
 			}));
 		},
@@ -718,6 +736,43 @@ export function createWorkspaceStore<TData>(
 								layout: nextTargetLayout,
 								panes: { ...t.panes, [sourcePane.id]: sourcePane },
 								activePaneId: sourcePane.id,
+							};
+						}
+						return t;
+					})
+					.filter((t): t is Tab<TData> => t !== null);
+
+				return { tabs: nextTabs, activeTabId: targetTab.id };
+			});
+		},
+
+		moveTabToSplit: (args) => {
+			set((s) => {
+				const sourceTab = s.tabs.find((t) => t.id === args.sourceTabId);
+				const targetTab = s.tabs.find((t) => t.panes[args.targetPaneId]);
+				if (!sourceTab || !targetTab) return s;
+				if (sourceTab.id === targetTab.id) return s;
+				if (!sourceTab.layout || !targetTab.layout) return s;
+				if (!findPaneInLayout(targetTab.layout, args.targetPaneId)) return s;
+
+				const nextTargetLayout = splitNodeInLayout(
+					targetTab.layout,
+					args.targetPaneId,
+					sourceTab.layout,
+					args.position,
+				);
+				const activePaneId =
+					sourceTab.activePaneId ?? findFirstPaneId(sourceTab.layout);
+
+				const nextTabs = s.tabs
+					.map((t) => {
+						if (t.id === sourceTab.id) return null;
+						if (t.id === targetTab.id) {
+							return {
+								...t,
+								layout: nextTargetLayout,
+								panes: { ...t.panes, ...sourceTab.panes },
+								activePaneId,
 							};
 						}
 						return t;

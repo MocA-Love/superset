@@ -92,25 +92,43 @@ export function splitPaneInLayout(
 	newPaneId: string,
 	position: SplitPosition,
 ): LayoutNode {
+	return splitNodeInLayout(
+		node,
+		targetPaneId,
+		{ type: "pane", paneId: newPaneId },
+		position,
+	);
+}
+
+export function splitNodeInLayout(
+	node: LayoutNode,
+	targetPaneId: string,
+	insertedNode: LayoutNode,
+	position: SplitPosition,
+): LayoutNode {
 	if (node.type === "pane") {
 		if (node.paneId !== targetPaneId) return node;
 
 		const direction = positionToDirection(position);
-		const newPaneNode: LayoutNode = { type: "pane", paneId: newPaneId };
 		const isFirst = position === "left" || position === "top";
 
 		return {
 			type: "split",
 			direction,
-			first: isFirst ? newPaneNode : node,
-			second: isFirst ? node : newPaneNode,
+			first: isFirst ? insertedNode : node,
+			second: isFirst ? node : insertedNode,
 		};
 	}
 
 	return {
 		...node,
-		first: splitPaneInLayout(node.first, targetPaneId, newPaneId, position),
-		second: splitPaneInLayout(node.second, targetPaneId, newPaneId, position),
+		first: splitNodeInLayout(node.first, targetPaneId, insertedNode, position),
+		second: splitNodeInLayout(
+			node.second,
+			targetPaneId,
+			insertedNode,
+			position,
+		),
 	};
 }
 

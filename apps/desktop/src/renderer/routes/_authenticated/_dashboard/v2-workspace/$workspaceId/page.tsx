@@ -1,10 +1,17 @@
 import { type LayoutNode, type SplitPath, Workspace } from "@superset/panes";
+import {
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+} from "@superset/ui/context-menu";
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PaletteIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuickOpenStore } from "renderer/commandPalette/ui/QuickOpen/quickOpenStore";
+import { ColorSelector } from "renderer/components/ColorSelector";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
 import { useHotkey } from "renderer/hotkeys";
@@ -24,6 +31,7 @@ import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
+import { PROJECT_COLOR_DEFAULT } from "shared/constants/project-colors";
 import { useStore } from "zustand";
 import { useWorkspace } from "../providers/WorkspaceProvider";
 import { AddTabMenu } from "./components/AddTabMenu";
@@ -52,7 +60,12 @@ import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
 import { WorkspaceGitStatusProvider } from "./providers/WorkspaceGitStatusProvider";
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
-import type { BrowserPaneData, FilePaneData, PaneViewerData } from "./types";
+import type {
+	BrowserPaneData,
+	FilePaneData,
+	PaneViewerData,
+	TerminalPaneData,
+} from "./types";
 import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
 interface WorkspaceSearch {
@@ -483,6 +496,16 @@ function WorkspaceContent({
 		},
 		[openFilePane, openSidebarFilePane],
 	);
+	const handleOpenFileAtLine = useCallback(
+		(path: string, line?: number, column?: number) => {
+			const absolutePath =
+				worktreePath && !path.startsWith("/")
+					? toAbsoluteWorkspacePath(worktreePath, path)
+					: path;
+			openFilePane(absolutePath, undefined, { line, column });
+		},
+		[openFilePane, worktreePath],
+	);
 
 	const paneRegistry = usePaneRegistry({
 		onOpenFile: handleTerminalOpenFile,
@@ -509,6 +532,42 @@ function WorkspaceContent({
 
 	const defaultPaneActions = useDefaultPaneActions({ launcher });
 	const onBeforeCloseTab = useDirtyTabCloseGuard();
+	const openBrowserUrl = useCallback(
+		(url: string) => {
+			store.getState().addTab({
+				panes: [
+					{
+						kind: "browser",
+						data: { url, mode: "generic" } as BrowserPaneData,
+					},
+				],
+			});
+		},
+		[store],
+	);
+	const handleOpenCommandInTerminal = useCallback(
+		async ({
+			command,
+			cwd,
+			title,
+		}: {
+			command: string;
+			cwd?: string;
+			title: string;
+		}) => {
+			const terminalId = await launcher.create({ command, cwd });
+			store.getState().addTab({
+				titleOverride: title,
+				panes: [
+					{
+						kind: "terminal",
+						data: { terminalId } as TerminalPaneData,
+					},
+				],
+			});
+		},
+		[launcher, store],
+	);
 
 	// FORK NOTE: Fork-only "New Memo" action from the add-tab menu. Creates
 	// an empty markdown memo in ~/.superset/memos and opens it in the file
@@ -680,6 +739,26 @@ function WorkspaceContent({
 								sources={getV2NotificationSourcesForTab(tab)}
 							/>
 						)}
+						renderTabContextMenuItems={(tab) => (
+							<ContextMenuSub>
+								<ContextMenuSubTrigger>
+									<PaletteIcon className="size-4" />
+									Set Color
+								</ContextMenuSubTrigger>
+								<ContextMenuSubContent className="max-h-80 w-40 overflow-y-auto">
+									<ColorSelector
+										variant="menu"
+										selectedColor={tab.color}
+										onSelectColor={(color) =>
+											store.getState().setTabColor({
+												tabId: tab.id,
+												color: color === PROJECT_COLOR_DEFAULT ? null : color,
+											})
+										}
+									/>
+								</ContextMenuSubContent>
+							</ContextMenuSub>
+						)}
 						renderTabBarTrailing={() => (
 							<BackgroundTerminalsButton
 								workspaceId={workspaceId}
@@ -744,6 +823,9 @@ function WorkspaceContent({
 								onSelectDiffFile={openDiffPane}
 								onOpenComment={openCommentPane}
 								onSearch={handleQuickOpen}
+								onOpenFileAtLine={handleOpenFileAtLine}
+								onOpenUrl={openBrowserUrl}
+								onOpenCommandInTerminal={handleOpenCommandInTerminal}
 								selectedFilePath={selectedFilePath}
 								pendingReveal={pendingReveal}
 							/>

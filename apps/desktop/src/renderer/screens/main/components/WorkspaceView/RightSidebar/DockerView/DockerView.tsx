@@ -37,6 +37,11 @@ import { InspectCodeBlock } from "./components/InspectCodeBlock";
 
 interface DockerViewProps {
 	isActive?: boolean;
+	onOpenCommandInTerminal?: (args: {
+		command: string;
+		cwd?: string;
+		title: string;
+	}) => void | Promise<void>;
 }
 
 type DockerListResult = ElectronRouterOutputs["docker"]["list"];
@@ -75,7 +80,10 @@ function getComposeGroupTone(group: DockerComposeGroup): string {
 	return "text-amber-400";
 }
 
-export function DockerView({ isActive = true }: DockerViewProps) {
+export function DockerView({
+	isActive = true,
+	onOpenCommandInTerminal,
+}: DockerViewProps) {
 	const workspaceId = useWorkspaceId();
 	const utils = electronTrpc.useUtils();
 	const addTab = useTabsStore((state) => state.addTab);
@@ -261,6 +269,11 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 				return;
 			}
 
+			if (onOpenCommandInTerminal) {
+				await onOpenCommandInTerminal({ command, cwd, title });
+				return;
+			}
+
 			const { paneId, tabId } = addTab(workspaceId, {
 				initialCwd: cwd,
 			});
@@ -285,7 +298,14 @@ export function DockerView({ isActive = true }: DockerViewProps) {
 				});
 			}
 		},
-		[addTab, setActiveTab, setFocusedPane, setPaneName, workspaceId],
+		[
+			addTab,
+			onOpenCommandInTerminal,
+			setActiveTab,
+			setFocusedPane,
+			setPaneName,
+			workspaceId,
+		],
 	);
 
 	const handleOpenLogs = useCallback(
