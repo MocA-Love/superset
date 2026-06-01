@@ -1,10 +1,17 @@
 import { type LayoutNode, type SplitPath, Workspace } from "@superset/panes";
+import {
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+} from "@superset/ui/context-menu";
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PaletteIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuickOpenStore } from "renderer/commandPalette/ui/QuickOpen/quickOpenStore";
+import { ColorSelector } from "renderer/components/ColorSelector";
 import { useRightSidebarOpenViewWidth } from "renderer/hooks/useRightSidebarOpenViewWidth";
 import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
 import { useHotkey } from "renderer/hotkeys";
@@ -24,6 +31,8 @@ import {
 	toAbsoluteWorkspacePath,
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
+import { PROJECT_COLOR_DEFAULT } from "shared/constants/project-colors";
+import type { ActionLogsJob } from "shared/tabs-types";
 import { useStore } from "zustand";
 import { useWorkspace } from "../providers/WorkspaceProvider";
 import { AddTabMenu } from "./components/AddTabMenu";
@@ -52,7 +61,14 @@ import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import { useWorkspacePaneOpeners } from "./hooks/useWorkspacePaneOpeners";
 import { WorkspaceGitStatusProvider } from "./providers/WorkspaceGitStatusProvider";
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
-import type { BrowserPaneData, FilePaneData, PaneViewerData } from "./types";
+import type {
+	BrowserPaneData,
+	DatabasePaneData,
+	FilePaneData,
+	GitGraphPaneData,
+	PaneViewerData,
+	TerminalPaneData,
+} from "./types";
 import type { V2WorkspaceUrlOpenTarget } from "./utils/openUrlInV2Workspace";
 
 interface WorkspaceSearch {
@@ -247,6 +263,17 @@ function WorkspaceContent({
 		id: workspaceId,
 	});
 	const worktreePath = workspaceQuery.data?.worktreePath ?? "";
+	const isGitGraphOpen = useStore(store, (s) =>
+		worktreePath
+			? s.tabs.some((tab) =>
+					Object.values(tab.panes).some(
+						(pane) =>
+							pane.kind === "git-graph" &&
+							(pane.data as GitGraphPaneData).worktreePath === worktreePath,
+					),
+				)
+			: false,
+	);
 
 	const { recentFiles, recordView } = useRecentlyViewedFiles(workspaceId);
 
@@ -483,6 +510,16 @@ function WorkspaceContent({
 		},
 		[openFilePane, openSidebarFilePane],
 	);
+	const handleOpenFileAtLine = useCallback(
+		(path: string, line?: number, column?: number) => {
+			const absolutePath =
+				worktreePath && !path.startsWith("/")
+					? toAbsoluteWorkspacePath(worktreePath, path)
+					: path;
+			openFilePane(absolutePath, undefined, { line, column });
+		},
+		[openFilePane, worktreePath],
+	);
 
 	const paneRegistry = usePaneRegistry({
 		onOpenFile: handleTerminalOpenFile,
@@ -509,6 +546,99 @@ function WorkspaceContent({
 
 	const defaultPaneActions = useDefaultPaneActions({ launcher });
 	const onBeforeCloseTab = useDirtyTabCloseGuard();
+	const openBrowserUrl = useCallback(
+		(url: string) => {
+			store.getState().addTab({
+				panes: [
+					{
+						kind: "browser",
+						data: { url, mode: "generic" } as BrowserPaneData,
+					},
+				],
+			});
+		},
+		[store],
+	);
+	const openActionLogsInBrowser = useCallback(
+		(jobs: ActionLogsJob[], initialJobIndex?: number) => {
+			const job =
+				(initialJobIndex !== undefined ? jobs[initialJobIndex] : undefined) ??
+				jobs.find((candidate) => candidate.status === "failure") ??
+				jobs[0];
+			if (job) openBrowserUrl(job.detailsUrl);
+		},
+		[openBrowserUrl],
+	);
+	const openDatabaseExplorer = useCallback(
+		(connectionId: string) => {
+			store.getState().addTab({
+				titleOverride: "Database Explorer",
+				panes: [
+					{
+						kind: "database",
+						data: { connectionId } as DatabasePaneData,
+					},
+				],
+			});
+		},
+		[store],
+	);
+	const openGitGraph = useCallback(() => {
+		if (!worktreePath) return;
+		const state = store.getState();
+		for (const tab of state.tabs) {
+			for (const pane of Object.values(tab.panes)) {
+				if (
+					pane.kind === "git-graph" &&
+					(pane.data as GitGraphPaneData).worktreePath === worktreePath
+				) {
+					state.setActiveTab(tab.id);
+					state.setActivePane({ tabId: tab.id, paneId: pane.id });
+					return;
+				}
+			}
+		}
+		state.addTab({
+			titleOverride: "Git Graph",
+			panes: [
+				{
+					kind: "git-graph",
+					data: { worktreePath } as GitGraphPaneData,
+				},
+			],
+		});
+	}, [store, worktreePath]);
+	const handleOpenCommandInTerminal = useCallback(
+		async ({
+			command,
+			cwd,
+			title,
+		}: {
+			command: string;
+			cwd?: string;
+			title: string;
+		}) => {
+			try {
+				const terminalId = await launcher.create({ command, cwd });
+				store.getState().addTab({
+					titleOverride: title,
+					panes: [
+						{
+							kind: "terminal",
+							data: { terminalId } as TerminalPaneData,
+						},
+					],
+				});
+			} catch (error) {
+				toast.error(
+					`Failed to open command in terminal: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			}
+		},
+		[launcher, store],
+	);
 
 	// FORK NOTE: Fork-only "New Memo" action from the add-tab menu. Creates
 	// an empty markdown memo in ~/.superset/memos and opens it in the file
@@ -680,6 +810,26 @@ function WorkspaceContent({
 								sources={getV2NotificationSourcesForTab(tab)}
 							/>
 						)}
+						renderTabContextMenuItems={(tab) => (
+							<ContextMenuSub>
+								<ContextMenuSubTrigger>
+									<PaletteIcon className="size-4" />
+									Set Color
+								</ContextMenuSubTrigger>
+								<ContextMenuSubContent className="max-h-80 w-40 overflow-y-auto">
+									<ColorSelector
+										variant="menu"
+										selectedColor={tab.color}
+										onSelectColor={(color) =>
+											store.getState().setTabColor({
+												tabId: tab.id,
+												color: color === PROJECT_COLOR_DEFAULT ? null : color,
+											})
+										}
+									/>
+								</ContextMenuSubContent>
+							</ContextMenuSub>
+						)}
 						renderTabBarTrailing={() => (
 							<BackgroundTerminalsButton
 								workspaceId={workspaceId}
@@ -740,10 +890,20 @@ function WorkspaceContent({
 						>
 							<WorkspaceSidebar
 								workspaceId={workspaceId}
+								worktreePath={worktreePath}
+								projectId={projectId}
+								workspaceBranch={workspaceQuery.data?.branch}
 								onSelectFile={openSidebarFilePane}
 								onSelectDiffFile={openDiffPane}
 								onOpenComment={openCommentPane}
 								onSearch={handleQuickOpen}
+								onOpenDatabaseExplorer={openDatabaseExplorer}
+								onOpenFileAtLine={handleOpenFileAtLine}
+								onOpenUrl={openBrowserUrl}
+								onOpenActionLogs={openActionLogsInBrowser}
+								isGitGraphOpen={isGitGraphOpen}
+								onOpenGitGraph={openGitGraph}
+								onOpenCommandInTerminal={handleOpenCommandInTerminal}
 								selectedFilePath={selectedFilePath}
 								pendingReveal={pendingReveal}
 							/>

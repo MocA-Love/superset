@@ -14,6 +14,7 @@ export {
 	positionToDirection,
 	removePaneFromLayout,
 	replacePaneIdInLayout,
+	splitNodeInLayout,
 	splitPaneInLayout,
 	updateAtPath,
 } from "./utils";

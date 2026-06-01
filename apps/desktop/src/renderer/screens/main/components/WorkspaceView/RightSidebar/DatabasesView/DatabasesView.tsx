@@ -774,6 +774,7 @@ interface DatabasesViewProps {
 	selectedConnectionId?: string | null;
 	onSelectConnectionId?: (connectionId: string | null) => void;
 	workspaceId?: string;
+	worktreePathOverride?: string;
 }
 
 type DiscoveredWorkspaceDatabaseItem =
@@ -813,14 +814,15 @@ export function DatabasesView({
 	selectedConnectionId,
 	onSelectConnectionId,
 	workspaceId: workspaceIdProp,
+	worktreePathOverride,
 }: DatabasesViewProps) {
 	const workspaceIdFromContext = useWorkspaceId();
 	const workspaceId = workspaceIdProp ?? workspaceIdFromContext;
 	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },
-		{ enabled: !!workspaceId },
+		{ enabled: !!workspaceId && !worktreePathOverride },
 	);
-	const worktreePath = workspace?.worktreePath;
+	const worktreePath = worktreePathOverride ?? workspace?.worktreePath;
 	const isSidebarMode = mode === "sidebar";
 	const isPaneMode = mode === "pane";
 	const { copyToClipboard } = useCopyToClipboard();

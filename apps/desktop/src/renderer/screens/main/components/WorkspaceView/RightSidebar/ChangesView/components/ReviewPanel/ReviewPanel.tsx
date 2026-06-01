@@ -40,6 +40,7 @@ import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { PRIcon } from "renderer/screens/main/components/PRIcon";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import type { ActionLogsJob } from "shared/tabs-types";
 import { CheckSteps } from "./components/CheckSteps";
 import { CommentBody } from "./components/CommentBody";
 import { ReplyDialog } from "./components/ReplyDialog";
@@ -92,6 +93,9 @@ interface ReviewPanelProps {
 		isFork?: boolean;
 	};
 	onOpenFile?: (path: string, line?: number) => void;
+	onOpenComment?: (comment: PullRequestComment) => void;
+	onOpenUrl?: (url: string) => void;
+	onOpenActionLogs?: (jobs: ActionLogsJob[], initialJobIndex?: number) => void;
 	onRefreshReview?: (scope?: "full" | "status") => Promise<void>;
 }
 
@@ -104,6 +108,9 @@ export function ReviewPanel({
 	isCommentsLoading = false,
 	commentsQueryInput,
 	onOpenFile,
+	onOpenComment,
+	onOpenUrl,
+	onOpenActionLogs,
 	onRefreshReview,
 }: ReviewPanelProps) {
 	const resolvedWorkspaceId = useWorkspaceId();
@@ -114,11 +121,15 @@ export function ReviewPanel({
 		(url: string, e: React.MouseEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
+			if (onOpenUrl) {
+				onOpenUrl(url);
+				return;
+			}
 			if (resolvedWorkspaceId) {
 				addBrowserTab(resolvedWorkspaceId, url);
 			}
 		},
-		[resolvedWorkspaceId, addBrowserTab],
+		[resolvedWorkspaceId, addBrowserTab, onOpenUrl],
 	);
 
 	const [checksOpen, setChecksOpen] = useState(true);
@@ -211,6 +222,10 @@ export function ReviewPanel({
 	const openCommentPane = useTabsStore((s) => s.openCommentPane);
 
 	const handleOpenComment = (comment: PullRequestComment) => {
+		if (onOpenComment) {
+			onOpenComment(comment);
+			return;
+		}
 		if (!resolvedWorkspaceId) return;
 		openCommentPane(resolvedWorkspaceId, {
 			commentId: comment.id,
@@ -1289,6 +1304,13 @@ export function ReviewPanel({
 										const failedIdx = jobs.findIndex(
 											(j) => j.status === "failure",
 										);
+										if (onOpenActionLogs) {
+											onOpenActionLogs(
+												jobs,
+												failedIdx >= 0 ? failedIdx : undefined,
+											);
+											return;
+										}
 										addActionLogsTab(
 											resolvedWorkspaceId,
 											jobs,

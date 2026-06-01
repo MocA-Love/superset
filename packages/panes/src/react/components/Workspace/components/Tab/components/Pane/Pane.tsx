@@ -14,11 +14,18 @@ import type {
 	RendererContext,
 } from "../../../../../../types";
 import { PaneHeaderActions } from "../../../../../PaneHeaderActions";
-import { PANE_MIN_SIZE_CLASS_NAME } from "../../constants";
+import {
+	PANE_DRAG_TYPE,
+	PANE_MIN_SIZE_CLASS_NAME,
+	TAB_DRAG_TYPE,
+} from "../../constants";
 import { DropZoneOverlay } from "./components/DropZoneOverlay";
 import { PaneContent } from "./components/PaneContent";
 import { PaneContextMenu } from "./components/PaneContextMenu";
-import { PANE_DRAG_TYPE, PaneHeader } from "./components/PaneHeader";
+import { PaneHeader } from "./components/PaneHeader";
+
+type PaneDragItem = { paneId: string };
+type TabDragItem = { tabId: string };
 
 interface PaneComponentProps<TData> {
 	store: StoreApi<WorkspaceStore<TData>>;
@@ -166,8 +173,17 @@ export function Pane<TData>({
 
 	const [{ isOver, canDrop }, connectDrop] = useDrop(
 		() => ({
-			accept: PANE_DRAG_TYPE,
-			canDrop: (item: { paneId: string }) => item.paneId !== pane.id,
+			accept: [PANE_DRAG_TYPE, TAB_DRAG_TYPE],
+			canDrop: (item: PaneDragItem | TabDragItem, monitor) => {
+				if (monitor.getItemType() === PANE_DRAG_TYPE && "paneId" in item) {
+					return item.paneId !== pane.id;
+				}
+				if (monitor.getItemType() === TAB_DRAG_TYPE && "tabId" in item) {
+					const sourceTab = store.getState().getTab(item.tabId);
+					return !!sourceTab && !sourceTab.panes[pane.id];
+				}
+				return false;
+			},
 			hover: (_item, monitor) => {
 				const offset = monitor.getClientOffset();
 				const el = dropRef.current;
@@ -179,14 +195,24 @@ export function Pane<TData>({
 					setDropPosition(pos);
 				}
 			},
-			drop: (item: { paneId: string }) => {
+			drop: (item: PaneDragItem | TabDragItem, monitor) => {
 				const pos = dropPositionRef.current;
 				if (!pos) return;
-				store.getState().movePaneToSplit({
-					sourcePaneId: item.paneId,
-					targetPaneId: pane.id,
-					position: pos,
-				});
+				if (monitor.getItemType() === TAB_DRAG_TYPE && "tabId" in item) {
+					store.getState().moveTabToSplit({
+						sourceTabId: item.tabId,
+						targetPaneId: pane.id,
+						position: pos,
+					});
+					return;
+				}
+				if (monitor.getItemType() === PANE_DRAG_TYPE && "paneId" in item) {
+					store.getState().movePaneToSplit({
+						sourcePaneId: item.paneId,
+						targetPaneId: pane.id,
+						position: pos,
+					});
+				}
 			},
 			collect: (monitor) => ({
 				isOver: monitor.isOver(),

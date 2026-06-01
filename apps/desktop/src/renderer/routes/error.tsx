@@ -1,13 +1,12 @@
 import { Button } from "@superset/ui/button";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	HiCheck,
 	HiExclamationTriangle,
 	HiOutlineClipboard,
 } from "react-icons/hi2";
-import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const ERROR_DETAILS_ID = "error-details";
@@ -20,7 +19,12 @@ export function ErrorPage({ error, info }: ErrorComponentProps) {
 	const componentStack = info?.componentStack;
 
 	const [showDetails, setShowDetails] = useState(IS_DEV);
-	const { copyToClipboard, copied } = useCopyToClipboard();
+	const [copied, setCopied] = useState(false);
+	const copyToClipboard = useCallback(async (text: string) => {
+		await navigator.clipboard.writeText(text);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	}, []);
 
 	useEffect(() => {
 		console.error("[renderer] Route error caught:", error, componentStack);

@@ -15,10 +15,8 @@ import { useDrag, useDrop } from "react-dnd";
 import type { Tab } from "../../../../../../../types";
 import type { PaneRegistry } from "../../../../../../types";
 import { useTabTitle } from "../../../../utils/useTabTitle";
-import { PANE_DRAG_TYPE } from "../../../Tab/components/Pane/components/PaneHeader";
+import { PANE_DRAG_TYPE, TAB_DRAG_TYPE } from "../../../Tab/constants";
 import { TabRenameInput } from "./components/TabRenameInput";
-
-export const TAB_DRAG_TYPE = "tab";
 
 interface TabItemProps<TData> {
 	tab: Tab<TData>;
@@ -33,6 +31,7 @@ interface TabItemProps<TData> {
 	onRename: (title: string | undefined) => void;
 	icon?: ReactNode;
 	accessory?: ReactNode;
+	renderContextMenuItems?: (tab: Tab<TData>) => ReactNode;
 }
 
 export function TabItem<TData>({
@@ -48,10 +47,13 @@ export function TabItem<TData>({
 	onRename,
 	icon,
 	accessory,
+	renderContextMenuItems,
 }: TabItemProps<TData>) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [editValue, setEditValue] = useState("");
 	const title = useTabTitle(tab, tabs, registry);
+	const hasTabColor = typeof tab.color === "string" && tab.color.length > 0;
+	const customContextMenuItems = renderContextMenuItems?.(tab);
 
 	const startEditing = () => {
 		setEditValue(title);
@@ -111,19 +113,24 @@ export function TabItem<TData>({
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger asChild>
-				{/* biome-ignore lint/a11y/noStaticElementInteractions: mousedown selects tab immediately before drag threshold */}
 				<div
 					ref={setRef}
 					className={cn(
 						"group relative flex h-full w-full items-center border-r border-border transition-colors",
-						isActive
-							? "bg-border/30 text-foreground"
-							: "text-muted-foreground/70 hover:bg-tertiary/20 hover:text-muted-foreground",
+						hasTabColor
+							? "text-foreground"
+							: isActive
+								? "bg-border/30 text-foreground"
+								: "text-muted-foreground/70 hover:bg-tertiary/20 hover:text-muted-foreground",
 						isPaneOver && "bg-primary/5",
 						isDragging && "opacity-30",
 					)}
-					onMouseDown={(event) => {
-						if (event.button === 0) onSelect();
+					style={{
+						...(hasTabColor
+							? {
+									backgroundColor: `${tab.color}${isActive ? "30" : "18"}`,
+								}
+							: {}),
 					}}
 				>
 					{isEditing ? (
@@ -146,6 +153,7 @@ export function TabItem<TData>({
 								<TooltipTrigger asChild>
 									<button
 										className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-3 pr-1 text-left text-xs transition-colors"
+										onClick={onSelect}
 										onAuxClick={(event) => {
 											if (event.button === 1) {
 												event.preventDefault();
@@ -207,6 +215,8 @@ export function TabItem<TData>({
 					Rename
 				</ContextMenuItem>
 				<ContextMenuSeparator />
+				{customContextMenuItems}
+				{customContextMenuItems && <ContextMenuSeparator />}
 				<ContextMenuItem onSelect={onClose}>
 					<XIcon className="mr-2 size-4" />
 					Close

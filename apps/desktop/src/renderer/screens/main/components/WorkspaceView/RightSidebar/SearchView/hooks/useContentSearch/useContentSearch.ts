@@ -19,7 +19,7 @@ interface UseContentSearchParams {
 	limit?: number;
 }
 
-function toResult(match: {
+export function toSearchContentResult(match: {
 	absolutePath: string;
 	relativePath: string;
 	line: number;
@@ -183,7 +183,7 @@ export function useContentSearch({
 					// UI retries can cause overlaps in edge cases.
 					const id = `${event.match.absolutePath}:${event.match.line}:${event.match.column}`;
 					if (prev.some((r) => r.id === id)) return prev;
-					return [...prev, toResult(event.match)];
+					return [...prev, toSearchContentResult(event.match)];
 				});
 				// Refresh the idle timer on every event so long-running
 				// searches don't prematurely report "done" mid-stream.

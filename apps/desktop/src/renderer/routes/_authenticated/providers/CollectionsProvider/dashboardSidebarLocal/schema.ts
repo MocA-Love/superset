@@ -61,7 +61,17 @@ export const workspaceLocalStateSchema = z.object({
 		sectionId: z.string().uuid().nullable().default(null),
 		changesFilter: changesFilterSchema.default({ kind: "all" }),
 		changesViewMode: z.enum(["folders", "tree"]).default("folders"),
-		activeTab: z.enum(["changes", "files", "review"]).default("changes"),
+		activeTab: z
+			.enum([
+				"changes",
+				"docker",
+				"files",
+				"search",
+				"problems",
+				"databases",
+				"review",
+			])
+			.default("changes"),
 		// FORK NOTE: keep `changesSubtab` for the fork's in-Changes review
 		// UX. upstream #3777 promoted review to a top-level tab; keeping
 		// both lets existing rows migrate cleanly.
@@ -244,7 +254,17 @@ export const v2UserPreferencesSchema = z.object({
 	sidebarFileLinks: linkTierMapSchema.default(DEFAULT_SIDEBAR_FILE_LINKS),
 	terminalPresetsInitialized: z.boolean().default(false),
 	rightSidebarOpen: z.boolean().default(true),
-	rightSidebarTab: z.enum(["changes", "files"]).default("changes"),
+	rightSidebarTab: z
+		.enum([
+			"changes",
+			"docker",
+			"files",
+			"search",
+			"problems",
+			"databases",
+			"review",
+		])
+		.default("changes"),
 	rightSidebarWidth: z.number().default(340),
 	deleteLocalBranch: z.boolean().default(false),
 	showPresetsBar: z.boolean().default(true),

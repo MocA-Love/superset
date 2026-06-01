@@ -40,8 +40,9 @@ export function TopBar() {
 	);
 	// Default to Mac layout while loading to avoid overlap with traffic lights
 	const isMac = platform === undefined || platform === "darwin";
-	// In v2, the expanded dashboard sidebar lives outside the TopBar column.
-	// Let that sidebar header host the traffic-light pad and left chrome.
+	// The TopBar spans the full window width even when the v2 dashboard sidebar
+	// is expanded below it, so it must always reserve the macOS traffic-light
+	// inset itself.
 	const sidebarHostsChrome =
 		isV2CloudEnabled && isWorkspaceSidebarOpen && !isWorkspaceSidebarCollapsed;
 
@@ -50,7 +51,7 @@ export function TopBar() {
 			<div
 				className="flex items-center gap-1.5 h-full"
 				style={{
-					paddingLeft: isMac && !sidebarHostsChrome ? "80px" : "16px",
+					paddingLeft: isMac ? "80px" : "16px",
 				}}
 			>
 				{!sidebarHostsChrome && (

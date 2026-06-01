@@ -15,9 +15,16 @@ import type {
 	ChangesFilter,
 	ChangesViewMode,
 } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
+import { VerticalResizablePanels } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView/components/VerticalResizablePanels";
+import {
+	DEFAULT_DIFFS_PANE_PERCENTAGE,
+	useChangesStore,
+} from "renderer/stores/changes";
 import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
+import type { CommentPaneData } from "../../../../types";
 import type { SidebarTabDefinition } from "../../types";
 import { ChangesTabContent } from "./components/ChangesTabContent";
+import { ReviewPanelSection } from "./components/ReviewPanelSection";
 
 export type { ChangesFilter, ChangesViewMode };
 
@@ -27,6 +34,10 @@ interface UseChangesTabParams {
 	selectedFilePath?: string;
 	onSelectFile?: (path: string, openInNewTab?: boolean) => void;
 	onOpenFile?: (absolutePath: string, openInNewTab?: boolean) => void;
+	onOpenFileAtLine?: (path: string, line?: number) => void;
+	onOpenComment?: (comment: CommentPaneData) => void;
+	onOpenUrl?: (url: string) => void;
+	isActive?: boolean;
 }
 
 export function useChangesTab({
@@ -34,10 +45,15 @@ export function useChangesTab({
 	selectedFilePath,
 	onSelectFile,
 	onOpenFile,
+	onOpenFileAtLine,
+	onOpenComment,
+	onOpenUrl,
+	isActive = true,
 }: UseChangesTabParams): SidebarTabDefinition {
 	const status = useWorkspaceGitStatus();
 	const collections = useCollections();
 	const utils = workspaceTrpc.useUtils();
+	const { diffsPanePercentage, setDiffsPanePercentage } = useChangesStore();
 	const localState = collections.v2WorkspaceLocalState.get(workspaceId);
 	const filter: ChangesFilter = localState?.sidebarState?.changesFilter ?? {
 		kind: "all",
@@ -201,29 +217,47 @@ export function useChangesTab({
 	);
 
 	const content = (
-		<ChangesTabContent
-			workspaceId={workspaceId}
-			status={status}
-			commits={commits}
-			branches={branches}
-			filter={filter}
-			viewMode={viewMode}
-			baseBranch={baseBranch}
-			files={files}
-			isLoading={isLoading}
-			totalChanges={totalChanges}
-			totalAdditions={totalAdditions}
-			totalDeletions={totalDeletions}
-			worktreePath={worktreePath}
-			selectedFilePath={selectedFilePath}
-			onSelectFile={onSelectFile}
-			onOpenFile={onOpenFile}
-			onOpenInEditor={handleOpenInEditor}
-			onFilterChange={setFilter}
-			onViewModeChange={setViewMode}
-			onBaseBranchChange={setBaseBranch}
-			onRenameBranch={handleRenameBranch}
-			canRenameBranch={canRenameBranch}
+		<VerticalResizablePanels
+			topSizePercentage={diffsPanePercentage}
+			onTopSizePercentageChange={setDiffsPanePercentage}
+			minTopHeight={220}
+			minBottomHeight={180}
+			defaultTopSizePercentage={DEFAULT_DIFFS_PANE_PERCENTAGE}
+			top={
+				<ChangesTabContent
+					workspaceId={workspaceId}
+					status={status}
+					commits={commits}
+					branches={branches}
+					filter={filter}
+					viewMode={viewMode}
+					baseBranch={baseBranch}
+					files={files}
+					isLoading={isLoading}
+					totalChanges={totalChanges}
+					totalAdditions={totalAdditions}
+					totalDeletions={totalDeletions}
+					worktreePath={worktreePath}
+					selectedFilePath={selectedFilePath}
+					onSelectFile={onSelectFile}
+					onOpenFile={onOpenFile}
+					onOpenInEditor={handleOpenInEditor}
+					onFilterChange={setFilter}
+					onViewModeChange={setViewMode}
+					onBaseBranchChange={setBaseBranch}
+					onRenameBranch={handleRenameBranch}
+					canRenameBranch={canRenameBranch}
+				/>
+			}
+			bottom={
+				<ReviewPanelSection
+					workspaceId={workspaceId}
+					isActive={isActive}
+					onOpenFileAtLine={onOpenFileAtLine}
+					onOpenComment={onOpenComment}
+					onOpenUrl={onOpenUrl}
+				/>
+			}
 		/>
 	);
 

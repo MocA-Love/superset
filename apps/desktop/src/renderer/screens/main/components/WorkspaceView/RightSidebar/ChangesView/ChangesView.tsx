@@ -1,4 +1,4 @@
-import type { GitHubStatus } from "@superset/local-db";
+import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
 import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
@@ -31,6 +31,7 @@ import {
 } from "shared/absolute-paths";
 import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import type { FileSystemChangeEvent } from "shared/file-tree-types";
+import type { ActionLogsJob } from "shared/tabs-types";
 import { CategorySection } from "./components/CategorySection";
 import { ChangesHeader } from "./components/ChangesHeader";
 import { CommitInput } from "./components/CommitInput";
@@ -63,6 +64,16 @@ interface ChangesViewProps {
 		commitHash?: string,
 	) => void;
 	onOpenFileAtLine?: (path: string, line?: number) => void;
+	onOpenComment?: (comment: PullRequestComment) => void;
+	onOpenUrl?: (url: string) => void;
+	onOpenActionLogs?: (jobs: ActionLogsJob[], initialJobIndex?: number) => void;
+	isGitGraphOpen?: boolean;
+	onToggleGitGraph?: () => void;
+	workspaceOverride?: {
+		worktreePath: string | null;
+		projectId?: string | null;
+		branch?: string | null;
+	};
 	isExpandedView?: boolean;
 	isActive?: boolean;
 }
@@ -145,19 +156,27 @@ function eventTargetsSelectedFile(
 export function ChangesView({
 	onFileOpen,
 	onOpenFileAtLine,
+	onOpenComment,
+	onOpenUrl,
+	onOpenActionLogs,
+	isGitGraphOpen: isGitGraphOpenOverride,
+	onToggleGitGraph,
+	workspaceOverride,
 	isExpandedView,
 	isActive = true,
 }: ChangesViewProps) {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
-	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+	const { data: workspaceFromElectron } = electronTrpc.workspaces.get.useQuery(
 		{ id: workspaceId ?? "" },
-		{ enabled: !!workspaceId },
+		{ enabled: !!workspaceId && !workspaceOverride },
 	);
-	const worktreePath = workspace?.worktreePath;
-	const projectId = workspace?.projectId;
+	const workspace = workspaceOverride ?? workspaceFromElectron;
+	const worktreePath = workspace?.worktreePath ?? undefined;
+	const projectId = workspace?.projectId ?? undefined;
+	const workspaceBranch = workspace?.branch ?? undefined;
 	const addGitGraphTab = useTabsStore((s) => s.addGitGraphTab);
-	const isGitGraphOpen = useTabsStore((s) =>
+	const isGitGraphOpenFromV1Store = useTabsStore((s) =>
 		worktreePath
 			? s.tabs.some(
 					(t) =>
@@ -174,6 +193,7 @@ export function ChangesView({
 				)
 			: false,
 	);
+	const isGitGraphOpen = isGitGraphOpenOverride ?? isGitGraphOpenFromV1Store;
 	const isReviewVisible = isActive;
 	const githubStatusQueryPolicy = getGitHubStatusQueryPolicy(
 		"changes-sidebar",
@@ -398,7 +418,7 @@ export function ChangesView({
 
 	useBranchSyncInvalidation({
 		gitBranch: status?.branch ?? branchData?.currentBranch ?? undefined,
-		workspaceBranch: workspace?.branch,
+		workspaceBranch,
 		workspaceId: workspaceId ?? "",
 	});
 
@@ -935,7 +955,13 @@ export function ChangesView({
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
-			<RepositoryPanel isActive={isActive} />
+			<RepositoryPanel
+				backend={workspaceOverride ? "workspace" : "classic"}
+				workspaceId={workspaceId}
+				isActive={isActive}
+				onOpenUrl={onOpenUrl}
+				onOpenActionLogs={onOpenActionLogs}
+			/>
 			<VerticalResizablePanels
 				topSizePercentage={diffsPanePercentage}
 				onTopSizePercentageChange={setDiffsPanePercentage}
@@ -998,6 +1024,10 @@ export function ChangesView({
 									hasConflictedFiles={conflictedFiles.length > 0}
 									isGitGraphOpen={isGitGraphOpen}
 									onToggleGitGraph={() => {
+										if (onToggleGitGraph) {
+											onToggleGitGraph();
+											return;
+										}
 										if (workspaceId && worktreePath) {
 											addGitGraphTab(workspaceId, worktreePath);
 										}
@@ -1102,6 +1132,9 @@ export function ChangesView({
 									githubStatus,
 								})}
 								onOpenFile={onOpenFileAtLine}
+								onOpenComment={onOpenComment}
+								onOpenUrl={onOpenUrl}
+								onOpenActionLogs={onOpenActionLogs}
 								onRefreshReview={handleReviewRefresh}
 							/>
 						</div>

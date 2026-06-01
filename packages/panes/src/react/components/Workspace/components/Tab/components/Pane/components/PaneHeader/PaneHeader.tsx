@@ -1,6 +1,7 @@
 import { cn } from "@superset/ui/utils";
 import { type ReactNode, useCallback, useRef } from "react";
 import { useDrag } from "react-dnd";
+import { PANE_DRAG_TYPE } from "../../../../constants";
 import { DefaultHeaderContent } from "./components/DefaultHeaderContent";
 
 interface PaneHeaderProps {
@@ -15,8 +16,6 @@ interface PaneHeaderProps {
 	onClick?: () => void;
 	onMiddleClick?: () => void;
 }
-
-export const PANE_DRAG_TYPE = "pane";
 
 export function PaneHeader({
 	title,

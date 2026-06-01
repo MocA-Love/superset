@@ -52,6 +52,14 @@ export interface DevtoolsPaneData {
 	targetTitle: string;
 }
 
+export interface DatabasePaneData {
+	connectionId: string | null;
+}
+
+export interface GitGraphPaneData {
+	worktreePath: string;
+}
+
 export type DiffFocusSide = "deletions" | "additions";
 
 export interface DiffPaneData {
@@ -80,5 +88,7 @@ export type PaneViewerData =
 	| ChatPaneData
 	| BrowserPaneData
 	| DevtoolsPaneData
+	| DatabasePaneData
+	| GitGraphPaneData
 	| DiffPaneData
 	| CommentPaneData;

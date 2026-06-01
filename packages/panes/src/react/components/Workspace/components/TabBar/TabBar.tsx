@@ -16,8 +16,8 @@ import {
 import { useDrop } from "react-dnd";
 import type { Tab } from "../../../../../types";
 import type { PaneRegistry } from "../../../../types";
-import { PANE_DRAG_TYPE } from "../Tab/components/Pane/components/PaneHeader";
-import { TAB_DRAG_TYPE, TabItem } from "./components/TabItem";
+import { PANE_DRAG_TYPE, TAB_DRAG_TYPE } from "../Tab/constants";
+import { TabItem } from "./components/TabItem";
 import { computeInsertIndex, TAB_WIDTH } from "./utils";
 
 interface TabBarProps<TData> {
@@ -35,6 +35,7 @@ interface TabBarProps<TData> {
 	renderAddTabMenu?: () => ReactNode;
 	renderTabBarTrailing?: () => ReactNode;
 	renderTabAccessory?: (tab: Tab<TData>) => ReactNode;
+	renderTabContextMenuItems?: (tab: Tab<TData>) => ReactNode;
 }
 
 type TabDragItem = { tabId: string };
@@ -85,6 +86,7 @@ export function TabBar<TData>({
 	renderAddTabMenu,
 	renderTabBarTrailing,
 	renderTabAccessory,
+	renderTabContextMenuItems,
 }: TabBarProps<TData>) {
 	const tabsTrackRef = useRef<HTMLDivElement>(null);
 	const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
@@ -214,6 +216,7 @@ export function TabBar<TData>({
 								onRename={(title) => onRenameTab(tab.id, title)}
 								icon={renderTabIcon?.(tab)}
 								accessory={renderTabAccessory?.(tab)}
+								renderContextMenuItems={renderTabContextMenuItems}
 							/>
 						</div>
 					))}
