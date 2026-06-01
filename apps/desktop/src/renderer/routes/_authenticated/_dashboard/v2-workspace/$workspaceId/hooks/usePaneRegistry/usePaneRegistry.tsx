@@ -8,7 +8,13 @@ import { alert } from "@superset/ui/atoms/Alert";
 import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
 import { workspaceTrpc } from "@superset/workspace-client";
-import { Circle, GitCompareArrows, Globe, MessageSquare } from "lucide-react";
+import {
+	Circle,
+	Database,
+	GitCompareArrows,
+	Globe,
+	MessageSquare,
+} from "lucide-react";
 import { useCallback, useMemo } from "react";
 import {
 	LuArrowDownToLine,
@@ -51,10 +57,12 @@ import { ChatPaneTitle } from "./components/ChatPane/components/ChatPaneTitle";
 import { CommentPane } from "./components/CommentPane";
 import { CommentPaneHeaderExtras } from "./components/CommentPane/components/CommentPaneHeaderExtras";
 import { CommentPaneTitle } from "./components/CommentPane/components/CommentPaneTitle";
+import { DatabasePane } from "./components/DatabasePane";
 import { DiffPane } from "./components/DiffPane";
 import { DiffPaneHeaderExtras } from "./components/DiffPane/components/DiffPaneHeaderExtras";
 import { FilePane } from "./components/FilePane";
 import { FilePaneHeaderExtras } from "./components/FilePane/components/FilePaneHeaderExtras";
+import { GitGraphPane } from "./components/GitGraphPane";
 import { TerminalPane } from "./components/TerminalPane";
 import { TerminalHeaderExtras } from "./components/TerminalPane/components/TerminalHeaderExtras";
 import { TerminalPaneIcon } from "./components/TerminalPane/components/TerminalPaneIcon";
@@ -373,6 +381,30 @@ export function usePaneRegistry({
 				contextMenuActions: (_ctx, defaults) =>
 					defaults.map((d) =>
 						d.key === "close-pane" ? { ...d, label: "Close Diff" } : d,
+					),
+			},
+			database: {
+				getIcon: () => <Database className="size-3.5" />,
+				getTitle: () => "Database Explorer",
+				renderPane: (ctx: RendererContext<PaneViewerData>) => (
+					<DatabasePane context={ctx} workspaceId={workspaceId} />
+				),
+				contextMenuActions: (_ctx, defaults) =>
+					defaults.map((d) =>
+						d.key === "close-pane"
+							? { ...d, label: "Close Database Explorer" }
+							: d,
+					),
+			},
+			"git-graph": {
+				getIcon: () => <GitCompareArrows className="size-3.5" />,
+				getTitle: () => "Git Graph",
+				renderPane: (ctx: RendererContext<PaneViewerData>) => (
+					<GitGraphPane context={ctx} workspaceId={workspaceId} />
+				),
+				contextMenuActions: (_ctx, defaults) =>
+					defaults.map((d) =>
+						d.key === "close-pane" ? { ...d, label: "Close Git Graph" } : d,
 					),
 			},
 			terminal: {

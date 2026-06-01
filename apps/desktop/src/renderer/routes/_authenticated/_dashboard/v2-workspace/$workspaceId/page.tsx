@@ -32,6 +32,7 @@ import {
 	toRelativeWorkspacePath,
 } from "shared/absolute-paths";
 import { PROJECT_COLOR_DEFAULT } from "shared/constants/project-colors";
+import type { ActionLogsJob } from "shared/tabs-types";
 import { useStore } from "zustand";
 import { useWorkspace } from "../providers/WorkspaceProvider";
 import { AddTabMenu } from "./components/AddTabMenu";
@@ -62,7 +63,9 @@ import { WorkspaceGitStatusProvider } from "./providers/WorkspaceGitStatusProvid
 import { FileDocumentStoreProvider } from "./state/fileDocumentStore";
 import type {
 	BrowserPaneData,
+	DatabasePaneData,
 	FilePaneData,
+	GitGraphPaneData,
 	PaneViewerData,
 	TerminalPaneData,
 } from "./types";
@@ -260,6 +263,17 @@ function WorkspaceContent({
 		id: workspaceId,
 	});
 	const worktreePath = workspaceQuery.data?.worktreePath ?? "";
+	const isGitGraphOpen = useStore(store, (s) =>
+		worktreePath
+			? s.tabs.some((tab) =>
+					Object.values(tab.panes).some(
+						(pane) =>
+							pane.kind === "git-graph" &&
+							(pane.data as GitGraphPaneData).worktreePath === worktreePath,
+					),
+				)
+			: false,
+	);
 
 	const { recentFiles, recordView } = useRecentlyViewedFiles(workspaceId);
 
@@ -545,6 +559,55 @@ function WorkspaceContent({
 		},
 		[store],
 	);
+	const openActionLogsInBrowser = useCallback(
+		(jobs: ActionLogsJob[], initialJobIndex?: number) => {
+			const job =
+				(initialJobIndex !== undefined ? jobs[initialJobIndex] : undefined) ??
+				jobs.find((candidate) => candidate.status === "failure") ??
+				jobs[0];
+			if (job) openBrowserUrl(job.detailsUrl);
+		},
+		[openBrowserUrl],
+	);
+	const openDatabaseExplorer = useCallback(
+		(connectionId: string) => {
+			store.getState().addTab({
+				titleOverride: "Database Explorer",
+				panes: [
+					{
+						kind: "database",
+						data: { connectionId } as DatabasePaneData,
+					},
+				],
+			});
+		},
+		[store],
+	);
+	const openGitGraph = useCallback(() => {
+		if (!worktreePath) return;
+		const state = store.getState();
+		for (const tab of state.tabs) {
+			for (const pane of Object.values(tab.panes)) {
+				if (
+					pane.kind === "git-graph" &&
+					(pane.data as GitGraphPaneData).worktreePath === worktreePath
+				) {
+					state.setActiveTab(tab.id);
+					state.setActivePane({ tabId: tab.id, paneId: pane.id });
+					return;
+				}
+			}
+		}
+		state.addTab({
+			titleOverride: "Git Graph",
+			panes: [
+				{
+					kind: "git-graph",
+					data: { worktreePath } as GitGraphPaneData,
+				},
+			],
+		});
+	}, [store, worktreePath]);
 	const handleOpenCommandInTerminal = useCallback(
 		async ({
 			command,
@@ -823,8 +886,12 @@ function WorkspaceContent({
 								onSelectDiffFile={openDiffPane}
 								onOpenComment={openCommentPane}
 								onSearch={handleQuickOpen}
+								onOpenDatabaseExplorer={openDatabaseExplorer}
 								onOpenFileAtLine={handleOpenFileAtLine}
 								onOpenUrl={openBrowserUrl}
+								onOpenActionLogs={openActionLogsInBrowser}
+								isGitGraphOpen={isGitGraphOpen}
+								onOpenGitGraph={openGitGraph}
 								onOpenCommandInTerminal={handleOpenCommandInTerminal}
 								selectedFilePath={selectedFilePath}
 								pendingReveal={pendingReveal}

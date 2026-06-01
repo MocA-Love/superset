@@ -49,6 +49,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { showGitConfirmDialog } from "renderer/lib/git/gitConfirmDialog";
 import { useWorkspaceId } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
 import { useTabsStore } from "renderer/stores/tabs/store";
+import type { ActionLogsJob } from "shared/tabs-types";
 
 function formatRepositoryTimestamp(value: string | null): string {
 	if (!value) {
@@ -70,6 +71,8 @@ function formatRepositoryTimestamp(value: string | null): string {
 
 interface RepositoryPanelProps {
 	isActive?: boolean;
+	onOpenUrl?: (url: string) => void;
+	onOpenActionLogs?: (jobs: ActionLogsJob[], initialJobIndex?: number) => void;
 }
 
 interface UploadedIssueAsset {
@@ -333,7 +336,11 @@ function WorkflowRunCard({
 	);
 }
 
-export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
+export function RepositoryPanel({
+	isActive = true,
+	onOpenUrl,
+	onOpenActionLogs,
+}: RepositoryPanelProps) {
 	const workspaceId = useWorkspaceId();
 	const trpcUtils = electronTrpc.useUtils();
 	const addBrowserTab = useTabsStore((state) => state.addBrowserTab);
@@ -459,6 +466,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 	}, [workspaceId]);
 
 	const openUrl = (url: string) => {
+		if (onOpenUrl) {
+			onOpenUrl(url);
+			return;
+		}
 		if (!workspaceId) {
 			return;
 		}
@@ -672,6 +683,10 @@ export function RepositoryPanel({ isActive = true }: RepositoryPanelProps) {
 					runId,
 				});
 			const failedIdx = jobs.findIndex((j) => j.status === "failure");
+			if (onOpenActionLogs) {
+				onOpenActionLogs(jobs, failedIdx >= 0 ? failedIdx : undefined);
+				return;
+			}
 			addActionLogsTab(
 				workspaceId,
 				jobs,

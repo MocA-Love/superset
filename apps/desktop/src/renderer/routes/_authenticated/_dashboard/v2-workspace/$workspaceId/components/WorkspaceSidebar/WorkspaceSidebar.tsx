@@ -1,3 +1,4 @@
+import type { PullRequestComment } from "@superset/local-db";
 import { Button } from "@superset/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { eq } from "@tanstack/db";
@@ -15,24 +16,19 @@ import {
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useWorkspaceGitStatus } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/providers/WorkspaceGitStatusProvider";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import { ChangesView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ChangesView";
 import { DatabasesView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/DatabasesView";
 import { DockerView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/DockerView";
 import { ProblemsView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/ProblemsView";
 import { SearchView } from "renderer/screens/main/components/WorkspaceView/RightSidebar/SearchView";
 import { WorkspaceIdProvider } from "renderer/screens/main/components/WorkspaceView/WorkspaceIdContext";
+import { toAbsoluteWorkspacePath } from "shared/absolute-paths";
+import type { ChangeCategory, ChangedFile } from "shared/changes-types";
+import type { ActionLogsJob } from "shared/tabs-types";
 import type { CommentPaneData, DiffFocusSide } from "../../types";
 import { FilesTab } from "./components/FilesTab";
-import { PRActionHeader } from "./components/PRActionHeader";
 import { SidebarHeader } from "./components/SidebarHeader";
-import { useChangesTab } from "./hooks/useChangesTab";
-import { type OpenChatFn, usePRFlowDispatch } from "./hooks/usePRFlowDispatch";
-import { usePRFlowState } from "./hooks/usePRFlowState";
 import type { SidebarTabDefinition } from "./types";
-
-// Gates the "Create PR" button only — the chat-driven create flow doesn't
-// exist in v2 yet. The PR status group (link + merge dropdown for an open PR)
-// always renders so users can see PR state and merge once a PR exists.
-const CREATE_PR_BUTTON_ENABLED = false;
 
 type SidebarTabId =
 	| "changes"
@@ -69,10 +65,13 @@ interface WorkspaceSidebarProps {
 		side?: DiffFocusSide,
 	) => void;
 	onOpenComment?: (comment: CommentPaneData) => void;
-	onOpenChat?: OpenChatFn;
 	onSearch?: () => void;
+	onOpenDatabaseExplorer?: (connectionId: string) => void;
 	onOpenFileAtLine?: (path: string, line?: number, column?: number) => void;
 	onOpenUrl?: (url: string) => void;
+	onOpenActionLogs?: (jobs: ActionLogsJob[], initialJobIndex?: number) => void;
+	isGitGraphOpen?: boolean;
+	onOpenGitGraph?: () => void;
 	onOpenCommandInTerminal?: (args: {
 		command: string;
 		cwd?: string;
@@ -113,10 +112,13 @@ export function WorkspaceSidebar({
 	onSelectFile,
 	onSelectDiffFile,
 	onOpenComment,
-	onOpenChat,
 	onSearch,
+	onOpenDatabaseExplorer,
 	onOpenFileAtLine,
 	onOpenUrl,
+	onOpenActionLogs,
+	isGitGraphOpen,
+	onOpenGitGraph,
 	onOpenCommandInTerminal,
 	selectedFilePath,
 	pendingReveal,
@@ -183,6 +185,13 @@ export function WorkspaceSidebar({
 			staleTime: 10000,
 		},
 	);
+	const { data: workspace } = electronTrpc.workspaces.get.useQuery(
+		{ id: workspaceId },
+		{
+			enabled: Boolean(workspaceId),
+		},
+	);
+	const worktreePath = workspace?.worktreePath;
 
 	electronTrpc.languageServices.subscribeDiagnostics.useSubscription(
 		{ workspaceId },
@@ -207,25 +216,61 @@ export function WorkspaceSidebar({
 		[onOpenFileAtLine, onSelectFile],
 	);
 
-	const changesTabDef = useChangesTab({
-		workspaceId,
-		selectedFilePath,
-		onSelectFile: onSelectDiffFile,
-		onOpenFile: onSelectFile,
-		onOpenFileAtLine: handleOpenFileAtLine,
-		onOpenComment,
-		onOpenUrl,
-		isActive: activeTab === "changes",
-	});
+	const handleChangeFileOpen = useCallback(
+		(file: ChangedFile, category: ChangeCategory, commitHash?: string) => {
+			if (collections.v2WorkspaceLocalState.get(workspaceId)) {
+				collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+					draft.sidebarState.changesFilter =
+						category === "committed" && commitHash
+							? { kind: "commit", hash: commitHash }
+							: { kind: "all" };
+				});
+			}
+			if (onSelectDiffFile) {
+				onSelectDiffFile(file.path);
+				return;
+			}
+			if (!worktreePath) return;
+			onSelectFile(toAbsoluteWorkspacePath(worktreePath, file.path));
+		},
+		[collections, onSelectDiffFile, onSelectFile, workspaceId, worktreePath],
+	);
+	const handleOpenReviewComment = useCallback(
+		(comment: PullRequestComment) => {
+			onOpenComment?.({
+				commentId: comment.id,
+				authorLogin: comment.authorLogin,
+				avatarUrl: comment.avatarUrl,
+				body: comment.body,
+				url: comment.url,
+				path: comment.path,
+				line: comment.line,
+			});
+		},
+		[onOpenComment],
+	);
+	const totalChanges =
+		(gitStatus.data?.againstBase.length ?? 0) +
+		(gitStatus.data?.staged.length ?? 0) +
+		(gitStatus.data?.unstaged.length ?? 0);
 	const changesTab: SidebarTabDefinition = {
-		...changesTabDef,
+		id: "changes",
+		label: "Git",
 		icon: LuGitCompareArrows,
+		badge: totalChanges > 0 ? totalChanges : undefined,
+		content: (
+			<ChangesView
+				onFileOpen={handleChangeFileOpen}
+				onOpenFileAtLine={handleOpenFileAtLine}
+				onOpenComment={handleOpenReviewComment}
+				onOpenUrl={onOpenUrl}
+				onOpenActionLogs={onOpenActionLogs}
+				isGitGraphOpen={isGitGraphOpen}
+				onToggleGitGraph={onOpenGitGraph}
+				isActive={activeTab === "changes"}
+			/>
+		),
 	};
-
-	const { flowState, onRetry } = usePRFlowState(workspaceId);
-	const dispatch = usePRFlowDispatch({
-		onOpenChat: onOpenChat ?? (() => {}),
-	});
 
 	const filesTab: SidebarTabDefinition = {
 		id: "files",
@@ -297,7 +342,12 @@ export function WorkspaceSidebar({
 		id: "databases",
 		label: "Databases",
 		icon: LuDatabase,
-		content: <DatabasesView workspaceId={workspaceId} />,
+		content: (
+			<DatabasesView
+				workspaceId={workspaceId}
+				onOpenExplorer={onOpenDatabaseExplorer}
+			/>
+		),
 	};
 
 	const tabs: SidebarTabDefinition[] = [
@@ -328,13 +378,6 @@ export function WorkspaceSidebar({
 				ref={containerRef}
 				className="isolate flex h-full w-full min-h-0 flex-col overflow-hidden bg-background"
 			>
-				<PRActionHeader
-					workspaceId={workspaceId}
-					state={flowState}
-					dispatch={dispatch}
-					onRetry={onRetry}
-					createPREnabled={CREATE_PR_BUTTON_ENABLED}
-				/>
 				<SidebarHeader
 					tabs={tabs}
 					activeTab={activeTab}

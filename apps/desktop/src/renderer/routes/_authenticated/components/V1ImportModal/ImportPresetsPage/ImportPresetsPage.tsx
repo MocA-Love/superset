@@ -1,6 +1,7 @@
 import type { TerminalPreset } from "@superset/local-db";
 import {
 	AGENT_LABELS,
+	AGENT_PRESET_COMMANDS,
 	AGENT_TYPES,
 	type AgentType,
 } from "@superset/shared/agent-command";
@@ -88,6 +89,12 @@ export function ImportPresetsPage({ organizationId }: ImportPresetsPageProps) {
 				const v2Name = builtInAgentId
 					? AGENT_LABELS[builtInAgentId]
 					: preset.name;
+				const commands =
+					preset.commands.length > 0
+						? preset.commands
+						: builtInAgentId
+							? AGENT_PRESET_COMMANDS[builtInAgentId]
+							: preset.commands;
 				const alreadyImported = linkedAgentId
 					? importedAgentIds.has(linkedAgentId) ||
 						(!!builtInAgentId && importedAgentIds.has(builtInAgentId))
@@ -99,6 +106,7 @@ export function ImportPresetsPage({ organizationId }: ImportPresetsPageProps) {
 						tabOrder={index}
 						linkedAgentId={linkedAgentId}
 						v2Name={v2Name}
+						commands={commands}
 						alreadyImported={alreadyImported}
 						organizationId={organizationId}
 					/>
@@ -113,6 +121,7 @@ interface PresetRowProps {
 	tabOrder: number;
 	linkedAgentId: string | undefined;
 	v2Name: string;
+	commands: string[];
 	alreadyImported: boolean;
 	organizationId: string;
 }
@@ -122,6 +131,7 @@ function PresetRow({
 	tabOrder,
 	linkedAgentId,
 	v2Name,
+	commands,
 	alreadyImported,
 	organizationId,
 }: PresetRowProps) {
@@ -138,7 +148,7 @@ function PresetRow({
 				name: v2Name,
 				description: preset.description,
 				cwd: preset.cwd,
-				commands: preset.commands,
+				commands,
 				projectIds: preset.projectIds ?? null,
 				pinnedToBar: preset.pinnedToBar,
 				applyOnWorkspaceCreated: preset.applyOnWorkspaceCreated,
@@ -175,7 +185,7 @@ function PresetRow({
 		<ImportRow
 			icon={<LuTerminal className="size-3.5" strokeWidth={2} />}
 			primary={v2Name}
-			secondary={preset.description ?? preset.commands[0]}
+			secondary={preset.description ?? commands[0]}
 			action={action}
 		/>
 	);

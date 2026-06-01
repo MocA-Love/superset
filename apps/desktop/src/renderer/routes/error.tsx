@@ -20,14 +20,11 @@ export function ErrorPage({ error, info }: ErrorComponentProps) {
 
 	const [showDetails, setShowDetails] = useState(IS_DEV);
 	const [copied, setCopied] = useState(false);
-	const copyToClipboard = useCallback(
-		async (text: string) => {
-			await navigator.clipboard.writeText(text);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		},
-		[],
-	);
+	const copyToClipboard = useCallback(async (text: string) => {
+		await navigator.clipboard.writeText(text);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	}, []);
 
 	useEffect(() => {
 		console.error("[renderer] Route error caught:", error, componentStack);

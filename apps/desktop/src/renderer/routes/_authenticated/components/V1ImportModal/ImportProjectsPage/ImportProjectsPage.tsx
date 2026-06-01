@@ -13,6 +13,12 @@ import { getBaseName } from "renderer/lib/pathBasename";
 import { useFinalizeProjectSetup } from "renderer/react-query/projects";
 import { ImportPageShell } from "../components/ImportPageShell";
 import { ImportRow, type RowAction } from "../components/ImportRow";
+import {
+	getDefaultV1ProjectImportCandidate,
+	getLocalPathCandidates,
+	isProjectAlreadyImported,
+	shouldSkipV1ProjectImportAll,
+} from "./importProjectPolicy";
 
 interface ImportProjectsPageProps {
 	organizationId: string;
@@ -81,13 +87,7 @@ export function ImportProjectsPage({
 					if (isProjectAlreadyImported(findByPathResult)) {
 						continue;
 					}
-					if (findByPathResult.candidates.length > 1) {
-						continue;
-					}
-					if (
-						findByPathResult.candidates.length === 0 &&
-						findByPathResult.cloudErrors.length > 0
-					) {
+					if (shouldSkipV1ProjectImportAll(findByPathResult)) {
 						continue;
 					}
 					const result = await importProject({
@@ -216,12 +216,6 @@ function fetchProjectFindByPath(
 	});
 }
 
-function isProjectAlreadyImported(
-	findByPathResult: ProjectFindByPathResult | undefined,
-) {
-	return !!findByPathResult?.candidates.find((c) => c.source === "local-path");
-}
-
 type FinalizeProjectSetup = ReturnType<typeof useFinalizeProjectSetup>;
 
 async function importProject({
@@ -251,7 +245,7 @@ async function importProject({
 
 	const targetCandidate = linkToProjectId
 		? candidates.find((c) => c.id === linkToProjectId)
-		: candidates[0];
+		: getDefaultV1ProjectImportCandidate(findByPathResult);
 
 	if (linkToProjectId && !targetCandidate) {
 		throw new Error(
@@ -426,8 +420,13 @@ function ProjectRow({
 			};
 		}
 		const candidates = findByPathQuery.data?.candidates ?? [];
+		const localPathCandidates = getLocalPathCandidates(findByPathQuery.data);
 		const cloudErrors = findByPathQuery.data?.cloudErrors ?? [];
-		if (candidates.length === 0 && cloudErrors.length > 0) {
+		if (
+			localPathCandidates.length === 0 &&
+			candidates.length === 0 &&
+			cloudErrors.length > 0
+		) {
 			const first = cloudErrors[0];
 			return {
 				kind: "error",
@@ -439,11 +438,11 @@ function ProjectRow({
 				},
 			};
 		}
-		if (candidates.length > 1) {
+		if (localPathCandidates.length > 1) {
 			return {
 				kind: "pick",
 				label: "Link to…",
-				candidates,
+				candidates: localPathCandidates,
 				onPick: (id) => {
 					void runImport(id);
 				},
@@ -451,7 +450,7 @@ function ProjectRow({
 		}
 		return {
 			kind: "ready",
-			label: candidates.length === 1 ? "Link" : "Import",
+			label: localPathCandidates.length === 1 ? "Link" : "Import",
 			onClick: () => {
 				void runImport();
 			},
