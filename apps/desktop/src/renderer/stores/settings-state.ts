@@ -26,8 +26,7 @@ export type SettingsSection =
 	| "security"
 	| "serviceStatus"
 	| "vscodeExtensions"
-	| "hosts"
-	| "experimental";
+	| "hosts";
 
 interface SettingsState {
 	activeSection: SettingsSection;

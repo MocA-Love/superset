@@ -1,4 +1,5 @@
 import type { SettingsSection } from "renderer/stores/settings-state";
+import { SUPPORTS_AGENT_SLEEP_PREVENTION } from "shared/constants";
 
 export const SETTING_ITEM_ID = {
 	ACCOUNT_PROFILE: "account-profile",
@@ -25,7 +26,9 @@ export const SETTING_ITEM_ID = {
 
 	KEYBOARD_SHORTCUTS: "keyboard-shortcuts",
 	BEHAVIOR_CONFIRM_QUIT: "behavior-confirm-quit",
+	BEHAVIOR_PREVENT_AGENT_SLEEP: "behavior-prevent-agent-sleep",
 	BEHAVIOR_FILE_OPEN_MODE: "behavior-file-open-mode",
+	BEHAVIOR_FILE_DRAG_BEHAVIOR: "behavior-file-drag-behavior",
 	BEHAVIOR_RESOURCE_MONITOR: "behavior-resource-monitor",
 	BEHAVIOR_OPEN_LINKS_IN_APP: "behavior-open-links-in-app",
 
@@ -72,9 +75,12 @@ export const SETTING_ITEM_ID = {
 	API_KEYS_LIST: "api-keys-list",
 	API_KEYS_GENERATE: "api-keys-generate",
 
+	EXTENSIONS_BROWSER: "extensions-browser",
+
 	PERMISSIONS_FULL_DISK_ACCESS: "permissions-full-disk-access",
 	PERMISSIONS_ACCESSIBILITY: "permissions-accessibility",
 	PERMISSIONS_MICROPHONE: "permissions-microphone",
+	PERMISSIONS_CAMERA: "permissions-camera",
 	PERMISSIONS_APPLE_EVENTS: "permissions-apple-events",
 	PERMISSIONS_LOCAL_NETWORK: "permissions-local-network",
 
@@ -102,6 +108,7 @@ export const SETTING_ITEM_ID = {
 	RINGTONES_AIVIS: "ringtones-aivis",
 	RINGTONES_AIVIS_DICTIONARY: "ringtones-aivis-dictionary",
 	RINGTONES_AIVIS_USAGE: "ringtones-aivis-usage",
+	SERVICE_STATUS_ADD: "service-status-add",
 	SERVICE_STATUS_PROVIDERS: "service-status-providers",
 	TERMINAL_SUGGESTIONS: "terminal-suggestions",
 	VSCODE_EXTENSIONS_MANAGE: "vscode-extensions-manage",
@@ -158,6 +165,8 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 
 	[SETTING_ITEM_ID.BEHAVIOR_CONFIRM_QUIT]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE]: "v1",
+	[SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR]: "shared",
+	[SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_RESOURCE_MONITOR]: "shared",
 	[SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP]: "v1",
 
@@ -204,9 +213,12 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.API_KEYS_LIST]: "shared",
 	[SETTING_ITEM_ID.API_KEYS_GENERATE]: "shared",
 
+	[SETTING_ITEM_ID.EXTENSIONS_BROWSER]: "shared",
+
 	[SETTING_ITEM_ID.PERMISSIONS_FULL_DISK_ACCESS]: "shared",
 	[SETTING_ITEM_ID.PERMISSIONS_ACCESSIBILITY]: "shared",
 	[SETTING_ITEM_ID.PERMISSIONS_MICROPHONE]: "shared",
+	[SETTING_ITEM_ID.PERMISSIONS_CAMERA]: "shared",
 	[SETTING_ITEM_ID.PERMISSIONS_APPLE_EVENTS]: "shared",
 	[SETTING_ITEM_ID.PERMISSIONS_LOCAL_NETWORK]: "shared",
 
@@ -231,6 +243,7 @@ export const SETTING_ITEM_VARIANT: Record<SettingItemId, SettingVariant> = {
 	[SETTING_ITEM_ID.RINGTONES_AIVIS]: "shared",
 	[SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY]: "shared",
 	[SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE]: "shared",
+	[SETTING_ITEM_ID.SERVICE_STATUS_ADD]: "shared",
 	[SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS]: "shared",
 	[SETTING_ITEM_ID.TERMINAL_SUGGESTIONS]: "shared",
 	[SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE]: "shared",
@@ -501,6 +514,26 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
+		id: SETTING_ITEM_ID.APPEARANCE_VIBRANCY,
+		section: "appearance",
+		title: "Window Vibrancy",
+		description: "Make the window semi-transparent with a macOS vibrancy blur",
+		keywords: [
+			"appearance",
+			"vibrancy",
+			"transparent",
+			"transparency",
+			"blur",
+			"opacity",
+			"glass",
+			"warp",
+			"macos",
+			"ウィンドウ透過",
+			"不透明度",
+			"ブラー",
+		],
+	},
+	{
 		id: SETTING_ITEM_ID.RINGTONES_NOTIFICATION,
 		section: "ringtones",
 		title: "Notification Sound",
@@ -520,6 +553,53 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"chime",
 			"mute",
 			"volume",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.RINGTONES_AIVIS,
+		section: "ringtones",
+		title: "Aivis Voice Announcement",
+		description:
+			"Speak the workspace/branch via Aivis API after the notification sound",
+		keywords: [
+			"aivis",
+			"tts",
+			"voice",
+			"speech",
+			"announce",
+			"読み上げ",
+			"音声合成",
+			"アイビス",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.RINGTONES_AIVIS_DICTIONARY,
+		section: "ringtones",
+		title: "Aivis User Dictionary",
+		description:
+			"Register custom pronunciations for branch names, acronyms, and proper nouns",
+		keywords: [
+			"aivis",
+			"dictionary",
+			"pronunciation",
+			"辞書",
+			"読み方",
+			"カスタム読み",
+			"固有名詞",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.RINGTONES_AIVIS_USAGE,
+		section: "ringtones",
+		title: "Aivis Usage",
+		description: "Daily Aivis API request count, characters and credits",
+		keywords: [
+			"aivis",
+			"usage",
+			"credits",
+			"使用量",
+			"クレジット",
+			"リクエスト",
 		],
 	},
 	{
@@ -559,6 +639,29 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"unsaved",
 		],
 	},
+	...(SUPPORTS_AGENT_SLEEP_PREVENTION
+		? [
+				{
+					id: SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP,
+					section: "behavior" as const,
+					title: "Prevent system sleep during agent tasks",
+					description:
+						"Keep your computer awake while agents are running in Superset terminals on supported macOS and Linux systems",
+					keywords: [
+						"features",
+						"sleep",
+						"prevent",
+						"awake",
+						"caffeinate",
+						"agent",
+						"terminal",
+						"task",
+						"macos",
+						"linux",
+					],
+				},
+			]
+		: []),
 	{
 		id: SETTING_ITEM_ID.GIT_DELETE_LOCAL_BRANCH,
 		section: "git",
@@ -595,6 +698,59 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
+		id: SETTING_ITEM_ID.GIT_SMART_COMMIT,
+		section: "git",
+		title: "Smart Commit",
+		description:
+			"Commit all changes when there are no staged changes (VS Code style)",
+		keywords: [
+			"git",
+			"commit",
+			"smart",
+			"stage",
+			"staged",
+			"unstaged",
+			"tracked",
+			"auto",
+			"all",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_AUTO_STASH,
+		section: "git",
+		title: "Auto Stash",
+		description:
+			"Stash local changes before pull/sync and restore after (VS Code style)",
+		keywords: ["git", "stash", "pull", "sync", "auto", "restore", "pop"],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_BRANCH_SORT_ORDER,
+		section: "git",
+		title: "Branch Sort Order",
+		description:
+			"Order used in the base branch picker (committer date or alphabetical)",
+		keywords: [
+			"git",
+			"branch",
+			"sort",
+			"order",
+			"committer",
+			"date",
+			"alphabetical",
+			"picker",
+			"pin",
+			"default",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.GIT_POST_COMMIT_COMMAND,
+		section: "git",
+		title: "Post Commit Command",
+		description:
+			"Run push or sync automatically after a successful commit (VS Code style)",
+		keywords: ["git", "commit", "post", "push", "sync", "auto", "after"],
+	},
+	{
 		id: SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
 		section: "behavior",
 		title: "File open mode",
@@ -609,6 +765,25 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"tab",
 			"new tab",
 			"split pane",
+			"viewer",
+			"behavior",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR,
+		section: "behavior",
+		title: "Sidebar file drag behavior",
+		description:
+			"Choose whether dragging files from the Files or Changes sidebar opens the file viewer or pastes file paths into terminals",
+		keywords: [
+			"file",
+			"drag",
+			"drop",
+			"sidebar",
+			"files",
+			"changes",
+			"terminal",
+			"path",
 			"viewer",
 			"behavior",
 		],
@@ -631,6 +806,28 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"initial",
 			"viewer",
 			"changes",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.BEHAVIOR_LANGUAGE_DIAGNOSTICS,
+		section: "diagnostics",
+		title: "Language diagnostics",
+		description:
+			"Choose which language services report errors and warnings in Problems",
+		keywords: [
+			"diagnostics",
+			"problems",
+			"errors",
+			"warnings",
+			"typescript",
+			"tsx",
+			"json",
+			"toml",
+			"dart",
+			"flutter",
+			"language server",
+			"lint",
+			"validation",
 		],
 	},
 	{
@@ -795,6 +992,22 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"stop",
 			"manage",
 			"pty",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.TERMINAL_SUGGESTIONS,
+		section: "terminal",
+		title: "Shell History Suggestions",
+		description: "Show command suggestions from shell history",
+		keywords: [
+			"terminal",
+			"suggest",
+			"suggestion",
+			"autocomplete",
+			"history",
+			"shell",
+			"command",
+			"dropdown",
 		],
 	},
 	{
@@ -1184,6 +1397,45 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		],
 	},
 	{
+		id: SETTING_ITEM_ID.PROJECT_AUTO_IMPORT_WORKTREES,
+		section: "project",
+		title: "Auto-import detected worktrees",
+		description:
+			"Automatically import worktrees created outside Superset (e.g. by LLM agents)",
+		keywords: [
+			"project",
+			"auto",
+			"automatic",
+			"import",
+			"worktree",
+			"worktrees",
+			"detect",
+			"llm",
+			"claude",
+			"agent",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.PROJECT_AUTO_REMOVE_WORKTREES,
+		section: "project",
+		title: "Auto-remove missing worktrees",
+		description:
+			"Automatically remove worktrees from the sidebar when they are deleted from disk",
+		keywords: [
+			"project",
+			"auto",
+			"automatic",
+			"remove",
+			"delete",
+			"cleanup",
+			"missing",
+			"worktree",
+			"worktrees",
+			"orphan",
+			"sync",
+		],
+	},
+	{
 		id: SETTING_ITEM_ID.PROJECT_ENV_VARS,
 		section: "project",
 		title: "Environment Variables",
@@ -1229,6 +1481,178 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"mcp",
 			"claude desktop",
 			"claude code",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.EXTENSIONS_BROWSER,
+		section: "extensions",
+		title: "Browser Extensions",
+		description:
+			"Install and manage Chrome extensions from the Chrome Web Store",
+		keywords: [
+			"extensions",
+			"browser",
+			"chrome",
+			"web store",
+			"install",
+			"toolbar",
+			"extension",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE,
+		section: "vscodeExtensions",
+		title: "VS Code Extensions",
+		description:
+			"Manage VS Code extensions like Claude Code, ChatGPT, and Kimi Code running inside Superset",
+		keywords: [
+			"vscode",
+			"vs code",
+			"extension",
+			"claude",
+			"chatgpt",
+			"codex",
+			"kimi",
+			"ai",
+			"install",
+			"manage",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_INDENT_RAINBOW,
+		section: "vscodeExtensions",
+		title: "Indent Rainbow",
+		description:
+			"Colorize indentation levels in the code editor with customizable rainbow colors",
+		keywords: [
+			"indent",
+			"rainbow",
+			"color",
+			"indentation",
+			"editor",
+			"highlight",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_TRAILING_SPACES,
+		section: "vscodeExtensions",
+		title: "Trailing Spaces",
+		description:
+			"Highlight trailing whitespace at the end of lines in the code editor",
+		keywords: [
+			"trailing",
+			"spaces",
+			"whitespace",
+			"trim",
+			"editor",
+			"highlight",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.VSCODE_EXTENSIONS_REFERENCE_GRAPH,
+		section: "vscodeExtensions",
+		title: "Reference Graph",
+		description:
+			"Visualize code symbol references and call hierarchies as interactive graphs",
+		keywords: [
+			"reference",
+			"graph",
+			"call",
+			"hierarchy",
+			"symbol",
+			"visualization",
+			"editor",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW,
+		section: "metrics",
+		title: "GitHub Overview",
+		description:
+			"GitHub sync health, active workspaces, rate limits, and scheduler state",
+		keywords: [
+			"metrics",
+			"github",
+			"overview",
+			"health",
+			"rate limit",
+			"scheduler",
+			"debug",
+			"sync",
+			"status",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.METRICS_GITHUB_TRAFFIC,
+		section: "metrics",
+		title: "GitHub Traffic",
+		description:
+			"Operation volume, cache efficiency, and workspace-level GitHub activity",
+		keywords: [
+			"metrics",
+			"github",
+			"traffic",
+			"cache",
+			"efficiency",
+			"calls",
+			"api",
+			"preview",
+			"comments",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.METRICS_GITHUB_COPY,
+		section: "metrics",
+		title: "GitHub Debug Copy",
+		description:
+			"Copy summary, JSON bundle, and repro template for GitHub sync debugging",
+		keywords: [
+			"metrics",
+			"github",
+			"copy",
+			"debug bundle",
+			"repro",
+			"json",
+			"support",
+			"diagnostics",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS,
+		section: "serviceStatus",
+		title: "Service Status Providers",
+		description:
+			"Manage which external status pages appear in the header (Claude, Codex, GitHub, ...)",
+		keywords: [
+			"service status",
+			"status",
+			"providers",
+			"statuspage",
+			"external",
+			"header",
+			"indicator",
+			"health",
+			"uptime",
+			"incident",
+			"dashboard",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.SERVICE_STATUS_ADD,
+		section: "serviceStatus",
+		title: "Add Custom Status Provider",
+		description:
+			"Add a Statuspage.io-compatible provider with a custom label and icon",
+		keywords: [
+			"service status",
+			"status",
+			"add",
+			"custom",
+			"provider",
+			"statuspage",
+			"icon",
+			"url",
+			"manual",
 		],
 	},
 	{
@@ -1284,6 +1708,22 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"recording",
 			"push to talk",
 			"codex",
+			"privacy",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.PERMISSIONS_CAMERA,
+		section: "permissions",
+		title: "Camera",
+		description:
+			"Use video input in websites and tools running inside Superset",
+		keywords: [
+			"permissions",
+			"camera",
+			"video",
+			"webcam",
+			"browser",
+			"website",
 			"privacy",
 		],
 	},
