@@ -1,4 +1,4 @@
-import type { FileOpenMode } from "@superset/local-db";
+import type { FileDragBehavior, FileOpenMode } from "@superset/local-db";
 import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import {
@@ -22,6 +22,7 @@ import {
 	DEFAULT_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
 	MAX_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
 	MIN_RIGHT_SIDEBAR_OPEN_VIEW_WIDTH,
+	SUPPORTS_AGENT_SLEEP_PREVENTION,
 } from "shared/constants";
 import {
 	isItemVisible,
@@ -38,8 +39,15 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		SETTING_ITEM_ID.BEHAVIOR_CONFIRM_QUIT,
 		visibleItems,
 	);
+	const showPreventAgentSleep =
+		SUPPORTS_AGENT_SLEEP_PREVENTION &&
+		isItemVisible(SETTING_ITEM_ID.BEHAVIOR_PREVENT_AGENT_SLEEP, visibleItems);
 	const showFileOpenMode = isItemVisible(
 		SETTING_ITEM_ID.BEHAVIOR_FILE_OPEN_MODE,
+		visibleItems,
+	);
+	const showFileDragBehavior = isItemVisible(
+		SETTING_ITEM_ID.BEHAVIOR_FILE_DRAG_BEHAVIOR,
 		visibleItems,
 	);
 	const showRightSidebarOpenViewWidth = isItemVisible(
@@ -80,6 +88,29 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		setConfirmOnQuit.mutate({ enabled });
 	};
 
+	const { data: preventAgentSleep, isLoading: isPreventAgentSleepLoading } =
+		electronTrpc.settings.getPreventAgentSleep.useQuery();
+	const setPreventAgentSleep =
+		electronTrpc.settings.setPreventAgentSleep.useMutation({
+			onMutate: async ({ enabled }) => {
+				await utils.settings.getPreventAgentSleep.cancel();
+				const previous = utils.settings.getPreventAgentSleep.getData();
+				utils.settings.getPreventAgentSleep.setData(undefined, enabled);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getPreventAgentSleep.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getPreventAgentSleep.invalidate();
+			},
+		});
+
 	const { data: fileOpenMode, isLoading: isFileOpenModeLoading } =
 		electronTrpc.settings.getFileOpenMode.useQuery();
 	const setFileOpenMode = electronTrpc.settings.setFileOpenMode.useMutation({
@@ -98,6 +129,28 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 			utils.settings.getFileOpenMode.invalidate();
 		},
 	});
+	const { data: fileDragBehavior, isLoading: isFileDragBehaviorLoading } =
+		electronTrpc.settings.getFileDragBehavior.useQuery();
+	const setFileDragBehavior =
+		electronTrpc.settings.setFileDragBehavior.useMutation({
+			onMutate: async ({ behavior }) => {
+				await utils.settings.getFileDragBehavior.cancel();
+				const previous = utils.settings.getFileDragBehavior.getData();
+				utils.settings.getFileDragBehavior.setData(undefined, behavior);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getFileDragBehavior.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getFileDragBehavior.invalidate();
+			},
+		});
 
 	const { data: resourceMonitorEnabled, isLoading: isResourceMonitorLoading } =
 		electronTrpc.settings.getShowResourceMonitor.useQuery();
@@ -229,6 +282,34 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 					</div>
 				)}
 
+				{showPreventAgentSleep && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label
+								htmlFor="prevent-agent-sleep"
+								className="text-sm font-medium"
+							>
+								Prevent system sleep during agent tasks
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Keep your computer awake while Claude, Codex, and other agents
+								are running in Superset terminals on supported macOS and Linux
+								systems
+							</p>
+						</div>
+						<Switch
+							id="prevent-agent-sleep"
+							checked={preventAgentSleep ?? false}
+							onCheckedChange={(enabled) =>
+								setPreventAgentSleep.mutate({ enabled })
+							}
+							disabled={
+								isPreventAgentSleepLoading || setPreventAgentSleep.isPending
+							}
+						/>
+					</div>
+				)}
+
 				{showFileOpenMode && (
 					<div className="flex items-center justify-between">
 						<div className="space-y-0.5">
@@ -250,6 +331,42 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 							<SelectContent>
 								<SelectItem value="split-pane">Split pane</SelectItem>
 								<SelectItem value="new-tab">New tab</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+				)}
+
+				{showFileDragBehavior && (
+					<div className="flex items-center justify-between">
+						<div className="space-y-0.5">
+							<Label className="text-sm font-medium">
+								Sidebar file drag behavior
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Choose whether dragging files from the Files or Changes sidebar
+								into the main area opens them in the file viewer or pastes their
+								path into terminals
+							</p>
+						</div>
+						<Select
+							value={fileDragBehavior ?? "open-file-viewer"}
+							onValueChange={(value) =>
+								setFileDragBehavior.mutate({
+									behavior: value as FileDragBehavior,
+								})
+							}
+							disabled={
+								isFileDragBehaviorLoading || setFileDragBehavior.isPending
+							}
+						>
+							<SelectTrigger className="w-[220px]">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="open-file-viewer">
+									Open file viewer
+								</SelectItem>
+								<SelectItem value="paste-path">Paste file path</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>

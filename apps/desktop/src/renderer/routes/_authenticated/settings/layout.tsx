@@ -30,15 +30,22 @@ const SECTION_ORDER: SettingsSection[] = [
 	"ringtones",
 	"keyboard",
 	"behavior",
+	"diagnostics",
 	"git",
+	"agents",
 	"terminal",
 	"links",
 	"models",
+	"extensions",
+	"vscodeExtensions",
 	"organization",
 	"teams",
 	"integrations",
+	"serviceStatus",
 	"billing",
 	"apikeys",
+	"metrics",
+	"security",
 	"permissions",
 	"hosts",
 	"experimental",
@@ -52,15 +59,26 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/ringtones")) return "ringtones";
 	if (pathname.includes("/settings/keyboard")) return "keyboard";
 	if (pathname.includes("/settings/behavior")) return "behavior";
+	if (pathname.includes("/settings/diagnostics")) return "diagnostics";
 	if (pathname.includes("/settings/git")) return "git";
+	if (pathname.includes("/settings/agents")) return "agents";
 	if (pathname.includes("/settings/terminal")) return "terminal";
 	if (pathname.includes("/settings/links")) return "links";
 	if (pathname.includes("/settings/models")) return "models";
 	if (pathname.includes("/settings/experimental")) return "experimental";
 	if (pathname.includes("/settings/integrations")) return "integrations";
+	if (pathname.includes("/settings/vscode-extensions"))
+		return "vscodeExtensions";
+	if (pathname.includes("/settings/extensions")) return "extensions";
+	if (pathname.includes("/settings/service-status")) return "serviceStatus";
+	if (pathname.includes("/settings/security")) return "security";
+	if (pathname.includes("/settings/metrics")) return "metrics";
+	if (pathname.includes("/settings/billing")) return "billing";
+	if (pathname.includes("/settings/api-keys")) return "apikeys";
 	if (pathname.includes("/settings/permissions")) return "permissions";
 	if (pathname.includes("/settings/hosts")) return "hosts";
 	if (pathname.includes("/settings/project")) return "project";
+	if (pathname.includes("/settings/projects")) return "project";
 	return null;
 }
 
@@ -80,20 +98,40 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/keyboard";
 		case "behavior":
 			return "/settings/behavior";
+		case "diagnostics":
+			return "/settings/diagnostics";
 		case "git":
 			return "/settings/git";
+		case "agents":
+			return "/settings/agents";
 		case "terminal":
 			return "/settings/terminal";
 		case "links":
 			return "/settings/links";
 		case "models":
 			return "/settings/models";
+		case "extensions":
+			return "/settings/extensions";
+		case "vscodeExtensions":
+			return "/settings/vscode-extensions";
 		case "experimental":
 			return "/settings/experimental";
 		case "integrations":
 			return "/settings/integrations";
+		case "serviceStatus":
+			return "/settings/service-status";
+		case "billing":
+			return "/settings/billing";
+		case "apikeys":
+			return "/settings/api-keys";
+		case "metrics":
+			return "/settings/metrics";
+		case "security":
+			return "/settings/security";
 		case "permissions":
 			return "/settings/permissions";
+		case "project":
+			return "/settings/projects";
 		case "hosts":
 			return "/settings/hosts";
 		default:

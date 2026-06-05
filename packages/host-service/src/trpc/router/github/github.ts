@@ -83,6 +83,56 @@ interface WorkflowDispatchInfo {
 	inputs: WorkflowDispatchInput[];
 }
 
+const GITHUB_REPOSITORY_QUERY_CACHE_TTL_MS = 30_000;
+
+const githubRepositoryQueryCache = new Map<
+	string,
+	{ expiresAt: number; promise: Promise<unknown> }
+>();
+
+function sweepExpiredGitHubRepositoryQueryCache(now = Date.now()): void {
+	for (const [key, entry] of githubRepositoryQueryCache) {
+		if (entry.expiresAt <= now) {
+			githubRepositoryQueryCache.delete(key);
+		}
+	}
+}
+
+function readCachedGitHubRepositoryQuery<T>(
+	key: string,
+	load: () => Promise<T>,
+): Promise<T> {
+	const now = Date.now();
+	sweepExpiredGitHubRepositoryQueryCache(now);
+	const cached = githubRepositoryQueryCache.get(key);
+	if (cached && cached.expiresAt > now) {
+		return cached.promise as Promise<T>;
+	}
+
+	let promise: Promise<T>;
+	promise = load().catch((error) => {
+		const cachedAfterError = githubRepositoryQueryCache.get(key);
+		if (cachedAfterError?.promise === promise) {
+			githubRepositoryQueryCache.delete(key);
+		}
+		throw error;
+	});
+	githubRepositoryQueryCache.set(key, {
+		expiresAt: now + GITHUB_REPOSITORY_QUERY_CACHE_TTL_MS,
+		promise: promise as Promise<unknown>,
+	});
+	return promise;
+}
+
+function invalidateGitHubRepositoryQueryCache(prefix: string): void {
+	sweepExpiredGitHubRepositoryQueryCache();
+	for (const key of githubRepositoryQueryCache.keys()) {
+		if (key.startsWith(prefix)) {
+			githubRepositoryQueryCache.delete(key);
+		}
+	}
+}
+
 function normalizeIdentityList(values: string[]): string[] {
 	return Array.from(
 		new Set(values.map((value) => value.trim()).filter(Boolean)),
@@ -514,143 +564,159 @@ export const githubRouter = router({
 	getRepositoryOverview: protectedProcedure
 		.input(z.object({ workspaceId: z.string() }))
 		.query(async ({ ctx, input }) => {
-			const {
-				repoPath,
-				repositoryNameWithOwner,
-				repositoryUrl,
-				upstreamUrl,
-				upstreamNameWithOwner,
-				isFork,
-				branchExistsOnRemote,
-				currentBranch,
-				defaultBranch,
-			} = await resolveRepositoryTarget(ctx, input.workspaceId);
+			return readCachedGitHubRepositoryQuery(
+				`repository-overview:${input.workspaceId}`,
+				async () => {
+					const {
+						repoPath,
+						repositoryNameWithOwner,
+						repositoryUrl,
+						upstreamUrl,
+						upstreamNameWithOwner,
+						isFork,
+						branchExistsOnRemote,
+						currentBranch,
+						defaultBranch,
+					} = await resolveRepositoryTarget(ctx, input.workspaceId);
 
-			const [pullRequests, workflows, labels, assignees] = await Promise.all([
-				loadRepositorySegment({
-					label: "pullRequests",
-					workspaceId: input.workspaceId,
-					repositoryNameWithOwner,
-					fallback: [] as Array<z.infer<typeof ghRepositoryPullRequestSchema>>,
-					load: async () => {
-						const result = await ctx.execGh(
-							[
-								"pr",
-								"list",
-								"--repo",
+					const [pullRequests, workflows, labels, assignees] =
+						await Promise.all([
+							loadRepositorySegment({
+								label: "pullRequests",
+								workspaceId: input.workspaceId,
 								repositoryNameWithOwner,
-								"--state",
-								"open",
-								"--limit",
-								"8",
-								"--json",
-								"number,title,url,state,isDraft,headRefName,updatedAt,author",
-							],
-							{ cwd: repoPath, timeout: 30_000 },
-						);
-						return z.array(ghRepositoryPullRequestSchema).parse(result);
-					},
-				}),
-				loadRepositorySegment({
-					label: "workflows",
-					workspaceId: input.workspaceId,
-					repositoryNameWithOwner,
-					fallback: [] as Array<z.infer<typeof ghRepositoryWorkflowSchema>>,
-					load: async () => {
-						const result = await ctx.execGh(
-							[
-								"api",
-								`repos/${repositoryNameWithOwner}/actions/workflows?per_page=100`,
-							],
-							{ cwd: repoPath, timeout: 30_000 },
-						);
-						return (
-							ghRepositoryWorkflowsResponseSchema.parse(result).workflows ?? []
-						);
-					},
-				}),
-				loadRepositorySegment({
-					label: "labels",
-					workspaceId: input.workspaceId,
-					repositoryNameWithOwner,
-					fallback: [] as Array<z.infer<typeof ghRepositoryLabelSchema>>,
-					load: async () => {
-						const result = await ctx.execGh(
-							["api", `repos/${repositoryNameWithOwner}/labels?per_page=100`],
-							{ cwd: repoPath, timeout: 30_000 },
-						);
-						return z.array(ghRepositoryLabelSchema).parse(result);
-					},
-				}),
-				loadRepositorySegment({
-					label: "assignees",
-					workspaceId: input.workspaceId,
-					repositoryNameWithOwner,
-					fallback: [] as Array<z.infer<typeof ghRepositoryAssigneeSchema>>,
-					load: async () => {
-						const result = await ctx.execGh(
-							[
-								"api",
-								`repos/${repositoryNameWithOwner}/assignees?per_page=100`,
-							],
-							{ cwd: repoPath, timeout: 30_000 },
-						);
-						return z.array(ghRepositoryAssigneeSchema).parse(result);
-					},
-				}),
-			]);
+								fallback: [] as Array<
+									z.infer<typeof ghRepositoryPullRequestSchema>
+								>,
+								load: async () => {
+									const result = await ctx.execGh(
+										[
+											"pr",
+											"list",
+											"--repo",
+											repositoryNameWithOwner,
+											"--state",
+											"open",
+											"--limit",
+											"8",
+											"--json",
+											"number,title,url,state,isDraft,headRefName,updatedAt,author",
+										],
+										{ cwd: repoPath, timeout: 30_000 },
+									);
+									return z.array(ghRepositoryPullRequestSchema).parse(result);
+								},
+							}),
+							loadRepositorySegment({
+								label: "workflows",
+								workspaceId: input.workspaceId,
+								repositoryNameWithOwner,
+								fallback: [] as Array<
+									z.infer<typeof ghRepositoryWorkflowSchema>
+								>,
+								load: async () => {
+									const result = await ctx.execGh(
+										[
+											"api",
+											`repos/${repositoryNameWithOwner}/actions/workflows?per_page=100`,
+										],
+										{ cwd: repoPath, timeout: 30_000 },
+									);
+									return (
+										ghRepositoryWorkflowsResponseSchema.parse(result)
+											.workflows ?? []
+									);
+								},
+							}),
+							loadRepositorySegment({
+								label: "labels",
+								workspaceId: input.workspaceId,
+								repositoryNameWithOwner,
+								fallback: [] as Array<z.infer<typeof ghRepositoryLabelSchema>>,
+								load: async () => {
+									const result = await ctx.execGh(
+										[
+											"api",
+											`repos/${repositoryNameWithOwner}/labels?per_page=100`,
+										],
+										{ cwd: repoPath, timeout: 30_000 },
+									);
+									return z.array(ghRepositoryLabelSchema).parse(result);
+								},
+							}),
+							loadRepositorySegment({
+								label: "assignees",
+								workspaceId: input.workspaceId,
+								repositoryNameWithOwner,
+								fallback: [] as Array<
+									z.infer<typeof ghRepositoryAssigneeSchema>
+								>,
+								load: async () => {
+									const result = await ctx.execGh(
+										[
+											"api",
+											`repos/${repositoryNameWithOwner}/assignees?per_page=100`,
+										],
+										{ cwd: repoPath, timeout: 30_000 },
+									);
+									return z.array(ghRepositoryAssigneeSchema).parse(result);
+								},
+							}),
+						]);
 
-			return {
-				repositoryNameWithOwner,
-				repositoryUrl,
-				upstreamUrl,
-				upstreamNameWithOwner,
-				isFork,
-				branchExistsOnRemote,
-				currentBranch,
-				defaultBranch,
-				issueAssignees: assignees.map((assignee) => ({
-					login: assignee.login,
-					avatarUrl: assignee.avatar_url ?? null,
-				})),
-				issueLabels: labels.map((label) => ({
-					name: label.name,
-					color: label.color ?? "",
-					description: label.description ?? "",
-				})),
-				pullsUrl: `${repositoryUrl}/pulls`,
-				issuesUrl: `${repositoryUrl}/issues`,
-				actionsUrl: `${repositoryUrl}/actions`,
-				newIssueUrl: `${repositoryUrl}/issues/new`,
-				pullRequests: pullRequests.map((pullRequest) => ({
-					number: pullRequest.number,
-					title: pullRequest.title,
-					url: pullRequest.url,
-					state: pullRequest.isDraft
-						? "draft"
-						: pullRequest.state.toLowerCase(),
-					headRefName: pullRequest.headRefName ?? "",
-					updatedAt: pullRequest.updatedAt ?? null,
-					authorLogin: pullRequest.author?.login ?? null,
-				})),
-				workflows: workflows
-					.filter((workflow) => workflow.state !== "disabled_manually")
-					.map((workflow) => {
-						const dispatchInfo = parseWorkflowDispatchInfo({
-							repoPath,
-							workflowPath: workflow.path,
-						});
-						return {
-							id: workflow.id,
-							name: workflow.name,
-							path: workflow.path ?? "",
-							state: workflow.state ?? "unknown",
-							supportsDispatch: dispatchInfo.supportsDispatch,
-							inputs: dispatchInfo.inputs,
-						};
-					})
-					.filter((workflow) => workflow.supportsDispatch),
-			};
+					return {
+						repositoryNameWithOwner,
+						repositoryUrl,
+						upstreamUrl,
+						upstreamNameWithOwner,
+						isFork,
+						branchExistsOnRemote,
+						currentBranch,
+						defaultBranch,
+						issueAssignees: assignees.map((assignee) => ({
+							login: assignee.login,
+							avatarUrl: assignee.avatar_url ?? null,
+						})),
+						issueLabels: labels.map((label) => ({
+							name: label.name,
+							color: label.color ?? "",
+							description: label.description ?? "",
+						})),
+						pullsUrl: `${repositoryUrl}/pulls`,
+						issuesUrl: `${repositoryUrl}/issues`,
+						actionsUrl: `${repositoryUrl}/actions`,
+						newIssueUrl: `${repositoryUrl}/issues/new`,
+						pullRequests: pullRequests.map((pullRequest) => ({
+							number: pullRequest.number,
+							title: pullRequest.title,
+							url: pullRequest.url,
+							state: pullRequest.isDraft
+								? "draft"
+								: pullRequest.state.toLowerCase(),
+							headRefName: pullRequest.headRefName ?? "",
+							updatedAt: pullRequest.updatedAt ?? null,
+							authorLogin: pullRequest.author?.login ?? null,
+						})),
+						workflows: workflows
+							.filter((workflow) => workflow.state !== "disabled_manually")
+							.map((workflow) => {
+								const dispatchInfo = parseWorkflowDispatchInfo({
+									repoPath,
+									workflowPath: workflow.path,
+								});
+								return {
+									id: workflow.id,
+									name: workflow.name,
+									path: workflow.path ?? "",
+									state: workflow.state ?? "unknown",
+									supportsDispatch: dispatchInfo.supportsDispatch,
+									inputs: dispatchInfo.inputs,
+								};
+							})
+							.filter((workflow) => workflow.supportsDispatch),
+					};
+				},
+			);
 		}),
 
 	createIssue: protectedProcedure
@@ -791,6 +857,9 @@ export const githubRouter = router({
 			}
 
 			await ctx.execGh(args, { cwd: repoPath, timeout: 30_000 });
+			invalidateGitHubRepositoryQueryCache(
+				`repository-overview:${input.workspaceId}`,
+			);
 			return {
 				success: true as const,
 				ref: targetRef,
@@ -844,36 +913,41 @@ export const githubRouter = router({
 			}),
 		)
 		.query(async ({ ctx, input }) => {
-			const { repoPath, repositoryNameWithOwner } =
-				await resolveRepositoryTarget(ctx, input.workspaceId);
-			const result = await ctx.execGh(
-				[
-					"api",
-					`repos/${repositoryNameWithOwner}/actions/runs/${input.runId}/jobs?per_page=100`,
-				],
-				{ cwd: repoPath, timeout: 30_000 },
-			);
-			const parsed = z
-				.object({
-					jobs: z
-						.array(
-							z.object({
-								id: z.number(),
-								name: z.string(),
-								status: z.string(),
-								conclusion: z.string().nullable(),
-								html_url: z.string().nullable().optional(),
-							}),
-						)
-						.optional(),
-				})
-				.parse(result);
+			return readCachedGitHubRepositoryQuery(
+				`workflow-run-jobs:${input.workspaceId}:${input.runId}`,
+				async () => {
+					const { repoPath, repositoryNameWithOwner } =
+						await resolveRepositoryTarget(ctx, input.workspaceId);
+					const result = await ctx.execGh(
+						[
+							"api",
+							`repos/${repositoryNameWithOwner}/actions/runs/${input.runId}/jobs?per_page=100`,
+						],
+						{ cwd: repoPath, timeout: 30_000 },
+					);
+					const parsed = z
+						.object({
+							jobs: z
+								.array(
+									z.object({
+										id: z.number(),
+										name: z.string(),
+										status: z.string(),
+										conclusion: z.string().nullable(),
+										html_url: z.string().nullable().optional(),
+									}),
+								)
+								.optional(),
+						})
+						.parse(result);
 
-			return (parsed.jobs ?? []).map((job) => ({
-				detailsUrl: job.html_url ?? "",
-				name: job.name,
-				status: mapJobStatus(job.status, job.conclusion),
-			}));
+					return (parsed.jobs ?? []).map((job) => ({
+						detailsUrl: job.html_url ?? "",
+						name: job.name,
+						status: mapJobStatus(job.status, job.conclusion),
+					}));
+				},
+			);
 		}),
 
 	mergePR: protectedProcedure

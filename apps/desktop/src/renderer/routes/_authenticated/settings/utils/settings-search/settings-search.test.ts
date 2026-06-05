@@ -76,4 +76,18 @@ describe("settings search - font settings", () => {
 		const ids = getIds(results);
 		expect(ids).toContain(SETTING_ITEM_ID.EXPERIMENTAL_RERUN_ONBOARDING);
 	});
+
+	it("empty search keeps fork-specific settings sections discoverable", () => {
+		const ids = getIds(searchSettings(""));
+		expect(ids).toContain(SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW);
+		expect(ids).toContain(SETTING_ITEM_ID.SERVICE_STATUS_PROVIDERS);
+		expect(ids).toContain(SETTING_ITEM_ID.EXTENSIONS_BROWSER);
+		expect(ids).toContain(SETTING_ITEM_ID.VSCODE_EXTENSIONS_MANAGE);
+		expect(ids).toContain(SETTING_ITEM_ID.RINGTONES_AIVIS);
+	});
+
+	it('searching "rate limit" returns GitHub metrics', () => {
+		const ids = getIds(searchSettings("rate limit"));
+		expect(ids).toContain(SETTING_ITEM_ID.METRICS_GITHUB_OVERVIEW);
+	});
 });
