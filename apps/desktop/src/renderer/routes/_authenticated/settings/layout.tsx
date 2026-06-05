@@ -130,6 +130,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/security";
 		case "permissions":
 			return "/settings/permissions";
+		case "project":
+			return "/settings/projects";
 		case "hosts":
 			return "/settings/hosts";
 		default:

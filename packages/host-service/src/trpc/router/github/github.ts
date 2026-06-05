@@ -90,18 +90,33 @@ const githubRepositoryQueryCache = new Map<
 	{ expiresAt: number; promise: Promise<unknown> }
 >();
 
+function sweepExpiredGitHubRepositoryQueryCache(now = Date.now()): void {
+	for (const [key, entry] of githubRepositoryQueryCache) {
+		if (entry.expiresAt <= now) {
+			githubRepositoryQueryCache.delete(key);
+		}
+	}
+}
+
 function readCachedGitHubRepositoryQuery<T>(
 	key: string,
 	load: () => Promise<T>,
 ): Promise<T> {
 	const now = Date.now();
+	sweepExpiredGitHubRepositoryQueryCache(now);
 	const cached = githubRepositoryQueryCache.get(key);
 	if (cached && cached.expiresAt > now) {
 		return cached.promise as Promise<T>;
 	}
 
-	const promise = load();
-	promise.catch(() => {});
+	let promise: Promise<T>;
+	promise = load().catch((error) => {
+		const cachedAfterError = githubRepositoryQueryCache.get(key);
+		if (cachedAfterError?.promise === promise) {
+			githubRepositoryQueryCache.delete(key);
+		}
+		throw error;
+	});
 	githubRepositoryQueryCache.set(key, {
 		expiresAt: now + GITHUB_REPOSITORY_QUERY_CACHE_TTL_MS,
 		promise: promise as Promise<unknown>,
@@ -110,6 +125,7 @@ function readCachedGitHubRepositoryQuery<T>(
 }
 
 function invalidateGitHubRepositoryQueryCache(prefix: string): void {
+	sweepExpiredGitHubRepositoryQueryCache();
 	for (const key of githubRepositoryQueryCache.keys()) {
 		if (key.startsWith(prefix)) {
 			githubRepositoryQueryCache.delete(key);
@@ -842,9 +858,6 @@ export const githubRouter = router({
 
 			await ctx.execGh(args, { cwd: repoPath, timeout: 30_000 });
 			invalidateGitHubRepositoryQueryCache(
-				`workflow-runs:${input.workspaceId}:${input.workflowId}`,
-			);
-			invalidateGitHubRepositoryQueryCache(
 				`repository-overview:${input.workspaceId}`,
 			);
 			return {
@@ -862,39 +875,34 @@ export const githubRouter = router({
 			}),
 		)
 		.query(async ({ ctx, input }) => {
-			return readCachedGitHubRepositoryQuery(
-				`workflow-runs:${input.workspaceId}:${input.workflowId}`,
-				async () => {
-					const { repoPath, repositoryNameWithOwner } =
-						await resolveRepositoryTarget(ctx, input.workspaceId);
-					const result = await ctx.execGh(
-						[
-							"api",
-							`repos/${repositoryNameWithOwner}/actions/workflows/${input.workflowId}/runs?per_page=10&event=workflow_dispatch`,
-						],
-						{ cwd: repoPath, timeout: 30_000 },
-					);
-					const runs =
-						ghRepositoryWorkflowRunsResponseSchema.parse(result)
-							.workflow_runs ?? [];
-					return runs.map((run) => ({
-						id: run.id,
-						name: run.name ?? "",
-						displayTitle: run.display_title ?? "",
-						url: run.html_url ?? "",
-						status: run.status ?? "unknown",
-						conclusion: run.conclusion ?? null,
-						event: run.event ?? null,
-						createdAt: run.created_at ?? null,
-						updatedAt: run.updated_at ?? null,
-						runStartedAt: run.run_started_at ?? null,
-						headBranch: run.head_branch ?? null,
-						headSha: run.head_sha ?? null,
-						runNumber: run.run_number ?? null,
-						workflowId: run.workflow_id ?? input.workflowId,
-					}));
-				},
+			const { repoPath, repositoryNameWithOwner } =
+				await resolveRepositoryTarget(ctx, input.workspaceId);
+			const result = await ctx.execGh(
+				[
+					"api",
+					`repos/${repositoryNameWithOwner}/actions/workflows/${input.workflowId}/runs?per_page=10&event=workflow_dispatch`,
+				],
+				{ cwd: repoPath, timeout: 30_000 },
 			);
+			const runs =
+				ghRepositoryWorkflowRunsResponseSchema.parse(result).workflow_runs ??
+				[];
+			return runs.map((run) => ({
+				id: run.id,
+				name: run.name ?? "",
+				displayTitle: run.display_title ?? "",
+				url: run.html_url ?? "",
+				status: run.status ?? "unknown",
+				conclusion: run.conclusion ?? null,
+				event: run.event ?? null,
+				createdAt: run.created_at ?? null,
+				updatedAt: run.updated_at ?? null,
+				runStartedAt: run.run_started_at ?? null,
+				headBranch: run.head_branch ?? null,
+				headSha: run.head_sha ?? null,
+				runNumber: run.run_number ?? null,
+				workflowId: run.workflow_id ?? input.workflowId,
+			}));
 		}),
 
 	getWorkflowRunJobs: protectedProcedure
