@@ -1,0 +1,1 @@
+export { BrowserPaneChrome } from "./BrowserPaneChrome";

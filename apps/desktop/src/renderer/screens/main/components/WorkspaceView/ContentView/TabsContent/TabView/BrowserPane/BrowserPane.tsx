@@ -1,15 +1,4 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { GlobeIcon } from "lucide-react";
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
-import { LuMinus, LuPlus } from "react-icons/lu";
-import { TbDeviceDesktop } from "react-icons/tb";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useBrowserAutomationStore } from "renderer/stores/browser-automation";
@@ -20,19 +9,9 @@ import {
 import { useBrowserFullscreenStore } from "renderer/stores/browser-fullscreen";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { SplitPaneOptions } from "renderer/stores/tabs/types";
-import { BasePaneWindow, PaneToolbarActions } from "../components";
-import { BookmarkBar } from "./components/BookmarkBar";
-import { BrowserErrorOverlay } from "./components/BrowserErrorOverlay";
-import {
-	BrowserFindOverlay,
-	type BrowserFindOverlayHandle,
-} from "./components/BrowserFindOverlay";
-import { BrowserTabBar } from "./components/BrowserTabBar";
-import { BrowserToolbar } from "./components/BrowserToolbar";
+import { BrowserPaneChrome } from "../components/BrowserPaneChrome";
+import type { BrowserFindOverlayHandle } from "./components/BrowserFindOverlay";
 import { BrowserOverflowMenu } from "./components/BrowserToolbar/components/BrowserOverflowMenu";
-import { ConnectButton } from "./components/ConnectButton";
-import { ExtensionToolbar } from "./components/ExtensionToolbar";
-import { SessionConnectModal } from "./components/SessionConnectModal";
 import { DEFAULT_BROWSER_URL } from "./constants";
 import { usePersistentWebview } from "./hooks/usePersistentWebview";
 import { getPersistentWrapper } from "./hooks/usePersistentWebview/runtime";
@@ -73,6 +52,10 @@ export function BrowserPane({
 	const isLoading = browserState?.isLoading ?? false;
 	const loadError = browserState?.error ?? null;
 	const isBlankPage = currentUrl === "about:blank";
+	const isFullscreen = useBrowserFullscreenStore(
+		(s) => s.fullscreenPaneId === paneId,
+	);
+
 	const bookmarks = useBrowserBookmarksStore((state) => state.bookmarks);
 	const currentBookmark = useMemo(
 		() => findBookmarkByUrl(bookmarks, currentUrl),
@@ -84,17 +67,14 @@ export function BrowserPane({
 	const syncBookmarkFaviconByUrl = useBrowserBookmarksStore(
 		(state) => state.syncBookmarkFaviconByUrl,
 	);
-	const isFullscreen = useBrowserFullscreenStore(
-		(s) => s.fullscreenPaneId === paneId,
-	);
-	// Narrow the subscription so BrowserPane (and its webview tree) does not
-	// re-render every time the modal's selectedSessionId changes.
+
 	const isConnectOpenForThisPane = useBrowserAutomationStore(
 		(s) => s.connectModal.isOpen && s.connectModal.paneId === paneId,
 	);
 	const closeConnectModal = useBrowserAutomationStore(
 		(s) => s.closeConnectModal,
 	);
+
 	const { mutate: openDevTools } =
 		electronTrpc.browser.openDevTools.useMutation();
 	const { mutate: setZoomLevel } =
@@ -102,8 +82,6 @@ export function BrowserPane({
 	const { mutate: findInPage } = electronTrpc.browser.findInPage.useMutation();
 	const { mutate: stopFindInPage } =
 		electronTrpc.browser.stopFindInPage.useMutation();
-
-	// -- Find in page ------------------------------------------------------
 
 	const [isFindOpen, setIsFindOpen] = useState(false);
 	const [findQuery, setFindQuery] = useState("");
@@ -114,7 +92,6 @@ export function BrowserPane({
 
 	const openFindOverlay = useCallback(() => {
 		setIsFindOpen(true);
-		// Refocus + select even if already open (repeat Cmd+F).
 		findOverlayRef.current?.focusInput();
 	}, []);
 
@@ -185,8 +162,8 @@ export function BrowserPane({
 			onData: (event) => {
 				if (event.type === "open") {
 					openFindOverlay();
-				} else if (event.type === "escape") {
-					if (isFindOpen) closeFindOverlay();
+				} else if (event.type === "escape" && isFindOpen) {
+					closeFindOverlay();
 				}
 			},
 		},
@@ -218,16 +195,11 @@ export function BrowserPane({
 		splitPaneAuto,
 	});
 
-	// -- Zoom (synced with Electron's built-in Cmd+/- zoom) -----------------
-
 	const ZOOM_STEP = 1;
 	const ZOOM_MIN = -3;
 	const ZOOM_MAX = 5;
-
 	const [zoomLevel, setZoomLevelLocal] = useState(0);
-	const zoomPercent = Math.round(1.2 ** zoomLevel * 100);
 
-	// Sync when Cmd+/- changes zoom from keyboard
 	electronTrpc.browser.onZoomChanged.useSubscription(
 		{ paneId },
 		{
@@ -250,21 +222,9 @@ export function BrowserPane({
 		openDevTools({ paneId });
 	}, [openDevTools, paneId]);
 
-	// -- Secondary tabs -----------------------------------------------------
-	//
-	// v1's primary webview lives in usePersistentWebview + tabs-store. This
-	// BrowserPane also hosts a secondary tab registry for anything beyond
-	// the primary (user-opened via the overflow menu, or CDP-opened via an
-	// external MCP's Target.createTarget). When a secondary tab is active,
-	// we hide the primary webview via CSS and the secondary registry
-	// overlays its own webview atop the same placeholder (containerRef).
-
 	const [activeTabId, setActiveTabId] = useState("primary");
 	const secondaryContainerRef = useRef<HTMLDivElement | null>(null);
 
-	// Subscribe to the secondary tab registry so the toolbar's URL
-	// bar / loading spinner / nav buttons can reflect whichever tab
-	// is currently active (primary vs one of the secondaries).
 	const secondaryTabs = useSyncExternalStore(
 		useCallback(
 			(cb) => secondaryTabRegistry.onTabsChange(paneId, cb),
@@ -289,19 +249,6 @@ export function BrowserPane({
 	}, [paneId]);
 
 	useEffect(() => {
-		// Electron's <webview> tag uses a native BrowserPlugin
-		// compositor that does NOT reliably respect CSS z-index when
-		// two webview elements overlap (the primary managed by
-		// usePersistentWebview lives in a different DOM parent from
-		// the secondary-tab registry's webviews). The primary ends
-		// up painting on top regardless of z-index, so we can't hide
-		// it with stacking alone.
-		//
-		// Instead, fade the primary's wrapper to opacity:0 while a
-		// secondary tab is active. opacity:0 does NOT trigger
-		// Chromium's page-lifecycle "hidden" state (only display:none
-		// / visibility:hidden do), so external CDP MCPs driving the
-		// primary keep working in the background.
 		const primaryWrapper = getPersistentWrapper(paneId);
 		if (activeTabId === "primary") {
 			secondaryTabRegistry.setVisible(paneId, false);
@@ -319,9 +266,6 @@ export function BrowserPane({
 		}
 	}, [activeTabId, paneId]);
 
-	// External CDP MCPs issue Target.createTarget → bridge emits
-	// create-tab-requested on the pane. Spawn a real secondary tab so
-	// the gateway's bound-set picks up the new targetId.
 	const { mutate: ackTabCreated } =
 		electronTrpc.browser.acknowledgeTabCreated.useMutation();
 
@@ -329,36 +273,20 @@ export function BrowserPane({
 		{ paneId },
 		{
 			onData: (evt) => {
-				console.log(
-					"[BrowserPane v1] create-tab-requested url=",
-					evt.url,
-					"pane=",
-					paneId,
-					"req=",
-					evt.requestId,
-					"bg=",
-					evt.background,
-				);
-				const tabId = secondaryTabRegistry.createTab(paneId, evt.url, {
+				const nextTabId = secondaryTabRegistry.createTab(paneId, evt.url, {
 					background: evt.background === true,
 				});
-				console.log(
-					"[BrowserPane v1] secondaryTabRegistry.createTab returned tabId=",
-					tabId,
-				);
-				if (tabId) {
-					if (!evt.background) setActiveTabId(tabId);
-					if (evt.requestId) {
-						ackTabCreated({ paneId, requestId: evt.requestId, tabId });
-					}
+				if (!nextTabId) return;
+				if (!evt.background) {
+					setActiveTabId(nextTabId);
+				}
+				if (evt.requestId) {
+					ackTabCreated({ paneId, requestId: evt.requestId, tabId: nextTabId });
 				}
 			},
 		},
 	);
 
-	// MCP may flip tabs via Target.activateTarget / Page.bringToFront.
-	// Mirror that into the BrowserPane's tab bar so what the MCP drives
-	// matches what the user sees (Chrome's tab strip follows CDP).
 	electronTrpc.browser.onActivateTabRequested.useSubscription(
 		{ paneId },
 		{
@@ -373,8 +301,6 @@ export function BrowserPane({
 			},
 		},
 	);
-
-	const [isEditingUrl, setIsEditingUrl] = useState(false);
 
 	useEffect(() => {
 		if (!currentBookmark || !currentFaviconUrl) {
@@ -400,8 +326,15 @@ export function BrowserPane({
 		});
 	}, [currentFaviconUrl, currentUrl, isBlankPage, pageTitle, toggleBookmark]);
 
+	const displayedUrl = activeSecondary ? activeSecondary.url : currentUrl;
+	const displayedTitle = activeSecondary ? activeSecondary.title : pageTitle;
+	const displayedIsLoading = activeSecondary ? activeSecondary.isLoading : isLoading;
+	const displayedHasPage = activeSecondary
+		? Boolean(activeSecondary.url && activeSecondary.url !== "about:blank")
+		: !isBlankPage;
+
 	return (
-		<BasePaneWindow
+		<BrowserPaneChrome
 			paneId={paneId}
 			path={path}
 			tabId={tabId}
@@ -409,226 +342,94 @@ export function BrowserPane({
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
 			onPopOut={onPopOut}
-			draggable={!isEditingUrl}
-			hideToolbar={isFullscreen}
-			renderToolbar={(handlers) => (
-				<div className="flex h-full w-full items-center justify-between min-w-0">
-					<BrowserToolbar
-						paneId={paneId}
-						currentUrl={activeSecondary ? activeSecondary.url : currentUrl}
-						pageTitle={activeSecondary ? activeSecondary.title : pageTitle}
-						isLoading={activeSecondary ? activeSecondary.isLoading : isLoading}
-						hasPage={
-							activeSecondary
-								? Boolean(
-										activeSecondary.url &&
-											activeSecondary.url !== "about:blank",
-									)
-								: !isBlankPage
-						}
-						isBookmarked={activeSecondary ? false : Boolean(currentBookmark)}
-						canGoBack={activeSecondary ? true : canGoBack}
-						canGoForward={activeSecondary ? true : canGoForward}
-						onGoBack={
-							activeSecondary
-								? () => secondaryTabRegistry.goBackActive(paneId)
-								: goBack
-						}
-						onGoForward={
-							activeSecondary
-								? () => secondaryTabRegistry.goForwardActive(paneId)
-								: goForward
-						}
-						onReload={
-							activeSecondary
-								? () => secondaryTabRegistry.reloadActive(paneId)
-								: reload
-						}
-						onNavigate={
-							activeSecondary
-								? (url: string) =>
-										secondaryTabRegistry.navigateActive(paneId, url)
-								: navigateTo
-						}
-						onToggleBookmark={handleToggleBookmark}
-						onEditingChange={setIsEditingUrl}
-					/>
-					<div className="flex items-center shrink-0">
-						<div className="mx-1.5 h-3.5 w-px bg-muted-foreground/60" />
-						<PaneToolbarActions
-							splitOrientation={handlers.splitOrientation}
-							onSplitPane={handlers.onSplitPane}
-							onClosePane={handlers.onClosePane}
-							closeHotkeyId="CLOSE_TERMINAL"
-							onPopOut={handlers.onPopOut}
-							leadingActions={
-								<>
-									<ConnectButton paneId={paneId} />
-									<div className="mx-1 h-3.5 w-px bg-muted-foreground/60" />
-									<div className="flex items-center gap-0.5">
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<button
-													type="button"
-													onClick={() => applyZoom(zoomLevel - ZOOM_STEP)}
-													disabled={zoomLevel <= ZOOM_MIN}
-													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-30"
-												>
-													<LuMinus className="size-3.5" />
-												</button>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" showArrow={false}>
-												Zoom Out
-											</TooltipContent>
-										</Tooltip>
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<button
-													type="button"
-													onClick={() => applyZoom(0)}
-													className="rounded px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-												>
-													{zoomPercent}%
-												</button>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" showArrow={false}>
-												Reset Zoom
-											</TooltipContent>
-										</Tooltip>
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<button
-													type="button"
-													onClick={() => applyZoom(zoomLevel + ZOOM_STEP)}
-													disabled={zoomLevel >= ZOOM_MAX}
-													className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-30"
-												>
-													<LuPlus className="size-3.5" />
-												</button>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" showArrow={false}>
-												Zoom In
-											</TooltipContent>
-										</Tooltip>
-									</div>
-									<ExtensionToolbar />
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<button
-												type="button"
-												onClick={handleOpenDevTools}
-												className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-											>
-												<TbDeviceDesktop className="size-3.5" />
-											</button>
-										</TooltipTrigger>
-										<TooltipContent side="bottom" showArrow={false}>
-											Open DevTools
-										</TooltipContent>
-									</Tooltip>
-									<BrowserOverflowMenu paneId={paneId} hasPage={!isBlankPage} />
-								</>
-							}
-						/>
-					</div>
-				</div>
-			)}
-		>
-			<div
-				className="flex h-full flex-1 flex-col"
-				onKeyDownCapture={(event) => {
-					if (
-						(event.metaKey || event.ctrlKey) &&
-						!event.altKey &&
-						!event.shiftKey &&
-						event.key.toLowerCase() === "f"
-					) {
-						event.preventDefault();
-						event.stopPropagation();
-						openFindOverlay();
-					} else if (event.key === "Escape" && isFindOpen) {
-						event.preventDefault();
-						closeFindOverlay();
-					}
-				}}
-			>
-				{!isFullscreen && (
-					<BookmarkBar currentUrl={currentUrl} onNavigate={navigateTo} />
-				)}
-				{/*
-				 * The multi-tab UI is hidden while the v1
-				 * <webview>-backed implementation has known
-				 * manual-switch instability (scroll / right-click /
-				 * URL-suggestion click capture by the wrong
-				 * GuestView). The tab-bar + registry code is kept
-				 * because MCP-driven tab creation (Target.createTarget
-				 * etc.) still routes through it — external MCPs can
-				 * still open and drive tabs, the user just can't
-				 * manually switch between them here. The proper fix
-				 * lives on feature/browser-webcontentsview-v3
-				 * (WebContentsView migration).
-				 * TODO(issue): re-enable once v3 reaches parity.
-				 */}
-				{false && (
-					<BrowserTabBar
-						paneId={paneId}
-						primaryUrl={currentUrl}
-						primaryTitle={pageTitle}
-						primaryFaviconUrl={currentFaviconUrl ?? null}
-						primaryIsLoading={isLoading}
-						activeTabId={activeTabId}
-						onActivate={setActiveTabId}
-					/>
-				)}
-				<div className="relative flex flex-1 min-h-0">
-					<div
-						ref={containerRef}
-						className="h-full w-full"
-						style={{ flex: 1 }}
-					/>
+			isFullscreen={isFullscreen}
+			isConnectOpen={isConnectOpenForThisPane}
+			onConnectOpenChange={(open) => {
+				if (!open) closeConnectModal();
+			}}
+			currentUrl={displayedUrl}
+			pageTitle={displayedTitle}
+			isLoading={displayedIsLoading}
+			isBlankPage={!displayedHasPage}
+			loadError={loadError}
+			isBookmarked={activeSecondary ? false : Boolean(currentBookmark)}
+			canGoBack={activeSecondary ? true : canGoBack}
+			canGoForward={activeSecondary ? true : canGoForward}
+			onGoBack={
+				activeSecondary
+					? () => secondaryTabRegistry.goBackActive(paneId)
+					: goBack
+			}
+			onGoForward={
+				activeSecondary
+					? () => secondaryTabRegistry.goForwardActive(paneId)
+					: goForward
+			}
+			onReload={
+				activeSecondary
+					? () => secondaryTabRegistry.reloadActive(paneId)
+					: reload
+			}
+			onNavigate={
+				activeSecondary
+					? (url: string) => secondaryTabRegistry.navigateActive(paneId, url)
+					: navigateTo
+			}
+			onToggleBookmark={handleToggleBookmark}
+			onOpenDevTools={handleOpenDevTools}
+			zoomLevel={zoomLevel}
+			onZoomChange={applyZoom}
+			zoomStep={ZOOM_STEP}
+			zoomMin={ZOOM_MIN}
+			zoomMax={ZOOM_MAX}
+			bookmarkBar={{
+				currentUrl,
+				onNavigate: navigateTo,
+			}}
+			findOverlay={{
+				ref: findOverlayRef,
+				isOpen: isFindOpen,
+				query: findQuery,
+				matchCount: findMatches,
+				activeMatchOrdinal: findActiveOrdinal,
+				matchCase: findMatchCase,
+				onQueryChange: handleFindQueryChange,
+				onMatchCaseChange: handleMatchCaseChange,
+				onFindNext: handleFindNext,
+				onFindPrevious: handleFindPrevious,
+				onClose: closeFindOverlay,
+			}}
+			contentKeyDownCapture={(event) => {
+				if (
+					(event.metaKey || event.ctrlKey) &&
+					!event.altKey &&
+					!event.shiftKey &&
+					event.key.toLowerCase() === "f"
+				) {
+					event.preventDefault();
+					event.stopPropagation();
+					openFindOverlay();
+				} else if (event.key === "Escape" && isFindOpen) {
+					event.preventDefault();
+					closeFindOverlay();
+				}
+			}}
+			overflowMenu={
+				<BrowserOverflowMenu
+					paneId={paneId}
+					currentUrl={displayedUrl}
+					hasPage={displayedHasPage}
+				/>
+			}
+			viewport={
+				<>
+					<div ref={containerRef} className="h-full w-full" style={{ flex: 1 }} />
 					<div
 						ref={secondaryContainerRef}
 						className="absolute inset-0 pointer-events-none"
 					/>
-					<BrowserFindOverlay
-						ref={findOverlayRef}
-						isOpen={isFindOpen}
-						query={findQuery}
-						matchCount={findMatches}
-						activeMatchOrdinal={findActiveOrdinal}
-						matchCase={findMatchCase}
-						onQueryChange={handleFindQueryChange}
-						onMatchCaseChange={handleMatchCaseChange}
-						onFindNext={handleFindNext}
-						onFindPrevious={handleFindPrevious}
-						onClose={closeFindOverlay}
-					/>
-					{loadError && !isLoading && (
-						<BrowserErrorOverlay error={loadError} onRetry={reload} />
-					)}
-					{isBlankPage && !isLoading && !loadError && (
-						<div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background pointer-events-none">
-							<GlobeIcon className="size-10 text-muted-foreground/30" />
-							<div className="text-center">
-								<p className="text-sm font-medium text-muted-foreground/50">
-									Browser
-								</p>
-								<p className="mt-1 text-xs text-muted-foreground/30">
-									Enter a URL above, or instruct an agent to navigate
-									<br />
-									and use the browser
-								</p>
-							</div>
-						</div>
-					)}
-				</div>
-			</div>
-			<SessionConnectModal
-				open={isConnectOpenForThisPane}
-				onOpenChange={(open) => {
-					if (!open) closeConnectModal();
-				}}
-			/>
-		</BasePaneWindow>
+				</>
+			}
+		/>
 	);
 }

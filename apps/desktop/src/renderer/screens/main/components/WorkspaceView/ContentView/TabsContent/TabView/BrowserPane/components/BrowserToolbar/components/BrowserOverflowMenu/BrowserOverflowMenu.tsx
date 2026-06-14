@@ -26,17 +26,22 @@ import {
 	exportBrowserBookmarksToHtml,
 	importBrowserBookmarksFromHtml,
 } from "renderer/stores/browser-bookmarks-html";
-import { useTabsStore } from "renderer/stores/tabs/store";
 import { BookmarkFolderDialog } from "../../../BookmarkFolderDialog";
 
 interface BrowserOverflowMenuProps {
 	paneId: string;
+	currentUrl: string;
 	hasPage: boolean;
+	onTakeScreenshot?: () => void;
+	onHardReload?: () => void;
 }
 
 export function BrowserOverflowMenu({
 	paneId,
+	currentUrl,
 	hasPage,
+	onTakeScreenshot,
+	onHardReload,
 }: BrowserOverflowMenuProps) {
 	const screenshotMutation = electronTrpc.browser.screenshot.useMutation();
 	const reloadMutation = electronTrpc.browser.reload.useMutation();
@@ -46,7 +51,6 @@ export function BrowserOverflowMenu({
 	const openExternalMutation = electronTrpc.external.openUrl.useMutation();
 	const openTextFileMutation = electronTrpc.external.openTextFile.useMutation();
 	const saveTextFileMutation = electronTrpc.external.saveTextFile.useMutation();
-	const currentUrl = useTabsStore((s) => s.panes[paneId]?.browser?.currentUrl);
 	const bookmarks = useBrowserBookmarksStore((state) => state.bookmarks);
 	const addFolder = useBrowserBookmarksStore((state) => state.addFolder);
 	const importBookmarks = useBrowserBookmarksStore(
@@ -77,10 +81,18 @@ export function BrowserOverflowMenu({
 	};
 
 	const handleScreenshot = () => {
+		if (onTakeScreenshot) {
+			onTakeScreenshot();
+			return;
+		}
 		screenshotMutation.mutate({ paneId });
 	};
 
 	const handleHardReload = () => {
+		if (onHardReload) {
+			onHardReload();
+			return;
+		}
 		reloadMutation.mutate({ paneId, hard: true });
 	};
 
